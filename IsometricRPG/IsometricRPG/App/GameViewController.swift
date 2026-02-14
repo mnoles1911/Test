@@ -21,7 +21,8 @@ final class GameViewController: UIViewController {
         skView.showsNodeCount = true
         skView.isMultipleTouchEnabled = true
 
-        let scene = GameScene(size: skView.bounds.size)
+        // Launch Main Menu instead of going directly to game
+        let scene = MainMenuScreen(size: skView.bounds.size)
         scene.scaleMode = .resizeFill
         skView.presentScene(scene)
     }

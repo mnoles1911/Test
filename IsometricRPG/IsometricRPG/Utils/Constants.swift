@@ -41,6 +41,9 @@ enum Constants {
         static let entity: CGFloat = 10
         static let bullet: CGFloat = 15
         static let hud: CGFloat = 100
+        static let overlay: CGFloat = 150
+        static let modal: CGFloat = 200
+        static let modalContent: CGFloat = 210
     }
 
     // MARK: - Physics Categories
