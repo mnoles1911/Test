@@ -40,6 +40,23 @@ final class Player: Entity {
     // Buffs
     private(set) var activeBuffs: [ActiveBuff] = []
 
+    // Inventory & Equipment (Phase 3)
+    var inventory: [Item?] = []
+    var equipment: Equipment = Equipment()
+
+    // Base stats
+    private let baseAttack: Int = 10
+    private let baseDefense: Int = 5
+
+    // Computed stats (include equipment bonuses)
+    var totalAttack: Int {
+        return baseAttack + equipment.totalAttackBonus
+    }
+
+    var totalDefense: Int {
+        return baseDefense + equipment.totalDefenseBonus
+    }
+
     init(worldPosition: CGPoint) {
         let node = Player.createPlayerNode()
         super.init(worldPosition: worldPosition, health: Constants.playerMaxHealth, node: node)
@@ -239,5 +256,61 @@ final class Player: Entity {
         let rise = SKAction.moveBy(x: 0, y: 20, duration: 1.0)
         let fade = SKAction.fadeOut(withDuration: 1.0)
         label.run(SKAction.sequence([SKAction.group([rise, fade]), SKAction.removeFromParent()]))
+    }
+
+    // MARK: - Inventory Management
+
+    /// Add item to inventory
+    /// Returns true if successful, false if inventory is full
+    func addToInventory(_ item: Item) -> Bool {
+        // Find first empty slot
+        if let emptyIndex = inventory.firstIndex(where: { $0 == nil }) {
+            inventory[emptyIndex] = item
+            return true
+        }
+
+        // If no empty slots, try to append (up to max capacity)
+        if inventory.count < 30 { // Max inventory size
+            inventory.append(item)
+            return true
+        }
+
+        return false // Inventory full
+    }
+
+    /// Remove item from inventory at index
+    func removeFromInventory(at index: Int) -> Item? {
+        guard index >= 0 && index < inventory.count else { return nil }
+        let item = inventory[index]
+        inventory[index] = nil
+        return item
+    }
+
+    /// Equip an item (moves from inventory to equipment)
+    func equipItem(at inventoryIndex: Int) -> Bool {
+        guard let item = inventory[inventoryIndex], item.isEquippable else {
+            return false
+        }
+
+        // Equip the item (this may return a previously equipped item)
+        if let unequippedItem = equipment.equip(item) {
+            // Put the unequipped item back in inventory
+            inventory[inventoryIndex] = unequippedItem
+        } else {
+            // No item was replaced, remove from inventory
+            inventory[inventoryIndex] = nil
+        }
+
+        return true
+    }
+
+    /// Unequip an item (moves from equipment to inventory)
+    func unequipItem(slot: Equipment.EquipmentSlot) -> Bool {
+        guard let item = equipment.unequip(slot: slot) else {
+            return false
+        }
+
+        // Try to add to inventory
+        return addToInventory(item)
     }
 }

@@ -6,8 +6,10 @@ final class GameScene: SKScene {
     private var player: Player!
     private var enemies: [Enemy] = []
     private var combatSystem: CombatSystem!
+    private var enhancedHUD: EnhancedHUD!
+    private var screenManager: ScreenManager!
+    private var gameState: GameState = .playing
     private var itemSpawner: ItemSpawner!
-    private var hud: HUD!
 
     // MARK: - Input
     private var moveJoystick: VirtualJoystick!
@@ -27,11 +29,12 @@ final class GameScene: SKScene {
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
-        backgroundColor = SKColor(red: 0.1, green: 0.1, blue: 0.15, alpha: 1)
+        backgroundColor = UITheme.darkStone
         setupCamera()
         setupWorld()
         setupPlayer()
         setupCombat()
+        setupScreenManager()
         setupItems()
         setupHUD()
         setupInput()
@@ -61,6 +64,13 @@ final class GameScene: SKScene {
         combatSystem = CombatSystem(worldNode: worldNode)
     }
 
+    private func setupScreenManager() {
+        screenManager = ScreenManager(scene: self, initialState: .playing)
+        screenManager.onStateChanged = { [weak self] newState in
+            self?.gameState = newState
+        }
+    }
+
     private func setupItems() {
         itemSpawner = ItemSpawner(worldNode: worldNode)
         let context = buildGameContext()
@@ -70,8 +80,13 @@ final class GameScene: SKScene {
     }
 
     private func setupHUD() {
-        hud = HUD()
-        cameraNode.addChild(hud)
+        enhancedHUD = EnhancedHUD()
+        // Note: Minimap will need to be adapted for WorldManager in future
+        // For now, minimap will show player/enemies but not terrain
+        enhancedHUD.onPauseTapped = { [weak self] in
+            self?.showPauseMenu()
+        }
+        cameraNode.addChild(enhancedHUD)
         layoutHUD()
     }
 
@@ -95,7 +110,7 @@ final class GameScene: SKScene {
 
     private func layoutHUD() {
         guard let view = view else { return }
-        hud.layout(screenSize: view.bounds.size)
+        enhancedHUD.layout(screenSize: view.bounds.size)
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -107,7 +122,7 @@ final class GameScene: SKScene {
     // MARK: - Game Loop
 
     override func update(_ currentTime: TimeInterval) {
-        guard !isGameOver else { return }
+        guard !isGameOver && gameState == .playing else { return }
 
         if gameStartTime == 0 { gameStartTime = currentTime }
 
@@ -128,8 +143,7 @@ final class GameScene: SKScene {
         collectXPOrbs()
         player.updateBuffs(deltaTime: dt)
         updateCamera()
-        hud.update(player: player, killCount: killCount,
-                   biome: worldManager.biomeAt(worldPosition: player.worldPosition))
+        enhancedHUD.update(player: player, enemies: enemies, killCount: killCount, currentTime: currentTime)
 
         if !player.isAlive {
             gameOver()
@@ -389,5 +403,63 @@ final class GameScene: SKScene {
         let newScene = GameScene(size: view.bounds.size)
         newScene.scaleMode = .resizeFill
         view.presentScene(newScene, transition: SKTransition.fade(withDuration: 0.5))
+    }
+
+    // MARK: - Pause Menu
+
+    private func showPauseMenu() {
+        guard let view = view else { return }
+
+        let pauseMenu = PauseMenuScreen(screenSize: view.bounds.size)
+
+        pauseMenu.onResume = { [weak self] in
+            self?.screenManager.transition(to: .playing)
+        }
+
+        pauseMenu.onInventory = { [weak self] in
+            self?.showInventory()
+        }
+
+        pauseMenu.onCharacter = { [weak self] in
+            // TODO: Phase 4 - Character stats screen
+            print("[GameScene] Character screen not yet implemented")
+        }
+
+        pauseMenu.onSettings = { [weak self] in
+            // TODO: Phase 4 - Settings screen
+            print("[GameScene] Settings screen not yet implemented")
+        }
+
+        pauseMenu.onMainMenu = { [weak self] in
+            self?.returnToMainMenu()
+        }
+
+        screenManager.transition(to: .paused)
+        screenManager.showModal(pauseMenu, animated: true)
+    }
+
+    private func showInventory() {
+        guard let view = view else { return }
+
+        let inventoryScreen = InventoryScreen(
+            screenSize: view.bounds.size,
+            inventory: player.inventory,
+            equipment: player.equipment
+        )
+
+        inventoryScreen.onClose = { [weak self] in
+            self?.screenManager.dismissModal(animated: true)
+        }
+
+        screenManager.showModal(inventoryScreen, animated: true)
+    }
+
+    private func returnToMainMenu() {
+        guard let view = view else { return }
+
+        // Transition back to main menu
+        let mainMenu = MainMenuScreen(size: view.bounds.size)
+        mainMenu.scaleMode = .resizeFill
+        view.presentScene(mainMenu, transition: SKTransition.fade(withDuration: UITheme.animationSlow))
     }
 }
