@@ -166,22 +166,20 @@ class InventoryGrid: SKNode {
     }
 
     private func displayItem(_ item: Item, in container: SKNode) {
-        // Simple colored square representing the item
-        // In Phase 5, this will be replaced with actual item sprites
-        let itemShape = SKShapeNode(rectOf: CGSize(width: slotSize * 0.7, height: slotSize * 0.7), cornerRadius: 4)
-        itemShape.fillColor = item.rarity.color.withAlphaComponent(0.6)
-        itemShape.strokeColor = item.rarity.color
-        itemShape.lineWidth = 2
-        container.addChild(itemShape)
+        // Phase 5: Use actual item sprites with fallback to procedural generation
+        let texture = SpriteManager.shared.getItemSprite(item.type)
 
-        // Item initial (for identification)
-        let initial = SKLabelNode(fontNamed: UITheme.headerFont)
-        initial.text = String(item.name.prefix(1))
-        initial.fontSize = 24
-        initial.fontColor = UITheme.textLight
-        initial.verticalAlignmentMode = .center
-        initial.horizontalAlignmentMode = .center
-        container.addChild(initial)
+        // Create sprite node
+        let itemSprite = SKSpriteNode(texture: texture)
+        itemSprite.size = CGSize(width: slotSize * 0.7, height: slotSize * 0.7)
+        container.addChild(itemSprite)
+
+        // Add rarity border overlay (colored outline around sprite)
+        let border = SKShapeNode(rectOf: itemSprite.size, cornerRadius: 4)
+        border.strokeColor = item.rarity.color
+        border.lineWidth = 2
+        border.fillColor = .clear
+        container.addChild(border)
     }
 
     // MARK: - Touch Handling

@@ -135,6 +135,9 @@ class MedievalButton: SKNode {
             let localLocation = convert(location, from: parent ?? self)
 
             if background.contains(localLocation) {
+                // Phase 5: Play button click sound
+                AudioManager.shared.playSound(AudioManager.SoundEffect.buttonClick)
+
                 // Add scale animation
                 let scaleUp = SKAction.scale(to: 1.1, duration: UITheme.animationFast)
                 let scaleDown = SKAction.scale(to: 1.0, duration: UITheme.animationFast)

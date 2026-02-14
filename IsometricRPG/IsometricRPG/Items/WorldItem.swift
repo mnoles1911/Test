@@ -38,43 +38,11 @@ final class WorldItem {
         glow.run(SKAction.repeatForever(pulse))
         container.addChild(glow)
 
-        // Item shape varies by category
-        let shape: SKShapeNode
-        switch type.category {
-        case .consumable:
-            // Circle (potion bottle)
-            shape = SKShapeNode(circleOfRadius: type.size)
-        case .weapon:
-            // Diamond
-            let path = CGMutablePath()
-            let s = type.size
-            path.move(to: CGPoint(x: 0, y: s))
-            path.addLine(to: CGPoint(x: s, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: -s))
-            path.addLine(to: CGPoint(x: -s, y: 0))
-            path.closeSubpath()
-            shape = SKShapeNode(path: path)
-        case .armor:
-            // Square (shield)
-            shape = SKShapeNode(rectOf: CGSize(width: type.size * 2, height: type.size * 2), cornerRadius: 2)
-        case .treasure:
-            // Star shape (simplified as larger circle)
-            shape = SKShapeNode(circleOfRadius: type.size)
-        case .special:
-            // Triangle (key/rare)
-            let path = CGMutablePath()
-            let s = type.size
-            path.move(to: CGPoint(x: 0, y: s + 2))
-            path.addLine(to: CGPoint(x: s, y: -s / 2))
-            path.addLine(to: CGPoint(x: -s, y: -s / 2))
-            path.closeSubpath()
-            shape = SKShapeNode(path: path)
-        }
-
-        shape.fillColor = type.color
-        shape.strokeColor = type.color.withAlphaComponent(0.8)
-        shape.lineWidth = 1
-        container.addChild(shape)
+        // Phase 5: Use actual item sprite
+        let texture = SpriteManager.shared.getItemSprite(type)
+        let sprite = SKSpriteNode(texture: texture)
+        sprite.size = CGSize(width: type.size * 4, height: type.size * 4)
+        container.addChild(sprite)
 
         container.zPosition = Constants.ZPosition.item
 

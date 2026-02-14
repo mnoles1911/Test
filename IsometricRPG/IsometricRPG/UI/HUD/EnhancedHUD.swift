@@ -35,7 +35,14 @@ final class EnhancedHUD: SKNode {
     // MARK: - Setup
 
     private func setupBars() {
-        // Health bar with heart icon (placeholder - will use actual icon in Phase 5)
+        // Phase 5: Heart icon for health bar
+        let heartIcon = SKSpriteNode(texture: SpriteManager.shared.getIconSprite("heart"))
+        heartIcon.size = CGSize(width: 20, height: 20)
+        heartIcon.name = "heartIcon"
+        heartIcon.zPosition = 1
+        addChild(heartIcon)
+
+        // Health bar
         healthBar = StatBar(
             size: CGSize(width: 180, height: 18),
             maxValue: 100,
@@ -43,6 +50,13 @@ final class EnhancedHUD: SKNode {
         )
         healthBar.zPosition = 1
         addChild(healthBar)
+
+        // Phase 5: Star icon for XP bar
+        let xpIcon = SKSpriteNode(texture: SpriteManager.shared.getIconSprite("xp_star"))
+        xpIcon.size = CGSize(width: 18, height: 18)
+        xpIcon.name = "xpIcon"
+        xpIcon.zPosition = 1
+        addChild(xpIcon)
 
         // XP bar below health (blue)
         xpBar = StatBar(
@@ -92,11 +106,21 @@ final class EnhancedHUD: SKNode {
         let top = screenSize.height / 2 - 30
         let right = screenSize.width / 2 - 20
 
+        // Heart icon (to the left of health bar)
+        if let heartIcon = childNode(withName: "heartIcon") {
+            heartIcon.position = CGPoint(x: left, y: top)
+        }
+
         // Health bar (top-left)
-        healthBar.position = CGPoint(x: left + 90, y: top)
+        healthBar.position = CGPoint(x: left + 100, y: top)
+
+        // XP star icon (to the left of XP bar)
+        if let xpIcon = childNode(withName: "xpIcon") {
+            xpIcon.position = CGPoint(x: left, y: top - 24)
+        }
 
         // XP bar (below health bar)
-        xpBar.position = CGPoint(x: left + 90, y: top - 24)
+        xpBar.position = CGPoint(x: left + 100, y: top - 24)
 
         // Level label (below XP bar)
         levelLabel.position = CGPoint(x: left, y: top - 48)

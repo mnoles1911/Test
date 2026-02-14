@@ -1,7 +1,7 @@
 import SpriteKit
 
 final class Bullet {
-    let node: SKShapeNode
+    let node: SKNode
     var worldPosition: CGPoint
     let direction: CGPoint
     let speed: CGFloat
@@ -17,18 +17,23 @@ final class Bullet {
         self.damage = damage
         self.spawnTime = spawnTime
 
-        node = SKShapeNode(circleOfRadius: 3)
-        node.fillColor = .yellow
-        node.strokeColor = .orange
-        node.lineWidth = 1
-        node.zPosition = Constants.ZPosition.bullet
-        node.name = "bullet"
+        // Phase 5: Use bullet sprite
+        let container = SKNode()
+        let texture = SpriteManager.shared.getEntitySprite("bullet_basic")
+        let sprite = SKSpriteNode(texture: texture)
+        sprite.size = CGSize(width: 6, height: 6)
+        container.addChild(sprite)
 
         // Add a glow effect
         let glow = SKShapeNode(circleOfRadius: 6)
         glow.fillColor = SKColor.yellow.withAlphaComponent(0.3)
         glow.strokeColor = .clear
-        node.addChild(glow)
+        glow.zPosition = -0.1
+        container.addChild(glow)
+
+        container.zPosition = Constants.ZPosition.bullet
+        container.name = "bullet"
+        node = container
 
         syncPosition()
     }

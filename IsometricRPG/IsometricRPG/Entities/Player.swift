@@ -67,12 +67,13 @@ final class Player: Entity {
     private static func createPlayerNode() -> SKNode {
         let container = SKNode()
 
-        let body = SKShapeNode(rectOf: Constants.playerSize, cornerRadius: 3)
-        body.fillColor = SKColor(red: 0.2, green: 0.5, blue: 0.9, alpha: 1)
-        body.strokeColor = SKColor(red: 0.1, green: 0.3, blue: 0.7, alpha: 1)
-        body.lineWidth = 1.5
+        // Phase 5: Use player sprite
+        let texture = SpriteManager.shared.getEntitySprite("player_idle")
+        let body = SKSpriteNode(texture: texture)
+        body.size = Constants.playerSize
         container.addChild(body)
 
+        // Aim indicator (white dot)
         let indicator = SKShapeNode(circleOfRadius: 3)
         indicator.fillColor = .white
         indicator.strokeColor = .clear
@@ -80,9 +81,10 @@ final class Player: Entity {
         indicator.name = "aimIndicator"
         container.addChild(indicator)
 
-        let shadow = SKShapeNode(ellipseOf: CGSize(width: 18, height: 8))
-        shadow.fillColor = SKColor.black.withAlphaComponent(0.3)
-        shadow.strokeColor = .clear
+        // Shadow (using sprite for smoother look)
+        let shadowTexture = SpriteManager.shared.getShadowSprite(width: 18)
+        let shadow = SKSpriteNode(texture: shadowTexture)
+        shadow.size = CGSize(width: 18, height: 8)
         shadow.position = CGPoint(x: 0, y: -Constants.playerSize.height / 2)
         shadow.zPosition = Constants.ZPosition.shadow - Constants.ZPosition.entity
         container.addChild(shadow)

@@ -52,33 +52,45 @@ class SettingsScreen: ModalOverlay {
     }
 
     private func setupLabels() {
-        let startY: CGFloat = 100
-
-        soundLabel = MedievalLabel(text: "🔊 Sound: ON", style: .body, withShadow: true)
-        soundLabel.position = CGPoint(x: -150, y: startY)
-        soundLabel.setHorizontalAlignment(.left)
-        panel.addContent(soundLabel)
-
-        musicLabel = MedievalLabel(text: "🎵 Music: ON", style: .body, withShadow: true)
-        musicLabel.position = CGPoint(x: -150, y: startY - 50)
-        musicLabel.setHorizontalAlignment(.left)
-        panel.addContent(musicLabel)
+        // Phase 5: Sound and music labels removed - now using toggle buttons in setupToggles()
 
         joystickLabel = MedievalLabel(text: "🕹️ Joystick: Normal", style: .body, withShadow: true)
-        joystickLabel.position = CGPoint(x: -150, y: startY - 100)
+        joystickLabel.position = CGPoint(x: -150, y: -50)
         joystickLabel.setHorizontalAlignment(.left)
         panel.addContent(joystickLabel)
     }
 
     private func setupToggles() {
-        let startY: CGFloat = -20
+        let startY: CGFloat = 80
+
+        // Phase 5: Sound toggle
+        let soundToggle = MedievalButton(
+            text: AudioManager.shared.isSoundEnabled ? "🔊 Sound: ON" : "🔊 Sound: OFF",
+            size: CGSize(width: 200, height: 40)
+        )
+        soundToggle.position = CGPoint(x: 0, y: startY)
+        soundToggle.onTap = { [weak self] in
+            self?.toggleSound(button: soundToggle)
+        }
+        panel.addContent(soundToggle)
+
+        // Phase 5: Music toggle
+        let musicToggle = MedievalButton(
+            text: AudioManager.shared.isMusicEnabled ? "🎵 Music: ON" : "🎵 Music: OFF",
+            size: CGSize(width: 200, height: 40)
+        )
+        musicToggle.position = CGPoint(x: 0, y: startY - 50)
+        musicToggle.onTap = { [weak self] in
+            self?.toggleMusic(button: musicToggle)
+        }
+        panel.addContent(musicToggle)
 
         // FPS toggle
         fpsToggle = MedievalButton(
             text: settings.showFPS ? "📊 FPS: ON" : "📊 FPS: OFF",
             size: CGSize(width: 200, height: 40)
         )
-        fpsToggle.position = CGPoint(x: 0, y: startY)
+        fpsToggle.position = CGPoint(x: 0, y: startY - 100)
         fpsToggle.onTap = { [weak self] in
             self?.toggleFPS()
         }
@@ -89,7 +101,7 @@ class SettingsScreen: ModalOverlay {
             text: settings.showMinimap ? "🗺️ Minimap: ON" : "🗺️ Minimap: OFF",
             size: CGSize(width: 200, height: 40)
         )
-        minimapToggle.position = CGPoint(x: 0, y: startY - 50)
+        minimapToggle.position = CGPoint(x: 0, y: startY - 150)
         minimapToggle.onTap = { [weak self] in
             self?.toggleMinimap()
         }
@@ -116,6 +128,18 @@ class SettingsScreen: ModalOverlay {
     }
 
     // MARK: - Actions
+
+    // Phase 5: Toggle sound effects
+    private func toggleSound(button: MedievalButton) {
+        AudioManager.shared.isSoundEnabled.toggle()
+        button.text = AudioManager.shared.isSoundEnabled ? "🔊 Sound: ON" : "🔊 Sound: OFF"
+    }
+
+    // Phase 5: Toggle background music
+    private func toggleMusic(button: MedievalButton) {
+        AudioManager.shared.isMusicEnabled.toggle()
+        button.text = AudioManager.shared.isMusicEnabled ? "🎵 Music: ON" : "🎵 Music: OFF"
+    }
 
     private func toggleFPS() {
         settings.showFPS.toggle()
