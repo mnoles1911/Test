@@ -132,8 +132,8 @@ final class EnhancedHUD: SKNode {
 
     // MARK: - Minimap Management
 
-    func setTileMap(_ tileMap: TileMap) {
-        minimap.setTileMap(tileMap)
+    func setWorldManager(_ worldManager: WorldManager) {
+        minimap.setWorldManager(worldManager)
     }
 
     func showMinimap() {
