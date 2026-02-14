@@ -17,7 +17,7 @@ class Minimap: SKNode {
     private var lastUpdateTime: TimeInterval = 0
     private let updateInterval: TimeInterval = 0.5 // Update every 0.5 seconds for performance
 
-    private weak var tileMap: TileMap?
+    private weak var worldManager: WorldManager?
 
     // Scale: 1 world tile = pixelsPerTile on minimap
     private let pixelsPerTile: CGFloat = 8
@@ -75,41 +75,12 @@ class Minimap: SKNode {
         contentNode.addChild(playerDot)
     }
 
-    /// Set the tile map reference for rendering terrain
-    func setTileMap(_ tileMap: TileMap) {
-        self.tileMap = tileMap
-        renderTerrain()
+    /// Set the world manager reference for rendering terrain
+    func setWorldManager(_ worldManager: WorldManager) {
+        self.worldManager = worldManager
     }
 
     // MARK: - Rendering
-
-    private func renderTerrain() {
-        guard let tileMap = tileMap else { return }
-
-        // Remove existing terrain nodes
-        contentNode.enumerateChildNodes(withName: "terrain_*") { node, _ in
-            node.removeFromParent()
-        }
-
-        // Render simplified terrain (only walls for now)
-        for row in 0..<tileMap.rows {
-            for col in 0..<tileMap.columns {
-                if let tile = tileMap.tileAt(col: col, row: row), tile == .wall {
-                    let dotSize: CGFloat = pixelsPerTile
-                    let worldPos = CGPoint(x: CGFloat(col), y: CGFloat(row))
-                    let minimapPos = worldToMinimapPosition(worldPos)
-
-                    let wallDot = SKShapeNode(rectOf: CGSize(width: dotSize, height: dotSize))
-                    wallDot.fillColor = UITheme.textGray
-                    wallDot.strokeColor = .clear
-                    wallDot.position = minimapPos
-                    wallDot.zPosition = 1
-                    wallDot.name = "terrain_wall"
-                    contentNode.addChild(wallDot)
-                }
-            }
-        }
-    }
 
     // MARK: - Update
 
@@ -119,44 +90,94 @@ class Minimap: SKNode {
         guard currentTime - lastUpdateTime > updateInterval else { return }
         lastUpdateTime = currentTime
 
-        // Update player position
-        playerDot.position = worldToMinimapPosition(playerPosition)
+        // Player is always at center of minimap
+        playerDot.position = .zero
 
-        // Update enemy dots
-        updateEnemyDots(enemies: enemies)
+        // Update enemy dots relative to player
+        updateEnemyDots(enemies: enemies, playerPosition: playerPosition)
+
+        // Refresh terrain around player
+        renderTerrain(aroundPlayer: playerPosition)
     }
 
-    private func updateEnemyDots(enemies: [Enemy]) {
+    private func updateEnemyDots(enemies: [Enemy], playerPosition: CGPoint) {
         // Remove old enemy dots
         for dot in enemyDots {
             dot.removeFromParent()
         }
         enemyDots.removeAll()
 
-        // Create new enemy dots
+        // Create new enemy dots relative to player
         for enemy in enemies where enemy.isAlive {
             let dot = SKShapeNode(circleOfRadius: 3)
             dot.fillColor = UITheme.crimson
             dot.strokeColor = .clear
-            dot.position = worldToMinimapPosition(enemy.worldPosition)
+            dot.position = worldToMinimapPosition(enemy.worldPosition, relativeTo: playerPosition)
             dot.zPosition = 5
             contentNode.addChild(dot)
             enemyDots.append(dot)
         }
     }
 
+    private func renderTerrain(aroundPlayer playerPosition: CGPoint) {
+        guard let worldManager = worldManager else { return }
+
+        // Remove existing terrain nodes
+        contentNode.enumerateChildNodes(withName: "terrain_*") { node, _ in
+            node.removeFromParent()
+        }
+
+        // Render only chunks near player (within minimap view range)
+        let viewRange: CGFloat = 10 // tiles in each direction
+        let minX = Int(playerPosition.x - viewRange)
+        let maxX = Int(playerPosition.x + viewRange)
+        let minY = Int(playerPosition.y - viewRange)
+        let maxY = Int(playerPosition.y + viewRange)
+
+        for (_, chunk) in worldManager.loadedChunks {
+            let chunkMinX = chunk.coord.col * Constants.chunkSize
+            let chunkMaxX = chunkMinX + Constants.chunkSize
+            let chunkMinY = chunk.coord.row * Constants.chunkSize
+            let chunkMaxY = chunkMinY + Constants.chunkSize
+
+            // Skip chunks outside view range
+            if chunkMaxX < minX || chunkMinX > maxX || chunkMaxY < minY || chunkMinY > maxY {
+                continue
+            }
+
+            for row in 0..<Constants.chunkSize {
+                for col in 0..<Constants.chunkSize {
+                    let tile = chunk.tiles[row][col]
+                    if tile == .wall {
+                        let worldCol = chunk.coord.col * Constants.chunkSize + col
+                        let worldRow = chunk.coord.row * Constants.chunkSize + row
+                        let worldPos = CGPoint(x: CGFloat(worldCol) + 0.5, y: CGFloat(worldRow) + 0.5)
+                        let minimapPos = worldToMinimapPosition(worldPos, relativeTo: playerPosition)
+
+                        // Only render if within minimap circle
+                        let distance = sqrt(minimapPos.x * minimapPos.x + minimapPos.y * minimapPos.y)
+                        if distance < size.width / 2 {
+                            let wallDot = SKShapeNode(rectOf: CGSize(width: pixelsPerTile, height: pixelsPerTile))
+                            wallDot.fillColor = UITheme.textGray
+                            wallDot.strokeColor = .clear
+                            wallDot.position = minimapPos
+                            wallDot.zPosition = 1
+                            wallDot.name = "terrain_wall"
+                            contentNode.addChild(wallDot)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Coordinate Conversion
 
-    private func worldToMinimapPosition(_ worldPos: CGPoint) -> CGPoint {
-        guard let tileMap = tileMap else { return .zero }
-
-        // Center the map on the player
-        // Map world coordinates to minimap coordinates
-        let centerCol = CGFloat(tileMap.columns) / 2
-        let centerRow = CGFloat(tileMap.rows) / 2
-
-        let relativeX = (worldPos.x - centerCol) * pixelsPerTile
-        let relativeY = (worldPos.y - centerRow) * pixelsPerTile
+    /// Convert world position to minimap position relative to player (player is at center)
+    private func worldToMinimapPosition(_ worldPos: CGPoint, relativeTo playerPos: CGPoint) -> CGPoint {
+        // Calculate relative position to player
+        let relativeX = (worldPos.x - playerPos.x) * pixelsPerTile
+        let relativeY = (worldPos.y - playerPos.y) * pixelsPerTile
 
         // Flip Y for top-down view
         return CGPoint(x: relativeX, y: -relativeY)

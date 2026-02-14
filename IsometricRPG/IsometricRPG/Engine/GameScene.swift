@@ -81,8 +81,7 @@ final class GameScene: SKScene {
 
     private func setupHUD() {
         enhancedHUD = EnhancedHUD()
-        // Note: Minimap will need to be adapted for WorldManager in future
-        // For now, minimap will show player/enemies but not terrain
+        enhancedHUD.setWorldManager(worldManager)
         enhancedHUD.onPauseTapped = { [weak self] in
             self?.showPauseMenu()
         }
