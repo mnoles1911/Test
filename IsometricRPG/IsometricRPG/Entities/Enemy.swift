@@ -21,14 +21,13 @@ final class Enemy: Entity {
     private static func createEnemyNode() -> SKNode {
         let container = SKNode()
 
-        // Body
-        let body = SKShapeNode(rectOf: Constants.enemySize, cornerRadius: 2)
-        body.fillColor = SKColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 1)
-        body.strokeColor = SKColor(red: 0.6, green: 0.1, blue: 0.1, alpha: 1)
-        body.lineWidth = 1.5
+        // Phase 5: Use enemy sprite
+        let texture = SpriteManager.shared.getEntitySprite("enemy_basic")
+        let body = SKSpriteNode(texture: texture)
+        body.size = Constants.enemySize
         container.addChild(body)
 
-        // Eyes
+        // Eyes (keep for character)
         let eyeSize: CGFloat = 3
         let leftEye = SKShapeNode(circleOfRadius: eyeSize)
         leftEye.fillColor = .white
@@ -42,10 +41,10 @@ final class Enemy: Entity {
         rightEye.position = CGPoint(x: 4, y: 4)
         container.addChild(rightEye)
 
-        // Shadow
-        let shadow = SKShapeNode(ellipseOf: CGSize(width: 16, height: 7))
-        shadow.fillColor = SKColor.black.withAlphaComponent(0.3)
-        shadow.strokeColor = .clear
+        // Shadow (using sprite for smoother look)
+        let shadowTexture = SpriteManager.shared.getShadowSprite(width: 16)
+        let shadow = SKSpriteNode(texture: shadowTexture)
+        shadow.size = CGSize(width: 16, height: 7)
         shadow.position = CGPoint(x: 0, y: -Constants.enemySize.height / 2)
         shadow.zPosition = Constants.ZPosition.shadow - Constants.ZPosition.entity
         container.addChild(shadow)

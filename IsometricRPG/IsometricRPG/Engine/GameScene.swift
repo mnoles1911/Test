@@ -222,6 +222,9 @@ final class GameScene: SKScene {
             guard len > 0 else { return }
             let normalizedDir = CGPoint(x: worldDir.x / len, y: worldDir.y / len)
 
+            // Phase 5: Play shoot sound
+            AudioManager.shared.playSound(AudioManager.SoundEffect.shoot, volume: 0.5)
+
             combatSystem.fireBullet(from: player.worldPosition, direction: normalizedDir, at: currentTime)
             player.didFire(at: currentTime)
         }
@@ -237,13 +240,23 @@ final class GameScene: SKScene {
             enemy.update(deltaTime: deltaTime)
 
             if enemy.canAttack(currentTime: currentTime) {
+                // Phase 5: Play hit player sound
+                AudioManager.shared.playSound(AudioManager.SoundEffect.hitPlayer)
+
                 player.takeDamage(Constants.enemyAttackDamage)
                 enemy.lastAttackTime = currentTime
             }
         }
 
         let afterAlive = enemies.filter { $0.isAlive }.count
-        killCount += (beforeAlive - afterAlive)
+        let enemiesKilled = beforeAlive - afterAlive
+
+        // Phase 5: Play enemy death sound for each kill
+        if enemiesKilled > 0 {
+            AudioManager.shared.playSound(AudioManager.SoundEffect.enemyDeath)
+        }
+
+        killCount += enemiesKilled
     }
 
     private func spawnEnemiesInChunks(currentTime: TimeInterval) {
@@ -310,6 +323,9 @@ final class GameScene: SKScene {
             if dist < 25 {
                 if let name = node.name, let xpStr = name.split(separator: "_").last,
                    let xp = Int(xpStr) {
+                    // Phase 5: Play XP gain sound
+                    AudioManager.shared.playSound(AudioManager.SoundEffect.xpGain, volume: 0.6)
+
                     self.player.gainExperience(xp)
                 }
                 node.run(SKAction.sequence([
