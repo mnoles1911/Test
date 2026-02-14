@@ -420,13 +420,11 @@ final class GameScene: SKScene {
         }
 
         pauseMenu.onCharacter = { [weak self] in
-            // TODO: Phase 4 - Character stats screen
-            print("[GameScene] Character screen not yet implemented")
+            self?.showCharacterStats()
         }
 
         pauseMenu.onSettings = { [weak self] in
-            // TODO: Phase 4 - Settings screen
-            print("[GameScene] Settings screen not yet implemented")
+            self?.showSettings()
         }
 
         pauseMenu.onMainMenu = { [weak self] in
@@ -451,6 +449,43 @@ final class GameScene: SKScene {
         }
 
         screenManager.showModal(inventoryScreen, animated: true)
+    }
+
+    private func showCharacterStats() {
+        guard let view = view else { return }
+
+        let characterScreen = CharacterStatsScreen(
+            screenSize: view.bounds.size,
+            player: player
+        )
+
+        characterScreen.onClose = { [weak self] in
+            self?.screenManager.dismissModal(animated: true)
+        }
+
+        screenManager.showModal(characterScreen, animated: true)
+    }
+
+    private func showSettings() {
+        guard let view = view else { return }
+
+        let settingsScreen = SettingsScreen(screenSize: view.bounds.size)
+
+        settingsScreen.onClose = { [weak self] in
+            self?.screenManager.dismissModal(animated: true)
+        }
+
+        settingsScreen.onSettingsChanged = { [weak self] settings in
+            // Apply settings
+            self?.view?.showsFPS = settings.showFPS
+            if settings.showMinimap {
+                self?.enhancedHUD.showMinimap()
+            } else {
+                self?.enhancedHUD.hideMinimap()
+            }
+        }
+
+        screenManager.showModal(settingsScreen, animated: true)
     }
 
     private func returnToMainMenu() {

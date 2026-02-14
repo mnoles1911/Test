@@ -149,12 +149,29 @@ class MainMenuScreen: SKScene {
     }
 
     private func openCodex() {
-        // TODO: Implement in Phase 4
-        print("[MainMenu] Codex not yet implemented")
+        guard let view = view else { return }
+
+        // Load codex entries (use sample entries for now)
+        let entries = LoreEntry.sampleEntries
+
+        let codexScreen = CodexScreen(screenSize: view.bounds.size, entries: entries)
+        codexScreen.onClose = { [weak codexScreen] in
+            codexScreen?.removeFromParent()
+        }
+        codexScreen.zPosition = Constants.ZPosition.modal
+        addChild(codexScreen)
+        codexScreen.show(animated: true)
     }
 
     private func openSettings() {
-        // TODO: Implement in Phase 4
-        print("[MainMenu] Settings not yet implemented")
+        guard let view = view else { return }
+
+        let settingsScreen = SettingsScreen(screenSize: view.bounds.size)
+        settingsScreen.onClose = { [weak settingsScreen] in
+            settingsScreen?.removeFromParent()
+        }
+        settingsScreen.zPosition = Constants.ZPosition.modal
+        addChild(settingsScreen)
+        settingsScreen.show(animated: true)
     }
 }
