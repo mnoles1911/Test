@@ -13,7 +13,6 @@
 		A1000004 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000004; };
 		A1000005 /* IsometricMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000005; };
 		A1000006 /* TileType.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000006; };
-		A1000007 /* TileMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000007; };
 		A1000008 /* Entity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000008; };
 		A1000009 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000009; };
 		A1000010 /* Enemy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000010; };
@@ -22,6 +21,16 @@
 		A1000013 /* CombatSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000013; };
 		A1000014 /* HUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000014; };
 		A1000015 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B1000015; };
+		A2000001 /* PerlinNoise.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001; };
+		A2000002 /* SeededRNG.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002; };
+		A2000003 /* ChunkCoord.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000003; };
+		A2000004 /* Chunk.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000004; };
+		A2000005 /* DungeonGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000005; };
+		A2000006 /* WorldManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000006; };
+		A2000007 /* ItemType.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000007; };
+		A2000008 /* WorldItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000008; };
+		A2000009 /* SpawnTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000009; };
+		A2000010 /* ItemSpawner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000010; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,7 +41,6 @@
 		B1000004 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		B1000005 /* IsometricMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsometricMath.swift; sourceTree = "<group>"; };
 		B1000006 /* TileType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TileType.swift; sourceTree = "<group>"; };
-		B1000007 /* TileMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TileMap.swift; sourceTree = "<group>"; };
 		B1000008 /* Entity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entity.swift; sourceTree = "<group>"; };
 		B1000009 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		B1000010 /* Enemy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enemy.swift; sourceTree = "<group>"; };
@@ -42,6 +50,16 @@
 		B1000014 /* HUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUD.swift; sourceTree = "<group>"; };
 		B1000015 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		B1000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B2000001 /* PerlinNoise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerlinNoise.swift; sourceTree = "<group>"; };
+		B2000002 /* SeededRNG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeededRNG.swift; sourceTree = "<group>"; };
+		B2000003 /* ChunkCoord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkCoord.swift; sourceTree = "<group>"; };
+		B2000004 /* Chunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chunk.swift; sourceTree = "<group>"; };
+		B2000005 /* DungeonGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DungeonGenerator.swift; sourceTree = "<group>"; };
+		B2000006 /* WorldManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldManager.swift; sourceTree = "<group>"; };
+		B2000007 /* ItemType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemType.swift; sourceTree = "<group>"; };
+		B2000008 /* WorldItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldItem.swift; sourceTree = "<group>"; };
+		B2000009 /* SpawnTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpawnTrigger.swift; sourceTree = "<group>"; };
+		B2000010 /* ItemSpawner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemSpawner.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +92,7 @@
 				D0000008 /* Input */,
 				D0000009 /* UI */,
 				D0000011 /* Utils */,
+				D0000012 /* Items */,
 			);
 			path = IsometricRPG;
 			sourceTree = "<group>";
@@ -101,7 +120,10 @@
 			isa = PBXGroup;
 			children = (
 				B1000006 /* TileType.swift */,
-				B1000007 /* TileMap.swift */,
+				B2000003 /* ChunkCoord.swift */,
+				B2000004 /* Chunk.swift */,
+				B2000005 /* DungeonGenerator.swift */,
+				B2000006 /* WorldManager.swift */,
 			);
 			path = World;
 			sourceTree = "<group>";
@@ -154,8 +176,21 @@
 			children = (
 				B1000004 /* Constants.swift */,
 				B1000005 /* IsometricMath.swift */,
+				B2000001 /* PerlinNoise.swift */,
+				B2000002 /* SeededRNG.swift */,
 			);
 			path = Utils;
+			sourceTree = "<group>";
+		};
+		D0000012 /* Items */ = {
+			isa = PBXGroup;
+			children = (
+				B2000007 /* ItemType.swift */,
+				B2000008 /* WorldItem.swift */,
+				B2000009 /* SpawnTrigger.swift */,
+				B2000010 /* ItemSpawner.swift */,
+			);
+			path = Items;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -233,7 +268,6 @@
 				A1000004 /* Constants.swift in Sources */,
 				A1000005 /* IsometricMath.swift in Sources */,
 				A1000006 /* TileType.swift in Sources */,
-				A1000007 /* TileMap.swift in Sources */,
 				A1000008 /* Entity.swift in Sources */,
 				A1000009 /* Player.swift in Sources */,
 				A1000010 /* Enemy.swift in Sources */,
@@ -241,6 +275,16 @@
 				A1000012 /* Bullet.swift in Sources */,
 				A1000013 /* CombatSystem.swift in Sources */,
 				A1000014 /* HUD.swift in Sources */,
+				A2000001 /* PerlinNoise.swift in Sources */,
+				A2000002 /* SeededRNG.swift in Sources */,
+				A2000003 /* ChunkCoord.swift in Sources */,
+				A2000004 /* Chunk.swift in Sources */,
+				A2000005 /* DungeonGenerator.swift in Sources */,
+				A2000006 /* WorldManager.swift in Sources */,
+				A2000007 /* ItemType.swift in Sources */,
+				A2000008 /* WorldItem.swift in Sources */,
+				A2000009 /* SpawnTrigger.swift in Sources */,
+				A2000010 /* ItemSpawner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
