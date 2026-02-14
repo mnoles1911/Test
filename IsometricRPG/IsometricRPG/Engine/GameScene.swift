@@ -196,14 +196,14 @@ final class GameScene: SKScene {
         let oldPos = player.worldPosition
         player.update(deltaTime: deltaTime)
 
-        // Collision with wall-slide
-        if !worldManager.isWalkable(worldPosition: player.worldPosition) {
+        // Collision with wall-slide (elevation-aware)
+        if !worldManager.isWalkable(from: oldPos, to: player.worldPosition) {
             let slideX = CGPoint(x: player.worldPosition.x, y: oldPos.y)
             let slideY = CGPoint(x: oldPos.x, y: player.worldPosition.y)
 
-            if worldManager.isWalkable(worldPosition: slideX) {
+            if worldManager.isWalkable(from: oldPos, to: slideX) {
                 player.worldPosition = slideX
-            } else if worldManager.isWalkable(worldPosition: slideY) {
+            } else if worldManager.isWalkable(from: oldPos, to: slideY) {
                 player.worldPosition = slideY
             } else {
                 player.worldPosition = oldPos

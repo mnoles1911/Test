@@ -72,6 +72,20 @@ final class WorldManager {
         return chunk.tileAt(localCol: localCol, localRow: localRow)
     }
 
+    func elevationAt(worldCol: Int, worldRow: Int) -> Int? {
+        let chunkCoord = ChunkCoord.containing(worldCol: worldCol, worldRow: worldRow)
+        guard let chunk = loadedChunks[chunkCoord] else { return nil }
+        let localCol = worldCol - chunkCoord.worldOriginCol
+        let localRow = worldRow - chunkCoord.worldOriginRow
+        return chunk.elevationAt(localCol: localCol, localRow: localRow)
+    }
+
+    func elevationAt(worldPosition: CGPoint) -> Int? {
+        let col = Int(floor(worldPosition.x + 0.5))
+        let row = Int(floor(worldPosition.y + 0.5))
+        return elevationAt(worldCol: col, worldRow: row)
+    }
+
     func isWalkable(worldCol: Int, worldRow: Int) -> Bool {
         return tileAt(worldCol: worldCol, worldRow: worldRow)?.isWalkable ?? false
     }
@@ -80,6 +94,33 @@ final class WorldManager {
         let col = Int(floor(worldPosition.x + 0.5))
         let row = Int(floor(worldPosition.y + 0.5))
         return isWalkable(worldCol: col, worldRow: row)
+    }
+
+    /// Check if movement from one position to another is walkable (considering elevation).
+    func isWalkable(from: CGPoint, to: CGPoint) -> Bool {
+        let fromCol = Int(floor(from.x + 0.5))
+        let fromRow = Int(floor(from.y + 0.5))
+        let toCol = Int(floor(to.x + 0.5))
+        let toRow = Int(floor(to.y + 0.5))
+
+        // Check base walkability of destination
+        guard let toTile = tileAt(worldCol: toCol, worldRow: toRow),
+              toTile.isWalkable else {
+            return false
+        }
+
+        // Check elevation difference
+        guard let fromElev = elevationAt(worldCol: fromCol, worldRow: fromRow),
+              let toElev = elevationAt(worldCol: toCol, worldRow: toRow) else {
+            return false
+        }
+
+        let heightDiff = abs(toElev - fromElev)
+        if heightDiff > Constants.maxWalkableElevationDiff {
+            return false
+        }
+
+        return true
     }
 
     func biomeAt(worldPosition: CGPoint) -> Biome? {
