@@ -1,11 +1,23 @@
 import CoreGraphics
 
 enum Constants {
-    // MARK: - Tile Map
+    // MARK: - World Seed
+    static let worldSeed: UInt64 = 42
+
+    // MARK: - Chunks
+    static let chunkSize = 16          // tiles per chunk edge
+    static let loadRadius = 3          // chunks to load around player
+    static let unloadRadius = 5        // chunks beyond this get removed
+
+    // MARK: - Tile Rendering
     static let tileWidth: CGFloat = 64
     static let tileHeight: CGFloat = 32
-    static let mapColumns = 20
-    static let mapRows = 20
+
+    // MARK: - Dungeon Generation
+    static let roomMinSize = 4
+    static let roomMaxSize = 8
+    static let roomsPerChunk = 3
+    static let corridorWidth = 2
 
     // MARK: - Player
     static let playerSpeed: CGFloat = 150
@@ -26,8 +38,15 @@ enum Constants {
     static let enemyAttackRange: CGFloat = 30
     static let enemyAttackDamage: Int = 10
     static let enemyAttackCooldown: TimeInterval = 1.0
-    static let maxEnemies = 10
-    static let enemySpawnInterval: TimeInterval = 3.0
+    static let maxEnemiesPerChunk = 3
+    static let maxTotalEnemies = 20
+    static let enemySpawnInterval: TimeInterval = 2.0
+
+    // MARK: - Items
+    static let itemPickupRange: CGFloat = 0.8
+    static let itemAttractRange: CGFloat = 2.5
+    static let itemAttractSpeed: CGFloat = 3.0
+    static let maxItemsPerChunk = 4
 
     // MARK: - Input
     static let joystickRadius: CGFloat = 50
@@ -37,6 +56,7 @@ enum Constants {
     // MARK: - Z Ordering
     enum ZPosition {
         static let tile: CGFloat = 0
+        static let item: CGFloat = 4
         static let shadow: CGFloat = 5
         static let entity: CGFloat = 10
         static let bullet: CGFloat = 15

@@ -2,13 +2,14 @@ import SpriteKit
 
 final class GameScene: SKScene {
     // MARK: - Game Objects
-    private var tileMap: TileMap!
+    private var worldManager: WorldManager!
     private var player: Player!
     private var enemies: [Enemy] = []
     private var combatSystem: CombatSystem!
     private var enhancedHUD: EnhancedHUD!
     private var screenManager: ScreenManager!
     private var gameState: GameState = .playing
+    private var itemSpawner: ItemSpawner!
 
     // MARK: - Input
     private var moveJoystick: VirtualJoystick!
@@ -16,6 +17,7 @@ final class GameScene: SKScene {
 
     // MARK: - Game State
     private var lastUpdateTime: TimeInterval = 0
+    private var gameStartTime: TimeInterval = 0
     private var lastSpawnTime: TimeInterval = 0
     private var killCount: Int = 0
     private var isGameOver: Bool = false
@@ -33,6 +35,7 @@ final class GameScene: SKScene {
         setupPlayer()
         setupCombat()
         setupScreenManager()
+        setupItems()
         setupHUD()
         setupInput()
     }
@@ -47,15 +50,14 @@ final class GameScene: SKScene {
 
     private func setupWorld() {
         addChild(worldNode)
-        tileMap = TileMap()
-        worldNode.addChild(tileMap.rootNode)
+        worldManager = WorldManager()
+        worldNode.addChild(worldManager.rootNode)
     }
 
     private func setupPlayer() {
-        let spawnCol = Constants.mapColumns / 2
-        let spawnRow = Constants.mapRows / 2
-        player = Player(worldPosition: CGPoint(x: CGFloat(spawnCol), y: CGFloat(spawnRow)))
+        player = Player(worldPosition: CGPoint(x: 8, y: 8))
         worldNode.addChild(player.node)
+        worldManager.initialLoad(around: player.worldPosition)
     }
 
     private func setupCombat() {
@@ -69,9 +71,18 @@ final class GameScene: SKScene {
         }
     }
 
+    private func setupItems() {
+        itemSpawner = ItemSpawner(worldNode: worldNode)
+        let context = buildGameContext()
+        for chunk in worldManager.chunksNeedingItemSpawn() {
+            itemSpawner.spawnItems(in: chunk, context: context)
+        }
+    }
+
     private func setupHUD() {
         enhancedHUD = EnhancedHUD()
-        enhancedHUD.setTileMap(tileMap)
+        // Note: Minimap will need to be adapted for WorldManager in future
+        // For now, minimap will show player/enemies but not terrain
         enhancedHUD.onPauseTapped = { [weak self] in
             self?.showPauseMenu()
         }
@@ -113,19 +124,24 @@ final class GameScene: SKScene {
     override func update(_ currentTime: TimeInterval) {
         guard !isGameOver && gameState == .playing else { return }
 
+        if gameStartTime == 0 { gameStartTime = currentTime }
+
         let dt: TimeInterval
         if lastUpdateTime == 0 {
             dt = 1.0 / 60.0
         } else {
-            dt = min(currentTime - lastUpdateTime, 1.0 / 30.0) // cap dt
+            dt = min(currentTime - lastUpdateTime, 1.0 / 30.0)
         }
         lastUpdateTime = currentTime
 
         updatePlayer(deltaTime: dt, currentTime: currentTime)
+        updateWorld()
         updateEnemies(deltaTime: dt, currentTime: currentTime)
-        spawnEnemies(currentTime: currentTime)
+        spawnEnemiesInChunks(currentTime: currentTime)
         combatSystem.update(deltaTime: dt, currentTime: currentTime, enemies: &enemies, player: player)
+        itemSpawner.collectItems(near: player)
         collectXPOrbs()
+        player.updateBuffs(deltaTime: dt)
         updateCamera()
         enhancedHUD.update(player: player, enemies: enemies, killCount: killCount, currentTime: currentTime)
 
@@ -134,34 +150,71 @@ final class GameScene: SKScene {
         }
     }
 
+    // MARK: - World Streaming
+
+    private func updateWorld() {
+        let result = worldManager.updateAroundPlayer(worldPosition: player.worldPosition)
+
+        if !result.loaded.isEmpty {
+            let context = buildGameContext()
+            for coord in result.loaded {
+                if let chunk = worldManager.loadedChunks[coord] {
+                    itemSpawner.spawnItems(in: chunk, context: context)
+                }
+            }
+        }
+
+        for coord in result.unloaded {
+            itemSpawner.removeItems(inChunk: coord)
+            removeEnemies(inChunk: coord)
+        }
+    }
+
+    // MARK: - Game Context for Triggers
+
+    private func buildGameContext() -> GameContext {
+        let elapsed = lastUpdateTime > 0 ? lastUpdateTime - gameStartTime : 0
+        return GameContext(
+            playerLevel: player?.level ?? 1,
+            playerHealth: player?.health ?? Constants.playerMaxHealth,
+            playerMaxHealth: player?.maxHealth ?? Constants.playerMaxHealth,
+            playerArmor: player?.armor ?? 0,
+            killCount: killCount,
+            timeElapsed: elapsed,
+            currentBiome: worldManager.biomeAt(worldPosition: player?.worldPosition ?? .zero),
+            playerWorldPosition: player?.worldPosition ?? .zero,
+            activeBuffCount: player?.activeBuffCount ?? 0
+        )
+    }
+
     // MARK: - Player Update
 
     private func updatePlayer(deltaTime: TimeInterval, currentTime: TimeInterval) {
-        // Read joystick input
         player.moveDirection = moveJoystick.direction
         player.aimDirection = aimJoystick.direction
         player.isShooting = aimJoystick.isActive
 
-        // Store old position for collision revert
         let oldPos = player.worldPosition
         player.update(deltaTime: deltaTime)
 
-        // Collision check against non-walkable tiles
-        if !tileMap.isWalkable(worldPosition: player.worldPosition) {
-            player.worldPosition = oldPos
+        // Collision with wall-slide
+        if !worldManager.isWalkable(worldPosition: player.worldPosition) {
+            let slideX = CGPoint(x: player.worldPosition.x, y: oldPos.y)
+            let slideY = CGPoint(x: oldPos.x, y: player.worldPosition.y)
+
+            if worldManager.isWalkable(worldPosition: slideX) {
+                player.worldPosition = slideX
+            } else if worldManager.isWalkable(worldPosition: slideY) {
+                player.worldPosition = slideY
+            } else {
+                player.worldPosition = oldPos
+            }
             player.syncNodePosition()
         }
 
-        // Clamp to map bounds
-        player.worldPosition.x = max(1, min(CGFloat(Constants.mapColumns - 2), player.worldPosition.x))
-        player.worldPosition.y = max(1, min(CGFloat(Constants.mapRows - 2), player.worldPosition.y))
-        player.syncNodePosition()
-
         // Fire
         if player.canFire(currentTime: currentTime) {
-            // Convert iso aim direction to world direction
             let aimDir = player.aimDirection
-            // Normalize for isometric: screen-space aim -> world-space direction
             let worldDir = CGPoint(
                 x: aimDir.x / (Constants.tileWidth / 2) + aimDir.y / (Constants.tileHeight / 2),
                 y: -aimDir.x / (Constants.tileWidth / 2) + aimDir.y / (Constants.tileHeight / 2)
@@ -175,52 +228,76 @@ final class GameScene: SKScene {
         }
     }
 
-    // MARK: - Enemies
+    // MARK: - Enemies (Chunk-based)
 
     private func updateEnemies(deltaTime: TimeInterval, currentTime: TimeInterval) {
-        let beforeCount = enemies.count
+        let beforeAlive = enemies.filter { $0.isAlive }.count
 
         for enemy in enemies where enemy.isAlive {
             enemy.updateAI(playerPosition: player.worldPosition, currentTime: currentTime)
             enemy.update(deltaTime: deltaTime)
 
-            // Enemy attacks player
             if enemy.canAttack(currentTime: currentTime) {
                 player.takeDamage(Constants.enemyAttackDamage)
                 enemy.lastAttackTime = currentTime
             }
         }
 
-        let afterCount = enemies.filter { $0.isAlive }.count
-        killCount += (beforeCount - afterCount)
+        let afterAlive = enemies.filter { $0.isAlive }.count
+        killCount += (beforeAlive - afterAlive)
     }
 
-    private func spawnEnemies(currentTime: TimeInterval) {
+    private func spawnEnemiesInChunks(currentTime: TimeInterval) {
+        guard currentTime - lastSpawnTime > Constants.enemySpawnInterval else { return }
         let aliveCount = enemies.filter { $0.isAlive }.count
-        guard aliveCount < Constants.maxEnemies,
-              currentTime - lastSpawnTime > Constants.enemySpawnInterval else { return }
+        guard aliveCount < Constants.maxTotalEnemies else { return }
 
         lastSpawnTime = currentTime
+        let playerChunk = ChunkCoord.containing(worldPosition: player.worldPosition)
 
-        // Pick a random walkable tile that's far enough from the player
-        var attempts = 0
-        while attempts < 20 {
-            let col = Int.random(in: 2..<(Constants.mapColumns - 2))
-            let row = Int.random(in: 2..<(Constants.mapRows - 2))
-            let pos = CGPoint(x: CGFloat(col), y: CGFloat(row))
+        for (coord, chunk) in worldManager.loadedChunks {
+            let dist = coord.chebyshevDistance(to: playerChunk)
+            guard dist >= 1, dist <= 2 else { continue }
 
-            if tileMap.isWalkable(col: col, row: row) &&
-               IsometricMath.distance(pos, player.worldPosition) > 4 {
-                let enemy = Enemy(worldPosition: pos)
-                enemies.append(enemy)
-                worldNode.addChild(enemy.node)
+            let chunkEnemyCount = enemies.filter { enemy in
+                let ec = ChunkCoord.containing(worldPosition: enemy.worldPosition)
+                return ec == coord && enemy.isAlive
+            }.count
+            guard chunkEnemyCount < Constants.maxEnemiesPerChunk else { continue }
 
-                // Spawn animation
-                enemy.node.setScale(0)
-                enemy.node.run(SKAction.scale(to: 1.0, duration: 0.3))
-                break
+            let positions = chunk.rooms.isEmpty ? chunk.walkablePositions() : chunk.walkableRoomPositions()
+            guard !positions.isEmpty else { continue }
+
+            let pick = positions[Int.random(in: 0..<positions.count)]
+            let pos = CGPoint(x: CGFloat(pick.worldCol) + 0.5, y: CGFloat(pick.worldRow) + 0.5)
+
+            let distToPlayer = IsometricMath.distance(pos, player.worldPosition)
+            guard distToPlayer > 4 else { continue }
+
+            // Scale difficulty by distance from origin + player level
+            let enemy = Enemy(worldPosition: pos)
+            let distFromOrigin = IsometricMath.distance(pos, .zero)
+            let scaling = 1.0 + (distFromOrigin / 20.0) + CGFloat(player.level - 1) * 0.2
+            enemy.health = Int(CGFloat(Constants.enemyMaxHealth) * scaling)
+            enemy.maxHealth = enemy.health
+
+            enemies.append(enemy)
+            worldNode.addChild(enemy.node)
+
+            enemy.node.setScale(0)
+            enemy.node.run(SKAction.scale(to: 1.0, duration: 0.3))
+            break
+        }
+    }
+
+    private func removeEnemies(inChunk coord: ChunkCoord) {
+        enemies.removeAll { enemy in
+            let ec = ChunkCoord.containing(worldPosition: enemy.worldPosition)
+            if ec == coord {
+                enemy.node.removeFromParent()
+                return true
             }
-            attempts += 1
+            return false
         }
     }
 
@@ -232,7 +309,6 @@ final class GameScene: SKScene {
             guard let self = self else { return }
             let dist = IsometricMath.distance(node.position, playerScreenPos)
             if dist < 25 {
-                // Parse XP value from name
                 if let name = node.name, let xpStr = name.split(separator: "_").last,
                    let xp = Int(xpStr) {
                     self.player.gainExperience(xp)
@@ -245,7 +321,6 @@ final class GameScene: SKScene {
                     SKAction.removeFromParent()
                 ]))
             } else if dist < 80 {
-                // Attract orbs toward player
                 let dir = IsometricMath.direction(from: node.position, to: playerScreenPos)
                 node.position = CGPoint(
                     x: node.position.x + dir.x * 2,
@@ -272,6 +347,7 @@ final class GameScene: SKScene {
     private func gameOver() {
         isGameOver = true
         combatSystem.removeAll()
+        itemSpawner.removeAll()
 
         let overlay = SKShapeNode(rectOf: size)
         overlay.fillColor = SKColor.black.withAlphaComponent(0.7)
@@ -287,9 +363,11 @@ final class GameScene: SKScene {
         gameOverLabel.zPosition = Constants.ZPosition.hud + 11
         cameraNode.addChild(gameOverLabel)
 
+        let biomeText = worldManager.biomeAt(worldPosition: player.worldPosition)
+            .map { "\($0)" } ?? "unknown"
         let statsLabel = SKLabelNode(fontNamed: "Helvetica")
-        statsLabel.text = "Level \(player.level) | Kills: \(killCount)"
-        statsLabel.fontSize = 18
+        statsLabel.text = "Level \(player.level) | Kills: \(killCount) | Biome: \(biomeText)"
+        statsLabel.fontSize = 16
         statsLabel.fontColor = .white
         statsLabel.position = CGPoint(x: 0, y: -10)
         statsLabel.zPosition = Constants.ZPosition.hud + 11
@@ -311,7 +389,7 @@ final class GameScene: SKScene {
         restartLabel.run(SKAction.repeatForever(blink))
     }
 
-    // MARK: - Touch (Game Over restart)
+    // MARK: - Touch
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isGameOver {
