@@ -9,6 +9,8 @@ final class HUD: SKNode {
     private let xpBarFill: SKShapeNode
     private let levelLabel: SKLabelNode
     private let killsLabel: SKLabelNode
+    private let biomeLabel: SKLabelNode
+    private let armorLabel: SKLabelNode
 
     private let barWidth: CGFloat = 150
     private let barHeight: CGFloat = 12
@@ -48,6 +50,16 @@ final class HUD: SKNode {
         killsLabel.fontColor = .white
         killsLabel.horizontalAlignmentMode = .right
 
+        biomeLabel = SKLabelNode(fontNamed: "Helvetica")
+        biomeLabel.fontSize = 11
+        biomeLabel.fontColor = SKColor.white.withAlphaComponent(0.7)
+        biomeLabel.horizontalAlignmentMode = .left
+
+        armorLabel = SKLabelNode(fontNamed: "Helvetica")
+        armorLabel.fontSize = 11
+        armorLabel.fontColor = SKColor(red: 0.6, green: 0.6, blue: 0.7, alpha: 1)
+        armorLabel.horizontalAlignmentMode = .left
+
         super.init()
         zPosition = Constants.ZPosition.hud
 
@@ -57,6 +69,8 @@ final class HUD: SKNode {
         addChild(xpBarFill)
         addChild(levelLabel)
         addChild(killsLabel)
+        addChild(biomeLabel)
+        addChild(armorLabel)
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -76,9 +90,11 @@ final class HUD: SKNode {
 
         levelLabel.position = CGPoint(x: left, y: top - barHeight - 24)
         killsLabel.position = CGPoint(x: right, y: top)
+        biomeLabel.position = CGPoint(x: left, y: top - barHeight - 40)
+        armorLabel.position = CGPoint(x: left + 80, y: top - barHeight - 24)
     }
 
-    func update(player: Player, killCount: Int) {
+    func update(player: Player, killCount: Int, biome: Biome? = nil) {
         // Health
         let healthRatio = CGFloat(player.health) / CGFloat(player.maxHealth)
         healthBarFill.xScale = max(healthRatio, 0)
@@ -98,5 +114,15 @@ final class HUD: SKNode {
         levelLabel.text = "LVL \(player.level)"
         kills = killCount
         killsLabel.text = "Kills: \(killCount)"
+
+        if player.armor > 0 {
+            armorLabel.text = "Armor: \(player.armor)"
+        } else {
+            armorLabel.text = ""
+        }
+
+        if let biome = biome {
+            biomeLabel.text = "\(biome)".capitalized
+        }
     }
 }
