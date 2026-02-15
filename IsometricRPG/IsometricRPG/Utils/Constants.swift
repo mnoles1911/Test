@@ -13,6 +13,12 @@ enum Constants {
     static let tileWidth: CGFloat = 64
     static let tileHeight: CGFloat = 32
 
+    // MARK: - Elevation
+    static let elevationHeightMultiplier: CGFloat = 0.5
+    static let maxWalkableElevationDiff = 5
+    static let cliffThreshold = 10
+    static let flatnessThreshold = 3
+
     // MARK: - Dungeon Generation
     static let roomMinSize = 4
     static let roomMaxSize = 8

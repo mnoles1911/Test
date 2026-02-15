@@ -3,9 +3,14 @@ import CoreGraphics
 /// Utility for converting between Cartesian (game world) and isometric (screen) coordinates.
 enum IsometricMath {
     /// Convert a grid position (col, row) to screen-space isometric coordinates.
-    static func gridToScreen(col: Int, row: Int) -> CGPoint {
+    static func gridToScreen(col: Int, row: Int, elevation: Int = 0) -> CGPoint {
         let x = CGFloat(col - row) * (Constants.tileWidth / 2)
-        let y = CGFloat(col + row) * (Constants.tileHeight / 2)
+        let baseY = CGFloat(col + row) * (Constants.tileHeight / 2)
+
+        // Apply elevation height offset
+        let heightOffset = CGFloat(elevation) * Constants.elevationHeightMultiplier
+        let y = baseY - heightOffset
+
         return CGPoint(x: x, y: -y) // SpriteKit y-up, iso y-down
     }
 
