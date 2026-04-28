@@ -38,6 +38,12 @@ public struct ChunkCoord : IEquatable<ChunkCoord>
         return Math.Abs(X - other.X) + Math.Abs(Y - other.Y);
     }
 
+    /// <summary>
+    /// Chebyshev distance to another chunk.
+    /// </summary>
+    public int ChebyshevDistance(ChunkCoord other)
+        => Math.Max(Math.Abs(X - other.X), Math.Abs(Y - other.Y));
+
     // IEquatable<ChunkCoord>
     public bool Equals(ChunkCoord other) => X == other.X && Y == other.Y;
     public override bool Equals(object? obj) => obj is ChunkCoord c && Equals(c);
