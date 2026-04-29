@@ -2,6 +2,8 @@
 
 All world-building, plot, and character reference for the Mira-Thal trilogy lives in this directory as individual focused files. Use this index to find the right file for any topic.
 
+> **Maintenance note:** Update this index whenever a new lore file is added or an existing file's scope changes significantly.
+
 ---
 
 ## World & Reference
@@ -9,7 +11,21 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 | File | Contents |
 |---|---|
 | [WORLD.md](WORLD.md) | Geography (Mira and Thal), the Three Ages, religion, magic system |
+| [WORLD_GEOGRAPHY.md](WORLD_GEOGRAPHY.md) | Terrain, scale, rivers, coastlines, roads, settlements table — map reference |
+| [CITY_DESCRIPTIONS.md](CITY_DESCRIPTIONS.md) | Physical descriptions of major settlements: layout, landmarks, atmosphere |
+| [PEOPLES.md](PEOPLES.md) | Human kingdoms, Aelorin, dwarven holds, Naergrim — culture, society, customs |
 | [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, factions, quest index, timeline, two endings |
+
+---
+
+## Map Generation
+
+| File | Contents |
+|---|---|
+| [MAP_GENERATION_GUIDE.md](MAP_GENERATION_GUIDE.md) | Tolkien-style map prompt, draw instructions for Mira/Thal/Shroud Sea, label hierarchy, condensed image prompt |
+| [MAP_POSITION_GRID.md](MAP_POSITION_GRID.md) | Proportional x/y coordinates (% of map) for all settlements and geographic features |
+| [MAP_NEGATIVE_SPACE.md](MAP_NEGATIVE_SPACE.md) | What is deliberately absent from the map and why |
+| [MAP_ISLAND_SIZING.md](MAP_ISLAND_SIZING.md) | Relative size guide: Copper Isles vs Pilgrim's Chain |
 
 ---
 
@@ -17,6 +33,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 
 | File | Contents |
 |---|---|
+| [CHARACTERS_PROTAGONIST.md](CHARACTERS_PROTAGONIST.md) | Roland Ashford — full protagonist profile |
 | [CHARACTERS_COMPANIONS.md](CHARACTERS_COMPANIONS.md) | Full profiles: Roland, Corvus, Seren, Orion, Dagna, Aldric |
 | [CHARACTERS_NPCS.md](CHARACTERS_NPCS.md) | Villains (Mordvar, Vaeroth, Caerith, Aedric Castrove) and key NPCs (Dame Calla, Henrietta, Bromrin, Eilwen, Yaromir, Drossvik) |
 
@@ -45,8 +62,9 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 | [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) | Mael (the First Whetted): founding ~25 years before Game 1, cell structure, Drossvik placement; transition to Vaeroth |
 | [BACKSTORY_DAWNBRINGERS.md](BACKSTORY_DAWNBRINGERS.md) | All seven Dawnbringers: Verath, Caela, Lyren, Sorin, Aevril/Twice-Named, Maeva, and the unnamed Seventh |
 | [BACKSTORY_NAERGRIM.md](BACKSTORY_NAERGRIM.md) | The Wound bargain, blood-oath mechanics, Serethi-Twice-Dead's 200-year investigation, the dissident faction |
-| [FACTIONS.md](FACTIONS.md) | Faction overview and political relationships |
-| [GUILDS_AND_FACTIONS.md](GUILDS_AND_FACTIONS.md) | Detailed faction profiles: Iron Chalice, Conclave, Brotherhood, Dragon-Watchers, Ashen Hand, etc. |
+| [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | Iron Chalice, Tidewarden, Frost Brotherhood, Golden Lance — structure, history, current leadership |
+| [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | Smiths' Confederation, Sailors' Brotherhood, Surgeons' School, Conclave, Loremaster's Archive |
+| [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | Shadow organizations and heroic bands |
 
 ---
 
@@ -58,8 +76,9 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 | [GAME1_PART2.md](GAME1_PART2.md) | Game One main plot, second half + epilogue |
 | [GAME2_PART1.md](GAME2_PART1.md) | Game Two main plot, first half |
 | [GAME2_PART2.md](GAME2_PART2.md) | Game Two main plot, second half + epilogue |
-| [GAME3_PART1.md](GAME3_PART1.md) | Game Three main plot, first half |
-| [GAME3_PART2.md](GAME3_PART2.md) | Game Three main plot, second half + both endings |
+| [GAME3_PART1.md](GAME3_PART1.md) | Game Three main plot, first act |
+| [GAME3_PART2.md](GAME3_PART2.md) | Game Three main plot, second act |
+| [GAME3_PART3.md](GAME3_PART3.md) | Game Three finale, both endings (The Exchange / The Tether), and epilogues |
 | [SIDE_QUESTS_GAME1.md](SIDE_QUESTS_GAME1.md) | 7 side quests for Game One |
 | [SIDE_QUESTS_GAME2.md](SIDE_QUESTS_GAME2.md) | 6 side quests for Game Two |
 | [SIDE_QUESTS_GAME3.md](SIDE_QUESTS_GAME3.md) | 7 side quests for Game Three |
@@ -72,11 +91,3 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 |---|---|
 | [HISTORY_SHROUD_SEA.md](HISTORY_SHROUD_SEA.md) | 200 years of Brotherhood charting, 40-year windows, the buried crossing report, Orion's history, Eilwen's investigation, crossing protocol |
 | [HISTORY_ELDERMARK.md](HISTORY_ELDERMARK.md) | Othric IV's declining health, succession crisis: Aldwyn, Emric, and Prince Aedric Castrove |
-
----
-
-## Game Design
-
-| File | Contents |
-|---|---|
-| [COMBAT_DESIGN.md](COMBAT_DESIGN.md) | Combat system design notes |
