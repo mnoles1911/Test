@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1280" height="720" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="4" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
+    <stop offset="15%" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity="0.82"/>
+  </radialGradient>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#0C0805"/>
+    <stop offset="100%" stop-color="#0C0805" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="fog-bottom" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#0C0805" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#0C0805"/>
+  </linearGradient>
+  <radialGradient id="ui-shadow" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#000000" stop-opacity="0.55"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+
+<!-- ===== 1. BACKGROUND ===== -->
+<rect width="1280" height="720" fill="#0C0805"/>
+
+<!-- ===== 2. STARS ===== -->
+<g fill="#F0E8D0">
+  <circle cx="78"   cy="42"  r="1"   opacity="0.80"/>
+  <circle cx="155"  cy="28"  r="1.5" opacity="0.60"/>
+  <circle cx="234"  cy="55"  r="1"   opacity="0.90"/>
+  <circle cx="312"  cy="18"  r="1"   opacity="0.70"/>
+  <circle cx="398"  cy="48"  r="1.5" opacity="0.50"/>
+  <circle cx="467"  cy="32"  r="1"   opacity="0.80"/>
+  <circle cx="543"  cy="22"  r="1"   opacity="0.65"/>
+  <circle cx="620"  cy="38"  r="1.5" opacity="0.70"/>
+  <circle cx="695"  cy="15"  r="1"   opacity="0.90"/>
+  <circle cx="775"  cy="44"  r="1"   opacity="0.55"/>
+  <circle cx="842"  cy="28"  r="1.5" opacity="0.80"/>
+  <circle cx="918"  cy="52"  r="1"   opacity="0.65"/>
+  <circle cx="1005" cy="20"  r="1"   opacity="0.75"/>
+  <circle cx="1082" cy="44"  r="1.5" opacity="0.50"/>
+  <circle cx="1165" cy="30"  r="1"   opacity="0.90"/>
+  <circle cx="1220" cy="58"  r="1"   opacity="0.60"/>
+  <circle cx="110"  cy="88"  r="1"   opacity="0.40"/>
+  <circle cx="270"  cy="95"  r="1.5" opacity="0.55"/>
+  <circle cx="440"  cy="78"  r="1"   opacity="0.50"/>
+  <circle cx="760"  cy="75"  r="1.5" opacity="0.45"/>
+  <circle cx="930"  cy="88"  r="1"   opacity="0.60"/>
+  <circle cx="1095" cy="82"  r="1"   opacity="0.50"/>
+  <circle cx="185"  cy="118" r="1"   opacity="0.35"/>
+  <circle cx="850"  cy="108" r="1"   opacity="0.40"/>
+  <circle cx="1180" cy="100" r="1"   opacity="0.45"/>
+</g>
+
+<!-- ===== 3. ISOMETRIC WORLD TILES ===== -->
+<!-- Coordinate formula: sx=(col-row)*32+640, sy=(col+row)*16+104
+     Tile diamond: sx,sy-16  sx+32,sy  sx,sy+16  sx-32,sy
+     Player at world(8,8) → screen(640,360) -->
+<g opacity="0.70">
+
+  <!-- GRASS  rgb(72,95,45) = #48602D -->
+  <g fill="#48602D">
+    <!-- row 2 -->
+    <polygon points="640,152 672,168 640,184 608,168"/>
+    <polygon points="672,168 704,184 672,200 640,184"/>
+    <polygon points="704,184 736,200 704,216 672,200"/>
+    <polygon points="736,200 768,216 736,232 704,216"/>
+    <polygon points="768,216 800,232 768,248 736,232"/>
+    <polygon points="800,232 832,248 800,264 768,248"/>
+    <polygon points="832,248 864,264 832,280 800,264"/>
+    <polygon points="864,264 896,280 864,296 832,280"/>
+    <polygon points="896,280 928,296 896,312 864,296"/>
+    <polygon points="928,296 960,312 928,328 896,312"/>
+    <polygon points="960,312 992,328 960,344 928,328"/>
+    <polygon points="992,328 1024,344 992,360 960,344"/>
+    <polygon points="1024,344 1056,360 1024,376 992,360"/>
+    <!-- row 3 -->
+    <polygon points="608,168 640,184 608,200 576,184"/>
+    <polygon points="640,184 672,200 640,216 608,200"/>
+    <polygon points="736,232 768,248 736,264 704,248"/>
+    <polygon points="768,248 800,264 768,280 736,264"/>
+    <polygon points="800,264 832,280 800,296 768,280"/>
+    <polygon points="832,280 864,296 832,312 800,296"/>
+    <polygon points="864,296 896,312 864,328 832,312"/>
+    <polygon points="896,312 928,328 896,344 864,328"/>
+    <polygon points="992,360 1024,376 992,392 960,376"/>
+    <!-- row 4 -->
+    <polygon points="576,184 608,200 576,216 544,200"/>
+    <polygon points="736,264 768,280 736,296 704,280"/>
+    <polygon points="768,280 800,296 768,312 736,296"/>
+    <polygon points="864,328 896,344 864,360 832,344"/>
+    <polygon points="960,376 992,392 960,408 928,392"/>
+    <!-- row 5 -->
+    <polygon points="544,200 576,216 544,232 512,216"/>
+    <polygon points="704,280 736,296 704,312 672,296"/>
+    <polygon points="832,344 864,360 832,376 800,360"/>
+    <polygon points="864,360 896,376 864,392 832,376"/>
+    <polygon points="896,376 928,392 896,408 864,392"/>
+    <polygon points="928,392 960,408 928,424 896,408"/>
+    <!-- row 6 -->
+    <polygon points="512,216 544,232 512,248 480,232"/>
+    <polygon points="640,280 672,296 640,312 608,296"/>
+    <polygon points="672,296 704,312 672,328 640,312"/>
+    <polygon points="768,344 800,360 768,376 736,360"/>
+    <polygon points="800,360 832,376 800,392 768,376"/>
+    <polygon points="832,376 864,392 832,408 800,392"/>
+    <polygon points="864,392 896,408 864,424 832,408"/>
+    <polygon points="896,408 928,424 896,440 864,424"/>
+    <!-- row 7 -->
+    <polygon points="480,232 512,248 480,264 448,248"/>
+    <polygon points="512,248 544,264 512,280 480,264"/>
+    <polygon points="576,280 608,296 576,312 544,296"/>
+    <polygon points="608,296 640,312 608,328 576,312"/>
+    <polygon points="768,376 800,392 768,408 736,392"/>
+    <polygon points="800,392 832,408 800,424 768,408"/>
+    <polygon points="832,408 864,424 832,440 800,424"/>
+    <polygon points="864,424 896,440 864,456 832,440"/>
+    <!-- row 8 -->
+    <polygon points="448,248 480,264 448,280 416,264"/>
+    <polygon points="480,264 512,280 480,296 448,280"/>
+    <polygon points="512,280 544,296 512,312 480,296"/>
+    <polygon points="544,296 576,312 544,328 512,312"/>
+    <polygon points="736,392 768,408 736,424 704,408"/>
+    <polygon points="768,408 800,424 768,440 736,424"/>
+    <polygon points="800,424 832,440 800,456 768,440"/>
+    <polygon points="832,440 864,456 832,472 800,456"/>
+    <!-- row 9 -->
+    <polygon points="416,264 448,280 416,296 384,280"/>
+    <polygon points="448,280 480,296 448,312 416,296"/>
+    <polygon points="480,296 512,312 480,328 448,312"/>
+    <polygon points="512,312 544,328 512,344 480,328"/>
+    <polygon points="544,328 576,344 544,360 512,344"/>
+    <polygon points="672,392 704,408 672,424 640,408"/>
+    <polygon points="704,408 736,424 704,440 672,424"/>
+    <polygon points="736,424 768,440 736,456 704,440"/>
+    <polygon points="768,440 800,456 768,472 736,456"/>
+    <polygon points="800,456 832,472 800,488 768,472"/>
+    <!-- row 10 -->
+    <polygon points="384,280 416,296 384,312 352,296"/>
+    <polygon points="416,296 448,312 416,328 384,312"/>
+    <polygon points="448,312 480,328 448,344 416,328"/>
+    <polygon points="480,328 512,344 480,360 448,344"/>
+    <polygon points="512,344 544,360 512,376 480,360"/>
+    <polygon points="544,360 576,376 544,392 512,376"/>
+    <polygon points="576,376 608,392 576,408 544,392"/>
+    <polygon points="608,392 640,408 608,424 576,408"/>
+    <polygon points="736,456 768,472 736,488 704,472"/>
+    <polygon points="768,472 800,488 768,504 736,488"/>
+    <!-- row 11 -->
+    <polygon points="352,296 384,312 352,328 320,312"/>
+    <polygon points="384,312 416,328 384,344 352,328"/>
+    <polygon points="416,328 448,344 416,360 384,344"/>
+    <polygon points="448,344 480,360 448,376 416,360"/>
+    <polygon points="480,360 512,376 480,392 448,376"/>
+    <polygon points="512,376 544,392 512,408 480,392"/>
+    <polygon points="544,392 576,408 544,424 512,408"/>
+    <polygon points="736,488 768,504 736,520 704,504"/>
+    <!-- row 12 -->
+    <polygon points="320,312 352,328 320,344 288,328"/>
+    <polygon points="352,328 384,344 352,360 320,344"/>
+    <polygon points="384,344 416,360 384,376 352,360"/>
+    <polygon points="416,360 448,376 416,392 384,376"/>
+    <polygon points="448,376 480,392 448,408 416,392"/>
+    <polygon points="480,392 512,408 480,424 448,408"/>
+    <polygon points="512,408 544,424 512,440 480,424"/>
+    <polygon points="704,504 736,520 704,536 672,520"/>
+    <!-- row 13 -->
+    <polygon points="288,328 320,344 288,360 256,344"/>
+    <polygon points="320,344 352,360 320,376 288,360"/>
+    <polygon points="352,360 384,376 352,392 320,376"/>
+    <polygon points="384,376 416,392 384,408 352,392"/>
+    <polygon points="416,392 448,408 416,424 384,408"/>
+    <polygon points="448,408 480,424 448,440 416,424"/>
+    <polygon points="480,424 512,440 480,456 448,440"/>
+    <polygon points="512,440 544,456 512,472 480,456"/>
+    <polygon points="672,520 704,536 672,552 640,536"/>
+    <!-- row 14 -->
+    <polygon points="256,344 288,360 256,376 224,360"/>
+    <polygon points="288,360 320,376 288,392 256,376"/>
+    <polygon points="320,376 352,392 320,408 288,392"/>
+    <polygon points="352,392 384,408 352,424 320,408"/>
+    <polygon points="384,408 416,424 384,440 352,424"/>
+    <polygon points="416,424 448,440 416,456 384,440"/>
+    <polygon points="448,440 480,456 448,472 416,456"/>
+    <polygon points="480,456 512,472 480,488 448,472"/>
+    <polygon points="512,472 544,488 512,504 480,488"/>
+    <polygon points="608,520 640,536 608,552 576,536"/>
+    <polygon points="640,536 672,552 640,568 608,552"/>
+  </g>
+
+  <!-- DARK GRASS  rgb(50,70,30) = #32461E -->
+  <g fill="#32461E">
+    <polygon points="672,200 704,216 672,232 640,216"/>
+    <polygon points="704,216 736,232 704,248 672,232"/>
+    <polygon points="608,200 640,216 608,232 576,216"/>
+    <polygon points="704,248 736,264 704,280 672,264"/>
+    <polygon points="576,216 608,232 576,248 544,232"/>
+    <polygon points="672,264 704,280 672,296 640,280"/>
+    <polygon points="544,232 576,248 544,264 512,248"/>
+    <polygon points="608,264 640,280 608,296 576,280"/>
+    <polygon points="544,264 576,280 544,296 512,280"/>
+  </g>
+
+  <!-- TREE  rgb(35,80,35) = #235023 -->
+  <g fill="#235023">
+    <polygon points="640,216 672,232 640,248 608,232"/>
+    <polygon points="672,232 704,248 672,264 640,248"/>
+    <polygon points="608,232 640,248 608,264 576,248"/>
+  </g>
+
+  <!-- DENSE TREE  rgb(25,58,25) = #193A19 -->
+  <g fill="#193A19">
+    <polygon points="640,248 672,264 640,280 608,264"/>
+    <polygon points="576,248 608,264 576,280 544,264"/>
+  </g>
+
+  <!-- STONE  rgb(105,95,85) = #695F55 -->
+  <g fill="#695F55">
+    <polygon points="800,296 832,312 800,328 768,312"/>
+    <polygon points="832,312 864,328 832,344 800,328"/>
+    <polygon points="800,328 832,344 800,360 768,344"/>
+  </g>
+
+  <!-- SNOW  rgb(220,225,230) = #DCE1E6 -->
+  <g fill="#DCE1E6">
+    <polygon points="928,328 960,344 928,360 896,344"/>
+    <polygon points="960,344 992,360 960,376 928,360"/>
+    <polygon points="896,344 928,360 896,376 864,360"/>
+    <polygon points="928,360 960,376 928,392 896,376"/>
+  </g>
+
+  <!-- WALL  rgb(75,68,58) = #4B443A -->
+  <g fill="#4B443A">
+    <polygon points="736,296 768,312 736,328 704,312"/>
+    <polygon points="768,312 800,328 768,344 736,328"/>
+    <polygon points="704,312 736,328 704,344 672,328"/>
+    <polygon points="640,312 672,328 640,344 608,328"/>
+    <polygon points="736,360 768,376 736,392 704,376"/>
+    <polygon points="576,312 608,328 576,344 544,328"/>
+    <polygon points="704,376 736,392 704,408 672,392"/>
+  </g>
+
+  <!-- FLOOR  rgb(140,118,82) = #8C7652 -->
+  <g fill="#8C7652">
+    <polygon points="736,328 768,344 736,360 704,344"/>
+    <polygon points="672,328 704,344 672,360 640,344"/>
+    <polygon points="704,344 736,360 704,376 672,360"/>
+    <polygon points="608,328 640,344 608,360 576,344"/>
+    <polygon points="640,344 672,360 640,376 608,360"/>
+    <polygon points="672,360 704,376 672,392 640,376"/>
+    <polygon points="576,344 608,360 576,376 544,360"/>
+    <polygon points="608,360 640,376 608,392 576,376"/>
+    <polygon points="640,376 672,392 640,408 608,392"/>
+  </g>
+
+  <!-- SAND  rgb(185,155,95) = #B99B5F -->
+  <g fill="#B99B5F">
+    <polygon points="640,408 672,424 640,440 608,424"/>
+    <polygon points="672,424 704,440 672,456 640,440"/>
+    <polygon points="704,440 736,456 704,472 672,456"/>
+    <polygon points="576,408 608,424 576,440 544,424"/>
+    <polygon points="608,424 640,440 608,456 576,440"/>
+    <polygon points="544,424 576,440 544,456 512,440"/>
+  </g>
+
+  <!-- SHALLOW WATER  rgb(70,140,180) = #468CB4 -->
+  <g fill="#468CB4">
+    <polygon points="640,440 672,456 640,472 608,456"/>
+    <polygon points="672,456 704,472 672,488 640,472"/>
+    <polygon points="576,440 608,456 576,472 544,456"/>
+    <polygon points="608,456 640,472 608,488 576,472"/>
+    <polygon points="544,456 576,472 544,488 512,472"/>
+  </g>
+
+  <!-- WATER  rgb(45,110,160) = #2D6EA0 -->
+  <g fill="#2D6EA0">
+    <polygon points="704,472 736,488 704,504 672,488"/>
+    <polygon points="640,472 672,488 640,504 608,488"/>
+    <polygon points="672,488 704,504 672,520 640,504"/>
+    <polygon points="576,472 608,488 576,504 544,488"/>
+    <polygon points="544,488 576,504 544,520 512,504"/>
+  </g>
+
+  <!-- DEEP WATER  rgb(25,70,120) = #194678 -->
+  <g fill="#194678">
+    <polygon points="608,488 640,504 608,520 576,504"/>
+    <polygon points="640,504 672,520 640,536 608,520"/>
+    <polygon points="576,504 608,520 576,536 544,520"/>
+  </g>
+
+</g><!-- end tiles -->
+
+<!-- ===== 4. ATMOSPHERIC OVERLAYS ===== -->
+<!-- Vignette -->
+<rect width="1280" height="720" fill="url(#vignette)"/>
+<!-- Sky fade from top -->
+<rect width="1280" height="185" fill="url(#sky)"/>
+<!-- Bottom fog -->
+<rect x="0" y="555" width="1280" height="165" fill="url(#fog-bottom)"/>
+
+<!-- ===== 5. CENTER UI SHADOW (readability behind panels) ===== -->
+<rect x="400" y="135" width="480" height="360" fill="#000000" opacity="0.42" rx="2"/>
+
+<!-- ===== 6. TITLE PANEL  x=440, y=160, w=400, h=80 ===== -->
+<rect x="440" y="160" width="400" height="80" fill="#23160C" opacity="0.96"/>
+<!-- Panel border (2px, PanelBorder #8C6428) -->
+<rect x="440" y="160" width="400" height="2"  fill="#8C6428"/>
+<rect x="440" y="238" width="400" height="2"  fill="#8C6428"/>
+<rect x="440" y="160" width="2"   height="80" fill="#8C6428"/>
+<rect x="838" y="160" width="2"   height="80" fill="#8C6428"/>
+<!-- Inner highlight line (subtle top glow) -->
+<rect x="442" y="162" width="396" height="1"  fill="#D2A028" opacity="0.25"/>
+<!-- Corner diamond ornaments (Gold) -->
+<polygon points="440,156 447,160 440,164 433,160" fill="#D2A028"/>
+<polygon points="840,156 847,160 840,164 833,160" fill="#D2A028"/>
+<polygon points="440,236 447,240 440,244 433,240" fill="#D2A028"/>
+<polygon points="840,236 847,240 840,244 833,240" fill="#D2A028"/>
+<!-- Thin decorative side ticks -->
+<rect x="440" y="173" width="8" height="1" fill="#8C6428" opacity="0.7"/>
+<rect x="432" y="173" width="8" height="1" fill="#8C6428" opacity="0.7"/>
+<rect x="840" y="173" width="8" height="1" fill="#8C6428" opacity="0.7"/>
+<rect x="840" y="226" width="8" height="1" fill="#8C6428" opacity="0.7"/>
+
+<!-- ===== 7. TITLE TEXT ===== -->
+<!-- "HAMMERFELL" — Gold, large, glowing -->
+<text x="640" y="197"
+      text-anchor="middle" dominant-baseline="central"
+      font-family="Georgia,'Times New Roman',serif"
+      font-size="34" font-weight="bold" letter-spacing="7"
+      fill="#D2A028" filter="url(#glow)">HAMMERFELL</text>
+
+<!-- Separator line between title and subtitle -->
+<line x1="500" y1="213" x2="780" y2="213" stroke="#8C6428" stroke-width="1" opacity="0.55"/>
+
+<!-- "THE ELDER PROVINCE" — TextSecondary, small caps style -->
+<text x="640" y="228"
+      text-anchor="middle" dominant-baseline="central"
+      font-family="Georgia,'Times New Roman',serif"
+      font-size="12" letter-spacing="4"
+      fill="#A0825A">THE ELDER PROVINCE</text>
+
+<!-- ===== 8. NEW GAME BUTTON  x=520, y=291, 240×50 ===== -->
+<rect x="520" y="291" width="240" height="50" fill="#322010"/>
+<rect x="520" y="291" width="240" height="2"  fill="#8C6428"/>
+<rect x="520" y="339" width="240" height="2"  fill="#8C6428"/>
+<rect x="520" y="291" width="2"   height="50" fill="#8C6428"/>
+<rect x="758" y="291" width="2"   height="50" fill="#8C6428"/>
+<text x="640" y="316"
+      text-anchor="middle" dominant-baseline="central"
+      font-family="Georgia,'Times New Roman',serif"
+      font-size="15" fill="#DCC38C">New Game</text>
+
+<!-- ===== 9. CONTINUE BUTTON (disabled)  x=520, y=355, 240×50 ===== -->
+<rect x="520" y="355" width="240" height="50" fill="#28231E"/>
+<rect x="520" y="355" width="240" height="2"  fill="#463C32"/>
+<rect x="520" y="403" width="240" height="2"  fill="#463C32"/>
+<rect x="520" y="355" width="2"   height="50" fill="#463C32"/>
+<rect x="758" y="355" width="2"   height="50" fill="#463C32"/>
+<text x="640" y="380"
+      text-anchor="middle" dominant-baseline="central"
+      font-family="Georgia,'Times New Roman',serif"
+      font-size="15" fill="#A0825A" opacity="0.45">Continue</text>
+
+<!-- ===== 10. QUIT BUTTON  x=520, y=419, 240×50 ===== -->
+<rect x="520" y="419" width="240" height="50" fill="#322010"/>
+<rect x="520" y="419" width="240" height="2"  fill="#8C6428"/>
+<rect x="520" y="467" width="240" height="2"  fill="#8C6428"/>
+<rect x="520" y="419" width="2"   height="50" fill="#8C6428"/>
+<rect x="758" y="419" width="2"   height="50" fill="#8C6428"/>
+<text x="640" y="444"
+      text-anchor="middle" dominant-baseline="central"
+      font-family="Georgia,'Times New Roman',serif"
+      font-size="15" fill="#DCC38C">Quit</text>
+
+<!-- ===== 11. BOTTOM TAGLINE ===== -->
+<text x="640" y="688"
+      text-anchor="middle"
+      font-family="Georgia,'Times New Roman',serif"
+      font-size="11" letter-spacing="2"
+      fill="#A0825A" opacity="0.52">Mira-Thal  ·  Year 412 of the Third Age  ·  Ash rises from Drûn-Khazad</text>
+
+</svg>
