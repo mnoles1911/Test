@@ -294,7 +294,13 @@ Two thousand years later, the binding weakens. Mordvar cannot yet act directly. 
 
 An obsidian throne streaked with silver, forged from cooled lava and the bone-meal of Mordvar's first sacrifices, in the Hollow Hearth within Drûn-Khazad. Mordvar's will flows through it into whoever sits upon it.
 
-The current occupant is the **Ashlord** — faceless even to his own forces, Mordvar's will made partially present. His identity is unknown to all but the closest Ashen Hand inner circle. He may be a corrupted human king; he may be a dark elf; he may be something that was a person once and is no longer.
+The current occupant is the **Ashlord** — faceless even to his own forces, Mordvar's will made partially present. He wears a featureless obsidian mask and has not been seen without it in two thousand years. His own inner circle believes he was always this way — a vessel built for the purpose, not a person converted to it. They are wrong.
+
+**The Ashlord is Caerith**, formerly the Vigil-Keeper of the Second Age Grand Alliance — the Aelorin loremaster who led the Aelorin contingent in forging the Sundered Crown. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close. Not enough to destroy them — enough to turn them.
+
+Two thousand years of that. More hollow than the Ashfallen, less hollow than Mordvar himself. A being trapped between states, the instrument of the will they spent their life opposing, with just enough of themselves left to know it.
+
+Lord Aelthurion knows. He has known since the Second Age. Caerith's name is not spoken in Aelorin society. In the Archive at Lirien-Thal they are recorded as having completed the Aelthiren, because the alternative requires explaining what they became. The mask is worn because beneath it is an Aelorin face — and the Naergrim, who are themselves Aelorin-derived, would recognize what they were looking at.
 
 **Symbol:** A black sun with seven rays. One for each Host. The seventh ray is vacant — reserved for Mordvar.
 
@@ -748,6 +754,36 @@ He has been hunted since. The Iron Chalice did not send killers — but word spr
 
 ---
 
+## Dagna Irontrack
+
+**Age:** 47
+**Origin:** Karaz-Dûn, Dragon-Watcher order
+**Role:** Dragon-Watcher field operative; joins midway through Game One Act III
+
+**Appearance:** Compact even for a dwarf, iron-grey braids wound tight against her skull. Burns on her left forearm from a vent-sampling accident during her early posting — she considers them professional credentials. Always has chalk on her hands. She marks passages as she moves through them out of habit, even in towns, even when no one asked her to chart anything.
+
+**Background:** Dragon-Watchers are equal parts religious order and intelligence corps. Dagna's specific posting was tracking seismic and thermal changes along the Spine's eastern slope — activity that in dwarven theology signals something waking that shouldn't be. For fourteen years she filed quarterly reports. For the last three, her reports were rerouted by the Ashen Hand's compromised steward in Karaz-Dûn's administrative apparatus, rewritten to show stable readings, and filed under her name. She discovered this when a fellow Dragon-Watcher in a different district received her original report by mistake and sent it back asking why she'd sent two contradictory readings.
+
+She went to report the falsification to Karaz-Dûn's Gold-Speaker office. She was told the auditor she needed to speak with — Barak Stonecroft — was in protective custody in Kazaad-Brak. She is three days into the Underway when Roland's party enters it from the other direction.
+
+**Character:** Precise and concrete. She trusts what she can measure and distrusts what she cannot — which puts her in a respectful but occasionally prickly relationship with Corvus, whose environmental magic produces accurate readings through means she cannot verify. She eventually accepts his readings as a second data source. He eventually accepts that she understood the seismic situation faster than he did.
+
+She is not a naturally warm person. She is a reliable one, which is better. When she says she will do a thing, it is done.
+
+**Unique capability:** Dagna can read volcanic and seismic patterns in real time. In the Khorumzad descent, she is the party's navigator below Level Four — Corvus maps the contamination, Dagna maps the stone. In Game Three, her three years of suppressed field reports, combined with her readings from the descent, give the Alliance its timing window for the caldera approach. Without this, the Alliance crests the caldera during a lava-surge cycle. With it, they crest it in a gap.
+
+**Subplot — The Suppressed Reports:** The falsified reports bear Dagna's name. Someone filed them. Dagna has spent three years being known in the Dragon-Watcher order as the operative who said nothing was wrong — while everything was getting worse. Recovering her professional standing requires proving the falsification, which requires Barak Stonecroft's testimony. Game One resolves this partially. Game Three resolves it fully when her corrected reports become the foundation of the Alliance's tactical approach to Drûn-Khazad. The Dragon-Watchers update their records. The Night of the Listening ceremony that year includes her original findings being read aloud in every hold.
+
+**Arc:** Dagna has been trying to do her job correctly for three years and being prevented from it. The trilogy is the story of that prevention being removed and the consequences of that removal mattering. Her ending is not dramatic — it is the restoration of the ordinary good work she was always doing.
+
+**Relationship with party:**
+- **Roland:** Mutual recognition between people who are competent in their domain and have been asked to operate outside it. She does not fully trust him until the Binding Site, when he keeps his word about Barak's testimony.
+- **Corvus:** Friction early; genuine respect by Game Two. They argue about methodology and are both right.
+- **Seren:** Dagna finds Aelorin patience baffling but not contemptible. She has spent years watching geological time and understands, abstractly, what it is to think in centuries. She cannot live that way. She respects that Seren can.
+- **Orion:** They are both specialists who are frequently the second-most-interesting person in the room. They understand each other's position without discussing it.
+
+---
+
 ## Aldric Vane (Companion — Game Three Only)
 
 **Age:** 41
@@ -797,6 +833,30 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 **Weakness:** The amplification that makes Ashen Hand mages powerful is also deterioration. Vaeroth knows this. He does not discuss it. He has perhaps two years before his body cannot sustain the cost. He intends to finish the war before the bill comes due.
 
 **Plot function:** Vaeroth is the chase in Game Three. He is hunting Aldric specifically — he knows what the bloodline means and what the Aeluvain requires. The Frost Brotherhood's rear-guard action to slow him is what buys Aldric the time to reach the summit.
+
+---
+
+### Caerith — The Ashlord
+
+**True identity:** Aelorin Vigil-Keeper; former leader of the Second Age Grand Alliance's Aelorin contingent
+**Current form:** The Ashlord — Mordvar's will made partially present, faceless behind an obsidian mask
+
+Caerith forged the Sundered Crown alongside representatives of all three peoples. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
+
+Two thousand years of incremental hollowing — not enough to fully erase them, enough to turn them. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
+
+**What remains:** Caerith's name is no longer spoken in Aelorin society. What persists in the Ashlord is not personality — not preferences or affections or grief in any recognizable form. What persists is the structural shape of a self: a remnant of agency, enough to command, enough to understand commands, enough to know what they once were and cannot say.
+
+**The mask:** Worn because beneath it is an Aelorin face. The Naergrim — themselves Aelorin-derived and two thousand years old — would recognize what they were looking at. The mask is the Ashlord's one act of preservation, not from vanity but from the understanding that if the Naergrim saw the face and realized its implications, the Ashen Hand's command structure would fracture.
+
+**Aelthurion's burden:** He has known since shortly after the Second Age. Caerith's name appears in Lirien-Thal's archive as having completed the Aelthiren, because the alternative is saying what they became. No Aelorin who learns the truth disagrees with the decision to keep silence. They understand immediately why you would not want to say it aloud.
+
+**Hints through the trilogy:**
+- *Game One:* After giving Roland the silver clasp, Aelthurion goes quiet when Roland asks whether there is anything else he should know. He says: *"Everything that matters is in what I have already told you."* This is technically true.
+- *Game Two:* The descent into Khorumzad's lower levels reveals Aelorin construction markers in the stone at Level Six — far below anything the Aelorin admit to having built. Seren finds a name carved in Vigil-Keeper formal script on the keystone. She says only: *"It is not a name I know. But the script is used for persons of consequence."* She does not say that no Aelorin would use it for someone who no longer existed.
+- *Game Three:* At the Aescstól, before the fight, the Ashlord speaks once. A single phrase in old Aelorin — the formal register of the Second Age, a construction so archaic that only Seren, with her centuries, can parse it. She understands it. She does not translate it for the others during the fight. She translates it afterward, in private, to Roland alone: *"I held as long as I could."*
+
+**The reveal:** When the Ashlord falls, the mask cracks. Beneath it is an aged Aelorin face — silver hair, amber eyes faded almost to white. The expression on it, in death, is not anguish. It is relief. Seren is the first to reach the body. She stays there for a long time. Dagna, who is beside her, says nothing and keeps the others back without being asked.
 
 ---
 
@@ -999,6 +1059,8 @@ Roland must be granted access to Lirien-Thal and then to the Second Glade. Lord 
 
 Roland receives the silver clasp and the most important piece of information in the trilogy: Aldric Vane's name and what he is.
 
+Before they part, Roland asks: *"Is there anything else I should know?"* Aelthurion is quiet for longer than the question warrants. Then: *"Everything that matters is in what I have already told you."* He does not say it is everything he knows. Roland notices the distinction. He does not press it. He will think about it later.
+
 **Piece Five acquired.**
 
 ---
@@ -1010,6 +1072,12 @@ Roland receives the silver clasp and the most important piece of information in 
 King Thrarin has not left his treasury in two years. His gold-hunger has been accelerated by a compromised steward (Drossvik's operation extended to Karaz-Dûn from Khorumzad). The Gold-Speaker auditor who documented the acceleration has been placed in protective custody in Kazaad-Brak — not imprisoned, but isolated.
 
 Roland cannot reach Thrarin. He can reach Kazaad-Brak and the auditor, Barak Stonecroft, through the Underway.
+
+**Dagna Irontrack — companion joins here.** Three days into the Underway, Roland's party encounters a Dragon-Watcher moving in the opposite direction. She has chalk-marked every junction she has passed through. She is heading to Kazaad-Brak for the same reason Roland is: to reach Barak Stonecroft. Her seismic reports about Drûn-Khazad's worsening volcanic activity have been falsified and refiled under her name by the Ashen Hand's compromised steward. Three years of field work, rewritten to show stability she never recorded. She discovered this six weeks ago and has been moving since.
+
+She does not immediately join the party — she joins the same errand, which amounts to the same thing. The conversation where Roland explains the full scope of what he is doing, and Dagna listens and says: *"Your volcanic problem and my volcanic problem are the same volcanic problem,"* is the moment she commits.
+
+**[SIDE QUEST] The Falsified Reports:** Recovering Dagna's original field data and proving the falsification requires accessing Karaz-Dûn's Dragon-Watcher record office — which Darva (Thrarin's regent daughter) has access to once the auditor's report is in hand. The original reports are there, filed separately from the forgeries. The compromised steward's amendments are in a different hand. Darva recognizes the handwriting. The steward is removed. Dagna's name is cleared in the Dragon-Watcher order, though the full implications of her findings are not yet understood.
 
 Barak's information is the confirmation of Drossvik's operation in the dwarven kingdoms — which sets up Game Two. He also knows the disc's location: it is in Thrarin's treasury as part of a Second Age artifact collection. Thrarin collected it a century ago as a curiosity.
 
@@ -1045,7 +1113,7 @@ The Crown must be reassembled at the Binding Site — the original location of t
 
 The assembly itself is not a puzzle — the pieces fit together as the Crown they were. What Roland does not know is that the ritual to renew the binding requires blood of the Grand Alliance: a human, an Aelorin, and a dwarf.
 
-Aelthurion is present. He arranged this without explaining it. Bromrin sent a representative — his personal guard commander, Vrenda Copperhand, who volunteered.
+Aelthurion is present. He arranged this without explaining it. The dwarven blood is Dagna's — she volunteers without being asked, which earns her Roland's trust in a way that the preceding weeks of shared errand had not quite managed.
 
 The binding is renewed. The Ashlord, through whom Mordvar's will was flowing most directly, is severed from the connection. The Ashen Hand's amplification drops sharply. Vaeroth loses a significant fraction of his power.
 
@@ -1119,6 +1187,8 @@ Inside, Darna Deepdelver provides the situation: Bromrin has moments of clarity 
 
 **Corvus's first action:** He walks the contaminated levels without a mask, senses the spread, and maps it. He comes back pale. He tells Roland the contamination is deliberate — it has a direction, a source, a propagation pattern that matches designed release rather than accident. Someone in the court has been managing it.
 
+**Dagna's first action:** She goes to the same levels with chalk and a measuring line and records the seismic profile. When she surfaces, she compares her readings with Corvus's map. The contamination propagation and the seismic instability are not co-located. She tells Roland: *"Whatever is spreading from the source is moving west. The deep structural shift is moving east. Two different problems."* The second problem is the Vault — the breach below has changed the stone's behavior in ways that will not be visible until something heavy is placed on the wrong floor. She begins marking load-bearing points throughout the accessible sections. By Game Two's climax, this is what stops the tunnel collapse from becoming a full level cascade.
+
 ---
 
 ### [MAIN QUEST] Exposing Drossvik
@@ -1156,7 +1226,11 @@ The descent to the Vault of Aen-Vael requires passing through nine dig levels be
 
 **Levels 1-3:** Heavy contamination but passable with Corvus's protection. The gold-hunger in the ambient air manifests as a pressure on perception — everything valuable looks more valuable; every decision feels like it should be made quickly; the urgency is artificial and both Corvus and Roland know it, which helps.
 
-**Levels 4-6:** The walls have traces of Second Age construction — this was excavated deliberately long before the dwarves arrived. Someone built these chambers. The architecture is not dwarven. It is not any recognizable style. Seren (who joined the party after Game One ended) is quiet for a long time looking at the walls, then says: *This was built before the Third Age. Before the Second. This was here when the world was young.*
+**Levels 4-6:** The walls have traces of Second Age construction — this was excavated deliberately long before the dwarves arrived. Someone built these chambers. The architecture is not dwarven. It is not any recognizable style. Seren is quiet for a long time looking at the walls, then says: *This was built before the Third Age. Before the Second. This was here when the world was young.*
+
+Dagna, who has been marking every junction, stops at the keystone of Level Six's primary arch. There is a name carved in it — old Aelorin formal script, the construction used for persons of exceptional historical consequence. She does not know the name. She describes it to Seren.
+
+Seren is still for a moment. Then she says: *"I do not know that name either."* She says nothing more. Roland notices that this is not the same as the name not being in her memory — Seren is four hundred years younger than Aelthurion, but she is a loremaster. An Aelorin name she does not know, in Vigil-Keeper formal script, on a chamber wall two thousand years below the light, is not a name that was forgotten. It is a name that was removed.
 
 **Level 7:** The party encounters Ashfallen — three former Khorumzad soldiers who were captured during an Ashen Hand incursion and returned. They wear familiar faces. Two of Bromrin's personal guard who accompanied the descent freeze on recognition. One does not survive the hesitation.
 
@@ -1441,9 +1515,10 @@ This is not a combat sequence — it is an endurance sequence. The heat is real.
 **What each person carries:**
 - **Roland:** The promise he made at the beginning of the trilogy without knowing where it led. He does not regret it.
 - **Aldric:** The life he is putting at risk for people he did not know a year ago, and now does.
-- **Seren:** The weight of understanding that she chose to be present for mortality, and that this specific mortality, at this specific moment, is something she cannot look away from.
+- **Seren:** The weight of understanding that she chose to be present for mortality, and that this specific mortality, at this specific moment, is something she cannot look away from. Also something else — a suspicion, forming since Level Six of the Khorumzad descent, that the name on the keystone and the faceless figure ahead of them are the same thing. She is not certain. She will be.
 - **Corvus:** Pain. Genuine physical pain from the cost he paid fighting Vaeroth. He keeps moving because he made a commitment and because Roland is still moving and he is not going to be the one who stops first.
 - **Orion:** The knowledge that he navigated here correctly and this is the furthest point of any voyage he has made. He does not know what comes after. He has decided this is all right.
+- **Dagna:** Chalk-marked the last junction they came through. Old habit. She notices she has almost run out of chalk.
 
 ---
 
@@ -1451,11 +1526,23 @@ This is not a combat sequence — it is an endurance sequence. The heat is real.
 
 The Hollow Hearth. The Ash Throne — obsidian streaked with silver, forged from cooled lava and bone-meal, the instrument through which Mordvar's will has flowed for two thousand years.
 
-The Ashlord is here. Faceless, Mordvar's will made present. He is the last obstacle.
+The Ashlord is here. Faceless behind his obsidian mask. He does not speak immediately.
 
-**The Ashlord's identity** is revealed here. It does not matter who he was. What matters is what he is now: a person who surrendered their self so completely to Mordvar's service that the distinction between self and service has collapsed. He is the warning for what Aldric must not become during the wielding.
+Then he does. One phrase, in old Aelorin — the formal register of the Second Age, a construction so archaic that only Seren can parse it. The others hear an unfamiliar cadence and look to her. Her face changes. She says nothing. She looks at the Ashlord for a long moment. Then she says: *"We fight."*
 
-The party defeats the Ashlord together. It is a fight that costs something. It is not the climax — the climax is what comes next.
+**The fight:** It costs something. The Ashlord does not fight like the Ashen Hand's mages — he fights like someone who has been doing a single thing for two thousand years and has no other available action. There is no strategy to it. There is only weight. The party wins because there are six of them and the weight is finally distributed across enough people that none of them breaks under it alone.
+
+**The reveal:** When the Ashlord falls, the mask cracks. Beneath it is an aged Aelorin face — silver hair, amber eyes faded almost to white, a face that has been trying to remember something for a very long time. In death, the expression is relief.
+
+Seren reaches the body first. She stays there a long time. Dagna comes to stand beside her and keeps the others back without explanation. She does not know why — she does not yet know who this was. She does it because Seren's stillness is not grief she should interrupt.
+
+Roland asks, quietly: *"Who was that?"*
+
+Seren says: *"I will tell you later."* She does tell him — much later, after the descent, after the battle's end, after the worst of the counting is over. She tells only Roland. He understands, when she is done, why Aelthurion said everything that mattered was in what he had already told him. He also understands why Aelthurion did not say more.
+
+The Ashlord is the warning for what Aldric must not become during the wielding. The party does not know this in full until later. Aldric, when Seren eventually tells him, is quiet for a long time. Then he says: *"They held as long as they could."* He uses Seren's translation of the phrase without knowing it. She does not tell him this either.
+
+The party defeats the Ashlord. It is not the climax — the climax is what comes next.
 
 ---
 
@@ -1522,6 +1609,7 @@ Alliance losses vary based on which factions committed. At maximum Alliance:
 - Khorumzad: Darna's command fought well; she survives
 - Vosskara: Yaromir's full force arrived; held the supply lines; survived mostly intact
 - Conclave mages: 23 of 41 (the engagement with the Ashen Hand was the most costly fight mage-for-mage)
+- Dragon-Watchers: Dagna brought eleven of her order to the battle. Seven survive. The Dragon-Watcher record of Drûn-Khazad's final eruption cycle is the most complete geological account in dwarven history.
 
 The governing theme of the trilogy: bonds between people are more durable than institutions, and more powerful than any single act of heroism. The counts reflect this — the best-equipped, most prestigious forces took the highest casualties, and the volunteer fighters and frontier soldiers who came because of personal commitment to Roland or to each other performed beyond what their numbers should allow.
 
@@ -1541,7 +1629,13 @@ He returns to Aldenholt and begins work with Tomlin (the assistant archivist) to
 
 **Corvus Tane** returns to the Conclave. His permanent alteration — changed eyes, accelerated aging — is noted but not remarked upon. He identifies the two Ashfallen members that the Conclave did not know about. He does not explain how he became certain. He does not rejoin the senior instruction track. He asks to teach the first-year students, who are the most likely to destroy something by accident and the most likely to benefit from someone who has already made the costly choices.
 
-**Seren of the Third Glade** completes the pilgrimage to all Eight Glades — the first full circuit since the Eighth Star fell. At the Eighth Glade, which has been tended in anticipation for two thousand years with no star, she places the message that was delivered to her from the Nameless Council operative, having carried it since the Copper Isles muster. She is not there when the glade brightens for the first time in recorded history. She is already on the path to the next glade.
+**Seren of the Third Glade** completes the pilgrimage to all Eight Glades — the first full circuit since the Eighth Star fell. At the Eighth Glade, which has been tended in anticipation for two thousand years with no star, she places the message from the Nameless Council operative, having carried it since the Copper Isles muster. The message contains evidence that the Eighth Star's fall was not loss but choice — the Star chose to come down, to be present when it was needed, rather than watching from a distance it could not close.
+
+In the Exchange ending, placing the Aeluvain in the Aescstól completes the note the Eighth Star was singing — the note Mordvar silenced two thousand years ago. The Star's purpose, once fulfilled, dissolves the reason for its descent. Its presence rises back to where it came from.
+
+Seren leaves the message at the glade boundary and walks on, already on the path to the next glade. She is not there when the glade brightens for the first time in recorded history. This is intentional. She did not come to witness it — she came to return what the Star sent ahead of itself. The witnessing is for the Aelorin who tend the glade and have tended it for two thousand years in anticipation of exactly this. It belongs to them.
+
+**Dagna Irontrack** returns to the Dragon-Watcher order as its most senior field operative by default — attrition and the political fallout from three years of falsified reports have reshaped the order's upper tier. She does not want an administrative role. She accepts one, temporarily, because someone has to write the new reporting protocols and she is the only person who knows exactly how the old ones were compromised. The temporary role lasts four years. Then she goes back into the field. Her first posting after is the Thal western shore settlement, where she monitors the volcanic change now that Mordvar's will no longer drives it. Her reports come back quarterly, on time, accurate.
 
 **Orion Farr** is offered his own ship by Queen Eilwen. He accepts. His first voyage is not a mission — it is the Shroud Sea window, now nine years open. He sails east, past the storm-wall, into whatever was on the other side. He sends one message back through the Brotherhood network before the window closes: *Ruins. Extensive. Unmistakably Second Age. This will take years.*
 
@@ -1559,7 +1653,11 @@ He has a son, eventually. The son is told what he carries, when he is old enough
 
 Aldric says: *Yes. But you were born knowing how to carry it. That is what the bloodline means.*
 
-**Seren** visits Aldric regularly for the rest of his life, which is longer than most human lives — the Tether's anchoring has a side effect no one anticipated. She says, one visit: *You chose to stay. Like the Star.* He says: *You said that at the summit.* She says: *Yes. I wanted to see if it still felt true.* He says: *Does it?* She says: *Yes.*
+**Seren** completes the pilgrimage to all Eight Glades as in the Exchange — she places the same message at the Eighth Glade. But in the Tether ending, the Aeluvain's note is not completed. It is held, anchored in Aldric's bloodline, still present in the world. The Eighth Glade does not brighten.
+
+What happens instead is stranger and harder to name: the glade is different. The Aelorin who tend it say they cannot explain the difference. It does not feel absent the way it did before. It feels like something is near that has not come all the way home yet. They continue tending it. They always intended to.
+
+Seren visits Aldric regularly for the rest of his life, which is longer than most human lives — the Tether's anchoring has a side effect no one anticipated. She says, one visit: *"You chose to stay. Like the Star."* He says: *"You said that at the summit."* She says: *"Yes. I wanted to see if it still felt true."* He says: *"Does it?"* She says: *"Yes. Though the Star will come home eventually. When the Tether no longer needs to hold."* He says: *"So it waits."* She says: *"It chose to. That is different from being made to."*
 
 ---
 
@@ -1588,9 +1686,11 @@ The Aelorin word for the Long Twilight is also, in an older usage, the word for 
 | **Corvus Tane** | Companion; Conclave mage | Game Two |
 | **Seren of the Third Glade** | Companion; Aelorin Dawnbringer | Game Two |
 | **Orion Farr** | Companion; Brotherhood sailor | Game One |
+| **Dagna Irontrack** | Companion; Dragon-Watcher, volcanic expert | Game One (Act III) |
 | **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
 | **Mordvar** | Antagonist; the Hollow King | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
+| **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
 | **Prince Aedric** | Villain; Ashen Hand's human asset | Game One |
 | **Dame Calla Vane** | NPC; Iron Chalice Grandmaster | Game One |
 | **Henrietta** | NPC; Loremaster's Archive (dies Game One) | Game One |

@@ -28,6 +28,8 @@ Roland must be granted access to Lirien-Thal and then to the Second Glade. Lord 
 
 Roland receives the silver clasp and the most important piece of information in the trilogy: Aldric Vane's name and what he is.
 
+Before they part, Roland asks: *"Is there anything else I should know?"* Aelthurion is quiet for longer than the question warrants. Then: *"Everything that matters is in what I have already told you."* He does not say it is everything he knows. Roland notices the distinction. He does not press it. He will think about it later.
+
 **Piece Five acquired.**
 
 ---
@@ -39,6 +41,12 @@ Roland receives the silver clasp and the most important piece of information in 
 King Thrarin has not left his treasury in two years. His gold-hunger has been accelerated by a compromised steward (Drossvik's operation extended to Karaz-Dûn from Khorumzad). The Gold-Speaker auditor who documented the acceleration has been placed in protective custody in Kazaad-Brak — not imprisoned, but isolated.
 
 Roland cannot reach Thrarin. He can reach Kazaad-Brak and the auditor, Barak Stonecroft, through the Underway.
+
+**Dagna Irontrack — companion joins here.** Three days into the Underway, Roland's party encounters a Dragon-Watcher moving in the opposite direction. She has chalk-marked every junction she has passed through. She is heading to Kazaad-Brak for the same reason Roland is: to reach Barak Stonecroft. Her seismic reports about Drûn-Khazad's worsening volcanic activity have been falsified and refiled under her name by the Ashen Hand's compromised steward. Three years of field work, rewritten to show stability she never recorded. She discovered this six weeks ago and has been moving since.
+
+She does not immediately join the party — she joins the same errand, which amounts to the same thing. The conversation where Roland explains the full scope of what he is doing, and Dagna listens and says: *"Your volcanic problem and my volcanic problem are the same volcanic problem,"* is the moment she commits.
+
+**[SIDE QUEST] The Falsified Reports:** Recovering Dagna's original field data and proving the falsification requires accessing Karaz-Dûn's Dragon-Watcher record office — which Darva (Thrarin's regent daughter) has access to once the auditor's report is in hand. The original reports are there, filed separately from the forgeries. The compromised steward's amendments are in a different hand. Darva recognizes the handwriting. The steward is removed. Dagna's name is cleared in the Dragon-Watcher order, though the full implications of her findings are not yet understood.
 
 Barak's information is the confirmation of Drossvik's operation in the dwarven kingdoms — which sets up Game Two. He also knows the disc's location: it is in Thrarin's treasury as part of a Second Age artifact collection. Thrarin collected it a century ago as a curiosity.
 
@@ -74,7 +82,7 @@ The Crown must be reassembled at the Binding Site — the original location of t
 
 The assembly itself is not a puzzle — the pieces fit together as the Crown they were. What Roland does not know is that the ritual to renew the binding requires blood of the Grand Alliance: a human, an Aelorin, and a dwarf.
 
-Aelthurion is present. He arranged this without explaining it. Bromrin sent a representative — his personal guard commander, Vrenda Copperhand, who volunteered.
+Aelthurion is present. He arranged this without explaining it. The dwarven blood is Dagna's — she volunteers without being asked, which earns her Roland's trust in a way that the preceding weeks of shared errand had not quite managed.
 
 The binding is renewed. The Ashlord, through whom Mordvar's will was flowing most directly, is severed from the connection. The Ashen Hand's amplification drops sharply. Vaeroth loses a significant fraction of his power.
 

@@ -10,9 +10,11 @@
 | **Corvus Tane** | Companion; Conclave mage | Game Two |
 | **Seren of the Third Glade** | Companion; Aelorin Dawnbringer | Game Two |
 | **Orion Farr** | Companion; Brotherhood sailor | Game One |
+| **Dagna Irontrack** | Companion; Dragon-Watcher, volcanic expert | Game One (Act III) |
 | **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
 | **Mordvar** | Antagonist; the Hollow King | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
+| **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
 | **Prince Aedric** | Villain; Ashen Hand's human asset | Game One |
 | **Dame Calla Vane** | NPC; Iron Chalice Grandmaster | Game One |
 | **Henrietta** | NPC; Loremaster's Archive (dies Game One) | Game One |

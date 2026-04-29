@@ -31,6 +31,30 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 
 ---
 
+### Caerith — The Ashlord
+
+**True identity:** Aelorin Vigil-Keeper; former leader of the Second Age Grand Alliance's Aelorin contingent
+**Current form:** The Ashlord — Mordvar's will made partially present, faceless behind an obsidian mask
+
+Caerith forged the Sundered Crown alongside representatives of all three peoples. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
+
+Two thousand years of incremental hollowing — not enough to fully erase them, enough to turn them. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
+
+**What remains:** Caerith's name is no longer spoken in Aelorin society. What persists in the Ashlord is not personality — not preferences or affections or grief in any recognizable form. What persists is the structural shape of a self: a remnant of agency, enough to command, enough to understand commands, enough to know what they once were and cannot say.
+
+**The mask:** Worn because beneath it is an Aelorin face. The Naergrim — themselves Aelorin-derived and two thousand years old — would recognize what they were looking at. The mask is the Ashlord's one act of preservation, not from vanity but from the understanding that if the Naergrim saw the face and realized its implications, the Ashen Hand's command structure would fracture.
+
+**Aelthurion's burden:** He has known since shortly after the Second Age. Caerith's name appears in Lirien-Thal's archive as having completed the Aelthiren, because the alternative is saying what they became. No Aelorin who learns the truth disagrees with the decision to keep silence. They understand immediately why you would not want to say it aloud.
+
+**Hints through the trilogy:**
+- *Game One:* After giving Roland the silver clasp, Aelthurion goes quiet when Roland asks whether there is anything else he should know. He says: *"Everything that matters is in what I have already told you."* This is technically true.
+- *Game Two:* The descent into Khorumzad's lower levels reveals Aelorin construction markers in the stone at Level Six — far below anything the Aelorin admit to having built. Seren finds a name carved in Vigil-Keeper formal script on the keystone. She says only: *"It is not a name I know. But the script is used for persons of consequence."* She does not say that no Aelorin would use it for someone who no longer existed.
+- *Game Three:* At the Aescstól, before the fight, the Ashlord speaks once. A single phrase in old Aelorin — the formal register of the Second Age, a construction so archaic that only Seren, with her centuries, can parse it. She understands it. She does not translate it for the others during the fight. She translates it afterward, in private, to Roland alone: *"I held as long as I could."*
+
+**The reveal:** When the Ashlord falls, the mask cracks. Beneath it is an aged Aelorin face — silver hair, amber eyes faded almost to white. The expression on it, in death, is not anguish. It is relief. Seren is the first to reach the body. She stays there for a long time. Dagna, who is beside her, says nothing and keeps the others back without being asked.
+
+---
+
 ### Prince Aedric Vane
 
 **Age:** 26

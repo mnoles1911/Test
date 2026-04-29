@@ -55,9 +55,10 @@ This is not a combat sequence — it is an endurance sequence. The heat is real.
 **What each person carries:**
 - **Roland:** The promise he made at the beginning of the trilogy without knowing where it led. He does not regret it.
 - **Aldric:** The life he is putting at risk for people he did not know a year ago, and now does.
-- **Seren:** The weight of understanding that she chose to be present for mortality, and that this specific mortality, at this specific moment, is something she cannot look away from.
+- **Seren:** The weight of understanding that she chose to be present for mortality, and that this specific mortality, at this specific moment, is something she cannot look away from. Also something else — a suspicion, forming since Level Six of the Khorumzad descent, that the name on the keystone and the faceless figure ahead of them are the same thing. She is not certain. She will be.
 - **Corvus:** Pain. Genuine physical pain from the cost he paid fighting Vaeroth. He keeps moving because he made a commitment and because Roland is still moving and he is not going to be the one who stops first.
 - **Orion:** The knowledge that he navigated here correctly and this is the furthest point of any voyage he has made. He does not know what comes after. He has decided this is all right.
+- **Dagna:** Chalk-marked the last junction they came through. Old habit. She notices she has almost run out of chalk.
 
 ---
 
@@ -65,11 +66,23 @@ This is not a combat sequence — it is an endurance sequence. The heat is real.
 
 The Hollow Hearth. The Ash Throne — obsidian streaked with silver, forged from cooled lava and bone-meal, the instrument through which Mordvar's will has flowed for two thousand years.
 
-The Ashlord is here. Faceless, Mordvar's will made present. He is the last obstacle.
+The Ashlord is here. Faceless behind his obsidian mask. He does not speak immediately.
 
-**The Ashlord's identity** is revealed here. It does not matter who he was. What matters is what he is now: a person who surrendered their self so completely to Mordvar's service that the distinction between self and service has collapsed. He is the warning for what Aldric must not become during the wielding.
+Then he does. One phrase, in old Aelorin — the formal register of the Second Age, a construction so archaic that only Seren can parse it. The others hear an unfamiliar cadence and look to her. Her face changes. She says nothing. She looks at the Ashlord for a long moment. Then she says: *"We fight."*
 
-The party defeats the Ashlord together. It is a fight that costs something. It is not the climax — the climax is what comes next.
+**The fight:** It costs something. The Ashlord does not fight like the Ashen Hand's mages — he fights like someone who has been doing a single thing for two thousand years and has no other available action. There is no strategy to it. There is only weight. The party wins because there are six of them and the weight is finally distributed across enough people that none of them breaks under it alone.
+
+**The reveal:** When the Ashlord falls, the mask cracks. Beneath it is an aged Aelorin face — silver hair, amber eyes faded almost to white, a face that has been trying to remember something for a very long time. In death, the expression is relief.
+
+Seren reaches the body first. She stays there a long time. Dagna comes to stand beside her and keeps the others back without explanation. She does not know why — she does not yet know who this was. She does it because Seren's stillness is not grief she should interrupt.
+
+Roland asks, quietly: *"Who was that?"*
+
+Seren says: *"I will tell you later."* She does tell him — much later, after the descent, after the battle's end, after the worst of the counting is over. She tells only Roland. He understands, when she is done, why Aelthurion said everything that mattered was in what he had already told him. He also understands why Aelthurion did not say more.
+
+The Ashlord is the warning for what Aldric must not become during the wielding. The party does not know this in full until later. Aldric, when Seren eventually tells him, is quiet for a long time. Then he says: *"They held as long as they could."* He uses Seren's translation of the phrase without knowing it. She does not tell him this either.
+
+The party defeats the Ashlord. It is not the climax — the climax is what comes next.
 
 ---
 

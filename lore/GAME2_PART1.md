@@ -30,6 +30,8 @@ Inside, Darna Deepdelver provides the situation: Bromrin has moments of clarity 
 
 **Corvus's first action:** He walks the contaminated levels without a mask, senses the spread, and maps it. He comes back pale. He tells Roland the contamination is deliberate — it has a direction, a source, a propagation pattern that matches designed release rather than accident. Someone in the court has been managing it.
 
+**Dagna's first action:** She goes to the same levels with chalk and a measuring line and records the seismic profile. When she surfaces, she compares her readings with Corvus's map. The contamination propagation and the seismic instability are not co-located. She tells Roland: *"Whatever is spreading from the source is moving west. The deep structural shift is moving east. Two different problems."* The second problem is the Vault — the breach below has changed the stone's behavior in ways that will not be visible until something heavy is placed on the wrong floor. She begins marking load-bearing points throughout the accessible sections. By Game Two's climax, this is what stops the tunnel collapse from becoming a full level cascade.
+
 ---
 
 ### [MAIN QUEST] Exposing Drossvik
@@ -67,7 +69,11 @@ The descent to the Vault of Aen-Vael requires passing through nine dig levels be
 
 **Levels 1-3:** Heavy contamination but passable with Corvus's protection. The gold-hunger in the ambient air manifests as a pressure on perception — everything valuable looks more valuable; every decision feels like it should be made quickly; the urgency is artificial and both Corvus and Roland know it, which helps.
 
-**Levels 4-6:** The walls have traces of Second Age construction — this was excavated deliberately long before the dwarves arrived. Someone built these chambers. The architecture is not dwarven. It is not any recognizable style. Seren (who joined the party after Game One ended) is quiet for a long time looking at the walls, then says: *This was built before the Third Age. Before the Second. This was here when the world was young.*
+**Levels 4-6:** The walls have traces of Second Age construction — this was excavated deliberately long before the dwarves arrived. Someone built these chambers. The architecture is not dwarven. It is not any recognizable style. Seren is quiet for a long time looking at the walls, then says: *This was built before the Third Age. Before the Second. This was here when the world was young.*
+
+Dagna, who has been marking every junction, stops at the keystone of Level Six's primary arch. There is a name carved in it — old Aelorin formal script, the construction used for persons of exceptional historical consequence. She does not know the name. She describes it to Seren.
+
+Seren is still for a moment. Then she says: *"I do not know that name either."* She says nothing more. Roland notices that this is not the same as the name not being in her memory — Seren is four hundred years younger than Aelthurion, but she is a loremaster. An Aelorin name she does not know, in Vigil-Keeper formal script, on a chamber wall two thousand years below the light, is not a name that was forgotten. It is a name that was removed.
 
 **Level 7:** The party encounters Ashfallen — three former Khorumzad soldiers who were captured during an Ashen Hand incursion and returned. They wear familiar faces. Two of Bromrin's personal guard who accompanied the descent freeze on recognition. One does not survive the hesitation.
 

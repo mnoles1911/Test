@@ -16,6 +16,7 @@ Alliance losses vary based on which factions committed. At maximum Alliance:
 - Khorumzad: Darna's command fought well; she survives
 - Vosskara: Yaromir's full force arrived; held the supply lines; survived mostly intact
 - Conclave mages: 23 of 41 (the engagement with the Ashen Hand was the most costly fight mage-for-mage)
+- Dragon-Watchers: Dagna brought eleven of her order to the battle. Seven survive. The Dragon-Watcher record of Drûn-Khazad's final eruption cycle is the most complete geological account in dwarven history.
 
 The governing theme of the trilogy: bonds between people are more durable than institutions, and more powerful than any single act of heroism. The counts reflect this — the best-equipped, most prestigious forces took the highest casualties, and the volunteer fighters and frontier soldiers who came because of personal commitment to Roland or to each other performed beyond what their numbers should allow.
 
@@ -35,7 +36,13 @@ He returns to Aldenholt and begins work with Tomlin (the assistant archivist) to
 
 **Corvus Tane** returns to the Conclave. His permanent alteration — changed eyes, accelerated aging — is noted but not remarked upon. He identifies the two Ashfallen members that the Conclave did not know about. He does not explain how he became certain. He does not rejoin the senior instruction track. He asks to teach the first-year students, who are the most likely to destroy something by accident and the most likely to benefit from someone who has already made the costly choices.
 
-**Seren of the Third Glade** completes the pilgrimage to all Eight Glades — the first full circuit since the Eighth Star fell. At the Eighth Glade, which has been tended in anticipation for two thousand years with no star, she places the message that was delivered to her from the Nameless Council operative, having carried it since the Copper Isles muster. She is not there when the glade brightens for the first time in recorded history. She is already on the path to the next glade.
+**Seren of the Third Glade** completes the pilgrimage to all Eight Glades — the first full circuit since the Eighth Star fell. At the Eighth Glade, which has been tended in anticipation for two thousand years with no star, she places the message from the Nameless Council operative, having carried it since the Copper Isles muster. The message contains evidence that the Eighth Star's fall was not loss but choice — the Star chose to come down, to be present when it was needed, rather than watching from a distance it could not close.
+
+In the Exchange ending, placing the Aeluvain in the Aescstól completes the note the Eighth Star was singing — the note Mordvar silenced two thousand years ago. The Star's purpose, once fulfilled, dissolves the reason for its descent. Its presence rises back to where it came from.
+
+Seren leaves the message at the glade boundary and walks on, already on the path to the next glade. She is not there when the glade brightens for the first time in recorded history. This is intentional. She did not come to witness it — she came to return what the Star sent ahead of itself. The witnessing is for the Aelorin who tend the glade and have tended it for two thousand years in anticipation of exactly this. It belongs to them.
+
+**Dagna Irontrack** returns to the Dragon-Watcher order as its most senior field operative by default — attrition and the political fallout from three years of falsified reports have reshaped the order's upper tier. She does not want an administrative role. She accepts one, temporarily, because someone has to write the new reporting protocols and she is the only person who knows exactly how the old ones were compromised. The temporary role lasts four years. Then she goes back into the field. Her first posting after is the Thal western shore settlement, where she monitors the volcanic change now that Mordvar's will no longer drives it. Her reports come back quarterly, on time, accurate.
 
 **Orion Farr** is offered his own ship by Queen Eilwen. He accepts. His first voyage is not a mission — it is the Shroud Sea window, now nine years open. He sails east, past the storm-wall, into whatever was on the other side. He sends one message back through the Brotherhood network before the window closes: *Ruins. Extensive. Unmistakably Second Age. This will take years.*
 
@@ -53,7 +60,11 @@ He has a son, eventually. The son is told what he carries, when he is old enough
 
 Aldric says: *Yes. But you were born knowing how to carry it. That is what the bloodline means.*
 
-**Seren** visits Aldric regularly for the rest of his life, which is longer than most human lives — the Tether's anchoring has a side effect no one anticipated. She says, one visit: *You chose to stay. Like the Star.* He says: *You said that at the summit.* She says: *Yes. I wanted to see if it still felt true.* He says: *Does it?* She says: *Yes.*
+**Seren** completes the pilgrimage to all Eight Glades as in the Exchange — she places the same message at the Eighth Glade. But in the Tether ending, the Aeluvain's note is not completed. It is held, anchored in Aldric's bloodline, still present in the world. The Eighth Glade does not brighten.
+
+What happens instead is stranger and harder to name: the glade is different. The Aelorin who tend it say they cannot explain the difference. It does not feel absent the way it did before. It feels like something is near that has not come all the way home yet. They continue tending it. They always intended to.
+
+Seren visits Aldric regularly for the rest of his life, which is longer than most human lives — the Tether's anchoring has a side effect no one anticipated. She says, one visit: *"You chose to stay. Like the Star."* He says: *"You said that at the summit."* She says: *"Yes. I wanted to see if it still felt true."* He says: *"Does it?"* She says: *"Yes. Though the Star will come home eventually. When the Tether no longer needs to hold."* He says: *"So it waits."* She says: *"It chose to. That is different from being made to."*
 
 ---
 

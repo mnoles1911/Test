@@ -128,7 +128,13 @@ Two thousand years later, the binding weakens. Mordvar cannot yet act directly. 
 
 An obsidian throne streaked with silver, forged from cooled lava and the bone-meal of Mordvar's first sacrifices, in the Hollow Hearth within Drûn-Khazad. Mordvar's will flows through it into whoever sits upon it.
 
-The current occupant is the **Ashlord** — faceless even to his own forces, Mordvar's will made partially present. His identity is unknown to all but the closest Ashen Hand inner circle. He may be a corrupted human king; he may be a dark elf; he may be something that was a person once and is no longer.
+The current occupant is the **Ashlord** — faceless even to his own forces, Mordvar's will made partially present. He wears a featureless obsidian mask and has not been seen without it in two thousand years. His own inner circle believes he was always this way — a vessel built for the purpose, not a person converted to it. They are wrong.
+
+**The Ashlord is Caerith**, formerly the Vigil-Keeper of the Second Age Grand Alliance — the Aelorin loremaster who led the Aelorin contingent in forging the Sundered Crown. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close. Not enough to destroy them — enough to turn them.
+
+Two thousand years of that. More hollow than the Ashfallen, less hollow than Mordvar himself. A being trapped between states, the instrument of the will they spent their life opposing, with just enough of themselves left to know it.
+
+Lord Aelthurion knows. He has known since the Second Age. Caerith's name is not spoken in Aelorin society. In the Archive at Lirien-Thal they are recorded as having completed the Aelthiren, because the alternative requires explaining what they became. The mask is worn because beneath it is an Aelorin face — and the Naergrim, who are themselves Aelorin-derived, would recognize what they were looking at.
 
 **Symbol:** A black sun with seven rays. One for each Host. The seventh ray is vacant — reserved for Mordvar.
 
