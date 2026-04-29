@@ -19,9 +19,9 @@ Prefer simple, readable solutions over clever ones.
 When I ask for something, tell me if there's a simpler way to achieve it.
 
 ## Genre and tone
-[Write 2-3 sentences describing your world's tone — dark, hopeful, epic, intimate?]
-[Example: "Epic fantasy with grounded emotional stakes. Think LOTR's scale with 
-a single protagonist's intimate perspective. The world feels ancient and real."]
+Epic fantasy with grounded emotional stakes. Think LOTR's scale with 
+a single protagonist's intimate perspective. The world feels ancient and real. 
+Mira-Thal is a world of two continents in the third age of its existence. The western continent Mira is the heartland of civilization: four human kingdoms clustered at its center, the ancient Aelorin forests to the north, three dwarven mountain-kingdoms threading the Spine of the World, and the wild eastern frontier where the ash-lands begin. The eastern continent Thal is wilderness — unmapped beyond its fringes, dominated by the Ash Throne's influence, and anchored at its heart by the volcano Drûn-Khazad. The age is paradox: men are more numerous than ever, cities grow, trade flows — but the world's deeper fabric frays. The Aelorin dwindle. Dwarven kings grow old or greedy. Something bound two thousand years ago beneath the volcano is learning, slowly, to breathe again.
 
 ## Core systems (what we're building)
 - Player: CharacterBody2D, 8-directional movement, interacts with world
