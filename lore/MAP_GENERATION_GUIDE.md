@@ -145,3 +145,150 @@ In order of label size (largest to smallest):
 ## Suggested Image Prompt (condensed)
 
 > A hand-drawn Tolkien-style fantasy world map on aged parchment showing two continents: Mira (left, larger, with dramatic western sea-cliffs, a north-south mountain spine, a vast northern forest, and farmland plains) and Thal (right, smaller, volcanic, dominated by a massive central shield volcano called Drûn-Khazad with a glowing caldera and permanent ash cloud). Between them, the Shroud Sea filled with storm-hatching. Profile-peak mountain illustration style. Individual tree symbols for forests. Hand-lettered labels. Rivers flowing west from the mountains across the plains. Ink on parchment. Compass rose in one corner.
+
+# Map Position Grid — Mira-Thal
+
+Proportional coordinates for placing features on a Tolkien-style map. Values are percentage of total map width (x, left=0 right=100) and height (y, top=0 bottom=100). North is top.
+
+Map layout assumption: Mira occupies x 5–62%, Shroud Sea x 62–78%, Thal x 78–97%.
+
+---
+
+## Mira — Settlements
+
+| Settlement | x% | y% | Notes |
+|---|---|---|---|
+| Sirathiel-by-the-Sea | 20 | 8 | Northern coast, pale stone |
+| Aelorien | 18 | 16 | Vale of First Song, deep Greatwood |
+| Lirien-Thal | 23 | 20 | Silverwood canopy, Greatwood north-center |
+| Karaz-Dûn | 52 | 18 | Below Kara-Thûn, northern Spine |
+| Aldenholt | 30 | 50 | River confluence, Central Plains |
+| Caer Brannoch | 10 | 28 | Northwest headland, Bay of Mourne |
+| Caer Drowned | 10 | 36 | Bay of Sulwyn, submerged ruin |
+| Brightwatch | 38 | 33 | Central-west Mira, Iron Chalice fortress |
+| Vosskar-on-the-Iron | 53 | 43 | Northern Ashfields, Spine junction |
+| Khorumzad | 52 | 50 | Central Spine, nine levels deep |
+| Coldstoke | 56 | 55 | Eastern frontier, Ashfields edge |
+| Solgrade | 27 | 65 | Southern Central Plains, no walls |
+| Kazaad-Brak | 52 | 72 | Southern Spine, below Broken Fang |
+
+## Thal — Settlements
+
+| Settlement | x% | y% | Notes |
+|---|---|---|---|
+| Mor-Vethrin | 86 | 50 | Eastern Vrothmor cliff-face |
+| Drûn-Khazad (caldera) | 82 | 57 | Center-left Thal, slightly south |
+
+## Islands
+
+| Feature | x% | y% | Notes |
+|---|---|---|---|
+| Pilgrim's Chain (center) | 3 | 50 | Three islands, west of Mira |
+| Copper Isles (center) | 28 | 90 | South of Mira's southern coast |
+
+## Geographic Features
+
+| Feature | x% | y% | Notes |
+|---|---|---|---|
+| Kara-Thûn peak | 52 | 16 | Tallest, snow-crowned |
+| Khorumzad's Crown | 52 | 50 | Flat-topped profile |
+| Broken Fang | 52 | 72 | Twin-peak split |
+| Sorrowmarsh (center) | 56 | 68 | Southeast of Spine southern end |
+| Weeping Wood (center) | 48 | 30 | Northeast Mira, dead forest |
+| Bay of Mourne | 10 | 28 | Northwest coast indentation |
+| Bay of Sulwyn | 10 | 36 | South of Mourne, sunken city |
+| Shroud Shore | 62 | 50 | Eastern Mira coast, no harbors |
+| Vrothmor Peaks (center) | 83 | 48 | Volcanic cluster, central-left Thal |
+| Ash-Steppe | 80 | 45 | Western Thal, flat open land |
+
+---
+
+## Usage Note
+
+These are approximate placement targets. When generating the map image, use these percentages as anchor points for label and symbol placement. Adjust slightly for visual balance — the goal is proportional accuracy, not pixel-perfect coordinates.
+
+# Map Negative Space — What Is NOT on the Map
+
+This file defines what should be absent, blank, or deliberately undetailed on the Mira-Thal map. Negative space is as important as what is drawn.
+
+---
+
+## Blank or Empty Zones
+
+**Eastern Thal interior**
+Beyond the Vrothmor Peaks and Drûn-Khazad, Thal's eastern reaches are unmapped. Leave this area open — no settlements, no roads, no terrain features. A single label in the blank space: *"Here the maps end."* in small italic.
+
+**The Shroud Sea crossing route**
+Do NOT draw a dotted line, path, or route across the Shroud Sea. The Brotherhood has made the crossing but it is not a known route. No ship trail. No waypoints. The sea is blank storm-hatching with one ship icon at the western edge only.
+
+**The Greatwood interior**
+The canopy closes. Inside the Greatwood, draw no roads, no clearings, no paths. The Eight Glades are shown as small open circles within the forest mass, but no route connects them. Lirien-Thal and Aelorien are marked but unreachable by any drawn road.
+
+**The Sorrowmarsh interior**
+No paths, no structures, no crossings. The Vossrun feeds in from the west and the Greyflow drains out to the east — those rivers are shown — but nothing passes through the marsh itself.
+
+**The Ashfields deep interior**
+The Frontier Road runs north-south along the Spine's eastern face. Beyond the road to the east: nothing. No settlements, no roads, no terrain markers beyond the ash stippling. The Ashfields simply end at the Shroud Shore with no features.
+
+**The deep Spine**
+The Underway is marked as a dotted line beneath the mountains, but no surface routes cross the Spine. There are no passes shown. The range is a wall.
+
+---
+
+## What Has No Map Symbol
+
+- The Hollow Court's location — unknown, intentionally absent
+- Goblin territories — no settlements, no named features; the Ashfields are simply labeled as dangerous frontier
+- The Aescryd ruins on Thal's western coast — too small for a standard symbol; a footnote label only
+- Any route beyond the western ocean — the map ends at Mira's western coast and the Pilgrim's Chain
+- The source of the ghost-lights in the Sorrowmarsh — shown as phenomenon (faint circles), not explained
+
+---
+
+## Deliberate Omissions for Atmosphere
+
+- No scale bar. Tolkien-style maps imply scale through landmark density, not measurement.
+- No latitude/longitude grid.
+- No political borders drawn as lines — kingdoms are implied by city clustering and road networks, not boundary marks.
+- No population numbers or city-size indicators beyond symbol style.
+- The Shroud Sea has no safe harbor marker on the Thal side. Approach is implied as dangerous.
+
+# Island Size Comparison — Map Reference
+
+Guide for drawing the Copper Isles and Pilgrim's Chain at correct relative scale.
+
+---
+
+## The Copper Isles
+
+- Cluster of 5–7 islands on the shallow Copper Shelf south of Mira
+- Main island: roughly 40 miles across at its widest
+- Full cluster spans approximately 120 miles east-to-west
+- Islands are low-profile — shelf islands, not dramatic sea-stacks
+- Main island has a small harbor symbol
+- Draw the main island noticeably larger than the others; the others diminish in size moving away from it
+- On the map, the cluster should occupy roughly 4–5% of the map's total width
+
+## The Pilgrim's Chain
+
+- Three islands in a gentle northeast-to-southwest diagonal, west of Mira
+- Each island: roughly 12–15 miles across
+- Chain spans approximately 80 miles along its diagonal
+- Islands are more rugged than the Copper Isles — suggest rocky coastlines with cliff-tick marks
+- Each island has an Aelorin-glade symbol (open circle with rays)
+- All three islands are roughly equal in size — no main island
+- On the map, each island is about half the size of the Copper Isles main island
+- Full chain should occupy roughly 2–3% of the map's total width
+
+---
+
+## Relative Sizing Summary
+
+| Feature | Approximate real size | Map footprint |
+|---|---|---|
+| Copper Isles (full cluster) | 120 miles wide | ~4–5% map width |
+| Copper Isles (main island) | 40 miles wide | ~1.5% map width |
+| Pilgrim's Chain (full chain) | 80 miles diagonal | ~2–3% map width |
+| Pilgrim's Chain (each island) | 12–15 miles wide | ~0.5% map width |
+
+For reference: Mira is approximately 1,500 miles wide, occupying ~57% of the map. Use this ratio to calibrate island size against the continent.
