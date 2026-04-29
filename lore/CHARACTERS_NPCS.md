@@ -70,6 +70,23 @@ Not a monster — a young man who believes genuinely that the current order is f
 
 ## Key NPCs
 
+### Edran Vane — Caelborn Investigator
+
+Age 31 at Game One start. Recurring contact and ally across all three games. Not a party companion — a person with no official affiliation, extensive contacts, and no reason to be watched.
+
+**Background:** Discovered at seventeen that his family suppressed a lineage claim connecting them to the Caelborn Compact — a Second Age treaty granting passage rights in Aelorin territory. His younger sister Maren was killed three years before Game One by agents connected to the Hollow Court, who had found the same documents and considered the Caelborn line a threat. He has been investigating quietly and systematically since.
+
+**Skills:** Document analysis (he can identify falsification by studying primary sources), administrative law across three kingdoms, intelligence contacts, and the specific habit of holding information carefully until the moment it becomes useful.
+
+**Role across the trilogy:**
+- *Game One:* Crosses paths with Roland's group when his Hollow Court investigation overlaps with theirs. Shares intelligence, takes what he needs, departs before the Spine sequence. Leaves a contact address.
+- *Game Two:* His Caelborn Compact — the ancient treaty — becomes the key to Aelorin-held records the party cannot access otherwise. He does not know it is useful until Aelthurion tells him so.
+- *Game Three:* Operates from Aldenholt as an intelligence relay during the Alliance buildup. Does not cross to Thal.
+
+**Arc:** The Hollow Court figure responsible for Maren's death dies in Game Two's main plot — not by Edran's hand, as a consequence of larger events. The resolution is complete and out of his control, which is its own reckoning for a man who has spent years trying to control exactly this.
+
+---
+
 ### Dame Calla Vane — Grandmaster, Iron Chalice
 
 Age 58. The Iron Chalice's finances are her private crisis — she expended Roland because she believed his silence was necessary and has lived with that decision since. She is not corrupt; she is trapped between an institution she loves and a secret she cannot afford to expose.

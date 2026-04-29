@@ -16,6 +16,7 @@
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
 | **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
 | **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |
+| **Edran Vane** | Recurring ally; Caelborn investigator, intelligence contact | Games One-Three |
 | **Dame Calla Vane** | NPC; Iron Chalice Grandmaster | Game One |
 | **Henrietta** | NPC; Loremaster's Archive (dies Game One) | Game One |
 | **King Bromrin** | NPC; Khorumzad, gold-hunger victim | Games One-Two |

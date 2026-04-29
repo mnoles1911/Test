@@ -48,7 +48,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 | [BACKSTORY_SEREN.md](BACKSTORY_SEREN.md) | Seren's half-Aelorin origin, mother Lirien's Aelthiren, Vethri-Glade attack, 80 years with the Dawnbringers |
 | [BACKSTORY_DAGNA.md](BACKSTORY_DAGNA.md) | Dagna Irontrack's father's wrongful blame for the mine explosion; her Dragon-Watcher career and falsified reports |
 | [BACKSTORY_ALDRIC.md](BACKSTORY_ALDRIC.md) | Aldric Vane (blacksmith, Game Three): hidden Mordvar bloodline, life in Coldstoke, the assassination attempts |
-| [BACKSTORY_EDRAN.md](BACKSTORY_EDRAN.md) | Edran Vane (Caelborn investigator, Game One): suppressed Caelborn lineage, sister Maren's death, Hollow Court investigation |
+| [BACKSTORY_EDRAN.md](BACKSTORY_EDRAN.md) | Edran Vane (recurring ally, not companion): Caelborn lineage, Maren's death, Hollow Court investigation, Compact used in Game Two |
 | [BACKSTORY_MORDVAR.md](BACKSTORY_MORDVAR.md) | Bealoric's 30-year reign, Sael's death, the hollowing ritual, Aescryd's decline, the Aescstól Crown |
 | [BACKSTORY_VAEROTH.md](BACKSTORY_VAEROTH.md) | Vaeroth's Conclave career, legitimate grievances against Grand Mage Elthara, slide into Hollow Court service |
 | [BACKSTORY_CAERITH.md](BACKSTORY_CAERITH.md) | Vigil-Keeper history, Grand Alliance role, 2,000-year corruption, the mask, the death expression |
