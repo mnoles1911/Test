@@ -7,32 +7,24 @@ extends Area2D
 #
 # When fired, it calls Dialogic.start() to launch a dialogue timeline.
 # Dialogic is a plugin — see design/DIALOGIC_SETUP.md for installation steps.
-#
-# If Dialogic isn't installed yet, the trigger degrades gracefully:
-# it prints an error to the Output panel instead of crashing the game.
 
 
 # Path to the Dialogic timeline file for this trigger.
-# Change this constant to point to a different timeline for a different trigger.
 const TIMELINE_PATH: String = "res://dialogue/henrietta_archive.dtl"
 
 # Tracks whether the player is currently standing in the trigger zone.
 var player_inside: bool = false
 
 # Prevents the dialogue from firing again while it's already open.
-# Set to true when dialogue starts, false when it ends.
 var dialogue_active: bool = false
 
 
 func _ready() -> void:
-	# Connect this Area2D's body signals so we know when the player enters/exits.
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Only respond to E key presses when the player is in the zone
-	# and dialogue isn't already running.
 	if not player_inside or dialogue_active:
 		return
 
@@ -55,24 +47,18 @@ func _on_body_exited(body: Node2D) -> void:
 
 
 func _fire_trigger() -> void:
-	# Check that the Dialogic autoload node is present before using it.
-	#
-	# Important: Engine.has_singleton() only detects native C++ engine singletons.
-	# Dialogic registers itself as a GDScript autoload node, which lives at
-	# /root/Dialogic in the scene tree. get_node_or_null() is the correct check.
 	if get_node_or_null("/root/Dialogic") == null:
-		push_error("[DialogueTrigger] Dialogic autoload not found at /root/Dialogic. Install the plugin via the Asset Library and enable it in Project > Project Settings > Plugins. See design/DIALOGIC_SETUP.md.")
+		push_error("[DialogueTrigger] Dialogic autoload not found. See design/DIALOGIC_SETUP.md.")
 		return
 
-	# Start the Dialogic timeline.
-	# Dialogic.start() takes the path to a .dtl file and displays the dialogue
-	# box over the current scene. The player presses Enter or E to advance lines.
 	dialogue_active = true
-	var timeline = Dialogic.start(TIMELINE_PATH)
 
-	# timeline_ended fires when the last line is dismissed and the box closes.
-	if timeline:
-		timeline.timeline_ended.connect(_on_dialogue_ended)
+	# Dialogic.start() returns the layout CanvasLayer node, NOT a timeline object.
+	# The timeline_ended signal lives on the Dialogic autoload itself.
+	# We connect it here (with a one-shot flag so it auto-disconnects after firing)
+	# rather than on the return value of start().
+	Dialogic.timeline_ended.connect(_on_dialogue_ended, CONNECT_ONE_SHOT)
+	Dialogic.start(TIMELINE_PATH)
 
 
 func _on_dialogue_ended() -> void:
