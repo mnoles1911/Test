@@ -81,6 +81,15 @@ public class Player : Entity
 
     // ---- XP / Level ----
 
+    /// Directly restore level and XP from a save without triggering level-up side effects.
+    public void RestoreProgress(int level, double partialXp)
+    {
+        Level     = Math.Max(1, level);
+        MaxHealth = Constants.PlayerMaxHealth + (Level - 1) * 10;
+        Health    = MaxHealth;
+        XP        = Math.Clamp(partialXp, 0, XPToNextLevel - 0.001);
+    }
+
     public void AddXP(double amount)
     {
         double boosted = amount * BuffMultiplier(BuffType.XpBoost);

@@ -31,11 +31,11 @@ public class WorldItem
                 break;
 
             case ItemType.ManaPotion:
-                // No mana system yet – stub
+                player.ApplyBuff(BuffType.FireRate, 1.5f, 8.0);
                 break;
 
             case ItemType.Antidote:
-                // No debuff system yet – stub
+                player.Health = Math.Min(player.MaxHealth, player.Health + 15);
                 break;
 
             case ItemType.Food:

@@ -14,8 +14,8 @@ public class Enemy : Entity
     public Enemy(Vector2 worldPosition)
         : base(worldPosition, Constants.EnemyMaxHealth) { }
 
-    /// Main AI tick. Call every frame with the current player world position and game time.
-    public void UpdateAI(Vector2 playerWorldPos, double currentTime, WorldManager world)
+    /// Main AI tick. Call every frame with the current player world position, game time, and delta time.
+    public void UpdateAI(Vector2 playerWorldPos, double currentTime, WorldManager world, double deltaTime)
     {
         float dist = IsometricMath.Distance(WorldPosition, playerWorldPos);
 
@@ -37,13 +37,13 @@ public class Enemy : Entity
 
         // Chasing
         State = EnemyState.Chasing;
-        MoveToward(playerWorldPos, world);
+        MoveToward(playerWorldPos, world, deltaTime);
     }
 
-    private void MoveToward(Vector2 target, WorldManager world)
+    private void MoveToward(Vector2 target, WorldManager world, double deltaTime)
     {
         var dir    = IsometricMath.Direction(WorldPosition, target);
-        float step = (Constants.EnemySpeed / Constants.TileWidth) * (1f / 60f);
+        float step = (Constants.EnemySpeed / Constants.TileWidth) * (float)deltaTime;
         var desired = WorldPosition + dir * step;
 
         // Wall-slide
