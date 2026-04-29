@@ -38,6 +38,8 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /assets/tilesets — environment tiles
 - /assets/audio — music and sfx
 - /dialogue — all Dialogic timeline files
+- /lore — all narrative canon (start at lore/INDEX.md)
+- /design — game implementation reference (systems, art direction)
 
 ## Current milestone
 MILESTONE 1: First walkable scene with lighting
@@ -67,6 +69,8 @@ These files go stale as lore and game design evolve. Review and update them when
 | lore/WORLD_GEOGRAPHY.md | New locations, terrain, or settlements established |
 | lore/CITY_DESCRIPTIONS.md | City details expanded or corrected |
 | lore/MAP_GENERATION_GUIDE.md + sibling map files | New settlements, terrain, or geographic features added |
+| design/SYSTEMS_DESIGN.md | Companion roster changes, faction triggers updated, new game systems added |
+| design/ART_DIRECTION.md | New locations added to the game, palette or shader decisions finalized |
 | CLAUDE.md (this file) | Godot project initialized; milestone completed; new canonical naming contradictions found |
 
 ---
@@ -82,6 +86,11 @@ All world-building canon lives in /lore. Start at /lore/INDEX.md for a directory
 - lore/REFERENCE.md — quick-reference tables
 
 Always check INDEX.md before adding new lore files to avoid duplication.
+
+## Design reference
+Game implementation docs live in /design. When lore and design conflict, lore wins.
+- design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems
+- design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
 
 ## Current project state
 The repository is currently in lore-development phase. No Godot project, scenes, or scripts exist yet. Milestone 1 (first walkable scene) has not begun. Build/test commands will be added once the Godot project is initialized.
