@@ -54,6 +54,23 @@ MILESTONE 1: First walkable scene with lighting
 - C# — GDScript only
 - Any advice to switch engines
 
+## Files requiring regular maintenance
+
+These files go stale as lore and game design evolve. Review and update them whenever making significant additions or changes:
+
+| File | Update when... |
+|---|---|
+| lore/INDEX.md | Any new lore file is added or an existing file's scope changes |
+| lore/REFERENCE.md | New characters, locations, factions, or timeline events are added |
+| lore/CHARACTERS_COMPANIONS.md | Companion arcs, abilities, or backstory details change |
+| lore/CHARACTERS_NPCS.md | New NPCs added or villain details revised |
+| lore/WORLD_GEOGRAPHY.md | New locations, terrain, or settlements established |
+| lore/CITY_DESCRIPTIONS.md | City details expanded or corrected |
+| lore/MAP_GENERATION_GUIDE.md + sibling map files | New settlements, terrain, or geographic features added |
+| CLAUDE.md (this file) | Godot project initialized; milestone completed; new canonical naming contradictions found |
+
+---
+
 ## Lore reference
 All world-building canon lives in /lore. Start at /lore/INDEX.md for a directory map. Key entry points:
 - lore/WORLD.md — three ages, magic, religion, peoples overview
