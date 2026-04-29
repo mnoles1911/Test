@@ -56,6 +56,14 @@ Each `Chunk` is seeded deterministically via `ChunkSeed(coord)` so regenerating 
 
 `UIElement` → concrete components (`Button`, `Label`, `Panel`, `StatBar`). Full screens subclass `UIScreen` and are pushed/popped on `ScreenManager`'s stack — the top screen receives input and is drawn last. `SpriteFont?` is nullable everywhere; all `DrawString` calls must null-check (font fails to load silently since there is no content pipeline).
 
+### Input
+
+`InputManager` wraps `KeyboardState`/`MouseState` each frame and exposes:
+- `MovementDirection` — normalized `Vector2` from WASD (world-space, not screen-space)
+- `AimDirection` — mouse position minus player screen position (screen-space); converted to world-space in `GameScene` via `IsometricMath.ScreenToWorld` before firing bullets
+- `FireHeld`, `FirePressed` — LMB or Space
+- `PausePressed`, `InventoryPressed` — edge-detected (rising edge only)
+
 ### Save / Load
 
 `SaveManager` reads/writes JSON to `%LOCALAPPDATA%/IsometricRPG/` (`save.json` + `settings.json`). To restore player progress from a save, call `Player.RestoreProgress(level, partialXp)` — do **not** call `AddXP` in a loop, as that triggers level-up side effects (HP refill, MaxHealth increment) that overwrite the saved HP.
