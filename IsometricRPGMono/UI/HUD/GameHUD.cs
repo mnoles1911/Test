@@ -112,9 +112,9 @@ public class GameHUD
         if (font != null)
         {
             spriteBatch.DrawString(font, "HP",
-                new Vector2(BarLeft + 204, _healthBar.Bounds.Y + 2), UITheme.HealthBar);
+                new Vector2(BarLeft + 206, _healthBar.Bounds.Y + 2), UITheme.HealthBar);
             spriteBatch.DrawString(font, "XP",
-                new Vector2(BarLeft + 204, _xpBar.Bounds.Y + 1), UITheme.XPBar);
+                new Vector2(BarLeft + 206, _xpBar.Bounds.Y + 1), UITheme.XPBar);
         }
 
         // Labels
