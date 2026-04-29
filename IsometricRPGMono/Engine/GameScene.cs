@@ -63,6 +63,10 @@ public class GameScene
         _audio = new AudioManager();
         _audio.Initialize(graphicsDevice);
 
+        // Apply persisted settings (volume levels, etc.)
+        var settings = SaveManager.LoadSettings();
+        _audio.ApplySettings(settings);
+
         // UI subsystems
         _hud           = new GameHUD();
         _minimap       = new Minimap();
@@ -105,12 +109,26 @@ public class GameScene
         _audio?.PlayMusic(MusicType.MainMenu);
         var menu = new MainMenuScreen
         {
-            ContinueEnabled = false,
+            ContinueEnabled = HasSave,
             OnNewGame = () =>
             {
                 _audio.PlaySound(SoundType.MenuClick);
                 _audio.PlayMusic(MusicType.Gameplay);
+                SaveManager.DeleteSave();
                 InitializeGameplay();
+                _screenManager.Pop();
+                _state = GameState.Playing;
+            },
+            OnContinue = () =>
+            {
+                _audio.PlaySound(SoundType.MenuClick);
+                _audio.PlayMusic(MusicType.Gameplay);
+                // Prepare subsystems then restore saved state
+                CombatSystem = new CombatSystem();
+                ItemSpawner  = new ItemSpawner();
+                Enemies.Clear();
+                _enemySpawnTimer = 0;
+                LoadGame();
                 _screenManager.Pop();
                 _state = GameState.Playing;
             },
@@ -125,6 +143,91 @@ public class GameScene
 
     private bool _wantsExit = false;
     public bool WantsExit => _wantsExit;
+
+    public bool HasSave => SaveManager.SaveExists;
+
+    // -------------------------------------------------------------------------
+    // Save / Load
+
+    private void SaveGame()
+    {
+        if (Player == null) return;
+        var data = new SaveData
+        {
+            PlayerStats  = new PlayerData
+            {
+                Level        = Player.Level,
+                Experience   = (int)Player.XP,
+                Health       = Player.Health,
+                MaxHealth    = Player.MaxHealth,
+                EnemiesKilled = _killCount,
+            },
+            Inventory    = new List<Item?>(Player.Inventory),
+            Equipment    = Player.Equipment,
+            Context      = BuildGameContext(),
+            KillCount    = _killCount,
+            PlayerWorldX = Player.WorldPosition.X,
+            PlayerWorldY = Player.WorldPosition.Y,
+        };
+        SaveManager.SaveGame(data);
+    }
+
+    private void LoadGame()
+    {
+        var data = SaveManager.LoadGame();
+        if (data == null) return;
+
+        // Restore player position and stats
+        Player = new Player(new Vector2(data.PlayerWorldX, data.PlayerWorldY));
+        Player.Health    = data.PlayerStats.Health;
+        Player.MaxHealth = data.PlayerStats.MaxHealth;
+
+        // Restore XP / level via AddXP from zero — simpler: set fields directly
+        // Player.Level and Player.XP are private setters, so we use AddXP loops.
+        // Instead, restore via repeated level-ups would be wrong; set via reflection
+        // is fragile. The cleanest approach: expose internal setters or use a
+        // dedicated Restore method. For now we call AddXP with stored XP + level-up
+        // thresholds. We add XP to reach the saved level first.
+        for (int lvl = 1; lvl < data.PlayerStats.Level; lvl++)
+        {
+            double xpNeeded = 100.0 * Math.Pow(1.5, lvl - 1);
+            Player.AddXP(xpNeeded);
+        }
+        // Then add the partial XP within the current level
+        Player.AddXP(data.PlayerStats.Experience);
+
+        // Restore inventory (20 slots)
+        var inv = data.Inventory;
+        for (int i = 0; i < Player.Inventory.Count && i < inv.Count; i++)
+            Player.Inventory[i] = inv[i];
+
+        // Restore equipment slots
+        Player.Equipment.Head.Equip(null!);   // clear first via helper
+        RestoreEquipmentSlot(Player.Equipment.Head,     data.Equipment.Head);
+        RestoreEquipmentSlot(Player.Equipment.Chest,    data.Equipment.Chest);
+        RestoreEquipmentSlot(Player.Equipment.Legs,     data.Equipment.Legs);
+        RestoreEquipmentSlot(Player.Equipment.Feet,     data.Equipment.Feet);
+        RestoreEquipmentSlot(Player.Equipment.MainHand, data.Equipment.MainHand);
+        RestoreEquipmentSlot(Player.Equipment.OffHand,  data.Equipment.OffHand);
+
+        _killCount = data.KillCount;
+
+        // Load world around restored position
+        WorldManager.InitialLoad(Player.WorldPosition);
+        var context = BuildGameContext();
+        foreach (var chunk in WorldManager.ChunksNeedingItemSpawn())
+            ItemSpawner.SpawnItemsForChunk(chunk, context, _rng);
+
+        CameraPos = IsometricMath.WorldToScreen(Player.WorldPosition);
+    }
+
+    private static void RestoreEquipmentSlot(Equipment slot, Equipment saved)
+    {
+        if (saved.Item != null)
+            slot.Equip(saved.Item);
+        else
+            slot.Unequip();
+    }
 
     // -------------------------------------------------------------------------
     // Game loop
@@ -333,10 +436,16 @@ public class GameScene
     private void PushPause()
     {
         _state = GameState.Paused;
+        SaveGame();
         var pause = new PauseScreen
         {
-            OnResume   = () => ResumePlaying(),
-            OnMainMenu = () => GoToMainMenu()
+            OnResume      = () => ResumePlaying(),
+            OnMainMenu    = () => GoToMainMenu(),
+            OnSaveAndQuit = () =>
+            {
+                SaveGame();
+                GoToMainMenu();
+            }
         };
         _screenManager.Push(pause);
     }
@@ -373,6 +482,7 @@ public class GameScene
     private void PushGameOver()
     {
         _state = GameState.GameOver;
+        SaveGame();
         var go = new GameOverScreen
         {
             KillCount = _killCount,
