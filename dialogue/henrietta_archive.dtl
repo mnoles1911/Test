@@ -1,0 +1,31 @@
+# Dialogic 2 timeline — Henrietta at the Archive Door
+# Game One, opening sequence. Roland has just arrived at the Loremaster's Archive.
+#
+# CONTEXT (from lore/GAME1_PART1.md):
+#   Henrietta has been quietly compiling genealogical research she doesn't fully
+#   understand. She knows someone has been asking about the restricted records —
+#   someone she doesn't recognise. She has prepared a duplicate of her notes.
+#   She presses it into Roland's coat at the door and doesn't explain why.
+#   Within twenty-four hours she will be dead.
+#
+# FORMAT:
+#   This file uses Dialogic 2's text timeline syntax.
+#   Each line is: CharacterDisplayName: "Spoken text."
+#   The display name must match exactly what you set in the Dialogic
+#   Characters editor (see design/DIALOGIC_SETUP.md, Step 3).
+#   Open this file in the Dialogic timeline editor (double-click in FileSystem)
+#   to view and edit it visually, or to fix any character-link errors.
+
+Henrietta: "Don't come inside. Stay at the door."
+
+Roland: "Your message said urgent."
+
+Henrietta: "Eleven pieces of research I shouldn't have pulled. Someone else was asking for them today — someone I don't know."
+
+Henrietta: "Take this. It's a copy — the originals stay here. Don't let anyone see it until you're out of Aldenholt."
+
+Roland: "Henrietta, what have you found?"
+
+Henrietta: "Nothing I can explain at a door in the dark. Go. East gate, not the main road."
+
+Henrietta: "And Roland — be careful who you trust at the Iron Chalice."
