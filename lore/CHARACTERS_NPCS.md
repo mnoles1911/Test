@@ -55,7 +55,7 @@ Two thousand years of incremental hollowing — not enough to fully erase them, 
 
 ---
 
-### Prince Aedric Vane
+### Prince Aedric Castrove
 
 **Age:** 26
 **Role:** Youngest prince of Eldermark; Ashen Hand's primary political asset in the human kingdoms
