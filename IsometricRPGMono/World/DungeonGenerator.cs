@@ -15,6 +15,7 @@ public struct Room
     public int CenterX => X + Width  / 2;
     public int CenterY => Y + Height / 2;
 
+    /// <param name="padding">Extra tile border around each room treated as occupied, preventing adjacent rooms from touching.</param>
     public bool Intersects(Room other, int padding = 1)
     {
         return X - padding < other.X + other.Width  &&

@@ -35,6 +35,8 @@ public static class Constants
     public const int MaxEnemiesPerChunk = 3;
     public const int MaxTotalEnemies = 20;
     public const double EnemySpawnInterval = 2.0;
+    public const float EnemyMinSpawnDistance = 4f;  // tiles — keep enemies from spawning on the player
+    public const int MaxLevel = 50;
     public const float ItemPickupRange = 0.8f;
     public const float ItemAttractRange = 2.5f;
     public const float ItemAttractSpeed = 3.0f;

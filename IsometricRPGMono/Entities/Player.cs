@@ -92,21 +92,24 @@ public class Player : Entity
 
     public void AddXP(double amount)
     {
+        if (Level >= Constants.MaxLevel) return;
         double boosted = amount * BuffMultiplier(BuffType.XpBoost);
         XP += boosted;
-        while (XP >= XPToNextLevel)
+        while (XP >= XPToNextLevel && Level < Constants.MaxLevel)
         {
             XP -= XPToNextLevel;
             Level++;
             MaxHealth += 10;
             Health = MaxHealth;
         }
+        if (Level >= Constants.MaxLevel) XP = 0;
     }
 
     // ---- Inventory helpers ----
 
     public bool AddToInventory(Item item)
     {
+        if (item == null) return false;
         for (int i = 0; i < Inventory.Count; i++)
         {
             if (Inventory[i] == null)

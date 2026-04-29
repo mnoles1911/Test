@@ -42,8 +42,9 @@ public class Game1 : Game
         {
             _font = Content.Load<SpriteFont>("Fonts/DefaultFont");
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[Game1] Font not loaded — UI text will be hidden: {ex.Message}");
             _font = null;
         }
 

@@ -212,10 +212,24 @@ public class GameScene
 
     private static void RestoreEquipmentSlot(Equipment slot, Equipment saved)
     {
-        if (saved.Item != null)
+        if (saved.Item != null && IsValidItemForSlot(saved.Item, slot.Slot))
             slot.Equip(saved.Item);
         else
             slot.Unequip();
+    }
+
+    private static bool IsValidItemForSlot(Item item, EquipmentSlot slot)
+    {
+        return slot switch
+        {
+            EquipmentSlot.Head     => item.Type == ItemType.Helmet,
+            EquipmentSlot.Chest    => item.Type == ItemType.ChestArmor,
+            EquipmentSlot.Legs     => item.Type == ItemType.Leggings,
+            EquipmentSlot.Feet     => item.Type == ItemType.Boots,
+            EquipmentSlot.MainHand => item.Type.Category() == ItemCategory.Weapon,
+            EquipmentSlot.OffHand  => item.Type == ItemType.Shield,
+            _                      => false
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -595,7 +609,7 @@ public class GameScene
             var pick = positions[(int)(_rng.Next() % (ulong)positions.Count)];
             var pos  = new Vector2(pick.worldCol + 0.5f, pick.worldRow + 0.5f);
 
-            if (IsometricMath.Distance(pos, Player.WorldPosition) < 4f) continue;
+            if (IsometricMath.Distance(pos, Player.WorldPosition) < Constants.EnemyMinSpawnDistance) continue;
 
             var enemy = new Enemy(pos);
 
