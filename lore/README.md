@@ -8,12 +8,21 @@ World reference for the **Mira-Thal Trilogy** — a three-game medieval low-fant
 |---|---|
 | [WORLD.md](WORLD.md) | Geography, the three ages, religion, magic |
 | [PEOPLES.md](PEOPLES.md) | All races, the shadow and its hosts, the great wounds |
-| [GUILDS_AND_FACTIONS.md](GUILDS_AND_FACTIONS.md) | Knight orders, trade guilds, cults, heroic bands |
-| [CHARACTERS.md](CHARACTERS.md) | Roland Ashford, all companions, key NPCs and villains |
-| [GAME1_SUNDERED_CROWN.md](GAME1_SUNDERED_CROWN.md) | Game One full plot — main, side, and optional quests |
-| [GAME2_SINGING_VAULT.md](GAME2_SINGING_VAULT.md) | Game Two full plot — main, side, and optional quests |
-| [GAME3_LAST_STAR.md](GAME3_LAST_STAR.md) | Game Three full plot, the final battle, both endings |
-| [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, items |
+| [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | The four knight orders |
+| [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | Trade guilds and scholarly orders |
+| [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | Shadow organizations and heroic bands |
+| [CHARACTERS_PROTAGONIST.md](CHARACTERS_PROTAGONIST.md) | Roland Ashford — full profile |
+| [CHARACTERS_COMPANIONS.md](CHARACTERS_COMPANIONS.md) | Corvus, Seren, Orion, Aldric |
+| [CHARACTERS_NPCS.md](CHARACTERS_NPCS.md) | Key NPCs and villains |
+| [GAME1_PART1.md](GAME1_PART1.md) | Game One: Acts I–II (opening, crown pieces 1–3) |
+| [GAME1_PART2.md](GAME1_PART2.md) | Game One: Acts III–IV (crown pieces 4–7, climax) |
+| [GAME2_PART1.md](GAME2_PART1.md) | Game Two: Acts I–II (siege approaches, descent) |
+| [GAME2_PART2.md](GAME2_PART2.md) | Game Two: Acts III–IV (vault, siege, departure) |
+| [GAME3_PART1.md](GAME3_PART1.md) | Game Three: Acts I–II (Coldstoke race, muster) |
+| [GAME3_PART2.md](GAME3_PART2.md) | Game Three: Acts III–IV (battle, summit, both endings) |
+| [GAME3_PART3.md](GAME3_PART3.md) | Game Three: Aftermath and epilogues |
+| [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, items, timeline |
+| [../MAIN_LORE.md](../MAIN_LORE.md) | Single combined file — all lore in one document |
 
 ---
 
