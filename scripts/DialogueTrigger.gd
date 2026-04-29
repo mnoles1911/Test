@@ -55,13 +55,13 @@ func _on_body_exited(body: Node2D) -> void:
 
 
 func _fire_trigger() -> void:
-	# Check that the Dialogic plugin is loaded before trying to use it.
-	# Engine.has_singleton() returns true if the autoload exists.
-	# Dialogic adds itself as an autoload when the plugin is enabled.
-	if not Engine.has_singleton("Dialogic"):
-		# Plugin not installed — degrade gracefully.
-		push_error("[DialogueTrigger] Dialogic plugin not found. Install it via the Asset Library and enable it in Project > Project Settings > Plugins. See design/DIALOGIC_SETUP.md for full instructions.")
-		print("[Trigger] Dialogue trigger fired! (Dialogic not installed yet — see Output for setup instructions.)")
+	# Check that the Dialogic autoload node is present before using it.
+	#
+	# Important: Engine.has_singleton() only detects native C++ engine singletons.
+	# Dialogic registers itself as a GDScript autoload node, which lives at
+	# /root/Dialogic in the scene tree. get_node_or_null() is the correct check.
+	if get_node_or_null("/root/Dialogic") == null:
+		push_error("[DialogueTrigger] Dialogic autoload not found at /root/Dialogic. Install the plugin via the Asset Library and enable it in Project > Project Settings > Plugins. See design/DIALOGIC_SETUP.md.")
 		return
 
 	# Start the Dialogic timeline.
@@ -71,8 +71,6 @@ func _fire_trigger() -> void:
 	var timeline = Dialogic.start(TIMELINE_PATH)
 
 	# timeline_ended fires when the last line is dismissed and the box closes.
-	# We use it to re-enable the trigger so dialogue could theoretically play again.
-	# For a one-shot trigger (fires only once ever), add: queue_free() here instead.
 	if timeline:
 		timeline.timeline_ended.connect(_on_dialogue_ended)
 
