@@ -108,6 +108,15 @@ public class GameHUD
         _healthBar.Draw(spriteBatch, spriteManager, font);
         _xpBar.Draw(spriteBatch, spriteManager, font);
 
+        // Bar labels (HP / XP to the right of each bar)
+        if (font != null)
+        {
+            spriteBatch.DrawString(font, "HP",
+                new Vector2(BarLeft + 204, _healthBar.Bounds.Y + 2), UITheme.HealthBar);
+            spriteBatch.DrawString(font, "XP",
+                new Vector2(BarLeft + 204, _xpBar.Bounds.Y + 1), UITheme.XPBar);
+        }
+
         // Labels
         _levelLabel.Draw(spriteBatch, spriteManager, font);
         _killLabel.Draw(spriteBatch, spriteManager, font);

@@ -75,18 +75,25 @@ public class Enemy : Entity
     {
         var screenPos = ScreenPosition - cameraPos;
         var size = Constants.EnemySize;
+        bool isHit = TintColor != Color.White;
 
-        // Body circle
-        int diameter = (int)Math.Max(size.X, size.Y);
-        var bodyColor = TintColor == Color.White ? new Color(180, 60, 60) : TintColor;  // dull red
-        var circleTex = spriteManager.GetCircle(diameter, bodyColor);
+        Color bodyColor    = isHit ? TintColor : new Color(120, 30, 30);   // dark enemy red
+        Color eyeColor     = isHit ? TintColor : new Color(240, 200, 20);  // yellow eyes
+        Color outlineColor = new Color(15, 10, 5);
 
-        spriteBatch.Draw(
-            circleTex,
-            new Vector2(screenPos.X - diameter / 2f, screenPos.Y - diameter / 2f),
-            Color.White);
+        // Outline
+        var outlineTex = spriteManager.GetRect(22, 26, outlineColor);
+        spriteBatch.Draw(outlineTex, new Vector2(screenPos.X - 11, screenPos.Y - 14), Color.White);
 
-        // Health bar
+        // Body (wider, squatter)
+        var bodyTex = spriteManager.GetRect(18, 22, bodyColor);
+        spriteBatch.Draw(bodyTex, new Vector2(screenPos.X - 9, screenPos.Y - 12), Color.White);
+
+        // Eyes (two small dots)
+        var eyeTex = spriteManager.GetRect(3, 3, eyeColor);
+        spriteBatch.Draw(eyeTex, new Vector2(screenPos.X - 5, screenPos.Y - 6), Color.White);
+        spriteBatch.Draw(eyeTex, new Vector2(screenPos.X + 2, screenPos.Y - 6), Color.White);
+
         DrawHealthBar(spriteBatch, spriteManager, screenPos, size);
     }
 

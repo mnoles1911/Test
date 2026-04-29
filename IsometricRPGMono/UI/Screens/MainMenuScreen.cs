@@ -40,13 +40,13 @@ public class MainMenuScreen : UIScreen
         int titlePanelY = ScreenH / 2 - 200;
         _titlePanel = new Panel(new Rectangle(titlePanelX, titlePanelY, titlePanelW, titlePanelH));
 
-        _titleLabel = new Label("ISOMETRIC RPG",
+        _titleLabel = new Label("HAMMERFELL",
             new Rectangle(titlePanelX, titlePanelY + 12, titlePanelW, 30))
         {
             TextColor = UITheme.Gold
         };
 
-        _subtitleLabel = new Label("An Isometric Adventure",
+        _subtitleLabel = new Label("The Elder Province",
             new Rectangle(titlePanelX, titlePanelY + 46, titlePanelW, 20))
         {
             TextColor = UITheme.TextSecondary
@@ -102,17 +102,17 @@ public class MainMenuScreen : UIScreen
         // Title text — centered within panel
         if (font != null)
         {
-            var titleSize = font.MeasureString("ISOMETRIC RPG");
+            var titleSize = font.MeasureString("HAMMERFELL");
             var titlePos  = new Vector2(
                 _titlePanel.Bounds.X + (_titlePanel.Bounds.Width - titleSize.X) / 2f,
                 _titlePanel.Bounds.Y + 12);
-            spriteBatch.DrawString(font, "ISOMETRIC RPG", titlePos, UITheme.Gold);
+            spriteBatch.DrawString(font, "HAMMERFELL", titlePos, UITheme.Gold);
 
-            var subSize = font.MeasureString("An Isometric Adventure");
+            var subSize = font.MeasureString("The Elder Province");
             var subPos  = new Vector2(
                 _titlePanel.Bounds.X + (_titlePanel.Bounds.Width - subSize.X) / 2f,
                 _titlePanel.Bounds.Y + 46);
-            spriteBatch.DrawString(font, "An Isometric Adventure", subPos, UITheme.TextSecondary);
+            spriteBatch.DrawString(font, "The Elder Province", subPos, UITheme.TextSecondary);
         }
 
         // Buttons

@@ -35,8 +35,8 @@ public class PrimitiveRenderer
     /// Draw an isometric diamond at the given screen-space centre.
     public void DrawDiamond(Vector2 centre, Color topColor, Color sideColor)
     {
-        float hw = Constants.TileWidth  / 2f;
-        float hh = Constants.TileHeight / 2f;
+        float hw = Constants.TileWidth  / 2f + 0.5f;  // +0.5 overlap to eliminate sub-pixel gaps
+        float hh = Constants.TileHeight / 2f + 0.5f;
 
         // Top face: 2 triangles from 4 diamond vertices
         var top    = new Vector3(centre.X,      centre.Y - hh, 0f);

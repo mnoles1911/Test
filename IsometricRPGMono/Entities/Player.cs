@@ -141,21 +141,25 @@ public class Player : Entity
     public override void Draw(SpriteBatch spriteBatch, SpriteManager spriteManager, Vector2 cameraPos)
     {
         var screenPos = ScreenPosition - cameraPos;
-        var size = Constants.PlayerSize;
+        bool isHit = TintColor != Color.White;
 
-        // Body rectangle
-        var tex = spriteManager.GetRect(
-            (int)size.X,
-            (int)size.Y,
-            TintColor == Color.White ? new Color(70, 130, 180) : TintColor);  // steel blue
+        Color bodyColor    = isHit ? TintColor : new Color(45, 95, 130);    // dark steel blue
+        Color headColor    = isHit ? TintColor : new Color(195, 155, 105);  // warm skin tone
+        Color outlineColor = new Color(15, 10, 5);                           // near black outline
 
-        spriteBatch.Draw(
-            tex,
-            new Vector2(screenPos.X - size.X / 2f, screenPos.Y - size.Y / 2f),
-            Color.White);
+        // Outline (draw slightly larger dark rect behind)
+        var outlineTex = spriteManager.GetRect(20, 30, outlineColor);
+        spriteBatch.Draw(outlineTex, new Vector2(screenPos.X - 10, screenPos.Y - 17), Color.White);
 
-        // Simple health bar
-        DrawHealthBar(spriteBatch, spriteManager, screenPos, size);
+        // Torso
+        var bodyTex = spriteManager.GetRect(16, 20, bodyColor);
+        spriteBatch.Draw(bodyTex, new Vector2(screenPos.X - 8, screenPos.Y - 15), Color.White);
+
+        // Head
+        var headTex = spriteManager.GetCircle(10, headColor);
+        spriteBatch.Draw(headTex, new Vector2(screenPos.X - 5, screenPos.Y - 25), Color.White);
+
+        DrawHealthBar(spriteBatch, spriteManager, screenPos, Constants.PlayerSize);
     }
 
     private void DrawHealthBar(SpriteBatch sb, SpriteManager sm, Vector2 screenPos, Vector2 size)
