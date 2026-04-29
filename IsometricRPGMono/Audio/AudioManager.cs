@@ -180,6 +180,32 @@ public class AudioManager
         _sfxVolume = Math.Clamp(v, 0f, 1f);
     }
 
+    public void SetMusicEnabled(bool enabled) { _musicEnabled = enabled; }
+    public void SetSfxEnabled(bool enabled)   { _sfxEnabled   = enabled; }
+
+    /// <summary>Apply all settings from a <see cref="GameSettings"/> instance at once.</summary>
+    public void ApplySettings(GameSettings settings)
+    {
+        SetMasterVolume(settings.MasterVolume);
+        SetMusicVolume(settings.MusicVolume);
+        SetSfxVolume(settings.SfxVolume);
+        SetMusicEnabled(settings.MusicEnabled);
+        SetSfxEnabled(settings.SfxEnabled);
+    }
+
+    /// <summary>Capture current audio state into a <see cref="GameSettings"/> instance.</summary>
+    public GameSettings CaptureSettings()
+    {
+        return new GameSettings
+        {
+            MasterVolume = _masterVolume,
+            MusicVolume  = _musicVolume,
+            SfxVolume    = _sfxVolume,
+            MusicEnabled = _musicEnabled,
+            SfxEnabled   = _sfxEnabled,
+        };
+    }
+
     private void ApplyMusicVolume()
     {
         try

@@ -9,20 +9,22 @@ namespace IsometricRPG;
 /// </summary>
 public class PauseScreen : UIScreen
 {
-    public Action? OnResume   { get; set; }
-    public Action? OnMainMenu { get; set; }
+    public Action? OnResume      { get; set; }
+    public Action? OnMainMenu    { get; set; }
+    public Action? OnSaveAndQuit { get; set; }
 
     private const int ScreenW = 1280;
     private const int ScreenH = 720;
 
     private const int PanelW = 320;
-    private const int PanelH = 240;
+    private const int PanelH = 280;
     private const int ButtonW = 240;
     private const int ButtonH = 50;
     private const int ButtonSpacing = 14;
 
     private readonly Panel  _panel;
     private readonly Button _resumeBtn;
+    private readonly Button _saveAndQuitBtn;
     private readonly Button _mainMenuBtn;
 
     public PauseScreen()
@@ -33,7 +35,7 @@ public class PauseScreen : UIScreen
         _panel = new Panel(new Rectangle(panelX, panelY, PanelW, PanelH));
 
         int btnX = panelX + (PanelW - ButtonW) / 2;
-        int totalH = ButtonH * 2 + ButtonSpacing;
+        int totalH = ButtonH * 3 + ButtonSpacing * 2;
         int btnStartY = panelY + (PanelH - totalH) / 2 + 20; // leave room for title
 
         _resumeBtn = new Button("Resume",
@@ -42,8 +44,14 @@ public class PauseScreen : UIScreen
             OnClick = () => OnResume?.Invoke()
         };
 
-        _mainMenuBtn = new Button("Main Menu",
+        _saveAndQuitBtn = new Button("Save & Quit",
             new Rectangle(btnX, btnStartY + ButtonH + ButtonSpacing, ButtonW, ButtonH))
+        {
+            OnClick = () => OnSaveAndQuit?.Invoke()
+        };
+
+        _mainMenuBtn = new Button("Main Menu",
+            new Rectangle(btnX, btnStartY + (ButtonH + ButtonSpacing) * 2, ButtonW, ButtonH))
         {
             OnClick = () => OnMainMenu?.Invoke()
         };
@@ -52,6 +60,7 @@ public class PauseScreen : UIScreen
     public override void Update(GameTime gameTime, MouseState mouse, KeyboardState keyboard)
     {
         _resumeBtn.Update(gameTime, mouse);
+        _saveAndQuitBtn.Update(gameTime, mouse);
         _mainMenuBtn.Update(gameTime, mouse);
 
         // Escape also resumes
@@ -84,6 +93,7 @@ public class PauseScreen : UIScreen
 
         // Buttons
         _resumeBtn.Draw(spriteBatch, spriteManager, font);
+        _saveAndQuitBtn.Draw(spriteBatch, spriteManager, font);
         _mainMenuBtn.Draw(spriteBatch, spriteManager, font);
     }
 }
