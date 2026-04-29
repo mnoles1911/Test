@@ -22,7 +22,7 @@
 
 ## Seren of the Third Glade
 
-**Age:** Appears 30; actually 180
+**Age:** Appears 30; actually 180 (nearly two thousand years younger than Aelthurion, who has stood watch since the close of the Second Age)
 **Origin:** The Greatwood, Third Glade of the Pilgrimage Circuit
 **Role:** Dawnbringer (active Aelorin interventionist); joins Game Two
 

@@ -15,7 +15,7 @@
 | **Mordvar** | Antagonist; the Hollow King | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
 | **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
-| **Prince Aedric** | Villain; Ashen Hand's human asset | Game One |
+| **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |
 | **Dame Calla Vane** | NPC; Iron Chalice Grandmaster | Game One |
 | **Henrietta** | NPC; Loremaster's Archive (dies Game One) | Game One |
 | **King Bromrin** | NPC; Khorumzad, gold-hunger victim | Games One-Two |
@@ -87,7 +87,7 @@ The seven metals of the Grand Alliance forging:
 | Copper Isles | South of Mira | Alliance muster point; Brotherhood archive |
 | Drûn-Khazad | Thal | The volcano; Hollow Hearth; final battle |
 | Mor-Vethrin | Thal (Vrothmor Peaks) | Naergrim dark elf city |
-| Vault of Aen-Vael | Below Drûn-Khazad | The Aeluvain's resting place |
+| Vault of Aen-Vael | Below Khorumzad, Spine of the World (Mira) | The Aeluvain's resting place; placed here by the Grand Alliance to be as far from Drûn-Khazad as possible |
 
 ---
 
@@ -153,8 +153,9 @@ The seven metals of the Grand Alliance forging:
 | Iron Chalice founding (Red Siege) | ~300 years before Game One |
 | Caer Sulwyn's fall (Caer Drowned) | ~200 years before Game One |
 | Sailors' Brotherhood Shroud charts begun | ~200 years before Game One |
+| Ashen Hand founded by Mael (the First Whetted) | ~25 years before Game One |
 | Drossvik placed in Bromrin's court | ~11 years before Game One |
-| Vaeroth sells allegiance to Ash Throne | ~10 years before Game One |
+| Vaeroth takes Hierarch position (after Mael's death) | ~10 years before Game One |
 | Roland's expulsion from Iron Chalice | ~3 years before Game One |
 | Game One begins | Year 0 |
 | Game Two (estimated) | Year 1-3 |
