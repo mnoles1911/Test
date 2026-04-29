@@ -1,49 +1,51 @@
 # Backstory: Aldric Vane
 
-## The Caelborn Line
+## The Hidden Lineage
 
-The Caelborn were a minor noble house from the Borderlands — not powerful, but old. Their specific distinction was a lineage claim, passed down in private family records, connecting them to the Caelborn Compact: a treaty signed at the close of the Second Age between the Grand Alliance and several human frontier families who had aided the binding of the Hollow Throne. The Compact granted those families certain rights of passage and sanctuary in Aelorin territory that technically still exist, though most of the world has forgotten both the Compact and the families it named.
+Aldric's family has lived in Coldstoke, a frontier village in the Vosskaran borderlands, for three generations. They are not remarkable people by the world's accounting — smiths and farmers and one uncle who went to sea and never came back. The village knows them as the Vanes: solid, quiet, useful.
 
-Aldric's grandfather suppressed this claim three generations ago. He had reasons: the Compact was ancient, the rights it granted were meaningless in practice, and the claim attracted attention from people who wanted to either use it or discredit it. A family that was minor but stable was better, he decided, than a family that was notable for a reason no one fully understood.
+What the village does not know, and what Aldric himself did not know until he was in his twenties, is that the Vane name is a suppression. His grandfather changed it from Caelborn — an old house name with a lineage claim that had become a liability. The claim connected them to the Grand Alliance's inner circle at the close of the Second Age, to people who had stood close to the Aeluvain binding and been granted certain ancient rights in exchange. Rights so old the world had forgotten them. A name that drew attention from people who wanted to control or eliminate it.
 
-The suppression worked. The Vane family — they had changed the name one generation back, from Caelborn to Vane, as a further step — became what Aldric's grandfather intended: decent, quiet, and overlooked.
+His grandfather believed the suppression would protect the family. For two generations, it did.
 
-Aldric found the original documents at seventeen, in a sealed case in the family's record room. He read them twice. He sealed the case. He did not tell his parents. This is his baseline approach to information that changes everything: hold it, wait, understand it fully before acting.
+## Growing Up in Coldstoke
 
-## Maren
+Aldric's childhood was ordinary in the way of frontier villages: physically hard, socially tight, full of the specific warmth of people who depend on each other for survival. His father was a smith. Aldric apprenticed young, was competent by twelve, and genuinely good by his mid-teens — not just at the mechanical work but at the metallurgical intuition that separates a craftsman from a tradesman. He could feel the quality of iron before he tested it. He knew when a blade would hold and when it would fail. He assumed this was trained instinct.
 
-Aldric's younger sister Maren was twenty-two when she was killed. Aldric was twenty-eight.
+It was not entirely trained instinct. He has headaches near old sites — ruins, burial grounds, locations where something significant happened in an age he has no framework for. Metal responds to his touch in ways that are difficult to explain. He has spent his adult life developing workarounds for both, treating them as minor inconveniences rather than what they are: the residue of a bloodline that stood at the center of the world's most significant working two thousand years ago.
 
-Maren had been travelling between two Borderlands towns with a merchant escort — a routine trip, the kind she had made dozens of times. The escort was attacked. The attackers were looking specifically for her, which was not discovered until Aldric investigated afterward. By the time he understood what had happened, the people responsible had dispersed and could not be found.
+## The Craft
 
-He believes the attack was connected to the Caelborn claim. Someone had found the same documents he had, or found a record of them, and concluded the Caelborn line was a threat worth eliminating. He has never been able to prove this.
+Aldric has been a practicing smith for over twenty years. He is the best in Coldstoke, which is not a large claim, but Coldstoke sits on a trade route and his reputation has spread farther than he sought. He makes tools and horseshoes and the occasional blade. He is asked periodically to do decorative work he finds tedious. He declines when he can afford to.
 
-He has been looking, quietly and systematically, for three years. He has found two threads that lead toward the Hollow Court. He is not yet certain enough to act, and he is too careful a man to act before certainty.
+He has a workshop attached to his house, a dog named Brace who is twelve years old and very slow, and a habit of working late when something is on his mind. He has never married. He had a serious relationship in his mid-thirties with a woman named Tessaly who eventually left because she wanted to be somewhere larger and he did not. He thought about following her for about a month. Then he went back to the forge.
 
-## The Assassination Attempts
+He has built, in other words, exactly the life he wanted: small, complete, comprehensible. He is not unhappy. He is not a man straining against constraints. He is a man who found his shape and settled into it.
 
-There have been two attempts on Aldric's life in the three years since Maren's death.
+This is what makes what happens to him in Game Three so specifically brutal. He is not an unfulfilled person awaiting destiny. He is a fulfilled person who has destiny arrive anyway.
 
-The first was clumsy — a man with a knife in a tavern, nervous enough that Aldric spotted him before the approach. He escaped and the man fled. The second was more professional: something added to his food at a border inn that he survived because he had developed the habit of eating last of any company he traveled with, a paranoid practice left over from the Caelborn research.
+## The Attempts
 
-He has told no one about the attempts. He has adjusted his routes, his habits, and his lodging practices instead. He keeps his travel unpredictable. He never stays two consecutive nights in the same place if he can avoid it.
+Two people have tried to kill Aldric in the year before Game Three begins.
 
-This is not sustainable, and he knows it. He is also constitutionally incapable of asking for help before he fully understands the shape of the threat he would be asking for help against.
+He does not know why. This is the thing that disturbs him most — not the attempts themselves, which he survived by accident and reflexive competence, but the absence of a reason he can locate. He has no enemies he knows of. He has no wealth worth taking. He is a village smith.
 
-## Skills and Position
+He has not told anyone in Coldstoke. He has started sleeping with the door barred and a hammer within reach. He has started paying attention to strangers on the trade road in a way he did not before. He is not, by temperament, a man who catastrophizes — but he is a thorough man, and the thorough conclusion from two attempts without explanation is that a third is coming.
 
-Aldric has spent the years since Maren's death making himself useful to people who deal in sensitive information — not as a spy, exactly, but as a careful analyst who can be trusted to handle things that require discretion. He has contacts across three kingdoms, a working knowledge of Eldermark administrative law, and the specific skill of knowing when a document has been altered — which he learned, in part, from years of studying the Caelborn records and learning to recognize the difference between primary sources and later additions.
+When the party finds him, he is three days into a private investigation that has gotten precisely nowhere, conducted by a man with no investigation skills, in a village with no archives.
 
-He is solvent without being wealthy. He travels light. He carries a short sword he is competent with and a longer dagger he is very good with. He has one extravagance: he buys good boots and replaces them before they wear out, because a man who has to watch his footing is a man who is not watching everything else.
+## What He Carries
 
-## Joining the Company
+Wielding the Aeluvain against Mordvar — which is what his bloodline makes possible — requires that Aldric consciously carry Mordvar's hollow for the duration of the approach to the Aescstól. Not the evil: the void. The specific shape of absence that was once a man named Bealoric who was afraid of dying.
 
-Aldric meets the party in circumstances that initially look coincidental. He is in the same region as Roland because one of his Hollow Court threads led there. He recognizes, quickly, that Roland is connected to something larger than a single investigation. He attaches himself to the group with a practiced casualness that does not fool Corvus and does fool almost everyone else.
+The Dawnbringers who understand this have not told Aldric in advance. There is no good way to prepare someone for it. What they know, and what Aldric will discover, is that the bloodline that makes him capable of this also gives him a specific kind of resistance: the lineage that stood at the binding has an orientation toward completion rather than consumption. Mordvar's hollow will not find easy purchase in a man whose deepest nature is to make things that hold together.
 
-He intends to leave when he has what he needs. He stays because what he needs keeps getting larger.
+This is not a guarantee. It is a fighting chance.
 
 ## Character
 
-Aldric is controlled, observant, and precise in the way of someone who learned early that carefulness is survival. He is not cold — he cares about the people around him with a quiet intensity — but he expresses this through action rather than declaration. He will notice if you are limping and say nothing about it but arrange for you to have first choice of the horses. He will remember what you said you were afraid of three weeks ago and route the plan around it without mentioning why.
+Aldric is the party's anchor in Game Three — not because he is the strongest or the most capable, but because he is the most grounded. He has lived forty-one years in a single place doing a single thing with care and integrity, and that specific solidity is what the situation requires. He does not catastrophize. He does not perform bravery. He assesses what needs doing and does it.
 
-His wound is Maren. Not the grief exactly, though that is present — the specific failure of having found the Caelborn documents and held them and not understood in time what that holding might cost.
+He is also, underneath the groundedness, frightened — not of death exactly, but of the specific loss of self that carrying the hollow risks. He has worked his whole life to know exactly who he is. The thing being asked of him is to briefly not know.
+
+His relationship with Roland is the one that matters most in Game Three. Roland has been building toward this for two games. Aldric has been building toward a completely different life. They meet in the middle of both trajectories, and the trilogy's final argument — that what people build in love of their ordinary life is the thing that makes extraordinary sacrifice possible — lives in that meeting.
