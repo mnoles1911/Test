@@ -33,9 +33,9 @@ public class Bullet
             IsExpired = true;
     }
 
-    /// Returns true if the bullet overlaps the entity (within 0.5 tile).
+    /// Returns true if the bullet overlaps the entity (within ~0.55 tile, small margin for float imprecision).
     public bool CheckHit(Entity target)
-        => IsometricMath.Distance(WorldPosition, target.WorldPosition) < 0.5f;
+        => IsometricMath.Distance(WorldPosition, target.WorldPosition) < 0.55f;
 
     public void Draw(SpriteBatch spriteBatch, SpriteManager spriteManager, Vector2 cameraPos)
     {

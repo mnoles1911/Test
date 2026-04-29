@@ -25,6 +25,7 @@ public class SeededRNG
 
     public float NextFloat()
     {
-        return (float)(Next() % 1000UL) / 1000.0f;
+        // Use top 24 bits for full single-precision float coverage (2^24 distinct values).
+        return (Next() >> 40) / (float)(1u << 24);
     }
 }

@@ -93,6 +93,7 @@ public class WorldManager
         float? fe = ElevationAt(fc, fr);
         float? te = ElevationAt(tc, tr);
         if (fe == null || te == null) return false;
+        // Elevation is [0,1]; multiply by 100 to compare against integer-percent threshold.
         return MathF.Abs(te.Value - fe.Value) * 100f <= Constants.MaxWalkableElevationDiff;
     }
 
@@ -107,6 +108,9 @@ public class WorldManager
         var coord = ChunkCoord.FromWorld((int)MathF.Floor(worldPos.X), (int)MathF.Floor(worldPos.Y));
         return _chunks.TryGetValue(coord, out var c) ? c : null;
     }
+
+    public bool IsPositionLoaded(int worldCol, int worldRow)
+        => _chunks.ContainsKey(ChunkCoord.FromWorld(worldCol, worldRow));
 
     public List<Chunk> ChunksNeedingItemSpawn()  => _chunks.Values.Where(c => !c.SpawnedItems).ToList();
     public List<Chunk> ChunksNeedingEnemySpawn() => _chunks.Values.Where(c => !c.SpawnedEnemies).ToList();

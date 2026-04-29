@@ -132,8 +132,9 @@ public class ItemSpawner
     {
         float total = 0f;
         foreach (var w in weights.Values) total += w;
+        if (total <= 0f) return ItemType.HealthPotion;
 
-        float roll = (float)(rng.Next() % 10000UL) / 10000f * total;
+        float roll = rng.NextFloat() * total;
         foreach (var (type, weight) in weights)
         {
             roll -= weight;

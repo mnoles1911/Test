@@ -42,11 +42,6 @@ public sealed class Chunk
         var rng = new SeededRNG(ChunkSeed(coord));
 
         // 3. Dungeon chunks: carve rooms
-        if (Biome == Biome.Forest || Biome == Biome.Grassland || rng.NextFloat() < 0.15f)
-        {
-            // Only generate dungeon rooms for dungeon-eligible biomes or random 15% chance
-        }
-
         bool hasDungeon = Biome == Biome.Mountain || Biome == Biome.HighMountain || rng.NextFloat() < 0.1f;
         if (hasDungeon)
         {
@@ -121,14 +116,15 @@ public sealed class Chunk
         {
             int localX = s.WorldX - ox;
             int localY = s.WorldY - oy;
+
+            // Skip structures that extend beyond this chunk to avoid partial placement artifacts.
+            if (localX < 0 || localX + s.Template.Size.Width  > Size ||
+                localY < 0 || localY + s.Template.Size.Height > Size)
+                continue;
+
             for (int row = 0; row < s.Template.Size.Height; row++)
                 for (int col = 0; col < s.Template.Size.Width; col++)
-                {
-                    int tr = localY + row;
-                    int tc = localX + col;
-                    if (tr >= 0 && tr < Size && tc >= 0 && tc < Size)
-                        Tiles[tr, tc] = s.Template.Footprint[row, col];
-                }
+                    Tiles[localY + row, localX + col] = s.Template.Footprint[row, col];
         }
     }
 

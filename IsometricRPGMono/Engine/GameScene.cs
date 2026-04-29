@@ -68,7 +68,7 @@ public class GameScene
         _audio.ApplySettings(settings);
 
         // UI subsystems
-        _hud           = new GameHUD();
+        _hud           = new GameHUD(_viewportWidth, _viewportHeight);
         _minimap       = new Minimap();
         _screenManager = new ScreenManager();
 
@@ -179,22 +179,11 @@ public class GameScene
 
         // Restore player position and stats
         Player = new Player(new Vector2(data.PlayerWorldX, data.PlayerWorldY));
-        Player.Health    = data.PlayerStats.Health;
-        Player.MaxHealth = data.PlayerStats.MaxHealth;
 
-        // Restore XP / level via AddXP from zero — simpler: set fields directly
-        // Player.Level and Player.XP are private setters, so we use AddXP loops.
-        // Instead, restore via repeated level-ups would be wrong; set via reflection
-        // is fragile. The cleanest approach: expose internal setters or use a
-        // dedicated Restore method. For now we call AddXP with stored XP + level-up
-        // thresholds. We add XP to reach the saved level first.
-        for (int lvl = 1; lvl < data.PlayerStats.Level; lvl++)
-        {
-            double xpNeeded = 100.0 * Math.Pow(1.5, lvl - 1);
-            Player.AddXP(xpNeeded);
-        }
-        // Then add the partial XP within the current level
-        Player.AddXP(data.PlayerStats.Experience);
+        // RestoreProgress sets Level, MaxHealth, and resets Health to MaxHealth.
+        // We then override Health from the save so the player isn't at full HP.
+        Player.RestoreProgress(data.PlayerStats.Level, data.PlayerStats.Experience);
+        Player.Health = Math.Clamp(data.PlayerStats.Health, 0, Player.MaxHealth);
 
         // Restore inventory (20 slots)
         var inv = data.Inventory;
@@ -223,10 +212,24 @@ public class GameScene
 
     private static void RestoreEquipmentSlot(Equipment slot, Equipment saved)
     {
-        if (saved.Item != null)
+        if (saved.Item != null && IsValidItemForSlot(saved.Item, slot.Slot))
             slot.Equip(saved.Item);
         else
             slot.Unequip();
+    }
+
+    private static bool IsValidItemForSlot(Item item, EquipmentSlot slot)
+    {
+        return slot switch
+        {
+            EquipmentSlot.Head     => item.Type == ItemType.Helmet,
+            EquipmentSlot.Chest    => item.Type == ItemType.ChestArmor,
+            EquipmentSlot.Legs     => item.Type == ItemType.Leggings,
+            EquipmentSlot.Feet     => item.Type == ItemType.Boots,
+            EquipmentSlot.MainHand => item.Type.Category() == ItemCategory.Weapon,
+            EquipmentSlot.OffHand  => item.Type == ItemType.Shield,
+            _                      => false
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -335,7 +338,7 @@ public class GameScene
         foreach (var enemy in Enemies)
         {
             if (!enemy.IsAlive) continue;
-            enemy.UpdateAI(Player.WorldPosition, _totalTime, WorldManager);
+            enemy.UpdateAI(Player.WorldPosition, _totalTime, WorldManager, dt);
             enemy.Update(gameTime);
 
             if (enemy.CanAttack(_totalTime))
@@ -606,7 +609,7 @@ public class GameScene
             var pick = positions[(int)(_rng.Next() % (ulong)positions.Count)];
             var pos  = new Vector2(pick.worldCol + 0.5f, pick.worldRow + 0.5f);
 
-            if (IsometricMath.Distance(pos, Player.WorldPosition) < 4f) continue;
+            if (IsometricMath.Distance(pos, Player.WorldPosition) < Constants.EnemyMinSpawnDistance) continue;
 
             var enemy = new Enemy(pos);
 

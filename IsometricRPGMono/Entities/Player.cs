@@ -81,23 +81,35 @@ public class Player : Entity
 
     // ---- XP / Level ----
 
+    /// Directly restore level and XP from a save without triggering level-up side effects.
+    public void RestoreProgress(int level, double partialXp)
+    {
+        Level     = Math.Max(1, level);
+        MaxHealth = Constants.PlayerMaxHealth + (Level - 1) * 10;
+        Health    = MaxHealth;
+        XP        = Math.Clamp(partialXp, 0, XPToNextLevel - 0.001);
+    }
+
     public void AddXP(double amount)
     {
+        if (Level >= Constants.MaxLevel) return;
         double boosted = amount * BuffMultiplier(BuffType.XpBoost);
         XP += boosted;
-        while (XP >= XPToNextLevel)
+        while (XP >= XPToNextLevel && Level < Constants.MaxLevel)
         {
             XP -= XPToNextLevel;
             Level++;
             MaxHealth += 10;
             Health = MaxHealth;
         }
+        if (Level >= Constants.MaxLevel) XP = 0;
     }
 
     // ---- Inventory helpers ----
 
     public bool AddToInventory(Item item)
     {
+        if (item == null) return false;
         for (int i = 0; i < Inventory.Count; i++)
         {
             if (Inventory[i] == null)

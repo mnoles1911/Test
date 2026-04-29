@@ -23,33 +23,40 @@ public class GameHUD
     // ---- Damage numbers ----
     public DamageNumberManager DamageNumbers { get; } = new DamageNumberManager();
 
-    private const int BarLeft   = 10;
-    private const int BarBottom = 720 - 60;  // near bottom-left
+    private const int BarLeft = 10;
 
-    public GameHUD()
+    private readonly int _vpWidth;
+    private readonly int _vpHeight;
+
+    public GameHUD(int viewportWidth = 1280, int viewportHeight = 720)
     {
+        _vpWidth  = viewportWidth;
+        _vpHeight = viewportHeight;
+
+        int barBottom = _vpHeight - 60;
+
         // Health bar: bottom-left, 200×20
-        _healthBar = new StatBar(new Rectangle(BarLeft, BarBottom, 200, 20))
+        _healthBar = new StatBar(new Rectangle(BarLeft, barBottom, 200, 20))
         {
             FillColor = UITheme.HealthBar,
             BackColor = new Color(30, 30, 30)
         };
 
         // XP bar: below health bar, 200×12
-        _xpBar = new StatBar(new Rectangle(BarLeft, BarBottom + 26, 200, 12))
+        _xpBar = new StatBar(new Rectangle(BarLeft, barBottom + 26, 200, 12))
         {
             FillColor = UITheme.XPBar,
             BackColor = new Color(30, 30, 30)
         };
 
         // Level label: above health bar
-        _levelLabel = new Label("Level 1", new Rectangle(BarLeft, BarBottom - 20, 100, 16))
+        _levelLabel = new Label("Level 1", new Rectangle(BarLeft, barBottom - 20, 100, 16))
         {
             TextColor = UITheme.TextPrimary
         };
 
         // Kill counter: top-right
-        _killLabel = new Label("Kills: 0", new Rectangle(1280 - 110, 10, 100, 16))
+        _killLabel = new Label("Kills: 0", new Rectangle(_vpWidth - 110, 10, 100, 16))
         {
             TextColor = UITheme.TextPrimary
         };
@@ -91,7 +98,7 @@ public class GameHUD
     public void ShowDamage(Vector2 worldPos, int damage, Vector2 cameraPos)
     {
         var screenPos = IsometricMath.WorldToScreen(worldPos) - cameraPos
-                      + new Vector2(1280 / 2f, 720 / 2f);
+                      + new Vector2(_vpWidth / 2f, _vpHeight / 2f);
         DamageNumbers.Spawn(screenPos, damage, UITheme.HealthBar);
     }
 
@@ -110,6 +117,7 @@ public class GameHUD
             lbl.Draw(spriteBatch, spriteManager, font);
 
         // Damage numbers
-        DamageNumbers.Draw(spriteBatch, font);
+        if (font != null)
+            DamageNumbers.Draw(spriteBatch, font);
     }
 }

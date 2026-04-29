@@ -33,7 +33,7 @@ public class CombatSystem
                     enemy.TakeDamage(bullet.Damage);
                     bullet.IsExpired = true;
 
-                    if (!enemy.IsAlive)
+                    if (!enemy.IsAlive && player != null)
                         player.AddXP(enemy.XPReward);
 
                     break;
