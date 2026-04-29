@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 280" width="200" height="280">
+  <!-- Dark archive background -->
+  <rect width="200" height="280" fill="#1a1208"/>
+
+  <!-- Warm candlelight glow behind figure -->
+  <radialGradient id="glow" cx="50%" cy="45%" r="45%">
+    <stop offset="0%" stop-color="#8a6020" stop-opacity="0.4"/>
+    <stop offset="100%" stop-color="#1a1208" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="200" height="280" fill="url(#glow)"/>
+
+  <!-- Body / robes -->
+  <path d="M 60 140 Q 50 200 45 270 L 155 270 Q 150 200 140 140 Z" fill="#2a1e10"/>
+
+  <!-- Head silhouette -->
+  <ellipse cx="100" cy="90" rx="42" ry="50" fill="#2a1e10"/>
+
+  <!-- Warm face tone -->
+  <ellipse cx="100" cy="88" rx="34" ry="42" fill="#5c3d22"/>
+
+  <!-- Hair (dark, pinned back) -->
+  <ellipse cx="100" cy="58" rx="36" ry="20" fill="#1e1208"/>
+  <rect x="64" y="58" width="72" height="25" fill="#1e1208"/>
+
+  <!-- Archive scholar detail: book held at chest -->
+  <rect x="78" y="148" width="44" height="34" rx="2" fill="#3a2a14"/>
+  <rect x="80" y="150" width="40" height="30" rx="1" fill="#4a3418"/>
+  <line x1="100" y1="150" x2="100" y2="180" stroke="#2a1e10" stroke-width="1"/>
+
+  <!-- Divider line -->
+  <line x1="20" y1="240" x2="180" y2="240" stroke="#3a2a14" stroke-width="1"/>
+
+  <!-- Name label -->
+  <text x="100" y="257" text-anchor="middle" fill="#9a7a45"
+        font-family="Georgia, serif" font-size="13" letter-spacing="2">HENRIETTA</text>
+  <text x="100" y="272" text-anchor="middle" fill="#4a3820"
+        font-family="Georgia, serif" font-size="9">Loremaster&#39;s Archive</text>
+</svg>
