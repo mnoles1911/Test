@@ -38,6 +38,7 @@ public class WorldRenderer
                 int elevInt = (int)(elevNorm * 100f);
 
                 var screenPos = IsometricMath.GridToScreen(ox + col, oy + row, elevInt);
+                screenPos = new Vector2(MathF.Round(screenPos.X), MathF.Round(screenPos.Y));
                 var baseColor = tile.TileColor();
 
                 _prim.DrawDiamond(screenPos, baseColor, DarkenColor(baseColor, 0.7f));

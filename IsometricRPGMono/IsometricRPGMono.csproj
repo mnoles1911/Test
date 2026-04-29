@@ -14,9 +14,10 @@
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.2.1105" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.2.1105" />
   </ItemGroup>
-  <!-- MonoGameContentReference re-enable once dotnet-mgcb tool is installed:
+  <!-- Pre-compiled font XNB — regenerate with: mgcb /@:Content/Content.mgcb /platform:DesktopGL -->
   <ItemGroup>
-    <MonoGameContentReference Include="Content\Content.mgcb" />
+    <Content Include="Content\Fonts\DefaultFont.xnb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
-  -->
 </Project>
