@@ -1,43 +1,21 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://dg32hekqxdgf0"]
 
-; External resources are files this scene depends on.
-[ext_resource type="Script" path="res://scripts/Player.gd" id="1"]
+[ext_resource type="Script" uid="uid://b1ron3lwhlgfq" path="res://scripts/Player.gd" id="1"]
 
-; Sub-resources are data objects defined inline within this file.
-; This one defines the collision rectangle shape used by the player.
 [sub_resource type="RectangleShape2D" id="1"]
-; 32 pixels wide, 48 pixels tall — matches the placeholder ColorRect below.
-; At 32x48, the player sprite will be 2x3 tiles on the 16px grid.
 size = Vector2(32, 48)
 
-; --- Node tree ---
-; The root node is CharacterBody2D, which handles physics movement and collision.
-; Player.gd is attached here.
-[node name="Player" type="CharacterBody2D"]
+[node name="Player" type="CharacterBody2D" unique_id=79499689]
 script = ExtResource("1")
 
-; Visual is a colored rectangle standing in for the player sprite.
-; Green (0.2, 0.8, 0.2) so it's easy to spot against the dark cave.
-;
-; Offset explanation: the CharacterBody2D origin is at the player's feet center.
-; A 32x48 rect with offset_left=-16, offset_top=-48 puts the bottom-center
-; of the rect at the origin, which is the standard convention for 2D characters.
-; This matters when the real sprite arrives — it should anchor the same way.
-[node name="Visual" type="ColorRect" parent="."]
+[node name="Visual" type="ColorRect" parent="." unique_id=1589171759]
 offset_left = -16.0
 offset_top = -48.0
 offset_right = 16.0
-offset_bottom = 0.0
 color = Color(0.2, 0.8, 0.2, 1)
 
-; Collision gives the CharacterBody2D its physical shape.
-; Without this, the player passes through walls.
-[node name="Collision" type="CollisionShape2D" parent="."]
-; Shift the collision shape up 24px so it's centered on the visual rect.
+[node name="Collision" type="CollisionShape2D" parent="." unique_id=1881591709]
 position = Vector2(0, -24)
 shape = SubResource("1")
 
-; Camera2D follows this node automatically because it's a child of the Player.
-; When the Player moves, the camera moves with it.
-; Default zoom (1, 1) means one game pixel = one screen pixel before scaling.
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=24149945]

@@ -1,156 +1,118 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene format=3 uid="uid://blm1a2hgs8a6n"]
 
-; External resources: files this scene depends on.
-[ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="1"]
-[ext_resource type="Script" path="res://scripts/CampfireFlicker.gd" id="2"]
-[ext_resource type="Script" path="res://scripts/DialogueTrigger.gd" id="3"]
+[ext_resource type="PackedScene" uid="uid://dg32hekqxdgf0" path="res://scenes/Player.tscn" id="1"]
+[ext_resource type="Script" uid="uid://cffnpmw125l1t" path="res://scripts/CampfireFlicker.gd" id="2"]
+[ext_resource type="Script" uid="uid://i272am02gc5j" path="res://scripts/DialogueTrigger.gd" id="3"]
 
-; A gradient from white-opaque (center) to white-transparent (edge).
-; Used as the PointLight2D texture so the campfire light has a soft falloff.
+[sub_resource type="RectangleShape2D" id="6"]
+size = Vector2(320, 16)
+
+[sub_resource type="RectangleShape2D" id="7"]
+size = Vector2(16, 148)
+
 [sub_resource type="Gradient" id="4"]
 colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
-offsets = PackedFloat32Array(0, 1)
 
-; 256x256 radial gradient texture built from the gradient above.
-; fill=1 means radial (circular falloff from center to edge).
 [sub_resource type="GradientTexture2D" id="5"]
 gradient = SubResource("4")
 width = 256
 height = 256
 fill = 1
 
-; Collision shape for the top and bottom cave walls: full width, 16px tall.
-[sub_resource type="RectangleShape2D" id="6"]
-size = Vector2(320, 16)
-
-; Collision shape for the left and right cave walls: 16px wide, 148px tall.
-; 148 = 180 (viewport height) minus 16 (top wall) minus 16 (bottom wall).
-[sub_resource type="RectangleShape2D" id="7"]
-size = Vector2(16, 148)
-
-; Collision shape for the dialogue trigger zone.
 [sub_resource type="RectangleShape2D" id="8"]
 size = Vector2(48, 48)
 
-; === Scene node tree ===
+[node name="World" type="Node2D" unique_id=264554405]
 
-[node name="World" type="Node2D"]
-
-; CanvasModulate multiplies its color across the entire scene.
-; Color(0.102, 0.122, 0.227) = #1A1F3A, a very dark blue-black.
-; This makes the cave dark. PointLight2D cuts through the darkness.
-[node name="CanvasModulate" type="CanvasModulate" parent="."]
+[node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=1333774506]
 color = Color(0.102, 0.122, 0.227, 1)
 
-; Cave floor: a dark brown rectangle filling the full 320x180 viewport.
-[node name="CaveFloor" type="ColorRect" parent="."]
-offset_left = 0.0
-offset_top = 0.0
+[node name="CaveFloor" type="ColorRect" parent="." unique_id=1042569505]
 offset_right = 320.0
 offset_bottom = 180.0
 color = Color(0.12, 0.09, 0.07, 1)
 
-; --- Cave walls ---
-; Each wall is a StaticBody2D (solid physics body) with:
-;   - CollisionShape2D: the invisible hitbox the player bounces off
-;   - Visual (ColorRect): the visible dark rectangle
-; The StaticBody2D is positioned at the wall's center point.
-
-[node name="WallTop" type="StaticBody2D" parent="."]
+[node name="WallTop" type="StaticBody2D" parent="." unique_id=174975408]
 position = Vector2(160, 8)
 
-[node name="Shape" type="CollisionShape2D" parent="WallTop"]
+[node name="Shape" type="CollisionShape2D" parent="WallTop" unique_id=1608697876]
 shape = SubResource("6")
 
-[node name="Visual" type="ColorRect" parent="WallTop"]
+[node name="Visual" type="ColorRect" parent="WallTop" unique_id=1996003314]
 offset_left = -160.0
 offset_top = -8.0
 offset_right = 160.0
 offset_bottom = 8.0
 color = Color(0.07, 0.05, 0.04, 1)
 
-[node name="WallBottom" type="StaticBody2D" parent="."]
+[node name="WallBottom" type="StaticBody2D" parent="." unique_id=1409227426]
 position = Vector2(160, 172)
 
-[node name="Shape" type="CollisionShape2D" parent="WallBottom"]
+[node name="Shape" type="CollisionShape2D" parent="WallBottom" unique_id=1456119845]
 shape = SubResource("6")
 
-[node name="Visual" type="ColorRect" parent="WallBottom"]
+[node name="Visual" type="ColorRect" parent="WallBottom" unique_id=1803099080]
 offset_left = -160.0
 offset_top = -8.0
 offset_right = 160.0
 offset_bottom = 8.0
 color = Color(0.07, 0.05, 0.04, 1)
 
-[node name="WallLeft" type="StaticBody2D" parent="."]
+[node name="WallLeft" type="StaticBody2D" parent="." unique_id=1094321663]
 position = Vector2(8, 90)
 
-[node name="Shape" type="CollisionShape2D" parent="WallLeft"]
+[node name="Shape" type="CollisionShape2D" parent="WallLeft" unique_id=1663433396]
 shape = SubResource("7")
 
-[node name="Visual" type="ColorRect" parent="WallLeft"]
+[node name="Visual" type="ColorRect" parent="WallLeft" unique_id=1995341039]
 offset_left = -8.0
 offset_top = -74.0
 offset_right = 8.0
 offset_bottom = 74.0
 color = Color(0.07, 0.05, 0.04, 1)
 
-[node name="WallRight" type="StaticBody2D" parent="."]
+[node name="WallRight" type="StaticBody2D" parent="." unique_id=1178188277]
 position = Vector2(312, 90)
 
-[node name="Shape" type="CollisionShape2D" parent="WallRight"]
+[node name="Shape" type="CollisionShape2D" parent="WallRight" unique_id=1799979457]
 shape = SubResource("7")
 
-[node name="Visual" type="ColorRect" parent="WallRight"]
+[node name="Visual" type="ColorRect" parent="WallRight" unique_id=1086838502]
 offset_left = -8.0
 offset_top = -74.0
 offset_right = 8.0
 offset_bottom = 74.0
 color = Color(0.07, 0.05, 0.04, 1)
 
-; --- Campfire ---
-; A small orange rectangle stands in for a real flame sprite.
-[node name="CampfireVisual" type="ColorRect" parent="."]
+[node name="CampfireVisual" type="ColorRect" parent="." unique_id=1155122314]
 offset_left = 94.0
 offset_top = 83.0
 offset_right = 106.0
 offset_bottom = 97.0
 color = Color(0.91, 0.53, 0.23, 1)
 
-; The PointLight2D that actually illuminates the cave.
-; CampfireFlicker.gd (the attached script) animates the energy value each frame.
-; shadow_enabled=true allows this light to cast shadows from LightOccluder2D
-; nodes (added to walls in a future milestone for full shadow casting).
-[node name="Campfire" type="PointLight2D" parent="."]
+[node name="Campfire" type="PointLight2D" parent="." unique_id=548613724]
 position = Vector2(100, 90)
-texture = SubResource("5")
-texture_scale = 1.5
-color = Color(0.910, 0.529, 0.227, 1)
+color = Color(0.91, 0.529, 0.227, 1)
 energy = 1.3
 shadow_enabled = true
+texture = SubResource("5")
+texture_scale = 1.5
 script = ExtResource("2")
 
-; --- Dialogue trigger zone ---
-; Walk into the translucent blue box on the right side of the cave,
-; then press E. DialogueTrigger.gd detects both conditions and fires.
-[node name="DialogueTrigger" type="Area2D" parent="."]
+[node name="DialogueTrigger" type="Area2D" parent="." unique_id=175401455]
 position = Vector2(260, 90)
 script = ExtResource("3")
 
-; Translucent blue rectangle so you can see the trigger zone during development.
-; Remove or hide this once the game has real visual cues (doorways, markers, etc).
-[node name="TriggerVisual" type="ColorRect" parent="DialogueTrigger"]
+[node name="TriggerVisual" type="ColorRect" parent="DialogueTrigger" unique_id=371784648]
 offset_left = -24.0
 offset_top = -24.0
 offset_right = 24.0
 offset_bottom = 24.0
 color = Color(0.2, 0.4, 0.9, 0.3)
 
-[node name="Shape" type="CollisionShape2D" parent="DialogueTrigger"]
+[node name="Shape" type="CollisionShape2D" parent="DialogueTrigger" unique_id=1727969544]
 shape = SubResource("8")
 
-; --- Player ---
-; Instance of Player.tscn. Starts at the center of the cave.
-; Camera2D lives inside Player.tscn, so it follows automatically.
-[node name="Player" parent="." instance=ExtResource("1")]
+[node name="Player" parent="." unique_id=500456698 instance=ExtResource("1")]
 position = Vector2(160, 90)

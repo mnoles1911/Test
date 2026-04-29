@@ -2,3 +2,6 @@
 IsometricRPGMono/bin/
 IsometricRPGMono/obj/
 IsometricRPGMono/publish/
+
+# Godot 4 editor cache (regenerated on open; machine-specific)
+.godot/
