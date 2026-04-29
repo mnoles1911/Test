@@ -18,6 +18,14 @@ public class GameScene
     public WorldManager  WorldManager  { get; private set; } = null!;
     public InputManager  InputManager  { get; private set; } = null!;
 
+    // ---- UI ----
+    private ScreenManager _screenManager = null!;
+    private GameHUD       _hud           = null!;
+    private Minimap       _minimap       = null!;
+
+    // Current game state
+    private GameState _state = GameState.MainMenu;
+
     // ---- Camera ----
     /// The screen-space position the camera is centred on (passed to all Draw calls).
     public Vector2 CameraPos { get; private set; }
@@ -33,6 +41,9 @@ public class GameScene
     private int _viewportWidth  = 1280;
     private int _viewportHeight = 720;
 
+    // Previous keyboard state for edge detection in UI
+    private KeyboardState _prevKeyboard;
+
     // -------------------------------------------------------------------------
 
     public void Initialize(GraphicsDevice graphicsDevice)
@@ -45,6 +56,17 @@ public class GameScene
         CombatSystem  = new CombatSystem();
         ItemSpawner   = new ItemSpawner();
 
+        // UI subsystems
+        _hud           = new GameHUD();
+        _minimap       = new Minimap();
+        _screenManager = new ScreenManager();
+
+        // Start at main menu
+        PushMainMenu();
+    }
+
+    private void InitializeGameplay()
+    {
         // Spawn player at chunk centre
         Player = new Player(new Vector2(8f, 8f));
 
@@ -58,24 +80,82 @@ public class GameScene
 
         // Camera starts centred on the player
         CameraPos = IsometricMath.WorldToScreen(Player.WorldPosition);
+
+        _killCount = 0;
     }
 
     public void LoadContent(SpriteManager spriteManager)
     {
-        // WorldRenderer is constructed here since it needs PrimitiveRenderer,
-        // which is owned by Game1; we receive it in Draw.  Nothing to preload.
+        // Nothing to preload — all textures are procedural.
     }
+
+    // -------------------------------------------------------------------------
+    // Screen helpers
+
+    private void PushMainMenu()
+    {
+        _state = GameState.MainMenu;
+        var menu = new MainMenuScreen
+        {
+            ContinueEnabled = false,
+            OnNewGame = () =>
+            {
+                InitializeGameplay();
+                _screenManager.Pop();
+                _state = GameState.Playing;
+            },
+            OnQuit = () =>
+            {
+                // Signal exit via a flag checked in Game1
+                _wantsExit = true;
+            }
+        };
+        _screenManager.Push(menu);
+    }
+
+    private bool _wantsExit = false;
+    public bool WantsExit => _wantsExit;
 
     // -------------------------------------------------------------------------
     // Game loop
 
     public void Update(GameTime gameTime, KeyboardState keyboard, MouseState mouse)
     {
-        double dt          = gameTime.ElapsedGameTime.TotalSeconds;
-        _totalTime         = gameTime.TotalGameTime.TotalSeconds;
+        double dt = gameTime.ElapsedGameTime.TotalSeconds;
+        dt        = Math.Min(dt, 1.0 / 30.0);
+        _totalTime = gameTime.TotalGameTime.TotalSeconds;
 
-        // Clamp dt so spiral-of-death is avoided
-        dt = Math.Min(dt, 1.0 / 30.0);
+        // Always update screen manager (handles menus/pause)
+        _screenManager.Update(gameTime, mouse, keyboard);
+
+        if (_state == GameState.MainMenu || _state == GameState.GameOver)
+        {
+            _prevKeyboard = keyboard;
+            return;
+        }
+
+        if (_state == GameState.Paused)
+        {
+            // Escape resumes
+            if (keyboard.IsKeyDown(Keys.Escape) && !_prevKeyboard.IsKeyDown(Keys.Escape))
+                ResumePlaying();
+            _prevKeyboard = keyboard;
+            return;
+        }
+
+        if (_state == GameState.Inventory)
+        {
+            // I or Escape closes inventory
+            if ((keyboard.IsKeyDown(Keys.I) && !_prevKeyboard.IsKeyDown(Keys.I)) ||
+                (keyboard.IsKeyDown(Keys.Escape) && !_prevKeyboard.IsKeyDown(Keys.Escape)))
+            {
+                CloseInventory();
+            }
+            _prevKeyboard = keyboard;
+            return;
+        }
+
+        // ---- Playing state ----
 
         // 1. Input
         var playerScreenPos = new Vector2(
@@ -83,7 +163,23 @@ public class GameScene
             _viewportHeight / 2f + (IsometricMath.WorldToScreen(Player.WorldPosition) - CameraPos).Y);
         InputManager.Update(keyboard, mouse, playerScreenPos);
 
-        // 2. Player movement + collision
+        // 2. Check for pause (Escape)
+        if (InputManager.PausePressed)
+        {
+            PushPause();
+            _prevKeyboard = keyboard;
+            return;
+        }
+
+        // 3. Check for inventory (I)
+        if (InputManager.InventoryPressed)
+        {
+            PushInventory();
+            _prevKeyboard = keyboard;
+            return;
+        }
+
+        // 4. Player movement + collision
         var oldPos = Player.WorldPosition;
         Player.Move(InputManager.MovementDirection, dt);
 
@@ -100,15 +196,14 @@ public class GameScene
                 Player.WorldPosition = oldPos;
         }
 
-        Player.Update(gameTime);   // ticks buffs and hit-flash
+        Player.Update(gameTime);
 
-        // 3. Fire bullet
+        // 5. Fire bullet
         if (InputManager.FireHeld && Player.CanFire(_totalTime))
         {
             var aimDir = InputManager.AimDirection;
             if (aimDir.LengthSquared() > 0.01f)
             {
-                // Convert screen-space aim direction to isometric world direction
                 var worldDir = IsometricMath.ScreenToWorld(aimDir) - IsometricMath.ScreenToWorld(Vector2.Zero);
                 if (worldDir.LengthSquared() > 1e-6f)
                 {
@@ -119,14 +214,13 @@ public class GameScene
             }
         }
 
-        // 4. Enemies: AI + update
+        // 6. Enemies: AI + update
         foreach (var enemy in Enemies)
         {
             if (!enemy.IsAlive) continue;
             enemy.UpdateAI(Player.WorldPosition, _totalTime, WorldManager);
             enemy.Update(gameTime);
 
-            // Enemy melee attack
             if (enemy.CanAttack(_totalTime))
             {
                 Player.TakeDamage(Constants.EnemyAttackDamage);
@@ -134,13 +228,25 @@ public class GameScene
             }
         }
 
-        // 5. Combat (bullets)
+        // 7. Combat (bullets)
+        // Snapshot enemy health before update to detect hits
+        var preHealth = Enemies.Where(e => e.IsAlive)
+            .ToDictionary(e => e, e => e.Health);
+
         CombatSystem.Update(dt, _totalTime, Enemies, Player);
 
-        // 6. Item attraction / collection
+        // Show damage numbers for enemies that took damage this frame
+        foreach (var (enemy, prevHp) in preHealth)
+        {
+            int dmg = prevHp - enemy.Health;
+            if (dmg > 0)
+                _hud.ShowDamage(enemy.WorldPosition, dmg, CameraPos);
+        }
+
+        // 8. Item attraction / collection
         ItemSpawner.Update(dt, Player);
 
-        // 7. World streaming
+        // 9. World streaming
         var (loaded, unloaded) = WorldManager.UpdateAroundPlayer(Player.WorldPosition);
 
         if (loaded.Count > 0)
@@ -159,7 +265,7 @@ public class GameScene
             RemoveEnemiesInChunk(coord);
         }
 
-        // 8. Enemy spawning
+        // 10. Enemy spawning
         _enemySpawnTimer += dt;
         if (_enemySpawnTimer >= Constants.EnemySpawnInterval)
         {
@@ -167,15 +273,103 @@ public class GameScene
             TrySpawnEnemies();
         }
 
-        // 9. Remove dead enemies, award XP
+        // 11. Remove dead enemies, award XP, show damage
         var newlyDead = Enemies.Where(e => !e.IsAlive).ToList();
         foreach (var dead in newlyDead)
+        {
             _killCount++;
+            Player.AddXP(20);
+        }
         Enemies.RemoveAll(e => !e.IsAlive);
 
-        // 10. Camera: lerp toward player screen position
+        // 12. Update HUD
+        _hud.Update(gameTime, mouse, Player);
+        _hud.SetKillCount(_killCount);
+
+        // 13. Check game over
+        if (Player.Health <= 0 && _state == GameState.Playing)
+        {
+            PushGameOver();
+        }
+
+        // 14. Camera: lerp toward player screen position
         var targetCam = IsometricMath.WorldToScreen(Player.WorldPosition);
         CameraPos = Vector2.Lerp(CameraPos, targetCam, 0.1f);
+
+        _prevKeyboard = keyboard;
+    }
+
+    // ---- Pause / Inventory / GameOver helpers ----
+
+    private void PushPause()
+    {
+        _state = GameState.Paused;
+        var pause = new PauseScreen
+        {
+            OnResume   = () => ResumePlaying(),
+            OnMainMenu = () => GoToMainMenu()
+        };
+        _screenManager.Push(pause);
+    }
+
+    private void ResumePlaying()
+    {
+        if (_state == GameState.Paused || _state == GameState.Inventory)
+        {
+            _screenManager.Pop();
+            _state = GameState.Playing;
+        }
+    }
+
+    private void PushInventory()
+    {
+        _state = GameState.Inventory;
+        var inv = new InventoryScreen
+        {
+            Player  = Player,
+            OnClose = () => CloseInventory()
+        };
+        _screenManager.Push(inv);
+    }
+
+    private void CloseInventory()
+    {
+        if (_state == GameState.Inventory)
+        {
+            _screenManager.Pop();
+            _state = GameState.Playing;
+        }
+    }
+
+    private void PushGameOver()
+    {
+        _state = GameState.GameOver;
+        var go = new GameOverScreen
+        {
+            KillCount = _killCount,
+            Level     = Player.Level,
+            OnRestart = () =>
+            {
+                _screenManager.Pop();
+                Enemies.Clear();
+                CombatSystem  = new CombatSystem();
+                ItemSpawner   = new ItemSpawner();
+                _enemySpawnTimer = 0;
+                InitializeGameplay();
+                _state = GameState.Playing;
+            },
+            OnMainMenu = () => GoToMainMenu()
+        };
+        _screenManager.Push(go);
+    }
+
+    private void GoToMainMenu()
+    {
+        // Pop all screens then push main menu
+        while (!_screenManager.IsEmpty)
+            _screenManager.Pop();
+        Enemies.Clear();
+        PushMainMenu();
     }
 
     // ---- World renderer (lazy-created on first Draw) ----
@@ -189,29 +383,58 @@ public class GameScene
         SpriteBatch       spriteBatch,
         PrimitiveRenderer primRenderer,
         SpriteManager     spriteManager,
-        Vector2           cameraPos)
+        Vector2           cameraPos,
+        SpriteFont?       font = null)
     {
-        // 1. World tiles (uses PrimitiveRenderer, must be before SpriteBatch.Begin)
-        _worldRenderer ??= new WorldRenderer(primRenderer);
-        _worldRenderer.Draw(WorldManager, cameraPos);
+        if (_state == GameState.Playing || _state == GameState.Paused ||
+            _state == GameState.Inventory)
+        {
+            // 1. World tiles
+            _worldRenderer ??= new WorldRenderer(primRenderer);
+            _worldRenderer.Draw(WorldManager, cameraPos);
 
-        // 2. Sprite pass
-        spriteBatch.Begin(
-            sortMode:        SpriteSortMode.Deferred,
-            blendState:      BlendState.AlphaBlend,
-            samplerState:    SamplerState.PointClamp,
-            transformMatrix: Matrix.Identity);
+            // 2. Sprite pass
+            spriteBatch.Begin(
+                sortMode:        SpriteSortMode.Deferred,
+                blendState:      BlendState.AlphaBlend,
+                samplerState:    SamplerState.PointClamp,
+                transformMatrix: Matrix.Identity);
 
-        ItemSpawner.Draw(spriteBatch, spriteManager, cameraPos);
+            ItemSpawner.Draw(spriteBatch, spriteManager, cameraPos);
 
-        foreach (var enemy in Enemies)
-            enemy.Draw(spriteBatch, spriteManager, cameraPos);
+            foreach (var enemy in Enemies)
+                enemy.Draw(spriteBatch, spriteManager, cameraPos);
 
-        Player.Draw(spriteBatch, spriteManager, cameraPos);
+            Player.Draw(spriteBatch, spriteManager, cameraPos);
 
-        CombatSystem.Draw(spriteBatch, spriteManager, cameraPos);
+            CombatSystem.Draw(spriteBatch, spriteManager, cameraPos);
 
-        spriteBatch.End();
+            spriteBatch.End();
+
+            // 3. HUD pass (new SpriteBatch pass on top)
+            spriteBatch.Begin(
+                sortMode:     SpriteSortMode.Deferred,
+                blendState:   BlendState.AlphaBlend,
+                samplerState: SamplerState.PointClamp);
+
+            _hud.Draw(spriteBatch, spriteManager, font, Player);
+            _minimap.Draw(spriteBatch, spriteManager, WorldManager, Player.WorldPosition, cameraPos);
+
+            spriteBatch.End();
+        }
+
+        // 4. Screen manager pass (menus / overlays)
+        if (!_screenManager.IsEmpty)
+        {
+            spriteBatch.Begin(
+                sortMode:     SpriteSortMode.Deferred,
+                blendState:   BlendState.AlphaBlend,
+                samplerState: SamplerState.PointClamp);
+
+            _screenManager.Draw(spriteBatch, spriteManager, font);
+
+            spriteBatch.End();
+        }
     }
 
     private void TrySpawnEnemies()
@@ -244,19 +467,17 @@ public class GameScene
             var pick = positions[(int)(_rng.Next() % (ulong)positions.Count)];
             var pos  = new Vector2(pick.worldCol + 0.5f, pick.worldRow + 0.5f);
 
-            // Don't spawn too close to player
             if (IsometricMath.Distance(pos, Player.WorldPosition) < 4f) continue;
 
             var enemy = new Enemy(pos);
 
-            // Scale difficulty by distance from origin and player level
             float distFromOrigin = IsometricMath.Distance(pos, Vector2.Zero);
             float scaling = 1f + (distFromOrigin / 20f) + (Player.Level - 1) * 0.2f;
             enemy.Health    = (int)(Constants.EnemyMaxHealth * scaling);
             enemy.MaxHealth = enemy.Health;
 
             Enemies.Add(enemy);
-            break; // one spawn per interval
+            break;
         }
     }
 

@@ -12,6 +12,9 @@ public class Game1 : Game
     private SpriteManager         _spriteManager = null!;
     private GameScene             _gameScene = null!;
 
+    // Font is null unless loaded via Content pipeline; all DrawString calls must null-check.
+    private SpriteFont? _font = null;
+
     public Game1()
     {
         _graphics = new GraphicsDeviceManager(this);
@@ -33,6 +36,17 @@ public class Game1 : Game
         _primRenderer  = new PrimitiveRenderer(GraphicsDevice);
         _spriteManager = new SpriteManager(GraphicsDevice);
 
+        // Attempt to load a font if one was built into the content pipeline.
+        // If no font is available, _font stays null and all UI text is silently skipped.
+        try
+        {
+            _font = Content.Load<SpriteFont>("Fonts/DefaultFont");
+        }
+        catch
+        {
+            _font = null;
+        }
+
         _gameScene = new GameScene();
         _gameScene.Initialize(GraphicsDevice);
         _gameScene.LoadContent(_spriteManager);
@@ -45,7 +59,9 @@ public class Game1 : Game
 
         _gameScene.Update(gameTime, keyboard, mouse);
 
-        if (_gameScene.InputManager.PausePressed)
+        // GameScene now handles Escape internally (pause/menu).
+        // Only exit if GameScene explicitly signals it (e.g., Quit button).
+        if (_gameScene.WantsExit)
             Exit();
 
         base.Update(gameTime);
@@ -60,7 +76,8 @@ public class Game1 : Game
             _spriteBatch,
             _primRenderer,
             _spriteManager,
-            _gameScene.CameraPos);
+            _gameScene.CameraPos,
+            _font);
 
         base.Draw(gameTime);
     }
