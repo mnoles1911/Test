@@ -35,9 +35,11 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /scenes — all .tscn files
 - /scripts — all .gd files  
 - /assets/sprites — character and prop sprites
+- /assets/portraits — character portrait images for dialogue boxes
 - /assets/tilesets — environment tiles
 - /assets/audio — music and sfx
-- /dialogue — all Dialogic timeline files
+- /dialogue — all Dialogic timeline (.dtl) files
+- /dialogue/characters — Dialogic character definition (.dch) files
 - /lore — all narrative canon (start at lore/INDEX.md)
 - /design — game implementation reference (systems, art direction)
 
@@ -51,10 +53,18 @@ MILESTONE 1: COMPLETE — First walkable scene with lighting
 - [x] GameState.gd autoload singleton stub
 - [x] Cave wall collision (4x StaticBody2D)
 
-MILESTONE 2: (not started) — First dialogue with Dialogic 2
-- Install Dialogic 2 plugin
-- Connect the E-press trigger in World.tscn to a Dialogic timeline
-- First line of in-game dialogue
+MILESTONE 2: FILES READY — Awaiting Dialogic 2 plugin installation
+- [x] Dialogue timeline written: dialogue/henrietta_archive.dtl
+- [x] Portrait placeholder created: assets/portraits/henrietta_placeholder.svg
+- [x] DialogueTrigger.gd wired to Dialogic.start() with graceful fallback
+- [ ] Install Dialogic 2 plugin (see design/DIALOGIC_SETUP.md — must be done in Godot editor)
+- [ ] Create Henrietta character definition in Dialogic Characters editor
+- [ ] Create Dialogic default layout (so the dialogue box appears)
+- [ ] DONE WHEN: Press E in the trigger zone → Henrietta dialogue box appears over the cave scene
+
+MILESTONE 3: (not started) — Scene transitions and second room
+- Fade to black between zones
+- A second cave room or exterior space to walk to
 
 ## What I never want
 - Complex code I can't understand
@@ -98,22 +108,24 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems
 - design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
+- design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 
 ## Current project state
-Godot 4.3 project initialized. Milestone 1 complete.
+Godot 4.3 project initialized. Milestone 1 complete. Milestone 2 files built — Dialogic 2 plugin installation required to complete.
 
 Files present:
 - `project.godot` — 320x180 viewport, integer scaling, pixel snap, GameState autoload, E key as interact action
 - `scripts/GameState.gd` — autoload singleton stub
 - `scripts/Player.gd` — 8-directional movement
 - `scripts/CampfireFlicker.gd` — sine wave light energy animation
-- `scripts/DialogueTrigger.gd` — press-E area trigger (prints to console; Dialogic hook is a TODO)
+- `scripts/DialogueTrigger.gd` — press-E area trigger, calls Dialogic.start() with graceful fallback
 - `scenes/Player.tscn` — CharacterBody2D with ColorRect placeholder, CollisionShape2D, Camera2D
 - `scenes/World.tscn` — cave scene: CanvasModulate darkness, 4 wall StaticBody2Ds, campfire PointLight2D, Area2D trigger, Player instance
+- `dialogue/henrietta_archive.dtl` — Henrietta at the Archive door, 7-line opening scene
+- `assets/portraits/henrietta_placeholder.svg` — warm-toned archive scholar portrait placeholder
 
-To run: Open project in Godot 4.3, run World.tscn. WASD/arrows move the player. Walk into the blue box on the right and press E.
-
-Next step: Milestone 2 — install Dialogic 2 and wire up the first dialogue trigger.
+To run Milestone 1: Open project in Godot 4.3, run World.tscn. WASD/arrows move the player. Walk into the blue box on the right and press E.
+To complete Milestone 2: Follow design/DIALOGIC_SETUP.md.
 
 ## Canonical naming (frequent contradictions)
 - Eldermark royal house: Castrove (NOT Vane)
