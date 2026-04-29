@@ -42,17 +42,24 @@ The Caelborn Compact's rights of passage in Aelorin territory are ancient enough
 
 Edran does not know, when he joins the party, that the documents he's been protecting are useful. He discovers it the way he discovers most things: by holding information carefully until the moment when it fits.
 
-## Joining the Company
+## First Contact with the Party
 
-Edran meets the party in circumstances that initially look coincidental. He is in the same region as Roland because one of his Hollow Court threads led there. He recognizes, quickly, that Roland is connected to something larger than a single investigation. He attaches himself to the group with a practiced casualness that does not fool Corvus and does fool almost everyone else.
+Edran crosses paths with Roland's group in Game One under circumstances that look coincidental. He is in the same region because one of his Hollow Court threads led there. He recognizes quickly that Roland is connected to something larger than a single investigation. He offers what he knows, takes what he needs, and departs — leaving a contact address and an open offer.
 
-He intends to leave when he has what he needs. He stays because what he needs keeps getting larger.
+He is not a companion. He is something more useful in some situations: a person with no official affiliation, extensive contacts, and no reason to be watched.
 
 ## Role in the Trilogy
 
-Edran joins in Game One and operates through all three games as the party's institutional analyst — the person who understands administrative structures, recognizes document falsification, and maintains the contact network that gives the party access to information they shouldn't be able to reach.
+Edran is a **recurring contact and ally**, not a party companion. He operates across all three games as the party's outside analyst — the person they reach when they need something understood rather than fought.
 
-His arc is the completion of the Caelborn legacy: the claim his grandfather suppressed to protect the family gets exercised, finally and legitimately, to help protect the world. What the grandfather hid becomes, in Edran's hands, a key. The grief about Maren resolves not through revenge but through understanding — he eventually identifies the specific Hollow Court figure responsible, and their death in Game Two's main plot means the resolution is both complete and out of his hands, which is its own kind of reckoning.
+His specific value:
+- **Game One:** First introduction; shares Hollow Court intelligence in exchange for protection and information access. Departs before the Spine sequence.
+- **Game Two:** His Caelborn Compact — the ancient treaty granting his bloodline passage rights in Aelorin territory — becomes the key that unlocks records in Lirien-Thal the party could not otherwise access without years of diplomatic groundwork. He does not know the Compact is useful until Aelthurion tells him so.
+- **Game Three:** Operates from Aldenholt as an intelligence relay during the Alliance buildup. Does not cross to Thal. His network is part of what keeps the Alliance coordinated across three kingdoms during the march.
+
+His arc is the completion of the Caelborn legacy: the claim his grandfather suppressed to protect the family gets exercised, finally and legitimately, to help protect the world. What the grandfather hid becomes, in Edran's hands, a key.
+
+The grief about Maren resolves not through revenge but through understanding — he eventually identifies the specific Hollow Court figure responsible, and their death in Game Two's main plot means the resolution is both complete and out of his hands. This is its own kind of reckoning for a man who has spent years trying to control the shape of what happens to him.
 
 ## Character
 
