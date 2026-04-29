@@ -40,7 +40,7 @@ Roland takes the pommel. He also takes nothing else, replaces the altar fixture 
 
 ### [MAIN QUEST] Henrietta's Thread
 
-The duplicate Henrietta gave Roland contains references to four more pieces — the gold coin (Solgrade), the silver clasp (Aelorin Greatwood), the copper wire (Karaz-Dûn), and two she could not locate. Her notes are partial because she was killed before she finished.
+The duplicate Henrietta gave Roland contains references to five more pieces — the gold coin (Solgrade), the bronze ring (Vosskara), the silver clasp (Aelorin Greatwood), the copper wire (Caer Brannoch) — and one she had a reference for but could not trace to a location. Her notes are partial because she was killed before she finished.
 
 Her research points to a Second Age genealogical record in the Archive's restricted section. The record is now inaccessible — her death is officially unsolved but the Archive has been locked to outsiders pending investigation.
 

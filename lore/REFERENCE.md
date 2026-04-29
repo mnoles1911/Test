@@ -155,8 +155,8 @@ The seven metals of the Grand Alliance forging:
 | Vaeroth sells allegiance to Ash Throne | ~10 years before Game One |
 | Roland's expulsion from Iron Chalice | ~3 years before Game One |
 | Game One begins | Year 0 |
-| Shroud Sea navigable window opens | Year 9 (9 years after Game One start) |
-| Game Two (estimated) | Year 1-2 |
-| Game Three (estimated) | Year 2-3 |
+| Game Two (estimated) | Year 1-3 |
+| Game Three (estimated) | Year 8-9 |
+| Shroud Sea navigable window opens | Year 9 — the Alliance crosses it at the start of the final campaign |
 
 ---

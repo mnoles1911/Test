@@ -912,7 +912,7 @@ Roland takes the pommel. He also takes nothing else, replaces the altar fixture 
 
 ### [MAIN QUEST] Henrietta's Thread
 
-The duplicate Henrietta gave Roland contains references to four more pieces — the gold coin (Solgrade), the silver clasp (Aelorin Greatwood), the copper wire (Karaz-Dûn), and two she could not locate. Her notes are partial because she was killed before she finished.
+The duplicate Henrietta gave Roland contains references to five more pieces — the gold coin (Solgrade), the bronze ring (Vosskara), the silver clasp (Aelorin Greatwood), the copper wire (Caer Brannoch) — and one she had a reference for but could not trace to a location. Her notes are partial because she was killed before she finished.
 
 Her research points to a Second Age genealogical record in the Archive's restricted section. The record is now inaccessible — her death is officially unsolved but the Archive has been locked to outsiders pending investigation.
 
@@ -1733,8 +1733,8 @@ The seven metals of the Grand Alliance forging:
 | Vaeroth sells allegiance to Ash Throne | ~10 years before Game One |
 | Roland's expulsion from Iron Chalice | ~3 years before Game One |
 | Game One begins | Year 0 |
-| Shroud Sea navigable window opens | Year 9 (9 years after Game One start) |
-| Game Two (estimated) | Year 1-2 |
-| Game Three (estimated) | Year 2-3 |
+| Game Two (estimated) | Year 1-3 |
+| Game Three (estimated) | Year 8-9 |
+| Shroud Sea navigable window opens | Year 9 — the Alliance crosses it at the start of the final campaign |
 
 ---
