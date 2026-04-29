@@ -53,3 +53,30 @@ MILESTONE 1: First walkable scene with lighting
 - Systems built before I need them
 - C# — GDScript only
 - Any advice to switch engines
+
+## Lore reference
+All world-building canon lives in /lore. Start at /lore/INDEX.md for a directory map. Key entry points:
+- lore/WORLD.md — three ages, magic, religion, peoples overview
+- lore/WORLD_GEOGRAPHY.md — terrain, scale, rivers, coastlines
+- lore/CITY_DESCRIPTIONS.md — physical descriptions of major settlements
+- lore/MAP_GENERATION_GUIDE.md — Tolkien-style map prompt and layout rules
+- lore/CHARACTERS_COMPANIONS.md, CHARACTERS_NPCS.md, BACKSTORY_*.md
+- lore/GAME1_PART1.md / GAME1_PART2.md — full Game One plot
+- lore/REFERENCE.md — quick-reference tables
+
+Always check INDEX.md before adding new lore files to avoid duplication.
+
+## Current project state
+The repository is currently in lore-development phase. No Godot project, scenes, or scripts exist yet. Milestone 1 (first walkable scene) has not begun. Build/test commands will be added once the Godot project is initialized.
+
+## Canonical naming (frequent contradictions)
+- Eldermark royal house: Castrove (NOT Vane)
+- Aldric the blacksmith: Aldric Vane (Mordvar bloodline, not the investigator)
+- The Caelborn investigator: Edran Vane
+- Dagna's surname: Irontrack (NOT Ironkeep)
+- Corvus's surname: Tane (NOT Aldenmere)
+- Vault of Aen-Vael location: below Khorumzad in the Spine of Mira (NOT below Drûn-Khazad)
+- The third dwarven god: Kradir the Unmoving
+
+## Legacy files
+IsometricRPGMono/ and title_screen.svg are leftovers from a prior MonoGame prototype. They are not part of Game One and should not be referenced or extended. They can be deleted when convenient.
