@@ -42,13 +42,19 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /design — game implementation reference (systems, art direction)
 
 ## Current milestone
-MILESTONE 1: First walkable scene with lighting
-- Player moves in a cave-like environment
-- One campfire light source, warm orange glow
-- Camera follows player at 3/4 angle
-- One area trigger that will eventually fire dialogue
-- No art yet — placeholder shapes only
-- DONE WHEN: It vibes like the reference image in lighting and camera angle
+MILESTONE 1: COMPLETE — First walkable scene with lighting
+- [x] Player moves in a cave-like environment (CharacterBody2D, 8-directional, move_and_slide)
+- [x] One campfire light source, warm orange glow (PointLight2D #E8873A, energy 1.3, flicker script)
+- [x] Camera follows player (Camera2D child of Player node)
+- [x] One area trigger that fires on press-E (Area2D + DialogueTrigger.gd)
+- [x] Placeholder shapes only (ColorRect for all visuals)
+- [x] GameState.gd autoload singleton stub
+- [x] Cave wall collision (4x StaticBody2D)
+
+MILESTONE 2: (not started) — First dialogue with Dialogic 2
+- Install Dialogic 2 plugin
+- Connect the E-press trigger in World.tscn to a Dialogic timeline
+- First line of in-game dialogue
 
 ## What I never want
 - Complex code I can't understand
@@ -71,7 +77,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | lore/MAP_GENERATION_GUIDE.md + sibling map files | New settlements, terrain, or geographic features added |
 | design/SYSTEMS_DESIGN.md | Companion roster changes, faction triggers updated, new game systems added |
 | design/ART_DIRECTION.md | New locations added to the game, palette or shader decisions finalized |
-| CLAUDE.md (this file) | Godot project initialized; milestone completed; new canonical naming contradictions found |
+| CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems built |
 
 ---
 
@@ -91,9 +97,23 @@ Always check INDEX.md before adding new lore files to avoid duplication.
 Game implementation docs live in /design. When lore and design conflict, lore wins.
 - design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems
 - design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
+- design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 
 ## Current project state
-The repository is currently in lore-development phase. No Godot project, scenes, or scripts exist yet. Milestone 1 (first walkable scene) has not begun. Build/test commands will be added once the Godot project is initialized.
+Godot 4.3 project initialized. Milestone 1 complete.
+
+Files present:
+- `project.godot` — 320x180 viewport, integer scaling, pixel snap, GameState autoload, E key as interact action
+- `scripts/GameState.gd` — autoload singleton stub
+- `scripts/Player.gd` — 8-directional movement
+- `scripts/CampfireFlicker.gd` — sine wave light energy animation
+- `scripts/DialogueTrigger.gd` — press-E area trigger (prints to console; Dialogic hook is a TODO)
+- `scenes/Player.tscn` — CharacterBody2D with ColorRect placeholder, CollisionShape2D, Camera2D
+- `scenes/World.tscn` — cave scene: CanvasModulate darkness, 4 wall StaticBody2Ds, campfire PointLight2D, Area2D trigger, Player instance
+
+To run: Open project in Godot 4.3, run World.tscn. WASD/arrows move the player. Walk into the blue box on the right and press E.
+
+Next step: Milestone 2 — install Dialogic 2 and wire up the first dialogue trigger.
 
 ## Canonical naming (frequent contradictions)
 - Eldermark royal house: Castrove (NOT Vane)
