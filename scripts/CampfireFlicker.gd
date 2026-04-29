@@ -35,12 +35,13 @@ func _process(delta: float) -> void:
 
 	# sin() returns a value between -1 and +1 that cycles smoothly.
 	# Multiply by flicker_amount to scale it to a small energy offset.
-	var offset: float = sin(time) * flicker_amount
+	# Named energy_offset (not just "offset") to avoid shadowing PointLight2D.offset.
+	var energy_offset: float = sin(time) * flicker_amount
 
 	# Add a tiny random nudge each frame to break the mechanical regularity.
 	# randf_range(-0.02, 0.02) is subtle — just enough to feel alive.
-	offset += randf_range(-0.02, 0.02)
+	energy_offset += randf_range(-0.02, 0.02)
 
 	# Apply the result to this node's energy property.
 	# self.energy is inherited from PointLight2D.
-	energy = base_energy + offset
+	energy = base_energy + energy_offset
