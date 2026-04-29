@@ -16,7 +16,7 @@ The age is paradox: men are more numerous than ever, cities grow, trade flows �
 Flat, fertile, heavily farmed. The four human kingdoms occupy this region, borders contested by rivers and old battle-lines. The most densely populated area in the world.
 
 **The Spine of the World**
-A vast mountain range running north-to-south through Mira's eastern third. Home to the three dwarven kingdoms. Impassable at its heights except through the **Underway** — the dwarven tunnel network threading the mountain's heart.
+A vast mountain range running north-to-south through Mira's eastern third. Home to the three dwarven kingdoms. Impassable at its heights except through the **Underway** — the dwarven tunnel network threading the mountain's heart. The deepest point of the Spine, below Khorumzad, contains the **Vault of Aen-Vael** — the resting place of the Aeluvain, placed here by the Grand Alliance as far from Drûn-Khazad as the world allows.
 
 **The Greatwood**
 Northern Mira. A vast ancient forest where the Aelorin have lived since the First Age. The wood grows darker and older the further north one travels. The Eight Sacred Glades are scattered through it. The silverwood trees in the heart of Lirien-Thal are not trees — they are ancestors.
@@ -42,7 +42,7 @@ Western Thal — grassland transitioning to grey hardpan. Where the Gulmrak Hord
 Central Thal — jagged volcanic mountains riddled with goblin warrens. The Vrothmor Peaks are older than any recorded history and contain tunnel systems that predate even the dwarven Underway.
 
 **Drûn-Khazad — The Burning Wound**
-The great volcano at Thal's heart. Called the "World's Mouth" by orcs, who consider it sacred ground. Active — permanent lava glow at night, ash drifting west on bad years. The caldera contains the **Hollow Hearth**, where the Aescstól (Ash Throne) was hidden after Mordvar's binding. The Hollow Hearth is below the caldera; the **Vault of Aen-Vael** is below the Hollow Hearth.
+The great volcano at Thal's heart. Called the "World's Mouth" by orcs, who consider it sacred ground. Active — permanent lava glow at night, ash drifting west on bad years. The caldera contains the **Hollow Hearth**, where the Aescstól (Ash Throne) was hidden after Mordvar's binding. The Hollow Hearth is below the caldera. The Vault of Aen-Vael is not here — the Grand Alliance deliberately placed it on the opposite side of the world, below Khorumzad in the Spine of Mira, so that any attempt to reach it must move away from Mordvar's seat of power.
 
 **Mor-Vethrin**
 The obsidian city of the Naergrim dark elves, built into the eastern cliff-faces of the Vrothmor Peaks. Black stone, no windows facing west, entrance through a single gate guarded by a carved arch of bone.
@@ -114,11 +114,11 @@ The eighth glade exists and is tended in anticipation. It has no star. The Aelor
 
 ### Dwarven Religion — The Forge and the Lost
 
-The **Forge-Father** made the world's bones. The **Mountain-Mother** fills the bones with ore and life. The **Lost Brother** — a fourth god, equal to the other three — was slain by dragons in the First Age, which is the religious foundation of the dwarven vendetta against all dragonkind.
+The **Forge-Father** made the world's bones. The **Mountain-Mother** fills the bones with ore and life. **Kradir the Unmoving** guards the dwarven dead and demands that all things be correctly remembered — he is the god of memory, patience, and ancestral record; the theological foundation of the Dragon-Watchers' devotion to accurate record-keeping, and the reason dwarven gold-hunger is considered a sin when it corrupts accounting rather than accumulates it. The **Lost Brother** — a fourth god, equal to the other three — was slain by dragons in the First Age, which is the religious foundation of the dwarven vendetta against all dragonkind.
 
 The **Night of the Listening** is a yearly ceremony: all dwarves in every hold observe one hour of total silence to remember what has been heard in the deep and to acknowledge that some things should not be heard.
 
-The **Dragon-Watchers** order is simultaneously a military intelligence organization and a religious institution — tracking dragons is both tactical and devotional.
+The **Dragon-Watchers** order is simultaneously a military intelligence organization and a religious institution — tracking dragons is both tactical and devotional. Their meticulous record-keeping is understood as an act of worship to Kradir, who demands the dead be remembered accurately and the world's changes witnessed truthfully.
 
 ---
 
