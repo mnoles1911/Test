@@ -18,6 +18,9 @@ public class GameScene
     public WorldManager  WorldManager  { get; private set; } = null!;
     public InputManager  InputManager  { get; private set; } = null!;
 
+    // ---- Audio ----
+    private AudioManager _audio = null!;
+
     // ---- UI ----
     private ScreenManager _screenManager = null!;
     private GameHUD       _hud           = null!;
@@ -55,6 +58,10 @@ public class GameScene
         WorldManager  = new WorldManager();
         CombatSystem  = new CombatSystem();
         ItemSpawner   = new ItemSpawner();
+
+        // Audio subsystem
+        _audio = new AudioManager();
+        _audio.Initialize(graphicsDevice);
 
         // UI subsystems
         _hud           = new GameHUD();
@@ -95,11 +102,14 @@ public class GameScene
     private void PushMainMenu()
     {
         _state = GameState.MainMenu;
+        _audio?.PlayMusic(MusicType.MainMenu);
         var menu = new MainMenuScreen
         {
             ContinueEnabled = false,
             OnNewGame = () =>
             {
+                _audio.PlaySound(SoundType.MenuClick);
+                _audio.PlayMusic(MusicType.Gameplay);
                 InitializeGameplay();
                 _screenManager.Pop();
                 _state = GameState.Playing;
@@ -127,6 +137,9 @@ public class GameScene
 
         // Always update screen manager (handles menus/pause)
         _screenManager.Update(gameTime, mouse, keyboard);
+
+        // Always update audio (handles fade timers)
+        _audio.Update(gameTime);
 
         if (_state == GameState.MainMenu || _state == GameState.GameOver)
         {
@@ -208,6 +221,7 @@ public class GameScene
                 if (worldDir.LengthSquared() > 1e-6f)
                 {
                     worldDir = Vector2.Normalize(worldDir);
+                    _audio.PlaySound(SoundType.Shoot);
                     CombatSystem.FireBullet(Player.WorldPosition, worldDir, _totalTime);
                     Player.DidFire(_totalTime);
                 }
@@ -223,6 +237,7 @@ public class GameScene
 
             if (enemy.CanAttack(_totalTime))
             {
+                _audio.PlaySound(SoundType.PlayerHurt);
                 Player.TakeDamage(Constants.EnemyAttackDamage);
                 enemy.LastAttackTime = _totalTime;
             }
@@ -235,16 +250,25 @@ public class GameScene
 
         CombatSystem.Update(dt, _totalTime, Enemies, Player);
 
-        // Show damage numbers for enemies that took damage this frame
+        // Show damage numbers for enemies that took damage this frame; play hit SFX
+        bool anyHit = false;
         foreach (var (enemy, prevHp) in preHealth)
         {
             int dmg = prevHp - enemy.Health;
             if (dmg > 0)
+            {
+                anyHit = true;
                 _hud.ShowDamage(enemy.WorldPosition, dmg, CameraPos);
+            }
         }
+        if (anyHit)
+            _audio.PlaySound(SoundType.Hit);
 
         // 8. Item attraction / collection
+        int itemsBefore = ItemSpawner.Items.Count;
         ItemSpawner.Update(dt, Player);
+        if (ItemSpawner.Items.Count < itemsBefore)
+            _audio.PlaySound(SoundType.ItemPickup);
 
         // 9. World streaming
         var (loaded, unloaded) = WorldManager.UpdateAroundPlayer(Player.WorldPosition);
@@ -273,13 +297,18 @@ public class GameScene
             TrySpawnEnemies();
         }
 
-        // 11. Remove dead enemies, award XP, show damage
+        // 11. Remove dead enemies, award XP, play death SFX
         var newlyDead = Enemies.Where(e => !e.IsAlive).ToList();
+        if (newlyDead.Count > 0)
+            _audio.PlaySound(SoundType.EnemyDeath);
+        int levelBefore = Player.Level;
         foreach (var dead in newlyDead)
         {
             _killCount++;
             Player.AddXP(20);
         }
+        if (Player.Level > levelBefore)
+            _audio.PlaySound(SoundType.LevelUp);
         Enemies.RemoveAll(e => !e.IsAlive);
 
         // 12. Update HUD
