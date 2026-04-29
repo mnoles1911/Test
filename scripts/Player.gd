@@ -12,10 +12,12 @@ extends CharacterBody2D
 const SPEED: float = 100.0
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	# _physics_process runs every physics frame (default: 60 times per second).
 	# We use this instead of _process because CharacterBody2D needs physics timing.
-	# The delta parameter is the time since the last frame (usually ~0.016 seconds).
+	# The _delta parameter is the time since the last frame; we don't use it here
+	# because move_and_slide handles its own physics timing internally.
+	# (The leading underscore tells Godot we're intentionally ignoring it.)
 
 	# Input.get_vector reads four directional inputs and returns a Vector2.
 	# Vector2 is just two numbers: (x, y). Left/right changes x, up/down changes y.
