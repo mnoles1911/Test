@@ -27,6 +27,7 @@ TransitionManager="*res://scripts/TransitionManager.gd"
 SaveNotification="*res://scripts/SaveNotification.gd"
 PauseMenu="*res://scripts/PauseMenu.gd"
 DebugOverlay="*res://scripts/DebugOverlay.gd"
+FlagScheduler="*res://scripts/FlagScheduler.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 
 [dialogic]
