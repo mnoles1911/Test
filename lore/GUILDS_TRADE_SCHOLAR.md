@@ -2,6 +2,8 @@
 
 Cross-faction institutions that span the human kingdoms (and, for some, all peoples).
 
+> **Index file.** Each entry below is a one-screen overview. Where a `**Deep history:**` link is present, the linked backstory file is the canonical source for founding details, internal politics, and trilogy arcs.
+
 ---
 
 ## Trade Guilds
@@ -49,6 +51,8 @@ Based in Caer Brannoch. Chapters in every port city on both coasts.
 - Brotherhood leadership is divided on what to do with this knowledge
 
 **[SIDE QUEST] The Brotherhood's Copper Isles Archive:** Access requires becoming a Brotherhood-endorsed sailor, which requires completing one voyage with a Brotherhood crew. Payoff: the Shroud window information and a Brotherhood contact who can move people and intelligence across faction lines throughout the trilogy.
+
+**Deep history:** see [BACKSTORY_SAILORS_BROTHERHOOD.md](BACKSTORY_SAILORS_BROTHERHOOD.md) — origin as a drowned-sailor mutual aid society, the three absolute principles, Council of Stewards structure, the safe-house network, the Hollow Court infiltration, and the Council's internal divide on the crossing question. For the Shroud Sea chart program specifically, see also [HISTORY_SHROUD_SEA.md](HISTORY_SHROUD_SEA.md).
 
 ---
 

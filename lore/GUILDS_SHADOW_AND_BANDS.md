@@ -1,8 +1,26 @@
 # Shadow Organizations and Heroic Bands
 
+> **Index file.** Each entry below is a one-screen overview. Where a `**Deep history:**` link is present, the linked backstory file is the canonical source for founding details, internal politics, and trilogy arcs.
+
 ---
 
 ## Shadow Organizations
+
+### The Ashen Hand
+
+The trilogy's primary antagonist organization. Founded approximately twenty-five years before Game One by **Mael, the First Whetted** — a former Conclave assessor whose escalations about the Aeluvain binding's deterioration were ignored. She founded the Hand as shadow governance infrastructure designed to manage the post-binding world. By the time she understood that her intelligence-gathering with the Hollow Throne had become service, the cell structure made dismantling impossible.
+
+**Composition:** Mages, former Conclave members, scholars, retired military, and the Ashfallen. Members know what they serve.
+
+**Current Hierarch:** **Vaeroth Caine**, who inherited the role from Mael ten years before Game One. He has read the founding doctrine (the *First Sharpening*) repeatedly and cannot identify the sentence where Mael decided to walk into the trap she was describing. He suspects there isn't one.
+
+**Intelligence arm:** The **Hollow Court** (see below). The two are distinct organizations connected by a one-way reporting structure. The distinction matters and should never be elided.
+
+**Plot connection:** Drives the antagonist activity in all three games. Drossvik in Khorumzad, Aedric Castrove in Eldermark, two Ashfallen inside the Conclave, the Brotherhood communications infiltration. Vaeroth himself appears most prominently in Games Two and Three.
+
+**Deep history:** see [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) — Mael's founding, the cell structure's origin, Drossvik's placement, the transition to Vaeroth, and the Hand/Court distinction in detail.
+
+---
 
 ### The Crimson Ledger
 
@@ -28,7 +46,11 @@ The Ashen Hand's intelligence arm — not mages, but human agents recruited for 
 
 **Internal reality:** Most members believe they are working toward a better world. They do not know they serve Mordvar. They know only their immediate handler.
 
-**Plot connection:** Prince Aedric's Ashen Hand connections run through the Hollow Court. His handler is a Hollow Court agent who has been a minor Eldermark court functionary for eleven years.
+**Plot connection:** Prince Aedric's Ashen Hand connections run through the Hollow Court. His handler is a Hollow Court agent who has been a minor Eldermark court functionary for eleven years. The Court also runs the Sailors' Brotherhood communications infiltration that the Game One Act III Copper Isles voyage exposes.
+
+**Distinction from the Ashen Hand:** The Ashen Hand is the magical/military organization whose members know what they serve. The Hollow Court is the Hand's human intelligence arm whose members mostly do not. Court reports up to Hand handlers; Hand handlers report to Vaeroth. The distinction should never be elided.
+
+**Deep history:** see [BACKSTORY_HOLLOW_COURT.md](BACKSTORY_HOLLOW_COURT.md) — recruitment doctrine, cell structure, notable operations (Aedric, the Brotherhood infiltration), the distinction from Drossvik, and who outside the Hand has identified the Court's existence.
 
 ---
 
@@ -97,5 +119,7 @@ A loose fellowship of Aelorin who have chosen active intervention in world event
 **Role in the trilogy:** One Dawnbringer — **Seren of the Third Glade** — is Roland's Aelorin companion in Games Two and Three. She joined the fellowship because she watched aelnaeth take her mother and decided that passive contemplation was its own kind of surrender.
 
 **Aelthurion's view:** He is quietly proud of them. He does not say this.
+
+**Deep history:** see [BACKSTORY_DAWNBRINGERS.md](BACKSTORY_DAWNBRINGERS.md) — full profiles of all seven Dawnbringers (Verath, Caela, Lyren, Sorin, Aevril/Twice-Named, Maeva, and the unnamed Seventh), their independent operations, and the convening logic.
 
 ---
