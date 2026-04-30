@@ -82,10 +82,41 @@ Pale blue-white, #C8E0F0. Absorbs light and returns it slightly warmer. Its pres
 - **Viewport resolution**: 1920×1080 native (no pixel resolution target — 3D renders at display resolution)
 - **Voxel block size**: 8–16 units per block (NOT 1-meter Minecraft cubes — fine-grain detail)
 - **Character models**: 200–500 triangles (low-poly), or 32×48 pixel billboard sprites if using Sprite3D
-- **Portrait art (dialogue)**: 256×320 pixels — larger than before, room for painted detail
+- **Portrait art (dialogue)**: 256×320 pixels — painted at this resolution for the 1080p viewport
 - **MagicaVoxel canvas**: per asset; buildings typically 32–64 voxels wide
 
 For the full art production workflow (MagicaVoxel, Blender, Godot import), see `design/ART_PIPELINE.md`.
+
+---
+
+## Dialogue UI Specification (1920×1080)
+
+The Dialogic 2 layout must be manually configured for 1920×1080. The default layout is sized for small viewports and will be tiny or wrong at 1080p.
+
+**Dialogue box:**
+- Width: 1400 px, centered (260 px margins each side)
+- Height: 220 px
+- Position: bottom-center, 40 px from screen bottom
+- Background: `Color(0.08, 0.08, 0.12, 0.88)` — dark blue-black, slightly transparent
+- Corner radius: 8 px
+
+**Portrait:**
+- Size: 256×320 px (files in `res://assets/portraits/`)
+- Position: left of box, anchored to box baseline, 20 px margin from left edge
+- The portrait extends above the box top — this is intentional and consistent with RPG convention
+
+**Text area:**
+- Left offset: 296 px from box left (portrait 256 + 40 px padding)
+- Padding inside text area: 20 px all sides
+- Font size (body): 20 px
+- Font size (character name label): 22 px
+- Characters per line: ~80
+
+**Font:** Use a legible serif or slab serif `.ttf` at 20 px. Avoid pixel fonts — they feel anachronistic against the 3D world.
+
+For full setup steps (layout editor, character definitions, input map), see `design/DIALOGIC_SETUP.md`.
+
+---
 
 ---
 
