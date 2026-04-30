@@ -29,7 +29,8 @@ Shroud Sea. Roland grew up near here. The haze is normal to him.
 
 The party crosses from the Spine's eastern foothills into the Ashfields. The visual
 shift is immediate and significant: all color drains toward grey. The warm palette
-of dwarven holds gives way to cracked grey ground, basalt outcroppings, dead grass.
+of dwarven holds gives way to grey-brown dead soil, ghost stumps of ancient trees,
+crumbled farmstead walls. The colour drains out of the world.
 
 **Design notes:**
 - Ash-haze particle effect: sparse, slow-drifting grey particles. Low opacity. Perpetual.
@@ -52,10 +53,10 @@ of dwarven holds gives way to cracked grey ground, basalt outcroppings, dead gra
 
 **File:** `scenes/act4/BindingSite.tscn`
 
-The original location of the Second Age ritual — the valley below Drûn-Khazad's
-western approach, across the Shroud Sea. The Binding Site is not on the volcano;
-it is as far from the volcano as the world allows. The Grand Alliance chose this
-location deliberately.
+The original location of the Second Age ritual — a specific valley in the Ashfields
+of eastern Mira. The Binding Site is not on or near the volcano. The Grand Alliance
+chose this location deliberately: as far from Drûn-Khazad as the world allows, on
+the western continent, on Mira's own soil.
 
 ### The Assembly
 

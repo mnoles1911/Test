@@ -54,14 +54,14 @@ Inference from narrative context:
 
 ## Connections
 
-- **Arrives from:** Act III complete (all seven pieces assembled; Orion and Dagna both present)
-- **Exits to:** The approach to Drûn-Khazad (Fighting Retreat / Battle of Drûn-Khazad)
+- **Arrives from:** Mor-Vethrin (Seventh Piece acquired); return through the Weeping Wood and Ashfields
+- **Exits to:** The Ashfields Fighting Retreat (Vaeroth's counterstroke; the climax of Game One)
 
 ---
 
 ## Open Questions / Gaps
 
-- **Critical gap: Is the Binding Site in the Ashfields or at Drûn-Khazad itself?** The task brief says "Act IV ritual location in the Ashfields" but lore implies the final confrontation is at the volcano. These may be two separate events: (1) binding ritual at a site in the Ashfields, then (2) final confrontation at Drûn-Khazad — or the binding happens at the caldera.
+- **Resolved: The Binding Site is in the Ashfields, eastern Mira.** Game One ends on Mira. Drûn-Khazad is the destination of Game Three, not Game One. The "final confrontation" in Game One is the Ashfields fighting retreat — not a battle at the volcano. The renewed binding stabilizes things; the true ending of Mordvar requires Game Three.
 - What does the site look like? Is it standing stones? A ruin? A natural formation? A dwarven vault structure? No description exists.
 - The "blood of three peoples" mechanic: how does the ritual work in gameplay terms? Is this a cutscene, a player action, an interactive sequence?
 - Who are the three peoples providing blood? Roland (human), Dagna (dwarf), and an Aelorin (Seren? — she is half-Aelorin via Companion status)? Or is this determined by companion choice?
