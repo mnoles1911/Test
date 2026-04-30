@@ -14,8 +14,8 @@ extends PointLight2D
 
 
 # The center brightness. PointLight2D energy: 0 = off, 1 = normal, 2 = double.
-# ART_DIRECTION.md specifies 1.2–1.5 for the campfire — 1.3 is the midpoint.
-@export var base_energy: float = 1.3
+# Raised to 1.8 so the fire reads clearly against the CanvasModulate darkness.
+@export var base_energy: float = 1.8
 
 # How much the energy varies above and below base_energy.
 # At 0.1, the light ranges from 1.2 to 1.4.
