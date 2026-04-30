@@ -60,12 +60,14 @@ Pale blue-white, #C8E0F0. Absorbs light and returns it slightly warmer. Its pres
 
 ## Pixel Resolution
 
-- **Character sprites**: 32x48 pixels native (scales 3x for display — ~96x144 on screen)
-- **Environment tiles**: 16x16 base unit
-- **Native scene resolution**: 320x180 (scales up to fill screen via Godot viewport)
-- **Portrait art (dialogue)**: 64x80 pixels native — larger than sprites, more facial detail
+- **Character sprites**: 32×48 pixels native
+- **Environment tiles**: **32×32 pixels** (confirmed — provides richer tile detail at this viewport size)
+- **Native scene resolution**: 320×180 (scales up to fill screen via Godot viewport)
+- **Portrait art (dialogue)**: 64×80 pixels native — larger than sprites, more facial detail
 
-These are Sea of Stars-adjacent specs for this resolution tier.
+At 320×180 with 32×32 tiles: 10 tiles across, ~5.6 tiles tall. This matches Sea of Stars' visible tile density.
+
+For the full art production workflow, see `design/ART_PIPELINE.md`.
 
 ---
 
@@ -225,6 +227,23 @@ Build in this order:
 10. Enemy type: Ashfallen soldier (most common Game One enemy)
 
 Do not animate Mordvar until Game Three. Do not animate the Ashlord until Game Three. Do not placeholder-animate either — both require specific attention and building placeholder habits produces lasting bad results.
+
+---
+
+## Art Approach Decision (confirmed)
+
+**2D pixel art in Godot 4.3. Not 3D.**
+
+The "2.5D" look is an art style achieved by how tiles and sprites are drawn — not by a 3D camera, isometric projection, or 3D engine. This is the same approach as Sea of Stars and Octopath Traveler.
+
+- Terrain and rooms: TileMap with 32×32 tile atlas
+- Background layers: hand-painted single assets (not tiled)
+- Characters: individual Sprite2D nodes driven by AnimationTree
+- Lighting depth: Godot PointLight2D + normal maps on tiles and sprites
+
+Staying 2D means: all existing GDScript code is unchanged, the viewport/camera setup is unchanged, and lighting already works correctly via the campfire system built in Milestone 1.
+
+Full workflow: `design/ART_PIPELINE.md`
 
 ---
 
