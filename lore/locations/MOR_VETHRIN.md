@@ -29,7 +29,7 @@ Key dimensions:
 - [x] Interior passage width: narrow, no waste — ~2–3 m = 16–24 voxels
 - [x] Interior passage ceiling: cold stone, low ceiling — ~3 m = 24 voxels; no volcanic vent heating; braziers burning black provide the only warmth
 - [x] Serethi's audience chamber: one carved chair, one carved bowl, nothing else — deliberately small room; suggest ~6 m × 6 m × 4 m = 48 × 48 × 32 voxels (the smallness is the point)
-- [x] No windows on western face: affects geometry — all window openings face east into the cliff rock, away from the Weeping Wood and the Aelorin lands beyond
+- [x] No windows on western face: affects geometry — all window openings (where they exist) face east or are cut into the cliff's outer escarpment face; the western wall toward the Weeping Wood and Aelorin lands is solid stone
 - [x] Camera arm length: exterior approach = arm 12, elevation 48°; interior passages = arm 8–9, elevation 52°; Serethi's chamber = arm 8, elevation 55° (tight, no wasted space)
 
 The "vertical architecture" description means floors are carved into the cliff face, accessed by narrow internal stairs or passages rather than horizontal street navigation. This is fundamentally different from any other location in the game — vertical rather than horizontal movement within the city.
