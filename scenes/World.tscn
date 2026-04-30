@@ -90,13 +90,6 @@ offset_right = 8.0
 offset_bottom = 74.0
 color = Color(0.07, 0.05, 0.04, 1)
 
-[node name="CampfireVisual" type="ColorRect" parent="." unique_id=1155122314]
-offset_left = 94.0
-offset_top = 83.0
-offset_right = 106.0
-offset_bottom = 97.0
-color = Color(0.91, 0.53, 0.23, 1)
-
 [node name="Campfire" type="PointLight2D" parent="." unique_id=548613724]
 position = Vector2(100, 90)
 color = Color(0.91, 0.529, 0.227, 1)
@@ -105,6 +98,14 @@ shadow_enabled = true
 texture = SubResource("5")
 texture_scale = 1.5
 script = ExtResource("2")
+
+; Polygon2D is a Node2D subclass, so it lives in world space and moves with its parent.
+; Parented under Campfire so position (0,0) = world position (100, 90) = exact light origin.
+; This replaces the old ColorRect which was a Control node (screen space) — it drifted
+; away from the light center whenever the camera moved with the player.
+[node name="CampfireVisual" type="Polygon2D" parent="Campfire"]
+color = Color(0.91, 0.53, 0.23, 1)
+polygon = PackedVector2Array(-6, -6, 6, -6, 6, 6, -6, 6)
 
 ; Dialogue trigger (right side, blue) — walk in and press E for Henrietta's scene.
 [node name="DialogueTrigger" type="Area2D" parent="." unique_id=175401455]

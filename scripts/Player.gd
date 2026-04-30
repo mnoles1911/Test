@@ -11,13 +11,16 @@ extends CharacterBody2D
 # Adjust this to taste once you can feel the movement.
 const SPEED: float = 100.0
 
+# How quickly the player brakes when no key is held, in pixels per second squared.
+# DECEL = 400 means the player goes from full speed to stopped in 0.25 seconds.
+# Higher = snappier stop. Lower = more sliding.
+const DECEL: float = 400.0
 
-func _physics_process(_delta: float) -> void:
+
+func _physics_process(delta: float) -> void:
 	# _physics_process runs every physics frame (default: 60 times per second).
-	# We use this instead of _process because CharacterBody2D needs physics timing.
-	# The _delta parameter is the time since the last frame; we don't use it here
-	# because move_and_slide handles its own physics timing internally.
-	# (The leading underscore tells Godot we're intentionally ignoring it.)
+	# delta is the time elapsed since the last frame (usually ~0.016 seconds at 60fps).
+	# We need it here to make deceleration frame-rate independent.
 
 	# Input.get_vector reads four directional inputs and returns a Vector2.
 	# Vector2 is just two numbers: (x, y). Left/right changes x, up/down changes y.
@@ -32,11 +35,12 @@ func _physics_process(_delta: float) -> void:
 		# velocity is a built-in property of CharacterBody2D.
 		velocity = direction * SPEED
 	else:
-		# No input held — slow the player to a stop.
-		# move_toward moves a value toward a target by at most a given step.
-		# Here it brings velocity to (0, 0) at the same rate as SPEED.
-		# This gives a tiny deceleration instead of an instant stop.
-		velocity = velocity.move_toward(Vector2.ZERO, SPEED)
+		# No input held — slow the player to a stop over time.
+		# move_toward reduces velocity by at most (DECEL * delta) per frame.
+		# Multiplying by delta keeps deceleration consistent regardless of frame rate.
+		# Without delta, the step would be per-call instead of per-second, and the
+		# player would stop instantly (100 step on a 100-unit velocity = zero in one frame).
+		velocity = velocity.move_toward(Vector2.ZERO, DECEL * delta)
 
 	# move_and_slide does the actual movement.
 	# It reads self.velocity, moves the character, and slides along walls
