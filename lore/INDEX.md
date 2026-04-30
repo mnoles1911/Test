@@ -85,6 +85,21 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 
 ---
 
+## Level Layouts (Game One — Scene-by-Scene Design)
+
+Spatial and structural detail for every Game One scene: room dimensions, key objects,
+NPC placement, trigger positions, flags set and read, lighting notes, and connections
+between scenes. Used as the build spec when constructing Godot scenes.
+
+| File | Contents |
+|---|---|
+| [LEVEL_LAYOUTS_ACT1.md](LEVEL_LAYOUTS_ACT1.md) | Act I — Aldenholt: 5 scenes fully detailed (Night Chase, Archive, Henrietta's Quarters, Iron Chalice Chapel, Restricted Section) |
+| [LEVEL_LAYOUTS_ACT2.md](LEVEL_LAYOUTS_ACT2.md) | Act II — The Four Kingdoms: Vosskara, Caer Brannoch, Aelorin Greatwood, Solgrade — sketched, not yet fully detailed |
+| [LEVEL_LAYOUTS_ACT3.md](LEVEL_LAYOUTS_ACT3.md) | Act III — The Elder Peoples: Karaz-Dûn/Underway (Dagna joins), Mor-Vethrin (Serethi) — sketched |
+| [LEVEL_LAYOUTS_ACT4.md](LEVEL_LAYOUTS_ACT4.md) | Act IV — The Binding: Ashfields approach, Binding Site ritual, Fighting Retreat — sketched |
+
+---
+
 ## Histories
 
 | File | Contents |

@@ -26,11 +26,26 @@ When the two conflict, lore wins. Design adapts.
 
 ## Files in this directory
 
+### `MILESTONE_ROADMAP.md`
+Phases 4–7 of development: what to build, in what order, and why. Each phase has a
+goal, deliverables list, and key decisions to make before building. Reference this
+when planning the next chunk of work. Phases 1–3 are complete and documented in
+`CLAUDE.md` → Milestone history.
+
 ### `SYSTEMS_DESIGN.md`
 How combat, dialogue, exploration, faction tracking, and save systems work mechanically. Reference this when implementing any game system. Aligned with the lore's companion roster, faction map, and quest structure.
 
 ### `ART_DIRECTION.md`
 Palette rules, pixel resolution, location visual identity, character design briefs, animation priority list, and Godot lighting/shader implementation notes. Reference this when building any scene or asset.
+
+### `CAMERA_AND_PERSPECTIVE.md`
+Why the "3/4 isometric" look is a pixel art style, not a Godot camera transform. Read this before touching Camera2D.
+
+### `DIALOGIC_SETUP.md`
+Step-by-step Dialogic 2 installation and character setup. Troubleshooting table. Read this before touching dialogue.
+
+### `LESSONS_LEARNED.md`
+Running log of bugs encountered and fixes confirmed. Concise table format. Updated whenever a fix is confirmed in production.
 
 ---
 
