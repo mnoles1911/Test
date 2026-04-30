@@ -2,6 +2,8 @@
 
 One major chivalric order per kingdom. Each has its own founding myth, internal politics, and connection to the trilogy's plot.
 
+> **Index file.** Each entry below is a one-screen overview. Where a `**Deep history:**` link is present, the linked backstory file is the canonical source for founding details, doctrine, internal politics, and trilogy arcs.
+
 ---
 
 ## The Iron Chalice — Eldermark
@@ -17,6 +19,8 @@ One major chivalric order per kingdom. Each has its own founding myth, internal 
 **Plot connection:** The Order's chapel displays an iron pommel on its founding-relic altar. Dame Calla, like every grandmaster before her, does not know it is the **iron piece of the Sundered Crown**. **Roland Ashford** discovered this three years before Game One and was expelled for refusing to stay silent. Game One opens with him hunted for that knowledge.
 
 **Endgame:** If Roland resolves the Order's debt during the Solgrade arc, the Iron Chalice arrives at the Battle of Drûn-Khazad as committed allies rather than reluctant conscripts. Of twelve hundred knights, one hundred and twelve survive the final battle — they spend themselves escorting Aldric to the summit.
+
+**Deep history:** see [BACKSTORY_IRON_CHALICE.md](BACKSTORY_IRON_CHALICE.md) — the Red Siege founding, the doctrine of endurance, Brightwatch fortress, the Solgrade debt crisis, and Roland's expulsion in detail.
 
 ---
 

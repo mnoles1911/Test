@@ -137,12 +137,15 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 
 | File | Contents |
 |---|---|
-| [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) | Mael (the First Whetted): founding ~25 years before Game 1, cell structure, Drossvik placement; transition to Vaeroth |
+| [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) | Mael (the First Whetted): founding ~25 years before Game 1, cell structure, Drossvik placement; transition to Vaeroth. Includes the Hand/Court distinction. |
+| [BACKSTORY_HOLLOW_COURT.md](BACKSTORY_HOLLOW_COURT.md) | The Ashen Hand's human intelligence arm: recruitment doctrine, cell structure, Aedric's handler, the Brotherhood infiltration, distinction from Drossvik |
 | [BACKSTORY_DAWNBRINGERS.md](BACKSTORY_DAWNBRINGERS.md) | All seven Dawnbringers: Verath, Caela, Lyren, Sorin, Aevril/Twice-Named, Maeva, and the unnamed Seventh |
 | [BACKSTORY_NAERGRIM.md](BACKSTORY_NAERGRIM.md) | The Wound bargain, blood-oath mechanics, Serethi-Twice-Dead's 200-year investigation, the dissident faction |
-| [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | Iron Chalice, Tidewarden, Frost Brotherhood, Golden Lance — structure, history, current leadership |
-| [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | Smiths' Confederation, Sailors' Brotherhood, Surgeons' School, Conclave, Loremaster's Archive |
-| [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | Shadow organizations and heroic bands |
+| [BACKSTORY_IRON_CHALICE.md](BACKSTORY_IRON_CHALICE.md) | The Red Siege founding, doctrine of endurance, Brightwatch fortress, Solgrade debt crisis, Roland's expulsion |
+| [BACKSTORY_SAILORS_BROTHERHOOD.md](BACKSTORY_SAILORS_BROTHERHOOD.md) | Origin as drowned-sailor mutual aid, three absolute principles, Council of Stewards, safe-house network, Copper Isles Archive, internal divide on the crossing |
+| [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | **Index** — Iron Chalice, Tidewarden, Frost Brotherhood, Golden Lance — overview entries with deep-history pointers where they exist |
+| [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | **Index** — Smiths' Confederation, Sailors' Brotherhood, Surgeons' School, Conclave, Loremaster's Archive |
+| [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | **Index** — Ashen Hand, Hollow Court, Crimson Ledger, Pale Supper, Nameless Council, Brightwatch, Salt Road, Dawnbringers |
 
 ---
 
