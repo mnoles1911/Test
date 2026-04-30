@@ -24,6 +24,11 @@ config/run/main_scene="res://scenes/World.tscn"
 
 GameState="*res://scripts/GameState.gd"
 TransitionManager="*res://scripts/TransitionManager.gd"
+SaveNotification="*res://scripts/SaveNotification.gd"
+PauseMenu="*res://scripts/PauseMenu.gd"
+DebugOverlay="*res://scripts/DebugOverlay.gd"
+FlagScheduler="*res://scripts/FlagScheduler.gd"
+InventoryManager="*res://scripts/InventoryManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 
 [dialogic]

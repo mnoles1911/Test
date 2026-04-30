@@ -1,39 +1,29 @@
 [gd_scene load_steps=2 format=3]
 
-; JournalUI.gd is the only external resource — it drives all the logic.
 [ext_resource type="Script" path="res://scripts/JournalUI.gd" id="1"]
 
 ; === LAYOUT (320x180 native viewport) ===
 ;
-;  Backdrop: full screen dark overlay
-;  Frame: 290x162 panel centered at x=15, y=9
-;
-;  ┌─────────────────────────────────┐
-;  │ ROLAND'S JOURNAL      [J] close │  ← Header row
-;  │─────────────────────────────────│  ← Divider
-;  │ [QUESTS] [PEOPLE] [CROWN]       │  ← Tab row
-;  │                                 │
-;  │  (scrollable content area)      │
-;  │                                 │
-;  └─────────────────────────────────┘
-;
-; All font sizes are tuned for the 320x180 viewport.
-; At 2x or 4x window scale these will be perfectly readable.
+;  ┌──────────────────────────────────────┐
+;  │ ROLAND'S JOURNAL           [J] close │  ← Header
+;  │──────────────────────────────────────│
+;  │ [QUESTS] [MAP] [ITEMS] [CRAFT] [CODEX]│  ← Tab row (5 tabs)
+;  │──────────────────────────────────────│
+;  │                                      │
+;  │  (scrollable content area)           │
+;  │                                      │
+;  └──────────────────────────────────────┘
 
-; Root CanvasLayer — drawn above everything (layer=10 in JournalUI.gd)
 [node name="JournalLayer" type="CanvasLayer"]
 layer = 10
 script = ExtResource("1")
 
-; JournalRoot: the full-screen Control that contains everything.
-; Toggled visible/invisible by JournalUI.gd.
 [node name="JournalRoot" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-; Semi-transparent black backdrop — dims the game behind the journal.
 [node name="Backdrop" type="ColorRect" parent="JournalRoot"]
 layout_mode = 1
 anchors_preset = 15
@@ -41,15 +31,13 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.0, 0.0, 0.0, 0.78)
 
-; The journal frame: 290 wide × 162 tall, centered with 15px margin each side.
 [node name="Frame" type="Panel" parent="JournalRoot"]
 layout_mode = 0
-offset_left = 15.0
-offset_top = 9.0
-offset_right = 305.0
-offset_bottom = 171.0
+offset_left = 10.0
+offset_top = 7.0
+offset_right = 310.0
+offset_bottom = 173.0
 
-; VBoxContainer fills the frame and stacks all sections vertically.
 [node name="VBox" type="VBoxContainer" parent="JournalRoot/Frame"]
 layout_mode = 1
 anchors_preset = 15
@@ -60,7 +48,7 @@ offset_top = 3.0
 offset_right = -4.0
 offset_bottom = -3.0
 
-; Header row: title on the left, close hint on the right.
+; Header row.
 [node name="Header" type="HBoxContainer" parent="JournalRoot/Frame/VBox"]
 layout_mode = 2
 
@@ -77,52 +65,64 @@ theme_override_font_sizes/font_size = 7
 theme_override_colors/font_color = Color(0.55, 0.55, 0.55, 1)
 text = "[ J ] close"
 
-; Horizontal divider line.
 [node name="Divider" type="ColorRect" parent="JournalRoot/Frame/VBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 1)
 color = Color(0.35, 0.35, 0.35, 1)
 
-; Tab row: three buttons, evenly spaced.
+; Tab row — five buttons.
 [node name="TabRow" type="HBoxContainer" parent="JournalRoot/Frame/VBox"]
 layout_mode = 2
 
 [node name="QuestsBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 7
+custom_minimum_size = Vector2(0, 13)
+theme_override_font_sizes/font_size = 6
 text = "QUESTS"
 flat = true
 
-[node name="PeopleBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
+[node name="MapBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 7
-text = "PEOPLE"
+custom_minimum_size = Vector2(0, 13)
+theme_override_font_sizes/font_size = 6
+text = "MAP"
 flat = true
 
-[node name="CrownBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
+[node name="ItemsBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 7
-text = "CROWN"
+custom_minimum_size = Vector2(0, 13)
+theme_override_font_sizes/font_size = 6
+text = "ITEMS"
 flat = true
 
-; Second divider under the tabs.
+[node name="CraftingBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 13)
+theme_override_font_sizes/font_size = 6
+text = "CRAFT"
+flat = true
+
+[node name="CodexBtn" type="Button" parent="JournalRoot/Frame/VBox/TabRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 13)
+theme_override_font_sizes/font_size = 6
+text = "CODEX"
+flat = true
+
 [node name="Divider2" type="ColorRect" parent="JournalRoot/Frame/VBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 1)
 color = Color(0.35, 0.35, 0.35, 1)
 
-; ScrollContainer: takes up remaining vertical space.
 [node name="ContentScroll" type="ScrollContainer" parent="JournalRoot/Frame/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
 
-; ContentText: the label that JournalUI.gd writes into.
 [node name="ContentText" type="Label" parent="JournalRoot/Frame/VBox/ContentScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
