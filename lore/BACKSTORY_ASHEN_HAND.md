@@ -1,5 +1,21 @@
 # Backstory: The Ashen Hand (Pre-Vaeroth)
 
+## Relationship to the Hollow Court
+
+> **The distinction matters and should never be elided in dialogue or exposition.**
+>
+> The **Ashen Hand** is the magical and military organization founded by Mael — its members are mages, former Conclave assessors, scholars, and field commanders who *know* what they serve. They make the operational decisions. They include the Ashfallen. Vaeroth Caine is their Hierarch.
+>
+> The **Hollow Court** is the Hand's human intelligence arm. Its members are not mages. Most of them do not know they ultimately serve Mordvar. They believe they serve a reform movement, an idealistic faction, or a single charismatic handler. The Court is the Hand's reach into ordinary life — merchants, scribes, sailors, court functionaries — and is the only part of the apparatus that almost everyone in the world has met without realizing it.
+>
+> The Hand recruits and runs the Court. The Court does not run the Hand. Court agents report to Hand handlers; handlers report up to Vaeroth.
+>
+> The exposure asymmetry: a Hand member exposed compromises the leadership; a Court member exposed compromises only their own cell and possibly their handler. This is by design.
+>
+> See also: `BACKSTORY_HOLLOW_COURT.md` for the Court's recruitment doctrine, cell structure, and notable operations (Aedric, the Brotherhood infiltration, the distinction from Drossvik).
+
+---
+
 ## Mael, the First Whetted
 
 The Ashen Hand did not begin with Vaeroth Caine. It began with a woman named Mael, who called herself the First Whetted in the organization's internal documents and whom her followers called the Hierarch while she lived and the Founder after she died.
