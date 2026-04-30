@@ -94,7 +94,12 @@ further involvement.
 
 ## Mor-Vethrin Arc — The Obsidian Shard
 
-**Scenes (2–3):** Vrothmor Peaks approach → The bone-arch gate → Serethi's
+> **Note:** The Mor-Vethrin visit is now Act IV, not Act III. It was relocated here
+> from the old Act III structure when the lore was updated. The Mor-Vethrin arc follows
+> the Karaz-Dûn arc and precedes the Binding Site. See `LEVEL_LAYOUTS_ACT4.md` for the
+> Act IV scene sequence. This section describes the Mor-Vethrin scenes themselves.
+
+**Scenes (2–3):** Weeping Wood approach → The bone-arch gate → Serethi's
 audience chamber
 
 **Piece:** Obsidian shard — in the Naergrim's central vault. Held for two thousand
@@ -102,9 +107,10 @@ years since the Grand Alliance. The Naergrim have always known what it is.
 
 ### The Approach
 
-Eastern Thal. The Vrothmor Peaks: volcanic rock, no vegetation, permanent ash-haze
-drifting from Drûn-Khazad to the south. The city is difficult to identify from a
-distance — it blends into the black cliff face.
+Northeastern Mira. The Weeping Wood: dead grey-trunked trees with bare permanent
+branches, fixed cloud cover overhead, voices in the trees (Naergrim scouts watching
+the borders). The city is difficult to identify from a distance — it blends into the
+dark cliff escarpment at the wood's eastern edge.
 
 One path in. One gate. The bone arch above it: actual bone, from something large,
 mortared in place. Roland observes it. His journal notes it without comment.
@@ -132,8 +138,8 @@ The player decides.
 quietly before or after the Serethi audience. Their leader — called the Pale
 Defection as a joke and has adopted it — wants genuine alliance, not withdrawal.
 If Roland acknowledges this faction and creates a quiet channel, three Naergrim
-fighters join the Battle of Drûn-Khazad under their own authority. Serethi is
-furious. He honors the deal anyway.
+fighters join Roland at the Binding Site and the Ashfields fighting retreat,
+acting under their own authority. Serethi is furious. He honors the deal anyway.
 
 **Design notes:**
 - Mor-Vethrin: no warm tones at all. No torches. Pale, cold, even illumination

@@ -3,7 +3,7 @@
 **Type:** Notable Site (shield volcano; Mordvar's throne)
 **Kingdom/People:** Ash Throne (Mordvar)
 **Position:** Center of Thal, slightly south of the continent's midpoint
-**Story relevance:** Game One, Act IV — final area; the Battle of Drûn-Khazad; the binding ritual; Mordvar's defeat
+**Story relevance:** Game Three — final area; the Battle of Drûn-Khazad; Mordvar's defeat. Not visited in Game One. (Game One ends in the Ashfields on Mira.)
 
 ---
 

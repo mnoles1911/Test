@@ -3,7 +3,7 @@
 **Type:** Region (ocean crossing)
 **Kingdom/People:** No control; Brotherhood of the Shroud monitors it
 **Position:** Between Mira (east coast / Shroud Shore) and Thal (west coast); narrowest crossing ~900 miles
-**Story relevance:** Game One — key to the ending; Roland must cross to reach Thal; the crossing itself is referenced throughout as both journey and threshold
+**Story relevance:** Game Two — the crossing opens Game Two (the nine-year Brotherhood window). Game One ends on Mira. Referenced throughout Game One as a looming threshold, but not crossed until Game Two.
 
 ---
 
@@ -51,10 +51,10 @@ If a ship deck scene exists: the Brotherhood voyage is noted as "a moving enviro
 
 ## Level Layout Reference
 
-**File:** `lore/LEVEL_LAYOUTS_ACT4.md` / `lore/HISTORY_SHROUD_SEA.md`
-**Status:** Sketched in Act IV. HISTORY_SHROUD_SEA.md has 200-year Brotherhood context. Level design not yet run.
+**File:** `lore/LEVEL_LAYOUTS_GAME2.md` (not yet written) / `lore/HISTORY_SHROUD_SEA.md`
+**Status:** Not yet designed. HISTORY_SHROUD_SEA.md has 200-year Brotherhood context. This is a Game Two level design task.
 
-The crossing is key to the Game One ending: Roland must reach Thal to complete the binding at Drûn-Khazad. The Brotherhood's charts (referenced throughout Acts II and III as a side quest thread) are what make the crossing possible.
+The crossing opens Game Two. The Brotherhood's charts (referenced throughout Game One Acts II and III as a side quest thread, acquired in Act II at the Copper Isles) are what make the crossing possible — the nine-year window that opens at the start of Game Two.
 
 ---
 
