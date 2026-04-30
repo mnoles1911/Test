@@ -1,0 +1,77 @@
+# Aldenholt
+
+**Type:** City
+**Kingdom/People:** Eldermark
+**Position:** Central Plains, at the confluence of the Aldwater and Silverthread rivers
+**Story relevance:** Game One, Act I (primary setting); mentioned throughout Games Two and Three
+
+---
+
+## Physical Description
+
+The largest city on Mira. Walls three men thick, built from grey quarried stone, maintained continuously for four centuries. The city spreads across both banks of the Aldwater where the Silverthread feeds in from the north — the old city occupies the southern bank, the newer merchant districts the northern. The market district never fully closes; stalls open before dawn and the last traders pack at midnight, if then.
+
+Population approximately 80,000.
+
+Key landmarks:
+- **King's Hall**: The royal seat. Broad stone steps, three towers, banners year-round.
+- **Scholar's Block**: A dense quarter of connected buildings housing the Conclave's Eldermark chapter, several independent scribes' halls, and the map-sellers. The Loremaster's Archive occupies an entire city block here — windowless lower floors, reading rooms above, a smell of old vellum that reaches the street.
+- **Iron Chalice Chapel**: Inside the city walls, a stone chapel maintained by the Iron Chalice order. Houses a fragment of the Sundered Crown pommel behind the altar — the only piece known to be in human hands.
+- **The Aldwater Docks**: Working docks on the river's south bank. Barge traffic arrives daily from the Spine and the coast.
+
+Map note: Walled city symbol with multiple towers. Two river lines converging at the city.
+
+---
+
+## 3D Scale Reference
+> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+
+Key dimensions (derived from lore and standard urban scale):
+
+- [ ] Approximate footprint: large walled city — GAP (needs map-level definition, but walls are a 4-century structure, 3-men-thick = ~2 m = 16 voxels thick)
+- [x] Street width — Scholar's Block street (hub scene): ~8 m wide = 64 voxels
+- [x] Alley width — Night Chase alleys: ~2–3 m wide = 16–24 voxels
+- [x] Standard door/archway height: 2.2 m = 18 voxels
+- [x] City wall height: city wall this substantial — ~8–10 m = 64–80 voxels
+- [x] King's Hall tower height: GAP — but three towers implies significant vertical scale, suggest 20–30 m = 160–240 voxels
+- [x] Camera arm length — Aldenholt streets: arm 12, elevation 48°, no horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md)
+
+Playable area scope: Act I uses five distinct scenes within the city — Night Chase alleys, Scholar's Block street hub, Archive interior (two versions), Iron Chalice Chapel. Full city is background/ambient, not fully traversable in Act I.
+
+---
+
+## Art Direction Notes
+
+Grey quarried stone walls. Warm torch sconces at ~96 px intervals in narrow alleys. The Scholar's Block is lamplit and institutional. Night Chase scene uses the most oppressive lighting of Act I — very dark ambient (`#1A1F3A` equivalent in 3D WorldEnvironment), guttering torches. The market district even at night has more ambient activity than the chapel quarter.
+
+Two rivers give the city a navigational logic — crossing the Aldwater means going north to the merchant districts; staying south is the old city.
+
+---
+
+## Level Layout Reference
+
+**File:** `lore/LEVEL_LAYOUTS_ACT1.md`
+**Status:** Fully detailed — five scenes with per-scene room dimensions, flag lists, lighting notes, and NPC placement.
+
+Scenes:
+1. Night Chase (Aldenholt Alleys) — linear, no return
+2. Aldenholt Hub (Scholar's Block street) — re-entrant hub connecting all Act I locations
+3. Archive / Henrietta's Quarters — short, post-Night Chase
+4. Iron Chalice Chapel — gated behind `calla_meeting_arranged = true`
+5. Archive Interior / Restricted Section — gated behind `henrietta_dead = true`
+
+---
+
+## Connections
+
+- **Arrives from:** Game opening (Night Chase is the first scene)
+- **Exits to:** Act II begins when Roland leaves Aldenholt with Piece One (Iron Chalice pommel fragment)
+
+---
+
+## Open Questions / Gaps
+
+- Full city footprint in voxels not defined — only the five Act I scenes need to be built for Game One
+- King's Hall is background lore; no visit in Game One (the succession crisis with Aedric Castrove plays out in Solgrade and ambient dialogue)
+- Docks visible/referenced but not a playable scene in Act I
+- Market district referenced but not playable in Act I
