@@ -52,6 +52,62 @@ Each click in a combo has a **timing window** to chain. Click outside the window
 - **Melee only for Game One.** Sword as Roland's starting and primary weapon. Other melee types (axe, mace, dagger) may be added if pacing allows.
 - No ranged option for Roland. Companions or specific items may have ranged attacks later.
 
+### Health and Endurance
+
+Two-track system modeled on KCD2:
+
+- **HP bar** — Roland's total health. Visible to the player as a bar. Does not regenerate passively mid-combat. Reduced by landed hits.
+- **Endurance** — a secondary pool that gates how hard Roland can fight. Overall health caps the endurance maximum: a badly wounded Roland has less endurance headroom than a fresh one.
+  - Attacks, blocks, sprints, and dodges drain endurance.
+  - Endurance recovers when Roland is not acting (brief pause between swings, backing off from a fight).
+  - Running out of endurance does not kill Roland — it makes him slow and unable to dodge, which then gets him killed.
+- **No visible enemy health bars.** Read enemy condition from behavior and appearance: limping gait, staggered recovery, blood, slowed swings. Enemies react visibly when close to death — don't just change a number.
+
+### Enemy Detection and Encounter Framing
+
+Enemies are placed in the open world the player walks through — no arena spawning, no separate scene.
+
+**Spawn and despawn:**
+- Enemies spawn via **quest triggers** (scripted placement when the player reaches a location or completes an event) or **proximity algorithms** (recurring patrol/roam groups that repopulate areas over time).
+- When the player travels far enough away, out-of-range enemies despawn quietly. They respawn when the player re-enters the area, unless a quest flag has cleared the location.
+
+**Detection values per enemy type:**
+Each enemy type has tunable values that govern when combat begins and ends:
+
+| Value | Description |
+|---|---|
+| `vision_range` | Distance at which enemy spots Roland (line-of-sight check) |
+| `hearing_range` | Distance at which running/fighting sound alerts the enemy |
+| `alert_threshold` | How many alert "ticks" before enemy commits to attacking |
+| `disengage_distance` | Distance Roland must put between himself and the enemy before the enemy gives up |
+| `disengage_time` | Seconds enemy must fail to close the gap before disengaging |
+
+Wolves have high vision and hearing; bears low hearing but wide vision; goblins medium-range but large groups trigger group alert.
+
+**Fleeing:**
+- Roland can break combat by running far enough, fast enough.
+- Enemies pursue until `disengage_distance` and `disengage_time` are both satisfied.
+- Sprinting costs stamina — sustained flight has a cost.
+
+### Consumables
+
+Roland has dedicated **consumable slots** (not buried in an inventory menu — accessed mid-combat via a quick slot bar).
+
+Confirmed consumable categories:
+- **Bandages / healing herbs** — restore HP. Require a cast animation (vulnerable window during use). Cannot be chugged instantly.
+- **Potions** — more powerful HP or endurance restoration; rarer and crafted.
+- **Throwables** — bombs, oil flasks, smoke grenades. Used mid-combat. Small aiming reticle, short throw arc. Each type has distinct tactical use (fire damage, slippery surface, vision obscure).
+- **Saviour Schnapps** (save item) — doubles as the diegetic quicksave mechanic. Consuming one creates a manual save. Limited supply. The save-and-drink animation is the same as a potion.
+
+### Progression — KCD2 Model
+
+Roland gains levels and skill unlocks through **in-game action**, not XP grind:
+
+- **Train to improve.** Using a sword improves sword skill. Running improves stamina recovery. Crafting improves crafting proficiency. The system tracks what you actually do.
+- **Skill trees** span four domains: **Combat** (attack patterns, parry window, power attack modifiers), **Vitality** (max HP, endurance pool, wound recovery speed), **Crafting** (potion effectiveness, smithing tiers, throwable crafting), **Exploration / Speech** (deferred, not Game One priority).
+- No mandatory level gates on story progression — skill improves how effectively Roland fights, not whether he can enter a zone.
+- Enemies do not scale with Roland. A goblin is always a goblin — as Roland improves, goblins become reliably manageable.
+
 ### Enemy Roster (Game One)
 
 | Enemy | Tier | Behavior | Damage | Defense | Notes |
@@ -76,31 +132,19 @@ Each click in a combo has a **timing window** to chain. Click outside the window
 
 ## TODO — Open Design Questions
 
-The following need decisions before implementation. Each is sized small enough to answer with a sentence or two.
-
-### Health and Damage
-- **TODO:** Does Roland have a single HP bar, a multi-track wound system (KCD2: head/torso/limb), or a Hades-style "death orb" pool?
-- **TODO:** Are enemy HP bars visible to the player, or does Roland read condition from behavior (limping, stagger, blood)?
+The following are the remaining open questions. Everything else has been confirmed above.
 
 ### Stamina
-- **TODO:** Confirm a stamina system gates dodge, sprint, attack (likely yes — implied by everything above). Recovery rate? Hard cap?
-- **TODO:** Does charging a power attack drain stamina while held, or only on release?
+- **TODO:** Does charging a power attack drain endurance while held, or only on release?
+- **TODO:** Endurance recovery rate and hard cap — numbers TBD when implementing.
 
 ### Companions
-- **TODO:** Are companions (Orion, Dagna once they join) AI-controlled, player-issued commands (hold position / engage / retreat), or full-direct control swap?
-- **TODO:** Friendly fire — can Roland accidentally hit Orion in a swing arc?
+- **TODO:** Are companions (Orion, Dagna once they join) fully autonomous AI, player-commandable (hold / engage / retreat), or direct-control swap?
+  - Lean toward player-commandable (two or three simple orders), but not yet confirmed.
 
-### Progression
-- **TODO:** Does Roland gain levels / skill unlocks during Game One, or is the character fixed and skill comes from the player?
-- **TODO:** Are weapons upgradeable (sharpening, smithing) per KCD2, or static stat blocks?
-
-### Encounter Framing
-- **TODO:** Do enemies spawn into bounded arenas on trigger, or are they placed in the open world directly (visible from a distance, can be approached on player terms)?
-- **TODO:** Can Roland flee an encounter — outrun enemies and break combat — or does engagement only end when one side is dead?
-
-### Consumables
-- **TODO:** Healing potions usable mid-combat? With what cast time / vulnerability window?
-- **TODO:** Throwables (bombs, oil, smoke)?
+### Weapons
+- **TODO:** Are weapons upgradeable per KCD2 (sharpening, smithing tiers) or fixed stat blocks?
+  - Progression system implies smithing upgrades, but the exact crafting depth is unconfirmed.
 
 ---
 
