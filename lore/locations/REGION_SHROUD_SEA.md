@@ -61,7 +61,8 @@ The crossing is key to the Game One ending: Roland must reach Thal to complete t
 ## Connections
 
 - **Arrives from:** Shroud Shore (east coast of Mira, after the Ashfields approach)
-- **Exits to:** Thal Coast → Ash-Steppe → Vrothmor Peaks → Mor-Vethrin or Drûn-Khazad approach
+- **Exits to:** Thal Coast → Ash-Steppe → Drûn-Khazad approach (Game Three); or Keth-Vethrin on the western Thal coast (Game Two)
+- **Note:** The Shroud Sea crossing is not part of Game One. Game One ends in the Ashfields. The crossing is the opening of Game Two (the nine-year Brotherhood window).
 
 ---
 

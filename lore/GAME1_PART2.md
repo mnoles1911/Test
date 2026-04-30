@@ -62,6 +62,8 @@ The approach: Roland works through Bromrin, whose mind is intact at this point i
 
 Henrietta's notes referenced six pieces but not the seventh. Aelthurion knows — the obsidian shard is in Mor-Vethrin, the Naergrim dark elf city, where it was taken after the original Grand Alliance binding. The Naergrim have held it for two thousand years.
 
+Mor-Vethrin is reached by traveling northeast from the Vosskaran frontier through the dead eastern Ashfields into the Weeping Wood — the dead forest in northeastern Mira that the Naergrim corrupted and claimed two thousand years ago. The approach through the Weeping Wood is itself dangerous: the voices in the trees are Naergrim scouts, and arriving in fighting posture is considered an insult that ends negotiations before they begin.
+
 This is not a quest that can be resolved by negotiation or infiltration. The shard is in the Naergrim's central vault.
 
 **Serethi the Twice-Dead's offer:** The Naergrim leader makes Roland an offer rather than a demand: he will provide the shard in exchange for Roland's acknowledgment that when Mordvar is defeated, the Naergrim will not be included in any punitive settlement. They chose the Ash Throne freely; they now wish to unchose it. Serethi does not offer loyalty to the Alliance — only withdrawal.
@@ -70,7 +72,7 @@ The moral question this poses is Game One's last real decision: is freeing the w
 
 Roland must decide. There is no option to delay. Serethi has already calculated that Roland will accept — he is watching the calculation play out on Roland's face.
 
-**[OPTIONAL QUEST] The Dissenting Voice:** A minority faction within the Naergrim wants genuine alliance rather than mere withdrawal. Their leader, a young Naergrim who goes by the name the Pale Defection uses as a joke and has adopted as a title, approaches Roland quietly. If Roland acknowledges this faction and creates a quiet channel for them, three Naergrim fighters join the Battle of Drûn-Khazad under their own authority. They survive. Serethi is furious. He honors the deal anyway.
+**[OPTIONAL QUEST] The Dissenting Voice:** A minority faction within the Naergrim wants genuine alliance rather than mere withdrawal. Their leader, a young Naergrim who goes by the name the Pale Defection uses as a joke and has adopted as a title, approaches Roland quietly. If Roland acknowledges this faction and creates a quiet channel for them, three Naergrim fighters join Roland at the Binding Site and the Ashfields fighting retreat, acting under their own authority. They survive. Serethi is furious. He honors the deal anyway.
 
 **Piece Seven acquired.**
 
