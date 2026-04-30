@@ -5,18 +5,37 @@
 
 ---
 
-## North Star Image
+## Art Approach — CONFIRMED: 3D Voxel
 
-The campfire knight image is the visual target for this project. Every art decision should be checked against it.
+**Engine:** Godot 4.3, 3D mode. NOT 2D.  
+**Style:** Voxel world (Veloren / Cube World aesthetic) with Skyrim-scale atmosphere.  
+**Full migration plan:** `design/3D_VOXEL_MIGRATION.md`
 
-What makes it work:
-- Single dominant warm light source (campfire) against cool ambient (moonlight/night)
-- High contrast between lit and unlit areas — shadows are deep, not grey
-- Pixel art with painterly texture — rocks have color variation and dithering, not flat fills
-- Detail hierarchy: the knight and fire are sharp; the cave background recedes with looser pixels
-- Environmental storytelling: sword laid aside, posture at rest, alone but sheltered
+The pivot from 2D pixel art to 3D voxel was confirmed. All 2D scene files (World.tscn, Player.tscn) will be replaced with 3D equivalents. All logic autoloads (GameState, Journal, Inventory, etc.) are unchanged.
 
-This image is the visual benchmark for Milestone 1. When the first walkable scene vibes like this image in lighting and camera angle, the technical pipeline is proven.
+---
+
+## North Star Aesthetic
+
+**Veloren meets Skyrim.** The campfire knight image from Milestone 1 still defines the MOOD — that specific feeling of warm light against ancient stone, a lone figure at rest in a hostile world. In 3D voxel, this translates to:
+
+- A campfire rendered as a `PointLight3D` with `CampfireFlicker3D.gd`, casting real volumetric glow across cave voxels
+- Cave walls built from hand-assembled MagicaVoxel blocks, each face catching light differently
+- Roland represented as a low-poly 3D model or billboard sprite — small against the environment, not filling the screen
+- Camera at ~50° elevation, fixed angle (Hades / Diablo 3 camera) — reveals depth without going first-person
+- `WorldEnvironment` with SSAO, fog, and a dark ambient — the world is not safely lit
+
+**The "Skyrim feel"** is not about first-person camera. It's about:
+- Environments that communicate age and weight — stone has mass, tunnels feel real
+- Lighting that makes the player feel small and the world feel large
+- A world that extends visually beyond where the player is standing
+- Atmospheric fog that obscures distance, not just darkness
+
+**Visual references:**
+- Veloren — world scale and voxel tone
+- Cube World — character art style
+- Hades — camera angle and follow behavior
+- Zelda: Link's Awakening (2019) — low-poly character charm in 3D world
 
 ---
 
@@ -58,16 +77,15 @@ Pale blue-white, #C8E0F0. Absorbs light and returns it slightly warmer. Its pres
 
 ---
 
-## Pixel Resolution
+## Resolution and Asset Scale
 
-- **Character sprites**: 32×48 pixels native
-- **Environment tiles**: **32×32 pixels** (confirmed — provides richer tile detail at this viewport size)
-- **Native scene resolution**: 320×180 (scales up to fill screen via Godot viewport)
-- **Portrait art (dialogue)**: 64×80 pixels native — larger than sprites, more facial detail
+- **Viewport resolution**: 1920×1080 native (no pixel resolution target — 3D renders at display resolution)
+- **Voxel block size**: 8–16 units per block (NOT 1-meter Minecraft cubes — fine-grain detail)
+- **Character models**: 200–500 triangles (low-poly), or 32×48 pixel billboard sprites if using Sprite3D
+- **Portrait art (dialogue)**: 256×320 pixels — larger than before, room for painted detail
+- **MagicaVoxel canvas**: per asset; buildings typically 32–64 voxels wide
 
-At 320×180 with 32×32 tiles: 10 tiles across, ~5.6 tiles tall. This matches Sea of Stars' visible tile density.
-
-For the full art production workflow, see `design/ART_PIPELINE.md`.
+For the full art production workflow (MagicaVoxel, Blender, Godot import), see `design/ART_PIPELINE.md`.
 
 ---
 
@@ -230,51 +248,42 @@ Do not animate Mordvar until Game Three. Do not animate the Ashlord until Game T
 
 ---
 
-## Art Approach Decision (confirmed)
+## Godot 3D Implementation Notes
 
-**2D pixel art in Godot 4.3. Not 3D.**
-
-The "2.5D" look is an art style achieved by how tiles and sprites are drawn — not by a 3D camera, isometric projection, or 3D engine. This is the same approach as Sea of Stars and Octopath Traveler.
-
-- Terrain and rooms: TileMap with 32×32 tile atlas
-- Background layers: hand-painted single assets (not tiled)
-- Characters: individual Sprite2D nodes driven by AnimationTree
-- Lighting depth: Godot PointLight2D + normal maps on tiles and sprites
-
-Staying 2D means: all existing GDScript code is unchanged, the viewport/camera setup is unchanged, and lighting already works correctly via the campfire system built in Milestone 1.
-
-Full workflow: `design/ART_PIPELINE.md`
-
----
-
-## Godot Implementation Notes
-
-### 2D lighting setup per scene
+### Lighting setup per scene (3D)
 
 ```gdscript
-# Conceptual structure for a typical night scene (Milestone 1 target):
+# Typical 3D cave scene structure:
 
 WorldEnvironment:
-  ambient_light: low intensity, cool blue  # moonlight baseline
+  background_mode: Sky (or Color for underground)
+  ambient_light_color: Color(0.05, 0.06, 0.12)  # very dark cool blue
+  ambient_light_energy: 0.3
+  ssao_enabled: true          # ambient occlusion — cheap, always on
+  fog_enabled: true
+  fog_density: 0.02           # higher underground, lower outdoors
+  sdfgi_enabled: true         # global illumination — disable for low-end hardware
 
-CanvasModulate:
-  color: #1A1F3A  # ~80% darkness for exterior night scenes
-  # Adjust per location — underground gets darker and colder at depth
-
-PointLight2D:  # per warm source — campfire, torch, forge
-  color: #E8873A  # warm orange
-  energy: 1.2 - 1.5
+DirectionalLight3D:           # sun/moon
+  color: Color(0.85, 0.82, 0.95)   # cool moonlight
+  energy: 0.6
   shadow_enabled: true
-  texture: soft-edge glow texture  # custom, not default
+
+OmniLight3D:                  # per warm source — campfire, torch, forge
+  color: Color(0.91, 0.53, 0.23)   # warm orange #E8873A
+  energy: 2.0
+  range: 8.0
+  shadow_enabled: true
 ```
 
-### Normal maps on sprites
+### Voxel terrain lighting
 
-Rocky terrain and stone walls should have normal maps so they react to 2D point lights. This is what creates the painterly lighting depth in the reference image — light raking across stone texture creates micro-shadows.
+Voxel surfaces respond to 3D lighting naturally — no normal maps required on voxel terrain because each voxel face is a real 3D surface. The Transvoxel mesher produces geometry that catches directional and point light correctly.
 
-In Aseprite: export sprite + normal map. In Godot: assign normal map to Sprite2D node alongside main texture.
-
-Priority: terrain tiles, cave walls, Roland's armor sprite. Lower priority: NPCs, props.
+Normal maps ARE still valuable for:
+- Character models (Roland's armor, cloth textures)
+- Props that need surface detail (ancient stone archways, wooden doors)
+- Large flat MagicaVoxel surfaces that would otherwise look too uniform
 
 ### Shader — The Aeluvain Effect (Game Two onward)
 
