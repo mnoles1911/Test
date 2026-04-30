@@ -28,6 +28,7 @@ SaveNotification="*res://scripts/SaveNotification.gd"
 PauseMenu="*res://scripts/PauseMenu.gd"
 DebugOverlay="*res://scripts/DebugOverlay.gd"
 FlagScheduler="*res://scripts/FlagScheduler.gd"
+InventoryManager="*res://scripts/InventoryManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 
 [dialogic]
