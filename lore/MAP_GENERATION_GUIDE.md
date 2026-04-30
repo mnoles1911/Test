@@ -166,7 +166,8 @@ Map layout assumption: Mira occupies x 5–62%, Shroud Sea x 62–78%, Thal x 78
 | Aldenholt | 30 | 50 | River confluence, Central Plains |
 | Caer Brannoch | 10 | 28 | Northwest headland, Bay of Mourne |
 | Caer Drowned | 10 | 36 | Bay of Sulwyn, submerged ruin |
-| Brightwatch | 38 | 33 | Central-west Mira, Iron Chalice fortress |
+| Crestfall | 40 | 45 | Eastern Eldermark, Salt Road, Roland's hometown |
+| Brightwatch | 52 | 40 | Eastern Eldermark frontier, Iron Chalice fortress |
 | Vosskar-on-the-Iron | 53 | 43 | Northern Ashfields, Spine junction |
 | Khorumzad | 52 | 50 | Central Spine, nine levels deep |
 | Coldstoke | 56 | 55 | Eastern frontier, Ashfields edge |

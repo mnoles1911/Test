@@ -107,11 +107,10 @@ Orion, whose sailing background means he has been planning the exit route since 
 ## Game One: Summary of Consequences
 
 **Faction commitments earned (if quests completed):**
-- Iron Chalice: arrives at final battle (debt resolved)
+- Iron Chalice: arrives at final battle (debt resolved); Brightwatch garrison fights regardless
 - Golden Lance: commits (Vossant's contract honored)
 - Vosskara: commits (tribute dispute de-escalated)
 - Caer Brannoch Naval: commits (Shroud charts delivered)
-- Brightwatch: marches with the Alliance (Game Three)
 
 **Information acquired:**
 - Drossvik's operation in Khorumzad and Karaz-Dûn
@@ -120,7 +119,7 @@ Orion, whose sailing background means he has been planning the exit route since 
 
 **Permanent losses:**
 - Henrietta (Game One's first and most significant death)
-- Named Brightwatch fighters during the Ashfields retreat
+- Named Brightwatch garrison fighters during the Ashfields retreat
 - The original version of the Crown, which was shattered and is now reassembled into something subtly different
 
 ---
