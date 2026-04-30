@@ -69,13 +69,36 @@ MILESTONE 3: COMPLETE — Combat prototype
 - [x] Enemy telegraph + block timing: Space in window = reduced damage
 - [x] Win/lose conditions with message and auto-return to World.tscn
 
-MILESTONE 4: (not started) — Scene transitions
-- Fade-to-black system (SceneTransition.gd autoload)
-- A second room/area to walk to
-- Player spawn position preserved across transitions via GameState
+MILESTONE 4: IN PROGRESS — Systems infrastructure (Phases 4–7)
+See PR on branch `claude/expand-game-lore-i0k2g`. Systems built (not yet merged to main):
+- TransitionManager (fade-black/white/cut, scene history, go_back())
+- GameState expanded (multi-slot save, flag history, play time tracking)
+- Zone framework (Zone.gd, Room.gd, RoomTrigger.gd, SpawnPoint.gd)
+- SaveNotification autoload toast, PauseMenu (ESC), MainMenu, Settings screen
+- SaveSlotPicker (3 slots), DebugOverlay (F1), FlagScheduler (timed/deferred)
+- InventoryManager (items, equipment, crafting recipes)
+- JournalUI expanded (5-tab KCD2 style: Quests, Map, Items, Crafting, Codex)
+- EnemyData Resource class, Combat.gd updated with Analyze action
+
+MILESTONE 5: (not started) — Art pass
+- Aseprite + AI-assisted workflow
+- 32×32 tiles, 32×48 character sprites
+- AnimationTree for character animation
+- Normal maps on tiles and character sprites
+- Begin with cave tiles → Roland walk cycle → Aldenholt tileset
 
 ## Current milestone
-Milestone 3 complete. Next: Milestone 4 (scene transitions) or art pass.
+Milestone 3 complete. Milestone 4 systems built, PR open. Next: merge M4, then start art pass.
+
+## Art specification (confirmed)
+- **Engine approach**: 2D Godot — NOT 3D. The 2.5D look is an art style, not a camera setting.
+- **Tile size**: 32×32 pixels
+- **Character sprites**: 32×48 pixels
+- **Backgrounds**: hand-painted single assets (not tiled)
+- **Tool**: Aseprite + AI-assisted generation (hand-paint over AI output before shipping)
+- **Animation**: AnimationTree + BlendSpace2D (not AnimatedSprite2D)
+- **Lighting depth**: PointLight2D + normal maps on tiles and sprites
+- **Pipeline reference**: `design/ART_PIPELINE.md`
 
 ## What I never want
 - Complex code I can't understand
@@ -119,6 +142,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems
 - design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
+- design/ART_PIPELINE.md — Aseprite workflow, tile specs, AnimationTree, normal maps
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
