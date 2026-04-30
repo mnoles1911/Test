@@ -25,6 +25,7 @@ config/run/main_scene="res://scenes/World.tscn"
 GameState="*res://scripts/GameState.gd"
 TransitionManager="*res://scripts/TransitionManager.gd"
 SaveNotification="*res://scripts/SaveNotification.gd"
+PauseMenu="*res://scripts/PauseMenu.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 
 [dialogic]
