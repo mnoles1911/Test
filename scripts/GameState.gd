@@ -44,18 +44,38 @@ var player_spawn_id: String = ""
 
 var _flags: Dictionary = {}
 
+# Flag change history — a ring buffer of the last FLAG_HISTORY_MAX entries.
+# Each entry: { "flag": String, "old": Variant, "new": Variant, "time": String }
+const FLAG_HISTORY_MAX: int = 100
+var _flag_history: Array = []
+
 func set_flag(flag_name: String, value) -> void:
-	# Set a story flag and log it for debugging.
+	var old_value = _flags.get(flag_name, null)
 	_flags[flag_name] = value
+	_record_flag_change(flag_name, old_value, value)
 	print("[GameState] Flag set: %s = %s" % [flag_name, str(value)])
 
 func get_flag(flag_name: String, default_value = false):
-	# Read a story flag. Returns default_value if the flag has never been set.
 	return _flags.get(flag_name, default_value)
 
 func has_flag(flag_name: String) -> bool:
-	# Returns true only if this flag has been explicitly set (even to false).
 	return _flags.has(flag_name)
+
+func _record_flag_change(flag_name: String, old_value, new_value) -> void:
+	_flag_history.append({
+		"flag": flag_name,
+		"old":  str(old_value) if old_value != null else "(unset)",
+		"new":  str(new_value),
+		"time": Time.get_time_string_from_system(),
+	})
+	if _flag_history.size() > FLAG_HISTORY_MAX:
+		_flag_history.pop_front()
+
+func get_flag_history(count: int = 20) -> Array:
+	# Returns the most recent `count` entries, newest first.
+	var result: Array = _flag_history.duplicate()
+	result.reverse()
+	return result.slice(0, min(count, result.size()))
 
 
 # =============================================================
