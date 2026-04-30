@@ -134,16 +134,18 @@ Map note: Mountain-gate icon below twin-peaked symbol.
 
 ---
 
-## Thal Settlements
+## Mira — Eastern Frontier Settlements
 
 ### Mor-Vethrin
-**People:** Naergrim | **Position:** Eastern cliff-face of the Vrothmor Peaks
+**People:** Naergrim | **Position:** Eastern escarpment of the Weeping Wood, northeastern Mira
 
-Built into black obsidian cliff face. No windows on the western side — a design choice, not a structural limitation. The single gate has a bone arch: actual bone, from something large, mortared in place when the city was founded. The city blends into the volcanic rock to a degree that makes it difficult to identify from a distance.
+Built into dark sedimentary and metamorphic cliff-faces where the dead Weeping Wood meets hard escarpment rock. No windows on the western side — a design choice, not a structural limitation, facing away from the Aelorin lands. The single gate has a bone arch: actual bone, from something large, mortared in place when the city was founded. The city blends into the dark cliff rock to a degree that makes it difficult to identify from a distance.
 
-The architecture is vertical — sheer face construction going up and down the cliff rather than spreading horizontally. Inside: narrow passages, shared heating from volcanic vents, no wasted material anywhere.
+The architecture is vertical — sheer face construction going up and down the cliff rather than spreading horizontally. Inside: narrow passages, cold stone, braziers burning black for minimal heat, no wasted material anywhere. The obsidian in the construction came from Thal by trade, not local geology.
 
-Map note: Dark fortress symbol on cliff face, no windows west.
+Map note: Dark fortress symbol on cliff face, no windows west. Located at eastern edge of the Weeping Wood's dead forest.
+
+## Thal Settlements
 
 ---
 

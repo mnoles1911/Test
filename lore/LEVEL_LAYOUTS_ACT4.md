@@ -17,9 +17,10 @@ For visual direction: `ART_DIRECTION.md` → The Ashfields.
 **Scenes (3):** Ashfields approach → The Binding Site (the ritual) → The Fighting
 Retreat (Vaeroth's counterstroke)
 
-The Ashfields are eastern Mira beyond the Spine. Grey dead ground, thin soil over
-ancient lava beds, permanent ash-haze drifting from Drûn-Khazad far across the
-Shroud Sea. Roland grew up near here. The haze is normal to him.
+The Ashfields are eastern Mira beyond the Spine. Grey dead ground — once productive
+farmland and light forest, killed over centuries by ash drifting west from Drûn-Khazad
+across the Shroud Sea. Ghost stumps of ancient trees, crumbled farmstead walls, dry
+creek beds. Permanent ash-haze. Roland grew up near here. The haze is normal to him.
 
 ---
 

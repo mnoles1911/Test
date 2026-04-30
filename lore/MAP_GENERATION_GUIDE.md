@@ -51,7 +51,7 @@ A continuous north-to-south mountain range through Mira's right third. Draw as a
 
 ### Forests
 - **The Greatwood**: Large forest covering the northern quarter of Mira. Dense tree symbols. Slightly darker/older-looking than normal forest. Label in center: *"THE GREATWOOD"*. Within it, mark Lirien-Thal with a star-and-tree symbol and small label.
-- **The Weeping Wood**: Smaller patch of dead forest, northeast of center Mira, south of the Greatwood's eastern edge. Use bare-branch tree symbols (no canopy). Surround with a faint fixed-cloud symbol overhead.
+- **The Weeping Wood**: Dead forest in northeastern Mira, north of the Ashfields, east of the Greatwood's southeastern fringe. Use bare-branch tree symbols (no canopy). Surround with a faint fixed-cloud symbol overhead — the cloud does not move with regional weather. Mark Mor-Vethrin at the eastern escarpment edge with a dark fortress symbol.
 - **Central Plains woodlots**: Scattered small clusters of trees across the central farmland area. Much sparser than the Greatwood.
 
 ### Rivers
@@ -76,6 +76,7 @@ A continuous north-to-south mountain range through Mira's right third. Draw as a
 | **Khorumzad** | Mountain gate (deeper arch) | Below Khorumzad's Crown, central Spine |
 | **Kazaad-Brak** | Mountain gate | Below the Broken Fang, southern Spine |
 | **Coldstoke** | Small cross or hamlet symbol | Eastern Vosskaran frontier |
+| **Mor-Vethrin** | Dark fortress symbol, no windows west | Eastern escarpment of the Weeping Wood, northeastern Mira |
 
 ### Roads on Mira
 - **The Salt Road**: Dashed line running north-south along the western coast
@@ -110,8 +111,8 @@ Occupies the center-right portion of the map between the two continents.
 
 ### Other Features
 - **The Ash-Steppe**: Western Thal between the coast and the Vrothmor Peaks. Open flat space with very light stippling. Scattered small stone-circle symbols for pre-First Age ruins. Label: *"THE ASH-STEPPE"*.
-- **Mor-Vethrin**: On the eastern cliff-face of the Vrothmor Peaks. Dark fortress symbol, smaller than the human city symbols. Label in darker ink.
-- **Naergrim territory**: Label the area around Mor-Vethrin and the eastern Vrothmor Peaks: *"Naergrim lands"* in smaller italic.
+- **Keth-Vethrin**: On the western volcanic coast of Thal. Dark cliff-face fortress symbol, sea-facing. Smaller than the human city symbols. Label in darker ink.
+- **Naergrim (Thal) territory**: Label the area around Keth-Vethrin on the western coast: *"Keth-Vethrin (Naergrim outpost)"* in smaller italic.
 
 ---
 
@@ -171,12 +172,13 @@ Map layout assumption: Mira occupies x 5–62%, Shroud Sea x 62–78%, Thal x 78
 | Coldstoke | 56 | 55 | Eastern frontier, Ashfields edge |
 | Solgrade | 27 | 65 | Southern Central Plains, no walls |
 | Kazaad-Brak | 52 | 72 | Southern Spine, below Broken Fang |
+| Mor-Vethrin | 62 | 22 | Eastern Weeping Wood escarpment, northeastern Mira |
 
 ## Thal — Settlements
 
 | Settlement | x% | y% | Notes |
 |---|---|---|---|
-| Mor-Vethrin | 86 | 50 | Eastern Vrothmor cliff-face |
+| Keth-Vethrin | 72 | 42 | Western volcanic coast of Thal, cliff-face above shoreline |
 | Drûn-Khazad (caldera) | 82 | 57 | Center-left Thal, slightly south |
 
 ## Islands

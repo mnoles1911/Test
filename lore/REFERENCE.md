@@ -74,21 +74,9 @@ The seven metals of the Grand Alliance forging:
 
 ## Key Locations
 
-| Location | Continent | Significance |
-|---|---|---|
-| Aldenholt | Mira | Eldermark capital; Archive; Iron Chalice HQ |
-| Caer Brannoch | Mira | Western coastal capital; naval base |
-| Vosskar-on-the-Iron | Mira | Vosskaran fortress-capital |
-| Solgrade | Mira | Merchant republic; banking; Golden Lance |
-| Lirien-Thal | Mira (Greatwood) | Aelorin capital; silverwood ancestors |
-| Karaz-Dûn | Mira (Spine) | Highest dwarven hold; Thrarin's kingdom |
-| Khorumzad | Mira (Spine) | Deepest dwarven hold; Vault approach |
-| Kazaad-Brak | Mira (Spine) | Southern dwarven hold; Hagrim's kingdom |
-| Coldstoke | Mira (Vosskaran frontier) | Aldric Vane's village |
-| Copper Isles | South of Mira | Alliance muster point; Brotherhood archive |
-| Drûn-Khazad | Thal | The volcano; Hollow Hearth; final battle |
-| Mor-Vethrin | Thal (Vrothmor Peaks) | Naergrim dark elf city |
-| Vault of Aen-Vael | Below Khorumzad, Spine of the World (Mira) | The Aeluvain's resting place; placed here by the Grand Alliance to be as far from Drûn-Khazad as possible |
+> For the full locations directory see `lore/INDEX.md → Locations` and individual files in `lore/locations/`.
+> For continental positions and map symbols see `lore/WORLD_GEOGRAPHY.md → Settlements`.
+> For map placement coordinates see `lore/MAP_GENERATION_GUIDE.md → Position Grid`.
 
 ---
 

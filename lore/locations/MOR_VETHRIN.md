@@ -44,13 +44,13 @@ Serethi's audience chamber: the visual silence is the point. One carved chair. O
 
 Naergrim NPCs move with economy. No wasted motion. Their city wastes nothing — their people reflect the city. This is a behavioral note for NPC animation: minimal gesture, deliberate movement, no idle shuffling.
 
-The city blending into the volcanic rock: from the approach path, Mor-Vethrin is nearly invisible. The bone arch gate is the first clear landmark. This is an art direction challenge — the city must be identifiable in-game but the lore says it's hard to spot.
+The city blending into the cliff rock: from the approach path through the Weeping Wood, Mor-Vethrin is nearly invisible against the dark escarpment. The bone arch gate is the first clear landmark — the only thing that does not look like natural rock. This is an art direction challenge — the city must be identifiable in-game but the lore says it's hard to spot.
 
 ---
 
 ## Level Layout Reference
 
-**File:** `lore/LEVEL_LAYOUTS_ACT3.md`
+**File:** `lore/LEVEL_LAYOUTS_ACT4.md`
 **Status:** Sketched. 2–3 scenes identified.
 
 Scenes:

@@ -49,12 +49,18 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [locations/KHORUMZAD.md](locations/KHORUMZAD.md) | Khorumzad | Central hold, 9 levels deep, Vault of Aen-Vael. Game Two primary. |
 | [locations/KAZAAD_BRAK.md](locations/KAZAAD_BRAK.md) | Kazaad-Brak | Southern hold, 11 sieges, most military. Act III (Barak Stonecroft). |
 
+### Naergrim Cities
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/MOR_VETHRIN.md](locations/MOR_VETHRIN.md) | Mor-Vethrin | Naergrim city, Weeping Wood escarpment, northeastern Mira. Act IV. Game One's last real decision. |
+| [locations/KETH_VETHRIN.md](locations/KETH_VETHRIN.md) | Keth-Vethrin | Naergrim outpost/port, western Thal coast. Not visited in Game One. Game Two territory. |
+
 ### Thal
 
 | File | Location | Notes |
 |---|---|---|
-| [locations/MOR_VETHRIN.md](locations/MOR_VETHRIN.md) | Mor-Vethrin | Naergrim city, obsidian cliff. Act III. Game One's last real decision. |
-| [locations/DRUN_KHAZAD.md](locations/DRUN_KHAZAD.md) | Drûn-Khazad | The volcano, Mordvar's throne. Game One final area, Act IV. |
+| [locations/DRUN_KHAZAD.md](locations/DRUN_KHAZAD.md) | Drûn-Khazad | The volcano, Mordvar's throne. Game Three final area. |
 
 ### Ruins and Cursed Sites
 
@@ -75,9 +81,10 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 |---|---|---|
 | [locations/REGION_GREATWOOD.md](locations/REGION_GREATWOOD.md) | The Greatwood | Northern Mira forest. Act II traversal. Aelorin territory. |
 | [locations/REGION_SPINE.md](locations/REGION_SPINE.md) | The Spine of the World | Mountain range. Three dwarven holds. Act III backdrop. |
-| [locations/REGION_ASHFIELDS.md](locations/REGION_ASHFIELDS.md) | The Ashfields | Eastern ash wastes. Act IV approach. Vosskaran frontier. |
+| [locations/REGION_ASHFIELDS.md](locations/REGION_ASHFIELDS.md) | The Ashfields | Eastern ash wastes. Act IV: Binding Site and fighting retreat. Vosskaran frontier. |
+| [locations/REGION_WEEPING_WOOD.md](locations/REGION_WEEPING_WOOD.md) | The Weeping Wood | Dead forest, northeastern Mira. Naergrim territory. Mor-Vethrin approach. Act IV. |
 | [locations/REGION_UNDERWAY.md](locations/REGION_UNDERWAY.md) | The Underway | Dwarven tunnel network beneath the Spine. Act III travel. Dagna joins here. |
-| [locations/REGION_SHROUD_SEA.md](locations/REGION_SHROUD_SEA.md) | The Shroud Sea | Continental crossing. Key to Game One ending. |
+| [locations/REGION_SHROUD_SEA.md](locations/REGION_SHROUD_SEA.md) | The Shroud Sea | Continental crossing. Key to Game Two. |
 
 ### Stubs — Future Locations
 
@@ -85,7 +92,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 |---|---|---|
 | [locations/BRIGHTWATCH.md](locations/BRIGHTWATCH.md) | Brightwatch | Iron Chalice training fortress. Mentioned in lore, not visited in Game One. |
 | [locations/COPPER_ISLES.md](locations/COPPER_ISLES.md) | Copper Isles | Island archipelago. Act II (Brotherhood voyage). Greater relevance in Game Two. |
-| [locations/BINDING_SITE.md](locations/BINDING_SITE.md) | The Binding Site | Act IV ritual location (Ashfields or Drûn-Khazad — position TBD). |
+| [locations/BINDING_SITE.md](locations/BINDING_SITE.md) | The Binding Site | Act IV ritual location. In the Ashfields, eastern Mira. Crown reassembly; not at or near Drûn-Khazad. |
 
 ---
 
