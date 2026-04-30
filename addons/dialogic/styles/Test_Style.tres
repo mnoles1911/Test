@@ -14,6 +14,9 @@
 [sub_resource type="Resource" id="Resource_xpe3o"]
 script = ExtResource("2_7hfw6")
 scene = ExtResource("1_0lenh")
+overrides = {
+"follow_viewport": "true"
+}
 
 [sub_resource type="Resource" id="Resource_yd0ja"]
 script = ExtResource("2_7hfw6")
@@ -26,6 +29,9 @@ scene = ExtResource("4_ipvh2")
 [sub_resource type="Resource" id="Resource_36ier"]
 script = ExtResource("2_7hfw6")
 scene = ExtResource("5_4w4xu")
+overrides = {
+"box_size": "Vector2(280, 65)"
+}
 
 [sub_resource type="Resource" id="Resource_tv5t4"]
 script = ExtResource("2_7hfw6")
@@ -57,4 +63,4 @@ layer_info = {
 "15": SubResource("Resource_r1x2m"),
 "16": SubResource("Resource_2441x")
 }
-metadata/_latest_layer = ""
+metadata/_latest_layer = "12"

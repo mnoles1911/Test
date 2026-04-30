@@ -1,13 +1,14 @@
+[style name="Test_Style"]
 # Dialogic 2 timeline — Henrietta at the Archive Door
 # Game One, opening sequence. Roland has just arrived at the Loremaster's Archive.
-#
+# #
 # CONTEXT (from lore/GAME1_PART1.md):
 #   Henrietta has been quietly compiling genealogical research she doesn't fully
 #   understand. She knows someone has been asking about the restricted records —
 #   someone she doesn't recognise. She has prepared a duplicate of her notes.
 #   She presses it into Roland's coat at the door and doesn't explain why.
 #   Within twenty-four hours she will be dead.
-#
+# #
 # FORMAT:
 #   This file uses Dialogic 2's text timeline syntax.
 #   Each line is: CharacterDisplayName: "Spoken text."
