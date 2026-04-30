@@ -91,50 +91,77 @@ var current_enemy_data = null  # Holds an EnemyData resource, or null for defaul
 
 
 # =============================================================
-# SAVE AND LOAD
+# SAVE AND LOAD — MULTI-SLOT
 # =============================================================
-# The save file lives at user://save.json.
+# Three save slots (0, 1, 2). The active slot is tracked in active_save_slot.
+# Autosaves always go to active_save_slot.
+# The slot picker UI (SaveSlotPicker.tscn) lets the player choose a slot
+# for manual saves and loads.
+#
+# File names: user://save_0.json, user://save_1.json, user://save_2.json
+#
 # "user://" is a Godot shorthand for the OS user data folder:
 #   Windows: %APPDATA%\Godot\app_userdata\Game One\
 #   Linux:   ~/.local/share/godot/app_userdata/Game One/
 #   Mac:     ~/Library/Application Support/Godot/app_userdata/Game One/
-#
-# TransitionManager calls save_game() automatically on every scene change.
-# The player can also save manually at rest points.
 
-const SAVE_PATH: String = "user://save.json"
+const SAVE_SLOT_COUNT: int = 3
+const SAVE_PATH: String = "user://save.json"  # legacy — kept for compatibility checks
 
-func save_game() -> void:
+var active_save_slot: int = 0
+# Which slot autosaves go to. Set when the player picks a slot.
+
+func save_path_for_slot(slot: int) -> String:
+	return "user://save_%d.json" % slot
+
+func save_game(slot: int = -1) -> void:
+	# slot = -1 means "use active_save_slot".
+	if slot < 0:
+		slot = active_save_slot
+	slot = clampi(slot, 0, SAVE_SLOT_COUNT - 1)
+
 	var data: Dictionary = {
-		"version": 1,
+		"version": 2,
+		"slot": slot,
+		"timestamp": Time.get_datetime_string_from_system(),
+		"play_time_seconds": _play_time_seconds,
 		"player_position": {"x": player_position.x, "y": player_position.y},
 		"current_scene": current_scene,
 		"flags": _flags.duplicate(),
 		"companions": _companions.duplicate(),
 	}
+	var path: String = save_path_for_slot(slot)
 	var json_string: String = JSON.stringify(data, "\t")
-	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file = FileAccess.open(path, FileAccess.WRITE)
 	if file:
 		file.store_string(json_string)
 		file.close()
-		print("[GameState] Game saved.")
-		# Show the on-screen save indicator if the autoload exists.
+		print("[GameState] Saved to slot %d (%s)." % [slot, path])
 		if get_node_or_null("/root/SaveNotification"):
 			SaveNotification.show_notification()
 	else:
-		push_error("[GameState] Could not write save file at: " + SAVE_PATH)
+		push_error("[GameState] Could not write save file: " + path)
 
-func load_game() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		print("[GameState] No save file found — starting fresh.")
-		return
-	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+func load_game(slot: int = -1) -> void:
+	if slot < 0:
+		slot = active_save_slot
+	slot = clampi(slot, 0, SAVE_SLOT_COUNT - 1)
+
+	var path: String = save_path_for_slot(slot)
+	if not FileAccess.file_exists(path):
+		# Fall back to the legacy single save file so old saves still work.
+		if FileAccess.file_exists(SAVE_PATH):
+			path = SAVE_PATH
+		else:
+			print("[GameState] No save file found for slot %d." % slot)
+			return
+
+	var file = FileAccess.open(path, FileAccess.READ)
 	if not file:
-		push_error("[GameState] Could not open save file.")
+		push_error("[GameState] Could not open save file: " + path)
 		return
-	var json_string: String = file.get_as_text()
+	var result = JSON.parse_string(file.get_as_text())
 	file.close()
-	var result = JSON.parse_string(json_string)
 	if result == null:
 		push_error("[GameState] Save file JSON is malformed.")
 		return
@@ -149,16 +176,49 @@ func load_game() -> void:
 	if data.has("flags"):
 		_flags = data["flags"]
 	if data.has("companions"):
-		# Merge loaded companions over the defaults so new companions
-		# added in future updates still appear.
 		for key in data["companions"]:
 			_companions[key] = data["companions"][key]
-	print("[GameState] Game loaded. Flags: %d" % _flags.size())
+	if data.has("slot"):
+		active_save_slot = data["slot"]
+	print("[GameState] Loaded slot %d. Flags: %d" % [slot, _flags.size()])
 
-func delete_save() -> void:
-	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
-		print("[GameState] Save file deleted.")
+func delete_save(slot: int = -1) -> void:
+	if slot < 0:
+		slot = active_save_slot
+	var path: String = save_path_for_slot(slot)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		print("[GameState] Deleted save slot %d." % slot)
+
+func get_slot_info(slot: int) -> Dictionary:
+	# Returns metadata for a slot without fully loading it.
+	# Used by the slot picker UI to show timestamps and scene names.
+	var path: String = save_path_for_slot(slot)
+	if not FileAccess.file_exists(path):
+		return {"exists": false, "slot": slot}
+	var file = FileAccess.open(path, FileAccess.READ)
+	if not file:
+		return {"exists": false, "slot": slot}
+	var result = JSON.parse_string(file.get_as_text())
+	file.close()
+	if result == null:
+		return {"exists": false, "slot": slot}
+	return {
+		"exists": true,
+		"slot": slot,
+		"timestamp": result.get("timestamp", "unknown"),
+		"current_scene": result.get("current_scene", ""),
+	}
+
+
+# =============================================================
+# PLAY TIME TRACKING
+# =============================================================
+
+var _play_time_seconds: float = 0.0
+
+func _process(delta: float) -> void:
+	_play_time_seconds += delta
 
 
 # =============================================================
