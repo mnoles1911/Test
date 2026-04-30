@@ -118,6 +118,9 @@ func save_game() -> void:
 		file.store_string(json_string)
 		file.close()
 		print("[GameState] Game saved.")
+		# Show the on-screen save indicator if the autoload exists.
+		if get_node_or_null("/root/SaveNotification"):
+			SaveNotification.show_notification()
 	else:
 		push_error("[GameState] Could not write save file at: " + SAVE_PATH)
 
