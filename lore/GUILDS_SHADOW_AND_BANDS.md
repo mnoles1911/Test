@@ -96,20 +96,6 @@ A mercenary company based on the eastern trade road between Eldermark and Vosska
 
 ---
 
-### The Brightwatch
-
-A volunteer defensive organization in the border towns between Eldermark and the Ashfields. Not soldiers — farmers, merchants, and craftspeople who have decided that if the Frost Brotherhood won't come this far south and the Iron Chalice won't come this far east, someone has to stand watch.
-
-**Organization:** Town-cell structure. Each cell has a Speaker who coordinates with adjacent cells. No central authority. No pay — they supply themselves.
-
-**Equipment:** Whatever they have. Some Brightwatch cells are well-equipped from local wealth. Others fight with farm tools. The disparity is a constant source of internal tension.
-
-**Political status:** Legally gray. Eldermark's crown has not officially recognized them and has not officially dissolved them. The crown's actual position is that the Brightwatch existing means one fewer thing the crown has to pay for.
-
-**Plot connection:** In Game One, a Brightwatch cell provides Roland shelter and information about Ashen Hand movements near the Ashfields. In Game Three, Brightwatch fighters join the march to Drûn-Khazad — the only force that travels the entire route from the Ashfields to the volcano.
-
----
-
 ### The Dawnbringers
 
 A loose fellowship of Aelorin who have chosen active intervention in world events rather than the Pilgrimage Circuit's observational approach. Sanctioned but not officially endorsed by Lord Aelthurion — plausible deniability for both parties.

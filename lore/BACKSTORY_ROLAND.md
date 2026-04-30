@@ -31,7 +31,7 @@ He did. He walked to Brightwatch at seventeen, carrying a letter his mother wrot
 
 ## Brightwatch: Training Years
 
-Brightwatch sits at the foot of the Greywood Range, a permanent structure maintained by the Iron Chalice as a recruitment and training facility. It is not comfortable. It is not meant to be.
+Brightwatch sits at the eastern Eldermark frontier — a walled fortress and forward operating base maintained by the Iron Chalice, positioned where the cultivated land ends and the grey-scrub Ashfields begin. It is not comfortable. It is not meant to be.
 
 Roland trained there for four years. He was not the most gifted recruit — a boy from Kaelor with noble blood named Edric could outfence him for the first two years, and a girl from Solgrade named Maret had a tactical mind that made Roland feel slow. But Roland had something that made his instructors keep looking at him: he did not stop.
 

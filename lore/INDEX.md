@@ -86,11 +86,16 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [locations/REGION_UNDERWAY.md](locations/REGION_UNDERWAY.md) | The Underway | Dwarven tunnel network beneath the Spine. Act III travel. Dagna joins here. |
 | [locations/REGION_SHROUD_SEA.md](locations/REGION_SHROUD_SEA.md) | The Shroud Sea | Continental crossing. Key to Game Two. |
 
+### Eastern Eldermark Frontier
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/BRIGHTWATCH.md](locations/BRIGHTWATCH.md) | Brightwatch | Iron Chalice fortress and forward operating base, eastern Eldermark frontier. Roland's training site. Act IV garrison camp and fighting retreat. |
+
 ### Stubs — Future Locations
 
 | File | Location | Notes |
 |---|---|---|
-| [locations/BRIGHTWATCH.md](locations/BRIGHTWATCH.md) | Brightwatch | Iron Chalice training fortress. Mentioned in lore, not visited in Game One. |
 | [locations/COPPER_ISLES.md](locations/COPPER_ISLES.md) | Copper Isles | Island archipelago. Act II (Brotherhood voyage). Greater relevance in Game Two. |
 | [locations/BINDING_SITE.md](locations/BINDING_SITE.md) | The Binding Site | Act IV ritual location. In the Ashfields, eastern Mira. Crown reassembly; not at or near Drûn-Khazad. |
 

@@ -70,7 +70,7 @@ The forces that arrive depend entirely on what Roland accomplished in Games One 
 - **Aelorin Dawnbringers:** Seven operatives, each worth a platoon
 - **Conclave mages:** Forty-one loyal mages (two Ashfallen identified and isolated)
 - **Golden Lance:** If Vossant's contract honored in Game One
-- **Brightwatch:** Volunteers from the eastern frontier
+- **Brightwatch garrison:** Iron Chalice forward post; already at the frontier
 
 **Total Alliance forces at maximum commitment:** 55,000. The Ash Throne fields 160,000.
 

@@ -30,15 +30,17 @@ The Order's combat doctrine reflects this. They train as heavy cavalry but their
 
 ---
 
-## Brightwatch — The Training Fortress
+## Brightwatch — The Eastern Fortress
 
-> **Note:** there is a separate volunteer militia in the Eldermark/Ashfields border towns that also calls itself "the Brightwatch." The relationship between the two — whether the militia took its name from the fortress, whether the Order tolerates or resents this — is currently unresolved. See open question at the end of this file.
+The Order's fortress at Brightwatch sits on the eastern Eldermark frontier, where cultivated land ends and the grey-scrub Ashfields begin. It was built in the Order's founding decade — earlier than most institutional infrastructure — because the founders understood that the eastern frontier was the most likely direction trouble would arrive from, and a doctrine built around holding ground required a place to hold.
 
-The Order's training fortress, Brightwatch, sits in central-western Mira on elevated ground above the Salt Road approximately two days' ride from Aldenholt. It was built in the founding decade — earlier than most of the Order's institutional infrastructure — because the founders agreed that training facilities mattered more than administrative ones.
+Brightwatch is simultaneously a training facility, a garrison post, and the Iron Chalice's forward operating base in eastern Eldermark. Its mixed force reflects this: Iron Chalice professionals, Eldermark levies completing frontier service, and trainees completing their evaluation year. Some are knights; others are commoners. The doctrine of endurance doesn't distinguish between them.
 
-Physically, Brightwatch is what its name suggests: a watchtower and walled training compound, austere and unornamented. The training yards are large and exposed. The barracks are functional. The chapel — there is one — is small, low-ceilinged, and contains exactly one item of decoration: a copy of the founding chalice, cast in iron from the same mold the original was struck from. Novices are evaluated here for between one and three years before being posted to chapter houses in Aldenholt, Caer Brannoch, or the smaller field stations.
+Physically, Brightwatch is what its name suggests: a watchtower and walled compound, austere and unornamented. The training yards are large and exposed to the weather, which out here means ash-haze in the east and cold wind most of the year. The barracks are functional. The chapel is small, low-ceilinged, and contains one item of decoration: a copy of the founding chalice, cast in iron from the same mold as the original. From the top of the watchtower, on a clear day, you can see where the green ends.
 
-Roland trained here for seven years. He returned twice as an instructor between deployments. He was at Brightwatch when the news of his expulsion reached the fortress. He left within the hour, on foot. He has not been back.
+Novices are evaluated here between one and three years before being posted elsewhere. The posting is considered unglamorous. The knights who serve longest tend to be the ones who came to understand that unglamorous is another word for necessary.
+
+Roland trained here for four years, served here as a posted knight, and returned twice as an instructor. He was at Brightwatch when the expulsion order arrived. He left within the hour, on foot, heading west toward Aldenholt. He has not been back. His return in Act IV — to the garrison camp on the Ashfields approach, meeting the people he trained with — is one of Game One's quietly significant moments.
 
 ---
 
@@ -62,17 +64,17 @@ Dame Calla Vane became Grandmaster four years ago. She inherited the crisis. She
 
 ## Roland's Expulsion
 
-Roland Ashford served the Order for fourteen years before his expulsion. His record was unremarkable — competent, reliable, not flashy enough to attract patronage and not weak enough to attract concern. He was the kind of knight the Order's doctrine produces in volume: people who hold.
+Roland Ashford served the Order for seven years before his expulsion. His record was unremarkable — competent, reliable, not flashy enough to attract patronage and not weak enough to attract concern. He was the kind of knight the Order's doctrine produces in volume: people who hold.
 
-His expulsion was triggered by his discovery, three years before Game One, that the iron pommel on the chapel's founding altar was not a relic of the Red Siege. It was older. He recognized it because Henrietta had been quietly compiling a genealogical record that included Second Age binding artifacts, and she had shared a fragment of that record with Roland during a routine archive visit the previous year. The pommel matched.
+His expulsion came in his seventh year, over a merchant contract. Roland discovered that a house the Order was protecting was using the Chalice's cover for shipments that were harmful — not dramatically evil, just quietly, profitably wrong. He raised it internally. Dame Calla told him she was working the problem, that the mechanism to exit the contract cleanly would take eight months. She asked him to let her work it.
 
-Roland reported what he had found to Dame Calla. Calla listened. She did not deny what he was telling her. She asked him not to repeat it. Roland refused.
+He didn't. He went to the merchant's primary buyer directly and made the facts known. The arrangement collapsed within a week. Calla's eight-month exit strategy became unnecessary. She expelled him — not in anger, but because he had chosen his own clean conscience over the institutional process that protected everyone else in the company.
 
-Calla expelled him. The formal grounds were "conduct prejudicial to the Order's standing" — a formula sufficiently vague that the Order's internal review committee accepted it without further inquiry. The actual reason was that Calla could not afford to have the question of the pommel raised publicly. The Order's relationship with the crown, with the banking houses, with the surviving founding families — none of it could survive the exposure. She knew this. She made the calculation. She has lived with it since.
+The formal grounds were "conduct prejudicial to the Order's standing." The Order's internal review committee accepted them without further inquiry.
 
-Roland did not understand, at the time of the expulsion, why Calla had done what she did. He understood later. The conversation in Game One Act I, in which Calla gives him forty minutes alone in the chapel with the lights off, is the closest the two of them will come to an apology. Neither of them uses the word.
+The iron pommel in the Aldenholt chapel — that discovery happens separately, around the same time, through a different route. Roland did not find the pommel while still in service. He found it through Henrietta's research after his expulsion, which is what draws him back to Aldenholt in Game One Act I. Dame Calla's conversation in which she gives him forty minutes alone in the chapel is about both things simultaneously: the expulsion she does not apologize for and the pommel she cannot afford to acknowledge. Neither of them uses the word apology. Neither of them needs to.
 
-For full details of Roland's training, service, and expulsion, see `BACKSTORY_ROLAND.md`.
+For the full arc of Roland's training, service, and expulsion, see `BACKSTORY_ROLAND.md`.
 
 ---
 
@@ -88,6 +90,5 @@ For full details of Roland's training, service, and expulsion, see `BACKSTORY_RO
 
 ## Open Questions
 
-- **The Brightwatch naming collision** — see note above. Decision needed: does the Iron Chalice fortress own the name and the militia is a presumption, or did the militia take the name as a tribute, or do they coexist with one being renamed?
 - **The original holders of the iron pommel** — the founding-altar inventory records the pommel as "donated by an anonymous benefactor in the Order's third year." Who placed it there? This question is not answered in any current lore. It may be a Game Two or Game Three reveal.
 - **Caerwy's choice** — the previous Grandmaster who accepted the Solgrade loan. Is he still alive in Game One? If so, does Calla speak to him? This has not been written.
