@@ -84,13 +84,13 @@ Map texture: light stippling or open farmland hatching with small woodlot symbol
 
 ### The Ashfields (eastern Mira)
 
-From above: a gradual color change from brown-gold farmland to flat grey ash-soil. The transition takes about fifty miles — you notice the soil lightening, then the vegetation thinning, then the first patches of bare grey ground appearing, then the ash-haze.
+From above: a gradual color change from brown-gold farmland to flat grey-brown dead soil. The transition takes about fifty miles — you notice the soil lightening, vegetation thinning, the first ghost stumps appearing, then crumbled farmstead walls, then the ash-haze thickening as you move east.
 
-Basalt outcroppings break the flat monotony — old lava beds from the First Age when Drûn-Khazad's influence reached this far west. They protrude from the ash-soil as dark irregular shapes, too hard to farm around, too isolated to shelter behind.
+The Ashfields were once productive rolling hills and light forest — farmland and wilderness that supported life. They died over centuries as ash drifted west across the Shroud Sea on prevailing winds from Drûn-Khazad, year by year, growing denser as Mordvar's power stirs. The dead zone creeps westward still. Crumbled stone walls of long-abandoned farmsteads and ghost stumps of ancient trees break the grey monotony — evidence of the world that was here before the ash.
 
-Vosskaran garrison towns are the last built structures before the landscape empties. Beyond them: grey ground, wind, the smell of ash, and goblin territory.
+Vosskaran garrison towns are the last built structures before the landscape empties. Beyond them: grey-brown ground, wind, the smell of ash, goblin territory, and the occasional outlaw camp of those who fled justice in Vosskara or Eldermark.
 
-Map texture: light grey stippling increasing in density toward the east. Occasional dark blotches for basalt outcroppings. Dotted lines for the garrison road. No trees.
+Map texture: light grey-brown stippling increasing in density toward the east. Ghost stump symbols scattered through the middle zone. Dotted lines for the garrison road. Occasional crumbled wall symbols in the dead farmland zone. No living trees.
 
 ### The Sorrowmarsh (eastern Mira)
 
@@ -102,11 +102,15 @@ Map texture: marsh stippling (horizontal dashes), dead tree symbols, the ghost-l
 
 ### The Weeping Wood (northeastern Mira)
 
-A section of dead forest north of the goblin lands, separate from the Greatwood to its northwest. The trees are grey-trunked with permanent bare branches — they have not produced leaves in recorded history. The cloud cover above the wood does not move with regional wind patterns; it sits fixed overhead in all weather.
+A dead forest in northeastern Mira, north of the Ashfields, east of the Greatwood's southeastern fringe. Naergrim-controlled territory — the Naergrim dark elves chose the Ash Throne two thousand years ago and settled here, and their corruption magic killed the forest. The trees are grey-trunked with permanent bare branches — they have not produced leaves in recorded history. The cloud cover above the wood does not move with regional wind patterns; it sits fixed overhead in all weather, a permanent effect of Naergrim corruption magic.
+
+The voices in the trees are Naergrim scouts watching the borders, not echoes or supernatural haunting. The Weeping Wood is extremely dangerous territory: almost no one enters and returns unchanged, because the Naergrim do not permit casual passage.
+
+Mor-Vethrin sits at the wood's eastern edge, built into dark cliff escarpment rock where the dead forest meets hard stone.
 
 From a map perspective it appears as a dark irregular patch of dead forest north of the Ashfields, east of the Greatwood's southeastern fringe, clearly distinct from both.
 
-Map texture: bare-branch tree symbols (no leaf canopy), grey/dark shading beneath, fixed cloud symbol above.
+Map texture: bare-branch tree symbols (no leaf canopy), grey/dark shading beneath, fixed cloud symbol above. Dark fortress symbol at the eastern cliff edge for Mor-Vethrin.
 
 ### The Ash-Steppe (western Thal)
 
@@ -128,7 +132,7 @@ A massive shield volcano rather than a cone — broad, low-profile from a distan
 
 The lava flows on the lower slopes create a concentric banded terrain — alternating grey and black rock — that is distinctive from above. Nothing grows on the upper two-thirds of the volcano. The lower slopes have sparse ash-adapted scrub.
 
-From Thal's western coast on clear days you can see the glow of the caldera at night above the horizon.
+From Thal's western coast on clear days you can see the glow of the caldera at night above the horizon. The Shroud Sea is 900 miles wide — the caldera glow is not visible from Mira's eastern coast.
 
 Map texture: large shield-volcano symbol (different from the cone-peaks of Vrothmor), concentric lava-flow banding indicated on lower slopes, permanent ash-cloud extending west, caldera marked with red/orange glow symbol.
 
@@ -147,8 +151,9 @@ Map texture: large shield-volcano symbol (different from the cone-peaks of Vroth
 | Khorumzad | Mira | Below Khorumzad's Crown, central Spine | Mountain-gate icon (deepest) |
 | Kazaad-Brak | Mira | Below the Broken Fang, southern Spine | Mountain-gate icon |
 | Coldstoke | Mira | Eastern Vosskaran frontier, Ashfields edge | Small village cross |
+| Mor-Vethrin | Mira | Eastern Weeping Wood escarpment, northeastern Mira | Dark fortress, no windows west |
 | Copper Isles port | Copper Isles | Main island, southern shelf | Harbor icon |
-| Mor-Vethrin | Thal | Eastern Vrothmor Peaks cliff-face | Dark fortress, no windows west |
+| Keth-Vethrin | Thal | Western volcanic coast of Thal | Dark cliff-face fortress, sea-facing |
 
 ---
 

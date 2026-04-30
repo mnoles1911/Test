@@ -25,13 +25,16 @@ Northern Mira. A vast ancient forest where the Aelorin have lived since the Firs
 Dramatic sea-cliffs, rainy moors, fishing villages. Caer Brannoch territory. Site of **Caer Drowned** — the sunken cliff-city formerly known as Caer Sulwyn.
 
 **The Ashfields**
-Eastern Mira, beyond the Spine's eastern slopes. Grey dead ground, thin soil over ancient lava beds, permanent ash-haze drifting from Drûn-Khazad. Frontier territory: Vosskaran garrison towns and goblin raids.
+Eastern Mira, beyond the Spine's eastern slopes. Once productive rolling hills and light forest — farmland and wilderness that supported life. Dead now: grey-brown soil, ghost stumps of ancient trees, crumbled stone walls of long-abandoned farmsteads, dry creek beds. The land died over centuries as ash from Drûn-Khazad drifted west on prevailing winds across the Shroud Sea, growing denser year by year as Mordvar stirs. The dead zone creeps westward. Frontier territory: Vosskaran garrison towns at the western edge, goblin colonies in the deep Ashfields, and outlaws who fled justice in Vosskara and Eldermark and find the lawless wastes useful.
 
 **The Sorrowmarsh**
 A dead wetland in eastern Mira where the Grand Alliance broke Mordvar's first host two thousand years ago. Nothing grows. Ghost-lights at night. The mud smells of old blood in warm weather.
 
 **The Weeping Wood**
-A section of forest north of the goblin lands, separate from the Aelorin Greatwood. Leafless year-round, permanent dark cloud cover overhead. Voices speak in the trees — not echoes but articulate words, the voices of past victims. Those who venture in come out as other people, if they come out at all.
+A dead forest in northeastern Mira, north of the Ashfields, east of the Greatwood's southeastern fringe. Leafless year-round, permanent dark cloud cover overhead that does not move with regional weather. Naergrim-controlled territory: the Naergrim dark elves settled here two thousand years ago when they chose the Ash Throne, and their corruption magic killed the forest. The permanent cloud cover is a side effect of that corruption. Voices in the trees are Naergrim scouts watching the borders. Extremely dangerous — almost no one enters and returns unchanged. Home to Mor-Vethrin, the obsidian city of the Naergrim.
+
+**Mor-Vethrin**
+The obsidian city of the Naergrim dark elves, built into the dark cliff-faces of the Weeping Wood's eastern escarpment in northeastern Mira. Black stone, no windows facing west, entrance through a single gate guarded by a carved arch of bone. The city blends into the dark sedimentary and metamorphic cliff rock. The Naergrim have held this position for two thousand years, since they chose the Ash Throne and settled the dead forest around them.
 
 ### Thal — The Wild Continent
 
@@ -44,8 +47,8 @@ Central Thal — jagged volcanic mountains riddled with goblin warrens. The Vrot
 **Drûn-Khazad — The Burning Wound**
 The great volcano at Thal's heart. Called the "World's Mouth" by orcs, who consider it sacred ground. Active — permanent lava glow at night, ash drifting west on bad years. The caldera contains the **Hollow Hearth**, where the Aescstól (Ash Throne) was hidden after Mordvar's binding. The Hollow Hearth is below the caldera. The Vault of Aen-Vael is not here — the Grand Alliance deliberately placed it on the opposite side of the world, below Khorumzad in the Spine of Mira, so that any attempt to reach it must move away from Mordvar's seat of power.
 
-**Mor-Vethrin**
-The obsidian city of the Naergrim dark elves, built into the eastern cliff-faces of the Vrothmor Peaks. Black stone, no windows facing west, entrance through a single gate guarded by a carved arch of bone.
+**Keth-Vethrin**
+A Naergrim outpost city on the western volcanic coast of Thal — smaller and more militarized than Mor-Vethrin. Built into dark cliff-faces above the rocky shoreline. Serves as the sea-watching watchtower of the Naergrim's Thal presence, and the point of contact between the Naergrim of Mira and Mordvar's Ash Throne. Not visited in Game One. Relevant to Game Two.
 
 **The Shroud Sea**
 The eastern ocean. Locked in permanent storm since the night Caer Sulwyn slid into the sea. No ship that sails east returns. The Sailors' Brotherhood has charted the storm patterns for two hundred years and believes a navigable window opens every forty years. The next window opens nine years from the start of Game One.
