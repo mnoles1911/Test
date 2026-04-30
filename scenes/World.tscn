@@ -15,11 +15,21 @@ size = Vector2(16, 148)
 [sub_resource type="Gradient" id="4"]
 colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
 
+; Radial gradient texture for the campfire light.
+; CRITICAL: fill_from defaults to (0,0) — top-left corner — NOT center!
+; Without explicitly setting fill_from to (0.5, 0.5), the bright center of the
+; radial gradient sits at the texture's top-left, which the PointLight2D then
+; places ~128 pixels up and left of its node position. That's why the light
+; appeared to come from outside the cave.
+; fill_to at (1.0, 0.5) places the falloff at the right edge of the texture,
+; producing a symmetric circular gradient from center → edges.
 [sub_resource type="GradientTexture2D" id="5"]
 gradient = SubResource("4")
 width = 256
 height = 256
 fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
 
 [sub_resource type="RectangleShape2D" id="8"]
 size = Vector2(48, 48)
