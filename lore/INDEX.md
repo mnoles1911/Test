@@ -12,9 +12,80 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 |---|---|
 | [WORLD.md](WORLD.md) | Geography (Mira and Thal), the Three Ages, religion, magic system |
 | [WORLD_GEOGRAPHY.md](WORLD_GEOGRAPHY.md) | Terrain, scale, rivers, coastlines, roads, settlements table — map reference |
-| [CITY_DESCRIPTIONS.md](CITY_DESCRIPTIONS.md) | Physical descriptions of major settlements: layout, landmarks, atmosphere |
+| [CITY_DESCRIPTIONS.md](CITY_DESCRIPTIONS.md) | **Superseded** — physical descriptions of major settlements (kept for reference; individual location files now in `locations/`) |
 | [PEOPLES.md](PEOPLES.md) | Human kingdoms, Aelorin, dwarven holds, Naergrim — culture, society, customs |
 | [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, factions, quest index, timeline, two endings |
+
+---
+
+## Locations
+
+Individual location files live in `lore/locations/`. Each file includes: physical description (from CITY_DESCRIPTIONS.md or stubs), 3D scale reference (at 8 voxels per meter), art direction notes, level layout status, scene connections, and open questions.
+
+`CITY_DESCRIPTIONS.md` is superseded by these files — kept for reference only.
+
+### Human Cities
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/ALDENHOLT.md](locations/ALDENHOLT.md) | Aldenholt | Largest city, Act I primary setting. Rich existing description. 5 scenes fully detailed. |
+| [locations/CAER_BRANNOCH.md](locations/CAER_BRANNOCH.md) | Caer Brannoch | Cliff city, Act II. Orion joins here. Sea-lifts. |
+| [locations/VOSSKAR.md](locations/VOSSKAR.md) | Vosskar-on-the-Iron | Vosskaran fortress city, Act II. The listening mechanic. |
+| [locations/SOLGRADE.md](locations/SOLGRADE.md) | Solgrade | Unwalled city-state, Act II. Most complex negotiation. |
+
+### Aelorin Settlements
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/LIRIEN_THAL.md](locations/LIRIEN_THAL.md) | Lirien-Thal | Canopy city, deep Greatwood. Aelthurion audience. Act II. |
+| [locations/AELORIEN.md](locations/AELORIEN.md) | Aelorien | Oldest Aelorin settlement, amphitheater. Not visited in Game One. |
+| [locations/SIRATHIEL.md](locations/SIRATHIEL.md) | Sirathiel-by-the-Sea | Coastal Aelorin city, only one open to humans. Act II entry point. |
+
+### Dwarven Holds
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/KARAZ_DUN.md](locations/KARAZ_DUN.md) | Karaz-Dûn | Northern hold, forges never cold, Dragon-Watchers HQ. Act III. |
+| [locations/KHORUMZAD.md](locations/KHORUMZAD.md) | Khorumzad | Central hold, 9 levels deep, Vault of Aen-Vael. Game Two primary. |
+| [locations/KAZAAD_BRAK.md](locations/KAZAAD_BRAK.md) | Kazaad-Brak | Southern hold, 11 sieges, most military. Act III (Barak Stonecroft). |
+
+### Thal
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/MOR_VETHRIN.md](locations/MOR_VETHRIN.md) | Mor-Vethrin | Naergrim city, obsidian cliff. Act III. Game One's last real decision. |
+| [locations/DRUN_KHAZAD.md](locations/DRUN_KHAZAD.md) | Drûn-Khazad | The volcano, Mordvar's throne. Game One final area, Act IV. |
+
+### Ruins and Cursed Sites
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/CAER_DROWNED.md](locations/CAER_DROWNED.md) | Caer Drowned (Caer Sulwyn) | Sunken city in the bay. Background lore / possible side content. |
+
+### Aldenholt Sub-Locations
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/ALDENHOLT_ARCHIVE.md](locations/ALDENHOLT_ARCHIVE.md) | Loremaster's Archive | Act I, Scenes 3 and 5. Fully detailed. |
+| [locations/ALDENHOLT_IRON_CHALICE.md](locations/ALDENHOLT_IRON_CHALICE.md) | Iron Chalice Chapel | Act I, Scene 4. Piece One acquired here. Fully detailed. |
+
+### Regions
+
+| File | Region | Notes |
+|---|---|---|
+| [locations/REGION_GREATWOOD.md](locations/REGION_GREATWOOD.md) | The Greatwood | Northern Mira forest. Act II traversal. Aelorin territory. |
+| [locations/REGION_SPINE.md](locations/REGION_SPINE.md) | The Spine of the World | Mountain range. Three dwarven holds. Act III backdrop. |
+| [locations/REGION_ASHFIELDS.md](locations/REGION_ASHFIELDS.md) | The Ashfields | Eastern ash wastes. Act IV approach. Vosskaran frontier. |
+| [locations/REGION_UNDERWAY.md](locations/REGION_UNDERWAY.md) | The Underway | Dwarven tunnel network beneath the Spine. Act III travel. Dagna joins here. |
+| [locations/REGION_SHROUD_SEA.md](locations/REGION_SHROUD_SEA.md) | The Shroud Sea | Continental crossing. Key to Game One ending. |
+
+### Stubs — Future Locations
+
+| File | Location | Notes |
+|---|---|---|
+| [locations/BRIGHTWATCH.md](locations/BRIGHTWATCH.md) | Brightwatch | Iron Chalice training fortress. Mentioned in lore, not visited in Game One. |
+| [locations/COPPER_ISLES.md](locations/COPPER_ISLES.md) | Copper Isles | Island archipelago. Act II (Brotherhood voyage). Greater relevance in Game Two. |
+| [locations/BINDING_SITE.md](locations/BINDING_SITE.md) | The Binding Site | Act IV ritual location (Ashfields or Drûn-Khazad — position TBD). |
 
 ---
 

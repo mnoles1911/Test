@@ -1,3 +1,5 @@
+> **Superseded.** Individual location files now live in `lore/locations/`. This file is kept for reference. See `lore/INDEX.md → Locations` for the current directory.
+
 # City and Settlement Physical Descriptions
 
 Detailed physical descriptions of major cities and settlements. Companion to WORLD_GEOGRAPHY.md.
