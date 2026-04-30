@@ -26,6 +26,7 @@ GameState="*res://scripts/GameState.gd"
 TransitionManager="*res://scripts/TransitionManager.gd"
 SaveNotification="*res://scripts/SaveNotification.gd"
 PauseMenu="*res://scripts/PauseMenu.gd"
+DebugOverlay="*res://scripts/DebugOverlay.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 
 [dialogic]
