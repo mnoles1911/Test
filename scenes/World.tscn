@@ -3,6 +3,8 @@
 [ext_resource type="PackedScene" uid="uid://dg32hekqxdgf0" path="res://scenes/Player.tscn" id="1"]
 [ext_resource type="Script" uid="uid://cffnpmw125l1t" path="res://scripts/CampfireFlicker.gd" id="2"]
 [ext_resource type="Script" uid="uid://i272am02gc5j" path="res://scripts/DialogueTrigger.gd" id="3"]
+; CombatTrigger script — walk into the red zone on the left to enter combat.
+[ext_resource type="Script" path="res://scripts/CombatTrigger.gd" id="4"]
 
 [sub_resource type="RectangleShape2D" id="6"]
 size = Vector2(320, 16)
@@ -21,6 +23,10 @@ fill = 1
 
 [sub_resource type="RectangleShape2D" id="8"]
 size = Vector2(48, 48)
+
+; Collision shape for the combat trigger zone (24px wide, 50px tall).
+[sub_resource type="RectangleShape2D" id="9"]
+size = Vector2(24, 50)
 
 [node name="World" type="Node2D" unique_id=264554405]
 
@@ -100,6 +106,7 @@ texture = SubResource("5")
 texture_scale = 1.5
 script = ExtResource("2")
 
+; Dialogue trigger (right side, blue) — walk in and press E for Henrietta's scene.
 [node name="DialogueTrigger" type="Area2D" parent="." unique_id=175401455]
 position = Vector2(260, 90)
 script = ExtResource("3")
@@ -113,6 +120,22 @@ color = Color(0.2, 0.4, 0.9, 0.3)
 
 [node name="Shape" type="CollisionShape2D" parent="DialogueTrigger" unique_id=1727969544]
 shape = SubResource("8")
+
+; Combat trigger (left side, red) — walk into the red zone to start combat.
+; Positioned between WallLeft (x=8) and the campfire (x=100).
+[node name="CombatTrigger" type="Area2D" parent="."]
+position = Vector2(35, 90)
+script = ExtResource("4")
+
+[node name="TriggerVisual" type="ColorRect" parent="CombatTrigger"]
+offset_left = -12.0
+offset_top = -25.0
+offset_right = 12.0
+offset_bottom = 25.0
+color = Color(0.7, 0.1, 0.1, 0.4)
+
+[node name="Shape" type="CollisionShape2D" parent="CombatTrigger"]
+shape = SubResource("9")
 
 [node name="Player" parent="." unique_id=500456698 instance=ExtResource("1")]
 position = Vector2(160, 90)
