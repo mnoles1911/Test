@@ -108,6 +108,43 @@ Roland gains levels and skill unlocks through **in-game action**, not XP grind:
 - No mandatory level gates on story progression — skill improves how effectively Roland fights, not whether he can enter a zone.
 - Enemies do not scale with Roland. A goblin is always a goblin — as Roland improves, goblins become reliably manageable.
 
+### Companions in Combat
+
+Companions (Orion, later Dagna) fight autonomously by default. Roland can issue **simple orders** via a radial/context menu:
+
+- **Engage** — attack the current target
+- **Hold position** — stop pursuing, defend in place
+- **Retreat** — fall back to Roland's position and stop attacking
+
+Companions are not directly controlled. Between fights (or at camp), Roland can **interact with each companion** to manage their inventory and gear — equip better weapons, restock their consumables, review their loadout.
+
+Friendly fire is off. Roland cannot accidentally hit companions.
+
+### Weapons and Equipment Condition
+
+**Smithing tiers** determine a weapon's base stats at the point of creation or acquisition:
+
+| Tier | Description |
+|---|---|
+| Common | Standard market quality — baseline damage, no bonuses |
+| Quality | Well-made — modest damage and durability improvement |
+| Masterwork | Exceptional craft — meaningful stat boost, rare |
+
+Higher smithing skill (from Roland's Crafting progression) unlocks the ability to produce or commission higher tiers.
+
+**Condition / wear:**
+- Weapons and armor degrade with use — tracked as a condition percentage.
+- A weapon in poor condition loses effective damage and blocking reliability (its "endurance" for blocking wears down faster).
+- **Sharpening kits** restore weapon sharpness (damage). **Repair kits** restore armor and blunt weapon integrity.
+- Kits are consumables: kept in inventory, applied at camp or between fights.
+- A broken weapon (0% condition) still functions but at severe penalty — forces a gear decision mid-run.
+
+### Endurance and the Power Attack Charge
+
+Charging a power attack (holding LMB) does **not** drain endurance while held. Endurance is spent **on release**, when the attack fires. Aborting a charge costs nothing.
+
+This keeps feinting and pressure-testing feels free — the cost is paid when you commit.
+
 ### Enemy Roster (Game One)
 
 | Enemy | Tier | Behavior | Damage | Defense | Notes |
@@ -135,16 +172,7 @@ Roland gains levels and skill unlocks through **in-game action**, not XP grind:
 The following are the remaining open questions. Everything else has been confirmed above.
 
 ### Stamina
-- **TODO:** Does charging a power attack drain endurance while held, or only on release?
-- **TODO:** Endurance recovery rate and hard cap — numbers TBD when implementing.
-
-### Companions
-- **TODO:** Are companions (Orion, Dagna once they join) fully autonomous AI, player-commandable (hold / engage / retreat), or direct-control swap?
-  - Lean toward player-commandable (two or three simple orders), but not yet confirmed.
-
-### Weapons
-- **TODO:** Are weapons upgradeable per KCD2 (sharpening, smithing tiers) or fixed stat blocks?
-  - Progression system implies smithing upgrades, but the exact crafting depth is unconfirmed.
+- **TODO:** Endurance recovery rate and hard cap — exact numbers TBD during implementation tuning.
 
 ---
 
@@ -154,10 +182,12 @@ These will inform the next code milestones; flagged here so they aren't surprise
 
 - **NavigationRegion3D + NavigationAgent3D** required for enemy pathfinding. Doesn't exist yet.
 - **Animation tree per enemy type** — wolves need leap, bears need charge, goblins need swarm flee/attack swap. ~20 unique animation states across the four enemy types.
-- **Companion AI** — needs a behavior tree or state machine even if minimally directable.
+- **Companion AI** — behavior tree or state machine with three order states (engage / hold / retreat). Companion inventory access requires an interaction UI screen (can reuse/extend JournalUI item tab pattern).
 - **Stamina HUD** — new UI element; probably bar under HP, with stamina-cost previews on dodge/sprint/power-attack.
 - **Lock-on camera blend** — `SpringArm3D` needs a "look at target" mode that smoothly blends into / out of fixed mode.
 - **Save points as world objects** — beds and campfires become interactable nodes that call `GameState.save_game()` directly. Saviour Schnapps becomes an inventory item that triggers save on use.
+- **Equipment condition tracking** — `InventoryManager` needs a `condition` field per item (float 0–1), modified by use and restored by sharpening/repair kits. Smithing tier stored as an enum on the item resource.
+- **Smithing skill gate** — Crafting progression must expose a `smithing_tier_unlocked` value that the crafting UI checks before showing masterwork recipes.
 
 ---
 
