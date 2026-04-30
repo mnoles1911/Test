@@ -8,10 +8,14 @@
 ;
 ;   - WorldEnvironment provides ambient + fog (the dark cave mood)
 ;   - DirectionalLight3D is a moonlight key from above-behind
-;   - Ground plane is a flat StaticBody3D + BoxMesh (10×10 m, dirt brown)
-;   - Four wall boxes form a small cave room
+;   - Ground plane is a flat StaticBody3D + BoxMesh (20×20 m, dirt brown)
 ;   - OmniLight3D campfire (orange, flickers via CampfireFlicker3D.gd)
+;   - Area3D dialogue trigger placeholder (no script wired yet — TODO M5-3D)
 ;   - Player3D instance starts in the middle
+;
+; Walls are deliberately absent — they will be replaced by Zylann's
+; VoxelTerrain in Milestone 5-3D, so building wall StaticBody3Ds here
+; would be throwaway work.
 ;
 ; Once Zylann's Voxel Tools plugin is installed, the floor and walls
 ; will be replaced with a VoxelTerrain node. Once MagicaVoxel assets
@@ -19,6 +23,7 @@
 
 [ext_resource type="PackedScene" path="res://scenes/Player3D.tscn" id="1_player"]
 [ext_resource type="Script" path="res://scripts/CampfireFlicker3D.gd" id="2_flicker"]
+[ext_resource type="Script" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
 sky_top_color = Color(0.05, 0.06, 0.1, 1)
@@ -100,6 +105,7 @@ surface_material_override/0 = SubResource("CampfireMat")
 
 [node name="DialogueTriggerArea" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 1, 0)
+script = ExtResource("3_trigger")
 
 [node name="TriggerShape" type="CollisionShape3D" parent="DialogueTriggerArea"]
 shape = SubResource("TriggerShape")

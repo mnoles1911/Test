@@ -1,4 +1,5 @@
 extends Node3D
+class_name SpawnPoint3D
 # SpawnPoint3D — marks a position in a 3D Zone where the player
 # should appear when entering with a matching spawn_id.
 #

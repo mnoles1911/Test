@@ -58,11 +58,13 @@ func _ready() -> void:
 	# looks down at the world from above).
 	rotation_degrees.x = -elevation_degrees
 
+	# If horizontal rotation is off, disable _process entirely so we
+	# don't poll input every frame for a flag that never changes.
+	if not allow_horizontal_rotation:
+		set_process(false)
+
 
 func _process(delta: float) -> void:
-	if not allow_horizontal_rotation:
-		return
-
 	# Optional horizontal rotation for exploration zones.
 	# Q rotates left, E rotates right.
 	if Input.is_action_pressed("camera_left"):
