@@ -5,11 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Game One — Project Bible
 
 ## What I'm building
-A 2.5D narrative RPG in the style of Sea of Stars.
-Single player. Active turn-based combat with timing inputs.
-Pixel art sprites with 3D-ish environments and dynamic 2D lighting.
-Built in Godot 4.3 using GDScript.
+A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere, Hades in camera angle.
+Single player. Real-time action combat (Hades/Hyper Light Drifter style), 1-vs-many.
+Voxel world built in Godot 4.3 with Zylann's Voxel Tools plugin. GDScript only.
 This is game one of a planned trilogy adapted from a 200-page source manuscript.
+
+**Engine pivot confirmed (2026-04-30):** Switched from 2D pixel art to 3D voxel.
+Full migration plan: `design/3D_VOXEL_MIGRATION.md`
 
 ## My background
 I am a writer and game designer, not a programmer.
@@ -24,22 +26,23 @@ a single protagonist's intimate perspective. The world feels ancient and real.
 Mira-Thal is a world of two continents in the third age of its existence. The western continent Mira is the heartland of civilization: four human kingdoms clustered at its center, the ancient Aelorin forests to the north, three dwarven mountain-kingdoms threading the Spine of the World, and the wild eastern frontier where the ash-lands begin. The eastern continent Thal is wilderness — unmapped beyond its fringes, dominated by the Ash Throne's influence, and anchored at its heart by the volcano Drûn-Khazad. The age is paradox: men are more numerous than ever, cities grow, trade flows — but the world's deeper fabric frays. The Aelorin dwindle. Dwarven kings grow old or greedy. Something bound two thousand years ago beneath the volcano is learning, slowly, to breathe again.
 
 ## Core systems (what we're building)
-- Player: CharacterBody2D, 8-directional movement, interacts with world
-- World scenes: Tilemap-based environments with 2D dynamic lighting
-- Dialogue: Dialogic 2 plugin handles all narrative content
-- Combat: Separate scene, active turn-based with timing inputs
-- Game state: Autoload singleton (GameState.gd) tracks all persistent data
-- Scene transitions: Fade to black between zones
+- Player: CharacterBody3D, 8-directional movement on 3D XZ plane
+- World scenes: VoxelTerrain (Zylann plugin) + MagicaVoxel prop assets
+- Camera: SpringArm3D follow camera, ~50° elevation (Hades-style), fixed angle
+- Dialogue: Dialogic 2 plugin handles all narrative content (unchanged)
+- Combat: Real-time action in-world (Hades style), 1-vs-many, no separate scene
+- Game state: Autoload singleton (GameState.gd) tracks all persistent data (unchanged)
+- Scene transitions: TransitionManager autoload, fade-to-black/white/cut (unchanged)
 
 ## Folder structure
 - /scenes — all .tscn files
-- /scripts — all .gd files  
-- /assets/sprites — character and prop sprites
-- /assets/portraits — character portrait images for dialogue boxes
-- /assets/tilesets — environment tiles
+- /scripts — all .gd files
+- /assets/voxel — MagicaVoxel exports (.glb): props, buildings, dungeon tiles, crown pieces
+- /assets/models — Blender character exports (.glb): Roland, NPCs, enemies
+- /assets/sprites — billboard sprite sheets (Aseprite, 32×48 px, if using Option A characters)
+- /assets/portraits — character portrait images for dialogue (256×320 px)
 - /assets/audio — music and sfx
 - /dialogue — all Dialogic timeline (.dtl) files
-- /dialogue/characters — Dialogic character definition (.dch) files
 - /lore — all narrative canon (start at lore/INDEX.md)
 - /design — game implementation reference (systems, art direction)
 
@@ -69,13 +72,37 @@ MILESTONE 3: COMPLETE — Combat prototype
 - [x] Enemy telegraph + block timing: Space in window = reduced damage
 - [x] Win/lose conditions with message and auto-return to World.tscn
 
-MILESTONE 4: (not started) — Scene transitions
-- Fade-to-black system (SceneTransition.gd autoload)
-- A second room/area to walk to
-- Player spawn position preserved across transitions via GameState
+MILESTONE 4: IN PROGRESS — Systems infrastructure (Phases 4–7)
+See PR on branch `claude/expand-game-lore-i0k2g`. Systems built (not yet merged to main):
+- TransitionManager (fade-black/white/cut, scene history, go_back())
+- GameState expanded (multi-slot save, flag history, play time tracking)
+- Zone framework (Zone.gd, Room.gd, RoomTrigger.gd, SpawnPoint.gd)
+- SaveNotification autoload toast, PauseMenu (ESC), MainMenu, Settings screen
+- SaveSlotPicker (3 slots), DebugOverlay (F1), FlagScheduler (timed/deferred)
+- InventoryManager (items, equipment, crafting recipes)
+- JournalUI expanded (5-tab KCD2 style: Quests, Map, Items, Crafting, Codex)
+- EnemyData Resource class, Combat.gd updated with Analyze action
+
+MILESTONE 5: (not started) — Art pass
+- Aseprite + AI-assisted workflow
+- 32×32 tiles, 32×48 character sprites
+- AnimationTree for character animation
+- Normal maps on tiles and character sprites
+- Begin with cave tiles → Roland walk cycle → Aldenholt tileset
 
 ## Current milestone
-Milestone 3 complete. Next: Milestone 4 (scene transitions) or art pass.
+Milestone 3 complete. Milestone 4 systems built, PR open. Next: merge M4, then start art pass.
+
+## Art specification (confirmed — 3D VOXEL)
+- **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
+- **Voxel scale**: 8 voxels per meter (fine-grain — NOT Minecraft 1-meter cubes)
+- **Terrain**: VoxelMesherTransvoxel (smooth organic terrain) + VoxelMesherCubes (buildings)
+- **Props/buildings**: MagicaVoxel → export .glb → Godot MeshInstance3D
+- **Characters**: billboard sprites (Aseprite 32×48 px, Sprite3D) for Act I; transition to low-poly Blender models for Act II+
+- **Camera**: SpringArm3D at ~50° elevation, fixed angle, follows Roland (Hades-style)
+- **Lighting**: OmniLight3D (torches/fire) + DirectionalLight3D (sun/moon) + WorldEnvironment SSAO + fog
+- **Pipeline reference**: `design/ART_PIPELINE.md`
+- **Migration plan**: `design/3D_VOXEL_MIGRATION.md`
 
 ## What I never want
 - Complex code I can't understand
@@ -119,6 +146,8 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems
 - design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
+- design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender, billboard sprites
+- design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
