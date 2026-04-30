@@ -72,8 +72,7 @@ MILESTONE 3: COMPLETE — Combat prototype
 - [x] Enemy telegraph + block timing: Space in window = reduced damage
 - [x] Win/lose conditions with message and auto-return to World.tscn
 
-MILESTONE 4: IN PROGRESS — Systems infrastructure (Phases 4–7)
-See PR on branch `claude/expand-game-lore-i0k2g`. Systems built (not yet merged to main):
+MILESTONE 4: COMPLETE — Systems infrastructure (Phases 4–7) [merged via PR #42]
 - TransitionManager (fade-black/white/cut, scene history, go_back())
 - GameState expanded (multi-slot save, flag history, play time tracking)
 - Zone framework (Zone.gd, Room.gd, RoomTrigger.gd, SpawnPoint.gd)
@@ -83,15 +82,27 @@ See PR on branch `claude/expand-game-lore-i0k2g`. Systems built (not yet merged 
 - JournalUI expanded (5-tab KCD2 style: Quests, Map, Items, Crafting, Codex)
 - EnemyData Resource class, Combat.gd updated with Analyze action
 
-MILESTONE 5: (not started) — Art pass
-- Aseprite + AI-assisted workflow
-- 32×32 tiles, 32×48 character sprites
-- AnimationTree for character animation
-- Normal maps on tiles and character sprites
-- Begin with cave tiles → Roland walk cycle → Aldenholt tileset
+3D PIVOT: design docs merged via PR #43
+- `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
+
+MILESTONE 4-3D: IN PROGRESS — First 3D scene with follow camera
+- [x] `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ-plane movement
+- [x] `scripts/CameraRig.gd` — SpringArm3D follow camera at 50° elevation
+- [x] `scripts/CampfireFlicker3D.gd` — OmniLight3D port of campfire flicker
+- [x] `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — 3D ports of Zone framework triggers
+- [x] `scenes/Player3D.tscn` — capsule + box mesh placeholder + SpringArm3D rig
+- [x] `scenes/World3D.tscn` — placeholder cave: floor, WorldEnvironment, DirectionalLight3D, campfire OmniLight3D
+- [ ] Install Zylann's Voxel Tools plugin (manual step in Godot Asset Library)
+- [ ] Verify in Godot 4.3: WASD moves the box on a flat floor, camera follows at fixed angle, campfire flickers
+
+MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
+- VoxelTerrain node with cave generator script
+- First MagicaVoxel exports: campfire prop, cave wall tile
+- First billboard sprite: Roland walk cycle (Aseprite → Sprite3D)
 
 ## Current milestone
-Milestone 3 complete. Milestone 4 systems built, PR open. Next: merge M4, then start art pass.
+Milestones 1–4 complete; design docs for 3D pivot merged. Milestone 4-3D scripts and scenes drafted.
+Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D, then begin Milestone 5-3D art assets.
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
@@ -152,25 +163,34 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
 ## Current project state
-Godot 4.3 project initialized. Milestones 1–3 complete.
+Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot design docs merged. Milestone 4-3D in progress (first 3D scripts + placeholder scene).
 
-Key files:
-- `project.godot` — 320x180 viewport, integer scaling, pixel snap, GameState + Dialogic autoloads
-- `scripts/GameState.gd` — autoload singleton stub
-- `scripts/Player.gd` — 8-directional movement
-- `scripts/CampfireFlicker.gd` — sine wave light energy animation
-- `scripts/DialogueTrigger.gd` — press-E area trigger, calls Dialogic.start()
-- `scripts/CombatTrigger.gd` — walk-in trigger that loads Combat.tscn
-- `scripts/Combat.gd` — full combat state machine (player turn, attack timing, block timing, win/lose)
-- `scenes/Player.tscn` — CharacterBody2D with ColorRect placeholder, CollisionShape2D, Camera2D
-- `scenes/World.tscn` — cave scene with campfire, blue dialogue trigger (right), red combat trigger (left)
-- `scenes/Combat.tscn` — combat scene: HP panels, timing bar, action menu, enemy flash
-- `dialogue/henrietta_archive.dtl` — Henrietta at the Archive door, 7-line opening scene
-- `assets/portraits/henrietta_placeholder.svg` — archive scholar portrait placeholder
+2D legacy (still present, will be retired as 3D scenes replace them):
+- `scripts/Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`
+- `scenes/Player.tscn`, `World.tscn`, `Combat.tscn`
 
-To run: Open project in Godot 4.3, run World.tscn.
-- Walk LEFT into red zone → combat starts
-- Walk RIGHT into blue zone + press E → Henrietta dialogue
+3D Milestone 4-3D files (new):
+- `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ movement, gravity
+- `scripts/CameraRig.gd` — SpringArm3D follow camera at 50° elevation
+- `scripts/CampfireFlicker3D.gd` — OmniLight3D flicker
+- `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — Vector3 / Area3D ports of the Zone framework
+- `scenes/Player3D.tscn` — capsule + box mesh placeholder, with SpringArm3D camera rig
+- `scenes/World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
+
+Logic autoloads (unchanged from 2D, all survive the 3D pivot):
+- `GameState.gd`, `TransitionManager.gd`, `SaveNotification.gd`, `PauseMenu.gd`, `DebugOverlay.gd`,
+  `FlagScheduler.gd`, `InventoryManager.gd`, `JournalUI.gd`, `Settings.gd`, `MainMenu.gd`, `EnemyData.gd`
+
+To verify Milestone 4-3D in Godot 4.3:
+1. Open the project, run `scenes/World3D.tscn`
+2. WASD/arrow keys move the green box around the floor
+3. Camera follows at a fixed 50° elevation, never tilts or rotates
+4. Campfire glows orange and flickers
+5. No clipping through the floor or walls
+
+Manual setup still required:
+- Install **Zylann's Voxel Tools** plugin from the Godot Asset Library (for Milestone 5-3D)
+- Configure input actions `camera_left` / `camera_right` if `allow_horizontal_rotation` is enabled later
 
 ## Canonical naming (frequent contradictions)
 - Eldermark royal house: Castrove (NOT Vane)
