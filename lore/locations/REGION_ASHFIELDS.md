@@ -1,21 +1,25 @@
 # The Ashfields
 
 **Type:** Region (ash wastes)
-**Kingdom/People:** Vosskaran frontier (western edge); goblin territory (interior); Ash Throne influence (eastern depths)
+**Kingdom/People:** Vosskaran frontier (western edge); goblin territory (interior); outlaw camps (throughout)
 **Position:** Eastern Mira — from the Spine's eastern cliff face to the Shroud Shore
-**Story relevance:** Game One, Act IV — the Ashfields approach to Drûn-Khazad crossing; also visible from Vosskar-on-the-Iron (Act II)
+**Story relevance:** Game One, Act IV — the Ashfields are where the Binding Site is located AND the scene of the fighting retreat that ends the game; also visible from Vosskar-on-the-Iron (Act II)
 
 ---
 
 ## Physical Description
 
-From above: a gradual color change from brown-gold farmland to flat grey ash-soil. The transition takes about fifty miles — you notice the soil lightening, then the vegetation thinning, then the first patches of bare grey ground appearing, then the ash-haze.
+The Ashfields were once productive rolling hills and light forest — farmland and wilderness that supported life. They died over centuries as ash from Drûn-Khazad drifted west across the Shroud Sea on prevailing winds, growing denser year by year as Mordvar's power stirs. The dead zone creeps westward still.
 
-Basalt outcroppings break the flat monotony — old lava beds from the First Age when Drûn-Khazad's influence reached this far west. They protrude from the ash-soil as dark irregular shapes, too hard to farm around, too isolated to shelter behind.
+From above: a gradual color change from brown-gold farmland to flat grey-brown dead soil. The transition takes about fifty miles — you notice the soil lightening, then the vegetation thinning, then ghost stumps of ancient trees appearing, then crumbled stone walls of long-abandoned farmsteads, then the ash-haze thickening as you move east.
 
-Vosskaran garrison towns are the last built structures before the landscape empties. Beyond them: grey ground, wind, the smell of ash, and goblin territory.
+The ghost stumps and crumbled farmstead walls are the most evocative features of the Ashfields: evidence of the world that was here before the ash came. Dry creek beds trace the old drainage patterns. A land that clearly once lived, clearly dead now.
 
-Map texture: light grey stippling increasing in density toward the east. Occasional dark blotches for basalt outcroppings. Dotted lines for the garrison road. No trees.
+Vosskaran garrison towns are the last built structures before the landscape empties. Beyond them: grey-brown ground, wind, the smell of ash, goblin territory, and the occasional outlaw camp of those who fled justice in Vosskara or Eldermark and find the lawless wastes useful.
+
+The northeastern Ashfields transition into the Weeping Wood — dead soil giving way to dead forest, the goblin territory eventually yielding to something more dangerous.
+
+Map texture: light grey-brown stippling increasing in density toward the east. Ghost stump symbols scattered through the middle zone. Dotted lines for the garrison road. Occasional crumbled wall symbols in the dead farmland zone. No living trees.
 
 ---
 
@@ -25,14 +29,15 @@ Map texture: light grey stippling increasing in density toward the east. Occasio
 Key dimensions:
 
 - [x] Ash-soil depth (surface detail): ~0.1–0.3 m = 1–2 voxels of ash overlay on the terrain
-- [x] Basalt outcropping height: old lava beds, irregular — ~2–5 m tall = 16–40 voxels; ~5–15 m wide = 40–120 voxels
+- [x] Ghost stump height: remnants of felled or dead trees — ~0.5–2 m tall = 4–16 voxels; ~1–3 m wide = 8–24 voxels; weathered, grey-brown, no bark remaining
+- [x] Crumbled farmstead wall height: collapsed stone walls — ~0.5–1.5 m remaining = 4–12 voxels; provide partial cover in the Ashfields fighting retreat
 - [x] Ash-haze density: increases toward the east — particle effect in WorldEnvironment, grey, density increasing; no clear line of sight beyond ~200 m in the deep Ashfields
 - [x] Vosskaran garrison town scale: small fortress-style settlements — ~80 m × 60 m = 640 × 480 voxels approximate footprint; garrison walls ~4–5 m tall = 32–40 voxels
 - [x] Garrison road (Frontier Road): dotted line on maps — maintained gravel/stone surface, ~4 m wide = 32 voxels
 - [ ] Goblin territory markers: how far into the Ashfields before goblin presence begins — GAP
 - [x] Camera arm length — Ashfields open: arm 16, elevation 42°, optional horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md — maximum open-space camera settings)
 
-The flat featureless terrain is a design challenge: the basalt outcroppings are the only cover in an otherwise exposed landscape. Combat design in the Ashfields should account for this — the player has no natural defensive position except the outcroppings.
+The ghost stumps and crumbled farmstead walls are the only cover in an otherwise exposed landscape. Combat design in the Ashfields — particularly the Act IV fighting retreat — should account for this. The player has limited natural defensive positions; the ruins of the former civilization provide them.
 
 ---
 
@@ -40,21 +45,24 @@ The flat featureless terrain is a design challenge: the basalt outcroppings are 
 
 The color progression in the Ashfields tells the story of the terrain: brown-gold farmland → grey-brown → flat grey → grey-white ash. Each zone is distinct but the transition is gradual.
 
-Three key visual elements:
+Four key visual elements:
 1. **Ash-haze:** permanent grey atmospheric fog building toward the east. WorldEnvironment fog density increases as the player moves east. At maximum depth in the Ashfields, visibility is dramatically reduced.
-2. **Basalt outcroppings:** dark irregular shapes against the grey ground — volcanic rock from the First Age. These are the only visual landmarks in an otherwise featureless landscape.
-3. **No trees:** the absolute absence of vegetation (except sparse scrub near the western edge) is itself a visual statement. After the Greatwood and the Spine's pine forests, the emptiness is stark.
+2. **Ghost stumps:** grey weathered remnants of ancient trees — the most human-scale evidence of what was lost. Clustered unevenly, not in rows; these were wild trees and woodland, not an orchard.
+3. **Crumbled farmstead walls:** low stone ruins scattered through the middle Ashfields zone — foundations, partial walls, collapsed archways. The scale is domestic. These were homes.
+4. **No trees:** the absolute absence of living vegetation (except sparse scrub near the western edge) is itself a visual statement. After the Greatwood and the Spine's pine forests, the emptiness is stark.
 
-The ash smell: ambient audio design — a dry, mineral, slightly sulphurous ambient sound bed should distinguish the Ashfields from any other outdoor environment.
+The ash smell: ambient audio design — a dry, mineral, faintly acrid ambient sound bed should distinguish the Ashfields from any other outdoor environment.
+
+The northeast approach toward the Weeping Wood: as the player moves north-northeast, the dead soil transitions to dead forest. The Weeping Wood's fixed cloud cover becomes visible on the horizon as a darker grey mass that does not move.
 
 ---
 
 ## Level Layout Reference
 
 **File:** `lore/LEVEL_LAYOUTS_ACT4.md`
-**Status:** Sketched. Act IV begins with the Ashfields approach to the Shroud Sea crossing.
+**Status:** Sketched. Act IV takes place entirely in the Ashfields and the Binding Site within them.
 
-In Game One: the Ashfields are traversed in Act IV on the way to Thal. The playable portion is probably the approach road through the Vosskaran garrison zone and then the open Ashfields toward the Shroud Shore.
+In Game One: the Ashfields are the primary Act IV environment. The Binding Site (where the Crown is reassembled) is located here in the Ashfields — not across any sea. After the binding ritual, Vaeroth launches the Ashen Hand counterstroke, and the climax is a fighting retreat westward through the Ashfields.
 
 Also referenced in Act II (Vosskar): the ash-haze is visible from Vosskar's eastern wall as a particle effect — this is background/visual dressing during the Vosskar scenes, not a separate playable zone.
 
@@ -63,15 +71,16 @@ Also referenced in Act II (Vosskar): the ash-haze is visible from Vosskar's east
 ## Connections
 
 - **Arrives from:** Vosskaran frontier (from Vosskar-on-the-Iron, east via the Frontier Road)
-- **Contains:** Vosskaran garrison towns (multiple, unnamed in lore), basalt outcroppings (cover points), the Greyflow delta area (Shroud Shore approach)
-- **Exits to:** Shroud Shore → Shroud Sea crossing → Thal (see REGION_SHROUD_SEA.md)
+- **Contains:** Vosskaran garrison towns (multiple, unnamed in lore), ghost stumps and farmstead ruins (cover points), the Binding Site, the Greyflow delta area (Shroud Shore approach)
+- **Exits to (northeast):** Weeping Wood → Mor-Vethrin (Act IV approach to the Naergrim city)
+- **Exits to (east):** Shroud Shore (see REGION_SHROUD_SEA.md — not visited in Game One)
 
 ---
 
 ## Open Questions / Gaps
 
-- Act IV approach: is the playable Ashfields zone entirely linear (road east), or does the player have freedom to explore the basalt outcroppings?
+- Act IV approach: is the playable Ashfields zone entirely linear (road east), or does the player have freedom to explore the ruins?
 - Goblin encounters: the lore notes goblin raids on Vosskaran farmsteads are "common" — does the player encounter goblins in the Ashfields in Act IV, or is goblin presence implied but not confronted?
 - The Sorrowmarsh to the south: does Roland pass near it or through it? Not defined for Act IV.
-- Binding Site (BINDING_SITE.md): the lore mentions an Act IV ritual location in the Ashfields — is this before or after the Shroud Sea crossing? This needs clarification (see BINDING_SITE.md).
-- The Brotherhood observation station at the Shroud Shore (staffed by volunteers, six-month rotations): is this a playable scene or background lore?
+- Binding Site (BINDING_SITE.md): exact position within the Ashfields — how far east of the garrison towns? A specific landmark?
+- Outlaw camps: are any named outlaws encountered in Act IV, or are they background population?
