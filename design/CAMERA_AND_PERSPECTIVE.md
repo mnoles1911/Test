@@ -42,13 +42,25 @@ The 3/4 perspective will appear naturally once real pixel art sprites are added:
 
 | Milestone | Camera state | Perspective visible? |
 |---|---|---|
-| 1 (current) | Camera2D follows player, default settings | No — placeholder art is flat |
-| Art pass begins | No camera changes | Yes — emerges from sprite design |
-| Final polish | Possible: add camera limits, zoom, shake effects | Yes |
+| 1–3 (complete) | Camera2D follows player, default settings | No — placeholder rectangles are flat |
+| Milestone 5 (art pass) | No camera changes needed | Yes — emerges from 32×32 tile and 32×48 sprite design |
+| Zone framework (Chunk 1) | Camera limits set by RoomTrigger per room | Yes — rooms frame correctly |
+| Final polish | Add zoom per zone, camera shake for impacts | Yes |
 
 When the art pass begins, the only camera-adjacent work is:
-- Setting `Camera2D` limits so the player can't scroll past the edge of a room
+- `Camera2D` limits — already handled by `RoomTrigger.gd` (Chunk 1)
 - Optional: subtle zoom per zone (e.g., tighter in cramped tunnels)
-- Optional: camera shake for impacts or earthquakes (a separate script)
+- Optional: camera shake for impacts (a separate script, not yet built)
 
 None of these require changing the fundamental 2D camera setup.
+
+---
+
+## Confirmed: Not Building in 3D
+
+The question was asked: "should we build in 3D to get better lighting?"
+
+Answer: No. Godot 4's 2D renderer with `PointLight2D` and normal maps on `TileSet` resources achieves the same lighting depth as Unity 3D games using sprite rendering. Switching to 3D would require rebuilding every scene node type (CharacterBody3D, MeshInstance3D, etc.), a 3D camera rig, and a completely different physics layer — none of which we gain from. The campfire flicker and cave lighting already look correct in 2D.
+
+Lore: `design/ART_DIRECTION.md` — "Art Approach Decision" section
+Pipeline: `design/ART_PIPELINE.md`
