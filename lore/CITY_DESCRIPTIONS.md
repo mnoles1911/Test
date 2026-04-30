@@ -177,7 +177,8 @@ Map note: Ruined-tower symbol partially submerged in the Bay of Sulwyn.
 
 ## Guild and Order Locations of Note
 
-- **Brightwatch**: Iron Chalice training fortress, central-western Mira. Functional military installation, not a city.
+- **Brightwatch**: Iron Chalice fortress and forward operating base, eastern Eldermark frontier. Where cultivated Eldermark meets the Ashfields. Training facility and garrison combined. Not a city — a walled military installation. Roland trained here. See `lore/locations/BRIGHTWATCH.md`.
+- **Crestfall**: Roland's hometown. A town of about four hundred people on the Salt Road between Aldenholt and Brightwatch. Where cultivated land begins to thin toward the Ashfields. See `lore/BACKSTORY_ROLAND.md`.
 - **Loremaster's Archive, Aldenholt**: Full city block, Scholar's Block district. The largest single repository of written records in Eldermark.
 - **Sailors' Brotherhood Hall, Caer Brannoch**: Lower city, near the docks. Open to all sailors regardless of guild affiliation for dispute resolution and record-filing.
 - **Conclave Chapter, Eldermark**: Within Scholar's Block, Aldenholt. Smaller satellite offices in Solgrade and Caer Brannoch.

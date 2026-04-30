@@ -55,7 +55,6 @@
 | Vosskara | Tribute War de-escalated | Mostly intact |
 | Golden Lance | Vossant's contract honored | Light (tactics-focused) |
 | Conclave mages | Automatic (41 loyal) | 18 of 41 |
-| Brightwatch | Automatic if met in Game One | High (untrained volunteers) |
 
 ---
 
