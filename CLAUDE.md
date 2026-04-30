@@ -154,3 +154,68 @@ To run: Open project in Godot 4.3, run World.tscn.
 
 ## Legacy files
 IsometricRPGMono/ and title_screen.svg are leftovers from a prior MonoGame prototype. They are not part of Game One and should not be referenced or extended. They can be deleted when convenient.
+
+---
+
+## Godot workflow
+
+There is no CLI build, lint, or test command for this project. To verify changes work:
+1. Open the project in Godot 4.3
+2. Run the relevant scene (World.tscn for movement/lighting, Combat.tscn for combat)
+3. Check the Output panel for errors and print statements
+4. Test the specific feature manually
+
+Do not write shell commands that try to run Godot headlessly — there is no such setup here.
+
+---
+
+## Git workflow patterns
+
+- **One fix per branch.** Small, focused branches are easier to review and easier to cherry-pick if something goes wrong.
+- **One file per commit** when creating large .tscn or .gd files, to avoid stream idle timeouts during push.
+- **Cherry-pick over rebase** when a branch has conflicting squash-merged history. Close the bad PR, create a fresh branch from main, cherry-pick only the new commits, open a new PR.
+- **Never amend published commits.** If a hook fails or a push fails, fix the issue and create a new commit.
+- Always push with `git push -u origin <branch-name>`.
+
+---
+
+## Critical GDScript patterns
+
+**Autoload check before calling Dialogic:**
+```gdscript
+if get_node_or_null("/root/Dialogic"):
+    Dialogic.start("timeline_name")
+```
+
+**Frame-rate-independent deceleration:**
+```gdscript
+const DECEL: float = 400.0
+velocity = velocity.move_toward(Vector2.ZERO, DECEL * delta)
+# NOT: velocity.move_toward(Vector2.ZERO, SPEED) — that stops in one frame
+```
+
+**GradientTexture2D radial center (easy to get wrong):**
+```gdscript
+# fill_from defaults to (0,0) = top-left corner, NOT center
+# Always set explicitly for a centered circular glow:
+gradient_texture.fill_from = Vector2(0.5, 0.5)
+gradient_texture.fill_to = Vector2(1.0, 0.5)
+```
+
+**Light containment — CollisionShape2D does NOT block light:**
+```
+PointLight2D requires LightOccluder2D + OccluderPolygon2D on walls.
+CollisionShape2D only blocks physics, not 2D lighting.
+```
+
+**Control nodes vs Node2D for world-space objects:**
+```
+ColorRect / Label / Button = screen-space (UI layer, fixed to camera)
+Polygon2D / Sprite2D        = world-space (moves with the scene)
+Use Polygon2D when a visual element should stay attached to a world position.
+```
+
+**One-shot signal connection (e.g. dialogue end):**
+```gdscript
+Dialogic.timeline_ended.connect(_on_dialogue_finished, CONNECT_ONE_SHOT)
+```
