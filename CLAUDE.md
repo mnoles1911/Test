@@ -43,7 +43,8 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /lore — all narrative canon (start at lore/INDEX.md)
 - /design — game implementation reference (systems, art direction)
 
-## Current milestone
+## Milestone history
+
 MILESTONE 1: COMPLETE — First walkable scene with lighting
 - [x] Player moves in a cave-like environment (CharacterBody2D, 8-directional, move_and_slide)
 - [x] One campfire light source, warm orange glow (PointLight2D #E8873A, energy 1.3, flicker script)
@@ -53,18 +54,28 @@ MILESTONE 1: COMPLETE — First walkable scene with lighting
 - [x] GameState.gd autoload singleton stub
 - [x] Cave wall collision (4x StaticBody2D)
 
-MILESTONE 2: FILES READY — Awaiting Dialogic 2 plugin installation
-- [x] Dialogue timeline written: dialogue/henrietta_archive.dtl
-- [x] Portrait placeholder created: assets/portraits/henrietta_placeholder.svg
-- [x] DialogueTrigger.gd wired to Dialogic.start() with graceful fallback
-- [ ] Install Dialogic 2 plugin (see design/DIALOGIC_SETUP.md — must be done in Godot editor)
-- [ ] Create Henrietta character definition in Dialogic Characters editor
-- [ ] Create Dialogic default layout (so the dialogue box appears)
-- [ ] DONE WHEN: Press E in the trigger zone → Henrietta dialogue box appears over the cave scene
+MILESTONE 2: COMPLETE — First dialogue with Dialogic 2
+- [x] Dialogic 2 plugin installed and configured
+- [x] Henrietta opening scene (7-line dialogue at the Archive door)
+- [x] Press-E trigger wired to Dialogic.start()
+- [x] Portrait placeholder for Henrietta
 
-MILESTONE 3: (not started) — Scene transitions and second room
-- Fade to black between zones
-- A second cave room or exterior space to walk to
+MILESTONE 3: COMPLETE — Combat prototype
+- [x] Separate combat scene (scenes/Combat.tscn)
+- [x] Red trigger zone in World.tscn — walk left into it to enter combat
+- [x] Player (Roland) and enemy (Ashfallen), each with HP displayed
+- [x] Action menu: ATTACK [SPACE] and ITEM (placeholder/locked)
+- [x] Attack timing bar: indicator sweeps left→right, Space in green zone = bonus damage
+- [x] Enemy telegraph + block timing: Space in window = reduced damage
+- [x] Win/lose conditions with message and auto-return to World.tscn
+
+MILESTONE 4: (not started) — Scene transitions
+- Fade-to-black system (SceneTransition.gd autoload)
+- A second room/area to walk to
+- Player spawn position preserved across transitions via GameState
+
+## Current milestone
+Milestone 3 complete. Next: Milestone 4 (scene transitions) or art pass.
 
 ## What I never want
 - Complex code I can't understand
@@ -109,23 +120,28 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
+- design/LESSONS_LEARNED.md — running log of bugs and fixes
 
 ## Current project state
-Godot 4.3 project initialized. Milestone 1 complete. Milestone 2 files built — Dialogic 2 plugin installation required to complete.
+Godot 4.3 project initialized. Milestones 1–3 complete.
 
-Files present:
-- `project.godot` — 320x180 viewport, integer scaling, pixel snap, GameState autoload, E key as interact action
+Key files:
+- `project.godot` — 320x180 viewport, integer scaling, pixel snap, GameState + Dialogic autoloads
 - `scripts/GameState.gd` — autoload singleton stub
 - `scripts/Player.gd` — 8-directional movement
 - `scripts/CampfireFlicker.gd` — sine wave light energy animation
-- `scripts/DialogueTrigger.gd` — press-E area trigger, calls Dialogic.start() with graceful fallback
+- `scripts/DialogueTrigger.gd` — press-E area trigger, calls Dialogic.start()
+- `scripts/CombatTrigger.gd` — walk-in trigger that loads Combat.tscn
+- `scripts/Combat.gd` — full combat state machine (player turn, attack timing, block timing, win/lose)
 - `scenes/Player.tscn` — CharacterBody2D with ColorRect placeholder, CollisionShape2D, Camera2D
-- `scenes/World.tscn` — cave scene: CanvasModulate darkness, 4 wall StaticBody2Ds, campfire PointLight2D, Area2D trigger, Player instance
+- `scenes/World.tscn` — cave scene with campfire, blue dialogue trigger (right), red combat trigger (left)
+- `scenes/Combat.tscn` — combat scene: HP panels, timing bar, action menu, enemy flash
 - `dialogue/henrietta_archive.dtl` — Henrietta at the Archive door, 7-line opening scene
-- `assets/portraits/henrietta_placeholder.svg` — warm-toned archive scholar portrait placeholder
+- `assets/portraits/henrietta_placeholder.svg` — archive scholar portrait placeholder
 
-To run Milestone 1: Open project in Godot 4.3, run World.tscn. WASD/arrows move the player. Walk into the blue box on the right and press E.
-To complete Milestone 2: Follow design/DIALOGIC_SETUP.md.
+To run: Open project in Godot 4.3, run World.tscn.
+- Walk LEFT into red zone → combat starts
+- Walk RIGHT into blue zone + press E → Henrietta dialogue
 
 ## Canonical naming (frequent contradictions)
 - Eldermark royal house: Castrove (NOT Vane)
