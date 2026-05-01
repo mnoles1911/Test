@@ -1,61 +1,105 @@
-# Backstory: The Ashen Hand (Pre-Vaeroth)
+# Backstory: The Ashen Hand
 
-## Relationship to the Hollow Court
+## The Ashlord's Hand — Organisation Overview
 
-> **The distinction matters and should never be elided in dialogue or exposition.**
->
-> The **Ashen Hand** is the magical and military organization founded by Mael — its members are mages, former Conclave assessors, scholars, and field commanders who *know* what they serve. They make the operational decisions. They include the Ashfallen. Vaeroth Caine is their Hierarch.
->
-> The **Hollow Court** is the Hand's human intelligence arm. Its members are not mages. Most of them do not know they ultimately serve Mordvar. They believe they serve a reform movement, an idealistic faction, or a single charismatic handler. The Court is the Hand's reach into ordinary life — merchants, scribes, sailors, court functionaries — and is the only part of the apparatus that almost everyone in the world has met without realizing it.
->
-> The Hand recruits and runs the Court. The Court does not run the Hand. Court agents report to Hand handlers; handlers report up to Vaeroth.
->
-> The exposure asymmetry: a Hand member exposed compromises the leadership; a Court member exposed compromises only their own cell and possibly their handler. This is by design.
->
-> See also: `BACKSTORY_HOLLOW_COURT.md` for the Court's recruitment doctrine, cell structure, and notable operations (Aedric, the Brotherhood infiltration, the distinction from Drossvik).
+The Ashen Hand is the military, magical, and intelligence apparatus serving the Ashlord's purpose: reassemble the Sundered Crown and complete Mordvar's return. It operates across two distinct layers that share no formal knowledge of each other and answer to the same authority through different chains.
+
+The operational core is the layer that knows what it serves: former Conclave assessors, mages trained in pre-Conclave methodology, soldiers and field operatives, and the Ashfallen — people who have been exposed to Mordvar's ambient corruption long enough that their allegiance to the cause is no longer a matter of conviction so much as constitution. This layer wears no civilian face. It moves in the ash-lands and the eastern borderlands, in ruins and in transit, and it does not pretend to be anything other than what it is when it speaks to its own.
+
+The Hand's intelligence arm is the layer that does not know. Merchants, scribes, sailors, court functionaries, minor guild officials — most believe they serve a reform movement, a quiet effort to hold kingdoms accountable and address institutional rot before it becomes collapse. They are not wrong that the world is broken. They do not know who benefits from their work. The Ashlord sits above both layers. Vaeroth Caine, the Hand's operational Hierarch, runs the operational core and receives reports from the civilian arm through the Hand's handler structure. He is not at the top. He knows this.
 
 ---
 
-## Mael, the First Whetted
+## Caerith and Mael — The True Founding
 
-The Ashen Hand did not begin with Vaeroth Caine. It began with a woman named Mael, who called herself the First Whetted in the organization's internal documents and whom her followers called the Hierarch while she lived and the Founder after she died.
+Roughly thirty years before Game One, Caerith identified a former Conclave assessor named Mael, working in the eastern borderlands, who had been documenting what she called anomalies consistent with a major Second Age working under stress. She was right about the phenomenon. She had the methodology and the rigor to have been right much sooner if the Conclave had taken her work seriously. She was wrong about what the phenomenon meant.
 
-Mael was from the Ashfields — specifically from the same scrubby frontier region where Roland grew up, though she was born thirty years earlier and their paths never crossed. The irony of this geography is not lost on those who eventually piece it together: the organization whose field commander will place the agent closest to the Aeluvain binding site was founded by a woman from the very territory where the binding's effects are most ambient.
+Caerith did not approach her directly. He arranged circumstances. The right documents surfaced at the right time — old Conclave survey records that corroborated her findings and had been filed incorrectly for two decades. The right institutional dismissal followed: a senior Conclave functionary discredited her formal report in terms that read, to anyone watching, as political rather than scholarly. The right introductions came after that: people who had read her work, who took her concerns seriously, who had resources and no institutional allegiance to protect. By the time Mael understood she had a patron, she had already built an organisation in his shape. She believed she had built it herself. This was accurate in every practical sense and wrong in every meaningful one.
 
-She did not start as a villain's architect. She started as a former Conclave assessor who had spent fifteen years in the eastern borderlands documenting resonance anomalies that her reports described as consistent with a major binding under stress. The Conclave filed the reports. Nothing happened. She submitted escalations. The escalations were acknowledged. The Conclave's position, when she eventually forced a direct response, was that the anomalies were within acceptable variance for an aging Second Age working and did not require intervention.
+She called herself the First Whetted in the Hand's internal documents. Her followers called her the Hierarch while she lived and the Founder after she died. Caerith let her have both titles.
 
-Mael believed this was wrong, and that the Conclave's inaction was not incompetence but institutional cowardice — the specific refusal of a comfortable organization to acknowledge a threat that would require uncomfortable action. She was not entirely wrong. She drew entirely wrong conclusions.
+Mael came from the Ashfields — the same territory where Roland grew up, thirty years earlier. The Hand's internal records do not note this as significant. It is. The organisation that will place the operative closest to the Vault of Aen-Vael was founded by a woman from the territory most saturated with Mordvar's ambient corruption. Whether that saturation shaped her capacity to perceive the anomalies, or her willingness to act on them, is not a question the Hand's records address. It is a question worth asking.
 
-## The Founding Logic
+Mael was not evil. She believed she was preparing the world for a catastrophe the Conclave would not prevent. She was correct that the Conclave would not act. She built something real in service of a genuine analysis of genuine danger. She did not know that the catastrophe she was preparing for was being actively arranged by the man who had pointed her at the problem.
 
-The Ashen Hand was founded approximately twenty-five years before Game 1 begins, with a membership of seven people: three former Conclave assessors, a borderlands scholar, a retired soldier, and two individuals whose backgrounds Mael kept deliberately unrecorded.
+She died at forty-one. The Hand's records give the cause as corruption exhaustion. This is accurate as far as it goes.
 
-The organization's founding doctrine, which Mael wrote in a document she called the First Sharpening, proceeded from a single premise: the Aeluvain binding will fail. The Conclave will not act in time. When the binding fails and the Hollow Throne moves, the world will need something already in place that understands the threat and is positioned to survive it.
+---
 
-The Ashen Hand's early purpose was not to serve the Hollow Throne. It was to be the organization that would manage the post-binding world. Mael envisioned something closer to a shadow governance infrastructure — people in key positions across the kingdoms who could stabilize the chaos when the old order collapsed.
+## The Founding Doctrine
 
-This logic required, eventually, making contact with the entity whose release they were preparing for. Mael justified this as intelligence-gathering. The entity, patient and familiar with the shape of this reasoning, cooperated. By the time Mael understood that intelligence-gathering and service had become indistinguishable, the organization was ten years old and the cell structure she had built made it impossible to simply dismantle.
+The Hand's founding document, the First Sharpening, proceeded from a premise Mael believed was her own: Mordvar's defeat will not hold. The Conclave will not act in time. When Mordvar reforms, the world will need something already in place that understands the threat — something positioned not merely to respond but to shape what comes after.
 
-## Mael's Last Years
+Her early vision was closer to shadow governance than service. A network of informed, capable people distributed across every institution that would matter in the aftermath: courts, guilds, academic bodies, military commands. Not agents of Mordvar. Custodians of continuity. Caerith's patient guidance redirected this toward its actual purpose without ever requiring Mael to consciously revise her stated goals. The revision happened in the architecture, not the language.
 
-In her final five years, Mael ran the Ashen Hand on diminishing returns. The amplification methods the Hollow Court had introduced through her own contact protocols were leaving marks: she was forty-one years old and felt sixty. Her hands shook. Her sleep was consumed by something she would not describe to anyone.
+The First Sharpening survives. Only the Hierarch reads it. Vaeroth has read it many times. He cannot identify the sentence where she decides to walk into the trap. He has concluded there is no such sentence — that the document is coherent from first principle to final conclusion, and that coherence is the trap.
 
-Her last major operational act was placing Drossvik in position eleven years before Game 1 — a long-horizon intelligence asset embedded near Khorumzad's administrative layer. She spent considerable resources on this placement, more than the immediate return justified. The people around her found it puzzling. She did not explain it.
+---
 
-She had been grooming Vaeroth Caine as her successor for two years before her death. She chose him because his Conclave background matched her own, because his documented grievances against the institution were legitimate, and because she believed a man with genuine principles to corrupt would be more durable than a man who had none. Whether this was wisdom or rationalization she did not live to determine.
+## The Civilian Intelligence Arm
 
-She died at forty-one of what the organization's records describe as resonance exhaustion. This is accurate as far as it goes.
+The Hand's civilian network emerged roughly eight years into the organisation's existence. Mael had built the operational core with people drawn from institutional backgrounds — former assessors, former military, former guild administrators. She recognised that institutional talent had structural problems: too much to lose, too many professional habits around documentation, too many questions when orders conflicted with procedure.
+
+What she needed was people who were already outside institutions, or who had been pushed out of them. People with genuine grievance, accurate perception of what had gone wrong, and no remaining loyalty to the structures that had failed them.
+
+Recruitment doctrine, as formalised in the Hand's second decade, works in stages. A handler identifies a candidate — someone who has lost a livelihood to war, a position to corruption, a family member to institutional negligence. The handler does not approach with an offer or a pitch. The handler listens. Months of sympathetic contact, often framed as something else entirely: a shared trade route, a mutual acquaintance, a coincidence of lodging. An introduction, eventually, to a few warm and intelligent people with similar histories. Small helpful tasks that cost the candidate nothing and benefit people they already wanted to help. By the time an agent is performing meaningful work, they have been a member for a year or more and have arrived at their commitment through their own reasoning, their own values, their own decision. Most are correct that the world is broken. None know what they are actually serving.
+
+This produces agents whose loyalty is not bought, not ideological in any way they would recognise as dangerous, and not coerced. They will not break under interrogation because they do not believe they are guilty of anything. They will describe their work accurately, and it will sound like exactly what they think it is.
+
+Cell structure keeps the network compartmentalised. Cells run three to five members. A cell knows itself, knows its handler, and knows adjacent cells only through occasional cooperative tasking — a shared courier route, a jointly managed contact. A handler runs two to four cells. Handlers report up to a Hand operations officer in the civilian arm, who reports through a single point of contact to Vaeroth's office. Exposing one cell does not expose the network. Exposing a handler damages two to four cells and produces no information about the operations officer above. The structure was Mael's design. It has not needed revision.
+
+---
+
+## Notable Operations
+
+### Aedric Castrove
+
+Six years before Game One, a handler who had spent eleven years as a minor Eldermark court functionary was tasked with the long-term cultivation of Prince Aedric Castrove. The handler is not a member of any cell. He reports directly to Vaeroth's office. He has no knowledge of the civilian network's broader structure and no reason to suspect it has one.
+
+Aedric is not technically an agent. He is an asset: an influential person shaped by the Hand's methods without ever being inducted into its structure. Assets do not know they are assets. Aedric believes he has arrived, through his own reading and his own conversations with a trusted advisor, at a set of political convictions about institutional reform, the failures of the Conclave, and the need for stronger royal prerogative over mage-kind. He has. The convictions are real. The architecture of the conversations that produced them is not something he has examined.
+
+If Roland exposes this in Game One, Aedric is shown the structure of his own beliefs — not that they are wrong, but that they were built. What he does with that is one of Game One's significant optional outcomes.
+
+### The Sailor's Guild Infiltration
+
+Approximately seven years before Game One, a Hand operative was placed within the Sailor's Guild as a fully credentialed sailor with a legitimate record of Guild-endorsed voyages. He is well-liked. His record is clean. His tasking has been narrow: monitor and report on the Guild's Copper Isles communications, with particular attention to any revisions to Shroud Sea navigable window charts.
+
+He is the reason the Hand learned of the Guild's window revision within weeks of the Guild's own internal update. The Hand's eastern operations have been accelerating since that information arrived.
+
+In Game One Act III, Roland's voyage to the Copper Isles is forced off course by a storm and detours to a Guild safe-house. The agent's identity is exposed there. The exposure is the first time any party outside the Hand has understood the scope of the Guild infiltration.
+
+### Drossvik
+
+Eleven years before Game One, Mael placed Drossvik personally in Khorumzad's lower administrative tier — a records coordination role with access to survey documents covering the Spine of the World's middle ranges. He was not recruited through the civilian network's standard doctrine. He was recruited as a Hand asset: he knows what he serves, and he chose it.
+
+He is not a reformer who was guided toward the wrong cause. He is a man who understood the offer and accepted it. His exposure, if it occurs in Game One, compromises the Hand's Khorumzad operation specifically. It does not expose the surrounding civilian intelligence apparatus, which he has no knowledge of.
+
+---
 
 ## The Transition to Vaeroth
 
-Vaeroth inherited a functioning cell structure, a placed agent network, a founding doctrine he found ideologically coherent, and a set of Hollow Court contacts he had not himself established but was not in a position to sever.
+Vaeroth Caine inherited the organisation on Mael's death. He received a functioning cell structure, a placed agent network across four kingdoms, a founding doctrine he found ideologically coherent, and a set of Hand contacts he had not established himself and could not sever without destroying the operational capacity of an organisation he was now responsible for.
 
-He did not know, when he took the Hierarch position, the full history of what Mael had agreed to in the organization's early years. By the time he understood it, he had agreed to enough himself that the distinction had ceased to matter practically.
+He did not know, when he took the Hierarch position, the full history of what Mael had agreed to on the organisation's behalf — or on behalf of the people she had recruited into it. By the time he understood it, he had agreed to enough himself that the distinction had ceased to matter practically.
 
-He has never read the First Sharpening without feeling that Mael understood, somewhere in the writing of it, that she was describing a trap. He has never been able to identify the sentence where she decides to walk into it anyway. He suspects there isn't one.
+Vaeroth is not at the top. He knows this. The Ashlord is above him, and the Ashlord's instruction reaches him directly, without intermediary, in ways that make the chain of authority clear. Vaeroth runs the Hand's operational layer. The Ashlord runs Vaeroth. The operational core's mages and soldiers report to Vaeroth. The civilian arm's handlers report, through their operations officers, to Vaeroth's office. Everything reports, ultimately, to Caerith.
 
-## Drossvik's Placement
+---
 
-Drossvik was placed in Khorumzad's lower administrative tier eleven years before Game 1 — specifically in a records coordination role that gave access to survey documents for the Spine of the World's middle ranges. His purpose was long-horizon: to monitor any activity near the Vault of Aen-Vael, identify who was looking for it, and report up the chain without acting.
+## What the Hand Does Not Do
 
-He has been in position for eleven years without an actionable report. He has not been idle. He has a near-complete map of which dwarven records reference the Vault indirectly and which scholars have requested access to those records. When the party's activities reach Khorumzad in Game 2, Drossvik will know they are coming before they arrive.
+The Hand's civilian network does not carry out assassinations. That work goes to the Crimson Ledger on contract — a clean separation that protects the civilian arm's primary value, which is its deniability. Civilian agents who are asked to participate in violence are asked once, at the end of their usefulness to the network. This is not common. It is not unknown.
+
+The Hand does not induct nobility. Nobles are managed as assets through the same cultivation methods used on civilian agents, but they are never told they have been inducted into anything. The distinction matters operationally: an inducted agent has a handler and a cell; a noble asset has an advisor and a relationship.
+
+The Hand does not run civilian networks in the Aelorin Greatwood, in the Spine of the World, or in Naergrim territory. Early attempts in all three regions ended badly. The Hand's records on what exactly happened in the Aelorin Greatwood are sparse. This is unusual for an organisation that documents carefully. It suggests the records were removed rather than lost.
+
+---
+
+## Story Function
+
+The Ashen Hand is the trilogy's answer to how Mordvar — unmade and reforming for two thousand years — has built so much influence in the world before Game One begins. He did not build it. Caerith built it. Mael was the instrument. The horror is not that the Hand's members are evil. It is that almost none of them are, and they are still doing what they are doing.
+
+The Hand's strength is structural. Even after Vaeroth's death in Game Two, after the Ashlord's unmasking at Khorumzad, after Mordvar's final defeat at Drûn-Khazad — the civilian network persists. The cells continue. The handlers continue. The people in them still believe they are reformers, because they were recruited by people who believed that, who were recruited by Mael, who believed it to the end. The belief is real. It has been real at every stage of the network's existence. Caerith never needed to introduce a lie. He only needed to point genuine people at genuine problems and let them draw conclusions he had already drawn for them.
+
+Game Three's epilogues address what happens to the Hand after the war ends. The question is not how to defeat it. The question is what to tell the people in it.
