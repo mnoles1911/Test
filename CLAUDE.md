@@ -174,6 +174,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/CRAFTING.md — crafting station mechanics, intent-based quality, Wanderer's Seal
 - design/REST_AND_CAMP.md — rest mechanics, camp setup, sleep effects, time advancement
 - design/INVESTIGATION_SYSTEM.md — examine system, investigation points, Roland's deduction mechanic
+- design/LOCKPICKING.md — resonance pick radial dial system, lock tiers, pick consumption, skill advancement
 - design/WEATHER_AND_ENVIRONMENT.md — authored weather, six time-of-day periods, WorldClock lighting, environmental hazards
 - design/SAVE_SYSTEM.md — diegetic saves (rest autosave + Wanderer's Seal), three slots, backup rotation
 - design/DEATH_AND_RESPAWN.md — death sequence, authored Roland death lines, Second Wind, no permanent loss
