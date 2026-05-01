@@ -14,10 +14,11 @@ The largest city on Mira. Walls three men thick, built from grey quarried stone,
 Population approximately 80,000.
 
 Key landmarks:
-- **King's Hall**: The royal seat. Broad stone steps, three towers, banners year-round.
+- **King Othric's Longhall Keep**: The royal seat. A fortified great hall complex — stone gatehouse and towers with a half-timbered great hall built inside the curtain wall. Royal banners of Eldermark (iron-grey field, white boar) fly from the keep towers and gate arch year-round. The longhall interior is large, dark-timbered, firepit-lit.
 - **Scholar's Block**: A dense quarter of connected buildings housing the Conclave's Eldermark chapter, several independent scribes' halls, and the map-sellers. The Loremaster's Archive occupies an entire city block here — windowless lower floors, reading rooms above, a smell of old vellum that reaches the street.
 - **Iron Chalice Chapel**: Inside the city walls, a stone chapel maintained by the Iron Chalice order. Houses a fragment of the Sundered Crown pommel behind the altar — the only piece known to be in human hands.
-- **The Aldwater Docks**: Working docks on the river's south bank. Barge traffic arrives daily from the Spine and the coast.
+- **Temple of Aldrath & Aeadis**: A dual-shrine temple housing both gods in a single stone building. Over the main entrance: a war hammer and a wheat sheaf carved in relief. Interior: Aldrath's shrine on one side (forge-warm amber light), Aeadis's shrine on the other (cool daylight from a high window). The two light sources are separated by the central aisle — visually distinct, deliberately so.
+- **River Confluence Docks**: Working docks at the point where the Aldwater and Silverthread rivers meet. Barge traffic arrives daily from the Spine and the coast. Voxel quays of heavy stone, barge moorings, wooden crane jibs for cargo. Dock warehouses have loading doors at upper-floor level for crane access.
 
 Map note: Walled city symbol with multiple towers. Two river lines converging at the city.
 
@@ -42,9 +43,11 @@ Playable area scope: Act I uses five distinct scenes within the city — Night C
 
 ## Art Direction Notes
 
-Grey quarried stone walls. Warm torch sconces at ~96 px intervals in narrow alleys. The Scholar's Block is lamplit and institutional. Night Chase scene uses the most oppressive lighting of Act I — very dark ambient (`#1A1F3A` equivalent in 3D WorldEnvironment), guttering torches. The market district even at night has more ambient activity than the chapel quarter.
+Half-timbered upper stories over stone ground floors — Eldermark's defining architectural style. The city shows its age in patched mortar, worn cobbles, iron hinges dark with rust. Grey quarried stone walls. Warm torch sconces in narrow alleys on iron brackets every ~6m. The Scholar's Block is lamplit and institutional. Night Chase scene uses the most oppressive lighting of Act I — very dark ambient (`#1A1F3A` equivalent in 3D WorldEnvironment), guttering torches. The market district even at night has more ambient activity than the chapel quarter.
 
-Two rivers give the city a navigational logic — crossing the Aldwater means going north to the merchant districts; staying south is the old city.
+Market stall awnings: striped canvas in fully saturated colors — red, green, blue, yellow — against the neutral grey-stone backdrop. This color pop is intentional; the market is the city's life.
+
+Two rivers give the city a navigational logic — crossing the Aldwater means going north to the merchant districts; staying south is the old city. The River Confluence Docks sit at the junction point.
 
 ---
 

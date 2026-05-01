@@ -13,6 +13,7 @@ No walls. This is deliberate and political — Solgrade's founding Council decla
 
 Key landmarks:
 - **Council Hall**: Twelve equal entrances, one per founding guild. No entrance is grander than another. The interior is a single open chamber with a circular floor plan.
+- **The Grand Canal**: Solgrade's main street. A canal network running through the city center with flat-bottomed trade barges and passenger gondolas moving between quays. Canal-side buildings have stepped stone embankments at water level and private dock access at their rear. The water reflects the warm terracotta architecture. Canal-side market stalls use striped awnings in warmer tones than Aldenholt — more yellow and red, fewer blues.
 - **Banking Quarter**: The financial center of Mira. Three major banking houses, a dozen smaller ones, and the Smiths' Confederation's trade office.
 - **Surgeons' School and Apothecaries' College**: Adjoining buildings in the eastern district. The smell of herbs and alcohol. Students in grey coats are a common sight on Solgrade's streets.
 - **Golden Lance Hall**: The cavalry order's Solgrade chapter maintains a training yard and stables in the southern district.

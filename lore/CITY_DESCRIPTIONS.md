@@ -14,10 +14,11 @@ Detailed physical descriptions of major cities and settlements. Companion to WOR
 The largest city on Mira. Walls three men thick, built from grey quarried stone, maintained continuously for four centuries. The city spreads across both banks of the Aldwater where the Silverthread feeds in from the north — the old city occupies the southern bank, the newer merchant districts the northern. The market district never fully closes; stalls open before dawn and the last traders pack at midnight, if then.
 
 Key landmarks:
-- **King's Hall**: The royal seat. Broad stone steps, three towers, banners year-round.
+- **King Othric's Longhall Keep**: The royal seat. Stone gatehouse and towers with a half-timbered great hall inside the curtain wall. Royal banners (iron-grey field, white boar) fly year-round.
 - **Scholar's Block**: A dense quarter of connected buildings housing the Conclave's Eldermark chapter, several independent scribes' halls, and the map-sellers. The Loremaster's Archive occupies an entire city block here — windowless lower floors, reading rooms above, a smell of old vellum that reaches the street.
 - **Iron Chalice Chapel**: Inside the city walls, a stone chapel maintained by the Iron Chalice order. Houses a fragment of the Sundered Crown pommel behind the altar — the only piece known to be in human hands.
-- **The Aldwater Docks**: Working docks on the river's south bank. Barge traffic arrives daily from the Spine and the coast.
+- **Temple of Aldrath & Aeadis**: Dual-shrine temple. War hammer and wheat sheaf carved in relief above the entrance. Aldrath's side: amber light. Aeadis's side: cool window light. Separated by the central aisle.
+- **River Confluence Docks**: Working docks at the Aldwater/Silverthread confluence. Stone quays, crane jibs, barge moorings.
 
 Map note: Walled city symbol with multiple towers. Two river lines converging at the city.
 
@@ -56,6 +57,7 @@ No walls. This is deliberate and political — Solgrade's founding Council decla
 
 Key landmarks:
 - **Council Hall**: Twelve equal entrances, one per founding guild. No entrance is grander than another. The interior is a single open chamber with a circular floor plan.
+- **The Grand Canal**: The city's main street. Flat-bottomed trade barges and gondolas on a canal network through the city center. Canal-side buildings have stepped stone embankments and rear dock access. The water reflects the warm terracotta roofline.
 - **Banking Quarter**: The financial center of Mira. Three major banking houses, a dozen smaller ones, and the Smiths' Confederation's trade office.
 - **Surgeons' School and Apothecaries' College**: Adjoining buildings in the eastern district. The smell of herbs and alcohol. Students in grey coats are a common sight on Solgrade's streets.
 - **Golden Lance Hall**: The cavalry order's Solgrade chapter maintains a training yard and stables in the southern district.
@@ -71,7 +73,7 @@ Map note: Open city symbol (towers, no enclosing wall).
 
 Not built — grown. The city occupies the silverwood canopy, its platforms and walkways formed from living wood shaped over centuries by Aelorin who completed the Aelthiren transition. The trees themselves are ancestors: elder Aelorin who chose the forest-path of transformation and whose consciousness persists in the wood. Walking on the platforms is walking on the body of someone's grandmother.
 
-From below, the city is invisible — the canopy closes it. From within, it is open to sky through gaps in the canopy and filtered in perpetual silver-green light. No torches: the silverwood has a faint bioluminescence at night.
+From below, the city is invisible — the canopy closes it. From within, it is open to sky through gaps in the canopy and filtered in perpetual silver-green light. No torches: the silverwood glows at night — dramatic blue-white bioluminescence, bright enough to cast shadows and read clearly at the game's camera distance. The dominant light source after dark, not a subtle accent.
 
 Map note: Tree-and-star symbol. No walls.
 
