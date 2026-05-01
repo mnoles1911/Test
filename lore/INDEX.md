@@ -131,7 +131,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [BACKSTORY_CORVUS.md](BACKSTORY_CORVUS.md) | Corvus Tane's Solgrade upbringing, Conclave years, environmental magic (known) and structural perception (hidden) |
 | [BACKSTORY_SEREN.md](BACKSTORY_SEREN.md) | Seren's half-Aelorin origin, mother Lirien's Aelthiren, Vethri-Glade attack, 80 years with the Dawnbringers |
 | [BACKSTORY_DAGNA.md](BACKSTORY_DAGNA.md) | Dagna Irontrack's father's wrongful blame for the mine explosion; her Dragon-Watcher career and falsified reports |
-| [BACKSTORY_ALDRIC.md](BACKSTORY_ALDRIC.md) | Aldric Vane (blacksmith, Game Three): hidden Mordvar bloodline, life in Coldstoke, the assassination attempts |
+| [BACKSTORY_ALDRIC.md](BACKSTORY_ALDRIC.md) | Aldric Vane (blacksmith, Game Three): hidden Caelborn line (Aescryd bloodline), life in Coldstoke, the assassination attempts |
 | [BACKSTORY_EDRAN.md](BACKSTORY_EDRAN.md) | Edran Vane (recurring ally, not companion): Caelborn lineage, Maren's death, Ashen Hand investigation, Compact used in Game Two |
 | [BACKSTORY_MORDVAR.md](BACKSTORY_MORDVAR.md) | Bealoric's 30-year reign, Sael's death, the hollowing ritual, Aescryd's decline, the Sundered Crown |
 | [BACKSTORY_VAEROTH.md](BACKSTORY_VAEROTH.md) | Vaeroth's Conclave career, legitimate grievances against Grand Mage Elthara, slide into Ashen Hand service |
@@ -148,9 +148,10 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [BACKSTORY_NAERGRIM.md](BACKSTORY_NAERGRIM.md) | The Wound bargain, blood-oath mechanics, Serethi-Twice-Dead's 200-year investigation, the dissident faction |
 | [BACKSTORY_IRON_CHALICE.md](BACKSTORY_IRON_CHALICE.md) | The Red Siege founding, doctrine of endurance, Brightwatch fortress, Solgrade debt crisis, Roland's expulsion |
 | [BACKSTORY_SAILORS_GUILD.md](BACKSTORY_SAILORS_GUILD.md) | Origin as drowned-sailor mutual aid, three absolute principles, Council of Stewards, safe-house network, Copper Isles Archive, Shroud Sea crossing window |
+| [BACKSTORY_HADRAN.md](BACKSTORY_HADRAN.md) | Hadran Volthen (master smith, Long-Worked, Ash Tower): deep Ashen Hand asset, keeper of Hadran's Forge, guides the Aeluvain reforging in Game Three |
 | [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | **Index** — Iron Chalice, Tidewarden, Frost Brotherhood, Golden Lance — overview entries with deep-history pointers where they exist |
 | [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | **Index** — Smiths' Confederation, Sailor's Guild, Surgeons' School, Conclave, Loremaster's Archive |
-| [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | **Index** — Ashen Hand, Hollow Court, Crimson Ledger, Pale Supper, Nameless Council, Brightwatch, Salt Road, Dawnbringers |
+| [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | **Index** — Ashen Hand, Hollow Court, Crimson Ledger, Pale Supper, Nameless Council (The Forgetting), Company of the Salt Road, Dawnbringers |
 
 ---
 
@@ -158,6 +159,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 
 | File | Contents |
 |---|---|
+| [GAME1_KNOWLEDGE_PLOT.md](GAME1_KNOWLEDGE_PLOT.md) | What Roland and the party know, when they learn it, and which scenes deliver each beat — the knowledge spine for Game One's seven Crown-piece quests |
 | [GAME1_PART1.md](GAME1_PART1.md) | Game One main plot, first half |
 | [GAME1_PART2.md](GAME1_PART2.md) | Game One main plot, second half + epilogue |
 | [GAME2_PART1.md](GAME2_PART1.md) | Game Two main plot, first half |
