@@ -27,17 +27,47 @@ Roland has six equipment slots. Only items of the correct type can occupy each s
 | Slot | Description |
 |---|---|
 | **Weapon** | Main-hand melee weapon (sword, axe, or mace) |
-| **Off-Hand** | Shield or second weapon (if dual-wield unlocked via skill) |
+| **Off-Hand** | Shield, torch, or second weapon (if dual-wield unlocked via skill) |
 | **Head** | Helmet or hood |
 | **Body** | Chest armor (gambeson, mail, plate) |
 | **Hands** | Gauntlets or gloves |
 | **Boots** | Footwear |
 
+### Weapon Handedness
+
+All weapons are either **one-handed** or **two-handed**. This determines whether the Off-Hand slot is available simultaneously.
+
+| Handedness | Weapons | Off-Hand available? |
+|---|---|---|
+| **One-handed** | Short swords, daggers, hand axes, maces, clubs | Yes — can use shield, torch, or (if unlocked) off-hand weapon |
+| **Two-handed** | Longswords, broadswords, war axes, mauls | No — occupies both Weapon and Off-Hand slots |
+
+Roland's starting weapon (Common-tier short sword) is one-handed. Two-handed weapons become available as loot and purchase options from Act II onward. A Roland who uses a two-handed weapon hits harder but cannot use a torch for light or a shield for defense — a genuine tradeoff.
+
+**Equipping a two-handed weapon** automatically empties the Off-Hand slot (any shield or torch is moved back to inventory). The UI warns the player before this happens.
+
+### Torches
+
+A torch equips to the **Off-Hand slot**. While equipped:
+- Roland cannot block (no free hand for sword-arm positioning)
+- A light radius of **8 meters** illuminates the area around Roland
+- Enemy detection range is slightly increased (Roland is visible from farther away in darkness)
+- Torches are **incompatible with two-handed weapons** (both use the Off-Hand slot)
+
+**Torch properties:**
+- **Duration:** 4 in-game hours (WorldClock hours) per torch
+- **Weight:** 0.3 kg each
+- **Carried quantity:** No specific limit beyond weight capacity; carrying 3–5 is typical for a dungeon run
+- When a torch's duration expires, it extinguishes and is removed from the Off-Hand slot (Roland is not warned — he sees the light go out)
+- Torches cannot be re-lit once extinguished
+
+Torches are sold by general merchants and found in dungeon environments. They are a genuine resource decision in underground zones — committing picks and map attention to navigate in darkness vs. committing Off-Hand and combat options to stay lit.
+
 ### Game One Equipment Reality
 
-Roland starts Game One with a basic sword (Common tier) and a padded gambeson. He is a former Iron Chalice knight whose equipment has been repaired many times. His gear is functional, not impressive. The arc of progression is acquiring better gear through the game's events — not through shopping.
+Roland starts Game One with a basic short sword (Common tier, one-handed) and a padded gambeson. He is a former Iron Chalice knight whose equipment has been repaired many times. His gear is functional, not impressive. The arc of progression is acquiring better gear through the game's events — not through shopping.
 
-**No off-hand in Game One Act I.** Roland's block mechanic uses his sword-arm positioning, not a shield. A shield option opens in Act II when Roland finds or buys one.
+**No off-hand combat item in Game One Act I.** Roland's block mechanic uses his sword-arm positioning, not a shield. A shield option opens in Act II when Roland finds or buys one. A torch can be equipped at any time — it does not require Act II.
 
 ---
 
