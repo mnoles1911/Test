@@ -5,3 +5,14 @@ IsometricRPGMono/publish/
 
 # Godot 4 editor cache (regenerated on open; machine-specific)
 .godot/
+
+# TTS audio output (rendered from scripts; manifests are kept)
+# Keeps audio/dialogue/**/manifest.json tracked, ignores binary audio.
+audio/dialogue/**/*.mp3
+audio/dialogue/**/*.ogg
+audio/dialogue/**/*.wav
+audio/dialogue/_spend.log
+
+# Python cache (from tools/ scripts)
+__pycache__/
+*.pyc
