@@ -3,217 +3,185 @@
 How Roland makes things: potions, throwables, food, and maintained equipment.
 
 > Cross-reference: `design/INVENTORY_AND_EQUIPMENT.md` for item condition and smithing tiers.
-> `design/SKILLS_AND_PROGRESSION.md` for Crafting domain skill nodes and perk effects.
+> `design/SKILLS_AND_PROGRESSION.md` for Crafting domain skill nodes and quality tiers.
+> `design/ITEM_LIBRARY.md` for all craftable recipes, ingredients, and output items.
 > `design/NPC_SYSTEM.md` for smith and alchemist NPC setup.
 
 ---
 
 ## Design Philosophy
 
-**Crafting is physical work, not menu navigation.** Every station has a minigame — short, learnable, with quality determined by execution. A skilled player who understands the process produces better results than a player mashing through it. Skill in the Crafting domain makes the minigame easier and the output better, but it does not eliminate player execution.
+**Recipes are knowledge, not menus.** Roland cannot walk up to any station and produce anything. He must have learned the recipe — from a book, a mentor, an old manuscript, or his own experimentation. A player who explores and pays attention to the world will know more recipes than a player who rushes. The recipe list is a record of what Roland has discovered, not a pre-populated catalogue.
 
-**Recipes are discovered, not purchased from menus.** Roland finds recipes by reading documents, talking to knowledgeable NPCs, and — for some combinations — experimenting. The recipe list is not pre-populated. Trying unlisted ingredient combinations at a station is always possible and sometimes reveals something.
+**Skill determines quality, not permission.** There are no skill checks that block a recipe. If Roland knows how to make something and has the materials, he can make it. What his Crafting skill determines is how well it turns out. A Novice Roland making a healing draught produces a weak result. A Master Roland making the same draught produces something significantly more potent. Same recipe. Same materials. Different hands.
 
-**No power food.** Cooking produces meals that manage hunger and stamina recovery. No meal gives Roland bonus attack damage or extra HP. The game does not have a cooking-for-combat-advantage system. Hunger and rest are survival mechanics, not optimization levers.
+**Crafting is intentional, not mechanical.** There are no reflex minigames — no timing bars, no button sequences that require dexterity to complete. The act of crafting is a choice of focus: how much care Roland brings to the work. This fits a game about a man who solves problems through attention and understanding.
 
-**Condition is the driver.** Equipment degrades with use. The primary motivation for engaging with smithing is not "make powerful gear" — it is "keep existing gear from falling apart." Crafting is maintenance first, improvement second.
+**No power food.** Cooking manages hunger and rest quality. No meal grants combat bonuses, bonus HP, or stat buffs. Hunger is a survival consideration, not an optimization lever.
+
+---
+
+## The Craft's Intention — How Quality Is Determined
+
+When Roland sits at any crafting station, after selecting a recipe and confirming he has materials, he makes a single choice before committing:
+
+| Intent | Time cost | Quality result |
+|---|---|---|
+| **Work quickly** | Minimal in-game time | One quality tier below Roland's current skill ceiling |
+| **Work with care** | Standard | Roland's current skill ceiling |
+| **Work with mastery** | Extended; costs slightly more material | One quality tier above Roland's current skill ceiling — only available at Veteran+ Crafting |
+
+This is not a hidden system — Roland knows what he is doing. The choice is shown as three options before the craft resolves, like a dialogue option. The player always knows what they are trading.
+
+### Quality Tiers
+
+| Tier | Name | Typical effect vs. base |
+|---|---|---|
+| 1 | **Common** | 70% of base effect |
+| 2 | **Good** | 100% of base effect |
+| 3 | **Fine** | 130% of base effect |
+| 4 | **Exceptional** | 165% of base effect |
+
+Roland's skill ceiling per domain tier:
+
+| Crafting Domain Tier | Default ceiling |
+|---|---|
+| Novice | Common |
+| Trained | Good |
+| Veteran | Fine |
+| Master | Exceptional |
+
+Working quickly drops one tier below the ceiling. Working with mastery (Veteran+) raises one tier above — up to the cap of Exceptional.
+
+### Ingredient Quality Multiplier
+
+For alchemy, the freshness of organic ingredients affects the output quality regardless of skill:
+- Fresh herb + Veteran skill: Fine quality
+- Dried herb + Veteran skill: Good quality (one tier below the fresh equivalent)
+
+This is the only non-skill factor in quality. A player who harvests fresh herbs and uses them promptly produces better output than a player who buys dried stock. The game rewards active engagement with the natural world.
 
 ---
 
 ## Stations
 
-All crafting happens at a physical station in the world. There is no crafting from the inventory screen. Each station type produces a different category of item.
+All crafting happens at a physical station in the world. There is no crafting from the inventory screen.
 
 | Station | Location(s) | Produces |
 |---|---|---|
-| **Alchemy Bench** | Herbalist shops, Roland's camp (after upgrade), certain quest locations | Potions, draughts, Saviour Schnapps |
-| **Brewing Table** | Tavern kitchens, camp | Saviour Schnapps (alternative; same output, different minigame feel) |
-| **Smithing Forge** | Smiths' workshops in settlements | Weapon/armor maintenance; tier improvement (Quality/Masterwork with skill) |
-| **Grindstone** | Smiths' workshops, some outdoor camps | Weapon sharpening; faster than forge, lower ceiling |
-| **Assembly Table** | Roland's camp, certain safe-houses | Throwables: fire bombs, smoke grenades, oil flasks, caltrops |
-| **Cooking Fire** | Any campfire Roland can interact with; tavern kitchens | Meals: hunger recovery, rest-quality bonuses |
+| **Alchemist's Still** | Herbalist shops, specific quest locations, Roland's camp (unlocked at Act II) | Potions, draughts, compounds, Wanderer's Seal |
+| **Smithing Forge** | Smiths' workshops in settlements | Weapons, armor; weapon/armor maintenance; tier improvement |
+| **Grindstone** | Smiths' workshops, some campsites | Weapon sharpening (faster, lower ceiling than forge) |
+| **Assembly Table** | Roland's camp (available from Act I), certain safe-houses | Throwables, traps, tools, utility items |
+| **Cooking Fire** | Any campfire Roland can interact with, tavern kitchens | Meals; hunger and rest-quality effects |
 
-Roland cannot build new stations. He uses stations that exist in the world and, for camp, can unlock a portable alchemy bench and assembly table through story progression.
-
----
-
-## Alchemy
-
-### The Station
-
-An alchemy bench has four interactive elements:
-- **Cauldron** — where ingredients are combined and cooked
-- **Mortar and Pestle** — grinds dry ingredients before they go in
-- **Hourglass** — times the boiling phase; rotate to start the countdown
-- **Bellows** — controls heat; pump to raise temperature, stop to let it drop
-
-The player interacts with each element in sequence. The minigame is not random — the same inputs produce the same result every time. A player who has done this recipe before should feel competent.
-
-### The Minigame — Step by Step
-
-1. **Open the recipe book** — Roland reads the recipe aloud (first time only; after that it's available at the bench as a prompt).
-
-2. **Grind ingredients that require it** — at the mortar. A brief press-and-hold rhythmic input: press the button in time with the grind animation. Three good presses = well-ground; missing one = coarsely ground (quality penalty).
-
-3. **Add base liquid to cauldron** — automatic; Roland tips the vial in.
-
-4. **Add ingredients in sequence** — some go in at the start, some after the liquid reaches temperature. The recipe tells you when. Adding out of order produces a flawed result rather than a failure.
-
-5. **Flip the hourglass** — starts the boil timer. A visual effect shows the cauldron reaching temperature.
-
-6. **Pump the bellows** — during the boil, the heat indicator climbs and falls. Keep it in the green zone by pumping when it drops, stopping when it rises. Too hot or too cold during this phase degrades quality.
-
-7. **Add finishing ingredients** (if any) — some recipes call for a herb added at the last moment before the timer runs.
-
-8. **Decant** — when the hourglass empties, Roland pours the result into a vial. The number of vials produced and their quality is displayed.
-
-### Quality
-
-| Execution | Quality | Effect |
-|---|---|---|
-| Rushed (all steps skipped or done poorly) | **Weak** | 60% of base effect |
-| Standard (most steps done correctly) | **Normal** | 100% of base effect |
-| Careful (all steps done well, timing correct) | **Strong** | 140% of base effect |
-| Flawless (all steps perfect; only achievable with Veteran+ Crafting) | **Roland's Reserve** | 175% of base effect; labeled with Roland's initials |
-
-The **Potion Effectiveness** crafting perk adds 20% to all tiers — it does not unlock a new tier, it makes every tier better.
-
-### Ingredient Freshness
-
-Herbs and organic ingredients degrade after harvest. A fresh-picked herb is at 100% potency. Every 2 in-game days without preservation, it drops one quality tier.
-
-| State | Potency | Notes |
-|---|---|---|
-| Fresh | 100% | Picked within 2 days |
-| Slightly Dried | 85% | 3–5 days |
-| Dried | 70% | 6+ days; stable, does not degrade further |
-| Spoiled | 30% | Overripe organic ingredients (applies to food-adjacent items) |
-
-**Drying deliberately:** Roland can dry herbs at any campfire by interacting with them in inventory and selecting "Dry." This stops degradation at the Dried state — useful for preserving a large harvest. The trade-off: dried herbs permanently cap potency at 70% unless the **Preservation** perk is active (which raises the Dried ceiling to 85%).
-
-**Purchased herbs** from a herbalist are typically Dried (stable, not fresh-picked). Roland can source fresh herbs by harvesting himself, or by asking a herbalist NPC to sell him same-day stock (relationship-gated; FRIENDLY+ disposition required).
-
-### Recipes and Discovery
-
-Roland starts knowing two recipes: a basic healing herb tea and a basic bandage-assist draught. All other recipes must be found.
-
-**Recipe sources:**
-- Reading documents in the world (Archive restricted section, herbalist notes, old campsite journals)
-- Talking to alchemists and herbalists at TRUSTED disposition
-- Purchasing recipe pages from specialist vendors (not all recipes are purchasable — some exist only in documents)
-- **Experimental discovery:** Combining two ingredients at the bench without a known recipe has a chance of producing a usable result. If it does, Roland notes the combination in his journal. Not all combinations work. Dangerous combinations produce a smoke burst and waste the ingredients without harming Roland.
-
-The experimental discovery system means a curious player can find recipes that a completionist player researching only vendors and documents will miss.
+Roland cannot build new stations from scratch. He uses stations that exist in the world. His camp can have a portable Still and Assembly Table added through story or quest progression.
 
 ---
 
-## Throwables
+## Alchemy — The Alchemist's Still
 
-Assembled at the **Assembly Table**. No timing minigame — throwable crafting is pure resource management. The player selects a recipe, confirms they have materials, and Roland assembles the batch.
+### Interaction
 
-**Why no minigame:** Throwables are tactical consumables assembled between fights, not precision tools. The design decision is that the tactical thinking happens in how you use them, not how you make them. The Assembly Table is a logistics station, not a performance station.
+Roland sits at the still. The interface shows:
+- The recipe (if known), with ingredient list and a brief description in Roland's voice: *"This one needs to steep longer than you think. The bitterroot fights the oil until the heat resolves it."*
+- His current ingredient inventory, flagged with freshness state
+- The three intent options (Quick / Care / Mastery)
 
-**Throwable Yield perk:** Doubles output per batch. No other changes.
+No button sequences. No timing. Roland's competence is in his hands — the player's competence is in knowing the recipe and choosing the right ingredients.
 
-### Throwable Recipes
+### Recipe Discovery
 
-| Item | Primary Material | Secondary | Batch Size (base) |
-|---|---|---|---|
-| Fire Bomb | Pitch flask | Dried moss | 2 |
-| Oil Flask | Lamp oil | Cloth scraps | 3 |
-| Smoke Grenade | Sulphur | Charcoal | 2 |
-| Caltrops | Iron scraps | — | 4 |
+Roland discovers alchemy recipes through:
+- **Documents:** Recipe pages in the Archive restricted section, herbalist notes, old campsite journals, monastery records
+- **Mentors:** Herbalists and alchemists at FRIENDLY+ disposition will teach recipes in conversation
+- **Purchase:** Specialist vendors sell certain recipe pages (not all are purchasable)
+- **Experimentation:** Combining two ingredients at the still without a known recipe may produce a usable result. If it does, Roland notes it in his journal. Not all combinations work; a failed experiment produces a brief smoke effect and wastes the ingredients without harming Roland.
 
-Materials are bought from vendors, looted from camps, or found in environments (lamp oil from wall sconces in abandoned buildings, iron scraps from destroyed equipment).
+Experimental recipes found through play will sometimes not appear in any sold or written source. A curious player will know things a thorough researcher will not.
 
----
+### Starting Recipes
 
-## Smithing and Equipment Maintenance
-
-### Sharpening (Grindstone)
-
-The fastest form of maintenance. Costs one **Sharpening Kit** per use.
-
-**Minigame:** A short back-and-forth rhythm on the grindstone wheel. Keep the blade in contact with the wheel by following a simple left-right prompt. Missing contacts wastes kit material without improving condition.
-
-- Base result: restores weapon sharpness (damage condition) by 35–50%
-- **Extended Sharpen** perk: same kit, restores 60–70%
-- Cannot restore armor. Cannot improve smithing tier.
-
-Grindstones exist at smiths' workshops and some outdoor campsites. Roland cannot grind on the road.
-
-### Forge Maintenance
-
-Full weapon and armor repair. Costs **Repair Kits** (for blunt/armor) or **Sharpening Kits** (for bladed weapons, at forge; deeper repair than grindstone).
-
-**Minigame:** Three phases.
-1. **Heat** — watch the color indicator on the metal. Strike (press button) when the metal is bright orange, not red-hot or cooling-grey. Miss the window: wasted fuel, partial heating.
-2. **Hammer** — a directional prompt sequence. Match the shown directions to shape the metal correctly. 4–6 prompts per piece. Each miss adds a small flaw.
-3. **Quench** — dip the piece at the right moment (timed). Early: brittle (quality penalty). Late: soft (condition not fully restored). On-time: full restoration.
-
-**Smithing tier improvement** (Common → Quality, Quality → Masterwork) requires:
-- The appropriate Crafting perk unlocked (**Quality Smithing Unlocked** or **Masterwork Smithing Unlocked**)
-- Additional rare materials (quality iron, masterwork alloy — purchased from or commissioned through skilled smiths)
-- A full successful forge sequence with no missed prompts
-
-Tier improvement is expensive and meaningful. Roland cannot improve a piece's tier on the road — only at a capable smith's forge.
-
-### Camp Maintenance
-
-Between fights, Roland can apply **Sharpening Kits** and **Repair Kits** directly from inventory without a station. This is field maintenance — slower and less effective than a grindstone or forge, but available anywhere.
-
-- Field sharpening: restores 20% weapon sharpness condition
-- Field repair: restores 15% armor/blunt condition
-
-No minigame. Just the cost of a kit and a brief animation.
+Roland begins Game One knowing two recipes: a **Field Herb Tea** (basic healing) and a **Compress Oil** (bandage assistant draught). All others must be found.
 
 ---
 
-## Cooking
+## Smithing — The Forge
 
-At any campfire Roland can interact with, or at a tavern kitchen. Simple and fast — no multi-step minigame.
+### Weapon and Armor Maintenance
 
-**What cooking does:**
-- Prepares meals from raw ingredients
-- Cooked meals recover more hunger than raw food
-- A good meal before rest improves rest quality (Roland wakes with slightly more endurance headroom for the first hour of play after sleep)
+The primary use of the forge in Game One is keeping equipment functional. Weapons and armor degrade with use (see `design/INVENTORY_AND_EQUIPMENT.md`).
 
-**What cooking does not do:**
-- Grant combat buffs
-- Provide bonus HP
-- Give Roland any mechanical advantage beyond the hunger and rest effects above
+At the forge, Roland selects a damaged item and the applicable maintenance recipe. The intent choice (Quick / Care / Mastery) determines how much condition is restored per kit used.
+
+**Grindstone:** For weapon sharpness only. Faster than the forge. Same intent choice. Cannot restore armor or blunt weapon structural condition.
+
+### Smithing New Items
+
+Roland can produce new weapons and armor if:
+1. He knows the recipe (learned from a smith NPC or written source)
+2. He has the required materials
+3. His Smithing sub-skill is at the required tier (controls output quality, not permission to attempt)
+
+**Smithing tier improvement** (Common → Quality, Quality → Masterwork) requires additional materials and a higher Smithing sub-skill tier. See `design/ITEM_LIBRARY.md` for all smithable items and their requirements.
+
+### Field Maintenance
+
+Between station visits, Roland can apply **Sharpening Kits** and **Repair Kits** from inventory without a station. This is field maintenance — less effective than a forge, but available anywhere.
+- Field sharpen: restores 20% weapon sharpness condition, no intent choice
+- Field repair: restores 15% armor/blunt condition, no intent choice
+
+---
+
+## Assembly Table
+
+Throwables, traps, and utility items. No minigame — pure material management. Select recipe, confirm materials, produce output. Intent choice (Quick / Care / Mastery) affects yield per batch (Quick: 1 fewer unit; Care: base yield; Mastery: 1 additional unit, Veteran+ only).
+
+See `design/ITEM_LIBRARY.md` for all 30 assembly table recipes with materials and outputs.
+
+---
+
+## Cooking Fire
+
+At any campfire Roland can interact with. The simplest crafting system in the game: select recipe, confirm ingredients, produce meal. No intent choice — cooking time and care are abstracted. Meal quality is determined solely by ingredient freshness and recipe tier.
 
 ### Hunger
 
-Roland is not killed by hunger. He is slowed. A hungry Roland has:
+Roland is not killed by hunger. A hungry Roland has:
 - Endurance recovery rate reduced by 15%
 - Carry weight threshold reduced by 10%
 
-This is noticeable in a hard fight but not catastrophic. The game does not punish forgetting to eat — it nudges toward eating as a reasonable part of a day.
+A meal resets hunger for 4–8 in-game hours depending on the dish. Eating before rest (the "well-fed" state) improves rest quality — Roland wakes with slightly more endurance headroom for the first play hour after sleep.
 
-A meal resets hunger for 4–8 in-game hours depending on the dish.
-
-### Meal Quality
-
-| Preparation | Effect |
-|---|---|
-| Raw food | Minimal hunger recovery; some foods cannot be eaten raw |
-| Basic cooked | Standard hunger recovery |
-| Well-prepared | 120% hunger recovery; bonus rest quality if eaten before sleeping |
+See `design/ITEM_LIBRARY.md` for all 15 cooking recipes with ingredients and effects.
 
 ---
 
-## Saviour Schnapps (Diegetic Save)
+## The Wanderer's Seal — Diegetic Save
 
-Produces a **manual save** when consumed. The animation is the same as drinking a potion — the game saves during the drinking action. Roland looks slightly glazed afterward (brief visual effect).
+A sealed wax-stopped vial that creates a **manual save point** when consumed. The name comes from the old pilgrimage tradition in Mira-Thal's Iron Chalice order: travelers would seal a small vial of local water or herb at important waypoints as a personal record of their journey. Roland drinks his to mark the moment.
 
-Crafted at an Alchemy Bench or Brewing Table using:
-- **Base spirit** (bought from taverns or distillers — expensive)
-- **Saviour herb** (found in the Ashfields region; rare; cannot be cultivated)
+Crafted at an Alchemist's Still:
+- **Still's spirit** (purchased from taverns or distillers; expensive; 1 unit per batch)
+- **Waymarker herb** (found throughout the Ashfields and along old pilgrimage routes; cannot be cultivated)
 
-Base production: 1 per batch. **Material Efficiency** perk: 2 per batch. Always Standard quality — quality is irrelevant to the save function.
+Base output: 1 per batch. Maximum carry: 3. The supply constraint is the design — saves are meaningful because they are scarce.
 
-Roland can carry up to 3. They stack but do not stack beyond 3 in inventory. The supply constraint is the design — diegetic saves are meaningful because they are limited.
+---
+
+## Recipe Discovery Philosophy
+
+Not all recipes can be purchased. The distribution is deliberate:
+
+| Source | Recipes accessible |
+|---|---|
+| Vendors (any disposition) | Common potions, basic field maintenance, simple cooking |
+| Mentor NPCs (FRIENDLY+) | Intermediate potions, specialist alchemy, Quality smithing |
+| Documents (found in world) | Unique recipes, lore-specific compounds, lost techniques |
+| Experimentation | A small set of recipes not documented anywhere; found only by trying |
+| Quest rewards | Specific powerful recipes given by named characters as rewards |
+
+A player who completes all side quests and reaches TRUSTED with key NPCs will know more recipes than one who rushes the main story. The recipe list is a measure of how thoroughly Roland has engaged with the world.
 
 ---
 
@@ -221,30 +189,53 @@ Roland can carry up to 3. They stack but do not stack beyond 3 in inventory. The
 
 ### Station Interaction
 
-Each crafting station is a world object with `InteractArea (Area3D)`. On E-press, the station calls:
-
 ```gdscript
+# Each crafting station is a world object with InteractArea (Area3D).
+# On E-press:
 func _on_interact():
-    var station_type: String = "alchemy_bench"  # or "forge", "grindstone", etc.
-    CraftingUI.open(station_type)
+    var station_type: String = "alchemy_still"  # "forge", "grindstone", "assembly", "fire"
+    CraftingUI.open(station_type, self)
 ```
 
-`CraftingUI.gd` (not yet built) reads the player's known recipes from `GameState.get_known_recipes()` and filters by station type.
-
 ### Recipe Data
-
-Recipes are stored as a custom Resource class `RecipeData.gd`:
 
 ```gdscript
 class_name RecipeData
 extends Resource
 
-@export var recipe_id: String          # "healing_potion_basic"
-@export var station_type: String       # "alchemy_bench"
+@export var recipe_id: String
+@export var station_type: String
+@export var display_name: String
+@export var roland_note: String             # Shown at the station in Roland's voice
 @export var ingredients: Array[Dictionary]  # [{item_id, quantity, freshness_min}]
 @export var output_item_id: String
-@export var output_quantity: int = 1
-@export var requires_crafting_perk: String = ""  # "" = no perk required
+@export var base_output_quantity: int = 1
+@export var min_crafting_subskill: int = 0  # 0=none, 1=Journeyman, 2=Skilled, 3=Expert
+                                             # Controls quality ceiling, not access
+```
+
+### Quality Calculation
+
+```gdscript
+func calculate_output_quality(subskill_tier: int, intent: String, freshness: float) -> String:
+    # subskill_tier: 0=Apprentice, 1=Journeyman, 2=Skilled, 3=Expert
+    # intent: "quick", "care", "mastery"
+    # freshness: 0.0–1.0 (ingredient average)
+
+    var base_tier: int = subskill_tier  # 0=Common, 1=Good, 2=Fine, 3=Exceptional
+    var adjusted: int = base_tier
+
+    if intent == "quick":
+        adjusted = max(0, base_tier - 1)
+    elif intent == "mastery" and subskill_tier >= 2:
+        adjusted = min(3, base_tier + 1)
+
+    # Freshness penalty (alchemy only): dried herbs reduce one tier
+    if freshness < 0.6:
+        adjusted = max(0, adjusted - 1)
+
+    const QUALITY_NAMES = ["Common", "Good", "Fine", "Exceptional"]
+    return QUALITY_NAMES[adjusted]
 ```
 
 ### Known Recipes
@@ -252,43 +243,10 @@ extends Resource
 ```gdscript
 # In GameState.gd
 func unlock_recipe(recipe_id: String) -> void:
-    if not recipe_id in known_recipes:
+    if recipe_id not in known_recipes:
         known_recipes.append(recipe_id)
-        SaveNotification.show("Recipe recorded: " + recipe_id)
+        SaveNotification.show_journal_update("Recipe learned: " + RecipeDatabase.get_name(recipe_id))
 
 func knows_recipe(recipe_id: String) -> bool:
     return recipe_id in known_recipes
-```
-
-### Ingredient Freshness Tracking
-
-Herbs with a freshness component use an additional field in the item's inventory entry:
-
-```gdscript
-# InventoryManager item entry structure (partial):
-{
-    "item_id": "herb_silverleaf",
-    "quantity": 3,
-    "freshness": 1.0,       # 0.0 = spoiled, 1.0 = fresh
-    "harvest_day": 42       # world day when picked; compared against WorldClock.current_day
-}
-```
-
-Freshness is recalculated when the item is used or when the player opens the inventory, comparing `WorldClock.current_day` against `harvest_day`. Vendors' herbs are initialized with `harvest_day` set several days in the past (typically 5–7).
-
-### Quality Calculation
-
-```gdscript
-func calculate_craft_quality(minigame_score: float, crafting_tier: int) -> String:
-    # minigame_score: 0.0 (failed all steps) to 1.0 (perfect)
-    # crafting_tier: 0 = Novice, 1 = Trained, 2 = Veteran, 3 = Master
-    var adjusted_score = minigame_score + (crafting_tier * 0.08)
-    if adjusted_score >= 0.95:
-        return "rolands_reserve"
-    elif adjusted_score >= 0.75:
-        return "strong"
-    elif adjusted_score >= 0.45:
-        return "normal"
-    else:
-        return "weak"
 ```
