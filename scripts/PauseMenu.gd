@@ -152,13 +152,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _open() -> void:
 	_root.visible = true
 	get_tree().paused = true
-	# Grey out Load if there's nothing to load.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_load_btn.disabled = not FileAccess.file_exists(GameState.SAVE_PATH)
 	print("[PauseMenu] Opened.")
 
 func _close() -> void:
 	_root.visible = false
 	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	print("[PauseMenu] Closed.")
 
 

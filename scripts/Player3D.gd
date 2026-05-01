@@ -45,16 +45,16 @@ func _physics_process(delta: float) -> void:
 	# faster than moving N.
 	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 
-	# Map 2D input onto the 3D XZ plane (Y is up).
-	var direction: Vector3 = Vector3(input_dir.x, 0.0, input_dir.y)
+	# Rotate the 2D input into world space using the player body's current
+	# facing direction. CameraRig rotates the player body to match where
+	# the camera looks, so W always moves toward the camera's forward.
+	var local_dir := Vector3(input_dir.x, 0.0, input_dir.y)
+	var direction := (transform.basis * local_dir).normalized()
 
 	# Horizontal movement — accelerate towards target, decelerate when idle.
-	var target_velocity_x: float = direction.x * SPEED
-	var target_velocity_z: float = direction.z * SPEED
-
 	if direction != Vector3.ZERO:
-		velocity.x = move_toward(velocity.x, target_velocity_x, ACCEL * delta)
-		velocity.z = move_toward(velocity.z, target_velocity_z, ACCEL * delta)
+		velocity.x = move_toward(velocity.x, direction.x * SPEED, ACCEL * delta)
+		velocity.z = move_toward(velocity.z, direction.z * SPEED, ACCEL * delta)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, DECEL * delta)
 		velocity.z = move_toward(velocity.z, 0.0, DECEL * delta)

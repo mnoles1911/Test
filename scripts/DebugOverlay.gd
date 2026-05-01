@@ -100,7 +100,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 			KEY_TAB:
 				if _root.visible:
-					_current_tab = (_current_tab + 1) % 3
+					_current_tab = ((_current_tab + 1) % 3) as DebugTab
 					_refresh()
 					get_viewport().set_input_as_handled()
 
@@ -159,7 +159,7 @@ func _build_all_flags_text() -> String:
 func _build_companions_text() -> String:
 	var lines: Array = ["COMPANION ROSTER\n"]
 	# Access the internal _companions dict directly for debug purposes.
-	for name in GameState._companions.keys():
-		var state: String = "ACTIVE" if GameState._companions[name] else "inactive"
-		lines.append("%s  —  %s" % [name.to_upper(), state])
+	for companion_id in GameState._companions.keys():
+		var state: String = "ACTIVE" if GameState._companions[companion_id] else "inactive"
+		lines.append("%s  —  %s" % [companion_id.to_upper(), state])
 	return "\n".join(lines)
