@@ -42,7 +42,7 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /assets/sprites — billboard sprite sheets (Aseprite, 32×48 px, if using Option A characters)
 - /assets/portraits — character portrait images for dialogue (256×320 px)
 - /assets/audio — music and sfx
-- /dialogue — all Dialogic timeline (.dtl) files
+- /dialogue — all Dialogic timeline (.dtl) files; also `dialogue/CHARACTER_VOICES.md` (voice IDs + ElevenLabs config per character), `dialogue/PRONUNCIATION.md` (phonetic respellings for lore proper nouns — check before every TTS run), `dialogue/STYLE.md` (line writing rules, mood tags, length targets)
 - /lore — all narrative canon (start at lore/INDEX.md)
 - /design — game implementation reference (systems, art direction)
 
@@ -139,6 +139,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/SKILLS_AND_PROGRESSION.md | New perks, sub-skills, or trainer NPCs added; XP values tuned |
 | design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock for a new character, manifest schema changes |
 | dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
+| dialogue/PRONUNCIATION.md | Any new lore proper noun is introduced (place names, gods, titles) |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -201,6 +202,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 - design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender, billboard sprites
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
+- design/AUDIO_DESIGN.md — music philosophy (location-driven, not action-driven), diegetic audio, SFX priorities
 
 **Planning and ops:**
 - design/MILESTONE_ROADMAP.md — Act I scene breakdown and ordered deliverables for Phases 4+
@@ -225,13 +227,20 @@ Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot design docs merged. 
 - `scenes/Player3D.tscn` — capsule + box mesh placeholder, with SpringArm3D camera rig
 - `scenes/World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
 
+NPC system (implemented):
+- `scripts/NPC.gd` — CharacterBody3D base script for all Tier 1–3 NPCs; bark firing, E-press dialogue, disposition, schedule dispatch
+- `scripts/NPCData.gd` — Resource class: npc_id, Tier enum, disposition, bark_triggers, schedule entries; one .tres per character in `/assets/npcs/`
+- `scripts/NPCScheduleEntry.gd` — Resource class: hour_start, hour_end, location_id, animation; used by NPCData.schedule array
+
 Logic autoloads (unchanged from 2D, all survive the 3D pivot):
 - `GameState.gd`, `TransitionManager.gd`, `SaveNotification.gd`, `PauseMenu.gd`, `DebugOverlay.gd`,
   `FlagScheduler.gd`, `InventoryManager.gd`, `JournalUI.gd`, `Settings.gd`, `MainMenu.gd`, `EnemyData.gd`
 
+New autoloads (implemented — must still be registered in Project Settings → Autoload):
+- `BarkManager.gd` — loads bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`; picks random non-repeating line; plays spatial audio from `assets/audio/barks/`; falls back to Output print if BarkOverlay UI is absent
+- `WorldClock.gd` — ticks in-game time (default 240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` and `advance_hours()` for debug/rest
+
 New autoloads specified in design docs (not yet implemented — build in dependency order):
-- `BarkManager.gd` — fires and queues bark lines (register in Autoload per DESIGNER_TODO.md)
-- `WorldClock.gd` — time-of-day periods, NPC schedule updates (register in Autoload per DESIGNER_TODO.md)
 - `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md)
 - `QuestManager.gd` — quest flag management: advance_quest(), complete_quest() (design/QUEST_SYSTEM.md)
 - `WeatherManager.gd` — weather state, WorldEnvironment tweening, weather overrides (design/WEATHER_AND_ENVIRONMENT.md)
