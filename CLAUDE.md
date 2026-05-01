@@ -137,6 +137,8 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/ART_DIRECTION.md | New locations added to the game, palette or shader decisions finalized |
 | design/ITEM_LIBRARY.md | New craftable items, recipes, or input materials added to any section |
 | design/SKILLS_AND_PROGRESSION.md | New perks, sub-skills, or trainer NPCs added; XP values tuned |
+| design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock for a new character, manifest schema changes |
+| dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -188,6 +190,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/MILESTONE_ROADMAP.md — Act I scene breakdown and ordered deliverables for Phases 4+
 - design/ENDGAME_CHOICES.md — Game Three endgame and trilogy-spanning choice consequences
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
+- design/TTS_PIPELINE.md — AI-assisted draft → ElevenLabs render → Dialogic handoff (bulk vs craft pipelines, filename + manifest contract)
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
 ## Current project state
