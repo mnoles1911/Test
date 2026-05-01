@@ -1,55 +1,131 @@
 # Backstory: Caerith
 
+**Note on naming:** While his mask is on, Caerith is known to all who encounter him — enemies, allies, Naergrim, Dawnbringers, Roland's party — as **the Ashlord**. He is "Caerith" only in this document and in the moments after the mask is removed at the end of Game Two. The two names refer to the same person. They do not describe the same person.
+
+---
+
 ## The Vigil-Keeper
 
-Caerith was not always what she is now. Two thousand years ago she was a Vigil-Keeper — one of twelve Aelorin appointed by the Aelthurion at the close of the Second Age to monitor the binding site and watch for signs of deterioration. She was chosen because she was the most patient of the twelve, and because patience, Aelthurion believed, was what the work would require above all else.
+At the close of the Second Age, when the Grand Alliance drove Mordvar to the Sorrowmarsh and unmade him there, Aelthurion appointed twelve Aelorin to remain behind. Their charge was the Vigil: to watch the Sorrowmarsh for signs that the unmaking was failing. The unmaking was not a binding. Mordvar was not sealed or contained. He was unmade — a different thing, and in the Alliance's understanding, a permanent one. The Vigil existed because no one in the aftermath was entirely certain permanence was the right word.
 
-He was right. He did not anticipate what two thousand years of patience costs.
+Caerith was appointed because he was the most patient of the twelve. He understood at the time that this was a practical evaluation, not a compliment.
 
-## The Grand Alliance and the Forging
+He was not the Vigil's commander or its architect. He was its constant. The other eleven Vigil-Keepers rotated out over the first few centuries — some returned to the Aelthurion, some completed the Aelthiren and chose mortality, two died of causes the records do not specify. Caerith remained. He had taken the vigil as a permanent commitment. Each time a replacement was proposed, he declined. He did not know how to explain what he was waiting for. He continued to watch.
 
-Caerith led the logistics of the Alliance's binding operation — the coalition of Aelorin, human, and dwarven forces who cornered the Hollow Throne's influence at the close of the Second Age's last war. She was not the Alliance's general; she was something harder to name. The person who made sure the twelve different factions' contributions were correctly positioned, correctly timed, correctly understood by people who did not share a language or a cosmology.
+The Sorrowmarsh is not simply a battlefield. It is a place where an unmaking happened — which means it is a place where something that had been fully real was forced into not-being. The ground carries that. The air carries it. Aelorin accounts from the first century of the Vigil describe it as a place where your thoughts echo differently, where the line between what you observe and what you expect to observe blurs in ways that take practice to correct for. The accounts from the second century are shorter. The accounts from the third century are Caerith's alone.
 
-She was good at this. The binding worked. No one who participated expected it to need to last forever — they believed a Third Age resurgence would come within centuries, that subsequent generations would renew and reinforce the working. That resurgence did not come. The world moved on. The binding aged.
-
-Caerith stayed.
-
-The other eleven Vigil-Keepers rotated out over the first few centuries — some completed the Aelthiren and chose mortality, some returned to the Aelthurion, two died. Caerith remained. She had taken the vigil as a permanent commitment and did not know how to set it down.
+---
 
 ## The Letter
 
-In the four hundredth year of her vigil, Caerith wrote a letter to Aelthurion. It is the only document in the Aelthurion's archive written in her hand that survives from the middle period.
+In approximately the four hundredth year of his vigil, Caerith wrote to Aelthurion. It is the only document in the Aelthurion's archive in his hand that survives from the middle period of his watch.
 
-The letter asks him to relieve her. It describes, in measured language, the quality of two centuries of solitary monitoring work in a location where the ground itself carries the resonance of a bound malevolence. It says, toward the end, that she has begun to find it difficult to distinguish between her own assessments and the ambient influence she is supposed to be monitoring against. She asks for a replacement. She asks to come home.
+The letter asks to be relieved. It describes, with the care of someone who has thought about how to say this for a long time, the quality of centuries of solitary monitoring work in a location where the ground itself carries the residue of an unmaking. He says that he has begun to find it difficult to distinguish between his own assessments and what he is supposed to be monitoring against. He says this plainly, as a professional reporting a problem with his instrument. He asks for a replacement. He asks to come home.
 
-Aelthurion's response does not survive. She did not return to the forest. Historians who have pieced this together from fragments believe his response was either a refusal or an acknowledgment she found insufficient. The letter may also have arrived too late.
+Aelthurion's response does not survive. Caerith did not return to the forest.
+
+Whether the response was a refusal, an acknowledgment he found insufficient, or a letter that arrived too late, cannot now be determined. What can be determined is that the request was made, that it was coherent and lucid, and that it was not acted on.
+
+---
 
 ## The Corruption
 
-The Hollow Throne's influence works on proximity over time. This is well-documented in Second Age accounts and deliberately suppressed in Third Age ones. Caerith spent two thousand years at the site of its binding.
+The Sorrowmarsh carries scattered Mordvar essence — not unified, not coherent, not enough to act or intend. But enough, distributed across the soil and air of a battlefield where an unmaking occurred, to influence a mind over centuries. Particularly a mind that was already strained and already alone.
 
-The corruption was not a violent takeover. It was a slow reorientation — the way a tree grows toward available light, not knowing it has grown crooked. Caerith did not stop wanting to protect the world from the Hollow Throne. She began, gradually and over centuries, to understand that protection differently. The binding was aging. It would fail eventually. The only question was whether failure happened chaotically, in a way that cost everything, or in a controlled way that preserved something.
+The corruption was not a violent takeover. It did not arrive as a voice or a vision or a moment of crisis. It was a slow reorientation — the kind that happens when a thing is exposed to a force over a long enough time that the exposure becomes invisible. Caerith did not stop wanting to protect the world. He began to understand protection differently.
 
-The entity did not offer her a deal. It offered her a framework. A way of understanding the situation that made her ongoing presence at the site feel rational. She accepted the framework so slowly that she cannot identify the moment she accepted it, which is the most efficient kind of corruption there is.
+The unmaking was failing. He could see this, had seen it for decades. The Mordvar essence was not diminishing; it was accumulating, slowly, in ways the original Alliance had not anticipated. The only question, as he began to frame it, was whether the failure happened chaotically — in a way that cost everything — or in a controlled way that preserved something.
+
+The Mordvar essence did not offer him a deal. It offered him a framework. A way of understanding the situation that made ongoing presence feel like the correct response, and control feel like the responsible aspiration, and chaos feel like the only alternative to what he was beginning to plan. He accepted the framework so gradually that he cannot now identify the moment he accepted it. This is the most efficient kind of corruption there is: the kind that never requires a yes.
+
+---
 
 ## The Mask
 
-Caerith wears a mask of pale Aelorin-worked stone. She began wearing it roughly eight hundred years ago.
+Roughly eight hundred years into the Vigil, Caerith chose to wear a mask of pale Aelorin-worked stone.
 
-The official record in the Aelthurion — maintained by Aelthurion himself, who controls what is and is not known — is that Caerith completed the Aelthiren and departed. No living Aelorin knows she still exists. The Dawnbringers know of her as a Hollow Court figure of significant power and age. They do not know she is Aelorin.
+This is the last self-directed act he clearly remembers. He chose the mask. He made it himself, over several months, from stone he had quarried from the Sorrowmarsh's northern edge. It served practical purposes: it concealed his Aelorin face from the humans and other people he had begun, cautiously, to contact in the surrounding regions. An Aelorin face is recognizable to anyone with Second Age education. The mask made him anonymous.
 
-The mask serves practical purposes: it conceals her nature from those who would recognize an Aelorin face. But it is also the last act of self-directed will she clearly remembers performing. She chose the mask. It is hers. In the centuries since, many things have been done through her that she would not describe as chosen in any meaningful sense. The mask remains chosen.
+He also knows, to the extent that he still knows things that are his, that the mask was chosen. In the centuries since, many things have been done through him that he could not account for in terms of intention or will. The mask remains chosen. He chose it before the reorientation was complete. It is the last artifact of the person he was before the thing he has become was finished.
 
-This is not nothing. In Game 3, it becomes the specific detail that makes her death possible: she will remove the mask herself, once, for reasons that are hers, and in the moment of removing it she is briefly more Caerith than the corruption. That is the window.
+No living Aelorin knows he still exists. The Aelthurion's official record states that Caerith completed the Aelthiren and departed. Aelthurion maintains this record. Whether he believes it is a separate question.
 
-## What She Knows
+The Dawnbringers know the Ashlord as a Hollow Court-level figure of enormous age and power. They do not know he is Aelorin. No one in the Third Age knows he is Aelorin. The mask has held for twelve centuries.
 
-Caerith knows more about the Aeluvain binding than anyone alive, including Aelthurion. She has monitored it for two thousand years. She knows exactly where it is weakest, what would reinforce it, and what the final failure will look like. She also knows that the controlled-failure framework the entity gave her is not as different from chaos as she was made to believe.
+---
 
-She has not acted on this knowledge. The corruption has not given her enough room. But she has also not destroyed the knowledge. It is in her, intact, the way her face is intact behind the mask.
+## Abandoning the Vigil
+
+Approximately fifteen hundred years into the Vigil, Caerith left the Sorrowmarsh and walked east.
+
+He did not leave in disorder. He had spent decades preparing for departure: establishing contacts, arranging passage, planning his arrival. He crossed the Shroud Sea on a black-sailed ship he had commissioned through intermediaries over years of careful arrangement. He went to Thal. He went to Drûn-Khazad — the volcano that had been Mordvar's seat of ancient power, the anchoring point of whatever was reforming in the deep places of the world — and he established himself there.
+
+He did not go mad. He went purposeful. This is the thing about the corruption at its completion: it did not remove his competence. It did not make him erratic or cruel or visible. It redirected what had always been his strongest quality — patience, sustained attention, the capacity to hold a purpose across enormous spans of time — toward an end that is not the one he had held for the first eight hundred years.
+
+He had spent fifteen hundred years watching the Sorrowmarsh. He understood, by the time he left, that watching was no longer sufficient.
+
+---
+
+## Building the Ashen Hand — Through Mael
+
+The Ashlord did not announce himself. He did not gather followers or proclaim a cause. He found an instrument.
+
+**Mael** was an Aescryd scholar — a researcher of moderate standing who had, through a combination of skill and obsessive patience, discovered fragments of Bealoric's forge-records in a flooded Sundered Isles archive. He understood, partially and imperfectly, what the Sundered Crown had been and what its reassembly might do. He had a theory, extensive notes, and no resources.
+
+The Ashlord found Mael, assessed him, and began cultivating him. This took years. He gave Mael access to materials, then contacts, then funding, then protection. He pointed Mael at the reconstruction problem from enough distance that Mael continued to believe, throughout this period, that he was the architect of what was growing. He was not. He was the instrument through which the Ashlord's operation gained a face, a voice, and a purpose that other people could choose to join.
+
+The Ashen Hand grew over three centuries from a handful of scholars and true believers into the organization Roland's party encounters in Game One. It grew the way patient things grow: slowly, without drama, until the size becomes difficult to dispute.
+
+---
+
+## The Naergrim
+
+The Naergrim came into the Ashlord's orbit over the same three centuries, and by a different mechanism.
+
+They did not join the Ashen Hand. They recognized in the Ashlord's project a convergence with their own ancient purpose: loyalty to Mordvar's throne, sustained across two thousand years of the Third Age in forms that had grown strange and various. What the Ashlord was working toward — the return of the thing that the throne was built for — was what the Naergrim's oldest commitments pointed at.
+
+The Ashlord did not request their allegiance. He made his work visible to those who knew how to look. The Naergrim came to him. He accepted their cooperation without drama and has managed it the same way since.
+
+---
+
+## What He Knows
+
+Caerith knows more about the Sorrowmarsh, about Mordvar's unmaking, and about the state of what is reforming beneath Drûn-Khazad than anyone alive — including Aelthurion, who was present at the unmaking but left afterward.
+
+He monitored the Sorrowmarsh for fifteen hundred years. He watched the unmaking's effects accumulate and thin and accumulate again. He tracked, in the obsessive detail of a person with no other occupation, every variation in the marsh's behavior across centuries. He knows exactly how far the reforming has progressed, what material conditions accelerate or impede it, and what the reassembled Crown will actually do when it is completed — as opposed to what Mael's reconstructions claim it will do, and what Hadran Volthen believes about it, and what Vaeroth assumes.
+
+He has not acted against the work. The corruption has not left him sufficient room. But he has not destroyed his knowledge either. He has not shared it fully with Mael, or Hadran, or the Naergrim elders. It is in him, intact, a fifteen-hundred-year record of careful observation that no one else can access except through him.
+
+---
+
+## Identity: The Ashlord
+
+Everyone who encounters him while the mask is on calls him the Ashlord. This includes the Ashen Hand's leadership, the Naergrim, the Dawnbringers, Roland's party when they first meet him, and the narrative.
+
+He does not correct this. He does not have another name available, in any practical sense. The name Caerith belongs to a Vigil-Keeper who wrote a letter four hundred years into a fifteen-hundred-year watch and was not relieved. What came out the other end of those fifteen hundred years is the Ashlord. Whether Caerith survives inside him, intact and buried and waiting, or whether what remains of Caerith is more like the shape a person leaves in a room they have long since left — this is not a question he thinks about, or can think about clearly.
+
+The mask is the operational center of this question. He chose the mask. He chose nothing else, after a certain point, with comparable clarity. The mask is where Caerith and the Ashlord overlap.
+
+---
+
+## Death at Khorumzad
+
+The Ashlord dies at the end of Game Two, trapped in Khorumzad when Eilwen's fleet cuts off his retreat.
+
+He removes the mask once, before he dies. He does this himself, without being compelled, in the last minutes before the end. He does it for reasons that are his — which is to say, for reasons that come from the part of him that still belongs to the person who chose the mask in the first place.
+
+The moment of removing it is the window. In the moment the mask comes off, he is briefly more Caerith than the corruption. What he does with that moment — what he gives the party, what he says or does not say, what he chooses to make available from fifteen hundred years of knowledge — is the last act of the most patient of the twelve.
+
+---
 
 ## The Expression at Death
 
-When Caerith dies — in the final act of Game 3, having removed the mask and given the party the information they needed — the companions who were present will later describe her expression differently. Roland says she looked tired. Seren says she looked like someone arriving home after a very long absence. Corvus, who is the most precise about these things, says she looked like a person who had just understood that a question they had been carrying for a long time had been answered, and the answer was not what they had feared.
+The companions who are present will later describe his expression differently.
 
-Aelthurion, when he is told, is quiet for a long time. Then he says: “She was always the most patient of us.” He does not explain what he means. He does not need to.
+Roland says he looked tired.
+
+Seren says he looked like someone arriving home after a long absence.
+
+Corvus, who is the most precise about these things, says he looked like a person who understood that a question he had been carrying for a very long time had been answered, and the answer was not what he had feared.
+
+Aelthurion, when told, is quiet for a long time. Then he says: "He was always the most patient of us." He does not explain what he means.
