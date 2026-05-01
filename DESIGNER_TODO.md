@@ -21,22 +21,23 @@ These are settings and installs that survive across all future work. Do them onc
   Reference: `design/3D_VOXEL_MIGRATION.md`, `design/ART_PIPELINE.md`
 
 - [ ] **Configure the full Input Map per `design/INPUT_AND_CONTROLS.md`**
-  Project Settings → Input Map → add each action below. The full table with controller
-  bindings is in the design doc; minimum keyboard defaults:
-  - `interact` — E (required by `DialogueTrigger3D.gd` and `NPC.gd`)
+  Project Settings → Input Map → add each action below. Full table in the design doc.
+  **KB+M defaults (confirmed):**
+  - `interact` — E
   - `sprint` — Left Shift
   - `attack` — Left Mouse Button (tap = light, hold ≥0.20s = power)
   - `block` — Right Mouse Button (hold = block, tap = parry)
   - `dodge` — Space
   - `lock_on` — Middle Mouse Button (or Tab)
-  - `quick_slot_next` — Q / `quick_slot_prev` — E (in-combat context)
+  - `quick_slot_next` — E (context: only fires when no interactable in range; use F during dev until context logic is in place)
+  - `quick_slot_prev` — Q
+  - `camera_left` — Left Arrow / `camera_right` — Right Arrow (keyboard fallback; mouse motion handles rotation in CameraRig.gd)
+  - `camera_up` — Up Arrow / `camera_down` — Down Arrow (keyboard fallback)
   - `open_journal` — J
   - `open_inventory` — I
   - `pause` — Escape
   - `debug_overlay` — F1
-  - `camera_left` / `camera_right` — only if `CameraRig.allow_horizontal_rotation` is enabled
-  Note: `interact` and `quick_slot_prev` both default to E — context is resolved in
-  `Player3D.gd` by checking `near_interactable` state.
+  **No conflict:** Q = `quick_slot_prev`, E = `interact`, mouse drag = camera rotation.
 
 - [ ] **Register `BarkManager` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
@@ -46,13 +47,12 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
   Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
 
-- [ ] **Configure camera and lock-on input actions** (required for third-person camera)
+- [ ] **Configure lock-on input action** (required for third-person camera)
   Project Settings → Input Map → Add:
-  - `camera_left` (Q), `camera_right` (E)
-  - `camera_up` / `camera_down` (right stick vertical or mouse Y)
-  - `lock_on` (middle mouse button or right stick click)
-  Required by the third-person `CameraRig.gd`. Without these the camera cannot rotate
-  and lock-on cannot engage. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
+  - `lock_on` — Middle Mouse Button (or Tab)
+  Camera rotation does NOT need Input Map actions for KB+M — `CameraRig.gd` reads
+  `InputEventMouseMotion` directly. Arrow key fallbacks (`camera_left/right/up/down`)
+  are covered by the Input Map task above. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
 
 - [ ] **Register `EntityRegistry` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/EntityRegistry.gd` → node name: `EntityRegistry`.
