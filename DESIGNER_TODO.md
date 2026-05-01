@@ -295,6 +295,23 @@ Organized by development phase. Build within each phase in the order listed.
   attack token queue (prevents all enemies attacking simultaneously), hit detection.
   Reference: `design/COMBAT_DESIGN_3D.md`
 
+- [ ] **Bake combat tunable values into `CombatManager.gd` (and any helper scripts)**
+  Hardcode the locked numbers from `design/COMBAT_DESIGN_3D.md` → Tunable Values
+  as named constants (not magic numbers). Targets: parry window 300 ms; endurance
+  costs light=8 / power=18 / block=12 / parry=5 / dodge=15 / sprint=8 per second;
+  endurance recovery 20/s; stagger 1.5 s at 60 % movement; wound HP fraction 25 %
+  of damage taken.
+
+- [ ] **Torch implementation per `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md`**
+  - `Torch.gd` script on the equipped-torch scene: parents an `OmniLight3D`
+    (8m radius, warm) to Roland's off-hand bone/marker; ticks down a 4-in-game-hour
+    burn timer via `WorldClock.hour_changed`; extinguishes silently and removes the
+    item on burnout (no relighting).
+  - Torch `ItemData` entry: 0.3 kg, occupies Off-Hand slot, incompatible with
+    two-handed weapons and shields.
+  - InventoryManager guard: refuse to equip a torch while a two-handed weapon or
+    shield is in the relevant slot.
+
 - [ ] **Lock-on system** — `lock_on` input finds nearest enemy in forward arc. Camera drifts
   to frame target in right 60% of screen. Cycles with `camera_left` / `camera_right`.
   Disengages on target death or out-of-range.
@@ -324,6 +341,21 @@ Organized by development phase. Build within each phase in the order listed.
 
 - [ ] **`InvestigationUI.gd`** — Observation text overlay. Fades in/out.
   Reference: `design/INVESTIGATION_SYSTEM.md` → The Examination Interface
+
+- [ ] **Lockpicking system per `design/LOCKPICKING.md`**
+  Four small scripts/scenes:
+  - `LockData.gd` resource — tier (Simple/Standard/Complex/Masterwork), pin count,
+    false-resonance count, contents reference.
+  - `Lock.gd` Area3D node — proximity auto-examine label, E-press to start,
+    consumes a lockpick from inventory on snap (not on attempt).
+  - `LockpickingUI.gd` CanvasLayer overlay — radial dial, hold-timer driven by
+    Lockpicking sub-skill tier (Novice 2.5s → Expert 5.0s); does not pause time.
+  - Lockpick `ItemData` entries: Crude / Sturdy / Fine (Fine grants +1.5s hold bonus
+    that stacks with skill tier).
+  Pairs naturally with the interior-loading work in this phase: most lockable
+  containers and doors live inside interiors. Reference: `design/LOCKPICKING.md`,
+  `design/SKILLS_AND_PROGRESSION.md` → Lockpicking sub-skill,
+  `design/ITEM_LIBRARY.md` for pick stats.
 
 ---
 
@@ -369,6 +401,16 @@ Organized by development phase. Build within each phase in the order listed.
 
 - [ ] **`CraftingUI.gd`**
   Reference: `design/CRAFTING.md`
+
+- [ ] **Alchemy experimentation per `design/CRAFTING.md`**
+  - `CraftingUI.gd` gains an Experiment path for the Alchemist's Still only.
+    Unknown ingredient combinations produce either `Unfamiliar Potion` or
+    `Foul Residue` ItemData.
+  - `GameState.gd` additions: `failed_alchemy_combinations: Array` to prevent
+    repeat attempts of known-bad combos.
+  - Consumption discovery: when an Unfamiliar Potion is consumed, fire a 30–60s
+    timer that surfaces effect, plays a Roland narration line, and either
+    `unlock_recipe()` on benefit or sets a mild-nausea status on partial match.
 
 - [ ] **Skills tab in `JournalUI.gd`**
   Reference: `design/SKILLS_AND_PROGRESSION.md` → Skill Screen Presentation
@@ -560,11 +602,8 @@ Open questions that need an answer before their dependent systems can be built.
   specialist, non-combat) needs a full spec in `design/COMPANION_SYSTEM.md`
   before his scene is built. Reference: `lore/BACKSTORY_EDRAN.md`
 
-- [ ] **Lockpicking system — choose an approach**
-  Three options presented (Resource Drain / Timing Window / Investigation-Integrated).
-  Recommendation is Option A (Resource Drain) with lock examination as Type 1
-  investigation giving pick count info. Confirm before building the lock/door
-  interaction system. Reference: audit findings 2026-05-01.
+- [x] **Lockpicking system — choose an approach** (resolved by `design/LOCKPICKING.md`)
+  Resonance Pick radial dial system selected. Implementation tasks live in Section 7.
 
 - [ ] **Endgame choices — resolve five open questions**
   ENDGAME_CHOICES.md is a working draft with five explicit open design questions
