@@ -74,12 +74,18 @@ Note: `quick_slot_next` / `quick_slot_prev` are the cycle inputs used mid-combat
 
 ### Camera Actions
 
-| Action name | Default (KB) | Default (Controller) | Description |
+| Action name | Default (KB/M) | Default (Controller) | Description |
 |---|---|---|---|
-| `camera_left` | Q | Right stick left | Rotate camera left (if enabled) |
-| `camera_right` | E | Right stick right | Rotate camera right (if enabled) |
+| `camera_left` | Left Arrow | Right stick left | Rotate camera left (keyboard fallback) |
+| `camera_right` | Right Arrow | Right stick right | Rotate camera right (keyboard fallback) |
+| `camera_up` | Up Arrow | Right stick up | Tilt camera up (keyboard fallback) |
+| `camera_down` | Down Arrow | Right stick down | Tilt camera down (keyboard fallback) |
 
-Camera rotation is **disabled by default** in Game One — the camera follows at a fixed angle. These actions are registered for future use if `CameraRig.gd` has `allow_horizontal_rotation = true` toggled on. See `DESIGNER_TODO.md` → Section 1.
+**KB+M primary:** Camera rotation is driven by **mouse motion** (`InputEventMouseMotion`) directly in `CameraRig.gd` — no Input Map action needed. Mouse horizontal → yaw; mouse vertical → pitch. Arrow key actions are fallbacks for players who prefer keys.
+
+**Controller:** Right stick drives camera directly via `Input.get_vector("camera_left", "camera_right", "camera_up", "camera_down")`.
+
+`Input.mouse_mode` is set to `CAPTURED` during play so the cursor is hidden and all mouse motion feeds the camera. It switches to `VISIBLE` when any menu opens.
 
 ---
 
@@ -140,12 +146,12 @@ The following actions **must be configured in Godot Project Settings → Input M
 - `lock_on` — Middle Mouse Button / Tab
 - `quick_slot_next` — Q (in-combat context)
 - `quick_slot_prev` — E (in-combat context, separate from `interact` context)
-- `camera_left` / `camera_right` — Q and E (only needed if horizontal rotation enabled)
+- `camera_left` / `camera_right` / `camera_up` / `camera_down` — Arrow keys (KB fallback; controller right stick). Not needed for KB+M since mouse motion drives the camera directly in `CameraRig.gd`.
 - `open_journal` — J
 - `open_inventory` — I
 - `debug_overlay` — F1
 
-Note: `quick_slot_next` and `interact` both default to E. These are context-sensitive: `interact` fires when near an interactable object; `quick_slot_next` fires during combat. In GDScript, context is managed by checking `near_interactable` state — if true, E = interact; if false, E = cycle slot. Alternatively, rebind one of them in the Input Map during development if the context logic is not yet in place.
+Note: `quick_slot_next` and `interact` both default to E. These are context-sensitive: `interact` fires when near an interactable object; `quick_slot_next` fires during combat when no interactable is in range. In GDScript, context is managed by checking `_nearest_interactable != null` — see the GDScript Notes section below. During early development before context logic is in place, rebind `quick_slot_next` to F temporarily.
 
 See `DESIGNER_TODO.md` → Section 1 for the full manual setup checklist.
 
