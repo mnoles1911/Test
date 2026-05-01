@@ -66,8 +66,8 @@ func _build_ui() -> void:
 	# Tab label at the top.
 	_tab_label = Label.new()
 	_tab_label.position = Vector2(4, 2)
-	_tab_label.theme_override_font_sizes/font_size = 7
-	_tab_label.theme_override_colors/font_color = Color(0.4, 0.8, 0.4, 1)
+	_tab_label.add_theme_font_size_override("font_size", 7)
+	_tab_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.4, 1))
 	_root.add_child(_tab_label)
 
 	# Scrollable content label below.
@@ -78,8 +78,8 @@ func _build_ui() -> void:
 
 	_content_label = Label.new()
 	_content_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_content_label.theme_override_font_sizes/font_size = 6
-	_content_label.theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+	_content_label.add_theme_font_size_override("font_size", 6)
+	_content_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1))
 	_content_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	scroll.add_child(_content_label)
 

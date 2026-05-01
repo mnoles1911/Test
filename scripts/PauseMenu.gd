@@ -92,7 +92,7 @@ func _build_ui() -> void:
 	var title_lbl := Label.new()
 	title_lbl.text = "— PAUSED —"
 	title_lbl.add_theme_font_size_override("font_size", 8)
-	title_lbl.theme_override_colors/font_color = Color(0.9, 0.85, 0.7, 1)
+	title_lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title_lbl)
 
@@ -108,7 +108,7 @@ func _build_ui() -> void:
 		b.text = label
 		b.flat = true
 		b.custom_minimum_size = Vector2(0, 14)
-		b.theme_override_font_sizes/font_size = 7
+		b.add_theme_font_size_override("font_size", 7)
 		b.process_mode = Node.PROCESS_MODE_ALWAYS
 		return b
 

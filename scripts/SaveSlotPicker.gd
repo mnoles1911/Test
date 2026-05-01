@@ -55,8 +55,8 @@ func _make_slot_row(slot: int, info: Dictionary, mode: String) -> Control:
 	var num_lbl := Label.new()
 	num_lbl.text = "SLOT %d" % (slot + 1)
 	num_lbl.custom_minimum_size = Vector2(40, 0)
-	num_lbl.theme_override_font_sizes/font_size = 7
-	num_lbl.theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+	num_lbl.add_theme_font_size_override("font_size", 7)
+	num_lbl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
 	hbox.add_child(num_lbl)
 
 	# Info label (timestamp + scene or "Empty").
@@ -67,8 +67,8 @@ func _make_slot_row(slot: int, info: Dictionary, mode: String) -> Control:
 	else:
 		info_lbl.text = "Empty"
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_lbl.theme_override_font_sizes/font_size = 6
-	info_lbl.theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
+	info_lbl.add_theme_font_size_override("font_size", 6)
+	info_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65, 1))
 	hbox.add_child(info_lbl)
 
 	# Action button.
@@ -76,7 +76,7 @@ func _make_slot_row(slot: int, info: Dictionary, mode: String) -> Control:
 	btn.text = "SAVE" if mode == "save" else "LOAD"
 	btn.flat = true
 	btn.custom_minimum_size = Vector2(36, 0)
-	btn.theme_override_font_sizes/font_size = 7
+	btn.add_theme_font_size_override("font_size", 7)
 	if mode == "load" and not info.get("exists", false):
 		btn.disabled = true
 	btn.pressed.connect(_on_slot_pressed.bind(slot, mode))
