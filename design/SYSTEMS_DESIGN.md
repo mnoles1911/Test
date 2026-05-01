@@ -43,7 +43,7 @@ Per `/lore/CHARACTERS_COMPANIONS.md` and `/lore/GAME1_PART1.md` / `GAME1_PART2.m
 
 **Future games (for forward-compatible system design):**
 - Game Two adds Corvus Tane (Conclave mage — high power, visible cost meter) and Seren of the Third Glade (Aelorin loremaster — ancient training, magic-adjacent abilities, lore-revelation gates)
-- Game Three adds Aldric Vane (last of Mordvar's bloodline — combat-secondary; he does not need to fight Mordvar, only reach him)
+- Game Three adds Aldric Vane (last of the Caelborn line, Aescryd-blooded — combat-secondary; he does not need to fight Mordvar, only reach him)
 
 ### Active Party
 

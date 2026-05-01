@@ -204,7 +204,7 @@ Manual setup still required:
 
 ## Canonical naming (frequent contradictions)
 - Eldermark royal house: Castrove (NOT Vane)
-- Aldric the blacksmith: Aldric Vane (Mordvar bloodline, not the investigator)
+- Aldric the blacksmith: Aldric Vane (Caelborn line / Aescryd-blooded, not the investigator)
 - The Caelborn investigator: Edran Vane
 - Dagna's surname: Irontrack (NOT Ironkeep)
 - Corvus's surname: Tane (NOT Aldenmere)
