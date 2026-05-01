@@ -126,6 +126,21 @@ Assets that require external tools (MagicaVoxel, Aseprite, Blender, etc.)
 
 Voice generation tasks for the text-to-speech pipeline.
 
+- [ ] **Create local `.env` file with your ElevenLabs API key**
+  At the repo root, create a file named `.env` containing:
+  ```
+  ELEVENLABS_API_KEY=sk-your-key-here
+  ```
+  Replace with your real key from https://elevenlabs.io/app/settings/api-keys.
+  The `.env` file is gitignored — it stays on your machine and is never
+  committed. Before running `tools/render_bulk.py`, load the variable into
+  your terminal session with:
+  ```
+  set -a && source .env && set +a
+  ```
+  Without the env var set, `render_bulk.py` aborts before any network call.
+  See `tools/README.md` for the full workflow.
+
 - [ ] **Generate calibration clips for Roland, Tomlin, and Calla**
   Before batch-generating any scene, render a ~30-second test clip per character:
   one line of each baseline mood + one extreme. Lock the voice/seed when it sounds

@@ -13,6 +13,10 @@ audio/dialogue/**/*.ogg
 audio/dialogue/**/*.wav
 audio/dialogue/_spend.log
 
+# Local secrets (ElevenLabs API key, etc.) — never commit.
+.env
+.env.local
+
 # Python cache (from tools/ scripts)
 __pycache__/
 *.pyc
