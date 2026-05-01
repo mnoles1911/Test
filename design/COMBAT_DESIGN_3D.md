@@ -40,12 +40,12 @@ Each click in a combo has a **timing window** to chain. Click outside the window
 ### Blocking and Parrying — RMB
 
 - **Hold RMB** → block stance. Reduces damage from incoming attacks. Costs stamina per hit absorbed.
-- **Tap RMB just before incoming attack** → parry. Window is narrow.
+- **Tap RMB just before incoming attack** → parry. Window is learnable, not punishing.
 - **KCD2-style color indicators on the enemy:**
   - **Green flash** on enemy when their attack is parryable
   - **Red flash** when their attack is unblockable (must dodge)
   - **Yellow flash** for a heavy attack (block at stamina cost, or dodge)
-- The window for the green parry is brief — KCD2 difficulty curve, not Sekiro's looseness.
+- **Base parry window: 300ms (0.3 seconds).** This is approximately twice as forgiving as KCD2 (~150ms) while still requiring attention. The Wider Parry Window skill perk extends this to 345ms (+15%). The Accessibility "Combat Timing Assistance" setting extends to 375ms (+25% on top of base).
 
 ### Weapons
 
@@ -57,10 +57,24 @@ Each click in a combo has a **timing window** to chain. Click outside the window
 Two-track system modeled on KCD2:
 
 - **HP bar** — Roland's total health. Visible to the player as a bar. Does not regenerate passively mid-combat. Reduced by landed hits.
+
+**Wound HP:** 25% of every point of damage taken in combat becomes **wound HP** — the dark red portion of the HP bar that potions and bandages cannot restore. Only full rest or Boneknit Compound can heal wound HP. The remaining 75% is regular HP, restorable by consumables. Example: a 40-damage hit gives Roland 30 regular HP loss and 10 wound HP loss.
+
 - **Endurance** — a secondary pool that gates how hard Roland can fight. Overall health caps the endurance maximum: a badly wounded Roland has less endurance headroom than a fresh one.
-  - Attacks, blocks, sprints, and dodges drain endurance.
-  - Endurance recovers when Roland is not acting (brief pause between swings, backing off from a fight).
-  - Running out of endurance does not kill Roland — it makes him slow and unable to dodge, which then gets him killed.
+  - **Base pool: 100.** Endurance recovers at **20 points per second** when Roland is not performing a costly action.
+  - **Endurance costs per action:**
+
+| Action | Endurance cost |
+|---|---|
+| Light attack (tap) | 8 |
+| Power attack (on release) | 18 |
+| Block (per hit absorbed) | 12 |
+| Parry (successful) | 5 |
+| Dodge roll | 15 |
+| Sprint | 8 per second |
+
+  - **Stagger at zero endurance:** Roland cannot dodge or attack for **1.5 seconds**. Movement speed drops to 60% during stagger. Endurance begins recovering immediately from zero.
+  - Charging a power attack does NOT drain endurance while held — cost is paid on release only. Aborting the charge costs nothing.
 - **No visible enemy health bars.** Read enemy condition from behavior and appearance: limping gait, staggered recovery, blood, slowed swings. Enemies react visibly when close to death — don't just change a number.
 
 ### Enemy Detection and Encounter Framing
@@ -162,17 +176,31 @@ This keeps feinting and pressure-testing feels free — the cost is paid when yo
 - Savepoint sources:
   1. **Level checkpoints** — fixed save points placed by the designer (typically rest spots, before bosses, after major story beats).
   2. **Sleeping in a bed** — manual save when the player chooses to rest at a campfire, inn, or safe location.
-  3. **Saviour Schnapps equivalent** — a consumable potion that creates a manual save when drunk. Limited supply, encourages risk management.
+  3. **Wanderer's Seal** — a consumable vial that creates a manual save when drunk. Limited supply, encourages risk management. (See `design/CRAFTING.md`.)
 - No quicksave / quickload. Saves are diegetic.
 
 ---
 
-## TODO — Open Design Questions
+## Tunable Values
 
-The following are the remaining open questions. Everything else has been confirmed above.
+These values are locked for implementation but expected to be adjusted during playtesting. Change them in a single constants file rather than scattered through scripts.
 
-### Stamina
-- **TODO:** Endurance recovery rate and hard cap — exact numbers TBD during implementation tuning.
+| Value | Set | Rationale |
+|---|---|---|
+| Parry window | 300ms | ~2× KCD2, forgiving but requiring attention |
+| Parry window (Wider Parry perk) | 345ms | +15% over base |
+| Parry window (accessibility) | 375ms | +25% over base |
+| Endurance pool (base) | 100 | Standard RPG pool |
+| Endurance recovery rate | 20/sec | Full recovery from zero in 5 seconds |
+| Light attack endurance cost | 8 | Can chain ~12 lights before depleting |
+| Power attack endurance cost | 18 | Can chain ~5 powers before depleting |
+| Block endurance cost (per hit) | 12 | ~8 blocked hits before stagger |
+| Parry endurance cost | 5 | Rewards successful parry over blocking |
+| Dodge endurance cost | 15 | ~6 consecutive dodges before depletion |
+| Sprint endurance cost | 8/sec | ~12 seconds of sprinting from full |
+| Stagger duration (0 endurance) | 1.5s | Brief, recoverable |
+| Stagger movement speed | 60% | Noticeably slow, not immobilized |
+| Wound HP fraction | 25% | 1/4 of all damage is wound HP |
 
 ---
 

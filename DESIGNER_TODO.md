@@ -296,6 +296,35 @@ Open questions that need an answer before their dependent systems can be built.
   from Act I safe-house"). Lock this down before building the camp upgrade system.
   Reference: `design/REST_AND_CAMP.md` → Camp Upgrades
 
+- [ ] **The Iron Chalice debt — design the quest**
+  Referenced throughout design docs as "Act I main quest" but the quest itself
+  is not designed. What is the debt? To whom? How much? What are the 2–3 resolution
+  paths? This is Act I's spine. Needs a quest brief before Act I scene work begins.
+
+- [ ] **Act I side quest briefs**
+  The quest system philosophy is complete but no actual Act I quests are documented
+  beyond Old Mira's apprentice (which is a placeholder example). Write a brief
+  (2–3 resolution paths) for each Act I side quest before scenes are built.
+  Start from `lore/GAME1_PART1.md` story beats. Reference: `design/QUEST_SYSTEM.md`
+
+- [ ] **Edran Vane — join scene and mechanical spec**
+  Edran is confirmed as a companion. His join timing (after Aldenholt arc) and
+  exact scene need to be designed. His mechanical role (investigation/dialogue
+  specialist, non-combat) needs a full spec in `design/COMPANION_SYSTEM.md`
+  before his scene is built. Reference: `lore/BACKSTORY_EDRAN.md`
+
+- [ ] **Lockpicking system — choose an approach**
+  Three options presented (Resource Drain / Timing Window / Investigation-Integrated).
+  Recommendation is Option A (Resource Drain) with lock examination as Type 1
+  investigation giving pick count info. Confirm before building the lock/door
+  interaction system. Reference: audit findings 2026-05-01.
+
+- [ ] **Endgame choices — resolve five open questions**
+  ENDGAME_CHOICES.md is a working draft with five explicit open design questions
+  (score visibility, reset points, save carryover, gating, path confirmation).
+  Update companion roster (Edran is now confirmed). Not a Game One blocker but
+  resolve before Game Two design begins.
+
 ---
 
 ## Section 9 — Verification Checklist (after each Godot session)
