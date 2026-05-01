@@ -48,7 +48,7 @@ func _ready() -> void:
 
 	_label = Label.new()
 	_label.text = "— SAVING —"
-	_label.theme_override_font_sizes/font_size = 7
+	_label.add_theme_font_size_override("font_size", 7)
 	_label.modulate = Color(0.7, 0.7, 0.7, 0.0)  # Start fully transparent
 
 	# Position: bottom-right corner, 8px from each edge.
