@@ -19,7 +19,7 @@ Hadran was born approximately three hundred and forty years ago on the Sundered 
 
 He was born into one of the last Aescryd bloodline families that had stayed on the ruined home isles rather than fleeing to Mira after the drowning. These holdovers lived in the upper floors of half-submerged towers, fished the monster-haunted waters, and maintained what fragments of Aescryd knowledge they could salvage from the drowned archives below. Most of these families died out within four generations. Hadran's survived because they were smiths — the specific kind of smith the Aescryd kingdom had produced at its height: engineers of resonant metalwork, people who understood the relationship between material and intent.
 
-His great-great-grandfather had been on the team that forged the Sundered Crown for Bealoric. The knowledge passed down, imperfect and fragmentary, through the generations. Hadran inherited it.
+A distant ancestor — sixty-some generations back on his father's line — had been on the team that forged the Sundered Crown for Bealoric. The knowledge passed down, imperfect and fragmentary, through the generations. Hadran inherited it.
 
 ---
 
@@ -138,5 +138,5 @@ Hadran has the knowledge. Aldric has the hands. Neither can finish the work with
 
 ## Open Questions
 
-- Does Hadran have any of the Crown pieces already, or is he purely waiting on Hand deliveries? (Recommendation: he has acquired two independently through Guild dive operations — the Coin and the Disc — and is waiting on the other five.)
+- Does Hadran have any of the Crown pieces already, or is he purely waiting on Hand deliveries? (Recommendation: Hadran has acquired no pieces independently — he is awaiting all seven via Hand deliveries. The two pieces he has been promised first are the Coin and Disc, which are in transit via the Hand's network.)
 - Does his apprentice appear? (The Bad Ending implies one exists. Confirm and name if needed.)

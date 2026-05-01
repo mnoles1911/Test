@@ -133,7 +133,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [BACKSTORY_DAGNA.md](BACKSTORY_DAGNA.md) | Dagna Irontrack's father's wrongful blame for the mine explosion; her Dragon-Watcher career and falsified reports |
 | [BACKSTORY_ALDRIC.md](BACKSTORY_ALDRIC.md) | Aldric Vane (blacksmith, Game Three): hidden Mordvar bloodline, life in Coldstoke, the assassination attempts |
 | [BACKSTORY_EDRAN.md](BACKSTORY_EDRAN.md) | Edran Vane (recurring ally, not companion): Caelborn lineage, Maren's death, Ashen Hand investigation, Compact used in Game Two |
-| [BACKSTORY_MORDVAR.md](BACKSTORY_MORDVAR.md) | Bealoric's 30-year reign, Sael's death, the hollowing ritual, Aescryd's decline, the Aescstól Crown |
+| [BACKSTORY_MORDVAR.md](BACKSTORY_MORDVAR.md) | Bealoric's 30-year reign, Sael's death, the hollowing ritual, Aescryd's decline, the Sundered Crown |
 | [BACKSTORY_VAEROTH.md](BACKSTORY_VAEROTH.md) | Vaeroth's Conclave career, legitimate grievances against Grand Mage Elthara, slide into Ashen Hand service |
 | [BACKSTORY_CAERITH.md](BACKSTORY_CAERITH.md) | Vigil-Keeper history, Grand Alliance role, 2,000-year corruption, the mask, the death expression |
 
@@ -190,5 +190,5 @@ between scenes. Used as the build spec when constructing Godot scenes.
 
 | File | Contents |
 |---|---|
-| [HISTORY_SHROUD_SEA.md](HISTORY_SHROUD_SEA.md) | 200 years of Brotherhood charting, 40-year windows, the buried crossing report, Orion's history, Eilwen's investigation, crossing protocol |
+| [HISTORY_SHROUD_SEA.md](HISTORY_SHROUD_SEA.md) | 200 years of Sailor's Guild charting, 40-year windows, the buried crossing report, Orion's history, Eilwen's investigation, crossing protocol |
 | [HISTORY_ELDERMARK.md](HISTORY_ELDERMARK.md) | Othric IV's declining health, succession crisis: Aldwyn, Emric, and Prince Aedric Castrove |

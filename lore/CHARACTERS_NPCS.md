@@ -18,7 +18,7 @@ He has been unmade for two thousand years. He has been slowly reforming ever sin
 
 ### Vaeroth the Pale
 
-**Former role:** Solgrade court mage
+**Former role:** Conclave mage (Eldermark origin)
 **Current role:** Hierarch of the Ashen Hand
 
 Sold his allegiance to the Ash Throne a decade before the trilogy for the amplified power the Throne offers its mages. Believes this was a rational transaction. Has never allowed himself to examine whether what he received is worth what he surrendered.
@@ -33,7 +33,7 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 
 ### Caerith — The Ashlord
 
-**True identity:** Aelorin Vigil-Keeper; former leader of the Second Age Grand Alliance's Aelorin contingent
+**True identity:** an ancient Aelorin appointed by Aelthurion as Vigil-Keeper at the Sorrowmarsh after Mordvar's unmaking — stationed there to watch for signs of reformation
 **Current form:** The Ashlord — Mordvar's will made partially present, faceless behind an obsidian mask
 
 The Sundered Crown was forged by Bealoric (Mordvar) himself — Caerith had no part in its making. When the unmaking was complete and the Grand Alliance's strike at the Sorrowmarsh was done, Caerith remained behind as Sorrowmarsh Vigil-Keeper, stationed at the Sorrowmarsh itself, while the others departed. Mordvar's residual will, still warm in the marsh's corrupted stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.

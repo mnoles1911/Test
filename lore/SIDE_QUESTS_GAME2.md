@@ -25,7 +25,7 @@ Game 2's side quests are heavier than Game 1's. The party is deeper in the world
 
 **Summary:** Lyren has been monitoring Conclave resonance records and has found Corvus's signature in files she shouldn't be able to access — which means either Corvus has been doing things he hasn't told anyone about, or someone has been filing actions under his credentials. She wants to know which before she decides whether to trust him.
 
-**What the player does:** Corvus and the player investigate the flagged records together. It turns out to be both: some entries are Corvus's own unregistered work, which he has to account for honestly. Others are entries filed by a Conclave contact of Vaeroth's using a copied credential signature. The investigation identifies the contact and gives the party their first clear picture of how deep Vaeroth's Conclave penetration goes.
+**What the player does:** Corvus and the player investigate the flagged records together. It turns out to be both: some entries are Corvus's own unregistered work, which he has to account for honestly. Others are entries filed by a former Conclave contact of Vaeroth's — a placement made before his death — using a copied credential signature. The investigation identifies the contact and gives the party their first clear picture of how deep the Hand's legacy network had been embedded in the Conclave under Vaeroth's direction.
 
 **Payoff:** Major Corvus character development. He has to explain his hidden resonance capabilities to the party — this is the scene where he tells Roland about sensing Mordvar's reforming presence. Lyren, once she understands what Corvus's diagnostic resonance actually does, substantially upgrades her assessment of what the party is capable of.
 

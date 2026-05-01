@@ -14,7 +14,7 @@ What Roland and his companions discover, piece by piece, is:
 
 1. The Crown was sundered, not destroyed. There are seven pieces, scattered across the world when Aelric Caelborn struck the killing blow at the Sorrowmarsh two thousand years ago.
 2. The Ashen Hand has been actively working to collect them and deliver them east.
-3. A smith named Hadran Volthen on the Sundered Isles has been waiting for decades to receive and reassemble the Crown — and already holds two pieces he acquired independently.
+3. A smith named Hadran Volthen on the Sundered Isles has been waiting for decades to receive and reassemble the Crown via Hand deliveries — he holds no pieces himself yet.
 4. Mordvar is reforming. The Crown is needed to anchor him in a body capable of holding his reconstituted will.
 5. There exists a counter-weapon (the **Aeluvain** — a sword, not a relic) and a counter-condition (a wielder of Bealoric's bloodline) that together can unmake him again.
 
@@ -26,7 +26,7 @@ Game 1 ends with Roland in possession of all seven Crown pieces, the Hand's oper
 
 The Ashen Hand is centuries old. Hadran Volthen has been waiting on the Sundered Isles for nearly a century. So why has active piece-collection only become an urgent priority in the last fifteen years?
 
-**Answer (canon):** A Mael-era expedition (~30 years before Game 1, late in Mael Caine's tenure as Hand Master) reached the Sundered Isles and breached a drowned sub-vault beneath the flooded lower floors of the old Aescryd archive complex. There they recovered fragments of Bealoric's original forge-records — the working notes from the Crown's making, preserved in Aescryd-granite containers that resist seawater.
+**Answer (canon):** A Mael-era expedition (late in Mael's tenure as Hand Master, roughly fifteen to twenty years before Game 1) reached the Sundered Isles and breached a drowned sub-vault beneath the flooded lower floors of the old Aescryd archive complex. There they recovered fragments of Bealoric's original forge-records — the working notes from the Crown's making, preserved in Aescryd-granite containers that resist seawater.
 
 The records did three things:
 - They named the seven pieces explicitly, with sigils for each.
@@ -43,15 +43,15 @@ The seven pieces of the Sundered Crown (per their function in Hadran's anvil):
 
 | Piece | Location in Game 1 | Recovery method |
 |---|---|---|
-| **The Pommel** | Iron Chalice reliquary, Aldenholt — hidden by an embedded Hand cell | Infiltration; confrontation in the under-reliquary |
-| **The Ring** | Vosskaran border garrison — being moved by a Hand-compromised captain | Ambush of the courier convoy on the trade road |
-| **The Wire** | Carried by a Naergrim envoy into the Weeping Wood as tribute to the Ashlord's cause | Wilderness pursuit; Seren's introduction |
-| **The Copper Wire** | Sailor's Guild Archive at the Copper Isles — catalogued as a Second Age artifact of unknown function | Guild endorsement required; Orion's introduction; Shroud charts side quest |
-| **The Clasp** | Aelorin Second Glade — left by an Aelorin who completed the Aelthiren 300 years ago; no one has examined it | Aelthurion's cooperation; critical intelligence on the Aeluvain and Aldric Vane delivered here |
-| **The Disc** | Karaz-Dûn treasury — collected by King Thrarin as a curiosity a century ago | Bromrin → Darva → treasury retrieval; Dagna joins here |
-| **The Obsidian Shard** | Mor-Vethrin, Naergrim dark elf city — held by Serethi the Twice-Dead as a bargaining chip | Serethi's deal: Naergrim withdrawal in exchange for the shard; Game 1's final moral decision |
+| **The Pommel** | Iron Chalice chapel, Aldenholt | Dame Calla negotiation |
+| **The Coin** | House Korvath, Solgrade | Traded for smuggling evidence |
+| **The Ring** | Despot Yaromir, Vosskara — a thumb ring worn by the Despot, given to him by his grandmother | Personal diplomacy with Yaromir |
+| **The Copper Wire** | Sailor's Guild Archive, Copper Isles — catalogued as a Second Age artifact of unknown function | Guild endorsement required; Orion's introduction; Shroud charts side quest |
+| **The Clasp** | Second Glade, Aelorin Greatwood — left by an Aelorin who completed the Aelthiren 300 years ago; no one has examined it | Aelthurion's cooperation; critical intelligence on the Aeluvain and Aldric Vane delivered here |
+| **The Disc** | Thrarin's treasury, Karaz-Dûn — collected by King Thrarin as a curiosity a century ago | Bromrin → regent Darva → treasury retrieval; Dagna joins here |
+| **The Obsidian Shard** | Mor-Vethrin, Naergrim vault — held by Serethi the Twice-Dead as a bargaining chip | Serethi's deal: Naergrim withdrawal in exchange for the shard; Game 1's final moral decision |
 
-**Note on Hadran's holdings:** Hadran has independently acquired two pieces — the Coin and the Disc — through Sailor's Guild dive operations at the Sundered Isles. In Game 1's execution, at least one of these (the Disc) is still in transit or in Karaz-Dûn's treasury when Roland encounters it. By Act IV's end, Roland holds all seven pieces. The mechanics of how the Coin is recovered can be confirmed in the writers room; one approach is that the Disc in Karaz-Dûn is a second copy of the piece-record and the Hand's Disc delivery was intercepted en route.
+**Note on Hadran's holdings:** Hadran holds none of the seven pieces at Game 1's start. He is waiting on all seven via Hand deliveries. Roland acquires each piece through the quests above; by Act IV's end, Roland holds all seven.
 
 ---
 

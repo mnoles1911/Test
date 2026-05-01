@@ -116,7 +116,7 @@ Dwarves live longer than humans (lifespans of three to four hundred years) but a
 
 **Origin:** Born Bealoric, High King of the Aescryd (the First Human Kingdom) in the Second Age. A capable, beloved ruler who watched his kingdom slow and crumble and became consumed by a single fear: death. He sought immortality through a ritual that required emptying himself — surrendering the core of his selfhood, the thing that makes beings mortal, in exchange for a form that contains nothing and therefore cannot die.
 
-He got what he wanted. He became hollow. His kingdom became a death-engine. The Grand Alliance — Aelorin, dwarves, and the remaining uncorrupted humans — forged the **Sundered Crown** and used it to unmake him. He was unmade at the Sorrowmarsh two thousand years ago, his scattered essence slowly reforming.
+He got what he wanted. He became hollow. His kingdom became a death-engine. The Grand Alliance — Aelorin, dwarves, and the remaining uncorrupted humans — wielded the **Aeluvain** — a sword forged by the Aelorin from the material of the fallen Eighth Star — and used it to unmake him at the **Sorrowmarsh**. He was unmade there two thousand years ago, his scattered essence slowly reforming.
 
 Two thousand years later, Mordvar reforms. He cannot yet act directly. He acts through the Aescstól (Ash Throne), through the Ashlord, through the Ashen Hand and the Hosts.
 
@@ -146,7 +146,7 @@ Lord Aelthurion knows. He has known since the Second Age. Caerith's name is not 
 
 **The Black Court / Naergrim** — Dark elves who chose blood-magic immortality when their Aelorin kin chose the stars. Five hundred elite fighters under **Serethi the Twice-Dead**, who survived his own partial Aelthiren attempt and returned wrong. Built into Mor-Vethrin, the obsidian city in the Weeping Wood escarpment of northeastern Mira. Bound to the Ash Throne by will — they chose this freely, unlike the orc and goblin forces. A minority faction within the Naergrim questions this choice but has not acted on the question.
 
-**The Ashen Hand** — Turned mages. Hierarch: **Vaeroth the Pale**, former Solgrade court mage who sold his allegiance to the Ash Throne a decade before the trilogy begins. Bound by gift — the Ash Throne amplifies their power beyond what they could wield otherwise. They spread plague-blights, summon forbidden things, and serve as Mordvar's most intelligent agents. Two hundred mages at peak strength.
+**The Ashen Hand** — Turned mages. Hierarch: **Vaeroth the Pale**, former Conclave mage of Eldermark origin who sold his allegiance to the Ash Throne a decade before the trilogy begins. Bound by gift — the Ash Throne amplifies their power beyond what they could wield otherwise. They spread plague-blights, summon forbidden things, and serve as Mordvar's most intelligent agents. Two hundred mages at peak strength.
 
 **The Ashfallen** — Humans, dwarves, and elves who were captured and returned wrong — hollowed just enough to serve. Three thousand distributed through the Ash Throne's forces. The hardest to fight because they wear familiar faces. A soldier freezes for a second recognizing someone; a second is enough.
 

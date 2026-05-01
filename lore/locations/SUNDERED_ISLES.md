@@ -9,7 +9,7 @@
 
 ## Physical Description
 
-What the Sundered Isles are: the ruins of Aescryd, the first human kingdom, which drowned when the Sundered Crown shattered at the Sorrowmarsh two thousand years ago. The island did not sink cleanly. It broke apart as it went — the upper floors of towers and citadels are still above water, tilted at angles, rising from channels where the sea runs fast and cold. Below the waterline: streets, plazas, archives, workshops, the accumulated infrastructure of the world's first human civilization, preserved in cold dark water.
+What the Sundered Isles are: the ruins of Aescryd, the first human kingdom, which drowned in the generation after the Sundered Crown shattered at the Sorrowmarsh two thousand years ago. The island did not sink cleanly. It broke apart as it went — the upper floors of towers and citadels are still above water, tilted at angles, rising from channels where the sea runs fast and cold. Below the waterline: streets, plazas, archives, workshops, the accumulated infrastructure of the world's first human civilization, preserved in cold dark water.
 
 The archipelago stretches roughly forty kilometers across. The outer islands are accessible from the Shroud Sea's storm-edge — pirates use the anchorages there, running on the knowledge that no one with formal authority can easily follow them into the outer channels. The inner islands require navigating channels that run between half-submerged towers; at the wrong tide, the channels fill and the route closes.
 

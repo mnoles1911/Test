@@ -14,7 +14,7 @@
 | **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
 | **Mordvar** | Antagonist; ancient unmade king | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch — killed/captured at Ashfields retreat, Act IV | Game One |
-| **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
+| **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (unmasked and dies end of Game Two, Khorumzad) |
 | **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |
 | **Edran Vane** | Recurring ally; Caelborn investigator, intelligence contact | Games One-Three |
 | **Dame Calla Vane** | NPC; Iron Chalice Grandmaster | Game One |
@@ -112,7 +112,7 @@ The seven metals of the Sundered Crown (Bealoric's own making):
 - [MAIN] The Muster at the Copper Isles
 - [MAIN] The Eastern Crossing (Shroud Sea)
 - [MAIN] The Approach to the Caldera (3-day battle)
-- [MAIN] The Aescstól (Ashlord confrontation)
+- [MAIN] The Aescstól (Mordvar confrontation)
 - [MAIN] The Choice (The Return / The Hold / The Fracture)
 - [SIDE] Aldric's Training
 - [SIDE] The Nameless Council's Message (delivery)

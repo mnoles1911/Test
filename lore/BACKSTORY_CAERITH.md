@@ -70,17 +70,17 @@ He had spent fifteen hundred years watching the Sorrowmarsh. He understood, by t
 
 The Ashlord did not announce himself. He did not gather followers or proclaim a cause. He found an instrument.
 
-**Mael** was an Aescryd scholar — a researcher of moderate standing who had, through a combination of skill and obsessive patience, discovered fragments of Bealoric's forge-records in a flooded Sundered Isles archive. He understood, partially and imperfectly, what the Sundered Crown had been and what its reassembly might do. He had a theory, extensive notes, and no resources.
+**Mael** was a former Conclave assessor from Eldermark — a trained intelligence analyst who had, through years of diligent fieldwork, assembled substantial evidence that Mordvar's reforming presence was accelerating. She brought her findings to the Conclave through proper channels, repeatedly, and was dismissed each time. The Conclave did not want the problem she was describing. She understood, eventually, that no institution willing to look away from what she was seeing was going to be the one to stop it.
 
-The Ashlord found Mael, assessed him, and began cultivating him. This took years. He gave Mael access to materials, then contacts, then funding, then protection. He pointed Mael at the reconstruction problem from enough distance that Mael continued to believe, throughout this period, that he was the architect of what was growing. He was not. He was the instrument through which the Ashlord's operation gained a face, a voice, and a purpose that other people could choose to join.
+The Ashlord found Mael, assessed her, and began cultivating her. This took years. He gave Mael access to materials, then contacts, then funding, then protection. He pointed her at the reconstruction problem from enough distance that Mael continued to believe, throughout this period, that she was the architect of what was growing. She was not. She was the instrument through which the Ashlord's operation gained a face, a voice, and a purpose that other people could choose to join.
 
-The Ashen Hand grew over three centuries from a handful of scholars and true believers into the organization Roland's party encounters in Game One. It grew the way patient things grow: slowly, without drama, until the size becomes difficult to dispute.
+The Ashen Hand grew over roughly two and a half decades from a handful of true believers and disillusioned analysts into the organization Roland's party encounters in Game One. It grew the way patient things grow: without drama, until the size becomes difficult to dispute.
 
 ---
 
 ## The Naergrim
 
-The Naergrim came into the Ashlord's orbit over the same three centuries, and by a different mechanism.
+The Naergrim came into the Ashlord's orbit over the same period, and by a different mechanism.
 
 They did not join the Ashen Hand. They recognized in the Ashlord's project a convergence with their own ancient purpose: loyalty to Mordvar's throne, sustained across two thousand years of the Third Age in forms that had grown strange and various. What the Ashlord was working toward — the return of the thing that the throne was built for — was what the Naergrim's oldest commitments pointed at.
 
