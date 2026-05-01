@@ -91,7 +91,7 @@ func _build_ui() -> void:
 	# Title.
 	var title_lbl := Label.new()
 	title_lbl.text = "— PAUSED —"
-	title_lbl.theme_override_font_sizes/font_size = 8
+	title_lbl.add_theme_font_size_override("font_size", 8)
 	title_lbl.theme_override_colors/font_color = Color(0.9, 0.85, 0.7, 1)
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title_lbl)
@@ -177,7 +177,7 @@ func _on_load() -> void:
 	GameState.load_game()
 	var scene: String = GameState.current_scene
 	if scene == "" or not ResourceLoader.exists(scene):
-		scene = "res://scenes/World.tscn"
+		scene = "res://scenes/World3D.tscn"
 	TransitionManager.change_scene(scene, GameState.player_spawn_id)
 
 func _on_settings() -> void:
