@@ -38,13 +38,13 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 
 The Sundered Crown was forged by Bealoric (Mordvar) himself — Caerith had no part in its making. When the unmaking was complete and the Grand Alliance's strike at the Sorrowmarsh was done, Caerith remained behind as Sorrowmarsh Vigil-Keeper, stationed at the Sorrowmarsh itself, while the others departed. Mordvar's residual will, still warm in the marsh's corrupted stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
 
-Two thousand years of incremental hollowing — not enough to fully erase them, enough to turn them. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
+Two thousand years of incremental hollowing — not enough to fully erase him, enough to turn him. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
 
-**What remains:** Caerith's name is no longer spoken in Aelorin society. What persists in the Ashlord is not personality — not preferences or affections or grief in any recognizable form. What persists is the structural shape of a self: a remnant of agency, enough to command, enough to understand commands, enough to know what they once were and cannot say.
+**What remains:** Caerith's name is no longer spoken in Aelorin society. What persists in the Ashlord is not personality — not preferences or affections or grief in any recognizable form. What persists is the structural shape of a self: a remnant of agency, enough to command, enough to understand commands, enough to know what he once was and cannot say.
 
 **The mask:** Worn because beneath it is an Aelorin face. The Naergrim — themselves Aelorin-derived and two thousand years old — would recognize what they were looking at. The mask is the Ashlord's one act of preservation, not from vanity but from the understanding that if the Naergrim saw the face and realized its implications, the Ashen Hand's command structure would fracture.
 
-**Aelthurion's burden:** He has known since shortly after the Second Age. Caerith's name appears in Lirien-Thal's archive as having completed the Aelthiren, because the alternative is saying what they became. No Aelorin who learns the truth disagrees with the decision to keep silence. They understand immediately why you would not want to say it aloud.
+**Aelthurion's burden:** He has known since shortly after the Second Age. Caerith's name appears in Lirien-Thal's archive as having completed the Aelthiren, because the alternative is saying what he became. No Aelorin who learns the truth disagrees with the decision to keep silence. They understand immediately why you would not want to say it aloud.
 
 **Hints through the trilogy:**
 - *Game One:* After giving Roland the silver clasp, Aelthurion goes quiet when Roland asks whether there is anything else he should know. He says: *"Everything that matters is in what I have already told you."* This is technically true.
@@ -89,7 +89,7 @@ Age 31 at Game One start. Recurring contact and ally across all three games. Not
 
 ### Dame Calla Vane — Grandmaster, Iron Chalice
 
-Age 58. The Iron Chalice's finances are her private crisis — she expended Roland because she believed his silence was necessary and has lived with that decision since. She is not corrupt; she is trapped between an institution she loves and a secret she cannot afford to expose.
+Age 58. The Iron Chalice's finances are her private crisis — she expelled Roland because he refused to keep silence about the pommel — she believed that silence was necessary and has lived with that decision since. She is not corrupt; she is trapped between an institution she loves and a secret she cannot afford to expose.
 
 **Roland's arc with her:** Game One requires Roland to resolve the Order's debt to earn their alliance. The confrontation with Dame Calla when he returns is the scene where she acknowledges the expulsion was wrong without being able to say it plainly. She says it in action instead: she rides to Drûn-Khazad.
 

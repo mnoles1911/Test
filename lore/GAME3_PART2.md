@@ -48,7 +48,7 @@ His presence is a cold of *will*. Men find their arms heavy. Not cold in tempera
 
 ### [MAIN QUEST] The Ascent
 
-While the battle holds at the caldera's base, Roland, Aldric, Seren, Corvus, and Orion ascend. Five people. The summit of a live volcano. Mordvar walking toward them from below.
+While the battle holds at the caldera's base, Roland, Aldric, Seren, Corvus, Orion, and Dagna ascend. Six people. The summit of a live volcano. Mordvar walking toward them from below.
 
 This is not a combat sequence — it is an endurance sequence. The heat is real. The ash is constant. The path is not designed for human use.
 

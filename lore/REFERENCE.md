@@ -11,12 +11,12 @@
 | **Seren of the Third Glade** | Companion; Aelorin Dawnbringer | Game Two |
 | **Orion Farr** | Companion; Sailor's Guild sailor | Game One |
 | **Dagna Irontrack** | Companion; Dragon-Watcher, volcanic expert | Game One (Act III) |
-| **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
+| **Aldric Vane** | Companion; last of the Caelborn line (Aescryd-blooded) | Game Three |
 | **Mordvar** | Antagonist; ancient unmade king | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch — killed/captured at Ashfields retreat, Act IV | Game One |
 | **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (unmasked and dies end of Game Two, Khorumzad) |
 | **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |
-| **Edran Vane** | Recurring ally; Caelborn investigator, intelligence contact | Games One-Three |
+| **Edran Vane** | Recurring ally; investigator of the Caelborn lineage, intelligence contact | Games One-Three |
 | **Dame Calla Vane** | NPC; Iron Chalice Grandmaster | Game One |
 | **Henrietta** | NPC; Loremaster's Archive (dies Game One) | Game One |
 | **King Bromrin** | NPC; Khorumzad, gold-hunger victim | Games One-Two |
@@ -123,7 +123,7 @@ The seven metals of the Sundered Crown (Bealoric's own making):
 
 | | The Return | The Hold | The Fracture |
 |---|---|---|---|
-| **What Aldric does** | Carries Mordvar's hollow temporarily, then releases it into the vault | Holds it within himself permanently | Refuses; the hollow disperses uncontrolled |
+| **What Aldric does** | Carries Mordvar's hollow temporarily, then releases it into the vault | Holds it within himself permanently | Takes the hollow; uses it rather than releasing or holding it — the Aeluvain shatters |
 | **Mordvar's fate** | Dissolved — the fear completed and resolved | Contained within Aldric's bloodline | Scattered; neither ended nor contained |
 | **Aldric's life after** | Returns to Coldstoke; builds; declines honors | Stays near Drûn-Khazad; the anchor | Survives; the cost falls on the world |
 | **Long-term consequence** | The vault sealed; world free of Mordvar's reforming | The bloodline carries the weight forward | Mordvar's remnants seed future conflict |

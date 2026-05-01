@@ -89,7 +89,7 @@ The forces that arrive depend entirely on what Roland accomplished in Games One 
 - **Khorumzad:** Darna Deepdelver's command (Bromrin stayed home; he wrote a letter)
 - **Vosskaran Despotate:** Yaromir's full frontier force (if Tribute War de-escalated)
 - **Aelorin Dawnbringers:** Seven operatives, each worth a platoon
-- **Conclave mages:** Forty-one loyal mages (two Ashfallen identified and isolated)
+- **Conclave mages:** Forty-one mages total (two Ashfallen identified and isolated; thirty-nine loyal)
 - **Golden Lance:** If Vossant's contract honored in Game One
 - **Brightwatch garrison:** Iron Chalice forward post; already at the frontier
 
