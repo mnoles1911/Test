@@ -45,6 +45,7 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /dialogue — all Dialogic timeline (.dtl) files; also `dialogue/CHARACTER_VOICES.md` (voice IDs + ElevenLabs config per character), `dialogue/PRONUNCIATION.md` (phonetic respellings for lore proper nouns — check before every TTS run), `dialogue/STYLE.md` (line writing rules, mood tags, length targets)
 - /lore — all narrative canon (start at lore/INDEX.md)
 - /design — game implementation reference (systems, art direction)
+- /tools — pipeline scripts run from the repo root (TTS rendering, draft stripping); see `tools/README.md`
 
 ## Milestone history
 
@@ -138,8 +139,12 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/ITEM_LIBRARY.md | New craftable items, recipes, or input materials added to any section |
 | design/SKILLS_AND_PROGRESSION.md | New perks, sub-skills, or trainer NPCs added; XP values tuned |
 | design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock for a new character, manifest schema changes |
+| design/FACTION_SYSTEM.md | Factions added/removed, disposition triggers tuned, lockout thresholds change |
+| design/QUEST_SYSTEM.md | New quest patterns, resolution outcomes, or timed-event rules added |
+| design/INPUT_AND_CONTROLS.md | New Input Map action added (must also update DESIGNER_TODO.md Section 1) |
 | dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
 | dialogue/PRONUNCIATION.md | Any new lore proper noun is introduced (place names, gods, titles) |
+| DESIGNER_TODO.md | New design doc lands that requires editor or asset work; tasks completed |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -184,6 +189,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/INPUT_AND_CONTROLS.md — full KB/mouse and controller scheme, all Input Map actions, tap-vs-hold combat
 - design/ACCESSIBILITY_AND_SETTINGS.md — display/audio/controls/accessibility settings, subtitle defaults, colorblind support
 - design/WORLD_NAVIGATION.md — no-waypoint navigation, Roland's hand-drawn journal map, zone structure, landmarks
+- design/AUDIO_DESIGN.md — audio bus layout, music/SFX/voice routing, spatial 3D audio, settings volume sliders
 
 **Companion and NPC systems:**
 - design/COMPANION_SYSTEM.md — Orion and Dagna mechanics, combat orders, downed/revive, pack management
@@ -214,6 +220,10 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 
 ## Current project state
 Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot design docs merged. Milestone 4-3D in progress (first 3D scripts + placeholder scene).
+
+System design corpus is now complete: combat, enemy AI, companions, factions, quests, economy, save, death/respawn, weather, HUD, input, accessibility, audio, and world navigation all have authored design docs in `/design`. Implementation work for the autoloads and UI nodes those docs specify is tracked in `DESIGNER_TODO.md`.
+
+Pipeline tooling has landed in `/tools`: `strip_draft.py` (prose-draft → TTS-script extractor) and `render_bulk.py` (ElevenLabs batch renderer). Both are documented in `tools/README.md` and require an `ELEVENLABS_API_KEY` env var.
 
 2D legacy (still present, will be retired as 3D scenes replace them):
 - `scripts/Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`
