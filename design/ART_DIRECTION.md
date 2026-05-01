@@ -21,7 +21,7 @@ The pivot from 2D pixel art to 3D voxel was confirmed. All 2D scene files (World
 
 - A campfire rendered as a `PointLight3D` with `CampfireFlicker3D.gd`, casting real volumetric glow across cave voxels
 - Cave walls built from hand-assembled MagicaVoxel blocks, each face catching light differently
-- Roland represented as a low-poly 3D model or billboard sprite — small against the environment, not filling the screen
+- Roland represented as a low-poly 3D Blender model — small against the environment, not filling the screen
 - Camera at ~50° elevation, fixed angle (Hades / Diablo 3 camera) — reveals depth without going first-person
 - `WorldEnvironment` with SSAO, fog, and a dark ambient — the world is not safely lit
 
@@ -33,9 +33,11 @@ The pivot from 2D pixel art to 3D voxel was confirmed. All 2D scene files (World
 
 **Visual references:**
 - Veloren — world scale and voxel tone
-- Cube World — character art style
 - Hades — camera angle and follow behavior
 - Zelda: Link's Awakening (2019) — low-poly character charm in 3D world
+- Kingdom Come: Deliverance — grounded medieval architecture tone (half-timbered buildings, mud, weight)
+
+**Validated by concept art (2026-05-01):** Five concept art sheets generated at 6–8 voxels per meter with low-to-mid poly character models confirm this direction is achievable and correct. Key visual signature confirmed: warm OmniLight3D torchlight against cool voxel stone reads exactly as intended at this voxel scale.
 
 ---
 
@@ -80,12 +82,81 @@ Pale blue-white, #C8E0F0. Absorbs light and returns it slightly warmer. Its pres
 ## Resolution and Asset Scale
 
 - **Viewport resolution**: 1920×1080 native (no pixel resolution target — 3D renders at display resolution)
-- **Voxel block size**: 8–16 units per block (NOT 1-meter Minecraft cubes — fine-grain detail)
-- **Character models**: 200–500 triangles (low-poly), or 32×48 pixel billboard sprites if using Sprite3D
+- **Voxel block size**: 6–8 voxels per meter (NOT 1-meter Minecraft cubes — fine-grain detail that reads as stone texture, cobblestone, timber planks)
+- **Character models — named characters**: 500–1500 triangles (low-to-mid poly Blender export). This is the look of Yaromir and the Lirien-Thal Aelorin in the concept art sheets — readable silhouette, no per-pixel texture detail, but enough geometry for armor shape and cloth drape.
+- **Character models — background NPCs**: voxel-block humanoids built in MagicaVoxel at 8×16 voxels tall. These are the crowd figures visible in the market and courtyard concept sheets. Fast to produce, visually consistent with the world.
 - **Portrait art (dialogue)**: 256×320 pixels — painted at this resolution for the 1080p viewport
-- **MagicaVoxel canvas**: per asset; buildings typically 32–64 voxels wide
+- **MagicaVoxel canvas**: per asset; buildings typically 32–96 voxels wide (larger for keeps and landmark structures)
 
 For the full art production workflow (MagicaVoxel, Blender, Godot import), see `design/ART_PIPELINE.md`.
+
+---
+
+## Architecture by Region
+
+Visual identity is carried by building construction style as much as palette. These are the dominant construction styles per region, validated by concept art.
+
+### Eldermark (Aldenholt, rural settlements)
+- **Half-timbered / timber-frame**: exposed dark oak or elm beams against pale plaster or whitewash — the structural skeleton is visible on the exterior. Upper stories often overhang the street slightly.
+- **Stone base, timber upper**: ground floor of heavy cut stone (load-bearing, flood-resistant), upper floors of timber frame. Creates a strong horizontal visual divide.
+- **Roofing**: dark grey slate in Aldenholt proper; thatch on rural buildings.
+- **Iron details**: hinges, bolt heads, portcullis, door banding — Eldermark buildings show their iron.
+- **Scale**: Aldenholt buildings 3–5 stories near the market; single-story cottages at the city fringe and in villages.
+
+### Vosskara
+- **Low-profile stone**: walls deliberately squat, wide doors for equipment passage, minimal windows (heat retention).
+- **No timber frame**: all-stone, iron-banded. No decorative elements — purely functional.
+
+### Solgrade
+- **Terracotta and cream render**: warm ochre render over stone, terracotta tile roofing, arched colonnades. No timber frame.
+- **Open frontages**: shops open to the street, no glass — just open arches with awnings.
+- **Canal-side construction**: buildings with private dock-access at the rear, stepped embankments of pale stone.
+
+### Aelorin (Lirien-Thal, Sirathiel)
+- **Living wood**: structures grow from or merge with silverwood trunks. No cut stone. No timber frame in the human sense — the building and the tree are the same object.
+- **Rope and woven-bough bridges**: all horizontal connections between tree-structures are suspended, not built on foundations.
+
+### Dwarven (all three holds)
+- **Carved rock**: every surface is stone, cut and shaped, not assembled from blocks. Passage cross-sections are arched. Rune-work in recessed channels.
+- **No exterior facades**: dwarven construction goes inward, not outward. The exterior is the mountain face.
+
+---
+
+## Faction Banners and Signage
+
+Banners are how factions claim space in the world. They are always present at gates, keeps, and market squares, and should be among the first assets built for each major location.
+
+- **Eldermark / Iron Chalice**: iron-grey field, white boar or chalice device. Flies from Aldenholt's gatehouse and King Othric's Longhall Keep.
+- **Caer Brannoch / Tidewarden**: sea-grey field, silver anchor or wave device.
+- **Vosskara / Frost Brotherhood**: black field, white iron cross device. Flies from battlements only — never market spaces.
+- **Solgrade / Golden Lance**: terracotta field, brass lance or sheaf device.
+- **Aelorin**: no banners — they use carved tree-sigils at entrances.
+- **Dwarven holds**: carved stone relief above entrances rather than cloth banners.
+
+Banner physics: cloth banners should use Godot's `SoftBody3D` or a simple AnimationPlayer wind-sway. Don't simulate per-vertex — a simple 2-bone swing animation reused on all banners is sufficient and visually convincing at the camera distance.
+
+---
+
+## Weather and Atmosphere Conditions
+
+Each major location has a default atmospheric condition and 1–2 variants. Weather is not a runtime simulation — it is a per-scene `WorldEnvironment` preset chosen at scene load time.
+
+| Location | Default | Variant A | Variant B |
+|---|---|---|---|
+| Aldenholt | night / torch-lit | rainy day (wet cobbles, puddles) | foggy morning |
+| Caer Brannoch | overcast / salt wind | heavy rain | grey daylight |
+| Vosskara | sleet / cold grey | blizzard (near-zero visibility) | cold clear day |
+| Solgrade | bright sun | afternoon heat haze | clear dusk |
+| Lirien-Thal | filtered silver-green | night / bioluminescent | dawn mist |
+| Khorumzad | forge-warm interior | deep-level cold (levels 7-9) | — |
+| Ashfields | permanent overcast | ash-haze thick (near Drûn-Khazad) | — |
+
+**Technical implementation:**
+- Weather variants are `WorldEnvironment` resources swapped at scene start based on `GameState` flags.
+- Rain: Godot `GPUParticles3D` with a large emission plane above the scene, angled slightly for wind.
+- Fog: `WorldEnvironment.fog_density` raised; add a `FogVolume` node near ground level for ground fog.
+- Puddles / wet cobbles: a secondary material on flat surfaces with higher roughness_texture contrast and reflection enabled.
+- Snow: `GPUParticles3D` with slow drift, very low velocity. Snow accumulation on surfaces is a texture variant, not geometry.
 
 ---
 
@@ -128,9 +199,21 @@ Each location's visual signature derives from `/lore/CITY_DESCRIPTIONS.md` and `
 Largest walled city in the world. Stone walls three men thick. Market district never fully closes. Game One opens here at night during Roland's chase.
 
 - **Atmosphere**: grand, political, slightly oppressive. Night cycle matters
-- **Tiles**: cobblestone, heavy stone walls, iron-banded doors, market awnings, torch sconces every ~6m
+- **Architecture**: half-timbered upper stories over stone ground floors. The city shows its age in patched mortar, worn cobbles, iron hinges dark with rust.
+- **Tiles**: cobblestone (varied grey stone, not uniform), heavy stone walls, iron-banded doors, market awnings, torch sconces every ~6m on iron brackets
+- **Market stall color**: striped canvas awnings in fully saturated colors — red, green, blue, yellow — against the neutral grey-stone backdrop. This pop of color is intentional: the market is the city's life. Use it as a quick visual read that you are in a populated, functioning district.
 - **Lighting**: torch-lit streets at night. Loremaster's Archive: windowless, lamp-lit, dust-particle effects. Iron Chalice chapel: warm altar-lit interior, single focused light source on the pommel
 - **Key detail**: the chase route through the alleys uses deep shadows and cool palette — Roland is hunted here before the player understands why
+
+**Aldenholt landmark locations (each needs a distinct visual signature):**
+
+- **King Othric's Longhall Keep**: A fortified great hall complex — stone gatehouse and towers, with a half-timbered great hall built inside the curtain wall. Royal banners of Eldermark (iron-grey field, white boar) fly from the keep towers and gate arch. The longhall interior is large, dark-timbered, firepit-lit: the power center of the kingdom should feel old and slightly oppressive.
+
+- **River Confluence Docks** (where Aldwater meets Silverthread): Voxel quays of heavy stone, barge moorings, wooden crane jibs for cargo. Two rivers meeting means two different current colors — use slight water-shader variation. Dock warehouses: stone lower, timber-frame upper, with loading doors at upper-floor level for crane access. This is where contraband moves, where the Brotherhood has informants, where the world feels transactional.
+
+- **Temple of Aldrath & Aeadis** (dual shrine): A single stone building housing two facing shrines. Over the main entrance: a war hammer and a wheat sheaf carved in relief — not painted, carved, because these gods are old enough that paint would be presumptuous. Interior: Aldrath's side has forge-warm light (OmniLight3D, amber); Aeadis's side has cool daylight from a high window. The two light sources should be visibly distinct, separated by the central aisle.
+
+- **Aldenholt Night Market**: The market never fully closes. Night variant: warm amber-orange from hundreds of small torch and lantern sources. The palette shifts entirely to the warm side — no blue-grey in the market at night. Vendor stalls, open crates, braziers for warmth. The single scene in the game where the warm palette dominates at a large scale without any cool counterpoint. It should feel almost excessive — that warmth is the point.
 
 ### Caer Brannoch
 Cliff-fortress city in two parts: upper (headland fortress) and lower (sea level docks). Sea-lifts on counterweight systems built by dwarven engineers two centuries ago.
@@ -152,16 +235,20 @@ River-bend fortress. Three sides of water defense. Iron-banded walls. Yaromir's 
 Terracotta roofs throughout. Warm orange-red distinctive from a distance. No walls — political statement. The Council of Twelve Houses governs.
 
 - **Atmosphere**: Mediterranean, open, commercial. Crisp sun shadows
-- **Tiles**: terracotta rooftiles, banking house facades, colored awnings, open market courtyards
+- **Architecture**: cream-rendered stone with terracotta tile roofing. Arched colonnades along main streets. Canal-side buildings have stepped stone embankments at water level and private dock access at their rear.
+- **Tiles**: terracotta rooftiles, banking house facades, colored awnings, open market courtyards, pale stone canal embankments
 - **Lighting**: bright daylight is the default. Shadows crisp, not soft. Council Hall has twelve equal entrances — visual symmetry is the point
+
+**Solgrade Grand Canal**: The defining feature of Solgrade is its canal network — flat-bottomed trade barges and passenger gondolas moving between quays. The water reflects the warm terracotta architecture; use Godot's screen-space reflections or a reflection probe to capture this. Canal-side market stalls have striped awnings in the same palette as Aldenholt's market but warmer: more yellow and red, fewer blues. The canal is Solgrade's main street.
 
 ### Lirien-Thal (Aelorin capital, deep Greatwood)
 Built into the canopy of silverwood trees. The trees are ancestors — elder Aelorin who completed the Aelthiren; their hair became leaves, their bodies bark.
 
 - **Atmosphere**: ancient, beautiful, melancholy. Every tree was someone
-- **Tiles**: massive silverwood trunks (custom 32x96 tiles or wider), root-bridges, hanging lanterns of soft light, woven-bough walkways
-- **Lighting**: silverwood has faint bioluminescence at night. No torches. Filtered silver-green by day
-- **CRITICAL**: the silverwood trees should look different from normal trees. Faces in the bark — not obvious, subtle. The player who looks will see them. Implementation: secondary detail layer on tree sprites, only visible when the player is close
+- **Tiles**: massive silverwood trunks (32×96 voxels or wider at the base), root-bridges, hanging lanterns, woven-bough walkways at canopy height
+- **Lighting (day)**: filtered silver-green from above. No direct sun — the canopy is dense. The ambient is cooler and greener than any human city.
+- **Lighting (night)**: the bioluminescence is DRAMATIC, not subtle. Concept art confirms: the blue-white glow from silverwood bark and Aelorin lanterns is the dominant light source at night, bright enough to cast visible shadows and read clearly at the game's camera distance. Use `OmniLight3D` nodes at the trunk surfaces with `color: Color(0.7, 0.85, 1.0)` (blue-white) and energy 1.5–2.0. The overall scene at night should read primarily in blue-white with deep forest shadow between lit areas. This is not a safe warm glow — it is alien and beautiful.
+- **CRITICAL**: the silverwood trees should look different from normal trees. Faces in the bark — not obvious, subtle. The player who looks will see them. Implementation: secondary normal-map detail layer on tree trunk surfaces, only visible when the player is close. At distance, reads as rough bark. Close up, reads as a sleeping face.
 
 ### Sirathiel-by-the-Sea (Aelorin coastal city — entry point for Greatwood arc)
 The only Aelorin city admitting humans without special escort. Pale coastal stone with mother-of-pearl inlay work.
