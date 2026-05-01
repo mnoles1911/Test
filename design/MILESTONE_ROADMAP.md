@@ -1,195 +1,272 @@
 # Milestone Roadmap — Game One Development
 
-Phases 1–3 are complete. This document covers the planned next four phases of development,
-their goals, and build order rationale.
+Phases 1–4 are complete (2D systems infrastructure). The 3D open world pivot is confirmed.
+This document covers all remaining phases in build order.
 
 > For completed milestone details, see `CLAUDE.md` → Milestone history.
-> For system design specifications, see `SYSTEMS_DESIGN.md`.
-> For art direction and asset specs, see `ART_DIRECTION.md`.
-> For level-by-level scene specs, see `lore/LEVEL_LAYOUTS_ACT*.md`.
+> For system design specifications, see the relevant `design/` docs.
+> For world coordinates and landmark positions, see `CLAUDE.md` → World coordinate reference.
+> For outstanding manual/editor/art tasks, see `DESIGNER_TODO.md`.
 
 ---
 
-## Phase 4 — Scene Infrastructure & Aldenholt Act I
+## Are We Ready to Build?
 
-**Goal:** The first real playable sequence, end-to-end. Act I of Game One becomes playable
-from the night chase through Aldenholt to Roland acquiring the pommel.
+**Yes.** Systems design is complete enough to begin coding immediately. The open questions in
+`DESIGNER_TODO.md` Section 8 are content design (quest briefs, recipe placement) — they do not
+block the technical foundation. They can be resolved in parallel while Phases 4-3D through 7-3D
+are being built.
 
-**Why now:** Everything else builds on scene transitions. You cannot have a game without them.
-Building Act I also produces a working template — zone structure, connected rooms, flag
-setting — that every subsequent zone reuses.
+The one content decision that WILL block Act I scene building (Phase 9-3D):
+**The Iron Chalice debt** needs to be designed before Act I dialogue and flag work begins.
+Everything before Phase 9-3D can proceed without it.
+
+---
+
+## Phase 4-3D — Camera + Godot Verification ← START HERE
+
+**Status:** In progress. Scripts written, not yet verified in Godot.  
+**Goal:** Third-person over-shoulder camera working in Godot. This is the baseline
+everything else is built on. Do not proceed to Phase 5-3D until this passes.
 
 ### Deliverables
 
-- **`scripts/TransitionManager.gd`** — Autoload singleton. Fade-to-black on scene change,
-  player spawn position preserved via `GameState.player_position`. Called by any trigger
-  that changes zones.
+- **Update `CameraRig.gd`** — Rewrite from fixed Hades 50° to third-person over-shoulder.
+  Key changes: player-rotatable horizontal/vertical, ~15° elevation default, dialogue tween mode.
+  Full spec: `design/CAMERA_AND_PERSPECTIVE.md`.
 
-- **Act I scenes** (Aldenholt, 5 scenes — see `lore/LEVEL_LAYOUTS_ACT1.md` for full spec):
-  1. `scenes/act1/NightChase.tscn` — Opening linear chase through alleyways to the Archive
-  2. `scenes/act1/Archive.tscn` — Interior: entrance hall + restricted section + Tomlin
-  3. `scenes/act1/HenriettaQuarters.tscn` — Searched room, environmental storytelling
-  4. `scenes/act1/IronChaliceChapel.tscn` — Dark chapel, the pommel, Dame Calla
-  5. `scenes/act1/AldenHolt_Hub.tscn` — The street between locations (re-entrant hub)
+- **Godot one-time setup** (see `DESIGNER_TODO.md` Section 1):
+  - Install Zylann's Voxel Tools plugin
+  - Configure full Input Map (interact, camera, lock_on, attack, dodge, etc.)
+  - Register BarkManager and WorldClock autoloads
+  - Set up audio bus layout
 
-- **`GameState.gd` first real flags:**
+### Verified when:
+- WASD moves Roland placeholder through the world
+- Right stick / Q+E rotate the camera freely
+- Camera pulls in automatically when near a wall (SpringArm3D collision)
+- No errors in Output panel
+
+---
+
+## Phase 5-3D — Open World Foundation + Roland Character
+
+**Goal:** Walking through recognizable procedurally generated Mira as a real character.
+The two foundations everything else stands on: the world and the protagonist.
+
+### Code deliverables
+
+- **`WorldGenerator.gd`** — `VoxelGeneratorScript` subclass. Layered `FastNoiseLite`
+  encoding Mira's terrain: Spine ridge east (~5000–7000m x), Greatwood flat north
+  (~0–2500m z), Aldwater valley, Ashfields, forced-flat zones at all settlement
+  world coordinates. This is the most important script in the project.
+
+- **`VoxelLodTerrain` in `World3D.tscn`** — Replace the flat floor placeholder.
+  6–8 LOD levels, LOD0 radius ~60m. Mesher: `VoxelMesherTransvoxel`.
+
+- **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Prints chunk enter/exit to
+  Output as player moves. No actual entity loading yet — just proves the architecture.
+
+### Art deliverables
+
+- **Roland low-poly Blender model** — 200–400 tris, flat-shaded, vertex colors only.
+  Rig ~25 bones. Export `.glb` to `assets/models/roland.glb`.
+
+- **Roland Act I animation set** — idle, walk, run wired into `AnimationTree`.
+  Attack, dodge, react, death added before Phase 7-3D begins.
+
+- **Roland portrait** — 256×320 px painted. Unblocks Dialogic dialogue UI.
+
+- **First campfire prop** — MagicaVoxel → `.glb`. Proves the prop pipeline.
+
+### Verified when:
+- Roland (real model) walks through generated terrain that reads as Mira's geography
+- Spine ridge visible on the eastern horizon from Aldenholt coordinates
+- LOD transitions invisible within 60m of player
+- Walk/run cycle animates correctly from velocity
+
+---
+
+## Phase 6-3D — World Population + NPC Pipeline
+
+**Goal:** The open world has real entities in it. NPCs exist at world coordinates,
+load as you approach, bark as you pass. Aldenholt reads as a city from a distance.
+
+### Code deliverables
+
+- **`EntityRegistry.gd`** — Autoload singleton. Spatial dictionary keyed by chunk ID.
+  Stores `EntityRecord` objects: `{ entity_type, world_position, scene_path, saved_state }`.
+  No scene nodes — pure data. Populated from entity definition files or inline for early milestones.
+
+- **`EntityStreamer.gd` full implementation** — Replaces the Phase 5 stub. Instantiates
+  entity nodes when player enters load radius; saves state and `queue_free()`s on exit.
+  Load radii: buildings ~150m, NPCs ~80m, enemies ~60m.
+
+- **`NPC_Template.tscn`** — Master template for all NPCs (see `DESIGNER_TODO.md` Section 2).
+
+### Art/content deliverables
+
+- **Aldenholt building cluster** — 4–6 MagicaVoxel building exports placed at Aldenholt
+  world coordinates (4400m x, 5800m z). Not detailed interiors — exterior silhouettes only.
+  The city must be identifiable from 500m away.
+
+- **First Tier 1 NPC in world** — Test NPC at Aldenholt with `PLAYER_NEARBY` bark pool.
+  Walks close → bark fires → Output confirms end-to-end pipeline.
+
+- **Tomlin as Tier 2 NPC** — `NPCData.tres` at Aldenholt coordinates. Press E → Dialogic
+  opens `act1_scene_sorting_room` timeline. Proves NPC + Dialogic integration in open world.
+
+### Verified when:
+- Walking toward Aldenholt: buildings load in at ~150m, NPC loads at ~80m
+- Walking away: nodes unload cleanly, no memory leak
+- Pressing E near Tomlin opens Dialogic timeline
+- Test NPC fires bark on approach
+
+---
+
+## Phase 7-3D — Real-Time Combat
+
+**Goal:** Roland fights. Lock-on, attack, dodge, block. One real enemy type.
+The combat system is what makes Act I's Archive and chapel encounters playable.
+
+### Code deliverables
+
+- **`CombatManager.gd`** — Manages combat state: active enemies, lock-on target, attack
+  token queue, hit detection. Not turn-based. Real-time with `_physics_process`.
+  Full spec: `design/COMBAT_DESIGN_3D.md`.
+
+- **Lock-on system** — `lock_on` input finds nearest enemy in forward arc. Camera drifts
+  to keep target in right frame half. Cycles with `camera_left` / `camera_right`.
+
+- **`EnemyAI.gd`** — Base class for enemy behavior: detection states (patrol → alert →
+  combat), attack token system, telegraph → attack sequence. Per `design/ENEMY_AI.md`.
+
+- **`DeathHandler.gd`** — Roland death: authored line, screen fade, respawn at last rest
+  point. Per `design/DEATH_AND_RESPAWN.md`.
+
+### Art deliverables
+
+- **Roland combat animations** — attack_light, attack_heavy, dodge, react/flinch, death.
+  These may be partially done in Phase 5 — complete here if not.
+
+- **Ashfallen soldier model** — First enemy. Low-poly Blender, ~300 tris. Rig + idle,
+  walk, attack animations. The recognition-hesitation mechanic requires visually worn
+  Eldermark gear.
+
+### Verified when:
+- Lock-on snaps to Ashfallen, camera frames correctly
+- Light attack → hit reaction on enemy
+- Dodge roll clears an enemy attack
+- Roland death → authored line → respawn at rest point
+- 1-vs-2 encounter playable without camera chaos
+
+---
+
+## Phase 8-3D — Interior Pipeline + Dialogic Integration
+
+**Goal:** Interiors load from the open world. Act I locations feel like real spaces.
+Dialogue, flags, investigation points all wired and working.
+
+### Code deliverables
+
+- **Interior loading system** — When player enters a door `Area3D`, `TransitionManager`
+  loads the interior `.tscn` additively (or replaces scene), stores return position.
+  On exit door, unloads interior and returns player to open world at entry point.
+
+- **`InvestigationPoint.gd`** — `Area3D` script. E-press delivers observation overlay,
+  sets journal flags, checks deduction conditions. Per `design/INVESTIGATION_SYSTEM.md`.
+
+- **`InvestigationUI.gd`** — Text overlay for Roland's examination lines. Fades in/out.
+
+- **GameState first real flags:**
   - `henrietta_dead: bool`
   - `pommel_piece_1_acquired: bool`
   - `aldric_vane_name_logged: bool`
   - `tomlin_helped: bool`
 
-- **Roland's journal** — Basic UI panel showing active notes. Not a full system yet.
-  Populated from GameState flags. Written in Roland's voice.
+### Art/content deliverables
 
-- **First branching Dialogic dialogue** — Tomlin. Requires `henrietta_dead == true` to
-  unlock the key persuasion option. Establishes the pattern for all future flag-gated dialogue.
+- **Iron Chalice chapel interior** — `.tscn` scene. MagicaVoxel assets. Dame Calla NPC,
+  pommel placement, investigation points on altar and floor. Combat trigger zone.
 
-### Key decisions to make before building
-- Journal: panel overlay (pause-style) or a dedicated journal scene?
-- Alleyway chase: implied threat (no pursuer entity) or a visible enemy that triggers
-  game-over if it catches the player?
-- Hub structure: one Aldenholt street scene the player walks between, or individual
-  room-to-room transitions for each location?
+- **Archive interior** — `.tscn` scene. Tomlin (already wired from Phase 6). Henrietta's
+  desk investigation point. Restricted section door.
+
+- **Henrietta NPC model + portrait** — Low-poly Blender, portrait 256×320 px.
+
+### Verified when:
+- Enter door in Aldenholt → Archive interior loads, correct spawn point
+- Exit door → back to open world at correct position, no duplicate player
+- Press E on Henrietta's desk → investigation line displays, flag sets
+- Flag from Archive carries into chapel Dialogic condition
 
 ---
 
-## Phase 5 — Open World Foundation + Character Pipeline
+## Phase 9-3D — Act I Playable ← First Shippable Sequence
 
-**Goal:** Establish the two foundational production pipelines: a streaming open world with
-recognizable Mira geography, and Roland as a real low-poly character moving through it.
-Prove both pipelines before building any Act I content on top of them.
+**Goal:** Act I is playable end-to-end. Night chase through Aldenholt, Archive,
+Henrietta's quarters, Iron Chalice chapel, pommel acquired. The game's opening
+sequence is something you can actually play.
 
-**Why now:** Everything else in the game stands on these two things. Building Act I scenes
-without a working terrain generator means building on a floor that will change underneath
-them. Building combat and NPC systems without a character model means all testing is
-artificial.
+**Prerequisite design work** (from `DESIGNER_TODO.md` Section 8 — must be complete
+before this phase begins):
+- The Iron Chalice debt quest designed
+- Act I side quest briefs written (at least 2)
 
 ### Deliverables
 
-- **`WorldGenerator.gd`** — `VoxelGeneratorScript` subclass. Layered `FastNoiseLite`
-  terrain encoding Mira's major geographic features: Spine ridge (east), Greatwood flat
-  (north), Aldwater valley, Ashfields, forced-flat zones at all settlement coordinates.
-  Output: walking through generated terrain that reads as Mira, not generic noise.
+- **Night chase sequence** — Roland runs through Aldenholt streets at night. Implied
+  pursuit (no enemy entity required for Act I — sound design and NPCs reacting is enough).
 
-- **`VoxelLodTerrain` in `World3D.tscn`** — Replace the flat floor placeholder.
-  Configure LOD (6–8 levels, LOD0 radius ~60m). Verify no chunk errors in Output.
+- **Roland's journal** — Basic UI. Active quest, known people, Crown pieces. Written in
+  Roland's voice. Does not need to be the full 5-tab journal — a readable panel suffices.
 
-- **`EntityStreamer.gd` stub** — Node in `World3D.tscn` that prints chunk enter/exit
-  to Output as the player moves. Full entity loading in Phase 6.
+- **All Act I NPCs** — Tomlin (Phase 6), Henrietta (Phase 8), Dame Calla, Roland's
+  lodgings innkeeper. Bark pools written. Portraits painted. Dialogic timelines complete.
 
-- **Roland low-poly Blender model** — 200–400 tris, flat-shaded, vertex colors only.
-  Rig with ~25 bones. Export `.glb` to `assets/models/roland.glb`.
+- **Act I quest flags** — All flags that carry into Act II set and tested.
 
-- **Roland Act I animation set** — Minimum to ship Act I:
-  idle, walk, run, attack_light, attack_heavy, dodge, react, death.
-  Wired into `AnimationTree` + `BlendSpace1D` driven by `CharacterBody3D` velocity.
+- **First TTS audio** — Roland voiced observation lines and at least one full NPC
+  voice track (`act1_scene_sorting_room`) rendered and wired into Dialogic.
 
-- **First MagicaVoxel prop** — Campfire (small, proves the prop export pipeline).
-
-- **Portrait: Roland** — 256×320 px painted. Used by Dialogic for dialogue panels.
-
-### Priority order within the phase
-1. `WorldGenerator.gd` + `VoxelLodTerrain` setup (world foundation)
-2. Roland base mesh + rig + idle/walk (character foundation)
-3. Roland run + combat animations (unblocks combat testing)
-4. `EntityStreamer` stub (unblocks entity placement work)
-5. Campfire prop (proves MagicaVoxel pipeline)
-6. Roland portrait (unblocks dialogue UI)
+### Verified when:
+- Play from opening night chase to pommel acquisition without hitting a dead end
+- All Dialogic branches reachable and correct
+- Journal reflects Roland's actual knowledge state at each story beat
+- Autosave fires at correct moments
 
 ---
 
-## Phase 6 — Combat Depth & Enemy Framework
+## Phase 10-3D onward — Act II Zones
 
-**Goal:** Upgrade the combat prototype (Milestone 3) into a real system. Roland's full
-move set. A reusable enemy template. The Ashfallen soldier as the first real enemy type.
+Act II introduces the Four Kingdoms (player-determined order). Each kingdom is a
+multi-session phase: open world approach, city exterior, key interiors, companion join.
 
-**Why now:** Act I has at least one combat encounter. Any scene beyond the opening chase
-will need real combat. The prototype proved the timing mechanic — now expand it into a
-framework that can hold multiple enemy types and Roland's three core abilities.
+**Orion joins at Caer Brannoch** — first companion. Multi-party combat begins here.
+**Dagna joins in the Underway** — structural analysis, seismic investigation unlocked.
 
-### Deliverables
-
-- **Roland's full combat move set:**
-  - Attack (timing bar — already built in prototype)
-  - Block (timing window — already built)
-  - Analyze — unique to Roland. Reveals an enemy's weakness pattern. No timing window:
-    a single-turn observation that makes subsequent attacks more effective. Information
-    as combat resource, consistent with the design philosophy.
-
-- **Enemy data structure** — A reusable dictionary or resource that defines:
-  - HP, attack damage, block window timing
-  - Telegraph phrase (what prints before the enemy attacks)
-  - Weak point (revealed by Analyze)
-  - Whether enemy hesitates when player has relevant companion (Dagna's seismic analysis,
-    Orion's tactical reading)
-
-- **Ashfallen soldier** — First real enemy using the template. Per `SYSTEMS_DESIGN.md`:
-  fights with familiar tactics, slight hesitation mechanic (recognition pressure).
-
-- **Item menu** — Currently locked/placeholder in prototype. Decide: leave locked for now,
-  or stub one consumable (healing herb from the Aldenholt market).
-
-### Decision before building
-- Multi-party combat or Roland-only for Act I? Companions join mid-game. Act I is
-  Roland alone. Build the system for one party member first, design it to expand.
+Act II phases will be scoped once Act I is content-complete and the Act II zone
+design decisions (trainer NPCs, recipe placement, side quest briefs) are resolved.
 
 ---
 
-## Phase 7 — Dialogue System Depth (Information as Currency)
+## Phase Dependencies at a Glance
 
-**Goal:** The game's core design distinction: dialogue options that unlock based on what
-Roland knows. First real implementation of the "listening mechanic" and flag-gated paths.
+```
+Phase 4-3D  Camera + Godot setup            ← START HERE
+    │
+Phase 5-3D  WorldGenerator + Roland model   ← code + art in parallel
+    │
+Phase 6-3D  EntityStreamer + NPC pipeline   ← populates the world
+    │
+Phase 7-3D  Real-time combat                ← makes encounters playable
+    │
+Phase 8-3D  Interior loading + Dialogic     ← makes Act I locations exist
+    │
+Phase 9-3D  Act I playable                  ← first shippable sequence
+    │
+Phase 10+   Act II zones                    ← per-kingdom phases
+```
 
-**Why now:** Acts I and II are almost entirely driven by dialogue and investigation. Combat
-is secondary. The Tomlin scene (Phase 4) is a first step — Phase 7 makes this the game's
-primary mode of play.
-
-### Deliverables
-
-- **Dialogic condition nodes wired to GameState flags** — Any flag set in any scene
-  can gate dialogue options in any subsequent scene. Established pattern for the whole game.
-
-- **Companion comment framework** — Brief portrait + 1-2 line interjection during NPC
-  dialogue. Each companion observes through their lens (per `SYSTEMS_DESIGN.md`):
-  - Dagna: structural details, old construction
-  - Orion: exits, signs of recent traffic
-  (Roland-only for Phase 7 since companions join in Act II+)
-
-- **Roland's journal as playable UI** — Full panel, not just a flag dump:
-  - Active quests (current state, last known information)
-  - People (brief notes on everyone met, updates as Roland learns more)
-  - The Crown (piece locations known, acquired)
-  - Written in Roland's voice — partial, sometimes wrong
-
-- **First full branching scene** — Tomlin (Act I) fully implemented with all branches:
-  - `henrietta_dead = false`: limited options, cannot convince him
-  - `henrietta_dead = true`: key branch available — "the only way to find who killed her
-    is to know what she was researching"
-  - If player has already spoken to Tomlin once and left: his dialogue acknowledges the
-    return, not a fresh conversation
-
-- **The listening mechanic prototype** — One scene (Yaromir, Act II Vosskara) where
-  the best outcome is gated behind NOT pressing the negotiation option on first meeting.
-  See `SYSTEMS_DESIGN.md` for the design specification.
-
----
-
-## Sequence Summary
-
-| Phase | Focus | Depends on |
-|---|---|---|
-| 4 | Scene transitions, Act I scenes, first flags | Milestones 1–3 |
-| 5 | Art pipeline, Roland sprites, cave tile set | Phase 4 (scenes exist to put sprites into) |
-| 6 | Combat depth, enemy template, Ashfallen | Milestone 3 prototype |
-| 7 | Branching dialogue, journal UI, listening mechanic | Phase 4 (flags exist to condition on) |
-
-Phases 5 and 6 can run in parallel if an artist is working on sprites while code work
-continues. Phases 4 and 7 are sequential — flags must exist before they can be conditioned on.
-
----
-
-## What Comes After Phase 7
-
-Phase 8 onward: Act II zone construction, real companion join moments (Orion at Caer
-Brannoch, Dagna in the Underway), multi-party combat. Each act will have its own phase.
-The infrastructure built in Phases 4–7 is the foundation for everything.
+Phases 5 and 6 have parallel art/code tracks. Roland Blender work and WorldGenerator
+coding do not depend on each other and can run simultaneously.
