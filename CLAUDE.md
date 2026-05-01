@@ -166,19 +166,35 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 **World and systems:**
 - design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems (overview)
 - design/COMBAT_DESIGN_3D.md — real-time 3D combat: click-duration power system, dodge, parry, lock-on
+- design/ENEMY_AI.md — enemy detection states, attack token system, per-type specs (Goblin/Ashfallen/Wolf/Bear)
 - design/SKILLS_AND_PROGRESSION.md — learn-by-doing skill domains, sub-skills, perk trees, Charisma, Lethe's Draught
 - design/INVENTORY_AND_EQUIPMENT_SYSTEM.md — equipment slots, weight, condition, smithing tiers (mechanics)
 - design/ITEM_LIBRARY.md — master recipe reference: 40 potions, 40 smithable items, 15 meals, 30 assembly items
 - design/CRAFTING.md — crafting station mechanics, intent-based quality, Wanderer's Seal
 - design/REST_AND_CAMP.md — rest mechanics, camp setup, sleep effects, time advancement
 - design/INVESTIGATION_SYSTEM.md — examine system, investigation points, Roland's deduction mechanic
+- design/WEATHER_AND_ENVIRONMENT.md — authored weather, six time-of-day periods, WorldClock lighting, environmental hazards
+- design/SAVE_SYSTEM.md — diegetic saves (rest autosave + Wanderer's Seal), three slots, backup rotation
+- design/DEATH_AND_RESPAWN.md — death sequence, authored Roland death lines, Second Wind, no permanent loss
 
-**Dialogue and NPCs:**
+**Player systems:**
+- design/HUD_AND_UI.md — minimal HUD, HP/endurance bars, quick slots, interaction prompt, bark overlay, menus
+- design/INPUT_AND_CONTROLS.md — full KB/mouse and controller scheme, all Input Map actions, tap-vs-hold combat
+- design/ACCESSIBILITY_AND_SETTINGS.md — display/audio/controls/accessibility settings, subtitle defaults, colorblind support
+- design/WORLD_NAVIGATION.md — no-waypoint navigation, Roland's hand-drawn journal map, zone structure, landmarks
+
+**Companion and NPC systems:**
+- design/COMPANION_SYSTEM.md — Orion and Dagna mechanics, combat orders, downed/revive, pack management
 - design/CONVERSATION_SYSTEM.md — four-tier conversation system (barks → illustrated keyframes), TTS pipeline
 - design/NPC_SYSTEM.md — NPC tier system, disposition, WorldClock, schedules
 - design/BARK_LIBRARY.md — bark trigger IDs, line counts, cooldown rules
 - design/NPC_DIALOGUE_LIBRARY.md — conversation structure for Tier 2 and 3 NPCs
 - design/JOURNAL_UI.md — five-tab journal UI: Quests, Map, Items, Crafting, Codex
+
+**World and narrative systems:**
+- design/FACTION_SYSTEM.md — six Game One factions, disposition scale, rival effects, lockouts, Game Three seeding
+- design/QUEST_SYSTEM.md — situation-based quests, multi-resolution outcomes, timed events, authoring guidelines
+- design/ECONOMY_AND_VENDORS.md — lean economy, vendor types with named vendors, faction price modifiers, haggling
 
 **Art and pipeline:**
 - design/ART_DIRECTION.md — palette, location visual identity, architecture by region, shaders
@@ -212,6 +228,14 @@ Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot design docs merged. 
 Logic autoloads (unchanged from 2D, all survive the 3D pivot):
 - `GameState.gd`, `TransitionManager.gd`, `SaveNotification.gd`, `PauseMenu.gd`, `DebugOverlay.gd`,
   `FlagScheduler.gd`, `InventoryManager.gd`, `JournalUI.gd`, `Settings.gd`, `MainMenu.gd`, `EnemyData.gd`
+
+New autoloads specified in design docs (not yet implemented — build in dependency order):
+- `BarkManager.gd` — fires and queues bark lines (register in Autoload per DESIGNER_TODO.md)
+- `WorldClock.gd` — time-of-day periods, NPC schedule updates (register in Autoload per DESIGNER_TODO.md)
+- `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md)
+- `QuestManager.gd` — quest flag management: advance_quest(), complete_quest() (design/QUEST_SYSTEM.md)
+- `WeatherManager.gd` — weather state, WorldEnvironment tweening, weather overrides (design/WEATHER_AND_ENVIRONMENT.md)
+- `CompanionManager.gd` — companion active state, HP, serialize/deserialize for save (design/COMPANION_SYSTEM.md)
 
 To verify Milestone 4-3D in Godot 4.3:
 1. Open the project, run `scenes/World3D.tscn`
