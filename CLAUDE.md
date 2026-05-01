@@ -102,8 +102,9 @@ MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
 - First billboard sprite: Roland walk cycle (Aseprite → Sprite3D)
 
 ## Current milestone
-Milestones 1–4 complete; design docs for 3D pivot merged. Milestone 4-3D scripts and scenes drafted.
-Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D, then begin Milestone 5-3D art assets.
+Milestones 1–4 complete (2D). 3D pivot design docs merged. Milestone 4-3D scripts and scenes drafted. **Scope pivot (2026-05-01):** open world (`VoxelLodTerrain` streaming, 12 km × 10 km playable Mira), third-person over-shoulder camera, low-poly Blender characters from Act I onward — full plan in `design/3D_VOXEL_MIGRATION.md`.
+The system design corpus is otherwise complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking — all authored in `/design`). Pipeline tooling has landed under `/tools`.
+Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D under the new third-person `CameraRig`, register the implemented autoloads (`BarkManager`, `WorldClock`), then start Phase 5-3D — `WorldGenerator.gd` + first Roland Blender model — per `DESIGNER_TODO.md` Section 7.
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
@@ -143,6 +144,8 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/FACTION_SYSTEM.md | Factions added/removed, disposition triggers tuned, lockout thresholds change |
 | design/QUEST_SYSTEM.md | New quest patterns, resolution outcomes, or timed-event rules added |
 | design/INPUT_AND_CONTROLS.md | New Input Map action added (must also update DESIGNER_TODO.md Section 1) |
+| design/NPC_SYSTEM.md | NPC tier rules, schedule mechanics, or WorldClock integration changes |
+| design/LOCKPICKING.md | Lock tiers, pick types, or skill-tier hold-timer values change |
 | dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
 | dialogue/PRONUNCIATION.md | Any new lore proper noun is introduced (place names, gods, titles) |
 | DESIGNER_TODO.md | New design doc lands that requires editor or asset work; tasks completed |
@@ -210,7 +213,6 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 - design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender, billboard sprites
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
-- design/AUDIO_DESIGN.md — music philosophy (location-driven, not action-driven), diegetic audio, SFX priorities
 
 **Planning and ops:**
 - design/MILESTONE_ROADMAP.md — Act I scene breakdown and ordered deliverables for Phases 4+
@@ -268,11 +270,11 @@ To verify Milestone 4-3D in Godot 4.3:
 4. Campfire glows orange and flickers
 5. No clipping through the floor or walls
 
-Manual setup still required:
-- Install **Zylann's Voxel Tools** plugin from the Godot Asset Library (for Milestone 5-3D)
-- Add input action **`interact`** (bound to E key) in Project Settings → Input Map — required by `DialogueTrigger3D.gd` and `NPC.gd`
-- Add input actions **`camera_left`**, **`camera_right`**, **`camera_up`**, **`camera_down`** (Q/E + right stick) — required by the third-person `CameraRig.gd`
-- Add input action **`lock_on`** (middle mouse / right stick click) — required for 1-vs-many combat
+Manual setup still required: see `DESIGNER_TODO.md` → Section 1 for the full checklist
+(Zylann Voxel Tools install, full Input Map per `design/INPUT_AND_CONTROLS.md` — including
+the third-person camera and lock-on actions — audio bus layout per
+`design/AUDIO_DESIGN.md`, and Autoload registration for `BarkManager` / `WorldClock` /
+`EntityRegistry`).
 
 ## World coordinate reference (playable Mira, origin = NW corner)
 | Location | Game x | Game z |
