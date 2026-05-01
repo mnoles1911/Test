@@ -23,28 +23,45 @@ Everything before Phase 9-3D can proceed without it.
 
 ---
 
-## Phase 4-3D — Camera + Godot Verification ← START HERE
+## Phase 4-3D — Camera + Movement + HUD + UI ← SCRIPTS COMPLETE
 
-**Status:** In progress. Scripts written, not yet verified in Godot.  
-**Goal:** Third-person over-shoulder camera working in Godot. This is the baseline
-everything else is built on. Do not proceed to Phase 5-3D until this passes.
+**Status:** All scripts written and pushed. Pending one in-Godot verification pass.  
+**Goal:** Third-person camera, full movement (walk/sprint/crouch), health/endurance HUD,
+and tabbed journal/inventory overlay — all working together in `World3D.tscn`.
+Do not proceed to Phase 5-3D until the verification checklist in `DESIGNER_TODO.md` Section 2 passes.
 
-### Deliverables
+### Deliverables (all complete)
 
-- **Update `CameraRig.gd`** — Rewrite from fixed Hades 50° to third-person over-shoulder.
-  Key changes: player-rotatable horizontal/vertical, ~15° elevation default, dialogue tween mode.
-  Full spec: `design/CAMERA_AND_PERSPECTIVE.md`.
+- **`CameraRig.gd`** — Third-person over-shoulder, standard + freelook modes, scroll zoom (2m–10m),
+  arrow key fallbacks, dialogue tween, lock-on API. Fixed: scroll wheel check precedes MouseMotion
+  guard; freelook re-centers on both yaw and pitch after F2 release.
 
-- **Godot one-time setup** (see `DESIGNER_TODO.md` Section 1):
+- **`Player3D.gd`** — Sprint (Left Shift, endurance drain + lock), crouch (C toggle), mass-based
+  physics scaling (walk/sprint/accel/decel all scale via fractional exponent against REF_MASS=70 kg),
+  health + endurance with drain/regen rates, `status_text` property for HUD.
+
+- **`HUDOverlay.gd`** autoload — HP and endurance bars at bottom-center, status label (CROUCHING / EXHAUSTED).
+
+- **`JournalUI.gd`** (rewritten) + **`Journal.tscn`** (stripped to bare CanvasLayer) — 6-tab overlay:
+  Quests, Map, Items, Crafting, Codex, Skills. Tab key and click navigation. J/I/Escape to open/close.
+
+- **`PauseMenu.gd`**, **`DebugOverlay.gd`**, **`SaveNotification.gd`** — All resized and re-fonted for 1080p.
+
+- **`NPC.gd`** — Added `mass` export (default 72 kg) for future movement scaling.
+
+- **Godot one-time setup still needed** (see `DESIGNER_TODO.md` Section 1):
   - Install Zylann's Voxel Tools plugin
-  - Configure full Input Map (interact, camera, lock_on, attack, dodge, etc.)
   - Register BarkManager and WorldClock autoloads
   - Set up audio bus layout
 
 ### Verified when:
-- WASD moves Roland placeholder through the world
-- Right stick / Q+E rotate the camera freely
-- Camera pulls in automatically when near a wall (SpringArm3D collision)
+- WASD moves Roland placeholder (camera-relative), arrow keys rotate camera only
+- Mouse drag: H rotates Roland + camera; scroll zooms; F2 freelook re-centers both axes on release
+- Sprint drains endurance; locks at 0; EXHAUSTED label shows; re-enables after recovery threshold
+- C key toggles crouch; CROUCHING label shows; sprint blocked while crouching
+- HP + endurance bars visible bottom-center; values update live
+- J opens journal (6 tabs); Tab cycles; clicking headers works; I opens Items tab directly
+- Escape → pause menu; Resume closes it; cursor captured again
 - No errors in Output panel
 
 ---
