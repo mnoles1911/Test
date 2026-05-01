@@ -388,6 +388,26 @@ Organized by development phase. Build within each phase in the order listed.
 
 - [ ] **Vendor scripts per `design/ECONOMY_AND_VENDORS.md`**
 
+- [ ] **`WorldGenerator.gd`** ← build first; everything else stands on this
+  Extends `VoxelGeneratorScript`. Defines terrain from world coordinates using layered
+  `FastNoiseLite`. Must encode: Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500),
+  Aldwater valley channel, Ashfields (low, flat east of Spine), forced-flat zones at all
+  settlement world coordinates (see CLAUDE.md → World coordinate reference).
+  Reference: `design/3D_VOXEL_MIGRATION.md` → Milestone 5-3D, `design/ART_PIPELINE.md` → Tool 2
+
+- [ ] **`EntityRegistry.gd`** ← build second
+  Autoload singleton. Spatial dictionary keyed by chunk ID. Stores `EntityRecord` objects:
+  `{ entity_type, world_position, scene_path, saved_state }`. No scene nodes — data only.
+  Populated at startup from entity definition files (or hardcoded for early milestones).
+  Reference: architecture established in design session 2026-05-01.
+
+- [ ] **`EntityStreamer.gd`** ← build third, depends on EntityRegistry
+  Node in `World3D.tscn`. Each physics frame checks player world position against
+  `EntityRegistry`. Instantiates entity scene nodes when within load radius; saves state
+  and `queue_free()`s them when beyond unload radius. Load radius: ~150m for buildings/props,
+  ~80m for NPCs, ~60m for enemies.
+  Reference: architecture established in design session 2026-05-01.
+
 - [ ] **`RecipeData.gd` resource class**
   Defines the data shape for a single crafting recipe (station type, ingredients,
   output, required flags). Must exist before CraftingUI or ItemData population.
