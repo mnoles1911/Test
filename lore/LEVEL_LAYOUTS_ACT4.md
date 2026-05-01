@@ -32,8 +32,7 @@ the Obsidian Shard in hand. The Naergrim's deal is concluded. Whatever was owed 
 been paid. The Weeping Wood releases them into the eastern fringe of the Spine's foothills,
 and beyond that fringe: the Ashfields begin.
 
-The visual shift is immediate and significant. The Weeping Wood's deep greens and
-root-shadow give way to grey-brown dead soil. All colour drains toward ash. Ghost
+The visual shift is immediate and significant. The Weeping Wood's grey-dead trunks and bare permanent branches give way to grey-brown dead soil. All colour drains toward ash. Ghost
 stumps of ancient trees. Crumbled farmstead walls. The sky is the colour of old bone.
 
 Roland now holds all seven Crown pieces — the Obsidian Shard was the last. There is

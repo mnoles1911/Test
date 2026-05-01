@@ -88,7 +88,7 @@ further involvement.
 - `dagna_name_cleared = true` (optional side quest completion)
 - `copper_disc_acquired = true`
 - `drossvik_operation_confirmed = true` (sets up Game Two)
-- `darva_alliance = true` (Karaz-Dûn stabilized)
+- `darna_alliance = true` (Karaz-Dûn stabilized)
 
 ---
 
@@ -162,16 +162,17 @@ acting under their own authority. Serethi is furious. She honors the deal anyway
 
 ## Act III — Completion Conditions
 
-Both remaining pieces acquired:
+Act III piece acquired:
 - `copper_disc_acquired = true` (Karaz-Dûn)
-- `obsidian_shard_acquired = true` (Mor-Vethrin)
 
-**All seven pieces of the Sundered Crown are now in Roland's possession.**
+> **Note:** The obsidian shard (Mor-Vethrin) is acquired in **Act IV**, not Act III. The Mor-Vethrin scenes are described in this file for convenience (they follow Karaz-Dûn and precede the Ashfields), but the shard acquisition and the flag `obsidian_shard_acquired = true` are Act IV events. See `LEVEL_LAYOUTS_ACT4.md`.
+
+**All seven pieces are in Roland's possession at the end of Act IV** (after the Mor-Vethrin acquisition and before the Ashfields fighting retreat).
 
 Companions: Orion Farr (joined Act II) + Dagna Irontrack (joined Act III Underway).
 
 Information state:
-- `aelthurion_briefed = true` — Roland knows the Aeluvain requires a wielder of Bealoric's bloodline, and knows Aldric Vane's identity
+- `aelthurion_briefed = true` — Roland knows the Aeluvain requires a wielder of the Caelborn line (Aescryd-blooded), and knows Aldric Vane's identity
 - `aldric_vane_identity_known = true` — Roland knows what Aldric is and what it means
 - `drossvik_operation_confirmed = true` — the intelligence that drives Act II of Game Two
 
