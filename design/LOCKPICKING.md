@@ -3,7 +3,6 @@
 How Roland opens locked doors and containers.
 
 > Cross-reference: `design/ITEM_LIBRARY.md` for lockpick item stats, stack sizes, and vendor availability.
-> `design/INVESTIGATION_SYSTEM.md` for how examining a lock first gives free tier information.
 > `design/SKILLS_AND_PROGRESSION.md` for the Lockpicking sub-skill under the Exploration domain.
 > `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md` for lockpick storage (consumable, not quick-slotted).
 
@@ -11,13 +10,36 @@ How Roland opens locked doors and containers.
 
 ## Design Philosophy
 
-**The lock is a puzzle Roland is solving with his hands, not a menu he navigates.** Lockpicking in this game is a physical activity — tactile, tense, and readable. A player learns how locks work the way Roland does: by doing it badly at first, then better.
+**The lock is a puzzle Roland is solving with his hands, not a menu he navigates.** Lockpicking is tactile, tense, and readable. A player learns how locks work the way Roland does: by doing it badly at first, then better.
 
-**Inspired by KCD2, reimagined.** Kingdom Come: Deliverance 2 uses a cylindrical tumbler — the player physically rotates a pick inside a cylinder, feeling for where the lock yields through controller rumble and audio. That feeling of *exploration inside the lock* is the right tone: you are searching, not executing a sequence. This system keeps that feel but moves to a different geometry that works in 2D screen space and reads clearly at isometric camera angles.
+**Inspired by KCD2, reimagined.** Kingdom Come: Deliverance 2 uses a cylindrical tumbler — the player physically rotates a pick inside a cylinder, feeling for where the lock yields through controller rumble and audio. That feeling of *exploration inside the lock* is the right tone. This system keeps that feel but moves to a different geometry: a flat radial dial that reads clearly as a UI overlay at any camera angle.
 
-**One consumable per attempt, not per pin.** Tension pins are set one at a time, but a single lockpick lasts the whole attempt. You lose it only if the lock resets — either from your mistake or from the spring catching you. A skilled player uses far fewer picks than a careless one.
+**Skill determines forgiveness, not permission.** Roland can attempt any lock. A low-skilled Roland attempting a Very Hard lock will almost certainly break his pick — but the attempt is always available. The game should feel impossible early and achievable late, not locked behind a gate that says "you can't try."
 
-**No punishment for trying a lock you can't open.** Locks above Roland's current skill read as "too complex to pick cleanly" before he commits. He can still try — and he might get lucky or find a workaround — but he won't waste picks on an attempt the game has told him he cannot win.
+**One consumable per attempt, not per pin.** A single pick lasts the whole attempt. You lose it only if the lock resets — either from your mistake or the spring catching you. A skilled player uses far fewer picks than a careless one.
+
+**Time keeps moving.** The lockpicking overlay does not pause the game. Roland is exposed while picking. Enemies can approach. Companions can be heard shouting warnings. Picking quickly is a real consideration, not just an efficiency preference.
+
+---
+
+## Proximity Auto-Examine
+
+Roland automatically reads a lock when he passes within interaction range. No button press required — just walking close to a locked container or door triggers a silent assessment.
+
+What appears: a brief **difficulty label** in the interaction prompt area (the same place the "E — Open" label would be):
+
+| Internal tier | Player-facing label |
+|---|---|
+| Simple | **Easy** |
+| Standard | **Medium** |
+| Complex | **Hard** |
+| Masterwork | **Very Hard** |
+
+The label appears alongside the lock icon for 2 seconds, then fades. It reappears any time Roland re-enters range.
+
+**No journal entry, no voiceover, no animation.** This is ambient awareness — Roland glancing at a lock as he passes. The full examine (with Roland's flavor narration in the journal overlay) is available if the player presses E without a pick equipped.
+
+The difficulty label is honest at all skill levels. A Novice Roland still sees "Very Hard" — he's not blind to what he's dealing with. What changes with skill is whether he can do anything useful about it.
 
 ---
 
@@ -25,138 +47,138 @@ How Roland opens locked doors and containers.
 
 ### What It Looks Like
 
-When Roland kneels at a locked container or door, the screen shows a **circular lock face** rendered as a close-up diegetic view: a dark iron disc with a central keyhole, framed by Roland's fingers at the edge of the frame. This is not a UI overlay — it is a camera cut to a close-up view. The rest of the scene is visible as a blurred background.
+Pressing E at a locked object with picks in inventory opens the **Lockpicking overlay**. The game world remains visible and running in the background, blurred (a `BackBufferCopy` + shader desaturation and blur effect). NPCs move, enemies patrol, time advances. Only Roland is stationary.
 
-The **pick** is a fine metal probe that enters the lock face from the center. The player controls which direction it points by rotating it around the dial — a clock face mental model: twelve o'clock is straight up, three o'clock is right, etc. Input is A/D (keyboard) or left/right stick (controller).
+The overlay shows:
+- A **circular lock face** — a stylized iron disc with a keyhole at center, rendered as a clean UI element (not a 3D camera cut).
+- A **pick indicator** — a thin line extending from the center, pointing in the current pick direction. The player rotates it with A/D (keyboard) or left/right stick (controller). Clock-face mental model: twelve o'clock is up, three o'clock is right.
+- A **difficulty label** in the top corner of the overlay (Easy / Medium / Hard / Very Hard), so the player always knows what they're dealing with.
+- The number of **pins remaining** as a small row of icons at the bottom.
 
-Somewhere on that dial, one or more **tension pins** are seated. The player cannot see where they are. Finding them is the game.
-
----
+Somewhere on the dial, one or more **tension pins** are seated. The player cannot see where. Finding them is the game.
 
 ### How Pins Are Found — Resonance Feedback
 
-As the pick rotates, it passes across the lock face. When the tip approaches a pin, three feedback channels activate simultaneously:
+As the pick sweeps the dial, three feedback channels activate when approaching a pin:
 
-1. **Visual:** The pick tip develops a faint amber glow that intensifies as it gets closer to the pin position. At the pin's center, it pulses.
-2. **Audio:** A low metallic hum grows in pitch as the pick nears a pin. At center: a short ringing tone.
-3. **Haptic (controller):** Increasing rumble as pick approaches; a short firm pulse at the pin center.
+1. **Visual:** The pick indicator develops a faint amber glow that intensifies near a pin. At the pin center, it pulses.
+2. **Audio:** A low metallic hum rises in pitch as the pick approaches. At center: a short ringing tone.
+3. **Haptic (controller):** Increasing rumble approaching; a short firm pulse at center.
 
-The player **holds the pick still** at that position (stop rotating). A **set bar** appears below the lock face — a short fill animation. When it completes, the pin sets with an audible click.
+When the player finds the resonance peak, they **hold still**. A **set bar** fills below the lock face. When complete, the pin sets with a click and the pin icon at the bottom fills.
 
-Then the player sweeps to find the next pin.
+Then sweep to find the next pin.
 
-### What Makes It Feel Different from KCD2
+### False Resonances (Hard and Very Hard Only)
 
-KCD2's cylinder is 3D — the player physically rotates and lifts a pick inside a virtual barrel, fighting the lock's spring pressure while hunting for the sweet spot. The geometry is a cylinder; the motion is rotation plus vertical lift; the visual metaphor is a literal lock tumbler.
-
-This system's geometry is a **flat radial plane** — a clock face. The motion is single-axis rotation (sweep around the face). There is no vertical dimension, no lifting. The difficulty comes from:
-- **Zone width:** How wide the resonance zone is around each pin. Simple locks have wide zones (easy to feel). Complex locks have narrow zones (must be precise).
-- **Pin count:** How many pins must be set before the lock opens. Simple = 1, Standard = 2, Complex = 3.
-- **False resonances on Complex locks:** Complex locks have 1–2 positions on the dial that produce a weaker false resonance — the visual and audio triggers look similar but the set bar fills only halfway before stalling. The player must learn to distinguish the genuine tone from the false one. (The genuine resonance has a slightly warmer pitch and a clean pulse; the false one has a faintly hollow tone and an irregular pulse.)
+Hard and Very Hard locks have 1–2 false resonance positions on the dial. They look and sound similar to real pins — the glow appears, the hum starts — but the set bar fills only halfway before stalling. The real pin has a warmer, cleaner ring tone. The false one is slightly hollow with an irregular pulse. Players who are paying attention will learn the difference. Players who are rushing will occasionally waste a hold-timer on a false pin.
 
 ---
 
-## Lock Tiers
+## Lock Tiers and Skill Scaling
 
-| Tier | Pins | Resonance zone width | False resonances | Typical use |
+The four tiers define how wide the resonance zone is around each pin, how many pins there are, and how many false resonances exist. Roland's skill does not change these — but it changes how much time and forgiveness he gets while working.
+
+| Tier | Player label | Pins | Resonance zone | False resonances |
 |---|---|---|---|---|
-| **Simple** | 1 | Wide (~40° arc) | None | Common doors, basic containers, old padlocks |
-| **Standard** | 2 | Medium (~25° arc each) | None | Locked rooms, merchant strongboxes |
-| **Complex** | 3 | Narrow (~15° arc each) | 1–2 false resonances | Archive restricted doors, noble quarters, Brotherhood caches |
-| **Masterwork** | 3 | Very narrow (~8° arc) | 2 false resonances | Key story locks (Brotherhood vault, Ashen Hand archive) |
+| Simple | **Easy** | 1 | Wide (~40° arc) | None |
+| Standard | **Medium** | 2 | Medium (~25° arc each) | None |
+| Complex | **Hard** | 3 | Narrow (~15° arc each) | 1 false |
+| Masterwork | **Very Hard** | 3 | Very narrow (~8° arc) | 2 false |
 
-**Masterwork locks** require the **Trained lockpicking sub-skill** to attempt cleanly. Roland can examine a Masterwork lock at Novice skill and will narrate: *"This is finer work than I've handled. I'd need a steadier hand."* He can still attempt it, but his resonance feedback is degraded — the hum barely registers, requiring guesswork. Players who attempt this will use several picks.
+### Skill Tier Effects on Forgiveness
+
+Roland's Lockpicking sub-skill does not widen resonance zones or remove false pins. What it changes is the **hold timer** (how long he can stay at a position before the spring snaps the pick) and the **sweep speed penalty** (how aggressively back-pressure punishes fast sweeping).
+
+| Skill tier | Hold timer | Sweep leeway | Very Hard viable? |
+|---|---|---|---|
+| **Novice** (default) | 2.5s | Tight — sweeping near set pins snaps fast | Almost never. Manageable with Fine picks and many attempts. |
+| **Trained** | 3.5s | Moderate — some margin for deliberate sweeps | Doable with patience and Fine picks. |
+| **Expert** | 5.0s | Generous — back-pressure is slow to catch Roland | Comfortably achievable. The lock is still demanding, not a formality. |
+
+**The intended arc:** A Novice Roland looking at a Very Hard lock should feel the same thing the player feels — "I can't do this yet." An Expert Roland approaching the same lock should feel capable. The difficulty label doesn't change. The lock doesn't change. Roland does.
+
+Fine Lockpicks add a flat +1.5s to the hold timer at any skill tier — they are a supplement to skill, not a replacement.
 
 ---
 
 ## The Pick Snap — When You Fail
 
-A pick can snap in two situations:
+A pick snaps in two situations:
 
-1. **Holding too long without setting.** Each pin position has a **hold timer** — about 3 seconds at Standard skill. If Roland holds the pick at a pin position and the set bar does not complete in time (because he is slightly off-center, or it is a false resonance), the spring pressure increases and the pick snaps.
-2. **Moving while the spring is loaded.** Once the first pin is set on a 2- or 3-pin lock, the lock's internal spring applies back-pressure. If Roland sweeps too fast through the danger zone (the half of the dial farthest from the set pins), the pick catches and snaps. On Simple locks there is no back-pressure. On Complex locks the danger zone is larger and the snap happens faster.
+1. **Hold timer expires.** Roland is at a position and the set bar does not complete in time. The spring pressure catches the pick and it breaks. This happens if he is off-center on the resonance zone, if he is on a false resonance, or if he simply waited too long.
 
-**On snap:** Short sharp audio cue. The pick breaks in Roland's hand (brief animation). The lock resets — all set pins return to unsent. A new pick is consumed from inventory on the next attempt.
+2. **Sweeping too fast through the back-pressure zone.** Once the first pin is set, the lock's internal spring applies back-pressure in the half of the dial farthest from the set pins. Sweeping quickly through that zone snaps the pick. Easy locks have no back-pressure. Very Hard locks have significant back-pressure and a faster snap on fast sweeps. Higher skill tier gives more time before the snap triggers.
 
-If Roland has no more picks, he cannot try again. He will need to find picks in the world or buy them from a vendor.
+**On snap:** Sharp audio cue. The pick breaks (brief particle effect on the overlay). The lock resets — all set pins return to zero. The consumed pick is removed from inventory. The player can immediately start another attempt if picks remain.
+
+If Roland runs out of picks, the overlay closes. The difficulty label remains visible when he re-enters range, with a secondary line: "No picks."
 
 ---
 
-## Examining a Lock First
+## Full Examine (Optional)
 
-Before attempting to pick a lock, Roland can **examine** it (press E at close range without a pick equipped, or hold E for the interaction menu). This is a free Type 1 investigation — no skill check, no cost.
+Proximity auto-examine gives the difficulty label. If the player wants more information, pressing E without picks equipped (or through the interaction hold-menu) triggers a **full examine**: Roland narrates a brief observation that appears in the journal bark overlay.
 
-Roland narrates what he observes. The journal entry he makes (shown briefly in the upper-left journal overlay) gives:
-- Lock tier (Simple / Standard / Complex / Masterwork)
-- Number of pins required
-- A flavor note: *"Old iron, good condition. The cylinder turns smooth — someone oils this."*
+Examples:
+- Easy: *"Cheap iron. I could open this with a bent nail."*
+- Medium: *"Standard work. Two pins, maybe. Someone put thought into this."*
+- Hard: *"Three pins at least. Whoever installed this didn't want it opened."*
+- Very Hard: *"Masterwork cylinder. Fine tolerances. I'd need steady hands and some luck."*
 
-This information is also useful for deciding whether to attempt the lock at all. Roland noting "Complex" tells the player to bring extra picks.
-
-Examining does not consume a pick. The close-up camera cut does not occur during examination — Roland just crouches and looks.
+Full examine does not consume a pick. It does not surface anything mechanically beyond what the label already communicates — it is flavor and player agency.
 
 ---
 
 ## Lockpick Items
 
-Lockpicks are consumable items stored in inventory. They are not quick-slotted and cannot be used mid-combat.
+Lockpicks are consumable items stored in inventory, not quick-slotted.
 
-| Item | Weight | Carries | Notes |
+| Item | Weight | Stack | Notes |
 |---|---|---|---|
-| **Lockpick** | 0.05 kg each | Up to 20 in stack | Standard. Available from General Merchants, Brotherhood caches, found in the world. |
-| **Fine Lockpick** | 0.05 kg each | Up to 10 in stack | Slower snap timer (+1.5s hold tolerance) and slightly wider resonance feedback. Useful on Complex locks. Sold only by Brotherhood contacts and specialty vendors at FRIENDLY+. |
-
-A Fine Lockpick does not make Masterwork locks easier — it extends forgiveness on hold timing, not resonance zone width.
+| **Lockpick** | 0.05 kg | Up to 20 | Standard. General Merchants, Brotherhood caches, found in the world. |
+| **Fine Lockpick** | 0.05 kg | Up to 10 | +1.5s hold timer. Useful on Hard and Very Hard. Sold only by Brotherhood contacts and specialty vendors at FRIENDLY+. |
 
 ---
 
 ## Lockpicking Skill — Exploration Domain
 
-Roland's lockpicking improves through the **Exploration domain** in the skills system. The sub-skill is **Lockpicking**.
+Roland's Lockpicking sub-skill is in the **Exploration domain**. Three tiers: Novice (default), Trained, Expert.
 
-| Sub-skill tier | Effect |
-|---|---|
-| **Novice** (default) | Can cleanly attempt Simple and Standard locks. Masterwork degraded feedback. |
-| **Trained** | Can cleanly attempt all tiers including Masterwork. Resonance zones feel 15% wider (not actually wider — Roland's hands are steadier, so the same zone seems easier). |
+**How it advances:** Successfully picking a lock contributes XP. Only the first successful pick of a given lock counts — the game tracks opened lock IDs. Picking the same Easy lock repeatedly does not advance Roland's skill. Attempting locks at or above the current tier's challenge ceiling contributes more XP.
 
-Lockpicking sub-skill increases by using it. Every successful lock opened at the current tier's challenge level has a chance to advance the sub-skill. Roland will not improve by picking the same Simple lock repeatedly — the game tracks unique lock IDs, and only the first successful open contributes to advancement.
-
-**Trainer:** A Brotherhood contact (unnamed, available in Caer Brannoch at NEUTRAL+) can train Roland to Trained tier in exchange for a small favor. This skips the in-world advancement and is the only shortcut.
+**Trainer shortcut:** A Brotherhood contact in Caer Brannoch (available at NEUTRAL+) can train Roland directly to Trained tier in exchange for a favor. This is the only non-in-world path to advancement.
 
 ---
 
-## Stealth and Detection During Lockpicking
+## Time, Detection, and Interruption
 
-Lockpicking takes time. Roland is stationary and focused. He is detectable.
+**Time does not pause during lockpicking.** The blurred world behind the overlay is still running. NPCs walk their schedules. Enemies patrol.
 
-- **Enemy detection:** While picking, Roland's movement radius is 0. His vision range for detection is unchanged, but he cannot react (dodge, sprint) while the lock UI is active.
-- **Interruption:** If an enemy enters detection range during picking, the lock UI closes. Roland stands up (0.5s animation). The pick is **not consumed** on interrupt — only on snap.
-- **Companion behavior:** Companions hold position near Roland during lockpicking unless ordered to Engage. Orion will murmur a warning bark if he spots someone approaching.
+- **Enemy detection:** Roland is stationary while picking. He cannot dodge or sprint while the overlay is open. If an enemy would enter detection range, the normal detection timer applies — the lock does not protect him.
+- **Interruption:** If Roland takes damage or an enemy enters his immediate area (triggers a combat state), the overlay closes. Roland is placed back in his idle stance. **The pick is not consumed on interrupt** — only on snap.
+- **Companion behavior:** Companions hold position near Roland during lockpicking. Orion will bark a warning if he spots someone approaching. The player can hear these barks through the overlay audio.
 
-Skilled players will clear the area before picking, or station Orion as a lookout using the Hold Position order.
+Skilled play involves clearing the area first, or using Orion on Hold Position as a perimeter watch.
 
 ---
 
 ## Keys
 
-Most named locks have a key somewhere in the world. Keys are Quest Items — they weigh nothing, they cannot be dropped, and they are found through investigation, NPC dialogue, or looting.
+Most named locks have a key somewhere in the world. Keys are Quest Items — weightless, cannot be dropped, found through investigation or looting.
 
-**Using a key is always faster and silent.** Players who find keys bypass lockpicking entirely. Finding a key is the reward for thorough exploration; lockpicking is the fallback for players who didn't find it or who are in a hurry.
+**A key is always faster and silent.** Finding a key is the reward for exploration; lockpicking is the fallback. Some locks have no key — they can only be picked.
 
-Some locks have no key in the world — they can only be picked.
-
-A key can only be used once and is removed from Roland's inventory after use (it stays on the keyring visually but is marked used in the journal).
+A key is consumed on use and marked spent in the journal (the physical key remains visible on Roland's keyring but is flagged used).
 
 ---
 
 ## Locked Containers vs. Locked Doors
 
-The same mechanic applies to both. The difference is context and consequence:
+- **Containers:** Picking is private. Consequence is only what's inside.
+- **Doors:** Opening a locked door may take Roland somewhere he is not supposed to be. If an NPC finds the door open or catches Roland inside, it carries disposition consequences. The picking itself is private — only the trespass matters.
 
-- **Containers** (chests, strongboxes, lockboxes): Picking is always private. No NPC can see into a chest. Consequence of picking is only what's inside.
-- **Doors** (locked rooms, restricted areas): Opening a locked door may bring Roland into a space he is not supposed to be in. If an NPC later finds the door open or catches Roland inside, it has disposition consequences. The picking itself is private — only the trespass matters.
-
-**Quest-critical locks** have a small brass-colored marker on their icon in Roland's journal. These locks are always openable, regardless of Roland's skill tier — if the story requires Roland to get through, he gets through, even if the feedback is degraded and it costs him several picks.
+**Quest-critical locks** are always pickable regardless of skill tier. A Novice Roland will struggle — degraded feedback, likely several snapped picks — but the story does not gate him out.
 
 ---
 
@@ -169,49 +191,57 @@ class_name LockData
 extends Resource
 
 @export var lock_id: String
-@export var tier: int                  # 0=Simple, 1=Standard, 2=Complex, 3=Masterwork
+@export var tier: int                  # 0=Easy/Simple, 1=Medium/Standard, 2=Hard/Complex, 3=Very Hard/Masterwork
 @export var pin_count: int             # 1–3
-@export var key_item_id: String        # "" if no key exists in the world
+@export var key_item_id: String        # "" if no key exists
 @export var quest_critical: bool = false
-@export var examine_note: String       # Roland's voiced examination line
+@export var examine_bark: String       # Roland's full-examine narration line
 ```
 
-### Interaction Entry Point
+### Proximity Auto-Examine (on LockObject3D)
 
 ```gdscript
-# On E-press at a locked door or container:
-func _on_interact():
-    if Input.is_action_just_pressed("interact"):
-        if player_has_key(lock_data.key_item_id):
-            use_key()
-        elif lock_data.quest_critical or player_has_lockpicks():
-            LockpickingUI.open(lock_data)
-        else:
-            show_interaction_prompt("No key. No picks.")
+# Fires when player enters interaction range — no input required
+func _on_player_entered_range() -> void:
+    var label: String = ["Easy", "Medium", "Hard", "Very Hard"][lock_data.tier]
+    InteractionPrompt.show(label, "lock_icon", 2.0)
 ```
 
-### Lock Picking UI
+### Hold Timer by Skill Tier
 
 ```gdscript
-# LockpickingUI.gd — controls the radial dial and pin-set logic
-
-const SNAP_HOLD_TIME_BASE: float = 3.0   # seconds before snap if stationary and off-center
-const SNAP_HOLD_FINE: float = 1.5        # bonus seconds for Fine Lockpick
-const RESONANCE_ZONE_DEGREES: Dictionary = {
-    0: 40.0,   # Simple
-    1: 25.0,   # Standard
-    2: 15.0,   # Complex
-    3: 8.0     # Masterwork
+const HOLD_TIMER_BY_SKILL: Dictionary = {
+    0: 2.5,   # Novice
+    1: 3.5,   # Trained
+    2: 5.0    # Expert
 }
+const FINE_PICK_BONUS: float = 1.5
 
-var pins_set: int = 0
-var current_angle: float = 0.0
-var pick_type: String = "standard"   # or "fine"
+func get_hold_timer() -> float:
+    var skill_tier: int = SkillManager.get_subskill_tier("lockpicking")
+    var base: float = HOLD_TIMER_BY_SKILL[skill_tier]
+    var bonus: float = FINE_PICK_BONUS if pick_type == "fine" else 0.0
+    return base + bonus
+```
 
-func _process(delta: float) -> void:
-    var rotate_input: float = Input.get_axis("lock_rotate_left", "lock_rotate_right")
-    current_angle = fmod(current_angle + rotate_input * ROTATE_SPEED * delta, 360.0)
-    _check_resonance(current_angle)
+### Overlay Open (not a camera cut)
+
+```gdscript
+# LockpickingUI.gd — a CanvasLayer that renders over the blurred world
+func open(lock: LockData) -> void:
+    lock_data = lock
+    active_pins = _generate_pins(lock.tier, lock.pin_count)
+    pins_set = 0
+    current_angle = 0.0
+    WorldBlur.enable()          # BackBufferCopy + blur shader on the world viewport
+    show()
+    # World continues running — no get_tree().paused = true
+```
+
+### Resonance Check
+
+```gdscript
+const RESONANCE_ZONE_DEGREES: Dictionary = {0: 40.0, 1: 25.0, 2: 15.0, 3: 8.0}
 
 func _check_resonance(angle: float) -> void:
     for pin in active_pins:
@@ -220,34 +250,30 @@ func _check_resonance(angle: float) -> void:
         if dist < zone:
             var intensity: float = 1.0 - (dist / zone)
             _show_resonance(intensity, pin.is_false)
-
-func _on_pin_set(pin: PinData) -> void:
-    pins_set += 1
-    if pins_set >= lock_data.pin_count:
-        _unlock()
 ```
 
-### Lockpick Consumption
+### Pick Snap and Consumption
 
 ```gdscript
 func _on_pick_snap() -> void:
-    InventoryManager.remove_item("lockpick_standard" if pick_type == "standard" else "lockpick_fine", 1)
+    InventoryManager.remove_item("lockpick_fine" if pick_type == "fine" else "lockpick_standard", 1)
     pins_set = 0
-    active_pins = _regenerate_pin_positions()   # pins randomize on each attempt
-    LockpickingUI.play_snap_animation()
-    if not player_has_lockpicks():
-        LockpickingUI.close()
-        show_interaction_prompt("Out of picks.")
+    active_pins = _generate_pins(lock_data.tier, lock_data.pin_count)  # randomize positions
+    _play_snap_effect()
+    if not _player_has_picks():
+        close()
+        InteractionPrompt.show("No picks.", "lock_icon", 2.0)
 ```
 
 ### Skill Advancement
 
 ```gdscript
-# After a successful pick:
 func _on_unlock() -> void:
+    WorldBlur.disable()
+    close()
     var lock_id: String = lock_data.lock_id
-    if lock_data.tier >= SkillManager.get_subskill_tier("lockpicking") \
-       and not GameState.get_flag("picked_" + lock_id):
+    if not GameState.get_flag("picked_" + lock_id):
         GameState.set_flag("picked_" + lock_id, "true")
-        SkillManager.add_xp("lockpicking", 40)
+        var xp: int = [20, 40, 70, 120][lock_data.tier]  # more XP for harder locks
+        SkillManager.add_xp("lockpicking", xp)
 ```
