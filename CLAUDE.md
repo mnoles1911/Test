@@ -106,7 +106,7 @@ Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D, 
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
-- **Voxel scale**: 8 voxels per meter (fine-grain — NOT Minecraft 1-meter cubes)
+- **Voxel scale**: 6–8 voxels per meter (confirmed from concept art validation — NOT Minecraft 1-meter cubes)
 - **Terrain**: VoxelMesherTransvoxel (smooth organic terrain) + VoxelMesherCubes (buildings)
 - **Props/buildings**: MagicaVoxel → export .glb → Godot MeshInstance3D
 - **Characters**: billboard sprites (Aseprite 32×48 px, Sprite3D) for Act I; transition to low-poly Blender models for Act II+
@@ -132,13 +132,14 @@ These files go stale as lore and game design evolve. Review and update them when
 | lore/CHARACTERS_COMPANIONS.md | Companion arcs, abilities, or backstory details change |
 | lore/CHARACTERS_NPCS.md | New NPCs added or villain details revised |
 | lore/WORLD_GEOGRAPHY.md | New locations, terrain, or settlements established |
-| lore/CITY_DESCRIPTIONS.md | City details expanded or corrected |
 | lore/MAP_GENERATION_GUIDE.md + sibling map files | New settlements, terrain, or geographic features added |
 | design/SYSTEMS_DESIGN.md | Companion roster changes, faction triggers updated, new game systems added |
 | design/ART_DIRECTION.md | New locations added to the game, palette or shader decisions finalized |
+| design/ITEM_LIBRARY.md | New craftable items, recipes, or input materials added to any section |
+| design/SKILLS_AND_PROGRESSION.md | New perks, sub-skills, or trainer NPCs added; XP values tuned |
 | design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock for a new character, manifest schema changes |
 | dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
-| CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems built |
+| CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
 
@@ -146,7 +147,6 @@ These files go stale as lore and game design evolve. Review and update them when
 All world-building canon lives in /lore. Start at /lore/INDEX.md for a directory map. Key entry points:
 - lore/WORLD.md — three ages, magic, religion, peoples overview
 - lore/WORLD_GEOGRAPHY.md — terrain, scale, rivers, coastlines
-- lore/CITY_DESCRIPTIONS.md — physical descriptions of major settlements
 - lore/MAP_GENERATION_GUIDE.md — Tolkien-style map prompt and layout rules
 - lore/CHARACTERS_PROTAGONIST.md, CHARACTERS_COMPANIONS.md, CHARACTERS_NPCS.md, BACKSTORY_*.md
 - lore/GAME1_PART1.md / GAME1_PART2.md — full Game One plot (GAME2_* and GAME3_* files also present for trilogy planning)
@@ -162,13 +162,33 @@ Always check INDEX.md before adding new lore files to avoid duplication.
 
 ## Design reference
 Game implementation docs live in /design. When lore and design conflict, lore wins.
-- design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems
-- design/ART_DIRECTION.md — palette, pixel resolution, location visual identity, shaders, animation priority
+
+**World and systems:**
+- design/SYSTEMS_DESIGN.md — combat, dialogue, exploration, faction, save systems (overview)
+- design/COMBAT_DESIGN_3D.md — real-time 3D combat: click-duration power system, dodge, parry, lock-on
+- design/SKILLS_AND_PROGRESSION.md — learn-by-doing skill domains, sub-skills, perk trees, Charisma, Lethe's Draught
+- design/INVENTORY_AND_EQUIPMENT_SYSTEM.md — equipment slots, weight, condition, smithing tiers (mechanics)
+- design/ITEM_LIBRARY.md — master recipe reference: 40 potions, 40 smithable items, 15 meals, 30 assembly items
+- design/CRAFTING.md — crafting station mechanics, intent-based quality, Wanderer's Seal
+- design/REST_AND_CAMP.md — rest mechanics, camp setup, sleep effects, time advancement
+- design/INVESTIGATION_SYSTEM.md — examine system, investigation points, Roland's deduction mechanic
+
+**Dialogue and NPCs:**
+- design/CONVERSATION_SYSTEM.md — four-tier conversation system (barks → illustrated keyframes), TTS pipeline
+- design/NPC_SYSTEM.md — NPC tier system, disposition, WorldClock, schedules
+- design/BARK_LIBRARY.md — bark trigger IDs, line counts, cooldown rules
+- design/NPC_DIALOGUE_LIBRARY.md — conversation structure for Tier 2 and 3 NPCs
+- design/JOURNAL_UI.md — five-tab journal UI: Quests, Map, Items, Crafting, Codex
+
+**Art and pipeline:**
+- design/ART_DIRECTION.md — palette, location visual identity, architecture by region, shaders
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 - design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender, billboard sprites
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
-- design/COMBAT_DESIGN_3D.md — real-time 3D combat spec: click-duration power system, dodge, parry, lock-on
+
+**Planning and ops:**
 - design/MILESTONE_ROADMAP.md — Act I scene breakdown and ordered deliverables for Phases 4+
+- design/ENDGAME_CHOICES.md — Game Three endgame and trilogy-spanning choice consequences
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/TTS_PIPELINE.md — AI-assisted draft → ElevenLabs render → Dialogic handoff (bulk vs craft pipelines, filename + manifest contract)
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
