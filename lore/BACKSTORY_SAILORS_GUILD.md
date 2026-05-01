@@ -96,7 +96,7 @@ The divide is not yet a schism. It is, however, the largest internal political q
 
 **Game One:** Orion joins the party in Act II. The Copper Isles voyage in Act III is the central Guild quest — endorsement is earned, the copper wire is acquired, the Ashen Hand agent is exposed. The Guild's internal politics are introduced but not resolved.
 
-**Game Two:** The Guild provides ferry and supply support for the Khorumzad relief and the eastern coastal logistics. Eilwen, who is a Guild scholar, is encountered through this route. The Caer Brannoch steward becomes a recurring contact. The active faction begins to gain ground in Council debates.
+**Game Two:** The Guild provides ferry and supply support for the Khorumzad relief and the eastern coastal logistics. Eilwen, who is Queen of Caer Brannoch and a former naval commander, is encountered through this route. The Caer Brannoch steward becomes a recurring contact. The active faction begins to gain ground in Council debates.
 
 **Game Three:** The Guild organizes the crossing. The active faction wins the Council vote — by what margin and at what cost depends on Game Two outcomes. Three Guild ships carry the Alliance vanguard across the Shroud Sea. The crossing protocol developed by Maeva and Eilwen (see `HISTORY_SHROUD_SEA.md`) is the technical foundation. Orion serves as the navigator on the lead ship.
 

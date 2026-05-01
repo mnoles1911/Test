@@ -90,11 +90,11 @@ She is not a naturally warm person. She is a reliable one, which is better. When
 
 **Age:** 41
 **Origin:** Coldstoke, a village in the Vosskaran frontier
-**Role:** Last of Mordvar's bloodline; the only person who can wield the Aeluvain against him
+**Role:** Last of the Caelborn line — the Aescryd bloodline the Aeluvain requires; the only person who can wield it against Mordvar
 
 **Appearance:** Broad-shouldered, scarred hands from the forge, grey starting at his temples. Looks like what he is: a man who has spent twenty years hammering metal and would rather be doing that.
 
-**Background:** Born to a family that had hidden its lineage for three generations. He does not know he is Mordvar's descendant when Game Three begins. He knows only that he has headaches near old sites, that metal responds to his touch in ways it shouldn't, and that two people have tried to kill him in the last year for reasons no one has explained.
+**Background:** Born to a family that had hidden its lineage for three generations. He does not know he is of the Caelborn line — the Aescryd bloodline the Aeluvain is keyed to — when Game Three begins. He knows only that he has headaches near old sites, that metal responds to his touch in ways it shouldn't, and that two people have tried to kill him in the last year for reasons no one has explained.
 
 **Character:** Aldric has built a complete and satisfying life in Coldstoke. He has a reputation, a craft, relationships, a role in the community. He does not want to be part of a trilogy. He becomes part of one anyway, because the alternative is watching everything he has built be destroyed.
 

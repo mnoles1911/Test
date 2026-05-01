@@ -38,7 +38,7 @@
 | Bronze ring | Despot Yaromir, Vosskara | Conversation; personal diplomacy |
 | Copper wire | Sailor's Guild Archive, Copper Isles | Sailor's Guild voyage endorsement |
 | Silver clasp | Second Glade, Aelorin Greatwood | Aelthurion; requires access to Lirien-Thal |
-| Copper disc | Thrarin's treasury, Karaz-Dûn | Via Bromrin and regent Darva |
+| Copper disc | Thrarin's treasury, Karaz-Dûn | Via Bromrin and regent Darna Deepdelver |
 | Obsidian shard | Mor-Vethrin, Naergrim vault | Serethi's bargain (withdrawal for non-interference) |
 
 ---
@@ -54,7 +54,7 @@
 | Khorumzad | Automatic | Moderate losses |
 | Vosskara | Tribute War de-escalated | Mostly intact |
 | Golden Lance | Vossant's contract honored | Light (tactics-focused) |
-| Conclave mages | Automatic (41 loyal) | 18 of 41 |
+| Conclave mages | Automatic (41 loyal) | 23 of 41 |
 
 ---
 
@@ -123,7 +123,7 @@ The seven metals of the Sundered Crown (Bealoric's own making):
 
 | | The Return | The Hold | The Fracture |
 |---|---|---|---|
-| **What Aldric does** | Carries Mordvar's hollow temporarily, then releases it into the vault | Binds it to himself permanently | Refuses; the hollow disperses uncontrolled |
+| **What Aldric does** | Carries Mordvar's hollow temporarily, then releases it into the vault | Holds it within himself permanently | Refuses; the hollow disperses uncontrolled |
 | **Mordvar's fate** | Dissolved — the fear completed and resolved | Contained within Aldric's bloodline | Scattered; neither ended nor contained |
 | **Aldric's life after** | Returns to Coldstoke; builds; declines honors | Stays near Drûn-Khazad; the anchor | Survives; the cost falls on the world |
 | **Long-term consequence** | The vault sealed; world free of Mordvar's reforming | The bloodline carries the weight forward | Mordvar's remnants seed future conflict |

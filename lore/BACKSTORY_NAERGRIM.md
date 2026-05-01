@@ -50,6 +50,16 @@ These are not popular positions. The third especially: most Naergrim do not have
 
 Serethi has the information. She has had two hundred years to gather it. She is waiting for someone from outside who can do something with it.
 
+## Serethi and the Obsidian Shard — Game One
+
+In Game One, Serethi holds the obsidian shard — the seventh piece of the Sundered Crown, kept in the Naergrim vault since the Grand Alliance two thousand years ago. She knows what it is. She has always known. The Ashen Hand has been negotiating with her for over a year and she has neither refused nor agreed. The shard is her primary leverage.
+
+Her offer to Roland: she will provide the shard in exchange for his acknowledgment that when Mordvar is defeated, the Naergrim will not be included in any punitive settlement. Not loyalty. Not alliance. Withdrawal. She is not asking Roland to forgive the Naergrim's history with the Ash Throne — she is asking him to allow them to step away from it. This is Game One's final moral decision.
+
+She has calculated that Roland will accept. She is watching the calculation play out on his face when she offers it.
+
+---
+
 ## The Party's Path to Serethi
 
 Reaching Serethi requires Sorin's contacts and a specific approach that avoids triggering the Wound's surveillance — Mordvar's dispersed presence monitors approaches to Naergrim territory through the oath-network, which means the party cannot simply arrive. They need an introduction that comes from inside the dissident faction, which means Sorin's years of relationship-building are the only viable entry point.

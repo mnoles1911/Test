@@ -4,7 +4,7 @@
 
 ## Premise
 
-Aldric Vane is the last of Mordvar's bloodline and the only person who can wield the Aeluvain against him. He is a blacksmith in Coldstoke, a frontier village in Vosskara. He does not know any of this. He has already survived one assassination attempt and does not know why.
+Aldric Vane is the last of the Caelborn line — the Aescryd bloodline the Aeluvain is keyed to — and the only person who can wield it against Mordvar. He is a blacksmith in Coldstoke, a frontier village in Vosskara. He does not know any of this. He has already survived one assassination attempt and does not know why.
 
 The Gulmrak Horde under Uglakh is marching. The Ashen Hand's remnant forces — leaderless after the Ashlord's death at Khorumzad, but structurally intact — are hunting Aldric specifically. They know what the bloodline means. The race to reach Aldric before the Hand's agents do is Game Three's opening act.
 

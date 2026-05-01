@@ -86,7 +86,7 @@ The world has time — a century, perhaps less. What the next generation does wi
 
 The world does not transform. The age does not end. The Third Age continues — the Long Twilight that the Aelorin loremasters named it, which is both the age of humanity's greatest expansion and its most existential threat. Men are still numerous, cities still grow, trade still flows.
 
-The Aelorin still dwindle. The dwarves grow somewhat less inward, with Bromrin's slow recovery serving as an argument that the Ashen Hand's manipulation is beatable. Thrarin's daughter Darva manages the transition to Karaz-Dûn's new reality with more grace than her father managed before it. Hagrim Bloodbeard lives four more years and names one of the contesting cousin-clans as his heir, to the other cousin-clan's outrage and everyone else's relief.
+The Aelorin still dwindle. The dwarves grow somewhat less inward, with Bromrin's slow recovery serving as an argument that the Ashen Hand's manipulation is beatable. Darna Deepdelver (Thrarin's daughter) manages the transition to Karaz-Dûn's new reality with more grace than her father managed before it. Hagrim Bloodbeard lives four more years and names one of the contesting cousin-clans as his heir, to the other cousin-clan's outrage and everyone else's relief.
 
 The world is not saved in the sense of being made invulnerable. It is saved in the sense of having been given more time, by people who chose to spend themselves buying it.
 

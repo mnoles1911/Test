@@ -48,7 +48,7 @@ The seven pieces of the Sundered Crown (per their function in Hadran's anvil):
 | **The Ring** | Despot Yaromir, Vosskara — a thumb ring worn by the Despot, given to him by his grandmother | Personal diplomacy with Yaromir |
 | **The Copper Wire** | Sailor's Guild Archive, Copper Isles — catalogued as a Second Age artifact of unknown function | Guild endorsement required; Orion's introduction; Shroud charts side quest |
 | **The Clasp** | Second Glade, Aelorin Greatwood — left by an Aelorin who completed the Aelthiren 300 years ago; no one has examined it | Aelthurion's cooperation; critical intelligence on the Aeluvain and Aldric Vane delivered here |
-| **The Disc** | Thrarin's treasury, Karaz-Dûn — collected by King Thrarin as a curiosity a century ago | Bromrin → regent Darva → treasury retrieval; Dagna joins here |
+| **The Disc** | Thrarin's treasury, Karaz-Dûn — collected by King Thrarin as a curiosity a century ago | Bromrin → regent Darna Deepdelver → treasury retrieval; Dagna joins here |
 | **The Obsidian Shard** | Mor-Vethrin, Naergrim vault — held by Serethi the Twice-Dead as a bargaining chip | Serethi's deal: Naergrim withdrawal in exchange for the shard; Game 1's final moral decision |
 
 **Note on Hadran's holdings:** Hadran holds none of the seven pieces at Game 1's start. He is waiting on all seven via Hand deliveries. Roland acquires each piece through the quests above; by Act IV's end, Roland holds all seven.
@@ -119,7 +119,7 @@ The heroes do not know at Game 1's start that killing Mordvar requires both the 
 ## 8. What Roland Believes at the End of Game 1
 
 - Mordvar is real, reforming, and not yet anchored in a body.
-- The Ashen Hand is operationally broken but not extinct — the intelligence network (the Hollow Court arm) is intact; only the military/magical core was shattered.
+- The Ashen Hand is operationally broken but not extinct — the intelligence network (the Ashen Hand's civilian cells) is intact; only the military/magical core was shattered.
 - All seven Crown pieces are in Roland's custody.
 - The Aeluvain is a sword, intact, in the Vault of Aen-Vael below Khorumzad.
 - Aldric Vane exists, is the last Caelborn bloodline, and is in Coldstoke in Vosskara.

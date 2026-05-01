@@ -85,7 +85,7 @@ The Ashlord launches a coordinated strike in the Ashfields — Roland's exit rou
 
 The climax is a fighting retreat through the dead grey Ashfields toward the western frontier. The Brightwatch fighters who sheltered Roland earlier hold the rear. Some do not survive.
 
-The Ashlord engages Roland's party directly in the final confrontation. He is formidable — centuries old, partially hollowed, amplified by Mordvar's growing presence. But Roland's party has been battle-hardened across three continents, and Aelthurion's intelligence about the Crown's nature gives Roland an advantage the Ashlord did not anticipate: Roland knows that scattered Crown pieces still carry fragments of Mordvar's power, and proximity to all seven simultaneously creates interference the Ashlord's connection to Mordvar cannot fully compensate for.
+The Ashlord engages Roland's party directly in the final confrontation. He is formidable — centuries old, partially hollowed, amplified by Mordvar's growing presence. But Roland's party has been battle-hardened across Mira's kingdoms, and Aelthurion's intelligence about the Crown's nature gives Roland an advantage the Ashlord did not anticipate: Roland knows that scattered Crown pieces still carry fragments of Mordvar's power, and proximity to all seven simultaneously creates interference the Ashlord's connection to Mordvar cannot fully compensate for.
 
 The Ashlord is gravely injured. He retreats — not routed, but wounded and recognizing that the engagement has gone wrong in ways he needs to account for. He escapes east, back toward the Ash Tower.
 

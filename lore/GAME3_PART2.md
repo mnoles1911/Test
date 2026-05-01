@@ -103,7 +103,7 @@ The world does not transform. The volcano does not go quiet. The sky does not cl
 
 **THE HOLD (Bittersweet Ending):**
 
-Aldric takes Mordvar's hollow as in the Return — but at the moment of decision, he makes a different choice. He does not send it to the vault. He binds it to himself. Mordvar's hollow becomes something Aldric carries, consciously, permanently: a contained void that cannot escape, anchored by Aldric's selfhood.
+Aldric takes Mordvar's hollow as in the Return — but at the moment of decision, he makes a different choice. He does not send it to the vault. He holds it within himself. Mordvar's hollow becomes something Aldric carries, consciously, permanently: a contained void that cannot escape, anchored by Aldric's selfhood.
 
 The cost is permanent. Aldric will live with the awareness of Mordvar's absence inside himself for the rest of his life. It will not be comfortable. It will be survivable.
 
