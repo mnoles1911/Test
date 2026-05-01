@@ -46,6 +46,23 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
   Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
 
+- [ ] **Configure camera and lock-on input actions** (required for third-person camera)
+  Project Settings → Input Map → Add:
+  - `camera_left` (Q), `camera_right` (E)
+  - `camera_up` / `camera_down` (right stick vertical or mouse Y)
+  - `lock_on` (middle mouse button or right stick click)
+  Required by the third-person `CameraRig.gd`. Without these the camera cannot rotate
+  and lock-on cannot engage. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
+
+- [ ] **Register `EntityRegistry` as an Autoload**
+  Project Settings → Autoload → path: `res://scripts/EntityRegistry.gd` → node name: `EntityRegistry`.
+  Required before `EntityStreamer` can load/unload world entities. Build after `WorldGenerator.gd`.
+
+- [ ] **Register `WorldGenerator` in `World3D.tscn`**
+  Add `VoxelLodTerrain` node to `World3D.tscn` → assign `WorldGenerator.gd` as its generator script.
+  Configure LOD count (6–8 levels), LOD0 radius (~60m), `VoxelMesherTransvoxel` as mesher.
+  Reference: `design/ART_PIPELINE.md` → Tool 2, `design/3D_VOXEL_MIGRATION.md`
+
 - [ ] **Set up the audio bus layout per `design/AUDIO_DESIGN.md`**
   Bottom panel → Audio → add buses: `Music`, `SFX` (with children `Combat`, `Ambient`),
   `Voice` (with children `NPC`, `Roland`), `UI`. Save as `default_bus_layout.tres`.
@@ -60,8 +77,8 @@ Scene building and node configuration that has to be done in the editor.
 
 - [ ] **Verify Milestone 4-3D in Godot**
   Open `scenes/World3D.tscn` and run it. Confirm:
-  - WASD / arrow keys move the green box on the flat floor
-  - Camera follows at a fixed ~50° angle and does not tilt or rotate
+  - WASD / arrow keys move the placeholder character on the flat floor
+  - Camera follows in third-person over-shoulder; right stick / Q/E rotates it
   - Campfire glows orange and flickers
   - No clipping through the floor
   This is the baseline 3D scene test. Nothing built on top of it is trustworthy
@@ -130,11 +147,13 @@ Assets that require external tools (MagicaVoxel, Aseprite, Blender, etc.)
   Used to build dungeon and cave environments modularly.
   Reference: `design/ART_PIPELINE.md`, `design/ART_DIRECTION.md`
 
-- [ ] **Roland walk cycle sprite sheet (Aseprite)**
-  32×48 px, 8 directions, 4 frames each = 32 total frames.
-  Export as sprite sheet → import as `Sprite3D` in Godot (billboard mode).
-  Used for Act I characters; low-poly Blender models come in Act II+.
-  Reference: `design/ART_PIPELINE.md`
+- [ ] **Roland low-poly Blender model**
+  200–400 triangles, flat-shaded. Proportions: chunky low-poly, readable silhouette.
+  No texture — vertex colors only, using the game palette (`design/ART_DIRECTION.md`).
+  Rig with ~25 bones. Export as `.glb` to `assets/models/roland.glb`.
+  First animation: idle (weight shift). Second: walk cycle. Third: run.
+  These three clips unblock all scene movement and camera testing.
+  Reference: `design/ART_PIPELINE.md` → Tool 3
 
 ---
 
@@ -230,6 +249,26 @@ These need both code and scene work. Listed here as designer-visible milestones.
 
 Scripts and scenes that are now fully specified in design docs and ready to implement.
 Each item links to its spec. Build in dependency order.
+
+- [ ] **`WorldGenerator.gd`** ← build first; everything else stands on this
+  Extends `VoxelGeneratorScript`. Defines terrain from world coordinates using layered
+  `FastNoiseLite`. Must encode: Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500),
+  Aldwater valley channel, Ashfields (low, flat east of Spine), forced-flat zones at all
+  settlement world coordinates (see CLAUDE.md → World coordinate reference).
+  Reference: `design/3D_VOXEL_MIGRATION.md` → Milestone 5-3D, `design/ART_PIPELINE.md` → Tool 2
+
+- [ ] **`EntityRegistry.gd`** ← build second
+  Autoload singleton. Spatial dictionary keyed by chunk ID. Stores `EntityRecord` objects:
+  `{ entity_type, world_position, scene_path, saved_state }`. No scene nodes — data only.
+  Populated at startup from entity definition files (or hardcoded for early milestones).
+  Reference: architecture established in design session 2026-05-01.
+
+- [ ] **`EntityStreamer.gd`** ← build third, depends on EntityRegistry
+  Node in `World3D.tscn`. Each physics frame checks player world position against
+  `EntityRegistry`. Instantiates entity scene nodes when within load radius; saves state
+  and `queue_free()`s them when beyond unload radius. Load radius: ~150m for buildings/props,
+  ~80m for NPCs, ~60m for enemies.
+  Reference: architecture established in design session 2026-05-01.
 
 - [ ] **`RecipeData.gd` resource class**
   Defines the data shape for a single crafting recipe (station type, ingredients,
@@ -402,9 +441,11 @@ Open questions that need an answer before their dependent systems can be built.
 Run these after any session where you change scenes or scripts:
 
 - [ ] World3D.tscn runs without errors in the Output panel
-- [ ] Player moves on the 3D floor, camera follows correctly
+- [ ] Player moves on the terrain, camera follows in third-person over-shoulder
+- [ ] Camera rotates with Q/E (or right stick) — does not lock to one angle
 - [ ] Press E near a dialogue trigger → Dialogic opens
 - [ ] Campfire flickers (OmniLight3D energy varies)
 - [ ] No "Autoload not found" warnings (means a required autoload isn't registered)
+- [ ] (Post Milestone 5-3D) VoxelLodTerrain loads terrain chunks without errors; no "chunk generation" errors in Output
 - [ ] No "Bus not found" errors when audio plays (means the audio bus layout from Section 1 is missing)
 - [ ] No "InputMap action not found" errors (means an action from Section 1 isn't configured)

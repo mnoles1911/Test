@@ -22,7 +22,7 @@ The pivot from 2D pixel art to 3D voxel was confirmed. All 2D scene files (World
 - A campfire rendered as a `PointLight3D` with `CampfireFlicker3D.gd`, casting real volumetric glow across cave voxels
 - Cave walls built from hand-assembled MagicaVoxel blocks, each face catching light differently
 - Roland represented as a low-poly 3D Blender model — small against the environment, not filling the screen
-- Camera at ~50° elevation, fixed angle (Hades / Diablo 3 camera) — reveals depth without going first-person
+- Camera in third-person over-shoulder, ~15° above horizontal — reveals the horizon and distant geography; player-rotatable
 - `WorldEnvironment` with SSAO, fog, and a dark ambient — the world is not safely lit
 
 **The "Skyrim feel"** is not about first-person camera. It's about:
@@ -33,7 +33,7 @@ The pivot from 2D pixel art to 3D voxel was confirmed. All 2D scene files (World
 
 **Visual references:**
 - Veloren — world scale and voxel tone
-- Hades — camera angle and follow behavior
+- The Witcher 3 / Dark Souls — third-person over-shoulder camera, combat readability
 - Zelda: Link's Awakening (2019) — low-poly character charm in 3D world
 - Kingdom Come: Deliverance — grounded medieval architecture tone (half-timbered buildings, mud, weight)
 
