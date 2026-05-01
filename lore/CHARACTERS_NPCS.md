@@ -4,7 +4,7 @@
 
 ## Villains
 
-### Mordvar — The Hollow King
+### Mordvar (the Enduring)
 
 Formerly **Bealoric**, High King of the Aescryd in the Second Age. A man who was afraid of death and chose a ritual that eliminated the problem by eliminating the self. He became hollow — not evil in the motivating sense, but absent. A void that was once a person, acting with the cold persistence of water through stone because there is nothing left inside to want anything different.
 
@@ -62,9 +62,9 @@ Two thousand years of incremental hollowing — not enough to fully erase them, 
 
 Not a monster — a young man who believes genuinely that the current order is failing and that Mordvar's world would be more just than Othric's. His handler has spent six years carefully constructing this belief.
 
-**What makes him dangerous:** He is not wrong that the current order fails people. The Hollow Court recruits from genuine grievance. Aedric's grievances are real. His solution is wrong in ways he cannot see because the person who should have shown him alternative solutions has been carefully kept away.
+**What makes him dangerous:** He is not wrong that the current order fails people. The Ashen Hand recruits from genuine grievance. Aedric's grievances are real. His solution is wrong in ways he cannot see because the person who should have shown him alternative solutions has been carefully kept away.
 
-**Arc:** If Roland exposes the Hollow Court operation in Game One, Aedric is confronted with evidence that his beliefs were constructed rather than discovered. What he does with this is one of Game One's significant optional outcomes. He can become an ally. He cannot become a friend.
+**Arc:** If Roland exposes the Ashen Hand operation in Game One, Aedric is confronted with evidence that his beliefs were constructed rather than discovered. What he does with this is one of Game One's significant optional outcomes. He can become an ally. He cannot become a friend.
 
 ---
 
@@ -74,16 +74,16 @@ Not a monster — a young man who believes genuinely that the current order is f
 
 Age 31 at Game One start. Recurring contact and ally across all three games. Not a party companion — a person with no official affiliation, extensive contacts, and no reason to be watched.
 
-**Background:** Discovered at seventeen that his family suppressed a lineage claim connecting them to the Caelborn Compact — a Second Age treaty granting passage rights in Aelorin territory. His younger sister Maren was killed three years before Game One by agents connected to the Hollow Court, who had found the same documents and considered the Caelborn line a threat. He has been investigating quietly and systematically since.
+**Background:** Discovered at seventeen that his family suppressed a lineage claim connecting them to the Caelborn Compact — a Second Age treaty granting passage rights in Aelorin territory. His younger sister Maren was killed three years before Game One by agents connected to the Ashen Hand, who had found the same documents and considered the Caelborn line a threat. He has been investigating quietly and systematically since.
 
 **Skills:** Document analysis (he can identify falsification by studying primary sources), administrative law across three kingdoms, intelligence contacts, and the specific habit of holding information carefully until the moment it becomes useful.
 
 **Role across the trilogy:**
-- *Game One:* Crosses paths with Roland's group when his Hollow Court investigation overlaps with theirs. Shares intelligence, takes what he needs, departs before the Spine sequence. Leaves a contact address.
+- *Game One:* Crosses paths with Roland's group when his Ashen Hand investigation overlaps with theirs. Shares intelligence, takes what he needs, departs before the Spine sequence. Leaves a contact address.
 - *Game Two:* His Caelborn Compact — the ancient treaty — becomes the key to Aelorin-held records the party cannot access otherwise. He does not know it is useful until Aelthurion tells him so.
 - *Game Three:* Operates from Aldenholt as an intelligence relay during the Alliance buildup. Does not cross to Thal.
 
-**Arc:** The Hollow Court figure responsible for Maren's death dies in Game Two's main plot — not by Edran's hand, as a consequence of larger events. The resolution is complete and out of his control, which is its own reckoning for a man who has spent years trying to control exactly this.
+**Arc:** The Ashen Hand figure responsible for Maren's death dies in Game Two's main plot — not by Edran's hand, as a consequence of larger events. The resolution is complete and out of his control, which is its own reckoning for a man who has spent years trying to control exactly this.
 
 ---
 

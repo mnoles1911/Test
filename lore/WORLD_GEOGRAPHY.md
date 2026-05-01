@@ -47,7 +47,7 @@ A wide shallow-water shelf extending south from Mira's southern coast. The Coppe
 Mira's eastern coast where the Ashfields meet the sea. Grey pebble beaches, no natural harbors, a permanent low ash-haze. The sea here is technically the Shroud Sea's western edge — already strange, already wrong. No fishing villages. The Brotherhood posts one observation station here, staffed by volunteers who serve six-month rotations and are never quite the same afterward.
 
 **The Thal Coast** (western Thal)
-Where the Brotherhood's previous crossing landed. Rocky, grey-black volcanic shoreline. No natural bay — the approach requires anchoring offshore. The Aescryd ruins found forty years ago are here, half-buried in volcanic aggregate on a flat terrace above the tide line.
+Where the Sailor's Guild's previous crossing landed. Rocky, grey-black volcanic shoreline. No natural bay — the approach requires anchoring offshore. The Aescryd ruins found forty years ago are here, half-buried in volcanic aggregate on a flat terrace above the tide line.
 
 ---
 

@@ -49,7 +49,7 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 ## 4. Orion's Errand
 
-**Questgiver:** Orion himself, encountered at a waystation near the Shroud Brotherhood's eastern observation post.
+**Questgiver:** Orion himself, encountered at a waystation near the Sailor's Guild's eastern observation post.
 
 **Summary:** Orion has been asked by the Brotherhood to deliver a sealed document to a contact in the next city — a routine errand. The document's seal has been broken and resealed imperfectly, which he noticed but wasn't supposed to. He wants someone not connected to the Brotherhood to tell him if he's being used without his knowledge.
 

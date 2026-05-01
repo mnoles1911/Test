@@ -51,7 +51,7 @@ Inference from context:
 **Status:** Sketched. The Brotherhood voyage from Caer Brannoch ends here; the Copper Wire piece is in the Brotherhood Archive.
 
 In Game One:
-- The voyage from Caer Brannoch includes a storm sequence and the discovery of a Hollow Court infiltrator in the Brotherhood safe-house island
+- The voyage from Caer Brannoch includes a storm sequence and the discovery of an Ashen Hand infiltrator in the Sailor's Guild safe-house island
 - The Brotherhood Archive at the Copper Isles is where the Copper Wire is held ("catalogued as an artifact of unknown function")
 - Released without difficulty once Roland has Brotherhood endorsement
 
@@ -67,7 +67,7 @@ In Game One:
 ## Open Questions / Gaps
 
 - Is the Copper Isles a single island or an archipelago with multiple playable sub-islands?
-- The Brotherhood safe-house island: is this the same as the main Copper Isles, or a separate small island in the chain? The Hollow Court infiltrator is discovered here.
+- The Sailor's Guild safe-house island: is this the same as the main Copper Isles, or a separate small island in the chain? The Ashen Hand infiltrator is discovered here.
 - Game Two relevance: noted in the task brief as "relevant in Game Two" — what is the Copper Isles' role there?
 - The Copper Isles Port settlement: size relative to Sirathiel? Larger (it's a trade hub) or smaller (it's an island)?
 - The "right credentials" needed to trade at Sirathiel: is there a Copper Isles merchants guild that holds these credentials?

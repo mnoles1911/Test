@@ -42,11 +42,11 @@
 
 **Age:** 22 at Game Two start; joins midway through Game One
 **Origin:** Caer Brannoch, sailor's family
-**Role:** Scout, Brotherhood-endorsed sailor, Tidewarden auxiliary
+**Role:** Scout, Sailor's Guild-endorsed sailor, Tidewarden auxiliary
 
 **Appearance:** Short, compact, sun-dark, constantly moving. A habit of assessing exits in any room he enters, which Corvus finds annoying and Roland finds useful.
 
-**Background:** Signed onto a Brotherhood crew at sixteen. Made his qualifying solo sail at nineteen. Was on the voyage that first tested the Shroud Sea approach patterns — the voyage that confirmed the forty-year window theory. He is one of three sailors alive who has seen the edge of the storm-wall and returned.
+**Background:** Signed onto a Sailor's Guild crew at sixteen. Made his qualifying solo sail at nineteen. Was on the voyage that first tested the Shroud Sea approach patterns — the voyage that confirmed the forty-year window theory. He is one of three sailors alive who has seen the edge of the storm-wall and returned.
 
 **Character:** Orion is the party's youngest member and the most practically competent in a specific domain. He has been sailing in dangerous waters since he was old enough to hold a tiller; he is comfortable with risk in a way that Roland's caution sometimes conflicts with. He is not reckless — he calculates — but he calculates faster and with less visible anguish than Roland does.
 
@@ -79,7 +79,7 @@ She is not a naturally warm person. She is a reliable one, which is better. When
 **Arc:** Dagna has been trying to do her job correctly for three years and being prevented from it. The trilogy is the story of that prevention being removed and the consequences of that removal mattering. Her ending is not dramatic — it is the restoration of the ordinary good work she was always doing.
 
 **Relationship with party:**
-- **Roland:** Mutual recognition between people who are competent in their domain and have been asked to operate outside it. She does not fully trust him until the Binding Site, when he keeps his word about Barak's testimony.
+- **Roland:** Mutual recognition between people who are competent in their domain and have been asked to operate outside it. She does not fully trust him until the Ashfields retreat, when he keeps his word about Barak's testimony.
 - **Corvus:** Friction early; genuine respect by Game Two. They argue about methodology and are both right.
 - **Seren:** Dagna finds Aelorin patience baffling but not contemptible. She has spent years watching geological time and understands, abstractly, what it is to think in centuries. She cannot live that way. She respects that Seren can.
 - **Orion:** They are both specialists who are frequently the second-most-interesting person in the room. They understand each other's position without discussing it.

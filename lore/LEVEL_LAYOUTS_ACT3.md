@@ -96,7 +96,7 @@ further involvement.
 
 > **Note:** The Mor-Vethrin visit is now Act IV, not Act III. It was relocated here
 > from the old Act III structure when the lore was updated. The Mor-Vethrin arc follows
-> the Karaz-Dûn arc and precedes the Binding Site. See `LEVEL_LAYOUTS_ACT4.md` for the
+> the Karaz-Dûn arc and precedes the Ashfields fighting retreat. See `LEVEL_LAYOUTS_ACT4.md` for the
 > Act IV scene sequence. This section describes the Mor-Vethrin scenes themselves.
 
 **Scenes (2–3):** Weeping Wood approach → The bone-arch gate → Serethi's
@@ -138,7 +138,7 @@ The player decides.
 quietly before or after the Serethi audience. Their leader — called the Pale
 Defection as a joke and has adopted it — wants genuine alliance, not withdrawal.
 If Roland acknowledges this faction and creates a quiet channel, three Naergrim
-fighters join Roland at the Binding Site and the Ashfields fighting retreat,
+fighters join Roland at the Ashfields fighting retreat,
 acting under their own authority. Serethi is furious. He honors the deal anyway.
 
 **Design notes:**
@@ -175,4 +175,4 @@ Information state:
 - `aldric_vane_identity_known = true` — Roland knows what Aldric is and what it means
 - `drossvik_operation_confirmed = true` — the intelligence that drives Act II of Game Two
 
-**The Crown must be reassembled at the Binding Site. Act IV begins.**
+**Act IV begins — Roland moves to exit through the Ashfields with all seven Crown pieces.**

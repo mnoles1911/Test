@@ -81,7 +81,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 |---|---|---|
 | [locations/REGION_GREATWOOD.md](locations/REGION_GREATWOOD.md) | The Greatwood | Northern Mira forest. Act II traversal. Aelorin territory. |
 | [locations/REGION_SPINE.md](locations/REGION_SPINE.md) | The Spine of the World | Mountain range. Three dwarven holds. Act III backdrop. |
-| [locations/REGION_ASHFIELDS.md](locations/REGION_ASHFIELDS.md) | The Ashfields | Eastern ash wastes. Act IV: Binding Site and fighting retreat. Vosskaran frontier. |
+| [locations/REGION_ASHFIELDS.md](locations/REGION_ASHFIELDS.md) | The Ashfields | Eastern ash wastes. Act IV: Ashfields Retreat and fighting retreat. Vosskaran frontier. |
 | [locations/REGION_WEEPING_WOOD.md](locations/REGION_WEEPING_WOOD.md) | The Weeping Wood | Dead forest, northeastern Mira. Naergrim territory. Mor-Vethrin approach. Act IV. |
 | [locations/REGION_UNDERWAY.md](locations/REGION_UNDERWAY.md) | The Underway | Dwarven tunnel network beneath the Spine. Act III travel. Dagna joins here. |
 | [locations/REGION_SHROUD_SEA.md](locations/REGION_SHROUD_SEA.md) | The Shroud Sea | Continental crossing. Key to Game Two. |
@@ -97,7 +97,6 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | File | Location | Notes |
 |---|---|---|
 | [locations/COPPER_ISLES.md](locations/COPPER_ISLES.md) | Copper Isles | Island archipelago. Act II (Brotherhood voyage). Greater relevance in Game Two. |
-| [locations/BINDING_SITE.md](locations/BINDING_SITE.md) | The Binding Site | Act IV ritual location. In the Ashfields, eastern Mira. Crown reassembly; not at or near Drûn-Khazad. |
 
 ---
 
@@ -131,9 +130,9 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [BACKSTORY_SEREN.md](BACKSTORY_SEREN.md) | Seren's half-Aelorin origin, mother Lirien's Aelthiren, Vethri-Glade attack, 80 years with the Dawnbringers |
 | [BACKSTORY_DAGNA.md](BACKSTORY_DAGNA.md) | Dagna Irontrack's father's wrongful blame for the mine explosion; her Dragon-Watcher career and falsified reports |
 | [BACKSTORY_ALDRIC.md](BACKSTORY_ALDRIC.md) | Aldric Vane (blacksmith, Game Three): hidden Mordvar bloodline, life in Coldstoke, the assassination attempts |
-| [BACKSTORY_EDRAN.md](BACKSTORY_EDRAN.md) | Edran Vane (recurring ally, not companion): Caelborn lineage, Maren's death, Hollow Court investigation, Compact used in Game Two |
+| [BACKSTORY_EDRAN.md](BACKSTORY_EDRAN.md) | Edran Vane (recurring ally, not companion): Caelborn lineage, Maren's death, Ashen Hand investigation, Compact used in Game Two |
 | [BACKSTORY_MORDVAR.md](BACKSTORY_MORDVAR.md) | Bealoric's 30-year reign, Sael's death, the hollowing ritual, Aescryd's decline, the Aescstól Crown |
-| [BACKSTORY_VAEROTH.md](BACKSTORY_VAEROTH.md) | Vaeroth's Conclave career, legitimate grievances against Grand Mage Elthara, slide into Hollow Court service |
+| [BACKSTORY_VAEROTH.md](BACKSTORY_VAEROTH.md) | Vaeroth's Conclave career, legitimate grievances against Grand Mage Elthara, slide into Ashen Hand service |
 | [BACKSTORY_CAERITH.md](BACKSTORY_CAERITH.md) | Vigil-Keeper history, Grand Alliance role, 2,000-year corruption, the mask, the death expression |
 
 ---
@@ -149,7 +148,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [BACKSTORY_IRON_CHALICE.md](BACKSTORY_IRON_CHALICE.md) | The Red Siege founding, doctrine of endurance, Brightwatch fortress, Solgrade debt crisis, Roland's expulsion |
 | [BACKSTORY_SAILORS_BROTHERHOOD.md](BACKSTORY_SAILORS_BROTHERHOOD.md) | Origin as drowned-sailor mutual aid, three absolute principles, Council of Stewards, safe-house network, Copper Isles Archive, internal divide on the crossing |
 | [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | **Index** — Iron Chalice, Tidewarden, Frost Brotherhood, Golden Lance — overview entries with deep-history pointers where they exist |
-| [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | **Index** — Smiths' Confederation, Sailors' Brotherhood, Surgeons' School, Conclave, Loremaster's Archive |
+| [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | **Index** — Smiths' Confederation, Sailor's Guild, Surgeons' School, Conclave, Loremaster's Archive |
 | [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | **Index** — Ashen Hand, Hollow Court, Crimson Ledger, Pale Supper, Nameless Council, Brightwatch, Salt Road, Dawnbringers |
 
 ---
@@ -182,7 +181,7 @@ between scenes. Used as the build spec when constructing Godot scenes.
 | [LEVEL_LAYOUTS_ACT1.md](LEVEL_LAYOUTS_ACT1.md) | Act I — Aldenholt: 5 scenes fully detailed (Night Chase, Archive, Henrietta's Quarters, Iron Chalice Chapel, Restricted Section) |
 | [LEVEL_LAYOUTS_ACT2.md](LEVEL_LAYOUTS_ACT2.md) | Act II — The Four Kingdoms: Vosskara, Caer Brannoch, Aelorin Greatwood, Solgrade — sketched, not yet fully detailed |
 | [LEVEL_LAYOUTS_ACT3.md](LEVEL_LAYOUTS_ACT3.md) | Act III — The Elder Peoples: Karaz-Dûn/Underway (Dagna joins), Mor-Vethrin (Serethi) — sketched |
-| [LEVEL_LAYOUTS_ACT4.md](LEVEL_LAYOUTS_ACT4.md) | Act IV — The Binding: Ashfields approach, Binding Site ritual, Fighting Retreat — sketched |
+| [LEVEL_LAYOUTS_ACT4.md](LEVEL_LAYOUTS_ACT4.md) | Act IV — The Ashfields: Ashfields approach, Ashlord counterstroke, Fighting Retreat — sketched |
 
 ---
 

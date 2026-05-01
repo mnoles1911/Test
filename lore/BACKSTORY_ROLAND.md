@@ -37,7 +37,7 @@ Roland trained there for four years. He was not the most gifted recruit — a bo
 
 Not in the aggressive, grinding way of someone trying to prove something. He simply treated failure as information. He was knocked down and got up to figure out why he'd been knocked down. He lost a tactical exercise and spent the evening working through the decision that had lost it. He had no ego invested in being right — only in becoming correct.
 
-He made two close friends: a boy from the coast named Pell, who wanted to see everything and eventually went east to the Shroud Brotherhood's cartography division, and a girl named Isra, who laughed too loudly and became one of the Chalice's best field captains before dying in a contract in the middle kingdoms when Roland was twenty-six. He did not find out about Isra until a year after it happened.
+He made two close friends: a boy from the coast named Pell, who wanted to see everything and eventually went east to the Sailor's Guild's cartography division, and a girl named Isra, who laughed too loudly and became one of the Chalice's best field captains before dying in a contract in the middle kingdoms when Roland was twenty-six. He did not find out about Isra until a year after it happened.
 
 At twenty-one he completed training and took the Iron Chalice's oath. Dame Calla Thresh, by coincidence, administered the ceremony. She did not remember him from Crestfall. He did not mention it.
 

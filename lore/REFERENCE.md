@@ -92,7 +92,7 @@ The seven metals of the Grand Alliance forging:
 - [MAIN] The Obsidian Shard (Mor-Vethrin)
 - [MAIN] The Ashfields Fighting Retreat (crown assembled, Ashlord repelled)
 - [SIDE] The Archive's Locked Room
-- [SIDE] The Brotherhood's Shroud Charts
+- [SIDE] The Sailor's Guild's Shroud Charts
 - [SIDE] The Tribute Papers
 - [OPTIONAL] The Vossant Verdict
 - [OPTIONAL] The Dissenting Voice (Naergrim)
