@@ -11,7 +11,7 @@
 
 Not built — grown. The city occupies the silverwood canopy, its platforms and walkways formed from living wood shaped over centuries by Aelorin who completed the Aelthiren transition. The trees themselves are ancestors: elder Aelorin who chose the forest-path of transformation and whose consciousness persists in the wood. Walking on the platforms is walking on the body of someone's grandmother.
 
-From below, the city is invisible — the canopy closes it. From within, it is open to sky through gaps in the canopy and filtered in perpetual silver-green light. No torches: the silverwood has a faint bioluminescence at night.
+From below, the city is invisible — the canopy closes it. From within, it is open to sky through gaps in the canopy and filtered in perpetual silver-green light. No torches: the silverwood glows at night — a dramatic blue-white bioluminescence bright enough to cast shadows and illuminate the platforms clearly. It is the dominant light source after dark. It is not comforting. It is alien and beautiful.
 
 Map note: Tree-and-star symbol. No walls.
 
@@ -30,7 +30,7 @@ Key dimensions:
 - [ ] Aelthurion's audience hall: the city's most significant interior — GAP (is it a platform? a carved interior space in a trunk? needs design decision)
 - [x] Camera arm length — Greatwood canopy walk: arm 14, elevation 38°, optional horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md)
 
-The bioluminescence at night is a lighting effect, not a geometry concern — use OmniLight3D nodes distributed through the tree trunks and platform edges, low-energy blue-white.
+The bioluminescence at night is a lighting effect, not a geometry concern — use OmniLight3D nodes distributed through the tree trunks and platform edges, `color: Color(0.7, 0.85, 1.0)`, energy 1.5–2.0. This is the dominant light source at night, not an accent. The scene at night should read primarily in blue-white with deep forest shadow between lit areas.
 
 The primary design challenge: vertical gameplay on platforms at 40+ meters elevation. Need to define how the player accesses the canopy level from the forest floor.
 
@@ -38,7 +38,7 @@ The primary design challenge: vertical gameplay on platforms at 40+ meters eleva
 
 ## Art Direction Notes
 
-Silver-green filtered light by day. Faint bioluminescent blue-white at night — no torches. The silverwood canopy is the defining visual identity: pale silver-grey bark, silver leaves, platforms of living wood.
+Silver-green filtered light by day. Dramatic bioluminescent blue-white at night — no torches. The silverwood glow is bright enough to cast visible shadows and read clearly at the game's camera distance. It is the only light source after dark. The silverwood canopy is the defining visual identity: pale silver-grey bark, silver leaves, platforms of living wood.
 
 Faces in the bark: visible on close approach. The ancestor-Aelorin consciousness in the wood is suggested visually, not stated. This is a detail for the player to discover, not a tutorial prompt.
 

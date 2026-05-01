@@ -12,7 +12,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 |---|---|
 | [WORLD.md](WORLD.md) | Geography (Mira and Thal), the Three Ages, religion, magic system |
 | [WORLD_GEOGRAPHY.md](WORLD_GEOGRAPHY.md) | Terrain, scale, rivers, coastlines, roads, settlements table — map reference |
-| [CITY_DESCRIPTIONS.md](CITY_DESCRIPTIONS.md) | **Superseded** — physical descriptions of major settlements (kept for reference; individual location files now in `locations/`) |
+| ~~CITY_DESCRIPTIONS.md~~ | **Deleted** — fully consolidated into individual location files in `locations/`. No unique content remained. |
 | [PEOPLES.md](PEOPLES.md) | Human kingdoms, Aelorin, dwarven holds, Naergrim — culture, society, customs |
 | [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, factions, quest index, timeline, three endings |
 
@@ -22,7 +22,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 
 Individual location files live in `lore/locations/`. Each file includes: physical description (from CITY_DESCRIPTIONS.md or stubs), 3D scale reference (at 8 voxels per meter), art direction notes, level layout status, scene connections, and open questions.
 
-`CITY_DESCRIPTIONS.md` is superseded by these files — kept for reference only.
+`CITY_DESCRIPTIONS.md` has been deleted — all content is now in the individual location files below.
 
 ### Human Cities
 
