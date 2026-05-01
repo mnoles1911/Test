@@ -12,7 +12,7 @@
 | **Orion Farr** | Companion; Brotherhood sailor | Game One |
 | **Dagna Irontrack** | Companion; Dragon-Watcher, volcanic expert | Game One (Act III) |
 | **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
-| **Mordvar** | Antagonist; ancient hollow king | All games |
+| **Mordvar** | Antagonist; ancient unmade king | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
 | **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
 | **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |

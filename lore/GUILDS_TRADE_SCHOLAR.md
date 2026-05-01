@@ -45,10 +45,10 @@ Based in Caer Brannoch. Chapters in every port city on both coasts.
 **Track record:** Thirty-one members expelled in Guild history. Twenty-nine for breaking the no-crown-service rule. The other two for reasons the Guild will not discuss.
 
 **The Shroud Sea Charts:**
-- The Brotherhood has charted Shroud Sea storm patterns for two hundred years
+- The Guild has charted Shroud Sea storm patterns for two hundred years
 - Believes a navigable window opens every forty years
 - The next window opens **nine years** from Game One's start (revised from earlier estimates of eleven)
-- Brotherhood leadership is divided on what to do with this knowledge
+- Guild leadership is divided on what to do with this knowledge
 
 **[SIDE QUEST] The Guild's Copper Isles Archive:** Access requires becoming a Guild-endorsed sailor, which requires completing one voyage with a Guild crew. Payoff: the Shroud window information and a Guild contact who can move people and intelligence across faction lines throughout the trilogy.
 

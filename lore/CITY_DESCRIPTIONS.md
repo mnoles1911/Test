@@ -93,7 +93,7 @@ Map note: Star symbol with amphitheater curve. Deep Greatwood position.
 
 The only Aelorin city that admits humans without special permission or escort. Built from pale coastal stone with mother-of-pearl inlay work on significant structures — the effect in sunlight is a faint iridescence. The city is smaller than Lirien-Thal or Aelorien but more architecturally visible from outside: actual buildings rather than canopy dwellings, actual streets.
 
-The harbor is small but functional. Aelorin traders and the occasional human merchant with the right credentials use it. The Shroud Brotherhood has made contact here on three occasions.
+The harbor is small but functional. Aelorin traders and the occasional human merchant with the right credentials use it. The Sailor's Guild has made contact here on three occasions.
 
 Map note: Small coastal settlement, star symbol, pale tone.
 
