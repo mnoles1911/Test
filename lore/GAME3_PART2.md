@@ -6,7 +6,7 @@
 
 ### [MAIN QUEST] The Eastern Crossing
 
-The Alliance force sails east from the Copper Isles — across the Shroud Sea's navigable edge, using the Brotherhood's storm-window intelligence and Orion's firsthand knowledge of the approach. The window is not comfortable. It is survivable.
+The Alliance force sails east from the Copper Isles — across the Shroud Sea's navigable edge, using the Sailor's Guild's storm-window intelligence and Orion's firsthand knowledge of the approach. The window is not comfortable. It is survivable.
 
 Orion navigates the lead ship. He has been here before, at nineteen, on the voyage that confirmed the window existed. He is thirty-one now and knows things he did not know then. He does not talk during the crossing. After they are through, he says: *That's the second time. There won't be a third.*
 
@@ -16,13 +16,13 @@ The fleet makes landfall on Thal's western shore and begins the march east towar
 
 ### [MAIN QUEST] The Approach to the Caldera
 
-The Gulmrak Horde and the Goblin Warrens defend the approaches in depth. This is not a pitched battle on open ground — it is three days of grinding advance through terrain the orcs know and the Alliance does not.
+The Gulmrak Horde and the Ashen Hand's remnant forces defend the approaches in depth. This is not a pitched battle on open ground — it is three days of grinding advance through terrain the defenders know and the Alliance does not.
 
 **Day One:** Hagrim's Kazaad-Brak soldiers lead the van. They have been fighting in adverse terrain against numerically superior forces their entire lives. They take the worst casualties and ask for no relief.
 
-**Day Two:** The Alliance reaches the ash-steppe below the caldera. The Conclave's mages engage the Ashen Hand. Vaeroth is present — diminished but not broken. Corvus, who has been building toward something since the Vault, confronts him directly.
+**Day Two:** The Alliance reaches the ash-steppe below the caldera. The Conclave's mages engage the Ashen Hand's senior mages. Corvus, who has been building toward something since the Vault descent, confronts the Hand's last senior mage — the only surviving member of the original operational core — directly.
 
-**Corvus vs. Vaeroth:** The fight is not a duel — it is one person who has spent years building precise control against one person who traded precision for amplification. Corvus wins because Vaeroth's deterioration has advanced further than Vaeroth acknowledged. Vaeroth's body cannot sustain what he asks of it. He knew this was coming. He chose to fight anyway because there was nothing else left to choose.
+**Corvus vs. the Hand's last mage:** The fight is not a duel — it is one person who has spent years building precise control against one person who traded precision for amplification. Corvus wins because his opponent's deterioration has advanced further than he acknowledged. His body cannot sustain what he asks of it. He knew this was coming. He chose to fight anyway because there was nothing else left to choose.
 
 Corvus survives the fight with permanent alteration — his eyes change color, his aging accelerates visibly, the cost the Conclave warned him about paid in a single moment. He considers it acceptable. The fight is won.
 
@@ -34,7 +34,7 @@ Corvus survives the fight with permanent alteration — his eyes change color, h
 
 On the third day's evening, as the fighting near the caldera is at its peak, Mordvar emerges from the caldera itself.
 
-He is tall and grey-pale. He was once a man who was afraid of death. He has been hollow for two thousand years. He does not speak. He does not threaten. He walks down the slope.
+He is tall and grey-pale. He was once a man who was afraid of death. He has been scattered and reforming for two thousand years. He does not speak. He does not threaten. He walks down the slope.
 
 His presence is a cold of *will*. Men find their arms heavy. Not cold in temperature — cold in the sense of absence. The thing that makes people fight is the sense that the fighting matters. Mordvar's presence is the suggestion that nothing does.
 
@@ -54,78 +54,79 @@ This is not a combat sequence — it is an endurance sequence. The heat is real.
 
 **What each person carries:**
 - **Roland:** The promise he made at the beginning of the trilogy without knowing where it led. He does not regret it.
-- **Aldric:** The life he is putting at risk for people he did not know a year ago, and now does.
-- **Seren:** The weight of understanding that she chose to be present for mortality, and that this specific mortality, at this specific moment, is something she cannot look away from. Also something else — a suspicion, forming since Level Six of the Khorumzad descent, that the name on the keystone and the faceless figure ahead of them are the same thing. She is not certain. She will be.
-- **Corvus:** Pain. Genuine physical pain from the cost he paid fighting Vaeroth. He keeps moving because he made a commitment and because Roland is still moving and he is not going to be the one who stops first.
+- **Aldric:** The life he is putting at risk for people he did not know a year ago, and now does. Also Hadran's knowledge, carried forward into something Hadran did not intend.
+- **Seren:** The weight of understanding that she chose to be present for mortality, and that this specific mortality, at this specific moment, is something she cannot look away from.
+- **Corvus:** Pain. Genuine physical pain from the cost he paid on Day Two. He keeps moving because he made a commitment and because Roland is still moving and he is not going to be the one who stops first.
 - **Orion:** The knowledge that he navigated here correctly and this is the furthest point of any voyage he has made. He does not know what comes after. He has decided this is all right.
 - **Dagna:** Chalk-marked the last junction they came through. Old habit. She notices she has almost run out of chalk.
 
 ---
 
-### [MAIN QUEST] The Aescstól
+### [MAIN QUEST] The Ash Hearth
 
-The Hollow Hearth. The Ash Throne — obsidian streaked with silver, forged from cooled lava and bone-meal, the instrument through which Mordvar's will has flowed for two thousand years.
+The Ash Hearth. The Aescstól — the Ash Throne, obsidian streaked with silver, forged from cooled lava and bone-meal, the seat through which Mordvar's will has flowed for two thousand years.
 
-The Ashlord is here. Faceless behind his obsidian mask. He does not speak immediately.
+Mordvar reaches the summit as they do.
 
-Then he does. One phrase, in old Aelorin — the formal register of the Second Age, a construction so archaic that only Seren can parse it. The others hear an unfamiliar cadence and look to her. Her face changes. She says nothing. She looks at the Ashlord for a long moment. Then she says: *"We fight."*
+He is a presence more than a body — tall and grey-pale, the accumulated weight of two thousand years of hollow endurance. He was once a man who lost his wife and could not accept it. He does not speak. He has been waiting for this moment since the Sorrowmarsh, in the way that only something with no self left can wait: without impatience, without grief, without anything at all.
 
-**The fight:** It costs something. The Ashlord does not fight like the Ashen Hand's mages — he fights like someone who has been doing a single thing for two thousand years and has no other available action. There is no strategy to it. There is only weight. The party wins because there are six of them and the weight is finally distributed across enough people that none of them breaks under it alone.
+**The fight:** Mordvar does not engage the party conventionally. His presence is the attack — the cold of will that hollows the resolve of those near him. What the party must do is hold long enough for Aldric to reach the Aescstól. Roland, Seren, Corvus, and Orion hold the perimeter. Dagna marks the path. Aldric walks.
 
-**The reveal:** When the Ashlord falls, the mask cracks. Beneath it is an aged Aelorin face — silver hair, amber eyes faded almost to white, a face that has been trying to remember something for a very long time. In death, the expression is relief.
-
-Seren reaches the body first. She stays there a long time. Dagna comes to stand beside her and keeps the others back without explanation. She does not know why — she does not yet know who this was. She does it because Seren's stillness is not grief she should interrupt.
-
-Roland asks, quietly: *"Who was that?"*
-
-Seren says: *"I will tell you later."* She does tell him — much later, after the descent, after the battle's end, after the worst of the counting is over. She tells only Roland. He understands, when she is done, why Aelthurion said everything that mattered was in what he had already told him. He also understands why Aelthurion did not say more.
-
-The Ashlord is the warning for what Aldric must not become during the wielding. The party does not know this in full until later. Aldric, when Seren eventually tells him, is quiet for a long time. Then he says: *"They held as long as they could."* He uses Seren's translation of the phrase without knowing it. She does not tell him this either.
-
-The party defeats the Ashlord. It is not the climax — the climax is what comes next.
+It costs something. The fight is real and the perimeter barely holds. But it holds.
 
 ---
-
 ### [MAIN QUEST] The Choice
-
-Mordvar reaches the summit as the Ashlord falls.
 
 Aldric stands before the Aescstól with the Aeluvain.
 
 Seren says: *It is time. The Star is waiting.*
 
-**Aldric's choice:**
+The outcome is determined by the cumulative choices made across all three games — a score that reflects whether Roland built bonds, kept promises, and preserved lives, versus whether he cut corners, sacrificed people for efficiency, and treated the world as a problem to be solved. The player selects the final act; the score determines what it looks like when it is done. See `design/ENDGAME_CHOICES.md`.
 
 ---
 
-**THE EXCHANGE (Light Ending):**
+**THE RETURN (Good Ending):**
 
 Aldric opens himself to the Aeluvain and takes Mordvar's hollow into himself voluntarily — the emptiness, the void where selfhood used to be, the two-thousand-year absence that was once a man's fear of death.
 
 For thirty seconds, Aldric is hollow. He knows what Mordvar felt. He knows the fear that created it. He feels the absence of everything that makes a person themselves.
 
-Then he returns the Aeluvain to the Aescstól — places it in the slot that was always there in the throne's design, the place prepared two thousand years ago. The hollow passes from Aldric into the vault. The note the Eighth Star was singing completes. Mordvar dissolves — not destroyed, not punished, but completed. The hollow fills. The two-thousand-year fear is finally over.
+Then he returns the Aeluvain to the Aescstól — places it in the slot that was always there in the throne's design, the place prepared two thousand years ago. The hollow passes from Aldric into the vault. The note the Eighth Star was singing completes. Mordvar dissolves — not destroyed, not punished, but completed. The two-thousand-year fear is finally over.
 
 Aldric sits down on the ash. He is pale and shaking. He is entirely himself.
 
-The world does not transform. The volcano does not go quiet. The sky does not clear. But Mordvar is gone, and the binding is not necessary, and the Aeluvain is home.
+The world does not transform. The volcano does not go quiet. The sky does not clear. But Mordvar is gone, and the Aeluvain is home.
 
 **Roland:** asks Aldric if he is all right. Aldric says: *I understand him now.* Roland says: *Yes. We can discuss that later. Can you stand?*
 
 ---
 
-**THE TETHER (Dark Ending):**
+**THE HOLD (Bittersweet Ending):**
 
-Aldric takes Mordvar's hollow as in the Exchange — but at the moment of return, he makes a different choice. He does not send it to the vault. He binds it to himself. Mordvar's hollow becomes something Aldric carries, consciously, permanently: a contained void that cannot escape, anchored by Aldric's selfhood.
+Aldric takes Mordvar's hollow as in the Return — but at the moment of decision, he makes a different choice. He does not send it to the vault. He binds it to himself. Mordvar's hollow becomes something Aldric carries, consciously, permanently: a contained void that cannot escape, anchored by Aldric's selfhood.
 
 The cost is permanent. Aldric will live with the awareness of Mordvar's absence inside himself for the rest of his life. It will not be comfortable. It will be survivable.
 
-What Aldric gets in exchange: certainty. Not just that Mordvar is gone, but that Mordvar cannot be reconstituted, cannot escape the vault, cannot find another host. The Exchange seals the vault. The Tether is a lock that only works while Aldric is alive — and passes, through the bloodline, to whoever comes after.
+What Aldric gets in exchange: certainty. Not just that Mordvar is gone, but that Mordvar cannot be reconstituted, cannot escape the vault, cannot find another host. The Return seals the vault through the Star's completion. The Hold is a lock that only works while Aldric is alive — and passes, through the bloodline, to whoever comes after.
 
 Aldric's descendants will carry this, generation to generation, until the bloodline ends or the world changes enough to dissolve it.
 
 **Seren, watching:** says, very quietly: *The Eighth Star chose to stay when it could have remained distant. You chose the same thing.*
 
 **Aldric:** says nothing.
+
+---
+
+**THE FRACTURE (Dark Ending):**
+
+Aldric takes Mordvar's hollow into himself — and it is too much. Not because he is weak. Because the score carried into this moment reflects a trilogy in which too many bonds were broken, too many promises were abandoned, too many people were treated as resources. Aldric has no one beside him who knows what he is carrying. The hollow does not find resistance. It finds an echo.
+
+He does not become Mordvar. He becomes something adjacent — a man who understands the fear that created Mordvar, and who, in the moment of decision, makes the same choice. Not to dissolve it or hold it. To use it.
+
+The Aeluvain shatters in his hands. The Aescstól is dark. Mordvar is dispersed — not destroyed, but fractured, pushed back from full reformation, scattered again. The world gains time. Not the generation it gained at the Sorrowmarsh — perhaps a century. Perhaps less.
+
+The Fracture is not defeat. It is postponement. The next generation will face this again, without Hadran's knowledge and without the Crown pieces, which were consumed in the shattering.
+
+Roland, on the descent, does not speak. He carries Aldric off the summit. He keeps moving because there is nothing else to do.
 
 ---
