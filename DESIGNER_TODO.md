@@ -248,27 +248,145 @@ These need both code and scene work. Listed here as designer-visible milestones.
 ## Section 7 — Code to Build (Design-Specified Systems)
 
 Scripts and scenes that are now fully specified in design docs and ready to implement.
-Each item links to its spec. Build in dependency order.
+Organized by development phase. Build within each phase in the order listed.
 
-- [ ] **`WorldGenerator.gd`** ← build first; everything else stands on this
-  Extends `VoxelGeneratorScript`. Defines terrain from world coordinates using layered
-  `FastNoiseLite`. Must encode: Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500),
-  Aldwater valley channel, Ashfields (low, flat east of Spine), forced-flat zones at all
-  settlement world coordinates (see CLAUDE.md → World coordinate reference).
-  Reference: `design/3D_VOXEL_MIGRATION.md` → Milestone 5-3D, `design/ART_PIPELINE.md` → Tool 2
+---
 
-- [ ] **`EntityRegistry.gd`** ← build second
-  Autoload singleton. Spatial dictionary keyed by chunk ID. Stores `EntityRecord` objects:
-  `{ entity_type, world_position, scene_path, saved_state }`. No scene nodes — data only.
-  Populated at startup from entity definition files (or hardcoded for early milestones).
-  Reference: architecture established in design session 2026-05-01.
+### Phase 4-3D — Camera (do this in the next Godot session)
 
-- [ ] **`EntityStreamer.gd`** ← build third, depends on EntityRegistry
-  Node in `World3D.tscn`. Each physics frame checks player world position against
-  `EntityRegistry`. Instantiates entity scene nodes when within load radius; saves state
-  and `queue_free()`s them when beyond unload radius. Load radius: ~150m for buildings/props,
-  ~80m for NPCs, ~60m for enemies.
-  Reference: architecture established in design session 2026-05-01.
+- [ ] **Update `CameraRig.gd`** — Rewrite from fixed Hades 50° to third-person over-shoulder.
+  Exports: `arm_length` (5.0m default), `elevation_degrees` (15.0), `horizontal_sensitivity`,
+  `vertical_min/max_degrees`, `dialogue_arm_length` (3.5m). Player-rotatable via camera
+  input actions. SpringArm3D handles collision automatically.
+  Reference: `design/CAMERA_AND_PERSPECTIVE.md`
+
+---
+
+### Phase 5-3D — Open World Foundation
+
+- [ ] **`WorldGenerator.gd`** ← foundation; everything stands on this
+  Extends `VoxelGeneratorScript`. Layered `FastNoiseLite` terrain. Must encode:
+  Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500), Aldwater valley channel,
+  Ashfields (low, flat east of Spine), forced-flat zones at all settlement coordinates
+  (see CLAUDE.md → World coordinate reference).
+  Reference: `design/ART_PIPELINE.md` → Tool 2, `design/3D_VOXEL_MIGRATION.md`
+
+- [ ] **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Phase 5 version just prints
+  chunk coordinates to Output as player moves. Full entity loading in Phase 6.
+
+---
+
+### Phase 6-3D — World Population
+
+- [ ] **`EntityRegistry.gd`** — Autoload singleton. Spatial dictionary keyed by chunk ID.
+  Stores `EntityRecord` objects: `{ entity_type, world_position, scene_path, saved_state }`.
+  No scene nodes — pure data. Populated from entity definition files or inline for early milestones.
+  Reference: `design/3D_VOXEL_MIGRATION.md` → file structure
+
+- [ ] **`EntityStreamer.gd` full implementation** — Replaces Phase 5 stub. Instantiates
+  entity nodes within load radius; saves state and `queue_free()`s on exit. Radii: ~150m
+  buildings/props, ~80m NPCs, ~60m enemies.
+
+---
+
+### Phase 7-3D — Real-Time Combat
+
+- [ ] **`CombatManager.gd`** — Real-time combat state: active enemies, lock-on target,
+  attack token queue (prevents all enemies attacking simultaneously), hit detection.
+  Reference: `design/COMBAT_DESIGN_3D.md`
+
+- [ ] **Lock-on system** — `lock_on` input finds nearest enemy in forward arc. Camera drifts
+  to frame target in right 60% of screen. Cycles with `camera_left` / `camera_right`.
+  Disengages on target death or out-of-range.
+
+- [ ] **`EnemyAI.gd` base script + per-type subclasses**
+  State machine (Idle / Suspicious / Alert / Combat / Fleeing), attack-token
+  arbitration with sibling enemies, per-type specs for Goblin, Ashfallen, Wolf, Bear.
+  Reference: `design/ENEMY_AI.md`
+
+- [ ] **`DeathHandler.gd` + Roland death-line library**
+  Triggers on Roland HP=0: plays authored death line, fades to black, offers
+  Second Wind (if available) or reload-from-last-save. No XP loss, no item loss.
+  Reference: `design/DEATH_AND_RESPAWN.md`
+
+---
+
+### Phase 8-3D — Interiors + Dialogic Integration
+
+- [ ] **Interior loading system** — When player enters a door `Area3D`,
+  `TransitionManager` loads interior `.tscn`, stores open-world return position.
+  On exit, unloads interior and returns player to correct world position.
+
+- [ ] **`InvestigationPoint.gd` node script**
+  Area3D script: on E-press, delivers observation text overlay, sets journal flags,
+  checks deduction conditions, fires companion observation if applicable.
+  Reference: `design/INVESTIGATION_SYSTEM.md` → GDScript Implementation Notes
+
+- [ ] **`InvestigationUI.gd`** — Observation text overlay. Fades in/out.
+  Reference: `design/INVESTIGATION_SYSTEM.md` → The Examination Interface
+
+---
+
+### Phase 9-3D — Act I Systems
+
+- [ ] **`QuestManager.gd` autoload**
+  `start_quest()`, `advance_quest()`, `complete_quest()`, `fail_quest()`. Quest flag
+  namespace, journal entry creation, timed-event handoffs to `FlagScheduler`.
+  Reference: `design/QUEST_SYSTEM.md`
+
+- [ ] **`FactionManager.gd` autoload**
+  Wraps GameState faction disposition flags; emits `disposition_changed` signal;
+  applies rival-faction effects. Six Game One factions seed Game Three lockouts.
+  Reference: `design/FACTION_SYSTEM.md`
+
+- [ ] **Roland's journal panel** — Basic UI. Active quest, known people, Crown pieces.
+  Written in Roland's voice. Does not need to be the full 5-tab journal for Act I.
+
+- [ ] **`SaveSystem.gd` backup rotation update**
+  Rest autosave hook, Wanderer's Seal manual save hook, three-deep backup rotation.
+  Reference: `design/SAVE_SYSTEM.md`
+
+---
+
+### Post-Act I (Act II+)
+
+- [ ] **`RecipeData.gd` resource class**
+  Defines the data shape for a single crafting recipe (station type, ingredients,
+  output, required flags). Must exist before CraftingUI or ItemData population.
+  Reference: `design/CRAFTING.md` → GDScript Integration Notes
+
+- [ ] **`ItemData.gd` additions: smithing_tier, condition, weight, item_category**
+  Reference: `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md` → GDScript Notes
+
+- [ ] **`GameState.gd` additions: skill XP tracking and perk points**
+  Reference: `design/SKILLS_AND_PROGRESSION.md` → GDScript section
+
+- [ ] **`PlayerStats.gd` — wound HP tracking**
+  Reference: `design/REST_AND_CAMP.md`
+
+- [ ] **`CampMenuUI.tscn` + `CampMenu.gd`**
+  Reference: `design/REST_AND_CAMP.md` → The Camp Menu
+
+- [ ] **`CraftingUI.gd`**
+  Reference: `design/CRAFTING.md`
+
+- [ ] **Skills tab in `JournalUI.gd`**
+  Reference: `design/SKILLS_AND_PROGRESSION.md` → Skill Screen Presentation
+
+- [ ] **Populate `ItemData` resource files from ITEM_LIBRARY.md** — Act I subset first.
+  Reference: `design/ITEM_LIBRARY.md`
+
+- [ ] **`WeatherManager.gd` autoload**
+  Reference: `design/WEATHER_AND_ENVIRONMENT.md`
+
+- [ ] **`CompanionManager.gd` autoload**
+  Reference: `design/COMPANION_SYSTEM.md`
+
+- [ ] **HUD overhaul per `design/HUD_AND_UI.md`**
+
+- [ ] **`Settings.gd` expansion per `design/ACCESSIBILITY_AND_SETTINGS.md`**
+
+- [ ] **Vendor scripts per `design/ECONOMY_AND_VENDORS.md`**
 
 - [ ] **`RecipeData.gd` resource class**
   Defines the data shape for a single crafting recipe (station type, ingredients,
