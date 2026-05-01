@@ -69,6 +69,21 @@ These are settings and installs that survive across all future work. Do them onc
   Required before any music or voiced dialogue work — `Settings.gd` volume sliders
   target the bus names exactly as written above.
 
+- [ ] **Clean up Godot editor cruft from version control**
+  After opening the project in Godot, `git status` shows ~25 untracked `scripts/*.gd.uid`
+  files plus modifications to `project.godot`, `scenes/Player3D.tscn`, `scenes/World.tscn`,
+  and `scenes/World3D.tscn`. Two separate things to handle:
+  - **`.uid` files** — Godot 4.4+ script UID cache. Decide: commit them (Godot's
+    recommendation, keeps script references stable across renames) or add `*.uid` to
+    `.gitignore` (treat as regenerable editor cache). For a solo project, ignoring is
+    simpler. If we ignore: `echo "*.uid" >> .gitignore` then `git rm --cached scripts/*.gd.uid`
+    if any are already tracked.
+  - **Modified `.tscn` and `project.godot`** — open each in Godot and check if the
+    diff reflects real authored changes (the 3D pivot work) or just noise from Godot
+    re-saving on open. If real, commit them on a focused branch. If noise, `git checkout`
+    to discard.
+  Do this before the next feature branch so the working tree is clean.
+
 ---
 
 ## Section 2 — Godot Editor: Scene Work
@@ -161,7 +176,7 @@ Assets that require external tools (MagicaVoxel, Aseprite, Blender, etc.)
 
 Voice generation tasks for the text-to-speech pipeline.
 
-- [ ] **Create local `.env` file with your ElevenLabs API key**
+- [x] **Create local `.env` file with your ElevenLabs API key**
   At the repo root, create a file named `.env` containing:
   ```
   ELEVENLABS_API_KEY=sk-your-key-here
