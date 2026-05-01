@@ -31,6 +31,15 @@ extends SpringArm3D
 # How far the camera sits from Roland when unobstructed. SpringArm3D
 # shortens this automatically in caves, doorways, and tight corridors.
 
+@export var zoom_min: float = 2.0
+# Closest the player can scroll in (meters). Prevents clipping into Roland.
+
+@export var zoom_max: float = 10.0
+# Furthest the player can scroll out (meters).
+
+@export var zoom_speed: float = 0.5
+# How much arm_length changes per scroll tick.
+
 @export var elevation_degrees: float = 15.0
 # Starting vertical tilt of the arm above horizontal. Player can adjust
 # within vertical_min/max below.
@@ -104,6 +113,20 @@ func _input(event: InputEvent) -> void:
 	if not (event is InputEventMouseMotion):
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
+
+	# Scroll wheel zoom — works in both standard and freelook modes.
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.pressed:
+			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+				arm_length = clamp(arm_length - zoom_speed, zoom_min, zoom_max)
+				spring_length = arm_length
+				get_viewport().set_input_as_handled()
+			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				arm_length = clamp(arm_length + zoom_speed, zoom_min, zoom_max)
+				spring_length = arm_length
+				get_viewport().set_input_as_handled()
 		return
 
 	var motion := event as InputEventMouseMotion
