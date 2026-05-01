@@ -53,48 +53,48 @@ setting — that every subsequent zone reuses.
 
 ---
 
-## Phase 5 — Sprite & Tile Art Pipeline
+## Phase 5 — Open World Foundation + Character Pipeline
 
-**Goal:** Establish a repeatable pixel art production workflow. Replace placeholder geometry
-with real sprites in at least one complete scene. Prove the technical pipeline before
-expanding it to all zones.
+**Goal:** Establish the two foundational production pipelines: a streaming open world with
+recognizable Mira geography, and Roland as a real low-poly character moving through it.
+Prove both pipelines before building any Act I content on top of them.
 
-**Why now:** The mechanics are proven. Building 8 more zones on colored rectangles makes
-all testing artificial. Real sprites also make lighting behave correctly — normal maps
-on stone walls are what produce the campfire-knight visual quality from `ART_DIRECTION.md`.
+**Why now:** Everything else in the game stands on these two things. Building Act I scenes
+without a working terrain generator means building on a floor that will change underneath
+them. Building combat and NPC systems without a character model means all testing is
+artificial.
 
 ### Deliverables
 
-- **Aseprite** as the official sprite tool (see `ART_DIRECTION.md` for specs)
+- **`WorldGenerator.gd`** — `VoxelGeneratorScript` subclass. Layered `FastNoiseLite`
+  terrain encoding Mira's major geographic features: Spine ridge (east), Greatwood flat
+  (north), Aldwater valley, Ashfields, forced-flat zones at all settlement coordinates.
+  Output: walking through generated terrain that reads as Mira, not generic noise.
 
-- **Roland walk cycle** — 8 directions, 32×48 pixels native. The single most-used asset
-  in the game. Every hour spent on this pays off across every scene.
+- **`VoxelLodTerrain` in `World3D.tscn`** — Replace the flat floor placeholder.
+  Configure LOD (6–8 levels, LOD0 radius ~60m). Verify no chunk errors in Output.
 
-- **Roland idle animation** — Weight shift, one hand near belt. Per `ART_DIRECTION.md`.
+- **`EntityStreamer.gd` stub** — Node in `World3D.tscn` that prints chunk enter/exit
+  to Output as the player moves. Full entity loading in Phase 6.
 
-- **Cave/dungeon tile set (16×16)** — Just the tiles needed for the Aldenholt night-chase
-  and Archive scenes:
-  - Cobblestone floor (2-3 variants)
-  - Stone wall (interior and exterior face)
-  - Torch sconce (animated, warm light)
-  - Heavy iron door (open/closed states)
-  - Archive shelving / stacks
+- **Roland low-poly Blender model** — 200–400 tris, flat-shaded, vertex colors only.
+  Rig with ~25 bones. Export `.glb` to `assets/models/roland.glb`.
 
-- **Campfire prop sprite** — Replacing the orange Polygon2D placeholder. Animated: 4-frame
-  flicker cycle.
+- **Roland Act I animation set** — Minimum to ship Act I:
+  idle, walk, run, attack_light, attack_heavy, dodge, react, death.
+  Wired into `AnimationTree` + `BlendSpace1D` driven by `CharacterBody3D` velocity.
 
-- **Normal map workflow** — Export sprite + normal map from Aseprite. Assign normal map
-  to Sprite2D in Godot alongside main texture. Verify campfire PointLight2D rakes across
-  stone texture. This is what creates depth in the lighting.
+- **First MagicaVoxel prop** — Campfire (small, proves the prop export pipeline).
 
-- **Portrait: Roland** — 64×80 pixels native. Used by Dialogic for dialogue panels.
+- **Portrait: Roland** — 256×320 px painted. Used by Dialogic for dialogue panels.
 
 ### Priority order within the phase
-1. Roland walk cycle (unblocks all scene testing)
-2. Cave tile set (unblocks Act I scene building)
-3. Campfire sprite (small, high-visual-payoff)
-4. Normal maps on tile set (lighting depth)
-5. Roland portrait (unblocks dialogue)
+1. `WorldGenerator.gd` + `VoxelLodTerrain` setup (world foundation)
+2. Roland base mesh + rig + idle/walk (character foundation)
+3. Roland run + combat animations (unblocks combat testing)
+4. `EntityStreamer` stub (unblocks entity placement work)
+5. Campfire prop (proves MagicaVoxel pipeline)
+6. Roland portrait (unblocks dialogue UI)
 
 ---
 

@@ -7,11 +7,11 @@
 
 ## Confirmed Approach
 
-**3D voxel in Godot 4.3.**
+**3D voxel open world in Godot 4.3.**
 
-- **Terrain and caves**: Zylann's Voxel Tools plugin (`godot_voxel`) — smooth terrain via Transvoxel, blocky structures via Cubes mesher
-- **Props and buildings**: MagicaVoxel (free) → export `.glb` → Godot `MeshInstance3D`
-- **Characters**: Option A — billboard sprites (Aseprite + `Sprite3D`), or Option B — low-poly Blender models (`.glb` + `AnimationPlayer`)
+- **Terrain**: Zylann's Voxel Tools plugin (`godot_voxel`) — `VoxelLodTerrain` with `VoxelMesherTransvoxel` (smooth organic terrain, LOD streaming). Static, procedurally generated from `WorldGenerator.gd`. Not editable by player.
+- **Buildings and structures**: `VoxelMesherCubes` mesher for constructed architecture; MagicaVoxel (free) → export `.glb` → Godot `MeshInstance3D` for props
+- **Characters**: Low-poly Blender models from Act I onward — `.glb` exports, 200–500 tris for named characters, rigged with `AnimationPlayer`. No billboard sprites for characters.
 - **Lighting**: real 3D — `OmniLight3D`, `DirectionalLight3D`, `WorldEnvironment` with SSAO and fog
 
 ---
@@ -22,7 +22,7 @@
 |---|---|---|
 | **MagicaVoxel** | Props, buildings, dungeon tiles | Free |
 | **Blender** | Character models, rigging, animation | Free |
-| **Aseprite** | Billboard sprite sheets (characters, Option A), portrait art | ~$20 |
+| **Aseprite** | Portrait art (dialogue UI, 256×320 px) | ~$20 |
 | **Zylann's Voxel Tools** | Godot 4 voxel terrain plugin | Free / open source |
 | **Godot 4.3** | Scene assembly, rendering, logic | Free |
 | AI-assisted generation | Concept reference, texture starting points (always hand-edit) | Variable |
@@ -69,72 +69,76 @@ MagicaVoxel is the standard voxel art tool. It is free, intuitive, and exports d
 3. Project → Project Settings → Plugins → Enable "Voxel Tools"
 4. Restart Godot editor
 
-### Scene setup for terrain:
+### Scene setup for open world terrain:
 ```
 World3D (Node3D)
-├── VoxelTerrain          ← the terrain node
-│   └── VoxelGeneratorScript  ← GDScript that defines the terrain shape
+├── VoxelLodTerrain       ← streaming open world terrain with LOD
+│   └── WorldGenerator    ← GDScript subclass of VoxelGeneratorScript
+├── EntityStreamer         ← node that loads/unloads world entities by player proximity
 ├── Player3D (instance)
-├── OmniLight3D (campfire)
+├── DirectionalLight3D
 └── WorldEnvironment
 ```
 
-### Simple terrain generator (starting point):
+### WorldGenerator.gd (starting shape):
 
 ```gdscript
-# CaveGenerator.gd — attach to VoxelTerrain as its generator
+# WorldGenerator.gd — subclass of VoxelGeneratorScript
+# Encodes Mira's terrain: Spine mountains (east), Greatwood (north),
+# Aldwater valley (center-west), Ashfields (east face), flat settlement zones.
 extends VoxelGeneratorScript
 
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
     var size: int = out_buffer.get_size_x()
     for z in range(size):
         for x in range(size):
+            var wx: float = origin_in_voxels.x + x
+            var wz: float = origin_in_voxels.z + z
+            var surface_y: int = _get_surface_height(wx, wz)
             for y in range(size):
                 var wy: int = origin_in_voxels.y + y
-                # Floor at y=0, ceiling at y=12
-                if wy <= 0:
-                    out_buffer.set_voxel(1, x, y, z, 0)  # solid rock
-                elif wy >= 12:
-                    out_buffer.set_voxel(1, x, y, z, 0)  # ceiling
+                if wy < surface_y:
+                    out_buffer.set_voxel(1, x, y, z, 0)  # solid
                 else:
                     out_buffer.set_voxel(0, x, y, z, 0)  # air
+
+func _get_surface_height(wx: float, wz: float) -> int:
+    # Layered noise + biome curves per design/3D_VOXEL_MIGRATION.md
+    # Spine ridge: high elevation zone at wx ~5000–7000
+    # Greatwood: slight depression + flat at wz ~0–2500
+    # Aldwater valley: carved channel running west
+    # Settlement zones: forced-flat areas at named location coordinates
+    return 0  # stub — implement with FastNoiseLite layers
 ```
 
-### Mesher choice per context:
-- `VoxelMesherTransvoxel` — smooth terrain (outdoor hillsides, cave floors, cliff edges)
-- `VoxelMesherCubes` — blocky structures (buildings, dungeon walls, constructed architecture)
+### VoxelLodTerrain configuration:
+- Set `lod_count` to 6–8 levels for 12km world extent
+- Set LOD0 distance to ~60m (matches third-person camera view range)
+- Use `VoxelMesherTransvoxel` for the terrain node (smooth organic ground)
+- Use separate `MeshInstance3D` nodes (MagicaVoxel exports) for all buildings — do NOT carve buildings into the terrain
 
-Use Cubes mesher for anything that was built by hands (stone walls, towers). Use Transvoxel for anything that was shaped by nature (hillsides, cave ceilings, riverbeds).
+### Mesher choice per context:
+- `VoxelMesherTransvoxel` — the terrain itself (hills, riverbanks, cliff edges, cave ceilings)
+- `VoxelMesherCubes` — if any structure is carved directly into terrain (rare; prefer MagicaVoxel .glb)
+
+Use MagicaVoxel `.glb` exports on top of the terrain for all buildings. Reserve terrain voxels for ground shape only.
 
 ---
 
-## Tool 3: Characters — Two Options
+## Tool 3: Characters — Low-Poly Blender Models (Act I onward)
 
-### Option A: Billboard Sprites (Faster, Start Here)
+Billboard sprites are not used for characters. The third-person over-shoulder camera is close enough to Roland that a flat sprite's 2D nature becomes apparent. All characters use low-poly Blender models from Act I.
 
-Draw characters in Aseprite exactly as before (pixel art, 32×48 px per frame, 4 directions). Display as `Sprite3D` in Godot with `billboard = BILLBOARD_ENABLED` so they always face the camera.
-
-This is the approach used by many voxel indie games to avoid the cost of 3D character modeling.
-
-**Aseprite workflow:** Same as before — walk cycle, idle, interact, 4 directions.
-**Godot setup:**
-```gdscript
-# In Player3D.tscn: add Sprite3D as child of CharacterBody3D
-var sprite: Sprite3D = $Sprite3D
-sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-sprite.texture = preload("res://assets/sprites/roland_spritesheet.png")
-# Drive frame changes from animation state
-```
-
-**When to transition to Option B:** When Act I is content-complete and the game needs combat animations, companion positioning in 3D space, and cutscene staging.
-
-### Option B: Low-Poly Blender Models
-
-**Target spec:**
-- 200–500 triangles per character (low-poly, flat-shaded)
+**Target spec — named characters (Roland, Henrietta, Tomlin, companions, major NPCs):**
+- 200–500 triangles (low-poly, flat-shaded)
 - Rigged skeleton: ~20–30 bones (spine, limbs, head)
-- Animations: walk, idle, attack, block, react (one .glb per character with all animations as tracks)
-- No texture maps — use vertex colors or a single 64×64 color palette texture
+- Animations per character: idle, walk, run, attack swing, dodge roll, react/flinch, death
+- No texture maps — vertex colors or a single 64×64 color palette texture
+
+**Target spec — background/crowd NPCs:**
+- Voxel-block humanoids from MagicaVoxel (8×16 voxels tall) exported as rigid `.glb`
+- No rigging required — these are Tier 0 background figures that move between waypoints
+- Same pipeline as props
 
 **Blender export workflow:**
 1. Model, rig, and animate in Blender
@@ -142,7 +146,19 @@ sprite.texture = preload("res://assets/sprites/roland_spritesheet.png")
 3. Export settings: include animations, include mesh data, apply modifiers
 4. Place in `res://assets/models/`
 5. In Godot: drag `.glb` → `AnimationPlayer` auto-populates from Blender animation tracks
-6. Add `AnimationTree` + `BlendSpace2D` (same logic as 2D workflow, driven by CharacterBody3D velocity)
+6. Add `AnimationTree` + `BlendSpace1D` or `BlendSpace2D` driven by `CharacterBody3D` velocity
+
+**Act I minimum animation set for Roland:**
+- `idle` — weight shift, one hand near belt
+- `walk` — moderate pace
+- `run` — combat/sprint pace
+- `attack_light` — fast swing
+- `attack_heavy` — slower, wider arc
+- `dodge` — directional roll
+- `react` — flinch/hit reaction
+- `death` — collapse
+
+These 8 clips are sufficient to ship Act I. Combat depth animations (parry, charged attack, finisher) can be added before Act II.
 
 ---
 
@@ -165,14 +181,12 @@ sprite.texture = preload("res://assets/sprites/roland_spritesheet.png")
       iron_pommel.glb
       bronze_ring.glb
       [...]
-  models/               ← Blender character exports (.glb)
+  models/               ← Blender character exports (.glb) — all characters
     roland.glb
     henrietta.glb
+    tomlin.glb
     ashfallen.glb
-  sprites/              ← If using billboard Option A
-    roland_spritesheet.png
-    henrietta_spritesheet.png
-  portraits/            ← Dialogue UI art (256×320 px painted)
+  portraits/            ← Dialogue UI art (256×320 px painted) — unchanged
     henrietta.png
     dame_calla.png
   audio/
@@ -180,22 +194,26 @@ sprite.texture = preload("res://assets/sprites/roland_spritesheet.png")
     sfx/
 ```
 
+Note: `/assets/sprites/` is no longer needed for character art. Portraits remain the primary 2D character representation and live in `/assets/portraits/`.
+
 ---
 
 ## Milestone 5 Art Build Order (3D)
 
-Build in this order — prove the pipeline before committing to volume:
+Build in this order — prove each pipeline stage before expanding to volume:
 
-1. **Campfire prop** in MagicaVoxel (first asset — small, tests the full export pipeline)
-2. **Cave wall section** — one reusable wall tile
-3. **Roland billboard sprite** — walk cycle down only (proves character pipeline)
-4. **Roland all 4 directions** — complete the billboard set
-5. **Cave ceiling and floor tiles** — complete the cave scene
-6. **Archway** — first architectural element
-7. **Iron Chalice chapel interior** — Act I critical path location
-8. **Henrietta billboard sprite** — first NPC
-9. **Ashfallen enemy sprite/model** — first enemy
-10. **Aldenholt exteriors** — cobblestone street, market stall, Archive facade
+1. **Campfire prop** in MagicaVoxel (first asset — small, tests the full prop export pipeline)
+2. **Cave wall tile** — one reusable modular wall section
+3. **Roland low-poly Blender model** — base mesh only, no rig yet (proves character import pipeline)
+4. **Roland rig + idle animation** — skeleton and one-clip AnimationPlayer in Godot
+5. **Roland walk + run cycles** — unblocks all scene movement testing
+6. **Cave floor and ceiling tiles** — complete the placeholder scene
+7. **Archway / doorframe** — first architectural element
+8. **Roland attack + dodge animations** — unblocks combat testing
+9. **First enemy model** (Ashfallen soldier) — rig + idle + attack animations
+10. **Henrietta NPC model** — first named NPC, rig + idle
+11. **Iron Chalice chapel interior** — first Act I location with real assets
+12. **Aldenholt exteriors** — cobblestone street, market stall, Archive facade
 
 Do not build Act II or III locations until Act I is content-complete.
 

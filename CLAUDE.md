@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Game One — Project Bible
 
 ## What I'm building
-A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere, Hades in camera angle.
-Single player. Real-time action combat (Hades/Hyper Light Drifter style), 1-vs-many.
+A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere and open-world scale.
+Single player. Real-time action combat (Witcher 3 / Dark Souls style), 1-vs-many, third-person over-shoulder camera.
 Voxel world built in Godot 4.3 with Zylann's Voxel Tools plugin. GDScript only.
 This is game one of a planned trilogy adapted from a 200-page source manuscript.
 
@@ -28,7 +28,7 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 ## Core systems (what we're building)
 - Player: CharacterBody3D, 8-directional movement on 3D XZ plane
 - World scenes: VoxelTerrain (Zylann plugin) + MagicaVoxel prop assets
-- Camera: SpringArm3D follow camera, ~50° elevation (Hades-style), fixed angle
+- Camera: SpringArm3D third-person over-shoulder, ~15° elevation, player-rotatable; lock-on for 1-vs-many combat
 - Dialogue: Dialogic 2 plugin handles all narrative content (unchanged)
 - Combat: Real-time action in-world (Hades style), 1-vs-many, no separate scene
 - Game state: Autoload singleton (GameState.gd) tracks all persistent data (unchanged)
@@ -107,10 +107,11 @@ Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D, 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
 - **Voxel scale**: 6–8 voxels per meter (confirmed from concept art validation — NOT Minecraft 1-meter cubes)
-- **Terrain**: VoxelMesherTransvoxel (smooth organic terrain) + VoxelMesherCubes (buildings)
+- **Terrain**: `VoxelLodTerrain` with `VoxelMesherTransvoxel` (smooth organic terrain, LOD streaming) + `VoxelMesherCubes` (buildings). Static, procedurally generated — not editable by player.
+- **World scale**: Playable Mira 12km × 10km, compression 125:1 linear (1 game meter ≈ 125 fictional meters). Playable Thal ~7km × 5.5km.
 - **Props/buildings**: MagicaVoxel → export .glb → Godot MeshInstance3D
-- **Characters**: billboard sprites (Aseprite 32×48 px, Sprite3D) for Act I; transition to low-poly Blender models for Act II+
-- **Camera**: SpringArm3D at ~50° elevation, fixed angle, follows Roland (Hades-style)
+- **Characters**: Low-poly Blender models from Act I onward (.glb, 200–500 tris named characters, flat-shaded, rigged). No billboard sprites for characters. Portraits (256×320 px) unchanged for dialogue UI.
+- **Camera**: SpringArm3D third-person over-shoulder, ~15° above horizontal, player-rotatable. Lock-on system for 1-vs-many melee combat.
 - **Lighting**: OmniLight3D (torches/fire) + DirectionalLight3D (sun/moon) + WorldEnvironment SSAO + fog
 - **Pipeline reference**: `design/ART_PIPELINE.md`
 - **Migration plan**: `design/3D_VOXEL_MIGRATION.md`
@@ -212,7 +213,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
 ## Current project state
-Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot design docs merged. Milestone 4-3D in progress (first 3D scripts + placeholder scene).
+Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot confirmed. Open world confirmed (VoxelLodTerrain streaming, static generated terrain, 12km × 10km playable Mira). Third-person over-shoulder camera confirmed. Low-poly Blender character models from Act I confirmed. Milestone 4-3D in progress (first 3D scripts + placeholder scene).
 
 2D legacy (still present, will be retired as 3D scenes replace them):
 - `scripts/Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`
@@ -241,6 +242,9 @@ New autoloads (implemented — must still be registered in Project Settings → 
 - `WorldClock.gd` — ticks in-game time (default 240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` and `advance_hours()` for debug/rest
 
 New autoloads specified in design docs (not yet implemented — build in dependency order):
+- `WorldGenerator.gd` — extends `VoxelGeneratorScript`; generates terrain from world coordinates using layered noise + authored biome curves; encodes Spine ridge, Greatwood, Aldwater valley, Ashfields, settlement flat zones; foundation of the open world
+- `EntityRegistry.gd` — spatial dictionary of every world entity (NPCs, props, triggers, enemies) keyed by chunk; stores lightweight `EntityRecord` data objects (type, world position, scene path, saved state); does not instantiate nodes itself
+- `EntityStreamer.gd` — node in `World3D.tscn`; each frame checks player position against `EntityRegistry`, instantiates nodes when in range, saves state and `queue_free()`s them when out of range
 - `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md)
 - `QuestManager.gd` — quest flag management: advance_quest(), complete_quest() (design/QUEST_SYSTEM.md)
 - `WeatherManager.gd` — weather state, WorldEnvironment tweening, weather overrides (design/WEATHER_AND_ENVIRONMENT.md)
@@ -255,8 +259,22 @@ To verify Milestone 4-3D in Godot 4.3:
 
 Manual setup still required:
 - Install **Zylann's Voxel Tools** plugin from the Godot Asset Library (for Milestone 5-3D)
-- Add input action **`interact`** (bound to E key) in Project Settings → Input Map — required by `DialogueTrigger3D.gd`
-- Configure input actions `camera_left` / `camera_right` if `allow_horizontal_rotation` is enabled later
+- Add input action **`interact`** (bound to E key) in Project Settings → Input Map — required by `DialogueTrigger3D.gd` and `NPC.gd`
+- Add input actions **`camera_left`**, **`camera_right`**, **`camera_up`**, **`camera_down`** (Q/E + right stick) — required by the third-person `CameraRig.gd`
+- Add input action **`lock_on`** (middle mouse / right stick click) — required for 1-vs-many combat
+
+## World coordinate reference (playable Mira, origin = NW corner)
+| Location | Game x | Game z |
+|---|---|---|
+| Caer Brannoch | 880m | 2,200m |
+| Lirien-Thal | 1,950m | 2,800m |
+| Karaz-Dûn | 5,200m | 2,300m |
+| Aldenholt | 4,400m | 5,800m |
+| Brightwatch | 5,200m | 4,600m |
+| Khorumzad | 5,200m | 5,800m |
+| Solgrade | 4,000m | 7,400m |
+| Kazaad-Brak | 5,200m | 9,000m |
+| Mor-Vethrin | 6,700m | 2,200m |
 
 ## Canonical naming (frequent contradictions)
 - Eldermark royal house: Castrove (NOT Vane)

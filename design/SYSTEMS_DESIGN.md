@@ -102,30 +102,36 @@ Every major dialogue outcome sets a flag in GameState.gd. Flags are not hidden �
 
 ## Exploration System
 
-### Zone Structure
+### World Structure
 
-Per `/lore/GAME1_PART1.md` and `/lore/GAME1_PART2.md`, Game One zones:
+The game world is a continuous open world — a single `VoxelLodTerrain` streaming scene covering playable Mira (12km × 10km) and Thal (7km × 5.5km), separated by the Shroud Sea (a skybox/loading transition). Entities (NPCs, props, triggers, enemies) load and unload dynamically as the player moves via `EntityStreamer`. Interiors (buildings, dungeon floors) are discrete scenes loaded additively when the player enters a door, then unloaded on exit. The Zone/Room framework applies to interiors only.
 
-**Act I — Aldenholt (hub)**
-Iron Chalice chapel, Loremaster's Archive restricted section, Dame Calla's quarters, Roland's lodgings, the night chase route through the streets
+**World coordinate reference:** See `CLAUDE.md` → World coordinate reference for landmark positions.
+
+Per `/lore/GAME1_PART1.md` and `/lore/GAME1_PART2.md`, the story content areas are:
+
+**Act I — Aldenholt region** (world center, ~4400m x, ~5800m z)
+Iron Chalice chapel, Loremaster's Archive, Dame Calla's quarters, Roland's lodgings, the night chase route through the streets. All interior locations are discrete scenes; the streets and surrounding area are open world.
 
 **Act II — Four Kingdoms (player-determined order; Solgrade recommended last)**
-- Solgrade: House Korvath counting house, Council chambers, Golden Lance hall
-- Vosskara / Vosskar-on-the-Iron: Yaromir's citadel, garrison frontier, Tribute Papers investigation
-- Caer Brannoch + Copper Isles: cliff city, lower docks, Brotherhood voyage, Brotherhood Archive
-- Aelorin Greatwood: Sirathiel-by-the-Sea (entry), Lirien-Thal (Aelthurion audience), the Second Glade
+- Solgrade (~4000m x, ~7400m z): House Korvath counting house, Council chambers, Golden Lance hall
+- Vosskara / Vosskar-on-the-Iron (~5200m x, ~4600m z): Yaromir's citadel, garrison frontier, Tribute Papers investigation
+- Caer Brannoch (~880m x, ~2200m z) + Copper Isles: cliff city, lower docks, Brotherhood voyage, Brotherhood Archive
+- Aelorin Greatwood (Lirien-Thal ~1950m x, ~2800m z): Sirathiel-by-the-Sea entry, Aelthurion audience, the Second Glade
 
 **Act III — The Spine and Beyond**
-Karaz-Dûn via the Underway (Dagna joins en route), Kazaad-Brak, Barak Stonecroft, Mor-Vethrin (Naergrim city — Serethi's audience)
+Karaz-Dûn (~5200m x, ~2300m z) via the Underway (Dagna joins en route), Kazaad-Brak (~5200m x, ~9000m z), Barak Stonecroft, Mor-Vethrin (~6700m x, ~2200m z) (Naergrim city — Serethi's audience)
 
 **Act IV — The Ashfields**
 The binding site (valley below Drûn-Khazad's western approach), the Brotherhood safe-house tunnel retreat
 
-### Each zone contains
+### What each story area contains
 
-- **Traversal areas**: where the player moves Roland. Interactable objects, NPCs with ambient dialogue, environmental storytelling
-- **Scene triggers**: Area2D markers that initiate dialogue, combat, or cutscene sequences
-- **Investigation points**: locations Roland can examine. Not everything yields game-relevant data. The player learns which type by paying attention to what Roland says
+- **Open world traversal**: the player walks Roland through generated terrain between landmarks. Content authored along roads every ~300m (camps, ruins, environmental storytelling).
+- **Landmark locations**: buildings and key areas are MagicaVoxel `.glb` structures loaded by `EntityStreamer` when the player approaches
+- **Interior scenes**: discrete `.tscn` scenes loaded when the player enters a door — the Archive interior, the Iron Chalice chapel interior, dungeon floors
+- **World triggers**: `Area3D` nodes that exist when their surrounding chunks are loaded — initiates dialogue, combat, or story beats. Must fire immediately on load if the player is already inside the trigger volume.
+- **Investigation points**: `InvestigationPoint` nodes (Area3D) placed at authored locations; Roland examines them on E-press
 
 ### No quest markers
 

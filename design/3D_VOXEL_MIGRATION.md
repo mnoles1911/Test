@@ -12,9 +12,9 @@ The aesthetic goal: a world that feels ancient and handcrafted — stone cities 
 **Visual references:**
 - **Veloren** — open-world voxel RPG, closest reference for scale and feel
 - **Cube World** — exploration RPG with voxel world, character style
-- **Hades / Diablo 3** — camera angle (not voxel, but the fixed-elevation follow camera is exactly right)
-- **Zelda: Link's Awakening (2019 remake)** — low-poly characters in a 3D world, diorama feel
-- **The Skyrim reference** — scale, atmosphere, dramatic landscape lighting. NOT first-person. The "Skyrim feel" is about how the world communicates weight and age, not camera perspective.
+- **The Witcher 3 / Dark Souls / Elden Ring** — third-person over-shoulder camera, 1-vs-many melee, lock-on system
+- **Zelda: Link's Awakening (2019 remake)** — low-poly characters in a 3D world
+- **The Skyrim reference** — scale, atmosphere, dramatic landscape lighting. The "Skyrim feel" is about how the world communicates weight and age, not camera perspective.
 
 **What makes voxel work at this scale:**
 - Blocks are **8–16 units** per voxel, not 1-meter Minecraft cubes
@@ -51,9 +51,9 @@ All the **game logic** autoloads work without modification. They are data and UI
 |---|---|---|
 | `GameState.gd` | ✅ Unchanged | Pure data, no rendering |
 | `TransitionManager.gd` | ✅ Unchanged | Scene loading, not scene content |
-| `Zone.gd` | ⚠️ Minor adapt | Change Vector2 → Vector3 for player placement |
-| `Room.gd` | ⚠️ Minor adapt | Rect2 bounds → AABB (3D box) for camera limits |
-| `RoomTrigger.gd` | ⚠️ Port Area2D → Area3D | Same logic, different node type |
+| `Zone.gd` | ⚠️ Interiors only | Outdoor world is open/streaming; Zone/Room survives for dungeon floors and building interiors |
+| `Room.gd` | ⚠️ Interiors only | AABB bounds still valid for interior camera limits |
+| `RoomTrigger.gd` | ⚠️ Port Area2D → Area3D | Survives for interior doors and scene transitions |
 | `SpawnPoint.gd` | ⚠️ Minor adapt | Vector2 → Vector3 position |
 | `JournalUI.gd` | ✅ Unchanged | Pure UI overlay, no world interaction |
 | `PauseMenu.gd` | ✅ Unchanged | UI, no world interaction |
@@ -86,9 +86,11 @@ This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent
 - Custom voxel generators via GDScript or C++
 
 **For this project:**
-- Terrain: `VoxelMesherTransvoxel` (smooth hills, cave mouths, cliff edges)
-- Buildings: `VoxelMesherCubes` (stone walls, towers, archways — the visible-cube look is intentional here, like hand-laid stone)
-- Scope: zone-sized chunks, not infinite world
+- Node: `VoxelLodTerrain` (LOD streaming — required for 12km × 10km open world)
+- Terrain mesher: `VoxelMesherTransvoxel` (smooth hills, cliff edges, river banks)
+- Buildings: MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain. `VoxelMesherCubes` for any terrain-carved structures (rare).
+- Terrain is static (generated from `WorldGenerator.gd`, not editable by player)
+- Scope: full open world — 12km × 10km playable Mira, 125:1 linear compression
 
 ### Asset Creation — MagicaVoxel
 
@@ -109,32 +111,25 @@ MagicaVoxel is the standard tool for creating voxel art assets. It produces:
 
 The "low-poly" character style — flat-shaded faces, minimal geometry, bold silhouette — is achievable in Blender without professional 3D art skills. Think Zelda: Link's Awakening (2019) character proportions.
 
-**Alternative:** Billboard sprites (`Sprite3D` in Godot) — draw the character in 2D (Aseprite), display as a 3D billboard that always faces the camera. This is the classic approach for indie voxel games and easier to produce.
-
-**Decision point:** billboard sprites for Act I, transition to full 3D models for Act II+ when the pipeline is proven.
+Billboard sprites are not used. The third-person over-shoulder camera is too close for flat sprites to read as 3D. Low-poly Blender models are used from Act I onward — see `design/ART_PIPELINE.md` for the full character pipeline and Act I animation minimum set.
 
 ### Camera Rig
 
-Fixed-elevation follow camera, not free-look:
-- `Camera3D` mounted on an arm offset above and behind the player
-- Elevation angle: ~45–55° (Hades-style, reveals depth without obscuring ceiling)
-- Horizontal rotation: locked (the world turns, not the camera) for Act I
-- Optional: allow horizontal rotation for exploration in open areas (Khorumzad descent)
+Third-person over-shoulder camera, player-rotatable:
+- `Camera3D` on a `SpringArm3D` arm behind and slightly above Roland (~15° elevation)
+- Player controls horizontal and vertical aim with right stick / mouse
+- `SpringArm3D` handles collision — arm shortens automatically in caves and corridors
+- Lock-on system for 1-vs-many combat — keeps targeted enemy in right frame half
+- Full spec: `design/CAMERA_AND_PERSPECTIVE.md`
 
 ```gdscript
-# CameraRig.gd — attach to player or to a separate SpringArm3D node
-extends Node3D
-
-@export var target: Node3D         # The player node
-@export var elevation_angle: float = 50.0   # Degrees above horizontal
-@export var arm_length: float      = 12.0   # Distance from target
-@export var lerp_speed: float      = 8.0    # Smoothing
-
-func _process(delta: float) -> void:
-    if not target:
-        return
-    var goal: Vector3 = target.global_position
-    global_position = global_position.lerp(goal, lerp_speed * delta)
+# CameraRig.gd — key exports
+@export var arm_length: float = 5.0          # SpringArm3D shortens via collision
+@export var elevation_degrees: float = 15.0  # Above horizontal
+@export var horizontal_sensitivity: float = 0.3
+@export var vertical_min_degrees: float = -20.0
+@export var vertical_max_degrees: float = 45.0
+@export var dialogue_arm_length: float = 3.5  # Tween to for Dialogic conversations
 ```
 
 ### Lighting
@@ -167,40 +162,36 @@ func _process(delta: float) -> void:
 - [ ] Create placeholder `World3D.tscn` — flat `GridMap` floor, a few box walls, no voxel terrain yet
 - [ ] Verify: WASD moves the box, camera follows at fixed angle, no clipping through floor
 
-### Milestone 5-3D: First Voxel Terrain
+### Milestone 5-3D: Open World Terrain Foundation
 
-**Goal:** Walking on actual voxel terrain.
+**Goal:** Walking on streaming VoxelLodTerrain that generates recognizable Mira geography.
 
-- [ ] Set up `VoxelTerrain` node in `World3D.tscn`
-- [ ] Write a simple `VoxelGeneratorScript` — flat cave floor + rock walls
-- [ ] Add `PointLight3D` campfire with `CampfireFlicker.gd` (adapted for 3D)
-- [ ] Add `Area3D` + `CollisionShape3D` for dialogue trigger (port of `DialogueTrigger.gd`)
-- [ ] Verify: character walks on voxel surface, campfire glows, trigger fires
+- [ ] Set up `VoxelLodTerrain` node in `World3D.tscn` (replace placeholder floor)
+- [ ] Write `WorldGenerator.gd` — layered FastNoiseLite terrain with Spine ridge east, Greatwood flat north, Aldwater valley center, forced-flat zones at settlement coordinates
+- [ ] Configure LOD levels (6–8 levels for 12km extent; LOD0 radius ~60m)
+- [ ] Add `EntityStreamer` node — stub that prints chunk load/unload to Output
+- [ ] Verify: player walks on generated terrain, camera follows in third-person, distant terrain LODs are visible, no pop-in within 60m
 
 ### Milestone 6-3D: First MagicaVoxel Assets
 
 **Goal:** Replace placeholder boxes with real voxel art.
 
+- [ ] Build campfire prop in MagicaVoxel (export .glb) — first prop pipeline test
 - [ ] Build cave wall tile in MagicaVoxel (export .glb)
-- [ ] Build campfire prop in MagicaVoxel (export .glb)
-- [ ] Import to Godot, assign to MeshInstance3D nodes in World3D.tscn
-- [ ] Verify: scene looks like a voxel cave with warm campfire light
+- [ ] Import to Godot as MeshInstance3D nodes placed on terrain
+- [ ] Verify: scene reads as a real location, not a grey box test
 
 ### Milestone 7-3D: First Character Model
 
-**Goal:** Roland has a real appearance.
+**Goal:** Roland has a real low-poly appearance in the world.
 
-**Option A (faster):** Billboard sprite  
-- Draw Roland walk cycle in Aseprite (32×48, 4 directions)
-- Add as `Sprite3D` with `billboard = BILLBOARD_ENABLED`
-- Sprite3D always faces camera — same pipeline as old 2D sprites
+- [ ] Build Roland base mesh in Blender (200–400 tris, flat-shaded)
+- [ ] Rig skeleton (~25 bones)
+- [ ] Animate: idle, walk, run (minimum to unblock scene testing)
+- [ ] Export `.glb`, import to Godot, set up `AnimationTree` + `BlendSpace1D`
+- [ ] Verify: Roland walks through the generated terrain with real character animation
 
-**Option B (full 3D):**  
-- Build Roland in Blender (200–400 tris, flat-shaded, rigged)
-- Animate: walk cycle, idle, interact
-- Export .glb, import to Godot, set up `AnimationTree`
-
-Decision: start with Option A for Act I speed, assess before Act II.
+Combat animations (attack, dodge) follow in Milestone 8-3D alongside first enemy model.
 
 ---
 
@@ -263,7 +254,7 @@ func _physics_process(delta: float) -> void:
 
 - **Do not use the Godot 4 CSG nodes for terrain.** CSGBox, CSGMesh etc. are for prototyping, not production — they can't be used with physics properly.
 - **Do not use GridMap for the open world.** GridMap works for structured interior rooms; use Zylann's VoxelTerrain for anything organic (hillsides, cave walls).
-- **Do not use a free first-person camera.** The lore and narrative require the player to see Roland at all times. This is not Skyrim's camera; it's Skyrim's atmosphere.
+- **Do not use a first-person camera.** The lore and narrative require Roland to be visible at all times. The camera is third-person over-shoulder — see `design/CAMERA_AND_PERSPECTIVE.md`.
 - **Do not rebuild the logic autoloads.** GameState, FlagScheduler, InventoryManager, JournalUI, PauseMenu — all of this works in 3D without changes. Do not touch it.
 - **Do not buy or subscribe to voxel middleware.** Zylann's plugin is free, open source, and proven. Anything paid adds lock-in with no benefit at this scale.
 
@@ -273,27 +264,36 @@ func _physics_process(delta: float) -> void:
 
 ```
 /scenes/
-  World3D.tscn          ← replaces World.tscn
+  World3D.tscn          ← persistent open world scene (VoxelLodTerrain + EntityStreamer)
   Player3D.tscn         ← replaces Player.tscn
+  interiors/            ← discrete scenes for buildings and dungeon floors
+    iron_chalice.tscn
+    archive.tscn
+    khorumzad_level1.tscn
+    [...]
   ui/                   ← all unchanged (Journal, PauseMenu, etc.)
 /scripts/
   Player3D.gd           ← replaces Player.gd
-  CameraRig.gd          ← new
+  CameraRig.gd          ← third-person over-shoulder, lock-on support
   CampfireFlicker3D.gd  ← minor adaptation
-  Zone.gd               ← minor adapt (Vector3)
-  Room.gd               ← minor adapt (AABB bounds)
-  RoomTrigger3D.gd      ← port of RoomTrigger.gd
+  WorldGenerator.gd     ← NEW: VoxelGeneratorScript subclass, generates Mira terrain
+  EntityRegistry.gd     ← NEW: autoload, spatial dictionary of all world entities
+  EntityStreamer.gd      ← NEW: node in World3D, loads/unloads entities by player proximity
+  Zone.gd               ← interiors only (Vector3 adapt)
+  Room.gd               ← interiors only (AABB bounds)
+  RoomTrigger3D.gd      ← port of RoomTrigger.gd (interior doors)
   SpawnPoint3D.gd       ← port of SpawnPoint.gd
   [all logic autoloads] ← unchanged
 /assets/
-  voxel/                ← NEW: .vox and .glb voxel assets (MagicaVoxel exports)
-    cave_wall.glb
-    campfire.glb
-    archway.glb
-  models/               ← NEW: .glb character models (Blender exports)
+  voxel/                ← MagicaVoxel exports (.glb): props, buildings, dungeon tiles
+    props/
+    buildings/
+    dungeon/
+    crown_pieces/
+  models/               ← Blender character exports (.glb) — all characters from Act I
     roland.glb
     henrietta.glb
-  sprites/              ← Optional: billboard sprites if using Option A
-  portraits/            ← Unchanged (dialogue UI art)
+    [...]
+  portraits/            ← Unchanged (dialogue UI art, 256×320 px)
   audio/                ← Unchanged
 ```
