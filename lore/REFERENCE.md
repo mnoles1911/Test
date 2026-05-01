@@ -9,11 +9,11 @@
 | **Roland Ashford** | Protagonist; former Iron Chalice knight | Game One |
 | **Corvus Tane** | Companion; Conclave mage | Game Two |
 | **Seren of the Third Glade** | Companion; Aelorin Dawnbringer | Game Two |
-| **Orion Farr** | Companion; Brotherhood sailor | Game One |
+| **Orion Farr** | Companion; Sailor's Guild sailor | Game One |
 | **Dagna Irontrack** | Companion; Dragon-Watcher, volcanic expert | Game One (Act III) |
 | **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
 | **Mordvar** | Antagonist; ancient unmade king | All games |
-| **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
+| **Vaeroth the Pale** | Villain; Ashen Hand Hierarch — killed/captured at Ashfields retreat, Act IV | Game One |
 | **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
 | **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |
 | **Edran Vane** | Recurring ally; Caelborn investigator, intelligence contact | Games One-Three |
@@ -60,11 +60,11 @@
 
 ## The Sundered Crown Pieces — Metals and Significance
 
-The seven metals of the Grand Alliance forging:
+The seven metals of the Sundered Crown (Bealoric's own making):
 - **Iron** — Endurance (human)
 - **Gold** — Wealth and temptation (unmade Mordvar's hunger)
 - **Bronze** — Frontier and watchfulness (human/dwarven)
-- **Copper** (wire) — Communication and network (Brotherhood)
+- **Copper** (wire) — Communication and network (Sailor's Guild)
 - **Silver** — Memory (Aelorin)
 - **Copper** (disc) — Deep work and patience (dwarven craft)
 - **Obsidian** — The wound sealed (Naergrim, dark elves)

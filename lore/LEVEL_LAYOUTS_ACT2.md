@@ -60,14 +60,14 @@ wandering smith. Yaromir will give it freely once commitment is earned.
 **Scenes (4–5):** Lower docks + Sailor's Guild Hall → Sea-lift to upper city → Eilwen's
 court → Sailor's Guild voyage (ship deck, traveling scene) → Copper Isles Archive
 
-**Piece:** Copper wire — catalogued as an artifact of unknown function in the Brotherhood
-Archive. Released without difficulty once Roland has Brotherhood endorsement.
+**Piece:** Copper wire — catalogued as an artifact of unknown function in the Sailor's Guild
+Archive. Released without difficulty once Roland has Sailor's Guild endorsement.
 
 **Design notes:**
 - Orion Farr joins here. His joining scene is in the lower docks — he spots Roland
   trying to get passage to the Copper Isles without credentials.
 - The voyage is a traveling scene: ship deck, storm sequence, discovery of the Hollow
-  Court infiltrator in the Brotherhood safe-house island. This is the most spatially
+  Court infiltrator in the Sailor's Guild safe-house island. This is the most spatially
   unusual Act II scene — a moving environment.
 - Caer Brannoch visual split: lower city (wet, dark wood, salt, rope) vs upper city
   (stone, fleet command, windswept). The sea-lift connects them.

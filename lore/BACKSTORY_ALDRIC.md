@@ -38,7 +38,7 @@ When the party finds him, he is three days into a private investigation that has
 
 Wielding the Aeluvain against Mordvar — which is what his bloodline makes possible — requires that Aldric consciously carry Mordvar's hollow for the duration of the approach to the Aescstól. Not the evil: the void. The specific shape of absence that was once a man named Bealoric who was afraid of dying.
 
-The Dawnbringers who understand this have not told Aldric in advance. There is no good way to prepare someone for it. What they know, and what Aldric will discover, is that the bloodline that makes him capable of this also gives him a specific kind of resistance: the lineage that stood at the binding has an orientation toward completion rather than consumption. Mordvar's hollow will not find easy purchase in a man whose deepest nature is to make things that hold together.
+The Dawnbringers who understand this have not told Aldric in advance. There is no good way to prepare someone for it. What they know, and what Aldric will discover, is that the bloodline that makes him capable of this also gives him a specific kind of resistance: the lineage that stood at the Sorrowmarsh has an orientation toward completion rather than consumption. Mordvar's hollow will not find easy purchase in a man whose deepest nature is to make things that hold together.
 
 This is not a guarantee. It is a fighting chance.
 

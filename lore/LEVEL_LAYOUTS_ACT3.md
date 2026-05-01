@@ -171,7 +171,7 @@ Both remaining pieces acquired:
 Companions: Orion Farr (joined Act II) + Dagna Irontrack (joined Act III Underway).
 
 Information state:
-- `aelthurion_briefed = true` — Roland knows the binding requires blood of three peoples
+- `aelthurion_briefed = true` — Roland knows the Aeluvain requires a wielder of Bealoric's bloodline, and knows Aldric Vane's identity
 - `aldric_vane_identity_known = true` — Roland knows what Aldric is and what it means
 - `drossvik_operation_confirmed = true` — the intelligence that drives Act II of Game Two
 

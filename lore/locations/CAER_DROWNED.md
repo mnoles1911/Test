@@ -62,5 +62,5 @@ If a playable scene is ever built here, the lighting solution is the central des
 - Is there a playable scene here in Game One? A side quest? Or purely atmospheric background?
 - The Shroud Sea connection (storms began same week) — is this causal? Does the Shroud Sea's influence extend to subsidence? This is unresolved lore.
 - What was Caer Sulwyn? A normal human coastal city? Something with historical significance? Its pre-drowning identity is not established.
-- The Brotherhood diver report: is this a hook for a mission, or lore flavor? The "table set for a meal" detail is evocative enough to build a scene around.
+- The Sailor's Guild diver report: is this a hook for a mission, or lore flavor? The "table set for a meal" detail is evocative enough to build a scene around.
 - Shallow-water traversal: if the player ever visits, is it via boat, swimming, diving? The game's movement system is ground-based; water traversal would need a new mechanic or scene type.

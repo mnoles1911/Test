@@ -14,7 +14,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 | [WORLD_GEOGRAPHY.md](WORLD_GEOGRAPHY.md) | Terrain, scale, rivers, coastlines, roads, settlements table — map reference |
 | [CITY_DESCRIPTIONS.md](CITY_DESCRIPTIONS.md) | **Superseded** — physical descriptions of major settlements (kept for reference; individual location files now in `locations/`) |
 | [PEOPLES.md](PEOPLES.md) | Human kingdoms, Aelorin, dwarven holds, Naergrim — culture, society, customs |
-| [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, factions, quest index, timeline, two endings |
+| [REFERENCE.md](REFERENCE.md) | Quick-reference tables: characters, locations, factions, quest index, timeline, three endings |
 
 ---
 
@@ -67,6 +67,8 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | File | Location | Notes |
 |---|---|---|
 | [locations/CAER_DROWNED.md](locations/CAER_DROWNED.md) | Caer Drowned (Caer Sulwyn) | Sunken city in the bay. Background lore / possible side content. |
+| [locations/SORROWMARSH.md](locations/SORROWMARSH.md) | The Sorrowmarsh | The Sorrowmarsh — Location of Mordvar's unmaking two thousand years ago. Haunted, nothing grows, ghost-lights at night. |
+| [locations/SUNDERED_ISLES.md](locations/SUNDERED_ISLES.md) | Sundered Isles | Sundered Isles — Shattered remains of Aescryd island. Ash Tower floor layout, Hadran's forge, Ashen Hand command base. |
 
 ### Aldenholt Sub-Locations
 
@@ -142,7 +144,6 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | File | Contents |
 |---|---|
 | [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) | Mael (the First Whetted): founding ~25 years before Game 1, cell structure, Drossvik placement; transition to Vaeroth. Includes the Hand/Court distinction. |
-| [BACKSTORY_HOLLOW_COURT.md](BACKSTORY_HOLLOW_COURT.md) | The Ashen Hand's human intelligence arm: recruitment doctrine, cell structure, Aedric's handler, the Brotherhood infiltration, distinction from Drossvik |
 | [BACKSTORY_DAWNBRINGERS.md](BACKSTORY_DAWNBRINGERS.md) | All seven Dawnbringers: Verath, Caela, Lyren, Sorin, Aevril/Twice-Named, Maeva, and the unnamed Seventh |
 | [BACKSTORY_NAERGRIM.md](BACKSTORY_NAERGRIM.md) | The Wound bargain, blood-oath mechanics, Serethi-Twice-Dead's 200-year investigation, the dissident faction |
 | [BACKSTORY_IRON_CHALICE.md](BACKSTORY_IRON_CHALICE.md) | The Red Siege founding, doctrine of endurance, Brightwatch fortress, Solgrade debt crisis, Roland's expulsion |
@@ -163,7 +164,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [GAME2_PART2.md](GAME2_PART2.md) | Game Two main plot, second half + epilogue |
 | [GAME3_PART1.md](GAME3_PART1.md) | Game Three main plot, first act |
 | [GAME3_PART2.md](GAME3_PART2.md) | Game Three main plot, second act |
-| [GAME3_PART3.md](GAME3_PART3.md) | Game Three finale, both endings (The Exchange / The Tether), and epilogues |
+| [GAME3_PART3.md](GAME3_PART3.md) | Game Three finale, three endings (The Return / The Hold / The Fracture), and epilogues |
 | [SIDE_QUESTS_GAME1.md](SIDE_QUESTS_GAME1.md) | 7 side quests for Game One |
 | [SIDE_QUESTS_GAME2.md](SIDE_QUESTS_GAME2.md) | 6 side quests for Game Two |
 | [SIDE_QUESTS_GAME3.md](SIDE_QUESTS_GAME3.md) | 7 side quests for Game Three |

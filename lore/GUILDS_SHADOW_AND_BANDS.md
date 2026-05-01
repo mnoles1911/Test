@@ -16,7 +16,7 @@ The trilogy's primary antagonist organization. Founded approximately twenty-five
 
 **Intelligence arm:** The **Hollow Court** (see below). The two are distinct organizations connected by a one-way reporting structure. The distinction matters and should never be elided.
 
-**Plot connection:** Drives the antagonist activity in all three games. Drossvik in Khorumzad, Aedric Castrove in Eldermark, two Ashfallen inside the Conclave, the Sailor's Guild communications infiltration. Vaeroth himself appears most prominently in Games Two and Three.
+**Plot connection:** Drives the antagonist activity in all three games. Drossvik in Khorumzad, Aedric Castrove in Eldermark, two Ashfallen inside the Conclave, the Sailor's Guild communications infiltration. Vaeroth himself appears in Game One only — he is killed/captured at the Ashfields retreat (Act IV).
 
 **Deep history:** see [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) — Mael's founding, the cell structure's origin, Drossvik's placement, the transition to Vaeroth, and the Hand/Court distinction in detail.
 
@@ -50,7 +50,7 @@ The Ashen Hand's intelligence arm — not mages, but human agents recruited for 
 
 **Distinction from the Ashen Hand:** The Ashen Hand is the magical/military organization whose members know what they serve. The Hollow Court is the Hand's human intelligence arm whose members mostly do not. Court reports up to Hand handlers; Hand handlers report to Vaeroth. The distinction should never be elided.
 
-**Deep history:** see [BACKSTORY_HOLLOW_COURT.md](BACKSTORY_HOLLOW_COURT.md) — recruitment doctrine, cell structure, notable operations (Aedric, the Sailor's Guild infiltration), the distinction from Drossvik, and who outside the Hand has identified the Court's existence.
+**Deep history:** see [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) — recruitment doctrine, cell structure, notable operations (Aedric, the Sailor's Guild infiltration), the distinction from Drossvik, and who outside the Hand has identified the Court's existence.
 
 ---
 

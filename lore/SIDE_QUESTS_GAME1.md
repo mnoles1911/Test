@@ -51,11 +51,11 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 **Questgiver:** Orion himself, encountered at a waystation near the Sailor's Guild's eastern observation post.
 
-**Summary:** Orion has been asked by the Brotherhood to deliver a sealed document to a contact in the next city — a routine errand. The document's seal has been broken and resealed imperfectly, which he noticed but wasn't supposed to. He wants someone not connected to the Brotherhood to tell him if he's being used without his knowledge.
+**Summary:** Orion has been asked by the Sailor's Guild to deliver a sealed document to a contact in the next city — a routine errand. The document's seal has been broken and resealed imperfectly, which he noticed but wasn't supposed to. He wants someone not connected to the Sailor's Guild to tell him if he's being used without his knowledge.
 
-**What the player does:** Accompanies Orion, identifies that the contact is receiving the document on behalf of someone tracking Brotherhood internal communications, and helps Orion decide what to do about it — deliver it and say nothing, deliver it with a note, or return it to the Brotherhood leadership.
+**What the player does:** Accompanies Orion, identifies that the contact is receiving the document on behalf of someone tracking Sailor's Guild internal communications, and helps Orion decide what to do about it — deliver it and say nothing, deliver it with a note, or return it to the Sailor's Guild leadership.
 
-**Payoff:** Establishes Orion as a character with his own code of ethics. Whichever choice the player makes, Orion remembers it and behaves accordingly in his later appearances. Also establishes that someone is monitoring Brotherhood internal communications — relevant in Game 2 when the Shroud Sea crossing is being planned.
+**Payoff:** Establishes Orion as a character with his own code of ethics. Whichever choice the player makes, Orion remembers it and behaves accordingly in his later appearances. Also establishes that someone is monitoring Sailor's Guild internal communications — relevant in Game 2 when the Shroud Sea crossing is being planned.
 
 **Tone:** A quiet ethical puzzle with no clean answer.
 

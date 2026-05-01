@@ -8,7 +8,7 @@
 
 Formerly **Bealoric**, High King of the Aescryd in the Second Age. A man who was afraid of death and chose a ritual that eliminated the problem by eliminating the self. He became hollow — not evil in the motivating sense, but absent. A void that was once a person, acting with the cold persistence of water through stone because there is nothing left inside to want anything different.
 
-He has been bound for two thousand years. The binding weakens. He does not think; he accumulates. He does not plan; he exerts pressure. His hosts plan for him. The Ashlord interprets his will.
+He has been unmade for two thousand years. He has been slowly reforming ever since. He does not think; he accumulates. He does not plan; he exerts pressure. His hosts plan for him. The Ashlord interprets his will.
 
 **Physical presence at the end:** He emerges from the caldera on the third day of the Battle of Drûn-Khazad. Tall, grey-pale, dressed in something that was once clothing. He does not speak. He does not threaten. He walks down the slope. His presence is a cold of *will* — not temperature. Men find their arms heavy.
 
@@ -27,7 +27,7 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 
 **Weakness:** The amplification that makes Ashen Hand mages powerful is also deterioration. Vaeroth knows this. He does not discuss it. He has perhaps two years before his body cannot sustain the cost. He intends to finish the war before the bill comes due.
 
-**Plot function:** Vaeroth is the chase in Game Three. He is hunting Aldric specifically — he knows what the bloodline means and what the Aeluvain requires. The Frost Brotherhood's rear-guard action to slow him is what buys Aldric the time to reach the summit.
+**Plot function (Game One only):** Vaeroth commands the Ashen Hand's forces through the Ashfields fighting retreat at the end of Act IV. He is killed or captured there. He does not appear in Games Two or Three. The pursuit of Aldric in the later games is carried out by Hand remnant agents, not by Vaeroth personally.
 
 ---
 
@@ -36,7 +36,7 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 **True identity:** Aelorin Vigil-Keeper; former leader of the Second Age Grand Alliance's Aelorin contingent
 **Current form:** The Ashlord — Mordvar's will made partially present, faceless behind an obsidian mask
 
-Caerith forged the Sundered Crown alongside representatives of all three peoples. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
+The Sundered Crown was forged by Bealoric (Mordvar) himself — Caerith had no part in its making. When the unmaking was complete and the Grand Alliance's strike at the Sorrowmarsh was done, Caerith remained behind as Sorrowmarsh Vigil-Keeper, stationed at the Sorrowmarsh itself, while the others departed. Mordvar's residual will, still warm in the marsh's corrupted stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
 
 Two thousand years of incremental hollowing — not enough to fully erase them, enough to turn them. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
 

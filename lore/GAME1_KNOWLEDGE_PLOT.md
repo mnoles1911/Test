@@ -1,137 +1,129 @@
 # Game 1 — Knowledge Plot
 
-**Status:** v3 working draft. This file tracks what Roland and the heroes *know*, when they learn it, and which scenes deliver each beat. It is the spine the writers room should consult when blocking out Game 1's seven Crown-piece quests, the side content, and the Act IV climax.
+**Status:** Current canon. This file tracks what Roland and the heroes *know*, when they learn it, and which scenes deliver each beat. It is the spine the writers room should consult when blocking out Game 1's seven Crown-piece quests, the side content, and the Act IV climax.
 
-The v3 framing of Game 1 inverts the v2 structure: **Roland does not race the Ashen Hand to find Crown pieces — he captures them from a Hand that has already been collecting them.** Each main quest is a recovery operation against a Hand cell, garrison, courier, or vault.
+Game 1's framing: **Roland races the Ashen Hand to secure the seven Crown pieces before they can be delivered east to Hadran Volthen's forge on the Sundered Isles.** Each main quest is a race against a Hand operation targeting a specific piece — sometimes the Hand gets there first and Roland extracts it from their custody; sometimes Roland arrives before the Hand and secures the piece on his own terms.
 
 ---
 
 ## 1. The Premise of the Game 1 Investigation
 
-At the start of Game 1, the world believes the Second Age is settled history. The Crown of Aescstól is a relic of legend — most assume it was destroyed at the Sorrowmarsh; a handful of scholars suspect it was sundered and hidden. Mordvar is a name from old songs.
+At the start of Game 1, the world believes the Second Age is settled history. The Sundered Crown is a relic of legend — most assume it was destroyed at the Sorrowmarsh; a handful of scholars suspect it was sundered and its pieces hidden. Mordvar is a name from old songs.
 
 What Roland and his companions discover, piece by piece, is:
 
-1. The Crown was sundered, not destroyed. There are seven pieces.
-2. The Ashen Hand has been actively collecting them.
-3. The Hand has *most* of them already by Game 1's start.
-4. Mordvar — the Ashlord — is reforming. The pieces are needed to anchor him in a body of his own.
-5. There exists a counter-weapon (the Aeluvain) and a counter-condition (a wielder of Bealoric's bloodline) that together can kill him.
+1. The Crown was sundered, not destroyed. There are seven pieces, scattered across the world when Aelric Caelborn struck the killing blow at the Sorrowmarsh two thousand years ago.
+2. The Ashen Hand has been actively working to collect them and deliver them east.
+3. A smith named Hadran Volthen on the Sundered Isles has been waiting for decades to receive and reassemble the Crown — and already holds two pieces he acquired independently.
+4. Mordvar is reforming. The Crown is needed to anchor him in a body capable of holding his reconstituted will.
+5. There exists a counter-weapon (the **Aeluvain** — a sword, not a relic) and a counter-condition (a wielder of Bealoric's bloodline) that together can unmake him again.
 
-Game 1 ends with Roland in possession of the recovered pieces, the Hand's leadership broken or scattered, and the Ashlord wounded but escaped. The dual-key requirement to actually *kill* Mordvar is suspected but not yet confirmed; that confirmation comes in Game 2.
+Game 1 ends with Roland in possession of all seven Crown pieces, the Hand's operational leadership destroyed or scattered, and the Ashlord gravely wounded but retreating east. The requirement to actually kill Mordvar — both the sword and the bloodline wielder — is suspected but not yet confirmed; confirmation comes in Game 2.
 
 ---
 
 ## 2. Why Now? — The Hand's Recent Urgency
 
-The Ashen Hand is centuries old. They have held the smith Hadran since roughly the start of the Third Age. So why has piece-collection only become an *active* priority in the last fifteen years?
+The Ashen Hand is centuries old. Hadran Volthen has been waiting on the Sundered Isles for nearly a century. So why has active piece-collection only become an urgent priority in the last fifteen years?
 
-**Answer (canon):** A Mael-era expedition (~30 years before Game 1, late in Mael Caine's tenure as Hand Master) breached a sealed sub-vault beneath the ruined forge of Bealoric in the deep Ashfields. There they recovered fragments of Bealoric's own forge-records — the original working notes from the Crown's making.
+**Answer (canon):** A Mael-era expedition (~30 years before Game 1, late in Mael Caine's tenure as Hand Master) reached the Sundered Isles and breached a drowned sub-vault beneath the flooded lower floors of the old Aescryd archive complex. There they recovered fragments of Bealoric's original forge-records — the working notes from the Crown's making, preserved in Aescryd-granite containers that resist seawater.
 
 The records did three things:
-- They named the seven pieces explicitly, with sigils.
-- They described the *anchor function* of the Crown: that Mordvar's reforming would stall at a partial-incarnation without it.
-- They described, in oblique terms, a "twin lock" that would prevent his unmaking — language the Hand reads as *reassurance* (their lord cannot be killed by ordinary means) but which the heroes will eventually decode as the dual-key requirement.
+- They named the seven pieces explicitly, with sigils for each.
+- They described the *anchor function* of the Crown: that Mordvar's reforming would stall at a partial-incarnation without it — the pieces are not decoration but functional components.
+- They described, in technical metallurgical language, that only one instrument of the world's original Song could undo the Crown's work — language the Hand parses as a warning about the Aeluvain.
 
-Mael did not act on the records aggressively — he was old, cautious, and managing decline. **Vaeroth** acted on them. Within five years of taking the captaincy under the Ashlord, Vaeroth had organized the Hand's resources into a continent-spanning recovery operation. By Game 1 start, six of the seven pieces are in Hand custody at various holdings. The seventh — the Crownstone, the central socket-piece — is the one the Hand has been unable to find, because it was the piece the Aescryd warrior Vaerith Caelborn carried to her death in the Sorrowmarsh.
-
-This explains both the Hand's recent activity and why Game 1 ends with the Crown still incomplete: Roland recovers six pieces from the Hand, and the seventh is recovered separately from the Sorrowmarsh in the Act IV resolution.
+Mael did not act on the records aggressively — she was old, cautious, and managing an organization in decline. **Vaeroth Caine** acted on them. Within five years of taking the captaincy under the Ashlord, Vaeroth had organized the Hand's resources into a continent-spanning recovery operation. The result is the active threat Roland faces at Game 1's opening.
 
 ---
 
 ## 3. The Seven Crown Pieces — Game 1 Quests
 
-Each piece is held by a different arm of the Hand. The order below is the suggested narrative order; the writers room can re-sequence Quests 2–6 freely.
+The seven pieces of the Sundered Crown (per their function in Hadran's anvil):
 
-### Quest 1 — The Aldenholt Reliquary (the Sigil Spike)
-A Hand cell embedded in Aldenholt's lower clergy has been hoarding a Crown piece in the Iron Chalice's sealed reliquary, hidden as an unrelated relic. Roland and Edran uncover the cell during the Eldermark investigation that opens the game. **Recovery method:** infiltration and a confrontation in the under-reliquary. This quest establishes the framing — the Hand has the pieces.
+| Piece | Location in Game 1 | Recovery method |
+|---|---|---|
+| **The Pommel** | Iron Chalice reliquary, Aldenholt — hidden by an embedded Hand cell | Infiltration; confrontation in the under-reliquary |
+| **The Ring** | Vosskaran border garrison — being moved by a Hand-compromised captain | Ambush of the courier convoy on the trade road |
+| **The Wire** | Carried by a Naergrim envoy into the Weeping Wood as tribute to the Ashlord's cause | Wilderness pursuit; Seren's introduction |
+| **The Copper Wire** | Sailor's Guild Archive at the Copper Isles — catalogued as a Second Age artifact of unknown function | Guild endorsement required; Orion's introduction; Shroud charts side quest |
+| **The Clasp** | Aelorin Second Glade — left by an Aelorin who completed the Aelthiren 300 years ago; no one has examined it | Aelthurion's cooperation; critical intelligence on the Aeluvain and Aldric Vane delivered here |
+| **The Disc** | Karaz-Dûn treasury — collected by King Thrarin as a curiosity a century ago | Bromrin → Darva → treasury retrieval; Dagna joins here |
+| **The Obsidian Shard** | Mor-Vethrin, Naergrim dark elf city — held by Serethi the Twice-Dead as a bargaining chip | Serethi's deal: Naergrim withdrawal in exchange for the shard; Game 1's final moral decision |
 
-### Quest 2 — The Copper Isles Hold (the Salt Spike)
-A Hand chapter operates out of a fortified holdfast on one of the smaller Copper Isles, using Sailor's Guild trade routes as cover. **Recovery method:** sea raid with Guild allies (Corvus's introduction). The piece is in the holdfast's vault. This is where the Sailor's Guild — multi-race, loose Aescryd inheritance — first appears as an ally.
-
-### Quest 3 — The Vosskaran Garrison (the Iron Spike)
-The Hand has bought or compromised a Vosskaran border garrison; the piece is locked in the garrison strongbox while the captain plans to deliver it east. **Recovery method:** ambush of the courier convoy on the trade road. Dagna's introduction, given the garrison's proximity to dwarven Spine routes.
-
-### Quest 4 — The Weeping Wood Cache (the Root Spike)
-A Naergrim envoy has carried a piece into the Weeping Wood as a gift/tribute to the Ashlord's cause; the envoy is sheltering with corrupted forest-folk. **Recovery method:** wilderness pursuit. Seren's introduction. This is the quest where the Naergrim's grievances against the wood elves and the Sailor's Guild become legible to Roland.
-
-### Quest 5 — The Khorumzad Underway (the Stone Spike)
-A piece was traded to a corrupted dwarven sub-clan operating in the Underway tunnels beneath Khorumzad. **Recovery method:** dungeon descent through the Underway. Establishes the Spine geography that pays off in Game 2.
-
-### Quest 6 — The Drun-Khazad Antechamber (the Ash Spike)
-The Hand keeps a forward staging vault in an Ashfields outpost — *not* Drun-Khazad itself, but its outer antechamber on the Mira side. **Recovery method:** assault with a small Dawnbringer detachment. This is the quest where Roland first sees Vaeroth in the field; Vaeroth escapes.
-
-### Quest 7 — The Sorrowmarsh (the Crownstone)
-The seventh piece — the central one — was never in Hand hands. Vaerith Caelborn (see naming below) carried it into the Sorrowmarsh five hundred years ago and died there. The marsh has hidden it since. The Hand, late in Game 1, finally locates the marsh-grave; Roland's company races them to it. **Recovery method:** marsh dungeon, environmental hazards, a haunted final chamber. Roland recovers the Crownstone. The Hand attacks the company on extraction. This rolls directly into Act IV.
+**Note on Hadran's holdings:** Hadran has independently acquired two pieces — the Coin and the Disc — through Sailor's Guild dive operations at the Sundered Isles. In Game 1's execution, at least one of these (the Disc) is still in transit or in Karaz-Dûn's treasury when Roland encounters it. By Act IV's end, Roland holds all seven pieces. The mechanics of how the Coin is recovered can be confirmed in the writers room; one approach is that the Disc in Karaz-Dûn is a second copy of the piece-record and the Hand's Disc delivery was intercepted en route.
 
 ---
 
 ## 4. The Ashlord Through Game 1
 
-The Ashlord is the off-screen antagonist of Game 1. Per identity rules: he is referred to **only** as "the Ashlord" while masked, which is the entire span of Game 1. The name **Caerith** is not spoken or printed in any Game 1 text. His Aelorin origin is not knowable to the player.
+The Ashlord is the off-screen antagonist of Game 1. Per identity rules: he is referred to **only** as "the Ashlord" while masked, which is the entire span of Game 1. The name **Caerith** is not spoken or printed in any Game 1 text. His Aelorin origin is not knowable to the player in Game 1.
 
 What the player sees of him in Game 1:
-- Brief masked appearances behind Vaeroth at one or two key Hand sites
-- Voice-only scenes (the Ash Tower, addressing his captains)
-- A glimpse during the Sorrowmarsh extraction, where he appears, wounds Roland, and is driven off by combined Dawnbringer/Aelorin intervention
-- The Act IV battle, where he is on the field at last
+- Brief masked appearances behind Vaeroth at one or two key Hand operations
+- Voice-only communication scenes (dispatches, orders to captains intercepted by Roland)
+- His counterstroke in Act IV — he comes out of the Ash Tower personally for the first time in decades
 
-His goals through Game 1 are: stall the heroes, keep Vaeroth's recovery operation moving, and protect the seventh-piece search.
-
----
-
-## 5. Act IV Climax — Recommended: The Tower-Break at Karaz Dûn
-
-After the Sorrowmarsh, Roland holds all seven pieces. The Ashen Hand is reeling. The heroes' decision: do they wait, fortify, and study the Crown — or strike now while the Hand is broken and the Ashlord's host is concentrated at his command base?
-
-The heroes strike. The Act IV climax is the **assault on Karaz Dûn — the Ash Tower** — the Ashlord's command base on the Mira-Thal frontier (see Ash Tower lore). The strategic logic: the Ashlord cannot retreat from Karaz Dûn without losing the goblin host he has been mustering there; the heroes know the Crown pieces are now safe with the Aelorin, so the Ashlord cannot complete his anchoring even if he escapes.
-
-**The battle:** A Dawnbringer/Aelorin/Sailor's Guild combined force besieges the lower tower while Roland's company breaches the spire. Vaeroth holds the gate. The Ashlord meets Roland on the upper terrace. The Ashlord is gravely wounded — but he is not yet anchored, and the heroes' weapons cannot kill him. He escapes through a Naergrim portal, leaving Vaeroth's broken army behind. Vaeroth lives, deteriorating; he flees east. Hand leadership is shattered. Hand cells across the world are hunted in the months that follow.
-
-(See v3 pitch for the two alternative climax sites considered and why Karaz Dûn won.)
+His goals through Game 1 are: keep Vaeroth's recovery operation moving, protect the piece deliveries, and prevent Roland from accumulating all seven before they can be moved east. He does not engage Roland personally until Act IV — and that engagement costs him more than he anticipated.
 
 ---
 
-## 6. The Dual-Key Discovery — Breadcrumbs Across Games 1–3
+## 5. Act IV Climax — The Ashfields Fighting Retreat
 
-The heroes do not know at Game 1 start that killing Mordvar requires both Star-metal **and** a Caelborn-bloodline wielder. The discovery is paced across the trilogy.
+After securing the Obsidian Shard from Serethi at Mor-Vethrin, Roland's party exits the Weeping Wood eastward into the grey dead Ashfields. They hold all seven Crown pieces. The Ashlord, who has been tracking the operation through every remaining Hand intelligence asset, knows this.
 
-### Game 1 breadcrumbs (suspicion, not confirmation)
-- **Quest 1 (Aldenholt):** Edran finds, in the under-reliquary, a partial fragment of an old Aescryd litany: *"By the star and by the line, by the metal and by the hand."* He flags the doubled structure as suspicious — two things, not one — and files it.
-- **Quest 4 (Weeping Wood):** A Aelorin loremaster Roland encounters in the Greatwood mentions, in passing, that the Sorrowmarsh strike "was not the weapon alone." She does not elaborate; she assumes Roland knows.
-- **Quest 6 (Drun-Khazad antechamber):** Roland's company finds a Hand operative's notebook with a margin note in Vaeroth's hand: *"the twin lock — the lord is safe."* Edran reads "twin lock" as confirmation that there are *two* conditions for Mordvar's death. He still does not know what the second one is.
-- **Sorrowmarsh (Quest 7):** The marsh-grave's final chamber holds Vaerith Caelborn's bones and her shattered Aeluvain blade. The blade is inert — the killing-blow consumed its purpose against Bealoric (which it did not actually kill — see Game 2 reveal). Edran notes the Caelborn name on the grave-marker. He files it without yet knowing it matters to Aldric's family.
+**The Ashlord comes out of the Ash Tower himself.** He has not done so in decades. The pieces are too important to trust to a field commander; Vaeroth's conventional forces alone cannot guarantee interception. The Ashlord launches a coordinated strike across the Ashfields — Roland's exit route toward the western frontier.
 
-By Game 1's end, Edran's hypothesis: *there are two conditions, and one of them is the metal. The other is unknown.*
+**The battle:** A fighting retreat westward across the dead grey landscape. Brightwatch fighters who sheltered Roland earlier hold the rear. Some do not survive. The Ashlord engages Roland's party directly — centuries old, partially hollowed, amplified by Mordvar's growing reconstitution. He is formidable.
 
-### Game 2 breadcrumbs (the second condition named)
-- Hadran's notes, recovered when the heroes break him out of the Ash Tower, name the second condition explicitly: *the line of him who made the hollow.* Bealoric's bloodline.
-- The heroes do not yet connect this to anyone living. The Caelborn line is assumed extinct.
-- Late Game 2: Edran, cross-referencing the Sorrowmarsh grave-marker, the Aldenholt litany, and Hadran's notes, presents the dual-key thesis to the company. **The dual-key requirement is named here.** The hunt for a living Caelborn descendant becomes a Game 2 epilogue quest.
+**The turning point:** Proximity to all seven Crown pieces simultaneously creates interference the Ashlord's connection to Mordvar cannot fully compensate for. Roland's knowledge of the Crown's nature — drawn from Aelthurion's intelligence briefing — gives the party an advantage the Ashlord did not anticipate. The Ashlord is gravely injured. He retreats east, back toward the Ash Tower — not routed, but recognizing the engagement has gone wrong in ways he must account for.
 
-### Game 3 confirmation
-- Game 3 opens with Edran's investigation arriving at Coldstoke and at Aldric Vane. The grandfather's name-change from Caelborn to Vane is uncovered. Aldric's bloodline is confirmed by the Aeluvain itself (it warms in his hand).
-- The heroes now have both keys: a reforged Aeluvain and the smith who can wield it.
+**Vaeroth's fate:** Vaeroth Caine, commanding the Hand's conventional forces during the strike, is killed or captured in the same engagement. His operational layer was the hammer the Ashlord swung, and it broke against Roland's party.
 
-This pacing keeps Game 1 about *recovering objects from a known enemy*, Game 2 about *understanding the rules*, and Game 3 about *finding the person*.
+**Exit:** Orion, whose sailing background means he has been planning the exit route since they arrived, navigates the party through a Sailor's Guild safe-house tunnel that exits west of the Ashfields.
+
+**Game 1 ends** with Roland holding all seven Crown pieces, the Hand's operational leadership destroyed, the Ashlord wounded and retreating east to regroup, and the knowledge that the next move is Khorumzad — where the Vault of Aen-Vael holds the Aeluvain, and where Aldric Vane must be found.
 
 ---
 
-## 7. The Aeluvain in Game 1
+## 6. The Aeluvain — What Game 1 Establishes
 
-The Aeluvain blade — Star-metal, Aelorin-forged, blood-keyed to the Caelborn line — is **not** in play in Game 1. Its shards are at the Sorrowmarsh grave and are recovered with the Crownstone in Quest 7. They are turned over to the Aelorin for safekeeping at the end of Act IV. Reforging is a Game 3 problem.
+The Aeluvain is a **sword** — pale blue-white, cold to the touch, humming at a frequency only Aelorin can hear. Forged by the Aelorin from the material of the fallen Eighth Star. It is not a relic, not a binding artifact, not a gem. It is a piece of the world's original Song given edge and weight.
 
-What Game 1 does establish: the Aeluvain *exists*, that it killed Bealoric in his physical form once before, and that the Aescryd warrior who wielded it then was a woman named Vaerith Caelborn — a member of Bealoric's own line who turned against him.
+It is **not** in play in Game 1. It rests in the Vault of Aen-Vael, below Khorumzad in the Spine of the World — placed there by the Grand Alliance as far from Drûn-Khazad as the world allows.
+
+What Game 1 does establish about the Aeluvain:
+- It exists and is intact.
+- It was the weapon **Aelric Caelborn** (male; ancestor of Aldric Vane; an Aescryd-blooded warrior of the Grand Alliance) wielded at the Sorrowmarsh to unmake Mordvar two thousand years ago.
+- It requires a vessel of Mordvar's bloodline — a descendant of Bealoric's line — to wield safely. The Aeluvain is keyed to Aescryd blood.
+- It goes *with* the grain of the world in a way Bealoric's hollowing did not. That is why it is the only thing that can unmake what he made.
+
+The discovery of the Aeluvain's location and nature is delivered by Aelthurion during the Greatwood visit (Quest 5 / the Clasp acquisition). He also names Aldric Vane as the last Caelborn bloodline. This is the most important information in the trilogy and it is delivered calmly, in an old forest, by a man who has been waiting forty years for someone to come asking.
+
+---
+
+## 7. Knowledge Accumulation — Breadcrumbs Across Game 1
+
+The heroes do not know at Game 1's start that killing Mordvar requires both the Aeluvain *and* a Caelborn-bloodline wielder. The discovery is paced across Game 1 through accumulating intelligence.
+
+**Early Game 1 (Quests 1–3):** The Hand is collecting Crown pieces for delivery east. Someone east is waiting. The pieces serve a purpose beyond collection. First suspicion that there are *two conditions* — not just a weapon, but a specific wielder.
+
+**Mid Game 1 (Quests 4–6):** Aelthurion delivers the full picture at the Greatwood: the Aeluvain (a sword, intact, in the Vault of Aen-Vael below Khorumzad), its Aescryd-blood requirement, and Aldric Vane's identity. Drossvik's interrogation (if captured) confirms Hadran Volthen's role and the Ash Tower as the Crown's destination.
+
+**Late Game 1 (Quest 7 / Naergrim):** Serethi confirms the Crown's function and the Ashlord's reliance on Hadran. The moral weight of the shard acquisition makes Roland understand the stakes are not just military.
+
+**Act IV / aftermath:** Edran's running file on the Caelborn lineage is confirmed by Aelthurion's intelligence. The connection between Aldric Vane and the Aeluvain's blood-key is suspected but not yet physically confirmed. That confirmation — the Aeluvain warming in Aldric's hand — comes in Game 2.
 
 ---
 
 ## 8. What Roland Believes at the End of Game 1
 
-- Mordvar is real, reforming, and not yet anchored.
-- The Ashen Hand is broken but not extinct.
-- The Crown is in safe hands (literally — distributed across the Aelorin, the dwarves, and the Iron Chalice).
-- There is something he and Edran have not yet figured out about how Mordvar can actually be *killed*. Two conditions. One is the Star-metal. The other is open.
-- Vaeroth is alive and east. The Ashlord is alive and east.
-- The next move is not his to make alone.
+- Mordvar is real, reforming, and not yet anchored in a body.
+- The Ashen Hand is operationally broken but not extinct — the intelligence network (the Hollow Court arm) is intact; only the military/magical core was shattered.
+- All seven Crown pieces are in Roland's custody.
+- The Aeluvain is a sword, intact, in the Vault of Aen-Vael below Khorumzad.
+- Aldric Vane exists, is the last Caelborn bloodline, and is in Coldstoke in Vosskara.
+- The Ashlord is alive, gravely injured, retreating east. He will regroup.
+- The next step is Khorumzad: reach the Vault, retrieve the Aeluvain, and find a way to get Aldric there before the Hand's remnants do.
 
-This is the emotional and informational ledger Game 2 inherits.
+This is the informational and emotional ledger Game 2 inherits.

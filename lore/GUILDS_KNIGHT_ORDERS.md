@@ -52,7 +52,7 @@ One major chivalric order per kingdom. Each has its own founding myth, internal 
 
 **Classified history:** The Brotherhood ran a covert information exchange with a Gulmrak orc warlord (predecessor to Drûn-Aghul) for eleven years. The exchange ended with that warlord's death in Game One. Three current captains know what was exchanged. They have agreed never to tell Despot Yaromir.
 
-**Plot connection:** Provides intelligence on Ashen Hand frontier movements throughout Games One and Two. In Game Three, the Brotherhood is critical to **Aldric Vane's** protection in Coldstoke — they slow Vaeroth's pursuit and cover the escape route.
+**Plot connection:** Provides intelligence on Ashen Hand frontier movements throughout Games One and Two. In Game Three, the Brotherhood is critical to **Aldric Vane's** protection in Coldstoke — they slow the Hand's pursuit and cover the escape route.
 
 ---
 

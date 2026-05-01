@@ -92,7 +92,7 @@ Occupies the center-right portion of the map between the two continents.
 
 - Dense horizontal line hatching, slightly darker/more chaotic than the open western ocean, to suggest permanent storm
 - Spiral or arc line symbols to indicate persistent wind/storm patterns
-- One illustrated sailing ship, small, positioned in the western (calmer) edge of the sea with the label *"Brotherhood charts end here"*
+- One illustrated sailing ship, small, positioned in the western (calmer) edge of the sea with the label *"Sailor's Guild charts end here"*
 - Label across the center of the sea in large italic capitals: *"THE SHROUD SEA"*
 - Subtitle below in smaller text: *"no passage save the window"*
 - In the northeastern section of the sea, faint ghost-ruins of the Aescryd (sunken continent) visible as dotted outlines beneath the hatching with label: *"Aescryd (drowned)"*
@@ -222,7 +222,7 @@ This file defines what should be absent, blank, or deliberately undetailed on th
 Beyond the Vrothmor Peaks and Drûn-Khazad, Thal's eastern reaches are unmapped. Leave this area open — no settlements, no roads, no terrain features. A single label in the blank space: *"Here the maps end."* in small italic.
 
 **The Shroud Sea crossing route**
-Do NOT draw a dotted line, path, or route across the Shroud Sea. The Brotherhood has made the crossing but it is not a known route. No ship trail. No waypoints. The sea is blank storm-hatching with one ship icon at the western edge only.
+Do NOT draw a dotted line, path, or route across the Shroud Sea. The Sailor's Guild has made the crossing but it is not a known route. No ship trail. No waypoints. The sea is blank storm-hatching with one ship icon at the western edge only.
 
 **The Greatwood interior**
 The canopy closes. Inside the Greatwood, draw no roads, no clearings, no paths. The Eight Glades are shown as small open circles within the forest mass, but no route connects them. Lirien-Thal and Aelorien are marked but unreachable by any drawn road.
