@@ -29,7 +29,7 @@ Cross-faction institutions that span the human kingdoms (and, for some, all peop
 
 ---
 
-### The Sailors' Brotherhood
+### The Sailor's Guild
 
 Based in Caer Brannoch. Chapters in every port city on both coasts.
 
@@ -37,12 +37,12 @@ Based in Caer Brannoch. Chapters in every port city on both coasts.
 
 **Member benefits:**
 - Reduced dock fees in member ports
-- Brotherhood safe-houses in foreign cities
+- Guild safe-houses in foreign cities
 - Access to the network of information that flows through every sailor who has ever crossed between coasts
 
-**Absolute principle:** Information flows freely between members. Brotherhood members do not report to crowns, do not carry messages that must be hidden from other sailors, and do not take contracts requiring them to sink another member's ship.
+**Absolute principle:** Information flows freely between members. Guild members do not report to crowns, do not carry messages that must be hidden from other sailors, and do not take contracts requiring them to sink another member's ship.
 
-**Track record:** Thirty-one members expelled in Brotherhood history. Twenty-nine for breaking the no-crown-service rule. The other two for reasons the Brotherhood will not discuss.
+**Track record:** Thirty-one members expelled in Guild history. Twenty-nine for breaking the no-crown-service rule. The other two for reasons the Guild will not discuss.
 
 **The Shroud Sea Charts:**
 - The Brotherhood has charted Shroud Sea storm patterns for two hundred years
@@ -50,9 +50,9 @@ Based in Caer Brannoch. Chapters in every port city on both coasts.
 - The next window opens **nine years** from Game One's start (revised from earlier estimates of eleven)
 - Brotherhood leadership is divided on what to do with this knowledge
 
-**[SIDE QUEST] The Brotherhood's Copper Isles Archive:** Access requires becoming a Brotherhood-endorsed sailor, which requires completing one voyage with a Brotherhood crew. Payoff: the Shroud window information and a Brotherhood contact who can move people and intelligence across faction lines throughout the trilogy.
+**[SIDE QUEST] The Guild's Copper Isles Archive:** Access requires becoming a Guild-endorsed sailor, which requires completing one voyage with a Guild crew. Payoff: the Shroud window information and a Guild contact who can move people and intelligence across faction lines throughout the trilogy.
 
-**Deep history:** see [BACKSTORY_SAILORS_BROTHERHOOD.md](BACKSTORY_SAILORS_BROTHERHOOD.md) — origin as a drowned-sailor mutual aid society, the three absolute principles, Council of Stewards structure, the safe-house network, the Hollow Court infiltration, and the Council's internal divide on the crossing question. For the Shroud Sea chart program specifically, see also [HISTORY_SHROUD_SEA.md](HISTORY_SHROUD_SEA.md).
+**Deep history:** see [BACKSTORY_SAILORS_GUILD.md](BACKSTORY_SAILORS_GUILD.md) — origin as a drowned-sailor mutual aid society, the three absolute principles, Council of Stewards structure, the safe-house network, the Ashen Hand's infiltration, and the Council's internal divide on the crossing question. For the Shroud Sea chart program specifically, see also [HISTORY_SHROUD_SEA.md](HISTORY_SHROUD_SEA.md).
 
 ---
 

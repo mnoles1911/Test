@@ -19,15 +19,15 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 ---
 
-## 2. The Hollow Court's Man
+## 2. The Ashen Hand's Man
 
 **Questgiver:** A merchant named Sela who suspects her business partner is reporting her conversations to someone.
 
 **Summary:** Sela's partner Dovin has changed in the past year — asking unusual questions, disappearing at odd hours, receiving correspondence he doesn't discuss. Sela wants to know who he's working for before she decides what to do.
 
-**What the player does:** Investigates Dovin's activities. Discovers he is a low-level Ashen Hand informant passing commercial intelligence about Eldermark trade routes. His handler is a figure the player cannot yet identify — but the correspondence contains a cipher that Aldric recognizes as Hollow Court methodology.
+**What the player does:** Investigates Dovin's activities. Discovers he is a low-level Ashen Hand informant passing commercial intelligence about Eldermark trade routes. His handler is a figure the player cannot yet identify — but the correspondence contains a cipher that Aldric recognizes as Ashen Hand methodology.
 
-**Payoff:** Exposes Prince Aedric Castrove's connection to the Hollow Court indirectly — the trade route intelligence Dovin was gathering was specifically useful to someone with access to Eldermark crown logistics. Aldric notes this privately but doesn't say it aloud until Game 2.
+**Payoff:** Exposes Prince Aedric Castrove's connection to the Ashen Hand indirectly — the trade route intelligence Dovin was gathering was specifically useful to someone with access to Eldermark crown logistics. Aldric notes this privately but doesn't say it aloud until Game 2.
 
 **Tone:** A small conspiracy that implies a larger one. The player probably suspects more than they can prove.
 
@@ -65,11 +65,11 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 **Questgiver:** A woman named Wyn who approaches the party carefully, having watched them for two days first.
 
-**Summary:** Wyn was a member of the Pale Supper — a Hollow Court-aligned cell operating in the region — until three weeks ago, when she witnessed something she won't describe yet. She wants to leave. She doesn't know how to leave an organization that doesn't permit departure.
+**Summary:** Wyn was a member of the Pale Supper — an Ashen Hand-aligned cell operating in the region — until three weeks ago, when she witnessed something she won't describe yet. She wants to leave. She doesn't know how to leave an organization that doesn't permit departure.
 
-**What the player does:** Helps Wyn disappear — which requires understanding enough of the Pale Supper's structure to break the cell's ability to find her. This involves accessing the cell's communication methods and disrupting their network without fully exposing it (full exposure would tip off the broader Hollow Court).
+**What the player does:** Helps Wyn disappear — which requires understanding enough of the Pale Supper's structure to break the cell's ability to find her. This involves accessing the cell's communication methods and disrupting their network without fully exposing it (full exposure would tip off the broader Ashen Hand).
 
-**Payoff:** Wyn is grateful and quietly useful — she surfaces again in Game 2 with information she's gathered from her continued proximity to Pale Supper former associates. What she witnessed that made her leave is revealed in Game 2 and connects to the Hollow Court's preparation activities near Khorumzad.
+**Payoff:** Wyn is grateful and quietly useful — she surfaces again in Game 2 with information she's gathered from her continued proximity to Pale Supper former associates. What she witnessed that made her leave is revealed in Game 2 and connects to the Ashen Hand's preparation activities near Khorumzad.
 
 **Tone:** A person trying to exit a situation that has no clean exit. The player's competence determines how clean it gets.
 
@@ -83,7 +83,7 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 **What the player does:** Investigates the parcel. It's an Ashen Hand logistics site — a waystation for moving people and materials through the region. The fictional names trace back to a notary whose records Aldric has been watching for unrelated reasons.
 
-**Payoff:** Gives Aldric a thread that confirms the Hollow Court is actively using kingdom administrative infrastructure. Adds to his picture of the Hollow Court's reach. Also gives Roland a specific moment of recognizing that the problem is not dramatic and distant — it is local, in the administrative record of a region he grew up near.
+**Payoff:** Gives Aldric a thread that confirms the Ashen Hand is actively using kingdom administrative infrastructure. Adds to his picture of the Ashen Hand's reach. Also gives Roland a specific moment of recognizing that the problem is not dramatic and distant — it is local, in the administrative record of a region he grew up near.
 
 **Tone:** The mundane face of institutional corruption. Nothing happens here except paperwork, and the paperwork is terrifying.
 
@@ -97,6 +97,6 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 **What the player does:** Spends time building Darva's trust (dialogue-heavy), then devises an approach to make the Pale Supper cell voluntarily move their operations without understanding they've been managed. This requires understanding the cell's internal paranoia and using it against them.
 
-**Payoff:** Darva's inn becomes a safe waypoint. The Pale Supper cell that moves becomes the same cell whose structure the player disrupted in The Pale Defection — Wyn's former cell. The player may or may not connect these. Either way, they've quietly dismantled a significant Hollow Court asset in the region.
+**Payoff:** Darva's inn becomes a safe waypoint. The Pale Supper cell that moves becomes the same cell whose structure the player disrupted in The Pale Defection — Wyn's former cell. The player may or may not connect these. Either way, they've quietly dismantled a significant Ashen Hand asset in the region.
 
 **Tone:** Quiet and character-driven. About someone ordinary trying to protect their ordinary life from extraordinary danger.

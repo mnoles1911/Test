@@ -12,7 +12,7 @@
 | **Orion Farr** | Companion; Brotherhood sailor | Game One |
 | **Dagna Irontrack** | Companion; Dragon-Watcher, volcanic expert | Game One (Act III) |
 | **Aldric Vane** | Companion; last of Mordvar's bloodline | Game Three |
-| **Mordvar** | Antagonist; the Hollow King | All games |
+| **Mordvar** | Antagonist; ancient hollow king | All games |
 | **Vaeroth the Pale** | Villain; Ashen Hand Hierarch | All games |
 | **Caerith (The Ashlord)** | Villain; Second Age Aelorin Vigil-Keeper, turned by Mordvar | All games (revealed Game Three) |
 | **Prince Aedric Castrove** | Villain; Ashen Hand's human asset | Game One |
@@ -62,7 +62,7 @@
 
 The seven metals of the Grand Alliance forging:
 - **Iron** — Endurance (human)
-- **Gold** — Wealth and temptation (bound Mordvar's hunger)
+- **Gold** — Wealth and temptation (unmade Mordvar's hunger)
 - **Bronze** — Frontier and watchfulness (human/dwarven)
 - **Copper** (wire) — Communication and network (Brotherhood)
 - **Silver** — Memory (Aelorin)
@@ -90,7 +90,7 @@ The seven metals of the Grand Alliance forging:
 - [MAIN] The Silver Clasp (Aelorin Greatwood)
 - [MAIN] The Copper Disc (Karaz-Dûn)
 - [MAIN] The Obsidian Shard (Mor-Vethrin)
-- [MAIN] The Binding Site (Ashfields)
+- [MAIN] The Ashfields Fighting Retreat (crown assembled, Ashlord repelled)
 - [SIDE] The Archive's Locked Room
 - [SIDE] The Brotherhood's Shroud Charts
 - [SIDE] The Tribute Papers
@@ -113,21 +113,21 @@ The seven metals of the Grand Alliance forging:
 - [MAIN] The Eastern Crossing (Shroud Sea)
 - [MAIN] The Approach to the Caldera (3-day battle)
 - [MAIN] The Aescstól (Ashlord confrontation)
-- [MAIN] The Choice (The Exchange / The Tether)
+- [MAIN] The Choice (The Return / The Hold / The Fracture)
 - [SIDE] Aldric's Training
 - [SIDE] The Nameless Council's Message (delivery)
 
 ---
 
-## The Two Endings
+## The Three Endings
 
-| | The Exchange | The Tether |
-|---|---|---|
-| **What Aldric does** | Carries Mordvar's hollow temporarily, then releases it into the vault | Binds it to himself permanently |
-| **Mordvar's fate** | Dissolved — the fear completed and resolved | Contained within Aldric's bloodline |
-| **Aldric's life after** | Returns to Coldstoke; builds; declines honors | Stays near Drûn-Khazad; the anchor |
-| **Long-term consequence** | The vault sealed; world free of the binding | The bloodline carries the weight forward |
-| **Thematic reading** | Resolution and release | Love as permanent cost |
+| | The Return | The Hold | The Fracture |
+|---|---|---|---|
+| **What Aldric does** | Carries Mordvar's hollow temporarily, then releases it into the vault | Binds it to himself permanently | Refuses; the hollow disperses uncontrolled |
+| **Mordvar's fate** | Dissolved — the fear completed and resolved | Contained within Aldric's bloodline | Scattered; neither ended nor contained |
+| **Aldric's life after** | Returns to Coldstoke; builds; declines honors | Stays near Drûn-Khazad; the anchor | Survives; the cost falls on the world |
+| **Long-term consequence** | The vault sealed; world free of Mordvar's reforming | The bloodline carries the weight forward | Mordvar's remnants seed future conflict |
+| **Thematic reading** | Resolution and release | Love as permanent cost | The price of refusal |
 
 ---
 
@@ -135,12 +135,12 @@ The seven metals of the Grand Alliance forging:
 
 | Event | When |
 |---|---|
-| Mordvar's binding | ~2,000 years before Game One |
+| Mordvar's unmaking | ~2,000 years before Game One |
 | Smiths' Confederation founding | ~400 years before Game One |
 | Loremaster's Archive established | ~300 years before Game One |
 | Iron Chalice founding (Red Siege) | ~300 years before Game One |
 | Caer Sulwyn's fall (Caer Drowned) | ~200 years before Game One |
-| Sailors' Brotherhood Shroud charts begun | ~200 years before Game One |
+| Sailor's Guild Shroud charts begun | ~200 years before Game One |
 | Ashen Hand founded by Mael (the First Whetted) | ~25 years before Game One |
 | Drossvik placed in Bromrin's court | ~11 years before Game One |
 | Vaeroth takes Hierarch position (after Mael's death) | ~10 years before Game One |

@@ -240,7 +240,7 @@ The Underway is marked as a dotted line beneath the mountains, but no surface ro
 
 ## What Has No Map Symbol
 
-- The Hollow Court's location — unknown, intentionally absent
+- The Ashen Hand's location — unknown, intentionally absent
 - Goblin territories — no settlements, no named features; the Ashfields are simply labeled as dangerous frontier
 - The Aescryd ruins on Thal's western coast — too small for a standard symbol; a footnote label only
 - Any route beyond the western ocean — the map ends at Mira's western coast and the Pilgrim's Chain

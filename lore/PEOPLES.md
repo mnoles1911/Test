@@ -28,7 +28,7 @@ Humans are the youngest major people but the most numerous. Four distinct kingdo
 
 **Culture:** Welsh/Celtic flavor. Bards, druidic remnants at the rural level, bronze torcs as noble insignia, rain-soaked moors inland. Master sailors and shipwrights — Caer Brannoch builds the best ships in the world and controls the western trade lanes.
 
-**The Shroud:** Eilwen's court-scholars have been studying the Shroud Sea's permanent storms for two generations. The Sailors' Brotherhood's Shroud charts originate here. Eilwen believes a navigable window exists and opens every forty years. The next opens nine years from Game One's start.
+**The Shroud:** Eilwen's court-scholars have been studying the Shroud Sea's permanent storms for two generations. The Sailor's Guild's Shroud charts originate here. Eilwen believes a navigable window exists and opens every forty years. The next opens nine years from Game One's start.
 
 **Tension:** Border disputes with Eldermark over fishing rights date back four generations. An old coastal massacre that neither kingdom officially acknowledges has never been resolved.
 
@@ -100,7 +100,7 @@ Dwarves live longer than humans (lifespans of three to four hundred years) but a
 
 **Location:** Middle Spine. **Ruler:** King Bromrin Deepdelver. His realm tunnels deepest of all — nine layers from the Underdark. Pious, beloved, known for his personal humility despite commanding the most extensive underground infrastructure in the world.
 
-**Current crisis:** Bromrin has been slowly poisoned into gold-hunger by Drossvik, his senior advisor and the Ashen Hand's primary inside agent in the dwarven kingdoms. His diggers, following the deepening gold-hunger's obsessive drive, broke through to the Hollow Hearth chamber below Khorumzad and then to the **Vault of Aen-Vael** below that. Since the vault seal was disturbed, the gold-hunger has spread from Bromrin outward through the ambient magic contaminating the hold's atmosphere.
+**Current crisis:** Bromrin has been slowly poisoned into gold-hunger by Drossvik, his senior advisor and the Ashen Hand's primary inside agent in the dwarven kingdoms. His diggers, following the deepening gold-hunger's obsessive drive, broke through to the Ash Hearth chamber below Khorumzad and then to the **Vault of Aen-Vael** below that. Since the vault seal was disturbed, the gold-hunger has spread from Bromrin outward through the ambient magic contaminating the hold's atmosphere.
 
 ### Kazaad-Brak — The Warden Kingdom
 
@@ -112,13 +112,13 @@ Dwarves live longer than humans (lifespans of three to four hundred years) but a
 
 ## The Shadow — Mordvar and the Ash Throne
 
-### Mordvar — The Hollow King
+### Mordvar (the Enduring)
 
 **Origin:** Born Bealoric, High King of the Aescryd (the First Human Kingdom) in the Second Age. A capable, beloved ruler who watched his kingdom slow and crumble and became consumed by a single fear: death. He sought immortality through a ritual that required emptying himself — surrendering the core of his selfhood, the thing that makes beings mortal, in exchange for a form that contains nothing and therefore cannot die.
 
-He got what he wanted. He became hollow. His kingdom became a death-engine. The Grand Alliance — Aelorin, dwarves, and the remaining uncorrupted humans — forged the **Sundered Crown** and used it to bind him. He was sealed in the **Hollow Hearth** within Drûn-Khazad.
+He got what he wanted. He became hollow. His kingdom became a death-engine. The Grand Alliance — Aelorin, dwarves, and the remaining uncorrupted humans — forged the **Sundered Crown** and used it to unmake him. He was unmade at the Sorrowmarsh two thousand years ago, his scattered essence slowly reforming.
 
-Two thousand years later, the binding weakens. Mordvar cannot yet act directly. He acts through the Aescstól (Ash Throne), through the Ashlord, through the Ashen Hand and the Hosts.
+Two thousand years later, Mordvar reforms. He cannot yet act directly. He acts through the Aescstól (Ash Throne), through the Ashlord, through the Ashen Hand and the Hosts.
 
 **Physical presence:** Mordvar emerges from Drûn-Khazad's caldera on the night of the final battle's third day. He is tall and grey-pale, dressed in something that was once clothing and is now indistinguishable from his skin. He does not roar or speak or raise his arms. He simply begins walking down the slope. His presence is a cold of *will*, not temperature. Men who were fighting moments before find their arms heavy.
 
@@ -126,15 +126,15 @@ Two thousand years later, the binding weakens. Mordvar cannot yet act directly. 
 
 ### The Aescstól — The Ash Throne
 
-An obsidian throne streaked with silver, forged from cooled lava and the bone-meal of Mordvar's first sacrifices, in the Hollow Hearth within Drûn-Khazad. Mordvar's will flows through it into whoever sits upon it.
+An obsidian throne streaked with silver, forged from cooled lava and the bone-meal of Mordvar's first sacrifices, in the Ash Hearth within Drûn-Khazad. Mordvar's will flows through it into whoever sits upon it.
 
 The current occupant is the **Ashlord** — faceless even to his own forces, Mordvar's will made partially present. He wears a featureless obsidian mask and has not been seen without it in two thousand years. His own inner circle believes he was always this way — a vessel built for the purpose, not a person converted to it. They are wrong.
 
-**The Ashlord is Caerith**, formerly the Vigil-Keeper of the Second Age Grand Alliance — the Aelorin loremaster who led the Aelorin contingent in forging the Sundered Crown. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close. Not enough to destroy them — enough to turn them.
+**The Ashlord is Caerith**, formerly an ancient Aelorin loremaster who served as Sorrowmarsh Vigil-Keeper after the Grand Alliance's unmaking of Mordvar. Stationed at the Sorrowmarsh to watch for any resurgence of Mordvar's scattered essence, Caerith was instead slowly corrupted by that same essence seeping through the ruined ground over centuries. Mordvar's residual will — diffuse, patient, still reaching — took what it could while Caerith kept his long vigil. Not enough to destroy him — enough to turn him. Eventually Caerith abandoned the Sorrowmarsh vigil entirely and walked east to Drûn-Khazad, drawn by Mordvar's slowly reconstituting presence, and took his place upon the Ash Hearth.
 
-Two thousand years of that. More hollow than the Ashfallen, less hollow than Mordvar himself. A being trapped between states, the instrument of the will they spent their life opposing, with just enough of themselves left to know it.
+Two thousand years of that. More hollow than the Ashfallen, less hollow than Mordvar himself. A being trapped between states, the instrument of the will he spent his life opposing, with just enough of himself left to know it.
 
-Lord Aelthurion knows. He has known since the Second Age. Caerith's name is not spoken in Aelorin society. In the Archive at Lirien-Thal they are recorded as having completed the Aelthiren, because the alternative requires explaining what they became. The mask is worn because beneath it is an Aelorin face — and the Naergrim, who are themselves Aelorin-derived, would recognize what they were looking at.
+Lord Aelthurion knows. He has known since the Second Age. Caerith's name is not spoken in Aelorin society. In the Archive at Lirien-Thal he is recorded as having completed the Aelthiren, because the alternative requires explaining what he became. The mask is worn because beneath it is an Aelorin face — and the Naergrim, who are themselves Aelorin-derived, would recognize what they were looking at.
 
 **Symbol:** A black sun with seven rays. One for each Host. The seventh ray is vacant — reserved for Mordvar.
 
@@ -162,7 +162,7 @@ Eastern Mira, where the Grand Alliance broke Mordvar's first host two thousand y
 
 ### Caer Drowned — Formerly Caer Sulwyn
 
-The jewel of Caer Brannoch's coast for three centuries. One night — the same night Mordvar is believed to have made his first significant move toward breaking his binding — the coastal cliffs sheared into the sea. The upper city slid in sections. Parts of the towers still stand at wrong angles under grey water, visible at low tide. The harbor's shallows are navigable; the deep sections are too dangerous to dive.
+The jewel of Caer Brannoch's coast for three centuries. One night — the same night Mordvar is believed to have made his first significant move toward reforming — the coastal cliffs sheared into the sea. The upper city slid in sections. Parts of the towers still stand at wrong angles under grey water, visible at low tide. The harbor's shallows are navigable; the deep sections are too dangerous to dive.
 
 The seas changed the same night. The Shroud Sea's permanent storms began within the week. Weather patterns along the entire western coast shifted and have not shifted back.
 
@@ -174,8 +174,8 @@ Voices speak in the trees. Not wind through branches — articulate voices, some
 
 ### Drûn-Khazad — The Burning Wound
 
-The great volcano, Thal's heart. Active and worsening as Mordvar's binding weakens. Lava flows that were stable for centuries have shifted. The ash zone extends further west each decade. Orc theology holds that the volcano is their god's mouth and its increasing activity is their god's growing appetite — good news, to them.
+The great volcano, Thal's heart. Active and worsening as Mordvar's essence slowly reconstitutes. Lava flows that were stable for centuries have shifted. The ash zone extends further west each decade. Orc theology holds that the volcano is their god's mouth and its increasing activity is their god's growing appetite — good news, to them.
 
 ### The Shroud Sea
 
-Not a wound in the physical sense but a consequence of wounds. The eastern ocean locked in permanent storm since Caer Sulwyn's fall. Waves that come from nowhere, storm systems that move against the prevailing wind, weather that kills ships built for open ocean. The Sailors' Brotherhood believes the storms are a seal — that something was put on the other side and the storms are the lock. The Brotherhood's most senior members are divided between those who want to know what it is and those who believe not knowing is the correct response.
+Not a wound in the physical sense but a consequence of wounds. The eastern ocean locked in permanent storm since Caer Sulwyn's fall. Waves that come from nowhere, storm systems that move against the prevailing wind, weather that kills ships built for open ocean. The Sailor's Guild believes the storms are a seal — that something was put on the other side and the storms are the lock. The Guild's most senior members are divided between those who want to know what it is and those who believe not knowing is the correct response.

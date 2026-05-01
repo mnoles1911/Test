@@ -28,7 +28,7 @@ Map note: Walled city symbol with multiple towers. Two river lines converging at
 
 A cliff city in two parts. The upper city sits on the headland itself — fortress walls, the Tidewarden fleet command, administrative buildings, and the residences of those with the rank or coin to claim them. Access from below is via a switchback road cut into the cliff face or by the sea-lifts: iron cage elevators on counterweight systems, built by dwarven engineers two centuries ago, still maintained under contract with Karaz-Dûn.
 
-The lower city is at sea level: the shipyards, the sailors' quarter, the fish market, the Sailors' Brotherhood hall. It floods in storm season. The lower city residents accept this as a condition of living near the sea and build accordingly — ground floors are storage and workshop, living quarters above.
+The lower city is at sea level: the shipyards, the sailors' quarter, the fish market, the Sailor's Guild hall. It floods in storm season. The lower city residents accept this as a condition of living near the sea and build accordingly — ground floors are storage and workshop, living quarters above.
 
 The natural harbor below the headland is the finest deep-water anchorage on the western coast. The Tidewarden fleet — twelve warships and assorted support vessels — rides at anchor in all weather.
 
@@ -152,7 +152,7 @@ Map note: Dark fortress symbol on cliff face, no windows west. Located at easter
 ### Drûn-Khazad (the volcano, not a city — but notable)
 **Position:** Center of Thal, slightly south of midpoint
 
-A shield volcano — broad, low-profile compared to a cone, with a wide flat summit. The caldera is visible from the western approach as a dark depression. The Hollow Hearth sits within it: a natural chamber in the caldera's inner wall where Mordvar's Aescstól stands — a throne formed from cooled lava and bone-meal, inlaid with obsidian and silver.
+A shield volcano — broad, low-profile compared to a cone, with a wide flat summit. The caldera is visible from the western approach as a dark depression. The Ash Hearth sits within it: a natural chamber in the caldera's inner wall where Mordvar's Aescstól stands — a throne formed from cooled lava and bone-meal, inlaid with obsidian and silver.
 
 The ash cloud above Drûn-Khazad is permanent, extending west-northwest on prevailing winds. The glow of the caldera is visible at night from Thal's western coast.
 
@@ -169,7 +169,7 @@ Map note: Shield-volcano symbol with broad profile, caldera glow, ash-cloud exte
 
 Slid into the sea two hundred years ago. The cause is not fully established — subsidence, structural failure, and Shroud Sea influence have all been cited. At extreme low tide, the towers emerge from the water at wrong angles, streets running into nothing, windows below the waterline dark. Ships avoid the bay. The Shroud Sea storms are said to have begun the same week Caer Sulwyn fell.
 
-The Brotherhood has one report of a diver who entered a submerged building and returned describing interior rooms still furnished, doors still hanging on hinges, a table set for a meal — everything undisturbed, as if the city expected to return.
+The Guild has one report of a diver who entered a submerged building and returned describing interior rooms still furnished, doors still hanging on hinges, a table set for a meal — everything undisturbed, as if the city expected to return.
 
 Map note: Ruined-tower symbol partially submerged in the Bay of Sulwyn.
 
@@ -180,6 +180,6 @@ Map note: Ruined-tower symbol partially submerged in the Bay of Sulwyn.
 - **Brightwatch**: Iron Chalice fortress and forward operating base, eastern Eldermark frontier. Where cultivated Eldermark meets the Ashfields. Training facility and garrison combined. Not a city — a walled military installation. Roland trained here. See `lore/locations/BRIGHTWATCH.md`.
 - **Crestfall**: Roland's hometown. A town of about four hundred people on the Salt Road between Aldenholt and Brightwatch. Where cultivated land begins to thin toward the Ashfields. See `lore/BACKSTORY_ROLAND.md`.
 - **Loremaster's Archive, Aldenholt**: Full city block, Scholar's Block district. The largest single repository of written records in Eldermark.
-- **Sailors' Brotherhood Hall, Caer Brannoch**: Lower city, near the docks. Open to all sailors regardless of guild affiliation for dispute resolution and record-filing.
+- **Sailor's Guild Hall, Caer Brannoch**: Lower city, near the docks. Open to all sailors regardless of guild affiliation for dispute resolution and record-filing.
 - **Conclave Chapter, Eldermark**: Within Scholar's Block, Aldenholt. Smaller satellite offices in Solgrade and Caer Brannoch.
 - **Surgeons' School, Solgrade**: Eastern district. Accepts students from all four kingdoms and the Copper Isles. Aelorin healers have occasionally lectured here.

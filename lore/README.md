@@ -34,7 +34,7 @@ World reference for the **Mira-Thal Trilogy** — a three-game medieval low-fant
 
 **Protagonist:** Roland Ashford — former Iron Chalice knight, expelled for refusing silence about a relic that turned out to be a piece of the Sundered Crown.
 
-**Antagonist:** Mordvar — the Hollow King. A Second Age human king who emptied himself to escape death, became immortal and empty, and was bound two thousand years ago beneath the volcano Drûn-Khazad. The binding is failing.
+**Antagonist:** Mordvar. A Second Age human king who emptied himself to escape death, became immortal and empty, and was unmade two thousand years ago beneath the volcano Drûn-Khazad. Mordvar is reforming.
 
 **The Trilogy Arc:**
 - **Game One — The Sundered Crown:** Reassemble the seven-piece binding artifact to destroy Mordvar's regent and shatter his command structure.

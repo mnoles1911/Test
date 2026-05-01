@@ -71,7 +71,7 @@ He sketched the altar symbol, noted the location, sealed the entrance behind him
 
 The report went up the Chalice's administrative chain. Someone passed it to a scholar contact. That contact passed it — without the Chalice's knowledge — to a figure associated with the Dawnbringers. This is how, over the following months, Roland began receiving careful correspondence from people he did not know, asking careful questions about what he had seen.
 
-He did not answer the first letter. He answered the second when it proved the sender already knew the symbol. He answered the third when the sender told him, in plain language, what it meant: the Aeluvain binding. The sealed thing beneath the world. The possibility that it was weakening.
+He did not answer the first letter. He answered the second when it proved the sender already knew the symbol. He answered the third when the sender told him, in plain language, what it meant: Mordvar's reforming presence. The unmade thing beneath the world. The possibility that his long dissolution was reversing.
 
 ---
 
@@ -103,7 +103,7 @@ Roland spent eight months walking. He took occasional work — caravan guard, fe
 
 He corresponded with the Dawnbringers contact intermittently. He read everything he could find on the Second Age, the Grand Alliance, the Aeluvain — which was not much, because most of that history is either lost or carefully held. He visited Crestfall once and saw his mother, who was well. He did not tell her he had been expelled. She did not ask why he seemed tired.
 
-By the time he reached the region where Game 1 begins — the edges of the cave-country, the old Ashfields road near the place where something is wrong with the stones — he has a purpose, even if he cannot fully articulate it. He knows the binding is weakening. He knows the chapel symbol connects to something older and larger than the Iron Chalice or the merchant houses or anything he has dealt with before. He knows he is not equipped for what he is walking into.
+By the time he reached the region where Game 1 begins — the edges of the cave-country, the old Ashfields road near the place where something is wrong with the stones — he has a purpose, even if he cannot fully articulate it. He knows the unmaking is reversing. He knows the chapel symbol connects to something older and larger than the Iron Chalice or the merchant houses or anything he has dealt with before. He knows he is not equipped for what he is walking into.
 
 He walks into it anyway.
 

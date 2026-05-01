@@ -8,7 +8,7 @@ She is nearly two thousand years younger than Aelthurion, a fact that matters mo
 
 ## Her Mother, Lirien
 
-Lirien Aelthiren had been an Aelorin for six hundred years before she chose mortality. She never gave Seren a full account of why. What Seren gathered across her childhood was that Lirien had held a position of significance in the Aelthurion — she had been involved in the aftermath of the Second Age binding, though in what capacity Lirien would not say — and that something in the long centuries following had made the immortal life feel like a burden she was no longer willing to carry.
+Lirien Aelthiren had been an Aelorin for six hundred years before she chose mortality. She never gave Seren a full account of why. What Seren gathered across her childhood was that Lirien had held a position of significance in the Aelthurion — she had been involved in the aftermath of the Second Age unmaking, though in what capacity Lirien would not say — and that something in the long centuries following had made the immortal life feel like a burden she was no longer willing to carry.
 
 Lirien settled at the forest edge, learned human customs with the patient precision of someone performing an anthropological exercise, married a man she came to genuinely love, and had Seren. She died when Seren was sixty-two — old age, by the standards of her shortened life, which did not make it easier.
 
@@ -28,7 +28,7 @@ She chose the latter. She has not been completely sure it was the right choice f
 
 ## The Dawnbringers Years
 
-Seren has worked with the Dawnbringers for roughly eighty years — not as a field operative but as a scholar and sensitized observer. Her Aelorin heritage gives her a partial perception of the Aeluvain binding, different from Corvus's structural sense: she feels it more emotionally, as a grief or a weight, which is less useful for analysis but sometimes catches things he misses.
+Seren has worked with the Dawnbringers for roughly eighty years — not as a field operative but as a scholar and sensitized observer. Her Aelorin heritage gives her a partial perception of Mordvar's reforming presence, different from Corvus's structural sense: she feels it more emotionally, as a grief or a weight, which is less useful for analysis but sometimes catches things he misses.
 
 She has never told anyone in the Dawnbringers about her mother's specific role. She does not think it changes anything practical. She knows, privately, that she withholds it because it is the one thing about her origin that still belongs only to her.
 
