@@ -89,17 +89,40 @@ Note: `quick_slot_next` / `quick_slot_prev` are the cycle inputs used mid-combat
 
 ---
 
-## Keyboard and Mouse Specifics
+## Keyboard and Mouse — Quick Reference
+
+Confirmed KB+M layout. No key conflicts.
+
+| Key / Input | Action | Notes |
+|---|---|---|
+| W A S D | Move | 8-directional, maps to 3D XZ plane |
+| Mouse drag | Camera rotate | Horizontal = yaw, vertical = pitch. Read directly in `CameraRig.gd` via `InputEventMouseMotion` — no Input Map action needed |
+| Left Arrow / Right Arrow | `camera_left` / `camera_right` | Keyboard fallback for camera rotate |
+| Up Arrow / Down Arrow | `camera_up` / `camera_down` | Keyboard fallback for camera tilt |
+| E | `interact` | Talk, examine, open door, rest at fire |
+| Q | `quick_slot_prev` | Cycle quick slot left |
+| LMB | `attack` | Tap = light attack; hold ≥0.20s = power charge |
+| RMB | `block` | Hold = block stance; tap = parry |
+| Space | `dodge` | Directional roll (costs endurance) |
+| Left Shift | `sprint` | Hold to sprint (drains endurance) |
+| Middle Mouse | `lock_on` | Toggle lock-on to nearest enemy |
+| Mouse Scroll Up / Down | `next_target` / `prev_target` | Cycle lock-on target while locked |
+| J | `open_journal` | Open/close journal overlay |
+| I | `open_inventory` | Open/close inventory screen |
+| Escape | `pause` | Open/close pause menu |
+| F1 | `debug_overlay` | Toggle debug overlay (dev only) |
+
+**During development** (before context-sensitive E logic is in place): rebind `quick_slot_next` to **F** to avoid conflict with `interact` on E.
 
 ### Mouse in Combat
 
-- **LMB / RMB** are the primary combat inputs. The mouse cursor is hidden during combat and exploration (the camera does not follow the cursor — Roland moves with WASD, the camera follows him).
+- **LMB / RMB** are the primary combat inputs. The mouse cursor is hidden during combat and exploration — Roland moves with WASD, the camera follows mouse movement.
 - **Mouse scroll wheel** cycles lock-on targets when locked on.
 - There is no mouse-aim for melee attacks. Roland always attacks toward his current facing direction or lock-on target.
 
 ### Mouse in Menus
 
-When a menu is open (journal, inventory, camp menu), the cursor reappears and functions as a standard UI cursor — hover to highlight, click to interact. The `Input.mouse_mode` switches between `CAPTURED` (during play) and `VISIBLE` (during menus).
+When a menu is open (journal, inventory, camp menu), the cursor reappears and functions as a standard UI cursor — hover to highlight, click to interact. `Input.mouse_mode` switches between `CAPTURED` (during play) and `VISIBLE` (during menus).
 
 ---
 
