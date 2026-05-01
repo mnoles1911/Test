@@ -11,7 +11,7 @@
 
 Slid into the sea two hundred years ago. The cause is not fully established — subsidence, structural failure, and Shroud Sea influence have all been cited. At extreme low tide, the towers emerge from the water at wrong angles, streets running into nothing, windows below the waterline dark. Ships avoid the bay. The Shroud Sea storms are said to have begun the same week Caer Sulwyn fell.
 
-The Brotherhood has one report of a diver who entered a submerged building and returned describing interior rooms still furnished, doors still hanging on hinges, a table set for a meal — everything undisturbed, as if the city expected to return.
+The Sailor's Guild has one report of a diver who entered a submerged building and returned describing interior rooms still furnished, doors still hanging on hinges, a table set for a meal — everything undisturbed, as if the city expected to return.
 
 Map note: Ruined-tower symbol partially submerged in the Bay of Sulwyn.
 
