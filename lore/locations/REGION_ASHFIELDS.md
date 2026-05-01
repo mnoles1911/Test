@@ -3,7 +3,7 @@
 **Type:** Region (ash wastes)
 **Kingdom/People:** Vosskaran frontier (western edge); goblin territory (interior); outlaw camps (throughout)
 **Position:** Eastern Mira — from the Spine's eastern cliff face to the Shroud Shore
-**Story relevance:** Game One, Act IV — the Ashfields are where the Binding Site is located AND the scene of the fighting retreat that ends the game; also visible from Vosskar-on-the-Iron (Act II)
+**Story relevance:** Game One, Act IV — the Ashfields are the scene of the Ashlord's counterstroke and the fighting retreat that ends the game; also visible from Vosskar-on-the-Iron (Act II)
 
 ---
 
@@ -60,9 +60,9 @@ The northeast approach toward the Weeping Wood: as the player moves north-northe
 ## Level Layout Reference
 
 **File:** `lore/LEVEL_LAYOUTS_ACT4.md`
-**Status:** Sketched. Act IV takes place entirely in the Ashfields and the Binding Site within them.
+**Status:** Sketched. Act IV takes place entirely in the Ashfields.
 
-In Game One: the Ashfields are the primary Act IV environment. The Binding Site (where the Crown is reassembled) is located here in the Ashfields — not across any sea. After the binding ritual, Vaeroth launches the Ashen Hand counterstroke, and the climax is a fighting retreat westward through the Ashfields.
+In Game One: the Ashfields are the primary Act IV environment. After Roland secures the Obsidian Shard from the Naergrim at Mor-Vethrin, his party exits the Weeping Wood into the Ashfields. The Ashlord, who has been tracking the operation and knows Roland now holds all seven Crown pieces, launches a coordinated counterstroke here himself — coming out of the Ash Tower for the first time in decades. Roland's party fights a brutal westward retreat. The Ashlord is gravely injured and retreats east. Vaeroth Caine, commanding the Hand's conventional forces, is killed or captured in the same engagement.
 
 Also referenced in Act II (Vosskar): the ash-haze is visible from Vosskar's eastern wall as a particle effect — this is background/visual dressing during the Vosskar scenes, not a separate playable zone.
 
@@ -71,7 +71,7 @@ Also referenced in Act II (Vosskar): the ash-haze is visible from Vosskar's east
 ## Connections
 
 - **Arrives from:** Vosskaran frontier (from Vosskar-on-the-Iron, east via the Frontier Road)
-- **Contains:** Vosskaran garrison towns (multiple, unnamed in lore), ghost stumps and farmstead ruins (cover points), the Binding Site, the Greyflow delta area (Shroud Shore approach)
+- **Contains:** Vosskaran garrison towns (multiple, unnamed in lore), ghost stumps and farmstead ruins (cover points), the Greyflow delta area (Shroud Shore approach)
 - **Exits to (northeast):** Weeping Wood → Mor-Vethrin (Act IV approach to the Naergrim city)
 - **Exits to (east):** Shroud Shore (see REGION_SHROUD_SEA.md — not visited in Game One)
 
@@ -82,5 +82,4 @@ Also referenced in Act II (Vosskar): the ash-haze is visible from Vosskar's east
 - Act IV approach: is the playable Ashfields zone entirely linear (road east), or does the player have freedom to explore the ruins?
 - Goblin encounters: the lore notes goblin raids on Vosskaran farmsteads are "common" — does the player encounter goblins in the Ashfields in Act IV, or is goblin presence implied but not confronted?
 - The Sorrowmarsh to the south: does Roland pass near it or through it? Not defined for Act IV.
-- Binding Site (BINDING_SITE.md): exact position within the Ashfields — how far east of the garrison towns? A specific landmark?
 - Outlaw camps: are any named outlaws encountered in Act IV, or are they background population?

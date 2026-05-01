@@ -51,7 +51,7 @@ The Aescstól throne: cooled lava and bone-meal, inlaid with obsidian and silver
 ## Level Layout Reference
 
 **File:** `lore/LEVEL_LAYOUTS_ACT4.md`
-**Status:** Sketched. Act IV scenes include the Ashfields approach, the Binding Site ritual, and the Fighting Retreat.
+**Status:** Sketched. Act IV scenes include the Ashfields approach, the Ashlord counterstroke, and the Fighting Retreat.
 
 The final confrontation at Drûn-Khazad is the climax of Game Three. Scene structure:
 1. Western slope ascent (the approach from the Ash-Steppe)

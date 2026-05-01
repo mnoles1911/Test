@@ -65,14 +65,14 @@ Game One's last real decision lives here: is freeing the world from Mordvar wort
 ## Connections
 
 - **Arrives from:** Ashfields approach (northeast from the Vosskaran frontier zone, into the Weeping Wood, east to the cliff escarpment)
-- **Exits to:** Act IV continues (return from Mor-Vethrin to the Binding Site in the Ashfields)
+- **Exits to:** Act IV continues (return from Mor-Vethrin through the Ashfields)
 
 ---
 
 ## Open Questions / Gaps
 
 - The "Pale Defection" faction contact: where exactly in the Mor-Vethrin approach does this happen? A corridor before the audience, but which corridor?
-- If three Naergrim fighters join Roland at the Binding Site and the Ashfields fighting retreat (via the Pale Defection option): how do they travel there from Mor-Vethrin? Do they follow Roland out of the Weeping Wood?
+- If three Naergrim fighters join Roland at the Ashfields fighting retreat (via the Pale Defection option): how do they travel there from Mor-Vethrin? Do they follow Roland out of the Weeping Wood?
 - The Naergrim vault where the obsidian shard is held: is it shown to the player, or does Serethi simply produce the shard during the audience?
 - Vertical architecture as gameplay: how does the player navigate up and down the cliff face? Internal stairs? Rope-and-pulley systems? This is an unusual movement requirement for the game's camera setup.
 - Lighting mystery: "sources the player cannot identify" — in 3D voxel terms, this likely means diffuse ambient lit from an unknown direction without visible OmniLight sources; no volcanic glow here, so the effect must be achieved differently than originally planned

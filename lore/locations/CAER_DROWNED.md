@@ -39,7 +39,7 @@ Everything undisturbed: the horror of Caer Drowned is not destruction but preser
 
 At extreme low tide: towers emerge at wrong angles above the waterline. Dark windows at the waterline — rooms visible but submerged. Ships avoid the bay. The visual is wrong even from a distance.
 
-If a playable scene is ever built here, the lighting solution is the central design challenge: underwater light with filtered surface glow, cold and blue-grey. No torches; they would have gone out. The Brotherhood's bioluminescent note may apply — the same quality of wrongness as the Shroud Sea.
+If a playable scene is ever built here, the lighting solution is the central design challenge: underwater light with filtered surface glow, cold and blue-grey. No torches; they would have gone out. The Sailor's Guild's bioluminescent note may apply — the same quality of wrongness as the Shroud Sea.
 
 ---
 

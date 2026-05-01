@@ -13,7 +13,7 @@ The Shroud Sea is the body of water separating Mira and Thal. At its narrowest t
 
 The sea here is technically the Shroud Sea's western edge — already strange, already wrong. No fishing villages on the Shroud Shore. The Brotherhood posts one observation station there, staffed by volunteers who serve six-month rotations and are never quite the same afterward.
 
-The Brotherhood's previous crossing landed on the Thal Coast: rocky, grey-black volcanic shoreline, no natural bay, anchoring offshore required. The Aescryd ruins found forty years ago are on a flat terrace above the tide line at that landing point.
+The Sailor's Guild's previous crossing landed on the Thal Coast: rocky, grey-black volcanic shoreline, no natural bay, anchoring offshore required. The Aescryd ruins found forty years ago are on a flat terrace above the tide line at that landing point.
 
 The Shroud Sea storms are said to have begun the same week Caer Sulwyn fell (200 years ago).
 
@@ -54,7 +54,7 @@ If a ship deck scene exists: the Brotherhood voyage is noted as "a moving enviro
 **File:** `lore/LEVEL_LAYOUTS_GAME2.md` (not yet written) / `lore/HISTORY_SHROUD_SEA.md`
 **Status:** Not yet designed. HISTORY_SHROUD_SEA.md has 200-year Brotherhood context. This is a Game Two level design task.
 
-The crossing opens Game Two. The Brotherhood's charts (referenced throughout Game One Acts II and III as a side quest thread, acquired in Act II at the Copper Isles) are what make the crossing possible — the nine-year window that opens at the start of Game Two.
+The crossing opens Game Two. The Sailor's Guild's charts (referenced throughout Game One Acts II and III as a side quest thread, acquired in Act II at the Copper Isles) are what make the crossing possible — the nine-year window that opens at the start of Game Two.
 
 ---
 
@@ -69,7 +69,7 @@ The crossing opens Game Two. The Brotherhood's charts (referenced throughout Gam
 ## Open Questions / Gaps
 
 - Is the crossing a playable traveling scene (ship deck, weather events, possible encounter) or a fade-to-black time skip?
-- The Brotherhood's buried crossing report: does Roland discover this document during Act II (Caer Brannoch / Copper Isles arc), and does it become mechanically important for the crossing?
+- The Sailor's Guild's buried crossing report: does Roland discover this document during Act II (Caer Brannoch / Copper Isles arc), and does it become mechanically important for the crossing?
 - Orion's connection to the Shroud Sea (from HISTORY_SHROUD_SEA.md): this is where his backstory intersects; does his history with the sea affect the crossing scene?
 - The Aescryd ruins on the Thal Coast: are these a playable sub-location or background dressing on arrival?
 - The observation station volunteers "never quite the same afterward": is there a volunteer NPC at the station in Act IV, and does their state communicate something useful to the player?

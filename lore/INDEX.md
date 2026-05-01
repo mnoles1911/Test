@@ -146,7 +146,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 | [BACKSTORY_DAWNBRINGERS.md](BACKSTORY_DAWNBRINGERS.md) | All seven Dawnbringers: Verath, Caela, Lyren, Sorin, Aevril/Twice-Named, Maeva, and the unnamed Seventh |
 | [BACKSTORY_NAERGRIM.md](BACKSTORY_NAERGRIM.md) | The Wound bargain, blood-oath mechanics, Serethi-Twice-Dead's 200-year investigation, the dissident faction |
 | [BACKSTORY_IRON_CHALICE.md](BACKSTORY_IRON_CHALICE.md) | The Red Siege founding, doctrine of endurance, Brightwatch fortress, Solgrade debt crisis, Roland's expulsion |
-| [BACKSTORY_SAILORS_BROTHERHOOD.md](BACKSTORY_SAILORS_BROTHERHOOD.md) | Origin as drowned-sailor mutual aid, three absolute principles, Council of Stewards, safe-house network, Copper Isles Archive, internal divide on the crossing |
+| [BACKSTORY_SAILORS_GUILD.md](BACKSTORY_SAILORS_GUILD.md) | Origin as drowned-sailor mutual aid, three absolute principles, Council of Stewards, safe-house network, Copper Isles Archive, Shroud Sea crossing window |
 | [GUILDS_KNIGHT_ORDERS.md](GUILDS_KNIGHT_ORDERS.md) | **Index** — Iron Chalice, Tidewarden, Frost Brotherhood, Golden Lance — overview entries with deep-history pointers where they exist |
 | [GUILDS_TRADE_SCHOLAR.md](GUILDS_TRADE_SCHOLAR.md) | **Index** — Smiths' Confederation, Sailor's Guild, Surgeons' School, Conclave, Loremaster's Archive |
 | [GUILDS_SHADOW_AND_BANDS.md](GUILDS_SHADOW_AND_BANDS.md) | **Index** — Ashen Hand, Hollow Court, Crimson Ledger, Pale Supper, Nameless Council, Brightwatch, Salt Road, Dawnbringers |
