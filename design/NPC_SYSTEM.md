@@ -101,6 +101,7 @@ have relationship history that changes their dialogue permanently.
 | `scripts/NPCScheduleEntry.gd` | Resource class. One entry per schedule time block in NPCData. |
 | `scripts/NPC.gd` | Node script. Attach to CharacterBody3D. Reads NPCData, enables features by tier. |
 | `scripts/BarkManager.gd` | Autoload. Loads bark line pools, picks random variants, shows overlay. |
+| `scripts/WorldClock.gd` | Autoload. Tracks in-game time, fires signals, drives NPC schedules. |
 
 ---
 
@@ -213,18 +214,67 @@ BarkManager must be registered as an Autoload:
 
 ---
 
-## WorldClock (Not Yet Built)
+## WorldClock
 
-The schedule system requires a `WorldClock` autoload that:
-1. Tracks in-game time (minutes and hours passing at a configurable rate).
-2. Writes `world_hour` (0–23) to `GameState` each time the hour changes.
-3. Calls `update_schedule(hour)` on all NPC nodes in the group `"scheduled_npcs"`.
+`scripts/WorldClock.gd` — register as Autoload with node name `WorldClock`.
 
-This is Milestone 5 work. Until then, schedules can be simulated by manually setting
-`world_hour` in `GameState` from the DebugOverlay.
+Tracks in-game time and drives NPC daily schedules and time-of-day bark triggers.
 
-To register an NPC for schedule updates: add the NPC node to the `"scheduled_npcs"` group
-in the Node panel. The WorldClock will call `update_schedule()` on all members automatically.
+### Configuration (set in the Inspector on the WorldClock autoload node)
+
+| Property | Default | Meaning |
+|---|---|---|
+| `real_seconds_per_game_hour` | 120.0 | 2 real minutes = 1 game hour → full day in 48 real minutes |
+| `start_hour` | 8 | Hour the game starts at on a fresh save |
+| `start_minute` | 0 | Minute the game starts at on a fresh save |
+
+### Signals
+
+| Signal | When it fires |
+|---|---|
+| `hour_changed(hour: int)` | Every time the game hour advances |
+| `day_changed(day: int)` | When hour rolls over from 23 → 0 |
+| `time_of_day_changed(period: String)` | When crossing a period boundary (e.g. DAWN → MORNING) |
+
+### Time-of-Day Periods
+
+| Period | Hours | Use |
+|---|---|---|
+| DEEP_NIGHT | 0–4 | Most NPCs sleeping, shops closed |
+| DAWN | 5–7 | NPCs waking, early activity |
+| MORNING | 8–11 | Full activity |
+| AFTERNOON | 12–16 | Full activity |
+| DUSK | 17–19 | Winding down |
+| NIGHT | 20–23 | Taverns open, guards on night patrol |
+
+The current period is written to `GameState.set_flag("time_of_day", period)` on each transition,
+so Dialogic timeline conditions can branch on time of day.
+
+### Key Public Methods
+
+```gdscript
+WorldClock.set_time(18, 0)       # Jump to 6:00 PM instantly (debug / fast travel)
+WorldClock.advance_hours(8)      # Skip 8 game hours (rest mechanic)
+WorldClock.get_time_string()     # Returns "14:30" for display in UI
+WorldClock.get_time_of_day_period()  # Returns "AFTERNOON"
+WorldClock.is_daytime()          # Returns true (hours 5–19)
+WorldClock.set_paused(true)      # Freeze time during a cutscene
+WorldClock.save()                # Call before writing a save file
+WorldClock.load_from_state()     # Call after loading a save file
+```
+
+### NPC Schedule Integration
+
+The clock calls `update_schedule(hour)` on every node in the `"scheduled_npcs"` group
+each time the hour advances. To register an NPC for schedule updates:
+add the NPC node to the `"scheduled_npcs"` group via Node panel → Groups tab in the editor.
+
+### Pause Behavior
+
+The clock stops ticking automatically when:
+- `get_tree().paused == true` (PauseMenu is open)
+- Dialogic is running a timeline
+- `WorldClock.set_paused(true)` has been called manually
 
 ---
 
@@ -239,7 +289,7 @@ These tasks are ordered by dependency. Each is a separate branch/PR.
 | 3 | Create first bark file: `dialogue/scripts/barks/idle/aldenholt_vendor.txt` | 5-3D |
 | 4 | Place one Tier 1 NPC (vendor) in `World3D.tscn`; verify bark fires | 5-3D |
 | 5 | Place Tomlin as Tier 2 NPC; verify E-press opens the sorting room timeline | 5-3D |
-| 6 | Build `WorldClock.gd` autoload; test Tomlin's schedule across two time blocks | 6-3D |
+| 6 | ~~Build `WorldClock.gd` autoload~~ — **done** | 6-3D |
 | 7 | Build the "Press E" world-space prompt UI node | 6-3D |
 | 8 | Build the `BarkOverlay` UI node (portrait + text, corner overlay) | 6-3D |
 | 9 | Extend `DebugOverlay` to show active NPC name, disposition, and schedule block | 6-3D |
