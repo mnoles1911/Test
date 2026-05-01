@@ -38,8 +38,9 @@ Per `/lore/CHARACTERS_COMPANIONS.md` and `/lore/GAME1_PART1.md` / `GAME1_PART2.m
 | **Roland Ashford** | Always present | Balanced — solid attack timing, decent blocking, investigative special abilities (analyze enemy for weaknesses) |
 | **Orion Farr** | Mid Game One (Caer Brannoch arc) | Evasion-focused — "block" is a dodge that repositions; small timing window but large damage reduction if hit. Stealth and exit-route options |
 | **Dagna Irontrack** | Game One Act III (Underway encounter) | Structural — slower attacks that mark enemies (next hit from any source deals bonus damage). Seismic/structural analysis unlocks investigation options |
+| **Edran Vane** | Game One (timing TBD — joins after Aldenholt arc) | Intelligence/analysis — non-combat specialist. Contributes investigation insights and faction intelligence; does not have a dedicated combat role. Mechanical spec deferred until his join scene is designed. |
 
-**Note on Edran Vane:** `/lore/BACKSTORY_EDRAN.md` describes him joining in Game One as an institutional analyst. He does not appear in `CHARACTERS_COMPANIONS.md` or `REFERENCE.md`. Treat him as a recurring contact/ally until the writer confirms his companion status before building combat mechanics for him.
+**On Edran Vane:** Edran is confirmed as a companion. He is an institutional analyst and investigator of the Caelborn lineage — not a fighter. His mechanical contribution is primarily to the investigation and dialogue systems rather than combat. His combat AI can default to "Hold Position / Retreat" only until a fuller spec is authored. See `/lore/BACKSTORY_EDRAN.md`.
 
 **Future games (for forward-compatible system design):**
 - Game Two adds Corvus Tane (Conclave mage — high power, visible cost meter) and Seren of the Third Glade (Aelorin loremaster — ancient training, magic-adjacent abilities, lore-revelation gates)

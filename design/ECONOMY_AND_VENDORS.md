@@ -27,7 +27,7 @@ One currency: **crowns** (gold). Subdivided in merchant parlance but never track
 
 Roland carries crowns as a simple integer. He does not manage pouches, denominations, or weight.
 
-**Starting crowns (Game One):** Roland begins with a small amount — enough to cover one night at a modest inn or one basic repair job, but not enough to significantly change his situation. The initial shortage is intentional: it frames the opening as genuinely uncertain.
+**Starting crowns (Game One): 80 crowns.** Enough for one night at a modest inn (4–8 crowns) or a weapon sharpening (2–4 crowns), but not enough to buy a replacement weapon or a suit of armor. The initial shortage is intentional: it frames the opening as genuinely uncertain and pushes Roland toward earned income before shopping.
 
 ---
 
