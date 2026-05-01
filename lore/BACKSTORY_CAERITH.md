@@ -50,7 +50,7 @@ He also knows, to the extent that he still knows things that are his, that the m
 
 No living Aelorin knows he still exists. The Aelthurion's official record states that Caerith completed the Aelthiren and departed. Aelthurion maintains this record. Whether he believes it is a separate question.
 
-The Dawnbringers know the Ashlord as a Hollow Court-level figure of enormous age and power. They do not know he is Aelorin. No one in the Third Age knows he is Aelorin. The mask has held for twelve centuries.
+The Dawnbringers know the Ashlord as an Ashen Hand figure of enormous age and power. They do not know he is Aelorin. No one in the Third Age knows he is Aelorin. The mask has held for twelve centuries.
 
 ---
 

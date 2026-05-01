@@ -3,7 +3,7 @@
 **Type:** Region (island archipelago)
 **Kingdom/People:** Independent (city-state equivalent; Copper Isles Port is the main settlement)
 **Position:** Southern Mira shelf (the Copper Shelf) — close enough to Mira's southern coast to be reached easily by small boat
-**Story relevance:** Game One, Act II — Brotherhood voyage from Caer Brannoch passes here; the Copper Wire piece is in the Brotherhood Archive here; Game Two has greater relevance
+**Story relevance:** Game One, Act II — Sailor's Guild voyage from Caer Brannoch passes here; the Copper Wire piece is in the Sailor's Guild Archive here; Game Two has greater relevance
 
 ---
 
@@ -48,7 +48,7 @@ Inference from context:
 ## Level Layout Reference
 
 **File:** `lore/LEVEL_LAYOUTS_ACT2.md`
-**Status:** Sketched. The Brotherhood voyage from Caer Brannoch ends here; the Copper Wire piece is in the Brotherhood Archive.
+**Status:** Sketched. The Sailor's Guild voyage from Caer Brannoch ends here; the Copper Wire piece is in the Sailor's Guild Archive.
 
 In Game One:
 - The voyage from Caer Brannoch includes a storm sequence and the discovery of an Ashen Hand infiltrator in the Sailor's Guild safe-house island

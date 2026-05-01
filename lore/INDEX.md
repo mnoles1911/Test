@@ -96,7 +96,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 
 | File | Location | Notes |
 |---|---|---|
-| [locations/COPPER_ISLES.md](locations/COPPER_ISLES.md) | Copper Isles | Island archipelago. Act II (Brotherhood voyage). Greater relevance in Game Two. |
+| [locations/COPPER_ISLES.md](locations/COPPER_ISLES.md) | Copper Isles | Island archipelago. Act II (Sailor's Guild voyage). Greater relevance in Game Two. |
 
 ---
 

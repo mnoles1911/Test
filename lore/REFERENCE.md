@@ -36,7 +36,7 @@
 | Iron pommel | Iron Chalice chapel, Aldenholt | Negotiation with Dame Calla |
 | Gold coin | House Korvath, Solgrade | Trade for smuggling evidence |
 | Bronze ring | Despot Yaromir, Vosskara | Conversation; personal diplomacy |
-| Copper wire | Brotherhood Archive, Copper Isles | Brotherhood voyage endorsement |
+| Copper wire | Sailor's Guild Archive, Copper Isles | Sailor's Guild voyage endorsement |
 | Silver clasp | Second Glade, Aelorin Greatwood | Aelthurion; requires access to Lirien-Thal |
 | Copper disc | Thrarin's treasury, Karaz-Dûn | Via Bromrin and regent Darva |
 | Obsidian shard | Mor-Vethrin, Naergrim vault | Serethi's bargain (withdrawal for non-interference) |

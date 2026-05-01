@@ -55,10 +55,10 @@ Lighthouse at the headland tip: a reference point visible from sea and from the 
 **Status:** Sketched. 4–5 scenes identified but not yet expanded to full per-scene detail.
 
 Scenes:
-1. Lower docks + Brotherhood Hall — Orion joins here
+1. Lower docks + Sailor's Guild Hall — Orion joins here
 2. Sea-lift to upper city — transition scene
 3. Eilwen's court — Tidewarden commander, Shroud charts side quest
-4. Brotherhood voyage (ship deck, traveling scene) — storm sequence, Hollow Court infiltrator
+4. Sailor's Guild voyage (ship deck, traveling scene) — storm sequence, Ashen Hand infiltrator
 5. Copper Isles Archive — piece acquired here
 
 ---
@@ -66,7 +66,7 @@ Scenes:
 ## Connections
 
 - **Arrives from:** Act II open world (from Aldenholt via the Salt Road along the western coast)
-- **Exits to:** Copper Isles (Brotherhood voyage) → return to Act II open world after piece acquired
+- **Exits to:** Copper Isles (Sailor's Guild voyage) → return to Act II open world after piece acquired
 
 ---
 

@@ -30,7 +30,7 @@ Key dimensions for scenes that exist at the crossing boundaries:
 
 - [x] Shroud Shore (departure): grey pebble beach, no natural harbor — ~50 m wide × 200 m long accessible beach = 400 × 1600 voxels; the Brotherhood observation station is a small building (~10 m × 8 m = 80 × 64 voxels)
 - [x] Thal Coast (arrival): rocky grey-black volcanic shoreline, flat terrace above tide line — similar scale to Shroud Shore; the Aescryd ruins on the terrace are ~20 m × 15 m = 160 × 120 voxels (estimate)
-- [ ] Ship deck scene (the crossing itself): if the voyage is a playable traveling scene like Caer Brannoch's Brotherhood voyage, ship deck dimensions GAP
+- [ ] Ship deck scene (the crossing itself): if the voyage is a playable traveling scene like Caer Brannoch's Sailor's Guild voyage, ship deck dimensions GAP
 - [x] Camera arm length: coastal/beach scenes = arm 14–16, elevation 42°; ship deck (if playable) = GAP
 
 The 900-mile crossing is a time skip in the narrative, not a traversable distance. The playable content is the departure shore, possibly a ship deck scene, and the arrival shore.
@@ -39,13 +39,13 @@ The 900-mile crossing is a time skip in the narrative, not a traversable distanc
 
 ## Art Direction Notes
 
-The Shroud Sea is wrong in a way that is difficult to articulate. The water color is not right. The weather patterns don't match regional expectations. The Brotherhood volunteers who staff the observation station "are never quite the same afterward." This is cosmic wrongness at low volume — not dramatic storm effects, but persistent unease.
+The Shroud Sea is wrong in a way that is difficult to articulate. The water color is not right. The weather patterns don't match regional expectations. The Sailor's Guild volunteers who staff the observation station "are never quite the same afterward." This is cosmic wrongness at low volume — not dramatic storm effects, but persistent unease.
 
 The Shroud Shore palette: grey pebble beach, ash-haze. Already at the edge of the Ashfields' influence. The sea beyond is darker than it should be for the latitude.
 
-The Thal Coast arrival: rocky, volcanic, grey-black. The Aescryd ruins on the terrace — half-buried in volcanic aggregate, worked stone visible, 40 years of Brotherhood archaeology still ongoing. The first sight of Thal land is these ruins.
+The Thal Coast arrival: rocky, volcanic, grey-black. The Aescryd ruins on the terrace — half-buried in volcanic aggregate, worked stone visible, 40 years of Sailor's Guild archaeology still ongoing. The first sight of Thal land is these ruins.
 
-If a ship deck scene exists: the Brotherhood voyage is noted as "a moving environment" in the Caer Brannoch arc. The Shroud Sea crossing would be a longer version — weather that feels wrong, navigation that requires consultation of the buried charts, possibly an encounter mid-crossing.
+If a ship deck scene exists: the Sailor's Guild voyage is noted as "a moving environment" in the Caer Brannoch arc. The Shroud Sea crossing would be a longer version — weather that feels wrong, navigation that requires consultation of the buried charts, possibly an encounter mid-crossing.
 
 ---
 

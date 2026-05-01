@@ -57,8 +57,8 @@ wandering smith. Yaromir will give it freely once commitment is earned.
 
 ## Caer Brannoch — The Copper Wire
 
-**Scenes (4–5):** Lower docks + Brotherhood Hall → Sea-lift to upper city → Eilwen's
-court → Brotherhood voyage (ship deck, traveling scene) → Copper Isles Archive
+**Scenes (4–5):** Lower docks + Sailor's Guild Hall → Sea-lift to upper city → Eilwen's
+court → Sailor's Guild voyage (ship deck, traveling scene) → Copper Isles Archive
 
 **Piece:** Copper wire — catalogued as an artifact of unknown function in the Brotherhood
 Archive. Released without difficulty once Roland has Brotherhood endorsement.
