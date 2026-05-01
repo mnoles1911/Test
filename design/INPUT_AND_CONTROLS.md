@@ -31,7 +31,8 @@ All input is routed through Godot's Input Map. Physical keys are defaults only �
 | `ui_right` | D only | Left stick right | Move right |
 | `ui_up` | W only | Left stick up | Move forward |
 | `ui_down` | S only | Left stick down | Move backward |
-| `sprint` | Left Shift (hold) | Left stick click / L3 | Sprint (drains endurance) |
+| `sprint` | Left Shift (hold) | Left stick click / L3 | Sprint (drains endurance; locked after exhaustion until recovery) |
+| `crouch` | C (toggle press) | — | Toggle crouch stance; slower speed, blocks sprint |
 | `dodge` | Space | B / Circle | Directional dodge roll (costs endurance) |
 
 **Arrow keys are reserved for camera rotation only** — they are not bound to `ui_*` actions. Movement is WASD-only on KB+M. Movement is camera-relative: W always moves toward where the camera (and Roland) faces.
@@ -109,7 +110,8 @@ Confirmed KB+M layout. No key conflicts.
 | LMB | `attack` | Tap = light attack; hold ≥0.20s = power charge |
 | RMB | `block` | Hold = block stance; tap = parry |
 | Space | `dodge` | Directional roll (costs endurance) |
-| Left Shift | `sprint` | Hold to sprint (drains endurance) |
+| Left Shift | `sprint` | Hold to sprint (drains endurance; exhaustion locks sprint until recovery) |
+| C | `crouch` | Toggle crouch; reduces speed to ~2 m/s; sprint blocked while crouching |
 | Middle Mouse | `lock_on` | Toggle lock-on to nearest enemy |
 | Mouse Scroll Up / Down (locked) | `next_target` / `prev_target` | Cycle lock-on target while locked on (scroll zoom takes priority; rebind if needed) |
 | J | `open_journal` | Open/close journal overlay |
@@ -181,6 +183,7 @@ Status as of 2026-05-01: all core actions below are configured in `project.godot
 - ✓ `open_inventory` — I
 - ✓ `pause` — Escape
 - ✓ `debug_overlay` — F1
+- ✓ `crouch` — C (toggle press; blocks sprint while active)
 - [ ] `quick_slot_next` — E (context: only fires when no interactable in range). During early development, rebind to F temporarily.
 - [ ] `next_target` / `prev_target` — Mouse Scroll Up / Down (optional; scroll zoom takes priority).
 

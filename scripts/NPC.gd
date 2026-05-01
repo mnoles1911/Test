@@ -27,6 +27,11 @@ extends CharacterBody3D
 ## The data resource for this NPC. Create one .tres per character in /assets/npcs/.
 @export var npc_data: NPCData
 
+## Mass in kilograms. Follows the same physics model as Player3D — higher mass
+## means slower acceleration, lower top speed, and more stopping momentum.
+## Typical values: light courier ~55 kg, average villager ~72 kg, armoured guard ~110 kg.
+@export var mass: float = 72.0
+
 ## How far away (meters) the player must be to trigger proximity barks.
 @export var bark_radius: float = 5.0
 

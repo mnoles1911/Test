@@ -86,15 +86,21 @@ MILESTONE 4: COMPLETE — Systems infrastructure (Phases 4–7) [merged via PR #
 3D PIVOT: design docs merged via PR #43
 - `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
 
-MILESTONE 4-3D: IN PROGRESS — First 3D scene with follow camera
-- [x] `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ-plane movement
-- [x] `scripts/CameraRig.gd` — SpringArm3D follow camera at 50° elevation
+MILESTONE 4-3D: CODE COMPLETE — First 3D scene with follow camera, movement, HUD, overlays
+- [x] `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ-plane movement, sprint (Left Shift), crouch (C),
+  mass-based physics scaling, health + endurance with drain/regen, `status_text` property for HUD
+- [x] `scripts/CameraRig.gd` — SpringArm3D third-person over-shoulder; standard + freelook (F2) modes;
+  scroll wheel zoom 2m–10m; arrow key fallbacks; dialogue tween; lock-on API; both yaw + pitch re-center on F2 release
+- [x] `scripts/HUDOverlay.gd` — Layer-5 CanvasLayer autoload; HP + endurance bars bottom-center; CROUCHING / EXHAUSTED status label
+- [x] `scripts/JournalUI.gd` — Rewritten: 6-tab overlay (Quests/Map/Items/Crafting/Codex/Skills); Tab + click navigation; tree-paused while open; mouse VISIBLE while open
 - [x] `scripts/CampfireFlicker3D.gd` — OmniLight3D port of campfire flicker
 - [x] `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — 3D ports of Zone framework triggers
 - [x] `scenes/Player3D.tscn` — capsule + box mesh placeholder + SpringArm3D rig
 - [x] `scenes/World3D.tscn` — placeholder cave: floor, WorldEnvironment, DirectionalLight3D, campfire OmniLight3D
+- [x] `scenes/ui/Journal.tscn` — Stripped to bare CanvasLayer; all layout built programmatically in `JournalUI.gd`
+- [x] `scripts/PauseMenu.gd`, `DebugOverlay.gd`, `SaveNotification.gd` — resized and re-fonted for 1080p
 - [ ] Install Zylann's Voxel Tools plugin (manual step in Godot Asset Library)
-- [ ] Verify in Godot 4.3: WASD moves the box on a flat floor, camera follows at fixed angle, campfire flickers
+- [ ] Verify in Godot 4.3: full verification checklist in `DESIGNER_TODO.md` Section 2
 
 MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
 - VoxelTerrain node with cave generator script
@@ -102,9 +108,9 @@ MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
 - First billboard sprite: Roland walk cycle (Aseprite → Sprite3D)
 
 ## Current milestone
-Milestones 1–4 complete (2D). 3D pivot design docs merged. Milestone 4-3D scripts and scenes drafted. **Scope pivot (2026-05-01):** open world (`VoxelLodTerrain` streaming, 12 km × 10 km playable Mira), third-person over-shoulder camera, low-poly Blender characters from Act I onward — full plan in `design/3D_VOXEL_MIGRATION.md`.
-The system design corpus is otherwise complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking — all authored in `/design`). Pipeline tooling has landed under `/tools`.
-Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D under the new third-person `CameraRig`, register the implemented autoloads (`BarkManager`, `WorldClock`), then start Phase 5-3D — `WorldGenerator.gd` + first Roland Blender model — per `DESIGNER_TODO.md` Section 7.
+Milestones 1–4 complete (2D). 3D pivot confirmed. **Milestone 4-3D code is complete** (2026-05-01): camera (standard + freelook), sprint/crouch, health/endurance, HUD overlay, 6-tab journal/inventory overlay, all UI resized for 1080p. All scripts pushed. Pending one in-Godot verification pass (see `DESIGNER_TODO.md` Section 2).
+The system design corpus is complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking — all authored in `/design`). Pipeline tooling has landed under `/tools`.
+Next: open Godot, run `World3D.tscn`, verify the full Milestone 4-3D checklist (`DESIGNER_TODO.md` Section 2), install Zylann Voxel Tools, register `BarkManager` and `WorldClock` autoloads, then start Phase 5-3D — `WorldGenerator.gd` + first Roland Blender model — per `DESIGNER_TODO.md` Section 7.
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
@@ -232,14 +238,17 @@ Pipeline tooling has landed in `/tools`: `strip_draft.py` (prose-draft → TTS-s
 - `scripts/Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`
 - `scenes/Player.tscn`, `World.tscn`, `Combat.tscn`
 
-3D Milestone 4-3D files (new):
-- `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ movement, gravity
-- `scripts/CameraRig.gd` — SpringArm3D follow camera at 50° elevation
+3D Milestone 4-3D files (complete):
+- `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ movement, sprint/crouch, health/endurance, mass-based physics scaling
+- `scripts/CameraRig.gd` — SpringArm3D third-person over-shoulder; standard + freelook (F2) modes; scroll zoom; re-centering fixed
+- `scripts/HUDOverlay.gd` — Layer-5 CanvasLayer autoload; HP + endurance bars; status label; registered in `project.godot`
+- `scripts/JournalUI.gd` — 6-tab overlay (Quests/Map/Items/Crafting/Codex/Skills); programmatic build; tree-paused while open
 - `scripts/CampfireFlicker3D.gd` — OmniLight3D flicker
 - `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — Vector3 / Area3D ports of the Zone framework
 - `scripts/DialogueTrigger3D.gd` — Area3D trigger zone; press E (interact action) to start a Dialogic timeline
 - `scenes/Player3D.tscn` — capsule + box mesh placeholder, with SpringArm3D camera rig
 - `scenes/World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
+- `scenes/ui/Journal.tscn` — bare CanvasLayer; all layout built in `JournalUI.gd`
 
 NPC system (implemented):
 - `scripts/NPC.gd` — CharacterBody3D base script for all Tier 1–3 NPCs; bark firing, E-press dialogue, disposition, schedule dispatch
@@ -249,6 +258,9 @@ NPC system (implemented):
 Logic autoloads (unchanged from 2D, all survive the 3D pivot):
 - `GameState.gd`, `TransitionManager.gd`, `SaveNotification.gd`, `PauseMenu.gd`, `DebugOverlay.gd`,
   `FlagScheduler.gd`, `InventoryManager.gd`, `JournalUI.gd`, `Settings.gd`, `MainMenu.gd`, `EnemyData.gd`
+
+New autoloads added in Milestone 4-3D (registered in `project.godot`):
+- `HUDOverlay.gd` — HP + endurance bars, status label; layer 5; reads from player group each frame
 
 New autoloads (implemented — must still be registered in Project Settings → Autoload):
 - `BarkManager.gd` — loads bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`; picks random non-repeating line; plays spatial audio from `assets/audio/barks/`; falls back to Output print if BarkOverlay UI is absent
@@ -265,16 +277,22 @@ New autoloads specified in design docs (not yet implemented — build in depende
 
 To verify Milestone 4-3D in Godot 4.3:
 1. Open the project, run `scenes/World3D.tscn`
-2. WASD/arrow keys move the green box around the floor
-3. Camera follows at a fixed 50° elevation, never tilts or rotates
-4. Campfire glows orange and flickers
-5. No clipping through the floor or walls
+2. WASD moves the placeholder character; W always moves toward Roland's facing direction (camera-relative)
+3. Arrow keys rotate camera only — character does NOT move
+4. Mouse drag: horizontal rotates Roland + camera (standard mode); vertical tilts; F2 hold = freelook; release re-centers both axes
+5. Mouse scroll wheel zooms in/out (arm length 2m–10m)
+6. HP and endurance bars visible at bottom-center of screen
+7. Hold Left Shift → sprint, endurance drains; at 0 sprint locks + EXHAUSTED shows; recovers above 20
+8. Press C → crouch toggle; CROUCHING shows; speed drops; sprint blocked
+9. Press Escape → pause menu, cursor visible; Resume → cursor hidden again
+10. Press J → 6-tab journal overlay opens; Tab key cycles tabs; clicking tab headers works; I goes to Items tab
+11. Campfire glows orange and flickers
+12. No clipping through the floor or walls
+13. No errors in Output panel
 
 Manual setup still required: see `DESIGNER_TODO.md` → Section 1 for the full checklist
-(Zylann Voxel Tools install, full Input Map per `design/INPUT_AND_CONTROLS.md` — including
-the third-person camera and lock-on actions — audio bus layout per
-`design/AUDIO_DESIGN.md`, and Autoload registration for `BarkManager` / `WorldClock` /
-`EntityRegistry`).
+(Zylann Voxel Tools install, audio bus layout per `design/AUDIO_DESIGN.md`, Autoload
+registration for `BarkManager` / `WorldClock` / `EntityRegistry`).
 
 ## World coordinate reference (playable Mira, origin = NW corner)
 | Location | Game x | Game z |
