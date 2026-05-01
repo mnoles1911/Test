@@ -27,7 +27,7 @@ No detailed physical description in current lore files.
 Key dimensions to define:
 - [ ] Island scale (main island footprint)
 - [ ] Port settlement size
-- [ ] Brotherhood Archive building dimensions
+- [ ] Sailor's Guild Archive building dimensions
 - [ ] Harbor depth / dock scale (shallow-shelf location means small-draft vessels)
 - [ ] Camera arm length recommendation
 
@@ -52,14 +52,14 @@ Inference from context:
 
 In Game One:
 - The voyage from Caer Brannoch includes a storm sequence and the discovery of an Ashen Hand infiltrator in the Sailor's Guild safe-house island
-- The Brotherhood Archive at the Copper Isles is where the Copper Wire is held ("catalogued as an artifact of unknown function")
+- The Sailor's Guild Archive at the Copper Isles is where the Copper Wire is held ("catalogued as an artifact of unknown function")
 - Released without difficulty once Roland has Brotherhood endorsement
 
 ---
 
 ## Connections
 
-- **Arrives from:** Caer Brannoch (Brotherhood voyage)
+- **Arrives from:** Caer Brannoch (Sailor's Guild voyage)
 - **Exits to:** Return voyage to Caer Brannoch (or direct to Act II open world)
 
 ---

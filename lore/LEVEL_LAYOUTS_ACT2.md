@@ -72,7 +72,7 @@ Archive. Released without difficulty once Roland has Brotherhood endorsement.
 - Caer Brannoch visual split: lower city (wet, dark wood, salt, rope) vs upper city
   (stone, fleet command, windswept). The sea-lift connects them.
 - Eilwen's court (upper city): the Shroud charts side quest fires here if Roland
-  delivers the charts from the Brotherhood Archive.
+  delivers the charts from the Sailor's Guild Archive.
 
 **Key flags:**
 - `orion_joined = true` — Orion available as companion from this point

@@ -86,7 +86,7 @@ The seven metals of the Grand Alliance forging:
 - [MAIN] Henrietta's Thread (Archive restricted section)
 - [MAIN] The Gold Coin (House Korvath)
 - [MAIN] The Bronze Ring (Yaromir)
-- [MAIN] The Copper Wire (Brotherhood Archive)
+- [MAIN] The Copper Wire (Sailor's Guild Archive)
 - [MAIN] The Silver Clasp (Aelorin Greatwood)
 - [MAIN] The Copper Disc (Karaz-Dûn)
 - [MAIN] The Obsidian Shard (Mor-Vethrin)
