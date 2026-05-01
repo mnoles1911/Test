@@ -91,7 +91,7 @@ The Ashlord is gravely injured. He retreats — not routed, but wounded and reco
 
 Vaeroth, commanding the Hand's conventional forces during the strike, is killed or captured in the same engagement — his operational layer was the hammer the Ashlord swung, and it broke against Roland's party's resistance.
 
-Orion, whose sailing background means he has been planning the exit route since they arrived, navigates them through a route the Hand doesn't know about — a Guild safe-house tunnel that exits west of the Ashfields.
+Orion, whose Guild membership gives him access to the safe-house network the Hand has never penetrated, produces a route no one else in the party could have known: a Guild tunnel that exits west of the Ashfields, maintained for exactly this kind of extraction.
 
 **Game One ends** with Roland holding all seven Crown pieces, the Hand's operational leadership destroyed, the Ashlord wounded and retreating to regroup, and the knowledge that the next step is Khorumzad — where the Vault of Aen-Vael holds the Aeluvain, and where Aldric Vane must be found.
 
