@@ -96,9 +96,28 @@ Roland discovers alchemy recipes through:
 - **Documents:** Recipe pages in the Archive restricted section, herbalist notes, old campsite journals, monastery records
 - **Mentors:** Herbalists and alchemists at FRIENDLY+ disposition will teach recipes in conversation
 - **Purchase:** Specialist vendors sell certain recipe pages (not all are purchasable)
-- **Experimentation:** Combining two ingredients at the still without a known recipe may produce a usable result. If it does, Roland notes it in his journal. Not all combinations work; a failed experiment produces a brief smoke effect and wastes the ingredients without harming Roland.
+- **Experimentation:** Roland can combine any 1–3 ingredients at the Still without a known recipe. See below for full rules.
 
 Experimental recipes found through play will sometimes not appear in any sold or written source. A curious player will know things a thorough researcher will not.
+
+### Alchemy Experimentation
+
+At the Still, Roland can attempt any ingredient combination without a recipe. The process:
+
+1. **Combine ingredients** — select 1 to 3 ingredients and confirm. The combination is attempted regardless of whether it is a valid recipe.
+2. **Result:**
+   - **Valid combination:** An **"Unfamiliar Potion"** is produced. The vial has no label and no listed effect. The quantity follows the recipe's normal batch size.
+   - **Invalid combination:** A **"Foul Residue"** is produced — a dark, malodorous liquid. The ingredients are consumed. No usable output.
+3. **Discovery via consumption:** Roland can consume an Unfamiliar Potion from the inventory (not quick-slot). Over the next 30–60 seconds of in-game time, the effect manifests and Roland narrates what he feels: *"That's the bloodmoss working. This clears a head wound — I can feel it."*
+   - If the effect is beneficial, the recipe is permanently added to his Known Recipes list with a note: *"Discovered by trial."*
+   - If the combination was partially valid but incorrect, Roland experiences a mild negative effect (brief nausea, -20 endurance for 30 seconds, no lasting harm) and the recipe is NOT added — he knows this combination doesn't work.
+4. **Failure memory:** GameState records every failed combination by ingredient pair. Attempting the same failed combination again shows Roland's note: *"I've tried this. It doesn't work."* — and refuses to consume the ingredients.
+
+**Experimentation constraints:**
+- Only alchemy (the Still) supports experimentation. Smithing and Assembly Table do not — their recipes are precision processes that require prior knowledge.
+- A failed experiment is never dangerous beyond the mild nausea effect. Roland is not poisoned to incapacitation by failed potions.
+- The Brainhale Tonic (see `design/ITEM_LIBRARY.md`) does not affect experimentation. The Potion Effectiveness skill perk (Crafting Trained tier) applies to experimentally discovered recipes at the normal quality calculation.
+- Consuming an Unfamiliar Potion in combat is Roland's risk to take. Effects are immediate but unidentified — the player is warned by the item name.
 
 ### Starting Recipes
 
