@@ -40,7 +40,7 @@ He joined the Sailor's Guild's formal cartography division afterward and has spe
 
 ## Eilwen's Twenty-Year Investigation
 
-Eilwen is a Sailor's Guild scholar who has been conducting private research into the Shroud Sea's phenomena for twenty years alongside her official cartography work. Her investigation began when she found Eska Two-Stars' original records in the Guild archive and noticed that they contained a detail no subsequent documentation had included: Eska described the phenomena reducing not just in intensity but in character during the window — as if whatever was generating them had changed its attention briefly.
+Eilwen is Queen of Caer Brannoch and a former naval commander who has been conducting private research into the Shroud Sea's phenomena for twenty years alongside her duties as queen and commander of the Tidewarden fleet. Her investigation began when she found Eska Two-Stars' original records in the Guild archive and noticed that they contained a detail no subsequent documentation had included: Eska described the phenomena reducing not just in intensity but in character during the window — as if whatever was generating them had changed its attention briefly.
 
 Eilwen's interpretation of this detail is the foundation of her theory: the Shroud Sea's phenomena are not static. They are responsive. Something is generating them with intent, and that something occasionally looks away.
 

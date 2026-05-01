@@ -50,8 +50,8 @@ The Aescstól throne: cooled lava and bone-meal, inlaid with obsidian and silver
 
 ## Level Layout Reference
 
-**File:** `lore/LEVEL_LAYOUTS_ACT4.md`
-**Status:** Sketched. Act IV scenes include the Ashfields approach, the Ashlord counterstroke, and the Fighting Retreat.
+**File:** None yet — Game Three level layouts not yet written. See GAME3_PART2.md and GAME3_PART3.md for scene descriptions.
+**Status:** Not yet written.
 
 The final confrontation at Drûn-Khazad is the climax of Game Three. Scene structure:
 1. Western slope ascent (the approach from the Ash-Steppe)
@@ -71,7 +71,7 @@ The final confrontation at Drûn-Khazad is the climax of Game Three. Scene struc
 
 - The Battle of Drûn-Khazad: how many enemy waves? What types of Ashfallen? The faction commitments (Vosskara, Tidewarden, Golden Lance, Naergrim dissidents) affect who fights — combat design question
 - The Ash Hearth confrontation with Mordvar: the final boss encounter design is not yet written
-- All three endings (The Return / The Hold / The Fracture) — see GAME1_PART2.md; spatial implications for the ending cinematics not yet mapped to geometry
+- All three endings (The Return / The Hold / The Fracture) — see GAME3_PART3.md; spatial implications for the ending cinematics not yet mapped to geometry
 - Caldera access: does the player descend into the caldera or approach the Ash Hearth from the rim level?
 
 **Canonical naming note:** Drûn-Khazad is the volcano in Thal. The Vault of Aen-Vael is below Khorumzad in the Spine of Mira — NOT below Drûn-Khazad.

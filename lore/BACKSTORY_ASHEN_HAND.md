@@ -82,7 +82,7 @@ Vaeroth Caine inherited the organisation on Mael's death. He received a function
 
 He did not know, when he took the Hierarch position, the full history of what Mael had agreed to on the organisation's behalf — or on behalf of the people she had recruited into it. By the time he understood it, he had agreed to enough himself that the distinction had ceased to matter practically.
 
-Vaeroth is not at the top. He knows this. The Ashlord is above him, and the Ashlord's instruction reaches him directly, without intermediary, in ways that make the chain of authority clear. Vaeroth runs the Hand's operational layer. The Ashlord runs Vaeroth. The operational core's mages and soldiers report to Vaeroth. The civilian arm's handlers report, through their operations officers, to Vaeroth's office. Everything reports, ultimately, to Caerith.
+Vaeroth is not at the top. He knows this. The Ashlord is above him, and the Ashlord's instruction reaches him through a single intermediary the Ashlord trusts — a woman Vaeroth knows only as the Voice — in ways that make the chain of authority clear. Vaeroth runs the Hand's operational layer. The Ashlord runs Vaeroth. The operational core's mages and soldiers report to Vaeroth. The civilian arm's handlers report, through their operations officers, to Vaeroth's office. Everything reports, ultimately, to Caerith.
 
 ---
 

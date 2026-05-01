@@ -103,7 +103,7 @@ The seven metals of the Sundered Crown (Bealoric's own making):
 - [MAIN] Bromrin's Treatment
 - [MAIN] The Nine Levels descent
 - [MAIN] The Vault of Aen-Vael
-- [MAIN] Vaeroth's Gambit (siege defense)
+- [MAIN] The Khorumzad Siege (Ashlord's assault on the dwarven hold)
 - [SIDE] The Second Agent
 - [SIDE] The Nameless Council's Price
 

@@ -61,5 +61,5 @@ In Game One: Sirathiel is the entry scene — Roland arrives here, establishes c
 
 - What credentials does Roland need to gain access? Is this a dialogue gate, a prior flag, or an object?
 - The Sailor's Guild contacts: ambient lore, but do any of these contacts translate to a specific NPC in the Act II scene?
-- Does Eilwen (Tidewarden) have any relationship with Sirathiel given both are northern coastal? Not defined.
+- Does Eilwen (Queen of Caer Brannoch) have any relationship with Sirathiel given both are northern coastal? Not defined.
 - The Guild's third contact here: timing relative to Game One events — before or during Roland's visit? Could create an encounter opportunity.

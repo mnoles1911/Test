@@ -1,7 +1,7 @@
 # The Shroud Sea
 
 **Type:** Region (ocean crossing)
-**Kingdom/People:** No control; Brotherhood of the Shroud monitors it
+**Kingdom/People:** No control; The Sailor's Guild monitors it
 **Position:** Between Mira (east coast / Shroud Shore) and Thal (west coast); narrowest crossing ~900 miles
 **Story relevance:** Game Two — the crossing opens Game Two (the nine-year Brotherhood window). Game One ends on Mira. Referenced throughout Game One as a looming threshold, but not crossed until Game Two.
 

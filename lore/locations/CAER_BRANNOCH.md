@@ -1,7 +1,7 @@
 # Caer Brannoch
 
 **Type:** City
-**Kingdom/People:** Independent (Tidewarden-administered)
+**Kingdom/People:** Human Kingdom — Caer Brannoch (Queen Eilwen's kingdom)
 **Position:** Northern headland, Bay of Mourne, western Mira coast
 **Story relevance:** Game One, Act II (Copper Wire arc; Orion joins here)
 

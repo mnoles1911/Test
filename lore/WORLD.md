@@ -174,7 +174,7 @@ The Aeluvain goes with it. That is what makes it the only thing that can unmake 
 
 ### Institutions
 
-**The Conclave of the Unseen Hand (Eldermark)** — The only formal human magic school. Sixty-three members. Trains innate users. Does not teach magic to those who lack it. Two current members are Ashfallen (compromised but functional). See GUILDS_AND_FACTIONS.md.
+**The Conclave of the Unseen Hand (Eldermark)** — The only formal human magic school. Sixty-three members. Trains innate users. Does not teach magic to those who lack it. Two current members are Ashfallen (compromised but functional). See GUILDS_TRADE_SCHOLAR.md, GUILDS_KNIGHT_ORDERS.md, and GUILDS_SHADOW_AND_BANDS.md.
 
 **Aelorin Loremaster Tradition** — Millennia of accumulated magical knowledge, conservatively applied. Not a school — an inheritance.
 

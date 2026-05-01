@@ -24,7 +24,7 @@ Map note: Walled city symbol with multiple towers. Two river lines converging at
 ---
 
 ### Caer Brannoch
-**Kingdom:** Independent (Tidewarden-administered) | **Position:** Northern headland, Bay of Mourne
+**Kingdom:** Caer Brannoch (Queen Eilwen's kingdom) | **Position:** Northern headland, Bay of Mourne
 
 A cliff city in two parts. The upper city sits on the headland itself — fortress walls, the Tidewarden fleet command, administrative buildings, and the residences of those with the rank or coin to claim them. Access from below is via a switchback road cut into the cliff face or by the sea-lifts: iron cage elevators on counterweight systems, built by dwarven engineers two centuries ago, still maintained under contract with Karaz-Dûn.
 

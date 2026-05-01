@@ -26,7 +26,7 @@ The Gulmrak Horde and the Ashen Hand's remnant forces defend the approaches in d
 
 Corvus survives the fight with permanent alteration — his eyes change color, his aging accelerates visibly, the cost the Conclave warned him about paid in a single moment. He considers it acceptable. The fight is won.
 
-**Day Three:** The push to the caldera. Uglakh's personal guard makes the final stand at the caldera's eastern approach — the most disciplined fighting the Alliance encounters. The Iron Chalice holds the center. Of twelve hundred knights, sixty-three survive Day Three.
+**Day Three:** The push to the caldera. Uglakh's personal guard makes the final stand at the caldera's eastern approach — the most disciplined fighting the Alliance encounters. The Iron Chalice holds the center. Of twelve hundred knights, 112 survive Day Three.
 
 ---
 

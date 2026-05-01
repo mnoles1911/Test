@@ -46,11 +46,11 @@ Roland cannot reach Thrarin. He can reach Kazaad-Brak and the auditor, Barak Sto
 
 She does not immediately join the party — she joins the same errand, which amounts to the same thing. The conversation where Roland explains the full scope of what he is doing, and Dagna listens and says: *"Your volcanic problem and my volcanic problem are the same volcanic problem,"* is the moment she commits.
 
-**[SIDE QUEST] The Falsified Reports:** Recovering Dagna's original field data and proving the falsification requires accessing Karaz-Dûn's Dragon-Watcher record office — which Darva (Thrarin's regent daughter) has access to once the auditor's report is in hand. The original reports are there, filed separately from the forgeries. The compromised steward's amendments are in a different hand. Darva recognizes the handwriting. The steward is removed. Dagna's name is cleared in the Dragon-Watcher order, though the full implications of her findings are not yet understood.
+**[SIDE QUEST] The Falsified Reports:** Recovering Dagna's original field data and proving the falsification requires accessing Karaz-Dûn's Dragon-Watcher record office — which Darna Deepdelver (Thrarin's regent daughter) has access to once the auditor's report is in hand. The original reports are there, filed separately from the forgeries. The compromised steward's amendments are in a different hand. Darna recognizes the handwriting. The steward is removed. Dagna's name is cleared in the Dragon-Watcher order, though the full implications of her findings are not yet understood.
 
 Barak's information confirms Drossvik's operation in the dwarven kingdoms — which sets up Game Two. He also knows the disc's location: it is in Thrarin's treasury as part of a Second Age artifact collection. Thrarin collected it a century ago as a curiosity.
 
-The approach: Roland works through Bromrin, whose mind is intact at this point in Game One. Bromrin contacts Thrarin's eldest daughter and regent-in-practice, Darva, who has been managing kingdom affairs while Thrarin stays in the treasury. Darva retrieves the disc in exchange for the auditor's report — which gives her leverage to deal with her father's situation on her own terms.
+The approach: Roland works through Bromrin, whose mind is intact at this point in Game One. Bromrin contacts Thrarin's eldest daughter and regent-in-practice, Darna Deepdelver, who has been managing kingdom affairs while Thrarin stays in the treasury. Darna retrieves the disc in exchange for the auditor's report — which gives her leverage to deal with her father's situation on her own terms.
 
 **Piece Six acquired.**
 
@@ -65,13 +65,13 @@ Mor-Vethrin is reached by traveling northeast from the Vosskaran frontier throug
 
 The Ashen Hand has been negotiating with the Naergrim for the shard for over a year. The Naergrim have not refused — but they have not handed it over either. Serethi the Twice-Dead is using the shard as a bargaining chip with both sides.
 
-**Serethi the Twice-Dead's offer:** The Naergrim leader makes Roland an offer rather than a demand: he will provide the shard in exchange for Roland's acknowledgment that when Mordvar is defeated, the Naergrim will not be included in any punitive settlement. They chose the Ash Throne freely; they now wish to unchose it. Serethi does not offer loyalty to the Alliance — only withdrawal.
+**Serethi the Twice-Dead's offer:** The Naergrim leader makes Roland an offer rather than a demand: she will provide the shard in exchange for Roland's acknowledgment that when Mordvar is defeated, the Naergrim will not be included in any punitive settlement. They chose the Ash Throne freely; they now wish to unchose it. Serethi does not offer loyalty to the Alliance — only withdrawal.
 
 The moral question this poses is Game One's last real decision: is freeing the world from Mordvar worth making an arrangement that lets the Naergrim walk away from the atrocities of the last decade?
 
-Roland must decide. There is no option to delay. Serethi has already calculated that Roland will accept — he is watching the calculation play out on Roland's face.
+Roland must decide. There is no option to delay. Serethi has already calculated that Roland will accept — she is watching the calculation play out on Roland's face.
 
-**[OPTIONAL QUEST] The Dissenting Voice:** A minority faction within the Naergrim wants genuine alliance rather than mere withdrawal. Their leader, a young Naergrim who goes by the name the Pale Defection uses as a joke and has adopted as a title, approaches Roland quietly. If Roland acknowledges this faction and creates a quiet channel for them, three Naergrim fighters join Roland at the Ashfields and the final retreat, acting under their own authority. They survive. Serethi is furious. He honors the deal anyway.
+**[OPTIONAL QUEST] The Dissenting Voice:** A minority faction within the Naergrim wants genuine alliance rather than mere withdrawal. Their leader, a young Naergrim who goes by the name the Pale Defection uses as a joke and has adopted as a title, approaches Roland quietly. If Roland acknowledges this faction and creates a quiet channel for them, three Naergrim fighters join Roland at the Ashfields and the final retreat, acting under their own authority. They survive. Serethi is furious. She honors the deal anyway.
 
 **Piece Seven acquired.**
 

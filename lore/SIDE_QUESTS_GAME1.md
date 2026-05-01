@@ -25,9 +25,9 @@ Game 1's side quests serve two purposes: they build out the world's texture and 
 
 **Summary:** Sela's partner Dovin has changed in the past year — asking unusual questions, disappearing at odd hours, receiving correspondence he doesn't discuss. Sela wants to know who he's working for before she decides what to do.
 
-**What the player does:** Investigates Dovin's activities. Discovers he is a low-level Ashen Hand informant passing commercial intelligence about Eldermark trade routes. His handler is a figure the player cannot yet identify — but the correspondence contains a cipher that Aldric recognizes as Ashen Hand methodology.
+**What the player does:** Investigates Dovin's activities. Discovers he is a low-level Ashen Hand informant passing commercial intelligence about Eldermark trade routes. His handler is a figure the player cannot yet identify — but the correspondence contains a cipher that Edran recognizes as Ashen Hand methodology.
 
-**Payoff:** Exposes Prince Aedric Castrove's connection to the Ashen Hand indirectly — the trade route intelligence Dovin was gathering was specifically useful to someone with access to Eldermark crown logistics. Aldric notes this privately but doesn't say it aloud until Game 2.
+**Payoff:** Exposes Prince Aedric Castrove's connection to the Ashen Hand indirectly — the trade route intelligence Dovin was gathering was specifically useful to someone with access to Eldermark crown logistics. Edran notes this privately but doesn't say it aloud until Game 2.
 
 **Tone:** A small conspiracy that implies a larger one. The player probably suspects more than they can prove.
 

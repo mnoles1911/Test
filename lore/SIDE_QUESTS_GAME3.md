@@ -97,6 +97,6 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 **What the player does:** Waits. Optionally, the player can follow Seren — if they do, they find her standing in a specific clearing, speaking in High Aeluvain to no one visible. There is a young tree in the clearing that was not there yesterday. If the player does not follow, they see only Seren returning.
 
-**Payoff:** Seren plants a tree for Caerith in the Aelorin tradition of the Aelthiren — the ritual acknowledgment of a death. She cannot give Caerith the full rite (that would require the Aelthurion's recognition, which is complicated), but she can give her this. If the player followed and asks about it, Seren says: "She was Aelorin for a very long time before she was anything else. Someone should remember that part."
+**Payoff:** Seren plants a tree for Caerith in the Aelorin tradition of the Aelthiren — the ritual acknowledgment of a death. She cannot give Caerith the full rite (that would require the Aelthurion's recognition, which is complicated), but she can give her this. If the player followed and asks about it, Seren says: "He was Aelorin for a very long time before he was anything else. Someone should remember that part."
 
 **Tone:** Quiet grief and the specific care of someone who understands what the dead were before they became what they died as.

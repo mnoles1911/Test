@@ -51,7 +51,7 @@ Game 2's side quests are heavier than Game 1's. The party is deeper in the world
 
 **Questgiver:** Bromrin, a dwarven courier in Khorumzad's middle district, who has three letters he was paid to deliver but whose recipients have become unreachable.
 
-**Summary:** The three letters were commissioned by an anonymous sender before the party arrived in Khorumzad. Each recipient is someone who would, if warned, become a significant obstacle to the Ashen Hand's operations in the region: Eilwen (the Sailor's Guild scholar), Hagrim (a dwarven clan elder with records relevant to the Vault), and Darna (a Conclave-affiliated researcher who has been getting too close to sensitive records).
+**Summary:** The three letters were commissioned by an anonymous sender before the party arrived in Khorumzad. Each recipient is someone who would, if warned, become a significant obstacle to the Ashen Hand's operations in the region: Queen Eilwen (of Caer Brannoch), Hagrim (a dwarven clan elder with records relevant to the Vault), and Darna (a Conclave-affiliated researcher who has been getting too close to sensitive records).
 
 **What the player does:** Delivers the letters. Each recipient has been made unreachable in a different way — Eilwen is in the middle of a sea observation and won't break for messages, Hagrim is under informal house arrest by his own clan for reasons that aren't what they appear, Darna has gone to ground after a near-miss she hasn't told anyone about. Reaching each one is its own small puzzle.
 

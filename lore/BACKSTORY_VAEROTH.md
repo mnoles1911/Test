@@ -8,7 +8,7 @@ Vaeroth is the operational Hierarch of the Ashen Hand. He is forty-four years ol
 
 Vaeroth grew up in a provincial town in the eastern reach of Eldermark, the son of a records clerk and a woman who repaired looms. He was not remarkable as a child. He was careful, persistent, and uncomfortable with ambiguity — qualities that made him well-suited to bureaucratic work and poorly suited to the life that came with it.
 
-He entered the Conclave of the Warden Flame at nineteen through a competitive placement exam. He was not a prodigy. He finished in the middle of his cohort and was assigned to the Anomaly Registry, which tracked unusual phenomena — unexplained deaths, structural collapses with no engineering cause, livestock behavior in regions near the Sorrowmarsh — and cross-referenced them against Conclave records going back three centuries.
+He entered the Conclave of the Unseen Hand at nineteen through a competitive placement exam. He was not a prodigy. He finished in the middle of his cohort and was assigned to the Anomaly Registry, which tracked unusual phenomena — unexplained deaths, structural collapses with no engineering cause, livestock behavior in regions near the Sorrowmarsh — and cross-referenced them against Conclave records going back three centuries.
 
 He was good at this work. He was thorough, organized, and willing to follow a thread further than his supervisors wanted. Over twenty years he became one of the Registry's more knowledgeable analysts, though not its director. The directorship was held by a succession of men with better political positioning and less patience for primary sources.
 
