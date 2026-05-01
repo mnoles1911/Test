@@ -4,7 +4,7 @@
 
 Aldric's family has lived in Coldstoke, a frontier village in the Vosskaran borderlands, for three generations. They are not remarkable people by the world's accounting — smiths and farmers and one uncle who went to sea and never came back. The village knows them as the Vanes: solid, quiet, useful.
 
-What the village does not know, and what Aldric himself did not know until he was in his twenties, is that the Vane name is a suppression. His grandfather changed it from Caelborn — an old house name with a lineage claim that had become a liability. The claim connected them to the Grand Alliance's inner circle at the close of the Second Age, to people who had stood close to the Aeluvain binding and been granted certain ancient rights in exchange. Rights so old the world had forgotten them. A name that drew attention from people who wanted to control or eliminate it.
+What the village does not know, and what Aldric himself did not know until he was in his twenties, is that the Vane name is a suppression. His grandfather changed it from Caelborn — an old house name with a lineage claim that had become a liability. The claim connected them to the Grand Alliance's inner circle at the close of the Second Age, to people who had stood with the Grand Alliance at the Sorrowmarsh and been granted certain ancient rights in exchange. Rights so old the world had forgotten them. A name that drew attention from people who wanted to control or eliminate it.
 
 His grandfather believed the suppression would protect the family. For two generations, it did.
 
