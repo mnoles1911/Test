@@ -119,7 +119,7 @@ He dies of his wounds before Eilwen's soldiers reach the lower level. He does no
 
 **State entering Game Three:**
 - Roland holds all seven Crown pieces and the Aeluvain
-- Aldric Vane must be located and brought to the Ash Tower, where Hadran's knowledge of the attuning process is the only viable preparation
+- Aldric Vane must be located and brought to the Ash Tower, where Hadran's craft is the only way to reforge the Aeluvain for its wielder
 - The Hand's civilian intelligence network is intact; dismantling it is a Game Three background objective
 - Mordvar is close to full reformation; the Shroud Sea window is narrowing
 
