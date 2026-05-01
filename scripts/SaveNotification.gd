@@ -48,15 +48,13 @@ func _ready() -> void:
 
 	_label = Label.new()
 	_label.text = "— SAVING —"
-	_label.add_theme_font_size_override("font_size", 7)
+	_label.add_theme_font_size_override("font_size", 20)
 	_label.modulate = Color(0.7, 0.7, 0.7, 0.0)  # Start fully transparent
 
-	# Position: bottom-right corner, 8px from each edge.
-	# AnchorRight + AnchorBottom = 1.0 puts origin at bottom-right.
-	# We offset negatively from that corner.
+	# Position: bottom-right corner. At 1920×1080 the label is wider/taller
+	# than the 320×180 era, so the offset is larger to keep it off the edge.
 	_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	# Fine-tune position to sit above the very edge.
-	_label.position = Vector2(-64, -14)
+	_label.position = Vector2(-160, -40)
 
 	add_child(_label)
 

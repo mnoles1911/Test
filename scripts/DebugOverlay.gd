@@ -63,22 +63,22 @@ func _build_ui() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.add_child(bg)
 
-	# Tab label at the top.
+	# Tab label at the top — sized for 1920×1080.
 	_tab_label = Label.new()
-	_tab_label.position = Vector2(4, 2)
-	_tab_label.add_theme_font_size_override("font_size", 7)
+	_tab_label.position = Vector2(12, 8)
+	_tab_label.add_theme_font_size_override("font_size", 18)
 	_tab_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.4, 1))
 	_root.add_child(_tab_label)
 
 	# Scrollable content label below.
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scroll.offset_top = 14
+	scroll.offset_top = 38
 	_root.add_child(scroll)
 
 	_content_label = Label.new()
 	_content_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_content_label.add_theme_font_size_override("font_size", 6)
+	_content_label.add_theme_font_size_override("font_size", 15)
 	_content_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1))
 	_content_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	scroll.add_child(_content_label)

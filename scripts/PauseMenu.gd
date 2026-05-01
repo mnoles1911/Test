@@ -70,13 +70,13 @@ func _build_ui() -> void:
 	backdrop.color = Color(0.0, 0.0, 0.0, 0.65)
 	_root.add_child(backdrop)
 
-	# Centered panel.
+	# Centered panel — sized for 1920×1080, not the old 320×180 viewport.
 	var frame := Panel.new()
 	frame.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	frame.offset_left   = -60
-	frame.offset_top    = -55
-	frame.offset_right  =  60
-	frame.offset_bottom =  55
+	frame.offset_left   = -220
+	frame.offset_top    = -200
+	frame.offset_right  =  220
+	frame.offset_bottom =  200
 	_root.add_child(frame)
 
 	# VBox inside the panel.
@@ -91,7 +91,7 @@ func _build_ui() -> void:
 	# Title.
 	var title_lbl := Label.new()
 	title_lbl.text = "— PAUSED —"
-	title_lbl.add_theme_font_size_override("font_size", 8)
+	title_lbl.add_theme_font_size_override("font_size", 28)
 	title_lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title_lbl)
@@ -102,13 +102,13 @@ func _build_ui() -> void:
 	div.color = Color(0.35, 0.35, 0.35, 1)
 	vbox.add_child(div)
 
-	# Helper to create a flat button.
+	# Helper to create a flat button — sized for 1920×1080.
 	var make_btn := func(label: String) -> Button:
 		var b := Button.new()
 		b.text = label
 		b.flat = true
-		b.custom_minimum_size = Vector2(0, 14)
-		b.add_theme_font_size_override("font_size", 7)
+		b.custom_minimum_size = Vector2(0, 44)
+		b.add_theme_font_size_override("font_size", 22)
 		b.process_mode = Node.PROCESS_MODE_ALWAYS
 		return b
 
@@ -138,11 +138,20 @@ func _build_ui() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE or event.physical_keycode == KEY_ESCAPE:
+			# If the journal/inventory overlay is open, let JournalUI handle
+			# Escape to close itself instead of opening the pause menu on top.
+			var journal := get_node_or_null("/root/JournalUI")
+			if journal != null and journal.is_overlay_visible():
+				return
 			if _root.visible:
 				_on_resume()
 			else:
 				_open()
 			get_viewport().set_input_as_handled()
+
+
+func is_open() -> bool:
+	return _root != null and _root.visible
 
 
 # =============================================================
