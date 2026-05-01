@@ -70,10 +70,12 @@ the alchemist's apprentice reacting when you enter the shop.
 
 **Schedule rules:**
 - Each entry covers a time window (hour start → hour end).
-- Gaps in the schedule are fine: the NPC stays put during uncovered hours.
+- Gaps in the schedule mean the NPC is **in transit or at their previous location**. The NPC does not wait at a fixed point — they travel to their next scheduled location when that window opens. If the player arrives at a scheduled location before the NPC's time window begins, the player must wait for them to arrive. The NPC will not be present early.
 - A `dialogue_override` on a schedule entry lets the NPC say "the shop is closed" at night.
 - The world clock writes `world_hour` (0–23) to `GameState` each time the hour advances.
   Call `NPC.update_schedule(hour)` from whatever drives the clock.
+- When an NPC's time window opens and they are not already at the target location, they path toward it via `NavigationAgent3D`. For long distances, movement is abstracted: the NPC teleports to a transition point off-screen, then walks the final few meters into view. Short in-scene distances play the full walk.
+- A player waiting for an NPC can pass time by sitting at a rest point (bench, chair, wall) or by using `WorldClock.advance_hours()` via the camp menu. Time does not auto-advance — the player acts.
 
 ---
 
