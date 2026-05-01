@@ -10,7 +10,7 @@ The Gulmrak Horde under Uglakh is marching. The Ashen Hand's remnant forces — 
 
 In parallel: the Grand Alliance is assembling — a military operation of a scale not seen since the Second Age, with the three-to-one disadvantage that the Alliance's bond of shared purpose must overcome.
 
-Before the march east, Roland must also reach the Ash Tower in the Sundered Isles, where the smith Hadran Volthen has spent two centuries preparing to receive the Crown pieces and guide whoever carries them through the attuning process. Without Hadran's knowledge, Aldric cannot safely wield the Aeluvain. Both tasks must be completed before Mordvar finishes reforming.
+Before the march east, Roland must also reach the Ash Tower in the Sundered Isles, where the smith Hadran Volthen has spent two centuries preparing to receive the Crown pieces and reforge the Aeluvain for its wielder. Without Hadran's craft and knowledge, Aldric cannot safely wield the Aeluvain. Both tasks must be completed before Mordvar finishes reforming.
 
 ---
 
@@ -59,7 +59,7 @@ The rearguard action that buys Aldric time to leave Coldstoke is brutal and one-
 
 ### [MAIN QUEST] The Ash Tower — Hadran Volthen
 
-Before the Alliance can march, Aldric must be prepared. The Aeluvain is a sword of extraordinary provenance — it will respond to Aldric's bloodline, but the attuning process requires the seven Crown pieces and the knowledge only Hadran Volthen possesses. Without Hadran, Aldric could attempt the wielding and survive. With Hadran's guidance, he will survive it intact.
+Before the Alliance can march, Aldric must be prepared. The Aeluvain is a sword of extraordinary provenance — it will respond to Aldric's bloodline, but the reforging requires the seven Crown pieces as raw material and the smith's knowledge only Hadran Volthen possesses. Without Hadran, Aldric could attempt the wielding and survive. With Hadran's work, he will survive it intact.
 
 The Ash Tower is in the Sundered Isles — accessible by Sailor's Guild chart through the Shroud Sea's outer storm-edge. Roland's party makes the crossing. The approach to the Tower requires a small craft through the sea-cave below at slack tide, then iron rungs up to the fourth floor.
 
@@ -71,7 +71,7 @@ He is the most frightening figure in the trilogy because he is reasonable. He ma
 
 **The choice:** Kill Hadran and lose his knowledge, or take him alive and use it. In the path leading to the best outcome, the party takes him alive. Hadran, offered the chance to let his work be used toward a different end than he intended, agrees. Not from conversion — he still believes what he believes — but because he is Long-Worked, three hundred and forty years old, and he has been running on the purpose of completing the Crown's work. If that purpose is redirected, what remains is a very old man who is tired, and curious about whether the new use of his knowledge is as durable as the one he planned.
 
-He guides Aldric through the attuning: using the seven Crown pieces as resonant focal material while Aldric handles the Aeluvain, keying the sword to his specific bloodline so the wielding does not consume him. The process takes two days. It is not painful — it is the opposite of pain. Aldric says afterward that he could hear something, very faint, that he could not describe. Seren says: *Yes. That is what it sounds like.*
+He reforges the Aeluvain with Aldric's hands on the hilt throughout: the seven Crown pieces are fed into the forge as raw material, their metal worked into the blade, binding the sword to Aldric's specific bloodline so the wielding does not consume him. The process takes two days. It is not painful — it is the opposite of pain. Aldric says afterward that he could hear something, very faint, that he could not describe. Seren says: *Yes. That is what it sounds like.*
 
 Hadran dies of old age within the year — the Long-Worked process unravels once the purpose sustaining it is denied. He knows this when he agrees. The party gives him passage on a Sailor's Guild ship. He dies at sea, watching the Sundered Isles disappear behind him for the last time.
 
