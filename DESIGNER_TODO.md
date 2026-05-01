@@ -20,9 +20,23 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Plugins. Required for Milestone 5-3D (terrain generation).
   Reference: `design/3D_VOXEL_MIGRATION.md`, `design/ART_PIPELINE.md`
 
-- [ ] **Add `interact` input action (E key)**
-  Project Settings → Input Map → Add Action: `interact` → assign key: E.
-  Required by `DialogueTrigger3D.gd` and `NPC.gd` (press-E dialogue).
+- [ ] **Configure the full Input Map per `design/INPUT_AND_CONTROLS.md`**
+  Project Settings → Input Map → add each action below. The full table with controller
+  bindings is in the design doc; minimum keyboard defaults:
+  - `interact` — E (required by `DialogueTrigger3D.gd` and `NPC.gd`)
+  - `sprint` — Left Shift
+  - `attack` — Left Mouse Button (tap = light, hold ≥0.20s = power)
+  - `block` — Right Mouse Button (hold = block, tap = parry)
+  - `dodge` — Space
+  - `lock_on` — Middle Mouse Button (or Tab)
+  - `quick_slot_next` — Q / `quick_slot_prev` — E (in-combat context)
+  - `open_journal` — J
+  - `open_inventory` — I
+  - `pause` — Escape
+  - `debug_overlay` — F1
+  - `camera_left` / `camera_right` — only if `CameraRig.allow_horizontal_rotation` is enabled
+  Note: `interact` and `quick_slot_prev` both default to E — context is resolved in
+  `Player3D.gd` by checking `near_interactable` state.
 
 - [ ] **Register `BarkManager` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
@@ -32,9 +46,11 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
   Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
 
-- [ ] **Configure `camera_left` / `camera_right` input actions** (if horizontal camera rotation is ever enabled)
-  Project Settings → Input Map → Add: `camera_left` (Q), `camera_right` (E or comma/period).
-  Not needed until `CameraRig.gd` has `allow_horizontal_rotation = true`.
+- [ ] **Set up the audio bus layout per `design/AUDIO_DESIGN.md`**
+  Bottom panel → Audio → add buses: `Music`, `SFX` (with children `Combat`, `Ambient`),
+  `Voice` (with children `NPC`, `Roland`), `UI`. Save as `default_bus_layout.tres`.
+  Required before any music or voiced dialogue work — `Settings.gd` volume sliders
+  target the bus names exactly as written above.
 
 ---
 
@@ -272,6 +288,60 @@ Each item links to its spec. Build in dependency order.
   Smoke Grenade) before populating the full library.
   Reference: `design/ITEM_LIBRARY.md`
 
+- [ ] **`FactionManager.gd` autoload**
+  Wraps GameState faction disposition flags; emits `disposition_changed` signal;
+  applies rival-faction effects on adjustment. Six Game One factions seed
+  Game Three lockouts.
+  Reference: `design/FACTION_SYSTEM.md`
+
+- [ ] **`QuestManager.gd` autoload**
+  `start_quest()`, `advance_quest()`, `complete_quest()`, `fail_quest()`. Manages
+  quest flag namespace, journal entry creation, and timed-event handoffs to
+  `FlagScheduler`.
+  Reference: `design/QUEST_SYSTEM.md`
+
+- [ ] **`WeatherManager.gd` autoload**
+  Tracks current weather state, tweens `WorldEnvironment` between authored presets,
+  honors zone-specific weather overrides, exposes `is_outdoor` for Roland's hood/cloak
+  visual states.
+  Reference: `design/WEATHER_AND_ENVIRONMENT.md`
+
+- [ ] **`CompanionManager.gd` autoload**
+  Active companion state, HP, downed/revive flags, combat order issuing, pack
+  inventory. Serializes/deserializes for save.
+  Reference: `design/COMPANION_SYSTEM.md`
+
+- [ ] **`EnemyAI.gd` base script + per-type subclasses**
+  State machine (Idle / Suspicious / Alert / Combat / Fleeing), attack-token
+  arbitration with sibling enemies, per-type specs for Goblin, Ashfallen, Wolf, Bear.
+  Reference: `design/ENEMY_AI.md`
+
+- [ ] **`DeathHandler.gd` + Roland death-line library**
+  Triggers on Roland HP=0: plays authored death line, fades to black, offers
+  Second Wind (if available) or reload-from-last-save. No XP loss, no item loss.
+  Reference: `design/DEATH_AND_RESPAWN.md`
+
+- [ ] **`SaveSystem.gd` backup rotation update**
+  Extend the existing multi-slot save with: rest autosave hook, Wanderer's Seal
+  manual save hook, three-deep backup rotation per slot. Diegetic-only — no
+  free-form quicksave outside camp/seal.
+  Reference: `design/SAVE_SYSTEM.md`
+
+- [ ] **HUD overhaul per `design/HUD_AND_UI.md`**
+  HP bar, endurance bar, lock-on reticle, quick-slot tray, interaction prompt,
+  bark overlay slot. Replace any 2D-era HUD remnants. Builds on `BarkOverlay` UI
+  task in Section 6.
+
+- [ ] **`Settings.gd` expansion per `design/ACCESSIBILITY_AND_SETTINGS.md`**
+  Add: subtitle on/off + size, colorblind mode, screen shake intensity, parry
+  window assist, voice/music/SFX bus volume sliders (target the bus names from
+  Section 1's audio bus task). Persist to `user://settings.cfg`.
+
+- [ ] **Vendor scripts per `design/ECONOMY_AND_VENDORS.md`**
+  `VendorData.gd` resource (inventory list, faction price modifier, restock rules)
+  and `VendorUI.gd` (buy/sell/haggle screen). Required before any Aldenholt or
+  Solgrade vendor NPCs are placed.
+
 ---
 
 ## Section 8 — Design Decisions Still Needed
@@ -336,3 +406,5 @@ Run these after any session where you change scenes or scripts:
 - [ ] Press E near a dialogue trigger → Dialogic opens
 - [ ] Campfire flickers (OmniLight3D energy varies)
 - [ ] No "Autoload not found" warnings (means a required autoload isn't registered)
+- [ ] No "Bus not found" errors when audio plays (means the audio bus layout from Section 1 is missing)
+- [ ] No "InputMap action not found" errors (means an action from Section 1 isn't configured)
