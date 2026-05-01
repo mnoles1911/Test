@@ -27,14 +27,14 @@ All input is routed through Godot's Input Map. Physical keys are defaults only �
 
 | Action name | Default (KB) | Default (Controller) | Description |
 |---|---|---|---|
-| `ui_left` / `move_left` | A | Left stick left | Move left |
-| `ui_right` / `move_right` | D | Left stick right | Move right |
-| `ui_up` / `move_forward` | W | Left stick up | Move forward |
-| `ui_down` / `move_back` | S | Left stick down | Move backward |
+| `ui_left` | A only | Left stick left | Move left |
+| `ui_right` | D only | Left stick right | Move right |
+| `ui_up` | W only | Left stick up | Move forward |
+| `ui_down` | S only | Left stick down | Move backward |
 | `sprint` | Left Shift (hold) | Left stick click / L3 | Sprint (drains endurance) |
 | `dodge` | Space | B / Circle | Directional dodge roll (costs endurance) |
 
-Note: `ui_left/right/up/down` are Godot's built-in UI navigation actions. Movement reads from these plus arrow keys by default. Add explicit `move_*` actions if finer control is needed.
+**Arrow keys are reserved for camera rotation only** — they are not bound to `ui_*` actions. Movement is WASD-only on KB+M. Movement is camera-relative: W always moves toward where the camera (and Roland) faces.
 
 ### Combat Actions
 
@@ -80,8 +80,11 @@ Note: `quick_slot_next` / `quick_slot_prev` are the cycle inputs used mid-combat
 | `camera_right` | Right Arrow | Right stick right | Rotate camera right (keyboard fallback) |
 | `camera_up` | Up Arrow | Right stick up | Tilt camera up (keyboard fallback) |
 | `camera_down` | Down Arrow | Right stick down | Tilt camera down (keyboard fallback) |
+| `freelook_camera` | F2 (hold) | — | Hold to enter freelook: mouse orbits camera without rotating Roland. Release to re-center. |
 
-**KB+M primary:** Camera rotation is driven by **mouse motion** (`InputEventMouseMotion`) directly in `CameraRig.gd` — no Input Map action needed. Mouse horizontal → yaw; mouse vertical → pitch. Arrow key actions are fallbacks for players who prefer keys.
+**KB+M primary:** Camera rotation is driven by **mouse motion** (`InputEventMouseMotion`) directly in `CameraRig.gd` — no Input Map action needed. Mouse horizontal → yaw (standard mode: rotates Roland's body; freelook mode: orbits the arm); mouse vertical → pitch. Arrow key actions are fallbacks for players who prefer keys.
+
+**Scroll wheel zoom:** Mouse scroll up/down zooms the camera in/out (arm length 2m–10m). Works in both standard and freelook modes. This takes priority over lock-on target cycling — target cycling uses `next_target` / `prev_target` actions which can be rebound.
 
 **Controller:** Right stick drives camera directly via `Input.get_vector("camera_left", "camera_right", "camera_up", "camera_down")`.
 
@@ -95,10 +98,12 @@ Confirmed KB+M layout. No key conflicts.
 
 | Key / Input | Action | Notes |
 |---|---|---|
-| W A S D | Move | 8-directional, maps to 3D XZ plane |
-| Mouse drag | Camera rotate | Horizontal = yaw, vertical = pitch. Read directly in `CameraRig.gd` via `InputEventMouseMotion` — no Input Map action needed |
-| Left Arrow / Right Arrow | `camera_left` / `camera_right` | Keyboard fallback for camera rotate |
+| W A S D | Move | 8-directional, camera-relative: W always moves toward where Roland faces |
+| Mouse drag | Camera rotate | Horizontal = yaw (rotates Roland's body in standard mode); vertical = pitch. Read directly in `CameraRig.gd` via `InputEventMouseMotion` — no Input Map action needed |
+| F2 (hold) | `freelook_camera` | Freelook mode: mouse orbits camera without rotating Roland. On release, arm re-centers |
+| Left Arrow / Right Arrow | `camera_left` / `camera_right` | Keyboard fallback for camera rotate (also works in freelook) |
 | Up Arrow / Down Arrow | `camera_up` / `camera_down` | Keyboard fallback for camera tilt |
+| Mouse Scroll Up / Down | Zoom | Camera arm length 2m–10m. Works in both standard and freelook modes |
 | E | `interact` | Talk, examine, open door, rest at fire |
 | Q | `quick_slot_prev` | Cycle quick slot left |
 | LMB | `attack` | Tap = light attack; hold ≥0.20s = power charge |
@@ -106,7 +111,7 @@ Confirmed KB+M layout. No key conflicts.
 | Space | `dodge` | Directional roll (costs endurance) |
 | Left Shift | `sprint` | Hold to sprint (drains endurance) |
 | Middle Mouse | `lock_on` | Toggle lock-on to nearest enemy |
-| Mouse Scroll Up / Down | `next_target` / `prev_target` | Cycle lock-on target while locked |
+| Mouse Scroll Up / Down (locked) | `next_target` / `prev_target` | Cycle lock-on target while locked on (scroll zoom takes priority; rebind if needed) |
 | J | `open_journal` | Open/close journal overlay |
 | I | `open_inventory` | Open/close inventory screen |
 | Escape | `pause` | Open/close pause menu |
@@ -117,7 +122,7 @@ Confirmed KB+M layout. No key conflicts.
 ### Mouse in Combat
 
 - **LMB / RMB** are the primary combat inputs. The mouse cursor is hidden during combat and exploration — Roland moves with WASD, the camera follows mouse movement.
-- **Mouse scroll wheel** cycles lock-on targets when locked on.
+- **Mouse scroll wheel** zooms the camera in/out (arm length 2m–10m) in all modes. When locked on to an enemy, scroll is consumed by zoom first; rebind `next_target` / `prev_target` to other inputs if you need target cycling without zoom interference.
 - There is no mouse-aim for melee attacks. Roland always attacks toward his current facing direction or lock-on target.
 
 ### Mouse in Menus
@@ -161,18 +166,23 @@ Buffer only applies to `attack` and `dodge`. Block and interact fire immediately
 
 ## Required Godot Input Map Setup
 
-The following actions **must be configured in Godot Project Settings → Input Map** before they will function:
+Status as of 2026-05-01: all core actions below are configured in `project.godot`. Items marked ✓ are live.
 
-- `interact` — E key (and A/Cross for controller). Required by `DialogueTrigger3D.gd` and `NPC.gd`.
-- `sprint` — Left Shift
-- `dodge` — Space
-- `lock_on` — Middle Mouse Button / Tab
-- `quick_slot_next` — Q (in-combat context)
-- `quick_slot_prev` — E (in-combat context, separate from `interact` context)
-- `camera_left` / `camera_right` / `camera_up` / `camera_down` — Arrow keys (KB fallback; controller right stick). Not needed for KB+M since mouse motion drives the camera directly in `CameraRig.gd`.
-- `open_journal` — J
-- `open_inventory` — I
-- `debug_overlay` — F1
+- ✓ `interact` — E key. Required by `DialogueTrigger3D.gd` and `NPC.gd`.
+- ✓ `sprint` — Left Shift
+- ✓ `attack` — Left Mouse Button
+- ✓ `block` — Right Mouse Button
+- ✓ `dodge` — Space
+- ✓ `lock_on` — Middle Mouse Button
+- ✓ `quick_slot_prev` — Q
+- ✓ `camera_left` / `camera_right` / `camera_up` / `camera_down` — Arrow keys (KB fallback; controller right stick). Not needed for KB+M since mouse motion drives the camera directly in `CameraRig.gd`.
+- ✓ `freelook_camera` — F2 (physical key). Hold to orbit camera without rotating Roland; release to re-center.
+- ✓ `open_journal` — J
+- ✓ `open_inventory` — I
+- ✓ `pause` — Escape
+- ✓ `debug_overlay` — F1
+- [ ] `quick_slot_next` — E (context: only fires when no interactable in range). During early development, rebind to F temporarily.
+- [ ] `next_target` / `prev_target` — Mouse Scroll Up / Down (optional; scroll zoom takes priority).
 
 Note: `quick_slot_next` and `interact` both default to E. These are context-sensitive: `interact` fires when near an interactable object; `quick_slot_next` fires during combat when no interactable is in range. In GDScript, context is managed by checking `_nearest_interactable != null` — see the GDScript Notes section below. During early development before context logic is in place, rebind `quick_slot_next` to F temporarily.
 
@@ -185,11 +195,14 @@ See `DESIGNER_TODO.md` → Section 1 for the full manual setup checklist.
 ### Reading movement input
 
 ```gdscript
-# Player3D.gd — 8-directional XZ movement from input:
+# Player3D.gd — camera-relative 8-directional XZ movement:
 var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-var direction: Vector3 = Vector3(input_dir.x, 0.0, input_dir.y).normalized()
-# ui_up/down map to -Z/+Z in world space; ui_left/right to -X/+X.
+var local_dir := Vector3(input_dir.x, 0.0, input_dir.y)
+# Multiply through the player's transform.basis so W always moves toward
+# where Roland (and the camera) is currently facing.
+var direction := (transform.basis * local_dir).normalized()
 # NEVER map input_dir.y to velocity.y — that launches the player upward.
+# The ground plane is XZ; Y is always gravity only.
 ```
 
 ### Tap vs hold for attack/block
