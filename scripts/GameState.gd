@@ -92,12 +92,12 @@ var _companions: Dictionary = {
 	"aldric": false,   # Game Three
 }
 
-func companion_active(name: String) -> bool:
-	return _companions.get(name, false)
+func companion_active(companion_id: String) -> bool:
+	return _companions.get(companion_id, false)
 
-func set_companion(name: String, active: bool) -> void:
-	_companions[name] = active
-	print("[GameState] Companion %s: %s" % [name, "joined" if active else "left"])
+func set_companion(companion_id: String, active: bool) -> void:
+	_companions[companion_id] = active
+	print("[GameState] Companion %s: %s" % [companion_id, "joined" if active else "left"])
 
 
 # =============================================================
