@@ -42,11 +42,11 @@
 
 **Age:** 22 at Game Two start; joins midway through Game One
 **Origin:** Caer Brannoch, sailor's family
-**Role:** Scout, Brotherhood-endorsed sailor, Tidewarden auxiliary
+**Role:** Scout, Sailor's Guild-endorsed sailor, Tidewarden auxiliary
 
 **Appearance:** Short, compact, sun-dark, constantly moving. A habit of assessing exits in any room he enters, which Corvus finds annoying and Roland finds useful.
 
-**Background:** Signed onto a Brotherhood crew at sixteen. Made his qualifying solo sail at nineteen. Was on the voyage that first tested the Shroud Sea approach patterns — the voyage that confirmed the forty-year window theory. He is one of three sailors alive who has seen the edge of the storm-wall and returned.
+**Background:** Signed onto a Sailor's Guild crew at sixteen. Made his qualifying solo sail at nineteen. Was on the voyage that first tested the Shroud Sea approach patterns — the voyage that confirmed the forty-year window theory. He is one of three sailors alive who has seen the edge of the storm-wall and returned.
 
 **Character:** Orion is the party's youngest member and the most practically competent in a specific domain. He has been sailing in dangerous waters since he was old enough to hold a tiller; he is comfortable with risk in a way that Roland's caution sometimes conflicts with. He is not reckless — he calculates — but he calculates faster and with less visible anguish than Roland does.
 
@@ -79,7 +79,7 @@ She is not a naturally warm person. She is a reliable one, which is better. When
 **Arc:** Dagna has been trying to do her job correctly for three years and being prevented from it. The trilogy is the story of that prevention being removed and the consequences of that removal mattering. Her ending is not dramatic — it is the restoration of the ordinary good work she was always doing.
 
 **Relationship with party:**
-- **Roland:** Mutual recognition between people who are competent in their domain and have been asked to operate outside it. She does not fully trust him until the Binding Site, when he keeps his word about Barak's testimony.
+- **Roland:** Mutual recognition between people who are competent in their domain and have been asked to operate outside it. She does not fully trust him until the Ashfields retreat, when he keeps his word about Barak's testimony.
 - **Corvus:** Friction early; genuine respect by Game Two. They argue about methodology and are both right.
 - **Seren:** Dagna finds Aelorin patience baffling but not contemptible. She has spent years watching geological time and understands, abstractly, what it is to think in centuries. She cannot live that way. She respects that Seren can.
 - **Orion:** They are both specialists who are frequently the second-most-interesting person in the room. They understand each other's position without discussing it.
@@ -90,11 +90,11 @@ She is not a naturally warm person. She is a reliable one, which is better. When
 
 **Age:** 41
 **Origin:** Coldstoke, a village in the Vosskaran frontier
-**Role:** Last of Mordvar's bloodline; the only person who can wield the Aeluvain against him
+**Role:** Last of the Caelborn line — the Aescryd bloodline the Aeluvain requires; the only person who can wield it against Mordvar
 
 **Appearance:** Broad-shouldered, scarred hands from the forge, grey starting at his temples. Looks like what he is: a man who has spent twenty years hammering metal and would rather be doing that.
 
-**Background:** Born to a family that had hidden its lineage for three generations. He does not know he is Mordvar's descendant when Game Three begins. He knows only that he has headaches near old sites, that metal responds to his touch in ways it shouldn't, and that two people have tried to kill him in the last year for reasons no one has explained.
+**Background:** Born to a family that had hidden its lineage for three generations. He does not know he is of the Caelborn line — the Aescryd bloodline the Aeluvain is keyed to — when Game Three begins. He knows only that he has headaches near old sites, that metal responds to his touch in ways it shouldn't, and that two people have tried to kill him in the last year for reasons no one has explained.
 
 **Character:** Aldric has built a complete and satisfying life in Coldstoke. He has a reputation, a craft, relationships, a role in the community. He does not want to be part of a trilogy. He becomes part of one anyway, because the alternative is watching everything he has built be destroyed.
 

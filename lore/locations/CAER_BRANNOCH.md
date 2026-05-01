@@ -1,7 +1,7 @@
 # Caer Brannoch
 
 **Type:** City
-**Kingdom/People:** Independent (Tidewarden-administered)
+**Kingdom/People:** Human Kingdom — Caer Brannoch (Queen Eilwen's kingdom)
 **Position:** Northern headland, Bay of Mourne, western Mira coast
 **Story relevance:** Game One, Act II (Copper Wire arc; Orion joins here)
 
@@ -11,7 +11,7 @@
 
 A cliff city in two parts. The upper city sits on the headland itself — fortress walls, the Tidewarden fleet command, administrative buildings, and the residences of those with the rank or coin to claim them. Access from below is via a switchback road cut into the cliff face or by the sea-lifts: iron cage elevators on counterweight systems, built by dwarven engineers two centuries ago, still maintained under contract with Karaz-Dûn.
 
-The lower city is at sea level: the shipyards, the sailors' quarter, the fish market, the Sailors' Brotherhood hall. It floods in storm season. The lower city residents accept this as a condition of living near the sea and build accordingly — ground floors are storage and workshop, living quarters above.
+The lower city is at sea level: the shipyards, the sailors' quarter, the fish market, the Sailor's Guild hall. It floods in storm season. The lower city residents accept this as a condition of living near the sea and build accordingly — ground floors are storage and workshop, living quarters above.
 
 The natural harbor below the headland is the finest deep-water anchorage on the western coast. The Tidewarden fleet — twelve warships and assorted support vessels — rides at anchor in all weather.
 
@@ -29,7 +29,7 @@ Key dimensions:
 - [x] Lower city street width: working-port district, ~6 m = 48 voxels
 - [x] Upper city street width: fortress administrative quarter, ~8 m = 64 voxels
 - [x] Switchback road width: two carts passing = ~4 m = 32 voxels
-- [x] Sailors' Brotherhood Hall: modest guild hall — ~12 m wide × 20 m long × 6 m tall = 96 × 160 × 48 voxels (estimate)
+- [x] Sailor's Guild Hall: modest guild hall — ~12 m wide × 20 m long × 6 m tall = 96 × 160 × 48 voxels (estimate)
 - [ ] Eilwen's court dimensions: GAP — needs design session
 - [x] Camera arm length: outdoor lower docks = arm 12–14, elevation 48°; upper city = arm 12, elevation 48°; sea-lift transition scene = GAP
 
@@ -55,10 +55,10 @@ Lighthouse at the headland tip: a reference point visible from sea and from the 
 **Status:** Sketched. 4–5 scenes identified but not yet expanded to full per-scene detail.
 
 Scenes:
-1. Lower docks + Brotherhood Hall — Orion joins here
+1. Lower docks + Sailor's Guild Hall — Orion joins here
 2. Sea-lift to upper city — transition scene
 3. Eilwen's court — Tidewarden commander, Shroud charts side quest
-4. Brotherhood voyage (ship deck, traveling scene) — storm sequence, Hollow Court infiltrator
+4. Sailor's Guild voyage (ship deck, traveling scene) — storm sequence, Ashen Hand infiltrator
 5. Copper Isles Archive — piece acquired here
 
 ---
@@ -66,7 +66,7 @@ Scenes:
 ## Connections
 
 - **Arrives from:** Act II open world (from Aldenholt via the Salt Road along the western coast)
-- **Exits to:** Copper Isles (Brotherhood voyage) → return to Act II open world after piece acquired
+- **Exits to:** Copper Isles (Sailor's Guild voyage) → return to Act II open world after piece acquired
 
 ---
 

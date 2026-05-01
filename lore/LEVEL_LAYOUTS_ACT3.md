@@ -20,7 +20,7 @@ For visual direction: `ART_DIRECTION.md` → Karaz-Dûn, Underway, Mor-Vethrin.
 
 **Scenes (5–6):** Underway entry → Underway tunnels (Dagna joins mid-route) →
 Kazaad-Brak approach → Kazaad-Brak interior (Barak Stonecroft) → Karaz-Dûn
-upper halls → Dragon-Watcher record office → Thrarin's treasury (via Darva)
+upper halls → Dragon-Watcher record office → Thrarin's treasury (via Darna Deepdelver)
 
 **Piece:** Copper disc — in Thrarin's treasury as part of a Second Age artifact
 collection. Thrarin collected it a century ago as a curiosity; he does not know
@@ -60,24 +60,24 @@ Barak Stonecroft is in protective isolation here (not imprisoned, but separated 
 Karaz-Dûn by the compromised steward's operation).
 
 Barak scene: the information exchange. He confirms Drossvik's operation. He knows
-the disc's location. He can help Roland reach Darva — Thrarin's regent daughter.
+the disc's location. He can help Roland reach Darna Deepdelver — Thrarin's regent daughter.
 
 ### Karaz-Dûn Upper Halls
 
 The Dragon-Watcher records office: Dagna recovers her original seismic data and
 proves the falsification. The compromised steward's amendments are in a different
-hand. Darva (once the auditor's report is in hand) recognizes the handwriting.
+hand. Darna (once the auditor's report is in hand) recognizes the handwriting.
 Steward removed. Dagna's name cleared.
 
-Thrarin's treasury: access via Darva. She retrieves the disc in exchange for the
+Thrarin's treasury: access via Darna. She retrieves the disc in exchange for the
 auditor's report — leverage to deal with her father on her own terms. Roland gets
-the disc; Darva gets what she needs to stabilize Karaz-Dûn without Roland's
+the disc; Darna gets what she needs to stabilize Karaz-Dûn without Roland's
 further involvement.
 
 **Design notes:**
 - Forge heat: upper Karaz-Dûn is warm year-round. Orange-amber dominant light.
 - Dragon-Watcher records vault: fire-resistant stone, Level 3. Cooler, more sober.
-- The treasury approach: not a heist — Darva is the door. The scene is a political
+- The treasury approach: not a heist — Darna is the door. The scene is a political
   negotiation, not stealth.
 - Bromrin appears briefly here: his mind is intact at this point in Game One.
   His Game Two deterioration is foreshadowed in small ways (a repeated phrase,
@@ -88,7 +88,7 @@ further involvement.
 - `dagna_name_cleared = true` (optional side quest completion)
 - `copper_disc_acquired = true`
 - `drossvik_operation_confirmed = true` (sets up Game Two)
-- `darva_alliance = true` (Karaz-Dûn stabilized)
+- `darna_alliance = true` (Karaz-Dûn stabilized)
 
 ---
 
@@ -96,7 +96,7 @@ further involvement.
 
 > **Note:** The Mor-Vethrin visit is now Act IV, not Act III. It was relocated here
 > from the old Act III structure when the lore was updated. The Mor-Vethrin arc follows
-> the Karaz-Dûn arc and precedes the Binding Site. See `LEVEL_LAYOUTS_ACT4.md` for the
+> the Karaz-Dûn arc and precedes the Ashfields fighting retreat. See `LEVEL_LAYOUTS_ACT4.md` for the
 > Act IV scene sequence. This section describes the Mor-Vethrin scenes themselves.
 
 **Scenes (2–3):** Weeping Wood approach → The bone-arch gate → Serethi's
@@ -123,10 +123,10 @@ read as an insult. The Naergrim watch the approach path. Roland knows this.
 The most stripped-down room in the game. One carved chair. One carved bowl. Nothing
 else. Serethi-Twice-Dead occupies the chair.
 
-The Naergrim leader's offer: he will provide the shard in exchange for Roland's
+The Naergrim leader's offer: she will provide the shard in exchange for Roland's
 acknowledgment that the Naergrim will not be included in any punitive settlement
 after Mordvar's defeat. Not loyalty — withdrawal. Serethi has calculated that
-Roland will accept. He is watching the calculation play out on Roland's face.
+Roland will accept. She is watching the calculation play out on Roland's face.
 
 **This is Game One's last real decision.** No delay option. No third path. Is freeing
 the world from Mordvar worth letting the Naergrim walk away from the atrocities of
@@ -138,8 +138,8 @@ The player decides.
 quietly before or after the Serethi audience. Their leader — called the Pale
 Defection as a joke and has adopted it — wants genuine alliance, not withdrawal.
 If Roland acknowledges this faction and creates a quiet channel, three Naergrim
-fighters join Roland at the Binding Site and the Ashfields fighting retreat,
-acting under their own authority. Serethi is furious. He honors the deal anyway.
+fighters join Roland at the Ashfields fighting retreat,
+acting under their own authority. Serethi is furious. She honors the deal anyway.
 
 **Design notes:**
 - Mor-Vethrin: no warm tones at all. No torches. Pale, cold, even illumination
@@ -162,17 +162,18 @@ acting under their own authority. Serethi is furious. He honors the deal anyway.
 
 ## Act III — Completion Conditions
 
-Both remaining pieces acquired:
+Act III piece acquired:
 - `copper_disc_acquired = true` (Karaz-Dûn)
-- `obsidian_shard_acquired = true` (Mor-Vethrin)
 
-**All seven pieces of the Sundered Crown are now in Roland's possession.**
+> **Note:** The obsidian shard (Mor-Vethrin) is acquired in **Act IV**, not Act III. The Mor-Vethrin scenes are described in this file for convenience (they follow Karaz-Dûn and precede the Ashfields), but the shard acquisition and the flag `obsidian_shard_acquired = true` are Act IV events. See `LEVEL_LAYOUTS_ACT4.md`.
+
+**All seven pieces are in Roland's possession at the end of Act IV** (after the Mor-Vethrin acquisition and before the Ashfields fighting retreat).
 
 Companions: Orion Farr (joined Act II) + Dagna Irontrack (joined Act III Underway).
 
 Information state:
-- `aelthurion_briefed = true` — Roland knows the binding requires blood of three peoples
+- `aelthurion_briefed = true` — Roland knows the Aeluvain requires a wielder of the Caelborn line (Aescryd-blooded), and knows Aldric Vane's identity
 - `aldric_vane_identity_known = true` — Roland knows what Aldric is and what it means
 - `drossvik_operation_confirmed = true` — the intelligence that drives Act II of Game Two
 
-**The Crown must be reassembled at the Binding Site. Act IV begins.**
+**Act IV begins — Roland moves to exit through the Ashfields with all seven Crown pieces.**

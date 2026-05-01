@@ -8,7 +8,7 @@
 
 ### The Ashen Hand
 
-The trilogy's primary antagonist organization. Founded approximately twenty-five years before Game One by **Mael, the First Whetted** — a former Conclave assessor whose escalations about the Aeluvain binding's deterioration were ignored. She founded the Hand as shadow governance infrastructure designed to manage the post-binding world. By the time she understood that her intelligence-gathering with the Hollow Throne had become service, the cell structure made dismantling impossible.
+The trilogy's primary antagonist organization. Founded approximately twenty-five years before Game One by **Mael, the First Whetted** — a former Conclave assessor whose escalations about signs of Mordvar's growing reformation were ignored. She founded the Hand as shadow governance infrastructure designed to manage the post-unmaking world. By the time she understood that her intelligence-gathering with Mordvar's reforming presence had become service, the cell structure made dismantling impossible.
 
 **Composition:** Mages, former Conclave members, scholars, retired military, and the Ashfallen. Members know what they serve.
 
@@ -16,7 +16,7 @@ The trilogy's primary antagonist organization. Founded approximately twenty-five
 
 **Intelligence arm:** The **Hollow Court** (see below). The two are distinct organizations connected by a one-way reporting structure. The distinction matters and should never be elided.
 
-**Plot connection:** Drives the antagonist activity in all three games. Drossvik in Khorumzad, Aedric Castrove in Eldermark, two Ashfallen inside the Conclave, the Brotherhood communications infiltration. Vaeroth himself appears most prominently in Games Two and Three.
+**Plot connection:** Drives the antagonist activity in all three games. Drossvik in Khorumzad, Aedric Castrove in Eldermark, two Ashfallen inside the Conclave, the Sailor's Guild communications infiltration. Vaeroth himself appears in Game One only — he is killed/captured at the Ashfields retreat (Act IV).
 
 **Deep history:** see [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) — Mael's founding, the cell structure's origin, Drossvik's placement, the transition to Vaeroth, and the Hand/Court distinction in detail.
 
@@ -46,17 +46,17 @@ The Ashen Hand's intelligence arm — not mages, but human agents recruited for 
 
 **Internal reality:** Most members believe they are working toward a better world. They do not know they serve Mordvar. They know only their immediate handler.
 
-**Plot connection:** Prince Aedric's Ashen Hand connections run through the Hollow Court. His handler is a Hollow Court agent who has been a minor Eldermark court functionary for eleven years. The Court also runs the Sailors' Brotherhood communications infiltration that the Game One Act III Copper Isles voyage exposes.
+**Plot connection:** Prince Aedric's Ashen Hand connections run through the Hollow Court. His handler is a Hollow Court agent who has been a minor Eldermark court functionary for eleven years. The Court also runs the Sailor's Guild communications infiltration that the Game One Act III Copper Isles voyage exposes.
 
 **Distinction from the Ashen Hand:** The Ashen Hand is the magical/military organization whose members know what they serve. The Hollow Court is the Hand's human intelligence arm whose members mostly do not. Court reports up to Hand handlers; Hand handlers report to Vaeroth. The distinction should never be elided.
 
-**Deep history:** see [BACKSTORY_HOLLOW_COURT.md](BACKSTORY_HOLLOW_COURT.md) — recruitment doctrine, cell structure, notable operations (Aedric, the Brotherhood infiltration), the distinction from Drossvik, and who outside the Hand has identified the Court's existence.
+**Deep history:** see [BACKSTORY_ASHEN_HAND.md](BACKSTORY_ASHEN_HAND.md) — recruitment doctrine, cell structure, notable operations (Aedric, the Sailor's Guild infiltration), the distinction from Drossvik, and who outside the Hand has identified the Court's existence.
 
 ---
 
 ### The Pale Supper
 
-A death cult devoted to Mordvar's philosophy — not to Mordvar directly, who they have never met and whose existence as a bound entity they interpret metaphorically. They believe mortality is the world's fundamental error and that the Hollow King represents the truth of what existence should be.
+A death cult devoted to Mordvar's philosophy — not to Mordvar directly, who they have never met and whose existence as a bound entity they interpret metaphorically. They believe mortality is the world's fundamental error and that Mordvar represents the truth of what existence should be.
 
 **Membership:** Mostly educated people — failed scholars, disillusioned priests, minor nobles who have watched too many people they loved die. They meet in private homes. They share meals. They discuss theology.
 

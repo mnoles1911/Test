@@ -37,7 +37,7 @@ Roland trained there for four years. He was not the most gifted recruit — a bo
 
 Not in the aggressive, grinding way of someone trying to prove something. He simply treated failure as information. He was knocked down and got up to figure out why he'd been knocked down. He lost a tactical exercise and spent the evening working through the decision that had lost it. He had no ego invested in being right — only in becoming correct.
 
-He made two close friends: a boy from the coast named Pell, who wanted to see everything and eventually went east to the Shroud Brotherhood's cartography division, and a girl named Isra, who laughed too loudly and became one of the Chalice's best field captains before dying in a contract in the middle kingdoms when Roland was twenty-six. He did not find out about Isra until a year after it happened.
+He made two close friends: a boy from the coast named Pell, who wanted to see everything and eventually went east to the Sailor's Guild's cartography division, and a girl named Isra, who laughed too loudly and became one of the Chalice's best field captains before dying in a contract in the middle kingdoms when Roland was twenty-six. He did not find out about Isra until a year after it happened.
 
 At twenty-one he completed training and took the Iron Chalice's oath. Dame Calla Thresh, by coincidence, administered the ceremony. She did not remember him from Crestfall. He did not mention it.
 
@@ -71,7 +71,7 @@ He sketched the altar symbol, noted the location, sealed the entrance behind him
 
 The report went up the Chalice's administrative chain. Someone passed it to a scholar contact. That contact passed it — without the Chalice's knowledge — to a figure associated with the Dawnbringers. This is how, over the following months, Roland began receiving careful correspondence from people he did not know, asking careful questions about what he had seen.
 
-He did not answer the first letter. He answered the second when it proved the sender already knew the symbol. He answered the third when the sender told him, in plain language, what it meant: the Aeluvain binding. The sealed thing beneath the world. The possibility that it was weakening.
+He did not answer the first letter. He answered the second when it proved the sender already knew the symbol. He answered the third when the sender told him, in plain language, what it meant: Mordvar's reforming presence. The unmade thing beneath the world. The possibility that his long dissolution was reversing.
 
 ---
 
@@ -103,7 +103,7 @@ Roland spent eight months walking. He took occasional work — caravan guard, fe
 
 He corresponded with the Dawnbringers contact intermittently. He read everything he could find on the Second Age, the Grand Alliance, the Aeluvain — which was not much, because most of that history is either lost or carefully held. He visited Crestfall once and saw his mother, who was well. He did not tell her he had been expelled. She did not ask why he seemed tired.
 
-By the time he reached the region where Game 1 begins — the edges of the cave-country, the old Ashfields road near the place where something is wrong with the stones — he has a purpose, even if he cannot fully articulate it. He knows the binding is weakening. He knows the chapel symbol connects to something older and larger than the Iron Chalice or the merchant houses or anything he has dealt with before. He knows he is not equipped for what he is walking into.
+By the time he reached the region where Game 1 begins — the edges of the cave-country, the old Ashfields road near the place where something is wrong with the stones — he has a purpose, even if he cannot fully articulate it. He knows the unmaking is reversing. He knows the chapel symbol connects to something older and larger than the Iron Chalice or the merchant houses or anything he has dealt with before. He knows he is not equipped for what he is walking into.
 
 He walks into it anyway.
 

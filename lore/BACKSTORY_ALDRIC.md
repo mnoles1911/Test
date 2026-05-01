@@ -4,7 +4,7 @@
 
 Aldric's family has lived in Coldstoke, a frontier village in the Vosskaran borderlands, for three generations. They are not remarkable people by the world's accounting — smiths and farmers and one uncle who went to sea and never came back. The village knows them as the Vanes: solid, quiet, useful.
 
-What the village does not know, and what Aldric himself did not know until he was in his twenties, is that the Vane name is a suppression. His grandfather changed it from Caelborn — an old house name with a lineage claim that had become a liability. The claim connected them to the Grand Alliance's inner circle at the close of the Second Age, to people who had stood close to the Aeluvain binding and been granted certain ancient rights in exchange. Rights so old the world had forgotten them. A name that drew attention from people who wanted to control or eliminate it.
+What the village does not know, and what Aldric himself did not know until he was in his twenties, is that the Vane name is a suppression. His grandfather changed it from Caelborn — an old house name with a lineage claim that had become a liability. The claim connected them to the Grand Alliance's inner circle at the close of the Second Age, to people who had stood with the Grand Alliance at the Sorrowmarsh and been granted certain ancient rights in exchange. Rights so old the world had forgotten them. A name that drew attention from people who wanted to control or eliminate it.
 
 His grandfather believed the suppression would protect the family. For two generations, it did.
 
@@ -38,7 +38,7 @@ When the party finds him, he is three days into a private investigation that has
 
 Wielding the Aeluvain against Mordvar — which is what his bloodline makes possible — requires that Aldric consciously carry Mordvar's hollow for the duration of the approach to the Aescstól. Not the evil: the void. The specific shape of absence that was once a man named Bealoric who was afraid of dying.
 
-The Dawnbringers who understand this have not told Aldric in advance. There is no good way to prepare someone for it. What they know, and what Aldric will discover, is that the bloodline that makes him capable of this also gives him a specific kind of resistance: the lineage that stood at the binding has an orientation toward completion rather than consumption. Mordvar's hollow will not find easy purchase in a man whose deepest nature is to make things that hold together.
+The Dawnbringers who understand this have not told Aldric in advance. There is no good way to prepare someone for it. What they know, and what Aldric will discover, is that the bloodline that makes him capable of this also gives him a specific kind of resistance: the lineage that stood at the Sorrowmarsh has an orientation toward completion rather than consumption. Mordvar's hollow will not find easy purchase in a man whose deepest nature is to make things that hold together.
 
 This is not a guarantee. It is a fighting chance.
 

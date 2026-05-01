@@ -25,9 +25,9 @@ Game 2's side quests are heavier than Game 1's. The party is deeper in the world
 
 **Summary:** Lyren has been monitoring Conclave resonance records and has found Corvus's signature in files she shouldn't be able to access — which means either Corvus has been doing things he hasn't told anyone about, or someone has been filing actions under his credentials. She wants to know which before she decides whether to trust him.
 
-**What the player does:** Corvus and the player investigate the flagged records together. It turns out to be both: some entries are Corvus's own unregistered work, which he has to account for honestly. Others are entries filed by a Conclave contact of Vaeroth's using a copied credential signature. The investigation identifies the contact and gives the party their first clear picture of how deep Vaeroth's Conclave penetration goes.
+**What the player does:** Corvus and the player investigate the flagged records together. It turns out to be both: some entries are Corvus's own unregistered work, which he has to account for honestly. Others are entries filed by a former Conclave contact of Vaeroth's — a placement made before his death or capture — using a copied credential signature. The investigation identifies the contact and gives the party their first clear picture of how deep the Hand's legacy network had been embedded in the Conclave under Vaeroth's direction.
 
-**Payoff:** Major Corvus character development. He has to explain his hidden resonance capabilities to the party — this is the scene where he tells Roland about sensing the binding. Lyren, once she understands what Corvus's diagnostic resonance actually does, substantially upgrades her assessment of what the party is capable of.
+**Payoff:** Major Corvus character development. He has to explain his hidden resonance capabilities to the party — this is the scene where he tells Roland about sensing Mordvar's reforming presence. Lyren, once she understands what Corvus's diagnostic resonance actually does, substantially upgrades her assessment of what the party is capable of.
 
 **Tone:** Trust-building through uncomfortable honesty. Corvus has been carrying a secret for a long time and the investigation removes his ability to keep carrying it. This is relief and exposure simultaneously.
 
@@ -37,7 +37,7 @@ Game 2's side quests are heavier than Game 1's. The party is deeper in the world
 
 **Context:** The Pale Supper cell from Game 1 has been monitored by Wyn since the events of Game 1's side quests.
 
-**Summary:** Wyn surfaces with intelligence: the Pale Supper has been tasked with identifying independent scholars who have accessed records related to the Vault of Aen-Vael. This means someone in the Hollow Court has started looking for the Vault — and the party is not the only group moving toward Khorumzad.
+**Summary:** Wyn surfaces with intelligence: the Pale Supper has been tasked with identifying independent scholars who have accessed records related to the Vault of Aen-Vael. This means someone in the Ashen Hand has started looking for the Vault — and the party is not the only group moving toward Khorumzad.
 
 **What the player does:** Uses Wyn's intelligence to identify the scholars who have been flagged, reach them before the Pale Supper does, and either warn them or extract the information the Pale Supper is trying to suppress. One of the scholars has a document connecting the Vault's location to a specific geological formation in the Spine of the World that significantly narrows the search area.
 
@@ -51,9 +51,9 @@ Game 2's side quests are heavier than Game 1's. The party is deeper in the world
 
 **Questgiver:** Bromrin, a dwarven courier in Khorumzad's middle district, who has three letters he was paid to deliver but whose recipients have become unreachable.
 
-**Summary:** The three letters were commissioned by an anonymous sender before the party arrived in Khorumzad. Each recipient is someone who would, if warned, become a significant obstacle to the Hollow Court's operations in the region: Eilwen (the Brotherhood scholar), Hagrim (a dwarven clan elder with records relevant to the Vault), and Darna (a Conclave-affiliated researcher who has been getting too close to sensitive records).
+**Summary:** The three letters were commissioned by an anonymous sender before the party arrived in Khorumzad. Each recipient is someone who would, if warned, become a significant obstacle to the Ashen Hand's operations in the region: Queen Eilwen (of Caer Brannoch), Hagrim (a dwarven clan elder with records relevant to the Vault), and Sehn (a Conclave-affiliated researcher who has been getting too close to sensitive records).
 
-**What the player does:** Delivers the letters. Each recipient has been made unreachable in a different way — Eilwen is in the middle of a sea observation and won't break for messages, Hagrim is under informal house arrest by his own clan for reasons that aren't what they appear, Darna has gone to ground after a near-miss she hasn't told anyone about. Reaching each one is its own small puzzle.
+**What the player does:** Delivers the letters. Each recipient has been made unreachable in a different way — Eilwen is in the middle of a sea observation and won't break for messages, Hagrim is under informal house arrest by his own clan for reasons that aren't what they appear, Sehn has gone to ground after a near-miss she hasn't told anyone about. Reaching each one is its own small puzzle.
 
 **Payoff:** All three recipients become allied to the party's cause in specific ways. Hagrim's oath-witness role in Game 3 comes from this introduction. The anonymous sender is eventually revealed to be the Seventh Dawnbringer.
 

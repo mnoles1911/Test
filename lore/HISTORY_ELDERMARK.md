@@ -14,9 +14,9 @@ Othric himself has not named an heir. He has three sons and considers this his p
 
 Aldwyn is the eldest and the most competent. He has been trained for the kingship since childhood, understands the machinery of the crown well, and has demonstrated in the regional governance role his father gave him eight years ago that he can run complex administrative systems without drama. He is not beloved — he is cold in public, precise in meeting, and gives no impression of finding people personally interesting — but he is respected by the people who work with him.
 
-The Hollow Court attempted to recruit Aldwyn three years ago. The approach was indirect and deniable: a series of introductions through a commercial intermediary that escalated toward an offer of information and support in exchange for specific policy commitments once he was king. Aldwyn identified what was happening by the second meeting, documented it, and had the intermediary quietly removed from court access without making the approach public. He told one person: his father's head of intelligence, who filed it and said nothing.
+The Ashen Hand attempted to recruit Aldwyn three years ago. The approach was indirect and deniable: a series of introductions through a commercial intermediary that escalated toward an offer of information and support in exchange for specific policy commitments once he was king. Aldwyn identified what was happening by the second meeting, documented it, and had the intermediary quietly removed from court access without making the approach public. He told one person: his father's head of intelligence, who filed it and said nothing.
 
-Aldwyn does not know what the Hollow Court is beyond a dangerous faction with political ambitions. He knows they tried to buy him and he declined. He is watchful.
+Aldwyn does not know what the Ashen Hand is beyond a dangerous faction with political ambitions. He knows they tried to buy him and he declined. He is watchful.
 
 He would be a functional king. Not a great one. The Eldermark would be stable and less interesting under his rule.
 
@@ -28,27 +28,27 @@ Othric respects this without entirely accepting it. A king's second son does not
 
 Emric is not incompetent. He would manage, if required. He would be miserable and the kingdom would feel it.
 
-The Hollow Court has not approached Emric. They assessed him as unlikely to be useful and uninteresting to cultivate. This assessment is accurate on the first count and wrong on the second: Emric's decency, if he ended up on the throne, would make him a consistent obstacle to the kind of quiet institutional influence the Hollow Court prefers. A genuinely decent king is harder to work around than a compromised one.
+The Ashen Hand has not approached Emric. They assessed him as unlikely to be useful and uninteresting to cultivate. This assessment is accurate on the first count and wrong on the second: Emric's decency, if he ended up on the throne, would make him a consistent obstacle to the kind of quiet institutional influence the Ashen Hand prefers. A genuinely decent king is harder to work around than a compromised one.
 
 ### Prince Aedric Castrove (26)
 
 Aedric is the youngest and the problem.
 
-He is charming in the specific way of someone who has spent his life watching people respond to charm and has systematized the process. He is not unintelligent. He is, however, a young man who was recruited by the Hollow Court at twenty-three and has been an active asset for three years without, as far as anyone in his family knows, any indication that something is wrong.
+He is charming in the specific way of someone who has spent his life watching people respond to charm and has systematized the process. He is not unintelligent. He is, however, a young man who was recruited by the Ashen Hand at twenty-three and has been an active asset for three years without, as far as anyone in his family knows, any indication that something is wrong.
 
 The recruitment was handled directly rather than through an intermediary, which means whoever ran it assessed that Aedric could be approached openly. They were right. He was not coerced. He was offered significance — a clear role in the world's reshaping, the sense of being in the room where the actual decisions are made rather than performing ceremonial kingship in a declining institution. He found this compelling.
 
-His current role is intelligence: he passes Eldermark crown logistics information — trade routes, military positioning, administrative schedules — to his handler. He does not yet know the full scope of what the Hollow Court intends, which is standard operational practice: assets are given enough purpose to maintain motivation without enough information to make defection useful.
+His current role is intelligence: he passes Eldermark crown logistics information — trade routes, military positioning, administrative schedules — to his handler. He does not yet know the full scope of what the Ashen Hand intends, which is standard operational practice: assets are given enough purpose to maintain motivation without enough information to make defection useful.
 
 He will learn more as the trilogy progresses. What he does with that knowledge is the most consequential unresolved question in the Eldermark's future.
 
 ## How the Crisis Threads Through the Trilogy
 
-**Game 1:** The succession is background texture. Players who are paying attention to Eldermark politics will notice the tension but it is not foregrounded. The Hollow Court's man in the Eldermark is Aedric, but this is not confirmed until Game 2.
+**Game 1:** The succession is background texture. Players who are paying attention to Eldermark politics will notice the tension but it is not foregrounded. The Ashen Hand's man in the Eldermark is Aedric, but this is not confirmed until Game 2.
 
-**Game 2:** Aldric's investigation into his sister's death leads him to evidence that the Hollow Court figure responsible had court access — specifically access consistent with someone at the crown level. He does not name Aedric aloud. The party can put it together if they combine Aldric's evidence with what was discovered in Game 1's side quests.
+**Game 2:** Aldric's investigation into his sister's death leads him to evidence that the Ashen Hand figure responsible had court access — specifically access consistent with someone at the crown level. He does not name Aedric aloud. The party can put it together if they combine Aldric's evidence with what was discovered in Game 1's side quests.
 
-**Game 3:** Othric IV dies during Game 3's middle act. The succession becomes immediate. Aldwyn is the natural heir and moves to consolidate. Aedric's position becomes untenable once the Hollow Court's broader agenda becomes public — which it does, as a consequence of the main plot's resolution.
+**Game 3:** Othric IV dies during Game 3's middle act. The succession becomes immediate. Aldwyn is the natural heir and moves to consolidate. Aedric's position becomes untenable once the Ashen Hand's broader agenda becomes public — which it does, as a consequence of the main plot's resolution.
 
 The epilogue addresses what happens to each brother. Aldwyn becomes king and is as functional as expected. Emric gets his quiet life with Sela. Aedric's resolution depends on choices made during Game 3 — specifically whether the player, at a specific moment, extends him the opportunity to choose differently. This moment is brief and the window is not announced. The player either takes it or doesn't.
 

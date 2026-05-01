@@ -63,7 +63,7 @@ The wood should feel like a waiting room. The Naergrim already know Roland is th
 **File:** `lore/LEVEL_LAYOUTS_ACT4.md`
 **Status:** Sketched. The Weeping Wood is the transition zone between the open Ashfields and Mor-Vethrin.
 
-In Game One: the Weeping Wood is traversed in Act IV, after the Binding Site, on the way to Mor-Vethrin to acquire the obsidian shard. The playable portion is the approach path through the wood to Mor-Vethrin's gate.
+In Game One: the Weeping Wood is traversed in Act IV during the approach to Mor-Vethrin to acquire the obsidian shard; Act IV is also the Ashfields fighting retreat. The playable portion is the approach path through the wood to Mor-Vethrin's gate.
 
 The Weeping Wood is not a combat zone on approach. It is a tone-setting traversal — the game's pacing should slow here, the player becoming aware of being watched, before arriving at Mor-Vethrin.
 
@@ -73,7 +73,7 @@ No significant combat encounters in the Wood itself. The Naergrim scouts remain 
 
 ## Connections
 
-- **Arrives from:** Ashfields (northeast travel from the Vosskaran frontier zone and the Binding Site)
+- **Arrives from:** Ashfields (northeast travel from the Vosskaran frontier zone)
 - **Contains:** Naergrim-controlled dead forest; Mor-Vethrin at the eastern escarpment
 - **Exits to:** Mor-Vethrin (the only destination — there is no exit north or south through Naergrim territory)
 

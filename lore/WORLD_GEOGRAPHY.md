@@ -44,10 +44,10 @@ Also called the Drowned Bay. Where Caer Sulwyn slid into the sea two hundred yea
 A wide shallow-water shelf extending south from Mira's southern coast. The Copper Isles sit on this shelf — close enough to Mira to be reached easily, far enough to maintain political independence in practice. The shelf makes the southern coast poor for deep-draft shipping but excellent for small-boat trade and fishing.
 
 **The Shroud Shore** (eastern Mira)
-Mira's eastern coast where the Ashfields meet the sea. Grey pebble beaches, no natural harbors, a permanent low ash-haze. The sea here is technically the Shroud Sea's western edge — already strange, already wrong. No fishing villages. The Brotherhood posts one observation station here, staffed by volunteers who serve six-month rotations and are never quite the same afterward.
+Mira's eastern coast where the Ashfields meet the sea. Grey pebble beaches, no natural harbors, a permanent low ash-haze. The sea here is technically the Shroud Sea's western edge — already strange, already wrong. No fishing villages. The Sailor's Guild posts one observation station here, staffed by volunteers who serve six-month rotations and are never quite the same afterward.
 
 **The Thal Coast** (western Thal)
-Where the Brotherhood's previous crossing landed. Rocky, grey-black volcanic shoreline. No natural bay — the approach requires anchoring offshore. The Aescryd ruins found forty years ago are here, half-buried in volcanic aggregate on a flat terrace above the tide line.
+Where the Sailor's Guild's previous crossing landed. Rocky, grey-black volcanic shoreline. No natural bay — the approach requires anchoring offshore. The Aescryd ruins found forty years ago are here, half-buried in volcanic aggregate on a flat terrace above the tide line.
 
 ---
 

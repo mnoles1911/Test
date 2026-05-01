@@ -3,7 +3,7 @@
 **Type:** Region (island archipelago)
 **Kingdom/People:** Independent (city-state equivalent; Copper Isles Port is the main settlement)
 **Position:** Southern Mira shelf (the Copper Shelf) — close enough to Mira's southern coast to be reached easily by small boat
-**Story relevance:** Game One, Act II — Brotherhood voyage from Caer Brannoch passes here; the Copper Wire piece is in the Brotherhood Archive here; Game Two has greater relevance
+**Story relevance:** Game One, Act II — Sailor's Guild voyage from Caer Brannoch passes here; the Copper Wire piece is in the Sailor's Guild Archive here; Game Two has greater relevance
 
 ---
 
@@ -27,7 +27,7 @@ No detailed physical description in current lore files.
 Key dimensions to define:
 - [ ] Island scale (main island footprint)
 - [ ] Port settlement size
-- [ ] Brotherhood Archive building dimensions
+- [ ] Sailor's Guild Archive building dimensions
 - [ ] Harbor depth / dock scale (shallow-shelf location means small-draft vessels)
 - [ ] Camera arm length recommendation
 
@@ -48,18 +48,18 @@ Inference from context:
 ## Level Layout Reference
 
 **File:** `lore/LEVEL_LAYOUTS_ACT2.md`
-**Status:** Sketched. The Brotherhood voyage from Caer Brannoch ends here; the Copper Wire piece is in the Brotherhood Archive.
+**Status:** Sketched. The Sailor's Guild voyage from Caer Brannoch ends here; the Copper Wire piece is in the Sailor's Guild Archive.
 
 In Game One:
-- The voyage from Caer Brannoch includes a storm sequence and the discovery of a Hollow Court infiltrator in the Brotherhood safe-house island
-- The Brotherhood Archive at the Copper Isles is where the Copper Wire is held ("catalogued as an artifact of unknown function")
+- The voyage from Caer Brannoch includes a storm sequence and the discovery of an Ashen Hand infiltrator in the Sailor's Guild safe-house island
+- The Sailor's Guild Archive at the Copper Isles is where the Copper Wire is held ("catalogued as an artifact of unknown function")
 - Released without difficulty once Roland has Brotherhood endorsement
 
 ---
 
 ## Connections
 
-- **Arrives from:** Caer Brannoch (Brotherhood voyage)
+- **Arrives from:** Caer Brannoch (Sailor's Guild voyage)
 - **Exits to:** Return voyage to Caer Brannoch (or direct to Act II open world)
 
 ---
@@ -67,7 +67,7 @@ In Game One:
 ## Open Questions / Gaps
 
 - Is the Copper Isles a single island or an archipelago with multiple playable sub-islands?
-- The Brotherhood safe-house island: is this the same as the main Copper Isles, or a separate small island in the chain? The Hollow Court infiltrator is discovered here.
+- The Sailor's Guild safe-house island: is this the same as the main Copper Isles, or a separate small island in the chain? The Ashen Hand infiltrator is discovered here.
 - Game Two relevance: noted in the task brief as "relevant in Game Two" — what is the Copper Isles' role there?
 - The Copper Isles Port settlement: size relative to Sirathiel? Larger (it's a trade hub) or smaller (it's an island)?
 - The "right credentials" needed to trade at Sirathiel: is there a Copper Isles merchants guild that holds these credentials?

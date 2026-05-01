@@ -66,13 +66,15 @@ Dame Calla Vane became Grandmaster four years ago. She inherited the crisis. She
 
 Roland Ashford served the Order for seven years before his expulsion. His record was unremarkable — competent, reliable, not flashy enough to attract patronage and not weak enough to attract concern. He was the kind of knight the Order's doctrine produces in volume: people who hold.
 
-His expulsion came in his seventh year, over a merchant contract. Roland discovered that a house the Order was protecting was using the Chalice's cover for shipments that were harmful — not dramatically evil, just quietly, profitably wrong. He raised it internally. Dame Calla told him she was working the problem, that the mechanism to exit the contract cleanly would take eight months. She asked him to let her work it.
+His expulsion came in his seventh year, while he was assigned to inventory the relics in the Order's chapel in Aldenholt. Among the items on the founding-relic altar, he found the iron pommel and recognized it — through his own knowledge of the Sundered Crown — as one of the Crown's missing pieces. He brought this directly to Dame Calla.
 
-He didn't. He went to the merchant's primary buyer directly and made the facts known. The arrangement collapsed within a week. Calla's eight-month exit strategy became unnecessary. She expelled him — not in anger, but because he had chosen his own clean conscience over the institutional process that protected everyone else in the company.
+Dame Calla listened. Then she demanded his silence. The pommel's presence in the chapel was not something she was prepared to make known — not with the Order's financial crisis already straining every institutional relationship she held. She asked him to treat it as a matter of internal confidentiality.
+
+Roland refused. He would not agree to suppress the discovery of a Crown fragment. Calla expelled him.
 
 The formal grounds were "conduct prejudicial to the Order's standing." The Order's internal review committee accepted them without further inquiry.
 
-The iron pommel in the Aldenholt chapel — that discovery happens separately, around the same time, through a different route. Roland did not find the pommel while still in service. He found it through Henrietta's research after his expulsion, which is what draws him back to Aldenholt in Game One Act I. Dame Calla's conversation in which she gives him forty minutes alone in the chapel is about both things simultaneously: the expulsion she does not apologize for and the pommel she cannot afford to acknowledge. Neither of them uses the word apology. Neither of them needs to.
+The pommel remains in the chapel reliquary where Roland found it. Roland returns for it in Game One Act I — Dame Calla's decision to give him forty minutes alone in the chapel is the closest either of them comes to acknowledging what she asked of him and what he refused. Neither of them uses the word apology. Neither of them needs to.
 
 For the full arc of Roland's training, service, and expulsion, see `BACKSTORY_ROLAND.md`.
 

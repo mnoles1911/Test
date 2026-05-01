@@ -4,11 +4,11 @@
 
 ## Villains
 
-### Mordvar — The Hollow King
+### Mordvar (the Enduring)
 
 Formerly **Bealoric**, High King of the Aescryd in the Second Age. A man who was afraid of death and chose a ritual that eliminated the problem by eliminating the self. He became hollow — not evil in the motivating sense, but absent. A void that was once a person, acting with the cold persistence of water through stone because there is nothing left inside to want anything different.
 
-He has been bound for two thousand years. The binding weakens. He does not think; he accumulates. He does not plan; he exerts pressure. His hosts plan for him. The Ashlord interprets his will.
+He has been unmade for two thousand years. He has been slowly reforming ever since. He does not think; he accumulates. He does not plan; he exerts pressure. His hosts plan for him. The Ashlord interprets his will.
 
 **Physical presence at the end:** He emerges from the caldera on the third day of the Battle of Drûn-Khazad. Tall, grey-pale, dressed in something that was once clothing. He does not speak. He does not threaten. He walks down the slope. His presence is a cold of *will* — not temperature. Men find their arms heavy.
 
@@ -18,7 +18,7 @@ He has been bound for two thousand years. The binding weakens. He does not think
 
 ### Vaeroth the Pale
 
-**Former role:** Solgrade court mage
+**Former role:** Conclave mage (Eldermark origin)
 **Current role:** Hierarch of the Ashen Hand
 
 Sold his allegiance to the Ash Throne a decade before the trilogy for the amplified power the Throne offers its mages. Believes this was a rational transaction. Has never allowed himself to examine whether what he received is worth what he surrendered.
@@ -27,24 +27,24 @@ Sold his allegiance to the Ash Throne a decade before the trilogy for the amplif
 
 **Weakness:** The amplification that makes Ashen Hand mages powerful is also deterioration. Vaeroth knows this. He does not discuss it. He has perhaps two years before his body cannot sustain the cost. He intends to finish the war before the bill comes due.
 
-**Plot function:** Vaeroth is the chase in Game Three. He is hunting Aldric specifically — he knows what the bloodline means and what the Aeluvain requires. The Frost Brotherhood's rear-guard action to slow him is what buys Aldric the time to reach the summit.
+**Plot function (Game One only):** Vaeroth commands the Ashen Hand's forces through the Ashfields fighting retreat at the end of Act IV. He is killed or captured there. He does not appear in Games Two or Three. The pursuit of Aldric in the later games is carried out by Hand remnant agents, not by Vaeroth personally.
 
 ---
 
 ### Caerith — The Ashlord
 
-**True identity:** Aelorin Vigil-Keeper; former leader of the Second Age Grand Alliance's Aelorin contingent
+**True identity:** an ancient Aelorin appointed by Aelthurion as Vigil-Keeper at the Sorrowmarsh after Mordvar's unmaking — stationed there to watch for signs of reformation
 **Current form:** The Ashlord — Mordvar's will made partially present, faceless behind an obsidian mask
 
-Caerith forged the Sundered Crown alongside representatives of all three peoples. When the binding was complete and the others departed, Caerith stayed at the Aescstól to verify the seal was holding. Mordvar's residual will, still warm in the throne's stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
+The Sundered Crown was forged by Bealoric (Mordvar) himself — Caerith had no part in its making. When the unmaking was complete and the Grand Alliance's strike at the Sorrowmarsh was done, Caerith remained behind as Sorrowmarsh Vigil-Keeper, stationed at the Sorrowmarsh itself, while the others departed. Mordvar's residual will, still warm in the marsh's corrupted stone, reached through the gap between the world and hollowness and took what it could while Caerith stood too close.
 
-Two thousand years of incremental hollowing — not enough to fully erase them, enough to turn them. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
+Two thousand years of incremental hollowing — not enough to fully erase him, enough to turn him. Caerith is the Ashlord: more hollow than the Ashfallen but less hollow than Mordvar himself, a being trapped between states.
 
-**What remains:** Caerith's name is no longer spoken in Aelorin society. What persists in the Ashlord is not personality — not preferences or affections or grief in any recognizable form. What persists is the structural shape of a self: a remnant of agency, enough to command, enough to understand commands, enough to know what they once were and cannot say.
+**What remains:** Caerith's name is no longer spoken in Aelorin society. What persists in the Ashlord is not personality — not preferences or affections or grief in any recognizable form. What persists is the structural shape of a self: a remnant of agency, enough to command, enough to understand commands, enough to know what he once was and cannot say.
 
 **The mask:** Worn because beneath it is an Aelorin face. The Naergrim — themselves Aelorin-derived and two thousand years old — would recognize what they were looking at. The mask is the Ashlord's one act of preservation, not from vanity but from the understanding that if the Naergrim saw the face and realized its implications, the Ashen Hand's command structure would fracture.
 
-**Aelthurion's burden:** He has known since shortly after the Second Age. Caerith's name appears in Lirien-Thal's archive as having completed the Aelthiren, because the alternative is saying what they became. No Aelorin who learns the truth disagrees with the decision to keep silence. They understand immediately why you would not want to say it aloud.
+**Aelthurion's burden:** He has known since shortly after the Second Age. Caerith's name appears in Lirien-Thal's archive as having completed the Aelthiren, because the alternative is saying what he became. No Aelorin who learns the truth disagrees with the decision to keep silence. They understand immediately why you would not want to say it aloud.
 
 **Hints through the trilogy:**
 - *Game One:* After giving Roland the silver clasp, Aelthurion goes quiet when Roland asks whether there is anything else he should know. He says: *"Everything that matters is in what I have already told you."* This is technically true.
@@ -62,9 +62,9 @@ Two thousand years of incremental hollowing — not enough to fully erase them, 
 
 Not a monster — a young man who believes genuinely that the current order is failing and that Mordvar's world would be more just than Othric's. His handler has spent six years carefully constructing this belief.
 
-**What makes him dangerous:** He is not wrong that the current order fails people. The Hollow Court recruits from genuine grievance. Aedric's grievances are real. His solution is wrong in ways he cannot see because the person who should have shown him alternative solutions has been carefully kept away.
+**What makes him dangerous:** He is not wrong that the current order fails people. The Ashen Hand recruits from genuine grievance. Aedric's grievances are real. His solution is wrong in ways he cannot see because the person who should have shown him alternative solutions has been carefully kept away.
 
-**Arc:** If Roland exposes the Hollow Court operation in Game One, Aedric is confronted with evidence that his beliefs were constructed rather than discovered. What he does with this is one of Game One's significant optional outcomes. He can become an ally. He cannot become a friend.
+**Arc:** If Roland exposes the Ashen Hand operation in Game One, Aedric is confronted with evidence that his beliefs were constructed rather than discovered. What he does with this is one of Game One's significant optional outcomes. He can become an ally. He cannot become a friend.
 
 ---
 
@@ -74,22 +74,22 @@ Not a monster — a young man who believes genuinely that the current order is f
 
 Age 31 at Game One start. Recurring contact and ally across all three games. Not a party companion — a person with no official affiliation, extensive contacts, and no reason to be watched.
 
-**Background:** Discovered at seventeen that his family suppressed a lineage claim connecting them to the Caelborn Compact — a Second Age treaty granting passage rights in Aelorin territory. His younger sister Maren was killed three years before Game One by agents connected to the Hollow Court, who had found the same documents and considered the Caelborn line a threat. He has been investigating quietly and systematically since.
+**Background:** Discovered at seventeen that his family suppressed a lineage claim connecting them to the Caelborn Compact — a Second Age treaty granting passage rights in Aelorin territory. His younger sister Maren was killed three years before Game One by agents connected to the Ashen Hand, who had found the same documents and considered the Caelborn line a threat. He has been investigating quietly and systematically since.
 
 **Skills:** Document analysis (he can identify falsification by studying primary sources), administrative law across three kingdoms, intelligence contacts, and the specific habit of holding information carefully until the moment it becomes useful.
 
 **Role across the trilogy:**
-- *Game One:* Crosses paths with Roland's group when his Hollow Court investigation overlaps with theirs. Shares intelligence, takes what he needs, departs before the Spine sequence. Leaves a contact address.
+- *Game One:* Crosses paths with Roland's group when his Ashen Hand investigation overlaps with theirs. Shares intelligence, takes what he needs, departs before the Spine sequence. Leaves a contact address.
 - *Game Two:* His Caelborn Compact — the ancient treaty — becomes the key to Aelorin-held records the party cannot access otherwise. He does not know it is useful until Aelthurion tells him so.
 - *Game Three:* Operates from Aldenholt as an intelligence relay during the Alliance buildup. Does not cross to Thal.
 
-**Arc:** The Hollow Court figure responsible for Maren's death dies in Game Two's main plot — not by Edran's hand, as a consequence of larger events. The resolution is complete and out of his control, which is its own reckoning for a man who has spent years trying to control exactly this.
+**Arc:** The Ashen Hand figure responsible for Maren's death dies in Game Two's main plot — not by Edran's hand, as a consequence of larger events. The resolution is complete and out of his control, which is its own reckoning for a man who has spent years trying to control exactly this.
 
 ---
 
 ### Dame Calla Vane — Grandmaster, Iron Chalice
 
-Age 58. The Iron Chalice's finances are her private crisis — she expended Roland because she believed his silence was necessary and has lived with that decision since. She is not corrupt; she is trapped between an institution she loves and a secret she cannot afford to expose.
+Age 58. The Iron Chalice's finances are her private crisis — she expelled Roland because he refused to keep silence about the pommel — she believed that silence was necessary and has lived with that decision since. She is not corrupt; she is trapped between an institution she loves and a secret she cannot afford to expose.
 
 **Roland's arc with her:** Game One requires Roland to resolve the Order's debt to earn their alliance. The confrontation with Dame Calla when he returns is the scene where she acknowledges the expulsion was wrong without being able to say it plainly. She says it in action instead: she rides to Drûn-Khazad.
 

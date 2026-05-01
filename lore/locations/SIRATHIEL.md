@@ -11,7 +11,7 @@
 
 The only Aelorin city that admits humans without special permission or escort. Built from pale coastal stone with mother-of-pearl inlay work on significant structures — the effect in sunlight is a faint iridescence. The city is smaller than Lirien-Thal or Aelorien but more architecturally visible from outside: actual buildings rather than canopy dwellings, actual streets.
 
-The harbor is small but functional. Aelorin traders and the occasional human merchant with the right credentials use it. The Shroud Brotherhood has made contact here on three occasions.
+The harbor is small but functional. Aelorin traders and the occasional human merchant with the right credentials use it. The Sailor's Guild has made contact here on three occasions.
 
 Map note: Small coastal settlement, star symbol, pale tone.
 
@@ -37,7 +37,7 @@ Pale coastal stone with mother-of-pearl inlay. The iridescence in sunlight is th
 
 Unlike the deep Greatwood Aelorin settlements, Sirathiel has actual streets and actual buildings — it is the most readable Aelorin city for a human visitor. This is deliberate: it is designed (or evolved) to be a contact point with the outside world.
 
-The harbor is small. The sea is the northern coast of Mira — colder than the Bay of Mourne, more exposed. The Brotherhood's three contacts here suggest the city tolerates external intelligence operations up to a point.
+The harbor is small. The sea is the northern coast of Mira — colder than the Bay of Mourne, more exposed. The Guild's three contacts here suggest the city tolerates external intelligence operations up to a point.
 
 ---
 
@@ -60,6 +60,6 @@ In Game One: Sirathiel is the entry scene — Roland arrives here, establishes c
 ## Open Questions / Gaps
 
 - What credentials does Roland need to gain access? Is this a dialogue gate, a prior flag, or an object?
-- The Shroud Brotherhood contacts: ambient lore, but do any of these contacts translate to a specific NPC in the Act II scene?
-- Does Eilwen (Tidewarden) have any relationship with Sirathiel given both are northern coastal? Not defined.
-- The Brotherhood's third contact here: timing relative to Game One events — before or during Roland's visit? Could create an encounter opportunity.
+- The Sailor's Guild contacts: ambient lore, but do any of these contacts translate to a specific NPC in the Act II scene?
+- Does Eilwen (Queen of Caer Brannoch) have any relationship with Sirathiel given both are northern coastal? Not defined.
+- The Guild's third contact here: timing relative to Game One events — before or during Roland's visit? Could create an encounter opportunity.

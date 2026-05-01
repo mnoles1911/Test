@@ -9,7 +9,7 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 **Context:** The formula has been assembled across Games 1 and 2. The volcanic aggregate is now accessible.
 
-**Summary:** Barak Stonecroft, if he survived Game 2 (his survival is not guaranteed and depends on player choices), has traveled with the party's knowledge to the Thal coast. He can manufacture ashsteel given the aggregate and a forge capable of the temperatures required. The Hollow Court is also aware the formula is nearly complete and has sent agents to prevent it.
+**Summary:** Barak Stonecroft, if he survived Game 2 (his survival is not guaranteed and depends on player choices), has traveled with the party's knowledge to the Thal coast. He can manufacture ashsteel given the aggregate and a forge capable of the temperatures required. The Ashen Hand is also aware the formula is nearly complete and has sent agents to prevent it.
 
 **What the player does:** Protects Barak through the manufacturing process, which takes two in-game days and requires the party to hold a position against intermittent pressure. The process is mostly Barak working while the player manages the perimeter.
 
@@ -25,9 +25,9 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 **Summary:** Eilwen has developed a theory that the Shroud Sea's weather anomalies are not natural — they are a side effect of Mordvar's first hollowing ritual, which occurred near a coastal site that happens to sit on the same deep-rock formation as the sea floor between the continents. She wants the party's help testing this theory at a specific coastal location on Thal.
 
-**What the player does:** Accompanies Eilwen to the coastal site, which is in Hollow Court-monitored territory. Protects her while she takes measurements. Discovers she is correct: there is a resonance signature at the site consistent with a major working, and it has a specific frequency that Corvus recognizes from his own deepest sensitivity to the Aeluvain binding.
+**What the player does:** Accompanies Eilwen to the coastal site, which is in Ashen Hand-monitored territory. Protects her while she takes measurements. Discovers she is correct: there is a resonance signature at the site consistent with a major working, and it has a specific frequency that Corvus recognizes from his own deepest sensitivity to Mordvar's reforming presence.
 
-**Payoff:** Corvus understands, for the first time, that his ability to sense the binding is not a random trait. His mother's family had a connection to the original binding-workers that was never documented. Eilwen's theory is also practically significant: the coastal site is a secondary anchor point for the binding, which means the final confrontation has a specific vulnerability the party can exploit.
+**Payoff:** Corvus understands, for the first time, that his ability to sense Mordvar's reforming presence is not a random trait. His mother's family had a connection to those who worked the original unmaking that was never documented. Eilwen's theory is also practically significant: the coastal site is a secondary convergence point for Mordvar's scattered essence — a place in Mira where his presence pools — which means the final confrontation has a specific vulnerability the party can exploit.
 
 **Tone:** A scholar's life work validated at the worst possible time and in the most useful possible way.
 
@@ -35,11 +35,11 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 ## 3. Aldric's Children
 
-**Context:** By Game 3, Aldric's investigation into his sister's death has progressed significantly. He has identified the Hollow Court figure responsible.
+**Context:** By Game 3, Aldric's investigation into his sister's death has progressed significantly. He has identified the Ashen Hand figure responsible.
 
 **Summary:** That figure is dead — killed in the events of Game 2's main plot. But they left behind two children who are now orphaned and in the care of distant relatives who are becoming aware of what the children's parent did. Brand, one of the party's Game 3 contacts, insists on following the party specifically because he knows where the children are and believes they need protection the relatives cannot provide.
 
-**What the player does:** Decides whether to divert to verify Brand's concern. If they do: the children are fine, the relatives are decent people, Brand was overcautious. But the detour reveals a piece of intelligence about the Hollow Court's succession planning that changes the party's understanding of what happens after Mordvar is defeated.
+**What the player does:** Decides whether to divert to verify Brand's concern. If they do: the children are fine, the relatives are decent people, Brand was overcautious. But the detour reveals a piece of intelligence about the Ashen Hand's succession planning that changes the party's understanding of what happens after Mordvar is defeated.
 
 **Payoff:** The detour is the point. It's a quest about whether you stop for people when the world is ending. Aldric watches the player make this choice and it affects his final scene with Roland.
 
@@ -47,15 +47,15 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 ---
 
-## 4. The Frost Brotherhood's Confession
+## 4. The Sailor's Guild Confession
 
-**Questgiver:** Three Shroud Brotherhood captains who ask to speak with Roland privately.
+**Questgiver:** Three Sailor's Guild captains who ask to speak with Roland privately.
 
-**Summary:** Forty years ago, one of their ships crossed the Shroud Sea. Eight of twenty-two crew returned. They found Aescryd ruins and evidence of Mordvar's operations. The surviving captain filed a report that was buried by Brotherhood leadership at the time. Two of those three original captains are dead. The third is one of the three who has come to Roland. She has been carrying this for forty years and the Brotherhood's current leadership — Yaromir — doesn't know.
+**Summary:** Forty years ago, one of their ships crossed the Shroud Sea. Eight of twenty-two crew returned. They found Aescryd ruins and evidence of Mordvar's operations. The surviving captain filed a report that was buried by Guild leadership at the time. Two of those three original captains are dead. The third is one of the three who has come to Roland. She has been carrying this for forty years and the Sailor's Guild's current leadership — Yaromir — doesn't know.
 
-**What the player does:** Advises the captains on whether and how to tell Yaromir. The captains want Roland's counsel specifically because he is outside the Brotherhood's institutional hierarchy and has demonstrated judgment they trust.
+**What the player does:** Advises the captains on whether and how to tell Yaromir. The captains want Roland's counsel specifically because he is outside the Sailor's Guild's institutional hierarchy and has demonstrated judgment they trust.
 
-**Payoff:** If the captains tell Yaromir, the Brotherhood contributes two additional ships to the Thal crossing with full knowledge of the risk. If they don't, the Brotherhood contributes one ship and the surviving captain spends the crossing visibly frightened in a way that affects crew morale. The practical difference is small. The moral difference is the point.
+**Payoff:** If the captains tell Yaromir, the Sailor's Guild contributes two additional ships to the Thal crossing with full knowledge of the risk. If they don't, the Sailor's Guild contributes one ship and the surviving captain spends the crossing visibly frightened in a way that affects crew morale. The practical difference is small. The moral difference is the point.
 
 **Tone:** Old guilt and whether honesty serves anything at this stage. Roland's answer reveals something about how he thinks about his own expulsion from the Iron Chalice.
 
@@ -79,7 +79,7 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 **Context:** Follows Serethi's cooperation with the party in the main plot.
 
-**Summary:** Three Naergrim from the dissident faction have followed the party to Thal without authorization from Serethi. They want to fight. They do not have the training or preparation for what the party is about to do, and if they die in Hollow Court territory it will be used to justify reprisals against the dissident faction.
+**Summary:** Three Naergrim from the dissident faction have followed the party to Thal without authorization from Serethi. They want to fight. They do not have the training or preparation for what the party is about to do, and if they die in Ashen Hand territory it will be used to justify reprisals against the dissident faction.
 
 **What the player does:** Intercedes with them. Sends them back or finds a role for them that doesn't get them killed. Sorin, if present, handles most of the conversation — he knows these three. The choice has a genuine argument on both sides: they have a right to fight for their own freedom, and exercising that right here will cost them.
 
@@ -95,8 +95,8 @@ Game 3's side quests are the payoffs. Most threads planted in Games 1 and 2 reso
 
 **Summary:** Seren asks the party to stop. She has something she needs to do and she won't explain it fully, only that it will take half a day and she needs to do it alone. She goes into the forest at the edge of Drun-Khazad's caldera region and comes back looking different in a way that is hard to name.
 
-**What the player does:** Waits. Optionally, the player can follow Seren — if they do, they find her standing in a specific clearing, speaking in High Aeluvain to no one visible. There is a young tree in the clearing that was not there yesterday. If the player does not follow, they see only Seren returning.
+**What the player does:** Waits. Optionally, the player can follow Seren — if they do, they find her standing in a specific clearing, speaking in High Aelorin to no one visible. There is a young tree in the clearing that was not there yesterday. If the player does not follow, they see only Seren returning.
 
-**Payoff:** Seren plants a tree for Caerith in the Aelorin tradition of the Aelthiren — the ritual acknowledgment of a death. She cannot give Caerith the full rite (that would require the Aelthurion's recognition, which is complicated), but she can give her this. If the player followed and asks about it, Seren says: "She was Aelorin for a very long time before she was anything else. Someone should remember that part."
+**Payoff:** Seren plants a tree for Caerith in the Aelorin tradition of the Aelthiren — the ritual acknowledgment of a death. She cannot give Caerith the full rite (that would require the Aelthurion's recognition, which is complicated), but she can give her this. If the player followed and asks about it, Seren says: "He was Aelorin for a very long time before he was anything else. Someone should remember that part."
 
 **Tone:** Quiet grief and the specific care of someone who understands what the dead were before they became what they died as.

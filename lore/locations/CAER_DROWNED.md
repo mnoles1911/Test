@@ -11,7 +11,7 @@
 
 Slid into the sea two hundred years ago. The cause is not fully established — subsidence, structural failure, and Shroud Sea influence have all been cited. At extreme low tide, the towers emerge from the water at wrong angles, streets running into nothing, windows below the waterline dark. Ships avoid the bay. The Shroud Sea storms are said to have begun the same week Caer Sulwyn fell.
 
-The Brotherhood has one report of a diver who entered a submerged building and returned describing interior rooms still furnished, doors still hanging on hinges, a table set for a meal — everything undisturbed, as if the city expected to return.
+The Sailor's Guild has one report of a diver who entered a submerged building and returned describing interior rooms still furnished, doors still hanging on hinges, a table set for a meal — everything undisturbed, as if the city expected to return.
 
 Map note: Ruined-tower symbol partially submerged in the Bay of Sulwyn.
 
@@ -39,7 +39,7 @@ Everything undisturbed: the horror of Caer Drowned is not destruction but preser
 
 At extreme low tide: towers emerge at wrong angles above the waterline. Dark windows at the waterline — rooms visible but submerged. Ships avoid the bay. The visual is wrong even from a distance.
 
-If a playable scene is ever built here, the lighting solution is the central design challenge: underwater light with filtered surface glow, cold and blue-grey. No torches; they would have gone out. The Brotherhood's bioluminescent note may apply — the same quality of wrongness as the Shroud Sea.
+If a playable scene is ever built here, the lighting solution is the central design challenge: underwater light with filtered surface glow, cold and blue-grey. No torches; they would have gone out. The Sailor's Guild's bioluminescent note may apply — the same quality of wrongness as the Shroud Sea.
 
 ---
 
@@ -62,5 +62,5 @@ If a playable scene is ever built here, the lighting solution is the central des
 - Is there a playable scene here in Game One? A side quest? Or purely atmospheric background?
 - The Shroud Sea connection (storms began same week) — is this causal? Does the Shroud Sea's influence extend to subsidence? This is unresolved lore.
 - What was Caer Sulwyn? A normal human coastal city? Something with historical significance? Its pre-drowning identity is not established.
-- The Brotherhood diver report: is this a hook for a mission, or lore flavor? The "table set for a meal" detail is evocative enough to build a scene around.
+- The Sailor's Guild diver report: is this a hook for a mission, or lore flavor? The "table set for a meal" detail is evocative enough to build a scene around.
 - Shallow-water traversal: if the player ever visits, is it via boat, swimming, diving? The game's movement system is ground-based; water traversal would need a new mechanic or scene type.

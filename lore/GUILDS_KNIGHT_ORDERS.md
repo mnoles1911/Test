@@ -16,7 +16,7 @@ One major chivalric order per kingdom. Each has its own founding myth, internal 
 
 **Current Grandmaster:** **Dame Calla Vane** (no relation to Aldric Vane). Knows the Order is financially insolvent — a debt to Solgrade's banking houses comes due in two years. She has told no one. She is quietly looking for a way out that does not involve selling the Order's independence.
 
-**Plot connection:** The Order's chapel displays an iron pommel on its founding-relic altar. Dame Calla, like every grandmaster before her, does not know it is the **iron piece of the Sundered Crown**. **Roland Ashford** discovered this three years before Game One and was expelled for refusing to stay silent. Game One opens with him hunted for that knowledge.
+**Plot connection:** The Order's chapel displays an iron pommel on its founding-relic altar. Dame Calla knows it is a piece of the **Sundered Crown** — **Roland Ashford** told her when he found it during a chapel inventory, still in service. She demanded his silence; he refused; she expelled him. The pommel remains in the reliquary. Roland returns for it in Game One Act I, and Game One opens with him hunted for that knowledge.
 
 **Endgame:** If Roland resolves the Order's debt during the Solgrade arc, the Iron Chalice arrives at the Battle of Drûn-Khazad as committed allies rather than reluctant conscripts. Of twelve hundred knights, one hundred and twelve survive the final battle — they spend themselves escorting Aldric to the summit.
 
@@ -52,7 +52,7 @@ One major chivalric order per kingdom. Each has its own founding myth, internal 
 
 **Classified history:** The Brotherhood ran a covert information exchange with a Gulmrak orc warlord (predecessor to Drûn-Aghul) for eleven years. The exchange ended with that warlord's death in Game One. Three current captains know what was exchanged. They have agreed never to tell Despot Yaromir.
 
-**Plot connection:** Provides intelligence on Ashen Hand frontier movements throughout Games One and Two. In Game Three, the Brotherhood is critical to **Aldric Vane's** protection in Coldstoke — they slow Vaeroth's pursuit and cover the escape route.
+**Plot connection:** Provides intelligence on Ashen Hand frontier movements throughout Games One and Two. In Game Three, the Brotherhood is critical to **Aldric Vane's** protection in Coldstoke — they slow the Hand's pursuit and cover the escape route.
 
 ---
 

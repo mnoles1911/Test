@@ -2,7 +2,7 @@
 
 ## The Caelborn Line
 
-The Caelborn were a minor noble house from the Borderlands — not powerful, but old. Their specific distinction was a lineage claim, passed down in private family records, connecting them to the Caelborn Compact: a treaty signed at the close of the Second Age between the Grand Alliance and several human frontier families who had aided the binding of the Hollow Throne. The Compact granted those families certain rights of passage and sanctuary in Aelorin territory that technically still exist, though most of the world has forgotten both the Compact and the families it named.
+The Caelborn were a minor noble house from the Borderlands — not powerful, but old. Their specific distinction was a lineage claim, passed down in private family records, connecting them to the Caelborn Compact: a treaty signed at the close of the Second Age between the Grand Alliance and several human frontier families who had aided the unmaking of Mordvar at the Sorrowmarsh. The Compact granted those families certain rights of passage and sanctuary in Aelorin territory that technically still exist, though most of the world has forgotten both the Compact and the families it named.
 
 Edran's grandfather suppressed this claim three generations ago. He had reasons: the Compact was ancient, the rights it granted were meaningless in practice, and the claim attracted attention from people who wanted to either use it or discredit it. A family that was minor but stable was better, he decided, than a family that was notable for a reason no one fully understood.
 
@@ -18,7 +18,7 @@ Maren had been travelling between two Borderlands towns with a merchant escort �
 
 He believes the attack was connected to the Caelborn claim. Someone had found the same documents he had, or found a record of them, and concluded the Caelborn line was a threat worth eliminating. He has never been able to prove this.
 
-He has been looking, quietly and systematically, for three years. He has found two threads that lead toward the Hollow Court. He is not yet certain enough to act, and he is too careful a man to act before certainty.
+He has been looking, quietly and systematically, for three years. He has found two threads that lead toward the Ashen Hand. He is not yet certain enough to act, and he is too careful a man to act before certainty.
 
 ## The Assassination Attempts
 
@@ -53,13 +53,13 @@ He is not a companion. He is something more useful in some situations: a person 
 Edran is a **recurring contact and ally**, not a party companion. He operates across all three games as the party's outside analyst — the person they reach when they need something understood rather than fought.
 
 His specific value:
-- **Game One:** First introduction; shares Hollow Court intelligence in exchange for protection and information access. Departs before the Spine sequence.
+- **Game One:** First introduction; shares Ashen Hand intelligence in exchange for protection and information access. Departs before the Spine sequence.
 - **Game Two:** His Caelborn Compact — the ancient treaty granting his bloodline passage rights in Aelorin territory — becomes the key that unlocks records in Lirien-Thal the party could not otherwise access without years of diplomatic groundwork. He does not know the Compact is useful until Aelthurion tells him so.
 - **Game Three:** Operates from Aldenholt as an intelligence relay during the Alliance buildup. Does not cross to Thal. His network is part of what keeps the Alliance coordinated across three kingdoms during the march.
 
 His arc is the completion of the Caelborn legacy: the claim his grandfather suppressed to protect the family gets exercised, finally and legitimately, to help protect the world. What the grandfather hid becomes, in Edran's hands, a key.
 
-The grief about Maren resolves not through revenge but through understanding — he eventually identifies the specific Hollow Court figure responsible, and their death in Game Two's main plot means the resolution is both complete and out of his hands. This is its own kind of reckoning for a man who has spent years trying to control the shape of what happens to him.
+The grief about Maren resolves not through revenge but through understanding — he eventually identifies the specific Ashen Hand figure responsible, and their death in Game Two's main plot means the resolution is both complete and out of his hands. This is its own kind of reckoning for a man who has spent years trying to control the shape of what happens to him.
 
 ## Character
 

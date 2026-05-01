@@ -17,7 +17,7 @@ The architecture follows the same principles as Mor-Vethrin: vertical cliff-face
 
 Unlike Mor-Vethrin, Keth-Vethrin has no deep-rock cold problem: the volcanic coast provides ambient heat through the rock itself. This makes it more physically tolerable than Mor-Vethrin, which the garrison considers a small mercy.
 
-There is a rough landing approach — not a harbor, as no natural bay exists here. Ships must anchor offshore and approach by small boat. The Aescryd ruins found forty years ago by Brotherhood explorers are on a flat terrace nearby, half-buried in volcanic aggregate above the tide line. The Naergrim are aware of the ruins and have left them alone; old things belong where they are placed.
+There is a rough landing approach — not a harbor, as no natural bay exists here. Ships must anchor offshore and approach by small boat. The Aescryd ruins found forty years ago by Sailor's Guild explorers are on a flat terrace nearby, half-buried in volcanic aggregate above the tide line. The Naergrim are aware of the ruins and have left them alone; old things belong where they are placed.
 
 Map note: Dark cliff-face fortress symbol, sea-facing, western Thal coast. No harbor symbol — anchorage only.
 
@@ -55,13 +55,13 @@ Art design for Keth-Vethrin can be deferred until Game Two pre-production.
 
 Keth-Vethrin is the likely landing point or early destination after the Shroud Sea crossing in Game Two. The Naergrim-Withdrawal deal from Game One (Serethi's bargain) means the Keth-Vethrin garrison will not attack Roland's party on arrival — but they will not help, either. The arrangement is non-interference, not alliance.
 
-The Aescryd ruins nearby are potentially significant for Game Two narrative (the ruins of Mordvar's original kingdom, found by Brotherhood explorers forty years prior).
+The Aescryd ruins nearby are potentially significant for Game Two narrative (the ruins of Mordvar's original kingdom, found by Sailor's Guild explorers forty years prior).
 
 ---
 
 ## Connections
 
-- **Arrives from:** Shroud Sea crossing (Game Two — the Brotherhood navigable window, nine years after Game One begins)
+- **Arrives from:** Shroud Sea crossing (Game Two — the Sailor's Guild navigable window, nine years after Game One begins)
 - **Exits to:** Ash-Steppe (traveling east toward Drûn-Khazad); the interior of Thal
 
 ---
@@ -69,7 +69,7 @@ The Aescryd ruins nearby are potentially significant for Game Two narrative (the
 ## Open Questions / Gaps
 
 - Does the Keth-Vethrin garrison commander have a name or characterization relevant to Game Two?
-- The Aescryd ruins: are they a playable location or background lore? What does the Brotherhood know about them from the expedition forty years ago?
+- The Aescryd ruins: are they a playable location or background lore? What does the Sailor's Guild know about them from the expedition forty years ago?
 - The bone arch gate material at Keth-Vethrin: same as Mor-Vethrin (something large), or different given the different founding context?
 - How does Keth-Vethrin communicate with Mor-Vethrin on Mira — across the Shroud Sea? Is there a Naergrim method of communication not available to other peoples?
-- Garrison rotation: does the rotation from Mor-Vethrin involve the Shroud Sea crossing? If so, how do the Naergrim manage it when the Brotherhood cannot?
+- Garrison rotation: does the rotation from Mor-Vethrin involve the Shroud Sea crossing? If so, how do the Naergrim manage it when the Sailor's Guild cannot?
