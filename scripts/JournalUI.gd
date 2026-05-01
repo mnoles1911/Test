@@ -1,42 +1,52 @@
 extends CanvasLayer
-# JournalUI — Roland's journal overlay. KCD2-style five-tab layout.
+# JournalUI — Roland's journal and inventory overlay.
 #
 # What this does in plain English:
-#   When the player presses J, the journal slides over the screen.
-#   Five tabs of information, all populated from GameState and InventoryManager:
-#     QUESTS   — active and completed quest states (written in Roland's voice)
-#     MAP      — current area description and known location notes
-#     ITEMS    — equipped items and stored inventory
-#     CRAFTING — known recipes and their ingredients
-#     CODEX    — background lore entries (unlocked as the story progresses)
+#   Press J to open the overlay to the QUESTS tab.
+#   Press I to open directly to the ITEMS tab (inventory).
+#   Both open the same full-screen overlay — J and I just set the starting tab.
 #
-#   The journal is the player's primary navigation tool — no quest markers.
-#   NPCs will tell the player where to go if asked.
+#   While open:
+#     - Mouse cursor is visible: click any tab at the top to switch sections.
+#     - Press TAB to cycle to the next section without clicking.
+#     - Press J, I, or Escape to close and return to the game.
+#
+#   Six tabs:
+#     QUESTS   — active and completed quest states (written in Roland's voice)
+#     MAP      — current area and known location notes
+#     ITEMS    — equipped items and carried inventory (InventoryManager)
+#     CRAFTING — known recipes and their ingredients
+#     CODEX    — background lore entries unlocked as the story progresses
+#     SKILLS   — Roland's skill domains and earned perks (placeholder for Phase 9)
+#
+# The game tree is paused while the overlay is open (same as the pause menu).
+# The CanvasLayer and all built nodes use PROCESS_MODE_ALWAYS so buttons work
+# while the tree is paused.
 #
 # HOW TO ADD A NEW JOURNAL ENTRY:
-#   QUESTS/MAP/CODEX: add a flag check block in the relevant _build_*_text() function
-#   ITEMS: automatic — driven by InventoryManager
-#   CRAFTING: define a recipe in InventoryManager.RECIPES + set its discovered_flag
+#   QUESTS/MAP/CODEX: add a flag check block in the relevant _build_*_text() function.
+#   ITEMS: automatic — driven by InventoryManager.
+#   CRAFTING: define a recipe in InventoryManager.RECIPES + set its discovered_flag.
+#   SKILLS: will be driven by GameState skill XP once Phase 9-3D is built.
 
 
 # =============================================================
-# TAB ENUM
+# TABS
 # =============================================================
 
-enum Tab { QUESTS, MAP, ITEMS, CRAFTING, CODEX }
-var current_tab: Tab = Tab.QUESTS
-
-const TAB_LABELS: Array = ["QUESTS", "MAP", "ITEMS", "CRAFTING", "CODEX"]
+enum Tab { QUESTS, MAP, ITEMS, CRAFTING, CODEX, SKILLS }
+const TAB_COUNT: int = 6
+const TAB_NAMES: Array = ["QUESTS", "MAP", "ITEMS", "CRAFTING", "CODEX", "SKILLS"]
 
 
 # =============================================================
-# NODE REFERENCES
+# BUILT NODES (created in _build_ui, stored for refresh)
 # =============================================================
 
-@onready var root_control: Control   = $JournalRoot
-@onready var tab_row: HBoxContainer  = $JournalRoot/Frame/VBox/TabRow
-@onready var content_label: Label    = $JournalRoot/Frame/VBox/ContentScroll/ContentText
-@onready var close_hint: Label       = $JournalRoot/Frame/VBox/Header/CloseHint
+var _root: Control
+var _tab_buttons: Array = []
+var _content_label: Label
+var _current_tab: Tab = Tab.QUESTS
 
 
 # =============================================================
@@ -44,24 +54,138 @@ const TAB_LABELS: Array = ["QUESTS", "MAP", "ITEMS", "CRAFTING", "CODEX"]
 # =============================================================
 
 func _ready() -> void:
-	root_control.visible = false
-
-	# Connect tab buttons (built from TAB_LABELS in the .tscn).
-	var btns: Array = tab_row.get_children()
-	for i in range(btns.size()):
-		if btns[i] is Button:
-			btns[i].pressed.connect(_on_tab_pressed.bind(i))
-
+	layer = 10
+	# PROCESS_MODE_ALWAYS is required so the overlay works while the game
+	# tree is paused (same reason PauseMenu uses it).
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	_build_ui()
+	_root.visible = false
 	print("[JournalUI] Initialized.")
 
 
+func _build_ui() -> void:
+	# Full-screen root node. ALWAYS mode so it responds while tree is paused.
+	_root = Control.new()
+	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_root.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_root)
+
+	# Dark semi-transparent backdrop covering the whole screen.
+	var backdrop := ColorRect.new()
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = Color(0.0, 0.0, 0.0, 0.78)
+	_root.add_child(backdrop)
+
+	# Main frame — anchored full-rect with 80px inset on each side.
+	# At 1920×1080 this gives a ~1760×960 content area.
+	var frame := Panel.new()
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.offset_left   =  80
+	frame.offset_top    =  60
+	frame.offset_right  = -80
+	frame.offset_bottom = -60
+	_root.add_child(frame)
+
+	# Vertical layout for everything inside the frame.
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left   =  24
+	vbox.offset_top    =  18
+	vbox.offset_right  = -24
+	vbox.offset_bottom = -18
+	vbox.add_theme_constant_override("separation", 10)
+	frame.add_child(vbox)
+
+	# --- Header row ---
+	var header := HBoxContainer.new()
+	vbox.add_child(header)
+
+	var title := Label.new()
+	title.text = "— ROLAND'S JOURNAL —"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	header.add_child(title)
+
+	var hint := Label.new()
+	hint.text = "[ J / I / ESC ] close     [ TAB ] next section"
+	hint.add_theme_font_size_override("font_size", 16)
+	hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 1))
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	header.add_child(hint)
+
+	# --- Divider ---
+	var div1 := ColorRect.new()
+	div1.custom_minimum_size = Vector2(0, 2)
+	div1.color = Color(0.4, 0.35, 0.25, 1)
+	vbox.add_child(div1)
+
+	# --- Tab row ---
+	# Six buttons, equally wide. Clicking any switches the content below.
+	var tab_row := HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(tab_row)
+
+	_tab_buttons.clear()
+	for i in range(TAB_COUNT):
+		var btn := Button.new()
+		btn.text = TAB_NAMES[i]
+		btn.flat = true
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.custom_minimum_size = Vector2(0, 46)
+		btn.add_theme_font_size_override("font_size", 20)
+		btn.process_mode = Node.PROCESS_MODE_ALWAYS
+		btn.pressed.connect(_on_tab_pressed.bind(i))
+		tab_row.add_child(btn)
+		_tab_buttons.append(btn)
+
+	# --- Divider 2 ---
+	var div2 := ColorRect.new()
+	div2.custom_minimum_size = Vector2(0, 2)
+	div2.color = Color(0.4, 0.35, 0.25, 1)
+	vbox.add_child(div2)
+
+	# --- Scrollable content area (fills remaining vertical space) ---
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+
+	_content_label = Label.new()
+	_content_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content_label.add_theme_font_size_override("font_size", 18)
+	_content_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	_content_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	scroll.add_child(_content_label)
+
+
+# =============================================================
+# INPUT
+# =============================================================
+
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_J or event.physical_keycode == KEY_J:
-			if root_control.visible:
-				_close()
-			else:
-				_open()
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+
+	if _root.visible:
+		# TAB cycles to the next section. This must be checked before the
+		# action checks below because Tab key might also match "ui_focus_next".
+		if event.physical_keycode == KEY_TAB:
+			_current_tab = ((_current_tab + 1) % TAB_COUNT) as Tab
+			_refresh()
+			get_viewport().set_input_as_handled()
+			return
+		# J, I, or Escape all close the overlay.
+		# set_input_as_handled() prevents Escape from also opening PauseMenu.
+		if event.is_action("open_journal") or event.is_action("open_inventory") or event.is_action("pause"):
+			_close()
+			get_viewport().set_input_as_handled()
+	else:
+		# J opens to Quests, I opens to Items.
+		if event.is_action("open_journal"):
+			_open(Tab.QUESTS)
+			get_viewport().set_input_as_handled()
+		elif event.is_action("open_inventory"):
+			_open(Tab.ITEMS)
 			get_viewport().set_input_as_handled()
 
 
@@ -69,16 +193,25 @@ func _unhandled_input(event: InputEvent) -> void:
 # OPEN / CLOSE
 # =============================================================
 
-func _open() -> void:
-	root_control.visible = true
-	current_tab = Tab.QUESTS
-	FlagScheduler.emit_event("journal_opened")
+func _open(tab: Tab) -> void:
+	_current_tab = tab
+	_root.visible = true
+	get_tree().paused = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_refresh()
 	print("[JournalUI] Opened.")
 
+
 func _close() -> void:
-	root_control.visible = false
+	_root.visible = false
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	print("[JournalUI] Closed.")
+
+
+func is_overlay_visible() -> bool:
+	# Called by PauseMenu._unhandled_input to avoid opening over this overlay.
+	return _root != null and _root.visible
 
 
 # =============================================================
@@ -86,7 +219,7 @@ func _close() -> void:
 # =============================================================
 
 func _on_tab_pressed(tab_index: int) -> void:
-	current_tab = tab_index as Tab
+	_current_tab = tab_index as Tab
 	_refresh()
 
 
@@ -95,18 +228,18 @@ func _on_tab_pressed(tab_index: int) -> void:
 # =============================================================
 
 func _refresh() -> void:
-	# Highlight the active tab button.
-	var btns: Array = tab_row.get_children()
-	for i in range(btns.size()):
-		if btns[i] is Button:
-			btns[i].modulate = Color(1, 1, 1) if i == current_tab else Color(0.55, 0.55, 0.55)
+	# Active tab = bright white. Inactive tabs = dimmed gray.
+	for i in range(_tab_buttons.size()):
+		var color := Color(1.0, 1.0, 1.0) if i == _current_tab else Color(0.45, 0.45, 0.45)
+		_tab_buttons[i].modulate = color
 
-	match current_tab:
-		Tab.QUESTS:   content_label.text = _build_quests_text()
-		Tab.MAP:      content_label.text = _build_map_text()
-		Tab.ITEMS:    content_label.text = _build_items_text()
-		Tab.CRAFTING: content_label.text = _build_crafting_text()
-		Tab.CODEX:    content_label.text = _build_codex_text()
+	match _current_tab:
+		Tab.QUESTS:   _content_label.text = _build_quests_text()
+		Tab.MAP:      _content_label.text = _build_map_text()
+		Tab.ITEMS:    _content_label.text = _build_items_text()
+		Tab.CRAFTING: _content_label.text = _build_crafting_text()
+		Tab.CODEX:    _content_label.text = _build_codex_text()
+		Tab.SKILLS:   _content_label.text = _build_skills_text()
 
 
 # =============================================================
@@ -194,7 +327,6 @@ func _build_map_text() -> String:
 func _build_items_text() -> String:
 	var lines: Array = []
 
-	# Equipped items.
 	lines.append("═══ EQUIPPED ═══\n")
 	var equipped: Dictionary = InventoryManager.get_all_equipped()
 	var any_equipped: bool = false
@@ -209,7 +341,6 @@ func _build_items_text() -> String:
 
 	lines.append("\n")
 
-	# Stored inventory grouped by type.
 	var all_items: Dictionary = InventoryManager.get_all_items()
 	if all_items.is_empty():
 		lines.append("═══ CARRIED ═══\n")
@@ -318,12 +449,30 @@ func _build_codex_text() -> String:
 
 
 # =============================================================
+# SKILLS
+# Placeholder until GameState tracks skill XP and perk points.
+# Build out in Phase 9-3D per design/SKILLS_AND_PROGRESSION.md.
+# =============================================================
+
+func _build_skills_text() -> String:
+	var lines: Array = []
+	lines.append("═══ SKILLS ═══\n")
+	lines.append("Skill tracking is not yet implemented.\n")
+	lines.append("Roland's skill domains, sub-skills, earned perks, and\n")
+	lines.append("available perk points will appear here once the progression\n")
+	lines.append("system is built in Phase 9-3D.\n\n")
+	lines.append("Reference: design/SKILLS_AND_PROGRESSION.md")
+	return "\n".join(lines)
+
+
+# =============================================================
 # UTILITY
 # =============================================================
 
 func _item_display_name(item_id: String) -> String:
 	var info: Dictionary = InventoryManager.ITEM_REGISTRY.get(item_id, {})
 	return info.get("name", item_id)
+
 
 func _count_crown_pieces() -> int:
 	var count: int = 0

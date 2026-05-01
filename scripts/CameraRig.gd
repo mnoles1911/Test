@@ -19,8 +19,16 @@ extends SpringArm3D
 #   FREELOOK (hold F2):
 #     Mouse horizontal → orbits the camera around the player WITHOUT
 #     rotating the player body. Roland keeps facing his current direction.
-#     On F2 release → camera re-centers behind Roland.
-#     Use this to glance around without changing Roland's facing.
+#     On F2 release → camera smoothly re-centers (yaw AND pitch both restore).
+#     Moving the mouse while re-centering cancels pitch restoration so you
+#     keep manual control if you deliberately move.
+#
+# SCROLL WHEEL ZOOM:
+#     Mouse scroll up/down zooms in/out (arm length 2m–10m).
+#     Works in both standard and freelook modes.
+#     NOTE: scroll is an InputEventMouseButton, NOT InputEventMouseMotion.
+#     The scroll check must run BEFORE the "not MouseMotion → return" guard.
+#     If the guard ran first, scroll events would be silently dropped.
 #
 # MOVEMENT NOTE:
 #   Player3D.gd multiplies input by the player body's transform.basis so
@@ -79,11 +87,19 @@ var _pitch: float = 0.0
 
 var _yaw_offset: float = 0.0
 # Horizontal arm offset from the player body in radians.
-# Standard mode: stays near 0 (camera centered behind Roland).
+# Standard mode: always 0 (camera centered behind Roland).
 # Freelook mode: drifts freely as the mouse moves.
 
 var _freelook: bool = false
 # True while the freelook_camera action (F2) is held.
+
+var _recentering: bool = false
+# True while the camera is lerping back to its pre-freelook position after
+# F2 is released. Any mouse movement during re-centering cancels pitch
+# restoration and lets the player take manual control immediately.
+
+var _pitch_before_freelook: float = 0.0
+# Pitch value saved when F2 is first pressed. Restored on F2 release.
 
 var _in_dialogue: bool = false
 var _lock_on_target: Node3D
@@ -110,12 +126,14 @@ func _input(event: InputEvent) -> void:
 	# want to respond to mouse motion during gameplay.
 	if _in_dialogue:
 		return
-	if not (event is InputEventMouseMotion):
-		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
 
-	# Scroll wheel zoom — works in both standard and freelook modes.
+	# --- Scroll wheel zoom ---
+	# IMPORTANT: this check must come BEFORE the "not MouseMotion → return"
+	# guard below. InputEventMouseButton (scroll) is a separate class from
+	# InputEventMouseMotion. If the guard ran first, scroll would never reach
+	# this block and zoom would silently do nothing.
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed:
@@ -127,7 +145,16 @@ func _input(event: InputEvent) -> void:
 				arm_length = clamp(arm_length + zoom_speed, zoom_min, zoom_max)
 				spring_length = arm_length
 				get_viewport().set_input_as_handled()
+		return  # Don't fall through to mouse motion handling.
+
+	# --- Mouse motion ---
+	if not (event is InputEventMouseMotion):
 		return
+
+	# Any deliberate mouse move cancels pitch re-centering so the player
+	# immediately takes control. Yaw re-centering is unaffected — it always
+	# returns to 0 in standard mode regardless.
+	_recentering = false
 
 	var motion := event as InputEventMouseMotion
 
@@ -148,14 +175,34 @@ func _process(delta: float) -> void:
 	var was_freelook := _freelook
 	_freelook = Input.is_action_pressed("freelook_camera")
 
+	if not was_freelook and _freelook:
+		# Entering freelook: save current pitch so we can restore it on exit.
+		_pitch_before_freelook = _pitch
+		_recentering = false
+
 	if was_freelook and not _freelook:
-		# F2 just released — glide the arm offset back to center.
-		_yaw_offset = lerp_angle(_yaw_offset, 0.0, 10.0 * delta)
-		if abs(_yaw_offset) < 0.001:
+		# Exiting freelook: start smooth re-centering of yaw and pitch.
+		_recentering = true
+
+	# --- Yaw re-centering (always runs when not in freelook) ---
+	# _yaw_offset must be 0 in standard mode. This lerp is persistent — it
+	# runs every frame until the offset is gone, not just for one frame.
+	if not _freelook:
+		if abs(_yaw_offset) > 0.001:
+			_yaw_offset = lerp_angle(_yaw_offset, 0.0, 10.0 * delta)
+		else:
 			_yaw_offset = 0.0
 
+	# --- Pitch re-centering (cancelled by mouse movement — see _input) ---
+	if _recentering:
+		_pitch = lerp(_pitch, _pitch_before_freelook, 10.0 * delta)
+		if abs(_pitch - _pitch_before_freelook) < 0.001:
+			_pitch = _pitch_before_freelook
+			_recentering = false
+
 	# --- Arrow key fallback rotation ---
-	if not _in_dialogue and _lock_on_target == null:
+	# Disabled during re-centering to avoid fighting the lerp.
+	if not _in_dialogue and _lock_on_target == null and not _recentering:
 		if Input.is_action_pressed("camera_left"):
 			if _freelook:
 				_yaw_offset += deg_to_rad(key_rotation_speed) * delta

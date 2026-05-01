@@ -20,24 +20,26 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Plugins. Required for Milestone 5-3D (terrain generation).
   Reference: `design/3D_VOXEL_MIGRATION.md`, `design/ART_PIPELINE.md`
 
-- [ ] **Configure the full Input Map per `design/INPUT_AND_CONTROLS.md`**
-  Project Settings → Input Map → add each action below. Full table in the design doc.
-  **KB+M defaults (confirmed):**
-  - `interact` — E
-  - `sprint` — Left Shift
-  - `attack` — Left Mouse Button (tap = light, hold ≥0.20s = power)
-  - `block` — Right Mouse Button (hold = block, tap = parry)
-  - `dodge` — Space
-  - `lock_on` — Middle Mouse Button (or Tab)
-  - `quick_slot_next` — E (context: only fires when no interactable in range; use F during dev until context logic is in place)
-  - `quick_slot_prev` — Q
-  - `camera_left` — Left Arrow / `camera_right` — Right Arrow (keyboard fallback; mouse motion handles rotation in CameraRig.gd)
-  - `camera_up` — Up Arrow / `camera_down` — Down Arrow (keyboard fallback)
-  - `open_journal` — J
-  - `open_inventory` — I
-  - `pause` — Escape
-  - `debug_overlay` — F1
-  **No conflict:** Q = `quick_slot_prev`, E = `interact`, mouse drag = camera rotation.
+- [x] **Configure the core Input Map per `design/INPUT_AND_CONTROLS.md`** (mostly done — see below)
+  All core actions are now in `project.godot`. Remaining items marked [ ] below.
+  **KB+M defaults (confirmed and live):**
+  - [x] `interact` — E
+  - [x] `sprint` — Left Shift
+  - [x] `attack` — Left Mouse Button (tap = light, hold ≥0.20s = power)
+  - [x] `block` — Right Mouse Button (hold = block, tap = parry)
+  - [x] `dodge` — Space
+  - [x] `lock_on` — Middle Mouse Button
+  - [x] `quick_slot_prev` — Q
+  - [x] `camera_left` — Left Arrow / `camera_right` — Right Arrow (keyboard fallback)
+  - [x] `camera_up` — Up Arrow / `camera_down` — Down Arrow (keyboard fallback)
+  - [x] `freelook_camera` — F2 (hold to orbit camera without rotating Roland; release re-centers)
+  - [x] `open_journal` — J
+  - [x] `open_inventory` — I
+  - [x] `pause` — Escape
+  - [x] `debug_overlay` — F1
+  - [ ] `quick_slot_next` — E (context-sensitive; use F as dev placeholder until context logic is in place)
+  - [ ] `next_target` / `prev_target` — optional; scroll wheel zoom takes priority
+  **Movement is WASD-only. Arrow keys = camera rotation only. Mouse drag = camera in standard mode; F2 hold = freelook.**
 
 - [ ] **Register `BarkManager` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
@@ -47,12 +49,10 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
   Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
 
-- [ ] **Configure lock-on input action** (required for third-person camera)
-  Project Settings → Input Map → Add:
-  - `lock_on` — Middle Mouse Button (or Tab)
+- [x] **Configure lock-on input action** (done — `lock_on` = Middle Mouse Button in project.godot)
   Camera rotation does NOT need Input Map actions for KB+M — `CameraRig.gd` reads
   `InputEventMouseMotion` directly. Arrow key fallbacks (`camera_left/right/up/down`)
-  are covered by the Input Map task above. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
+  are live. Freelook (`freelook_camera` = F2) is also live. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
 
 - [ ] **Register `EntityRegistry` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/EntityRegistry.gd` → node name: `EntityRegistry`.
@@ -92,10 +92,17 @@ Scene building and node configuration that has to be done in the editor.
 
 - [ ] **Verify Milestone 4-3D in Godot**
   Open `scenes/World3D.tscn` and run it. Confirm:
-  - WASD / arrow keys move the placeholder character on the flat floor
-  - Camera follows in third-person over-shoulder; right stick / Q/E rotates it
+  - WASD moves the placeholder character on the flat floor (camera-relative: W = toward Roland's facing)
+  - Arrow keys rotate the camera only — they do NOT move the character
+  - Mouse drag rotates camera left/right (and rotates Roland's body in standard mode) and tilts up/down
+  - F2 hold enters freelook: mouse orbits camera without turning Roland; release re-centers
+  - Mouse scroll wheel zooms in/out (arm length 2m–10m)
+  - Camera follows in third-person over-shoulder at ~15° elevation
+  - Press Escape → pause menu appears, cursor becomes visible; Resume → cursor hides again
+  - Press J → journal opens; Press I → inventory opens
   - Campfire glows orange and flickers
   - No clipping through the floor
+  - F1 → debug overlay toggles
   This is the baseline 3D scene test. Nothing built on top of it is trustworthy
   until this passes.
 
@@ -267,12 +274,14 @@ Organized by development phase. Build within each phase in the order listed.
 
 ---
 
-### Phase 4-3D — Camera (do this in the next Godot session)
+### Phase 4-3D — Camera (complete)
 
-- [ ] **Update `CameraRig.gd`** — Rewrite from fixed Hades 50° to third-person over-shoulder.
-  Exports: `arm_length` (5.0m default), `elevation_degrees` (15.0), `horizontal_sensitivity`,
-  `vertical_min/max_degrees`, `dialogue_arm_length` (3.5m). Player-rotatable via camera
-  input actions. SpringArm3D handles collision automatically.
+- [x] **Update `CameraRig.gd`** — Third-person over-shoulder camera, fully implemented.
+  Two modes: standard (mouse H rotates the CharacterBody3D so Roland faces the camera direction)
+  and freelook (F2 hold: mouse H orbits the camera arm without rotating Roland; release re-centers).
+  Scroll wheel zoom (2m–10m). Arrow key fallbacks. Dialogue mode (tween arm length to 3.5m).
+  Lock-on tracking API (`set_lock_on_target`). Mouse mode managed: CAPTURED during play,
+  VISIBLE when any menu opens.
   Reference: `design/CAMERA_AND_PERSPECTIVE.md`
 
 ---
@@ -502,8 +511,12 @@ Open questions that need an answer before their dependent systems can be built.
 Run these after any session where you change scenes or scripts:
 
 - [ ] World3D.tscn runs without errors in the Output panel
-- [ ] Player moves on the terrain, camera follows in third-person over-shoulder
-- [ ] Camera rotates with Q/E (or right stick) — does not lock to one angle
+- [ ] WASD moves Roland (camera-relative); arrow keys rotate camera only
+- [ ] Mouse drag: horizontal rotates Roland + camera; vertical tilts camera
+- [ ] F2 hold = freelook (camera orbits without rotating Roland); release re-centers
+- [ ] Scroll wheel zooms camera in/out (arm length 2m–10m)
+- [ ] Escape → pause menu (cursor visible); Resume → cursor hidden again
+- [ ] J opens journal; I opens inventory
 - [ ] Press E near a dialogue trigger → Dialogic opens
 - [ ] Campfire flickers (OmniLight3D energy varies)
 - [ ] No "Autoload not found" warnings (means a required autoload isn't registered)
