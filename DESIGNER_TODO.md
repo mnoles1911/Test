@@ -76,6 +76,15 @@ Scene building and node configuration that has to be done in the editor.
   with `tier = CONVERSATIONAL` and `dialogue_timeline = "act1_scene_sorting_room"`.
   Confirm: press E near Tomlin → sorting room Dialogic timeline opens.
 
+- [ ] **Add a campfire prop to `World3D.tscn` as a camp interact point**
+  Give it an `InteractArea (Area3D)`. Press E → opens the camp menu (Section 8).
+  The campfire is also the first cooking station. Reference: `design/REST_AND_CAMP.md`
+
+- [ ] **Add investigation point nodes to Act I scenes**
+  Once the Act I scenes are built, place `InvestigationPoint` nodes (Area3D) on
+  key objects: Henrietta's desk, the Archive door lock, the chapel altar, etc.
+  Minimum 6 ambient + 2 relevant per interior scene. Reference: `design/INVESTIGATION_SYSTEM.md`
+
 - [ ] **Add NPC nodes to the `scheduled_npcs` group** (for any NPC with a schedule)
   Select the NPC node in the scene → Node panel → Groups tab → add `scheduled_npcs`.
   WorldClock will call `update_schedule(hour)` on all group members each game hour.
@@ -160,6 +169,11 @@ Conversations and bark lines that still need to be written.
   Roland, Tomlin, and Calla have entries. Any new NPC given a voice profile in
   their `NPCData.tres` must have a matching entry in that file before TTS generation.
 
+- [ ] **Write Roland's voiced observation lines for Act I investigation points**
+  Every Type 1 and Type 2 investigation point needs a `roland_line` string and,
+  if voiced, a corresponding entry in the TTS script. Draft these alongside the
+  scene writing pass for Act I. Reference: `design/INVESTIGATION_SYSTEM.md`
+
 ---
 
 ## Section 6 — UI Nodes (To Be Built in Code + Editor)
@@ -181,7 +195,95 @@ These need both code and scene work. Listed here as designer-visible milestones.
 
 ---
 
-## Section 7 — Verification Checklist (after each Godot session)
+## Section 7 — Code to Build (Design-Specified Systems)
+
+Scripts and scenes that are now fully specified in design docs and ready to implement.
+Each item links to its spec. Build in dependency order.
+
+- [ ] **`RecipeData.gd` resource class**
+  Defines the data shape for a single crafting recipe (station type, ingredients,
+  output, required flags). Must exist before CraftingUI or ItemData population.
+  Reference: `design/CRAFTING.md` → GDScript Integration Notes
+
+- [ ] **`ItemData.gd` additions: smithing_tier, condition, weight, item_category**
+  Add these fields to the existing ItemData resource class.
+  Required before InventoryManager can track condition or weight correctly.
+  Reference: `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md` → GDScript Notes
+
+- [ ] **`GameState.gd` additions: skill XP tracking and perk points**
+  Add `SkillDomain` enum, per-domain XP counters, sub-skill counters, perk point
+  pools, and `has_perk()` / `spend_perk_point()` / `get_charisma()` methods.
+  Reference: `design/SKILLS_AND_PROGRESSION.md` → GDScript section
+
+- [ ] **`PlayerStats.gd` — wound HP tracking**
+  Separate "wound HP" from regular HP. Regular potions and bandages cannot restore
+  wound HP; only full rest and Boneknit Compound can. Required for rest mechanics.
+  Reference: `design/REST_AND_CAMP.md`
+
+- [ ] **`CampMenuUI.tscn` + `CampMenu.gd`**
+  Four-tab camp overlay (Rest / Craft / Companions / Gear). Opens on E-press at
+  a campfire. Calls `WorldClock.advance_hours()` on rest confirmation. Time
+  continues at 1/4 rate while menu is open.
+  Reference: `design/REST_AND_CAMP.md` → The Camp Menu
+
+- [ ] **`CraftingUI.gd` — station crafting interface**
+  Opens from camp menu Craft tab or from station InteractArea. Shows known recipes
+  filtered by station type. Intent choice (Quick / Care / Mastery). Calls quality
+  calculation and `GameState.unlock_recipe()` on first use.
+  Reference: `design/CRAFTING.md`
+
+- [ ] **`InvestigationPoint.gd` node script**
+  Area3D script: on E-press, delivers observation text overlay, sets journal flags,
+  checks deduction conditions, fires companion observation if applicable. Tracks
+  saturation count via GameState.
+  Reference: `design/INVESTIGATION_SYSTEM.md` → GDScript Implementation Notes
+
+- [ ] **`InvestigationUI.gd` — observation text overlay**
+  World-space (or screen-edge) text that fades in/out when Roland examines something.
+  Shows `roland_line`, brief "Noted" icon for Type 2 observations, companion
+  portrait flash for companion addenda.
+  Reference: `design/INVESTIGATION_SYSTEM.md` → The Examination Interface
+
+- [ ] **Skills tab in `JournalUI.gd`**
+  Add a sixth tab to the journal (or repurpose the existing structure). Per-domain
+  display: current tier, sub-skill tiers, earned perks, locked perk hints, perk
+  point spend button. No numbers — tier names only.
+  Reference: `design/SKILLS_AND_PROGRESSION.md` → Skill Screen Presentation
+
+- [ ] **Populate `ItemData` resource files from ITEM_LIBRARY.md**
+  Create `.tres` files in `assets/items/` for the 40 potions, 40 smithable items,
+  30 assembly items. Start with the Act I-relevant subset (Field Herb Tea, Bandage
+  Roll, Wanderer's Seal, Iron Shortsword, Studded Leather Jerkin, Pitch Bomb,
+  Smoke Grenade) before populating the full library.
+  Reference: `design/ITEM_LIBRARY.md`
+
+---
+
+## Section 8 — Design Decisions Still Needed
+
+Open questions that need an answer before their dependent systems can be built.
+
+- [ ] **Recipe placement map for Act I**
+  Decide exactly which recipes Roland can find/learn in Act I. The Archive
+  restricted section, Henrietta's quarters, and Old Mira the herbalist are the
+  primary sources. Map each learnable recipe to a specific in-world source before
+  building the Act I scenes. Reference: `design/CRAFTING.md` → Recipe Discovery
+
+- [ ] **Trainer NPC placement confirmation**
+  Ser Brenn (Solgrade), Fen the Duelist (Caer Brannoch), Old Mira (Aldenholt) —
+  confirm each has a scene location, an NPC data entry, and a quest or disposition
+  gate designed before Act II scene work begins.
+  Reference: `design/SKILLS_AND_PROGRESSION.md` → Trainer NPCs
+
+- [ ] **Camp upgrade delivery method for Acts I–II**
+  Decide: is the portable Alchemist's Still a purchasable item, a quest reward,
+  or found in the world? Same for the portable Assembly Table (currently "default
+  from Act I safe-house"). Lock this down before building the camp upgrade system.
+  Reference: `design/REST_AND_CAMP.md` → Camp Upgrades
+
+---
+
+## Section 9 — Verification Checklist (after each Godot session)
 
 Run these after any session where you change scenes or scripts:
 
