@@ -146,8 +146,14 @@ All world-building canon lives in /lore. Start at /lore/INDEX.md for a directory
 - lore/WORLD_GEOGRAPHY.md — terrain, scale, rivers, coastlines
 - lore/CITY_DESCRIPTIONS.md — physical descriptions of major settlements
 - lore/MAP_GENERATION_GUIDE.md — Tolkien-style map prompt and layout rules
-- lore/CHARACTERS_COMPANIONS.md, CHARACTERS_NPCS.md, BACKSTORY_*.md
-- lore/GAME1_PART1.md / GAME1_PART2.md — full Game One plot
+- lore/CHARACTERS_PROTAGONIST.md, CHARACTERS_COMPANIONS.md, CHARACTERS_NPCS.md, BACKSTORY_*.md
+- lore/GAME1_PART1.md / GAME1_PART2.md — full Game One plot (GAME2_* and GAME3_* files also present for trilogy planning)
+- lore/PEOPLES.md — races and cultures
+- lore/GUILDS_*.md — knight orders, shadow bands, trade and scholar guilds
+- lore/HISTORY_*.md — Eldermark and Shroud Sea deep history
+- lore/SIDE_QUESTS_GAME*.md — side quest rosters per game
+- lore/LEVEL_LAYOUTS_ACT*.md — room-by-room scene specs for each act (cross-ref design/MILESTONE_ROADMAP.md)
+- lore/locations/ — individual location files (25+ entries: cities, dungeons, regions)
 - lore/REFERENCE.md — quick-reference tables
 
 Always check INDEX.md before adding new lore files to avoid duplication.
@@ -159,6 +165,8 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 - design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender, billboard sprites
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
+- design/COMBAT_DESIGN_3D.md — real-time 3D combat spec: click-duration power system, dodge, parry, lock-on
+- design/MILESTONE_ROADMAP.md — Act I scene breakdown and ordered deliverables for Phases 4+
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
@@ -174,6 +182,7 @@ Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot design docs merged. 
 - `scripts/CameraRig.gd` — SpringArm3D follow camera at 50° elevation
 - `scripts/CampfireFlicker3D.gd` — OmniLight3D flicker
 - `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — Vector3 / Area3D ports of the Zone framework
+- `scripts/DialogueTrigger3D.gd` — Area3D trigger zone; press E (interact action) to start a Dialogic timeline
 - `scenes/Player3D.tscn` — capsule + box mesh placeholder, with SpringArm3D camera rig
 - `scenes/World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
 
@@ -190,6 +199,7 @@ To verify Milestone 4-3D in Godot 4.3:
 
 Manual setup still required:
 - Install **Zylann's Voxel Tools** plugin from the Godot Asset Library (for Milestone 5-3D)
+- Add input action **`interact`** (bound to E key) in Project Settings → Input Map — required by `DialogueTrigger3D.gd`
 - Configure input actions `camera_left` / `camera_right` if `allow_horizontal_rotation` is enabled later
 
 ## Canonical naming (frequent contradictions)
@@ -210,7 +220,7 @@ IsometricRPGMono/ and title_screen.svg are leftovers from a prior MonoGame proto
 
 There is no CLI build, lint, or test command for this project. To verify changes work:
 1. Open the project in Godot 4.3
-2. Run the relevant scene (World.tscn for movement/lighting, Combat.tscn for combat)
+2. Run the relevant scene (World3D.tscn for 3D movement/lighting, Combat.tscn for legacy 2D combat)
 3. Check the Output panel for errors and print statements
 4. Test the specific feature manually
 
@@ -267,4 +277,24 @@ Use Polygon2D when a visual element should stay attached to a world position.
 **One-shot signal connection (e.g. dialogue end):**
 ```gdscript
 Dialogic.timeline_ended.connect(_on_dialogue_finished, CONNECT_ONE_SHOT)
+```
+
+**OmniLight3D property name differs from PointLight2D:**
+```gdscript
+omni_light.light_energy = value  # 3D — NOT .energy (that's the 2D PointLight2D property)
+```
+
+**Capsule CollisionShape3D must be offset upward by half its height:**
+```
+# A 1.7 m capsule's origin is its center. Set CollisionShape3D local Y = +0.85
+# so the bottom of the capsule sits on Y=0. Same offset for the visual mesh.
+# Without this, the character sinks into the floor by half its height.
+```
+
+**2D input mapped to 3D XZ movement:**
+```gdscript
+var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+var direction: Vector3 = Vector3(input_dir.x, 0.0, input_dir.y)
+# Never map input_dir.y → velocity.y — that launches the player into the air.
+# The ground plane is XZ; Y is always gravity only.
 ```
