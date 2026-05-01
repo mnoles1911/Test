@@ -224,7 +224,7 @@ Tracks in-game time and drives NPC daily schedules and time-of-day bark triggers
 
 | Property | Default | Meaning |
 |---|---|---|
-| `real_seconds_per_game_hour` | 120.0 | 2 real minutes = 1 game hour → full day in 48 real minutes |
+| `real_seconds_per_game_hour` | 240.0 | 4 real minutes = 1 game hour → full day in 96 real minutes |
 | `start_hour` | 8 | Hour the game starts at on a fresh save |
 | `start_minute` | 0 | Minute the game starts at on a fresh save |
 
