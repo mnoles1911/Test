@@ -37,79 +37,20 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 ## Folder structure
 - /scenes — all .tscn files
 - /scripts — all .gd files
-- /assets/voxel — MagicaVoxel exports (.glb): props, buildings, dungeon tiles, crown pieces
-- /assets/models — Blender character exports (.glb): Roland, NPCs, enemies
+- /addons/dialogic — Dialogic 2 plugin source (do not edit; manage via the Asset Library)
 - /assets/portraits — character portrait images for dialogue (256×320 px)
-- /assets/audio — music and sfx
-- /dialogue — all Dialogic timeline (.dtl) files; also `dialogue/CHARACTER_VOICES.md` (voice IDs + ElevenLabs config per character), `dialogue/PRONUNCIATION.md` (phonetic respellings for lore proper nouns — check before every TTS run), `dialogue/STYLE.md` (line writing rules, mood tags, length targets)
+- /assets/voxel, /assets/models, /assets/audio, /assets/npcs — referenced throughout the design docs but **not yet present on disk**; create as needed when content arrives
+- /dialogue — Dialogic timelines (.dtl) plus `CHARACTER_VOICES.md` (voice IDs + ElevenLabs config), `PRONUNCIATION.md` (phonetic respellings for lore proper nouns — check before every TTS run), `STYLE.md` (line writing rules, mood tags, length targets)
 - /lore — all narrative canon (start at lore/INDEX.md)
 - /design — game implementation reference (systems, art direction)
 - /tools — pipeline scripts run from the repo root (TTS rendering, draft stripping); see `tools/README.md`
 
 ## Milestone history
-
-MILESTONE 1: COMPLETE — First walkable scene with lighting
-- [x] Player moves in a cave-like environment (CharacterBody2D, 8-directional, move_and_slide)
-- [x] One campfire light source, warm orange glow (PointLight2D #E8873A, energy 1.3, flicker script)
-- [x] Camera follows player (Camera2D child of Player node)
-- [x] One area trigger that fires on press-E (Area2D + DialogueTrigger.gd)
-- [x] Placeholder shapes only (ColorRect for all visuals)
-- [x] GameState.gd autoload singleton stub
-- [x] Cave wall collision (4x StaticBody2D)
-
-MILESTONE 2: COMPLETE — First dialogue with Dialogic 2
-- [x] Dialogic 2 plugin installed and configured
-- [x] Henrietta opening scene (7-line dialogue at the Archive door)
-- [x] Press-E trigger wired to Dialogic.start()
-- [x] Portrait placeholder for Henrietta
-
-MILESTONE 3: COMPLETE — Combat prototype
-- [x] Separate combat scene (scenes/Combat.tscn)
-- [x] Red trigger zone in World.tscn — walk left into it to enter combat
-- [x] Player (Roland) and enemy (Ashfallen), each with HP displayed
-- [x] Action menu: ATTACK [SPACE] and ITEM (placeholder/locked)
-- [x] Attack timing bar: indicator sweeps left→right, Space in green zone = bonus damage
-- [x] Enemy telegraph + block timing: Space in window = reduced damage
-- [x] Win/lose conditions with message and auto-return to World.tscn
-
-MILESTONE 4: COMPLETE — Systems infrastructure (Phases 4–7) [merged via PR #42]
-- TransitionManager (fade-black/white/cut, scene history, go_back())
-- GameState expanded (multi-slot save, flag history, play time tracking)
-- Zone framework (Zone.gd, Room.gd, RoomTrigger.gd, SpawnPoint.gd)
-- SaveNotification autoload toast, PauseMenu (ESC), MainMenu, Settings screen
-- SaveSlotPicker (3 slots), DebugOverlay (F1), FlagScheduler (timed/deferred)
-- InventoryManager (items, equipment, crafting recipes)
-- JournalUI expanded (5-tab KCD2 style: Quests, Map, Items, Crafting, Codex)
-- EnemyData Resource class, Combat.gd updated with Analyze action
-
-3D PIVOT: design docs merged via PR #43
-- `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
-
-MILESTONE 4-3D: COMPLETE & VERIFIED IN GODOT (2026-05-01) — First 3D scene with follow camera, movement, HUD, overlays
-- [x] `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ-plane movement, sprint (Left Shift), crouch (C),
-  mass-based physics scaling, health + endurance with drain/regen, `status_text` property for HUD
-- [x] `scripts/CameraRig.gd` — SpringArm3D third-person over-shoulder; standard + freelook (F2) modes;
-  scroll wheel zoom 2m–10m; arrow key fallbacks; dialogue tween; lock-on API; both yaw + pitch re-center on F2 release
-- [x] `scripts/HUDOverlay.gd` — Layer-5 CanvasLayer autoload; HP + endurance bars bottom-center; CROUCHING / EXHAUSTED status label
-- [x] `scripts/JournalUI.gd` — Rewritten: 6-tab overlay (Quests/Map/Items/Crafting/Codex/Skills); Tab + click navigation; tree-paused while open; mouse VISIBLE while open
-- [x] `scripts/CampfireFlicker3D.gd` — OmniLight3D port of campfire flicker
-- [x] `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — 3D ports of Zone framework triggers
-- [x] `scenes/Player3D.tscn` — capsule + box mesh placeholder + SpringArm3D rig
-- [x] `scenes/World3D.tscn` — placeholder cave: floor, WorldEnvironment, DirectionalLight3D, campfire OmniLight3D
-- [x] `scenes/ui/Journal.tscn` — Stripped to bare CanvasLayer; all layout built programmatically in `JournalUI.gd`
-- [x] `scripts/PauseMenu.gd`, `DebugOverlay.gd`, `SaveNotification.gd` — resized and re-fonted for 1080p
-- [ ] Install Zylann's Voxel Tools plugin (manual step in Godot Asset Library)
-- [x] Verified in Godot 4.3 (2026-05-01): all 13 checklist items pass
-
-MILESTONE 5-3D: (not started) — VoxelLodTerrain + first Roland Blender model
-- VoxelLodTerrain node with WorldGenerator (VoxelGeneratorGraph — Gaea EXR heightmap + 3D cave noise)
-- First MagicaVoxel exports: campfire prop, cave wall tile
-- Roland low-poly Blender model: base mesh + rig + idle/walk/run animations (no billboard sprites)
-
-## Current milestone
-Milestones 1–4 complete (2D). 3D pivot confirmed. **Milestone 4-3D complete and verified in Godot (2026-05-01):** camera (standard + freelook), sprint/crouch, health/endurance, HUD overlay, 6-tab journal/inventory overlay, all UI resized for 1080p. All 13 in-Godot verification checks pass.
-The system design corpus is complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking — all authored in `/design`). Pipeline tooling has landed under `/tools`.
-Next: **Phase 5-3D** — `WorldGenerator.gd` (Zylann Voxel Tools install required first) + first Roland Blender model + register `BarkManager` and `WorldClock` autoloads. See `DESIGNER_TODO.md` Section 7.
+- **Milestones 1–3 (2D):** complete — walkable cave + lighting, Henrietta opening dialogue, combat prototype.
+- **Milestone 4 (2D, PR #42):** complete — TransitionManager, expanded GameState, Zone framework, MainMenu/Settings/SaveSlotPicker, DebugOverlay, FlagScheduler, InventoryManager, expanded JournalUI, EnemyData.
+- **3D pivot (PR #43):** complete — `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
+- **Milestone 4-3D (2026-05-01):** complete and verified in Godot — Player3D + CameraRig (standard + freelook), HUDOverlay, JournalUI 6-tab rewrite, CampfireFlicker3D, SpawnPoint3D / RoomTrigger3D / DialogueTrigger3D, Player3D.tscn / World3D.tscn placeholders, all UI resized to 1080p. Outstanding manual step: install Zylann's Voxel Tools plugin from the Asset Library.
+- **Milestone 5-3D (next):** VoxelLodTerrain + `WorldGenerator` (VoxelGeneratorGraph driven by a Gaea EXR heightmap + 3D cave noise) + first MagicaVoxel exports (campfire, cave wall) + first Roland low-poly Blender model with idle/walk/run animations. See `DESIGNER_TODO.md` Section 7.
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
@@ -230,71 +171,41 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
 ## Current project state
-Godot 4.3 project. Milestones 1–4 complete (2D). 3D pivot confirmed. Open world confirmed (VoxelLodTerrain streaming, static generated terrain, 12km × 10km playable Mira). Third-person over-shoulder camera confirmed. Low-poly Blender character models from Act I confirmed. Milestone 4-3D in progress (first 3D scripts + placeholder scene).
+Godot 4.3. 3D pivot complete. Open world plan confirmed: VoxelLodTerrain streaming, static generated terrain, 12km × 10km playable Mira, third-person over-shoulder camera, low-poly Blender character models from Act I.
 
-System design corpus is now complete: combat, enemy AI, companions, factions, quests, economy, save, death/respawn, weather, HUD, input, accessibility, audio, and world navigation all have authored design docs in `/design`. Implementation work for the autoloads and UI nodes those docs specify is tracked in `DESIGNER_TODO.md`.
+The system design corpus is complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking — all in `/design`). Pipeline tooling (`tools/strip_draft.py`, `tools/render_bulk.py`) is documented in `tools/README.md` and requires `ELEVENLABS_API_KEY`.
 
-Pipeline tooling has landed in `/tools`: `strip_draft.py` (prose-draft → TTS-script extractor) and `render_bulk.py` (ElevenLabs batch renderer). Both are documented in `tools/README.md` and require an `ELEVENLABS_API_KEY` env var.
+**2D legacy (still on disk, will be retired as 3D scenes replace them):**
+`scripts/Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`; `scenes/Player.tscn`, `World.tscn`, `Combat.tscn`.
 
-2D legacy (still present, will be retired as 3D scenes replace them):
-- `scripts/Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`
-- `scenes/Player.tscn`, `World.tscn`, `Combat.tscn`
+**3D core (in place):**
+- `Player3D.gd` / `Player3D.tscn` — CharacterBody3D, 8-directional XZ movement, sprint/crouch, health/endurance, mass-based physics scaling
+- `CameraRig.gd` — SpringArm3D over-shoulder; standard + freelook (F2); scroll zoom 2m–10m; lock-on API
+- `HUDOverlay.gd` — Layer-5 CanvasLayer; HP + endurance bars; CROUCHING / EXHAUSTED status label
+- `JournalUI.gd` + `scenes/ui/Journal.tscn` — 6-tab overlay (Quests/Map/Items/Crafting/Codex/Skills); all layout built programmatically
+- `CampfireFlicker3D.gd` — OmniLight3D flicker
+- `SpawnPoint3D.gd`, `RoomTrigger3D.gd`, `DialogueTrigger3D.gd` — Vector3 / Area3D ports of the Zone framework triggers
+- `World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
 
-3D Milestone 4-3D files (complete):
-- `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ movement, sprint/crouch, health/endurance, mass-based physics scaling
-- `scripts/CameraRig.gd` — SpringArm3D third-person over-shoulder; standard + freelook (F2) modes; scroll zoom; re-centering fixed
-- `scripts/HUDOverlay.gd` — Layer-5 CanvasLayer autoload; HP + endurance bars; status label; registered in `project.godot`
-- `scripts/JournalUI.gd` — 6-tab overlay (Quests/Map/Items/Crafting/Codex/Skills); programmatic build; tree-paused while open
-- `scripts/CampfireFlicker3D.gd` — OmniLight3D flicker
-- `scripts/SpawnPoint3D.gd`, `RoomTrigger3D.gd` — Vector3 / Area3D ports of the Zone framework
-- `scripts/DialogueTrigger3D.gd` — Area3D trigger zone; press E (interact action) to start a Dialogic timeline
-- `scenes/Player3D.tscn` — capsule + box mesh placeholder, with SpringArm3D camera rig
-- `scenes/World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
-- `scenes/ui/Journal.tscn` — bare CanvasLayer; all layout built in `JournalUI.gd`
+**NPC system (in place):**
+- `NPC.gd` — CharacterBody3D base script for Tier 1–3 NPCs; bark firing, E-press dialogue, disposition, schedule dispatch
+- `NPCData.gd` — Resource: npc_id, Tier enum, disposition, bark_triggers, schedule entries (one .tres per character, expected in `/assets/npcs/` once that directory exists)
+- `NPCScheduleEntry.gd` — Resource: hour_start, hour_end, location_id, animation
 
-NPC system (implemented):
-- `scripts/NPC.gd` — CharacterBody3D base script for all Tier 1–3 NPCs; bark firing, E-press dialogue, disposition, schedule dispatch
-- `scripts/NPCData.gd` — Resource class: npc_id, Tier enum, disposition, bark_triggers, schedule entries; one .tres per character in `/assets/npcs/`
-- `scripts/NPCScheduleEntry.gd` — Resource class: hour_start, hour_end, location_id, animation; used by NPCData.schedule array
-
-Logic autoloads (unchanged from 2D, all survive the 3D pivot):
-- `GameState.gd`, `TransitionManager.gd`, `SaveNotification.gd`, `PauseMenu.gd`, `DebugOverlay.gd`,
-  `FlagScheduler.gd`, `InventoryManager.gd`, `JournalUI.gd`, `Settings.gd`, `MainMenu.gd`, `EnemyData.gd`
-
-New autoloads added in Milestone 4-3D (registered in `project.godot`):
-- `HUDOverlay.gd` — HP + endurance bars, status label; layer 5; reads from player group each frame
-
-New autoloads (implemented — must still be registered in Project Settings → Autoload):
+**Implemented but not yet registered as autoloads** (must be added in Project Settings → Autoload before scripts that reference them can run):
 - `BarkManager.gd` — loads bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`; picks random non-repeating line; plays spatial audio from `assets/audio/barks/`; falls back to Output print if BarkOverlay UI is absent
 - `WorldClock.gd` — ticks in-game time (default 240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` and `advance_hours()` for debug/rest
 
-New autoloads specified in design docs (not yet implemented — build in dependency order):
-- `WorldGenerator.gd` — implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass); authored world geography sourced from a **Gaea-exported 32-bit EXR heightmap** + biome splatmap; 3D cave noise layer added in the graph for overhangs and cave systems; encodes Spine ridge, Greatwood, Aldwater valley, Ashfields, settlement flat zones; foundation of the open world. See `design/ART_PIPELINE.md` → Tool 2.
-- `EntityRegistry.gd` — spatial dictionary of every world entity (NPCs, props, triggers, enemies) keyed by chunk; stores lightweight `EntityRecord` data objects (type, world position, scene path, saved state); does not instantiate nodes itself
-- `EntityStreamer.gd` — node in `World3D.tscn`; each frame checks player position against `EntityRegistry`, instantiates nodes when in range, saves state and `queue_free()`s them when out of range
+**Specified in design docs but not yet implemented** (build in dependency order):
+- `WorldGenerator.gd` — implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass); authored geography from a Gaea-exported 32-bit EXR heightmap + biome splatmap; 3D cave noise layer for overhangs and caves; encodes Spine ridge, Greatwood, Aldwater valley, Ashfields, settlement flat zones. See `design/ART_PIPELINE.md` → Tool 2.
+- `EntityRegistry.gd` — spatial dictionary of every world entity keyed by chunk; lightweight `EntityRecord` data objects; does not instantiate nodes itself
+- `EntityStreamer.gd` — node in `World3D.tscn`; instantiates / saves / `queue_free()`s entities by player range
 - `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md)
-- `QuestManager.gd` — quest flag management: advance_quest(), complete_quest() (design/QUEST_SYSTEM.md)
+- `QuestManager.gd` — quest flag management (design/QUEST_SYSTEM.md)
 - `WeatherManager.gd` — weather state, WorldEnvironment tweening, weather overrides (design/WEATHER_AND_ENVIRONMENT.md)
-- `CompanionManager.gd` — companion active state, HP, serialize/deserialize for save (design/COMPANION_SYSTEM.md)
+- `CompanionManager.gd` — companion active state, HP, save serialization (design/COMPANION_SYSTEM.md)
 
-To verify Milestone 4-3D in Godot 4.3:
-1. Open the project, run `scenes/World3D.tscn`
-2. WASD moves the placeholder character; W always moves toward Roland's facing direction (camera-relative)
-3. Arrow keys rotate camera only — character does NOT move
-4. Mouse drag: horizontal rotates Roland + camera (standard mode); vertical tilts; F2 hold = freelook; release re-centers both axes
-5. Mouse scroll wheel zooms in/out (arm length 2m–10m)
-6. HP and endurance bars visible at bottom-center of screen
-7. Hold Left Shift → sprint, endurance drains; at 0 sprint locks + EXHAUSTED shows; recovers above 20
-8. Press C → crouch toggle; CROUCHING shows; speed drops; sprint blocked
-9. Press Escape → pause menu, cursor visible; Resume → cursor hidden again
-10. Press J → 6-tab journal overlay opens; Tab key cycles tabs; clicking tab headers works; I goes to Items tab
-11. Campfire glows orange and flickers
-12. No clipping through the floor or walls
-13. No errors in Output panel
-
-Manual setup still required: see `DESIGNER_TODO.md` → Section 1 for the full checklist
-(Zylann Voxel Tools install, audio bus layout per `design/AUDIO_DESIGN.md`, Autoload
-registration for `BarkManager` / `WorldClock` / `EntityRegistry`).
+Manual setup still required: see `DESIGNER_TODO.md` → Section 1 (Zylann Voxel Tools install, audio bus layout per `design/AUDIO_DESIGN.md`, Autoload registration for `BarkManager` / `WorldClock` / `EntityRegistry`).
 
 ## World coordinate reference (playable Mira, origin = NW corner)
 | Location | Game x | Game z |
@@ -356,29 +267,8 @@ if get_node_or_null("/root/Dialogic"):
 **Frame-rate-independent deceleration:**
 ```gdscript
 const DECEL: float = 400.0
-velocity = velocity.move_toward(Vector2.ZERO, DECEL * delta)
-# NOT: velocity.move_toward(Vector2.ZERO, SPEED) — that stops in one frame
-```
-
-**GradientTexture2D radial center (easy to get wrong):**
-```gdscript
-# fill_from defaults to (0,0) = top-left corner, NOT center
-# Always set explicitly for a centered circular glow:
-gradient_texture.fill_from = Vector2(0.5, 0.5)
-gradient_texture.fill_to = Vector2(1.0, 0.5)
-```
-
-**Light containment — CollisionShape2D does NOT block light:**
-```
-PointLight2D requires LightOccluder2D + OccluderPolygon2D on walls.
-CollisionShape2D only blocks physics, not 2D lighting.
-```
-
-**Control nodes vs Node2D for world-space objects:**
-```
-ColorRect / Label / Button = screen-space (UI layer, fixed to camera)
-Polygon2D / Sprite2D        = world-space (moves with the scene)
-Use Polygon2D when a visual element should stay attached to a world position.
+velocity = velocity.move_toward(Vector3.ZERO, DECEL * delta)
+# NOT: velocity.move_toward(Vector3.ZERO, SPEED) — that stops in one frame
 ```
 
 **One-shot signal connection (e.g. dialogue end):**
@@ -386,9 +276,9 @@ Use Polygon2D when a visual element should stay attached to a world position.
 Dialogic.timeline_ended.connect(_on_dialogue_finished, CONNECT_ONE_SHOT)
 ```
 
-**OmniLight3D property name differs from PointLight2D:**
+**OmniLight3D property name:**
 ```gdscript
-omni_light.light_energy = value  # 3D — NOT .energy (that's the 2D PointLight2D property)
+omni_light.light_energy = value  # NOT .energy (that's the 2D PointLight2D property)
 ```
 
 **Capsule CollisionShape3D must be offset upward by half its height:**
@@ -459,7 +349,9 @@ Tier 0 background NPCs do NOT use NPC.gd — plain Node3D only.
 
 Registered in `project.godot` (active now):
 `GameState`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
-`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `JournalUI`, `Dialogic`
+`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `JournalUI`, `HUDOverlay`, `Dialogic`
+
+Note: the `JournalUI` autoload entry points at the **scene** `res://scenes/ui/Journal.tscn`, not at `scripts/JournalUI.gd` directly — the script is attached to the scene's root node. Every other autoload above points at a `.gd` file.
 
 **NOT yet registered — must be added in Project Settings → Autoload:**
 - `scripts/BarkManager.gd` → node name `BarkManager`
