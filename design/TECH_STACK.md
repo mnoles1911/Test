@@ -22,7 +22,7 @@ This means:
 **What the developer does in Godot directly:**
 - Scene assembly — placing nodes, setting up hierarchies in the editor
 - Inspector configuration — assigning exported variables, connecting signals in the UI
-- Plugin installation — Zylann Voxel Tools, Dialogic 2 via Asset Library
+- Plugin installation — Zylann Voxel Tools (GDExtension edition; from GitHub Releases — see Voxel Terrain section below) and Dialogic 2 (Godot Asset Library)
 - VoxelGeneratorGraph wiring — connecting nodes in the visual graph editor
 - Verification — running scenes, checking the Output panel, confirming behavior matches spec
 - Art import — dragging `.glb` and `.png` files into the project
@@ -40,7 +40,7 @@ This means:
 
 | | |
 |---|---|
-| **Engine** | Godot 4.3 |
+| **Engine** | Godot 4.6.2 |
 | **Language** | GDScript only — no C#, no C++ GDExtension |
 | **Target platforms** | Windows, macOS, Linux (Steam) |
 | **Render** | Forward+ (required for SDFGI, SSAO, volumetric fog) |
@@ -55,7 +55,7 @@ The developer works in the Godot editor for everything visual and structural. Cl
 **In the Godot editor (developer):**
 - **Scene tree** — build node hierarchies for scenes (`World3D.tscn`, `Player3D.tscn`, interiors)
 - **Inspector** — set exported variables on scripts (arm length, walk speed, NPC data resource)
-- **Asset Library** — install plugins (Zylann Voxel Tools, Dialogic 2)
+- **Plugin installation** — Dialogic 2 from the Godot Asset Library; Zylann Voxel Tools (GDExtension) from GitHub Releases (extracted to `addons/zylann.voxel/`)
 - **VoxelGeneratorGraph editor** — wire the terrain generator node graph visually
 - **AnimationTree editor** — connect BlendSpace nodes for character movement blending
 - **Input Map** (Project Settings) — register all input actions (WASD, interact, lock_on, etc.)
@@ -91,7 +91,7 @@ The developer works in the Godot editor for everything visual and structural. Cl
 | | |
 |---|---|
 | **Plugin** | `godot_voxel` by Zylann |
-| **Source** | https://github.com/Voxel-And-Module-Tools/godot_voxel |
+| **Source** | https://github.com/Zylann/godot_voxel |
 | **Godot 4 compatible** | Yes |
 | **Cost** | Free, open source (MIT) |
 

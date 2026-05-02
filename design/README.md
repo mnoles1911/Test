@@ -2,7 +2,7 @@
 
 ## What this directory is
 
-Game implementation reference. How the world's lore translates into Godot 4.3
+Game implementation reference. How the world's lore translates into Godot 4.6.2
 systems, mechanics, and visual production.
 
 **This is not where the world lives.** The world lives in `/lore`.
