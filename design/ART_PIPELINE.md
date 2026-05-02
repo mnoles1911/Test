@@ -9,7 +9,7 @@
 
 **3D voxel open world in Godot 4.3.**
 
-- **Terrain**: Zylann's Voxel Tools plugin (`godot_voxel`) — `VoxelLodTerrain` with `VoxelMesherTransvoxel` (smooth organic terrain, LOD streaming). Static, procedurally generated from `WorldGenerator.gd`. Not editable by player.
+- **Terrain**: Zylann's Voxel Tools plugin (`godot_voxel`) — `VoxelLodTerrain` with `VoxelMesherCubes` (blocky stepped terrain, LOD streaming). Generated from a 3D density field in `WorldGenerator.gd` — not a heightmap, so caves and overhangs work. Static, not editable by player.
 - **Buildings and structures**: `VoxelMesherCubes` mesher for constructed architecture; MagicaVoxel (free) → export `.glb` → Godot `MeshInstance3D` for props
 - **Characters**: Low-poly Blender models from Act I onward — `.glb` exports, 200–500 tris for named characters, rigged with `AnimationPlayer`. No billboard sprites for characters.
 - **Lighting**: real 3D — `OmniLight3D`, `DirectionalLight3D`, `WorldEnvironment` with SSAO and fog
@@ -82,46 +82,63 @@ World3D (Node3D)
 
 ### WorldGenerator.gd (starting shape):
 
+Uses a **3D density field** — not a heightmap. Every voxel gets a density value computed
+from its full (X, Y, Z) world position. Positive density = solid; negative = air.
+This is required to support overhangs, cave ceilings, and cliff lips.
+
 ```gdscript
 # WorldGenerator.gd — subclass of VoxelGeneratorScript
-# Encodes Mira's terrain: Spine mountains (east), Greatwood (north),
-# Aldwater valley (center-west), Ashfields (east face), flat settlement zones.
+# Encodes Mira's terrain as a 3D density field.
+# Base ground shape from 2D noise (fast); overhangs/caves from 3D noise layer on top.
 extends VoxelGeneratorScript
 
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
     var size: int = out_buffer.get_size_x()
     for z in range(size):
         for x in range(size):
-            var wx: float = origin_in_voxels.x + x
-            var wz: float = origin_in_voxels.z + z
-            var surface_y: int = _get_surface_height(wx, wz)
             for y in range(size):
-                var wy: int = origin_in_voxels.y + y
-                if wy < surface_y:
+                var wx: float = origin_in_voxels.x + x
+                var wy: float = origin_in_voxels.y + y
+                var wz: float = origin_in_voxels.z + z
+                var density: float = _get_density(wx, wy, wz)
+                if density > 0.0:
                     out_buffer.set_voxel(1, x, y, z, 0)  # solid
                 else:
                     out_buffer.set_voxel(0, x, y, z, 0)  # air
 
-func _get_surface_height(wx: float, wz: float) -> int:
-    # Layered noise + biome curves per design/3D_VOXEL_MIGRATION.md
-    # Spine ridge: high elevation zone at wx ~5000–7000
-    # Greatwood: slight depression + flat at wz ~0–2500
+func _get_density(wx: float, wy: float, wz: float) -> float:
+    # Base: 2D noise gives ground-level height — fast, drives the broad terrain shape
+    var surface_y: float = _get_surface_height(wx, wz)
+    # Primary density: positive below surface, negative above
+    var density: float = surface_y - wy
+    # Cave layer: 3D noise carves underground voids when noise is high AND we are
+    # well below the surface (prevents caves opening on the surface directly)
+    # Uncomment once base terrain is working:
+    # var cave: float = _cave_noise.get_noise_3d(wx * 0.05, wy * 0.05, wz * 0.05)
+    # if cave > 0.55 and wy < (surface_y - 8):
+    #     density -= 20.0
+    return density
+
+func _get_surface_height(wx: float, wz: float) -> float:
+    # Layered noise + biome curves:
+    # Spine ridge: high elevation at wx ~5000–7000
+    # Greatwood: gentle depression + flat at wz ~0–2500
     # Aldwater valley: carved channel running west
-    # Settlement zones: forced-flat areas at named location coordinates
-    return 0  # stub — implement with FastNoiseLite layers
+    # Settlement zones: forced-flat at named location world coordinates
+    return 0.0  # stub — implement with FastNoiseLite layers
 ```
 
 ### VoxelLodTerrain configuration:
 - Set `lod_count` to 6–8 levels for 12km world extent
 - Set LOD0 distance to ~60m (matches third-person camera view range)
-- Use `VoxelMesherTransvoxel` for the terrain node (smooth organic ground)
+- Use **`VoxelMesherCubes`** — produces blocky stepped terrain consistent with MagicaVoxel buildings
 - Use separate `MeshInstance3D` nodes (MagicaVoxel exports) for all buildings — do NOT carve buildings into the terrain
 
-### Mesher choice per context:
-- `VoxelMesherTransvoxel` — the terrain itself (hills, riverbanks, cliff edges, cave ceilings)
-- `VoxelMesherCubes` — if any structure is carved directly into terrain (rare; prefer MagicaVoxel .glb)
+### Mesher choice:
+- `VoxelMesherCubes` — all terrain (stepped, blocky faces; same visual language as MagicaVoxel props)
+- MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain for all buildings and props
 
-Use MagicaVoxel `.glb` exports on top of the terrain for all buildings. Reserve terrain voxels for ground shape only.
+Do not use `VoxelMesherTransvoxel` — it smooths geometry, which would eliminate the blocky aesthetic.
 
 ---
 
