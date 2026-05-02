@@ -312,20 +312,192 @@ Buildings are placed as `MeshInstance3D` nodes on the terrain surface — they a
 
 ---
 
-### Blender (Characters)
+## 3D Modeling, Rigging, and Animation
+
+The character pipeline has three stages: **mesh generation**, **rigging**, and **animation**. Each stage has a recommended default and paid alternatives with better quality or easier workflow. All tools in this section export `.glb` or `.fbx` — both import cleanly into Godot with `AnimationPlayer` auto-populating from embedded animation tracks.
+
+The developer does not write any of this pipeline code. Claude Code handles all Godot-side script integration. The developer's work here is in the external tools — generating meshes, running auto-riggers, recording motion — then importing the outputs into Godot.
+
+---
+
+### Stage 1 — Mesh Generation
+
+**Recommended (free): Meshy.ai / Tripo3D**
+
+| | |
+|---|---|
+| **Meshy.ai** | https://meshy.ai — free tier |
+| **Tripo3D** | https://tripo3d.ai — free tier |
+| **Input** | Text prompt or reference image |
+| **Output** | `.glb` mesh, moderate poly count |
+
+Fast AI mesh generation — a usable base mesh in minutes. Output is not game-ready at the low-poly target (200–500 tris) and always requires a Blender cleanup pass: retopologize, flatten shading, paint vertex colors. Good for props, background NPCs, and starting points for named characters.
+
+**Paid alternative: Kaedim (~$150–300/month)**
+
+| | |
+|---|---|
+| **Tool** | Kaedim (https://www.kaedim3d.com) |
+| **Cost** | ~$150–300/month subscription |
+| **Input** | 2D concept art or reference image |
+| **Output** | Retopologized, game-ready mesh — significantly less cleanup than Meshy/Tripo |
+
+Built specifically for game studios. Takes concept art and returns a retopologized mesh much closer to game-ready. The cleanup pass in Blender is reduced rather than eliminated. Worth a monthly subscription during a character build sprint — generate a batch of characters, then cancel. Not worth as an ongoing cost.
+
+**Paid alternative: CSM.ai (~$50–100/month)**
+
+Stronger than Meshy/Tripo for scan-quality reconstruction from image references. Good for objects and environment assets where photorealism is the starting point. Less suited to the stylized low-poly look than Kaedim.
+
+**Tradeoff summary:**
+
+| Tool | Cost | Cleanup required | Best for |
+|---|---|---|---|
+| Meshy.ai / Tripo3D | Free | Significant Blender retopo pass | Props, background NPCs, quick starting points |
+| Kaedim | $150–300/mo | Reduced — topology is mostly right | Named characters from concept art |
+| CSM.ai | $50–100/mo | Moderate | Realistic objects, environment assets |
+
+No AI tool currently delivers game-ready low-poly output without some Blender work. Kaedim reduces that work the most.
+
+---
+
+### Stage 2 — Rigging
+
+**Recommended (free): Mixamo**
+
+| | |
+|---|---|
+| **Tool** | Mixamo (https://www.mixamo.com) — Adobe, free |
+| **Input** | T-pose mesh (`.fbx` or `.obj`) |
+| **Output** | Rigged humanoid character + animation library access |
+| **Godot integration** | Export as `.fbx` or `.glb`; AnimationPlayer auto-populates |
+
+Upload a T-pose mesh, Mixamo auto-rigs it with a standard humanoid skeleton in ~30 seconds. Reliable for bipedal humanoid characters. The rig uses Mixamo's bone naming convention — Godot's Skeleton Retargeting system handles this without issues as long as all characters use Mixamo rigs consistently.
+
+**Paid alternative: Auto-Rig Pro (~$40 one-time, Blender addon)**
+
+| | |
+|---|---|
+| **Tool** | Auto-Rig Pro (Blender Market, ~$40 one-time) |
+| **Cost** | $40 one-time |
+| **Where** | Runs inside Blender — same session as the retopo cleanup pass |
+
+Not AI, but the best auto-rigger inside Blender. More control than Mixamo — you place rig markers, it builds a clean skeleton to fit. Handles non-humanoid proportions and unusual body types better than Mixamo. Since you're already in Blender for the retopo pass, this adds rigging to the same session with no tool switching. Worth the $40.
+
+**Paid alternative: Character Creator 4 (Reallusion, ~$299 one-time)**
+
+| | |
+|---|---|
+| **Tool** | Character Creator 4 (https://www.reallusion.com/character-creator/) |
+| **Cost** | ~$299 one-time (frequently on sale) |
+| **Godot integration** | Godot export plugin maintained by Reallusion |
+
+A full character creation and rigging suite. Creates fully rigged base characters with facial blend shapes, morphs, and clothing simulation. The Godot export plugin handles skeleton remapping. The main reason to use this: **facial animation**. Mixamo rigs have no facial bones — CC4 rigs include full facial blend shapes, which unlocks expressive dialogue animations for Tier 2 and 3 NPC conversations. The characters skew realistic in proportion; adjusting them toward the low-poly style takes intentional work. Worth considering before Phase 8-3D when the NPC interior dialogue scenes are built.
+
+**Tradeoff summary:**
+
+| Tool | Cost | Control | Facial bones | Best for |
+|---|---|---|---|---|
+| Mixamo | Free | Low | No | Fast humanoid rigging, most characters |
+| Auto-Rig Pro | $40 one-time | High | No | Non-humanoid bodies; staying in Blender |
+| Character Creator 4 | $299 one-time | High | Yes | Characters needing facial animation in dialogue |
+
+---
+
+### Stage 3 — Animation
+
+**Recommended (free): Mixamo library + Cascadeur**
+
+The workflow uses two tools in combination: Mixamo for common motion-captured cycles, Cascadeur for custom game-specific animations.
+
+**Mixamo animation library (free)**
+Hundreds of pre-made mocap animations — idle, walk, run, combat stances, reactions — downloadable as `.glb` and applied directly to any Mixamo-rigged character. The quality varies and the library feels dated in places, but it covers the standard cycles needed to unblock scene testing.
+
+**Cascadeur (free indie tier → Pro ~$90/year)**
+
+| | |
+|---|---|
+| **Tool** | Cascadeur (https://cascadeur.com) |
+| **Free tier** | Available (watermarked export) |
+| **Pro tier** | ~$90/year (recommended) |
+| **Use for** | Custom action animations: attacks, dodge rolls, death, impact reactions |
+
+AI physics-based pose correction and secondary motion. Hits and landings feel physically correct without frame-by-frame hand-keying. The AI handles weight, follow-through, and secondary limb motion automatically. The paid tier removes the watermark and unlocks the full physics toolkit — worth paying for before the combat animation set is built.
+
+**Paid upgrade: ActorCore (Reallusion, ~$99/year or pay-per-clip)**
+
+| | |
+|---|---|
+| **Tool** | ActorCore (https://actorcore.reallusion.com) |
+| **Cost** | ~$99/year subscription or individual clip purchase |
+| **Use for** | High-quality mocap animation library — better than Mixamo's library |
+
+Professional motion-capture library with significantly better quality than Mixamo. Particularly strong for combat, personality-driven locomotion (Dagna's dwarven gait vs Orion's evasive movement), and environmental interactions. Pairs naturally with Character Creator 4 rigs. If you adopt the Reallusion ecosystem, ActorCore replaces the Mixamo library.
+
+**For custom clips — video mocap options:**
+
+These tools let you record yourself performing a motion and extract animation data from the video. No suit required.
+
+| Tool | Cost | Quality | Notes |
+|---|---|---|---|
+| **DeepMotion** | Free tier / ~$30/mo paid | Good | Single camera, browser-based; good for simple clips |
+| **Plask** | Free tier / paid | Moderate | Similar to DeepMotion; fast iteration for rough blocking |
+| **Move.ai** | ~$99/month | Very good | Multi-angle phone cameras; studio-quality markerless mocap; used by professional game studios |
+| **Rokoko Video** | Free tier / paid | Good | AI video mocap; pairs with Rokoko hardware suit if you want to upgrade later |
+
+**Recommended approach:** Use DeepMotion or Plask to record rough custom clips, refine in Cascadeur. For Roland's full combat animation set, a one-month Move.ai subscription during a focused recording sprint gives professional-quality results at low total cost — record everything you need, then cancel.
+
+**Hardware mocap (high end): Rokoko suit (~$600 + software)**
+A physical mocap suit — the highest quality option. Overkill for Act I. Worth considering for Act II and III when companions join and each needs a distinct movement identity. Rokoko also offers **Rokoko Video** (AI video mocap, free tier) as a no-hardware entry point.
+
+**Tradeoff summary:**
+
+| Tool | Cost | Quality | Best for |
+|---|---|---|---|
+| Mixamo library | Free | Moderate | Standard cycles to unblock testing |
+| Cascadeur (free) | Free | Good | Custom action animations |
+| Cascadeur Pro | $90/year | Good | Same, without watermark; full AI physics |
+| ActorCore | $99/year | High | Quality mocap library, especially with CC4 rigs |
+| DeepMotion / Plask | Free–$30/mo | Good | Quick custom clips from video |
+| Move.ai | $99/month | Very good | Professional custom mocap; do a sprint, then cancel |
+| Rokoko suit | $600+ hardware | Excellent | Long-term investment for full companion animation sets |
+
+---
+
+### The Reallusion Ecosystem (Integrated Option)
+
+**Character Creator 4 + iClone + AccuRIG + ActorCore** is a complete integrated pipeline popular with indie game studios: character creation → rigging → animation → export. One-time cost for CC4 + iClone is around $500–600 total; ActorCore is subscription. A direct Godot export plugin is actively maintained.
+
+**Reason to adopt:** You stay in one ecosystem from character creation through final animation. The Godot integration handles skeleton remapping. Facial animation is fully supported. ActorCore's motion library is significantly better than Mixamo's.
+
+**Reason to hold off:** The characters skew realistic; adapting them to the low-poly flat-shaded style requires intentional work. The investment makes more sense in Phase 8-3D (NPC dialogue scenes) when facial animation becomes relevant, rather than in Phase 5-3D when you just need Roland to walk and run.
+
+---
+
+### Recommended Purchase Priority
+
+| Priority | Tool | Cost | When to buy |
+|---|---|---|---|
+| **Buy now** | Auto-Rig Pro (Blender addon) | $40 one-time | Immediately — improves every character session |
+| **Buy before combat** | Cascadeur Pro | $90/year | Before Phase 7-3D combat animation set |
+| **Sprint purchase** | Move.ai | $99/month | One month during Roland + enemy animation recording |
+| **Before Phase 8-3D** | Character Creator 4 | $299 one-time | Before NPC dialogue scenes with facial animation |
+| **If adopting CC4** | ActorCore | $99/year | Pairs with CC4; replaces Mixamo library |
+| **Long term** | Rokoko suit | $600+ | Act II companion animation sets |
+
+---
+
+### Blender (Cleanup and Integration Hub)
 
 | | |
 |---|---|
 | **Tool** | Blender (https://www.blender.org/) |
 | **Cost** | Free |
 | **Export format** | `.glb` (GLTF Binary) with embedded animations |
-| **Use for** | All named characters and enemies (Roland, NPCs, Ashfallen, companions) |
+| **Role** | Retopology, vertex color painting, final export — the hub all other tools pass through |
 
-**Target spec:** 200–500 triangles, flat-shaded, vertex colors or single 64×64 palette texture, ~25-bone rig.
+Every mesh generated by AI tools passes through Blender before going to Godot. Blender is where retopology to the 200–500 tri target happens, flat shading is applied, vertex colors are painted, and (if using Auto-Rig Pro) rigging is finalized. It is not replaced by AI tools — it is the cleanup and handoff stage those tools feed into.
 
-**Workflow:** Model → Rig → Animate → Export `.glb` → Import to Godot → `AnimationPlayer` auto-populates → add `AnimationTree` + `BlendSpace1D` for movement blending.
-
-**Billboard sprites are not used for characters.** The third-person camera is too close for flat sprites to read correctly.
+**Workflow:** AI tool generates base mesh → import to Blender → retopologize → flat shade → vertex colors → rig (Mixamo upload or Auto-Rig Pro) → export `.glb` → Godot.
 
 ---
 
