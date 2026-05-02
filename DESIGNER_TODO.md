@@ -95,7 +95,7 @@ These are settings and installs that survive across all future work. Do them onc
 
 Scene building and node configuration that has to be done in the editor.
 
-- [ ] **Verify Milestone 4-3D in Godot**
+- [x] **Verify Milestone 4-3D in Godot** ✓ PASSED (2026-05-01) — all 13 checks confirmed in-engine.
   Open `scenes/World3D.tscn` and run it. Confirm:
   - WASD moves the placeholder character on the flat floor (camera-relative: W = toward Roland's facing)
   - Arrow keys rotate the camera only — they do NOT move the character

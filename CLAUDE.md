@@ -86,7 +86,7 @@ MILESTONE 4: COMPLETE — Systems infrastructure (Phases 4–7) [merged via PR #
 3D PIVOT: design docs merged via PR #43
 - `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
 
-MILESTONE 4-3D: CODE COMPLETE — First 3D scene with follow camera, movement, HUD, overlays
+MILESTONE 4-3D: COMPLETE & VERIFIED IN GODOT (2026-05-01) — First 3D scene with follow camera, movement, HUD, overlays
 - [x] `scripts/Player3D.gd` — CharacterBody3D, 8-directional XZ-plane movement, sprint (Left Shift), crouch (C),
   mass-based physics scaling, health + endurance with drain/regen, `status_text` property for HUD
 - [x] `scripts/CameraRig.gd` — SpringArm3D third-person over-shoulder; standard + freelook (F2) modes;
@@ -100,7 +100,7 @@ MILESTONE 4-3D: CODE COMPLETE — First 3D scene with follow camera, movement, H
 - [x] `scenes/ui/Journal.tscn` — Stripped to bare CanvasLayer; all layout built programmatically in `JournalUI.gd`
 - [x] `scripts/PauseMenu.gd`, `DebugOverlay.gd`, `SaveNotification.gd` — resized and re-fonted for 1080p
 - [ ] Install Zylann's Voxel Tools plugin (manual step in Godot Asset Library)
-- [ ] Verify in Godot 4.3: full verification checklist in `DESIGNER_TODO.md` Section 2
+- [x] Verified in Godot 4.3 (2026-05-01): all 13 checklist items pass
 
 MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
 - VoxelTerrain node with cave generator script
@@ -108,9 +108,9 @@ MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
 - First billboard sprite: Roland walk cycle (Aseprite → Sprite3D)
 
 ## Current milestone
-Milestones 1–4 complete (2D). 3D pivot confirmed. **Milestone 4-3D code is complete** (2026-05-01): camera (standard + freelook), sprint/crouch, health/endurance, HUD overlay, 6-tab journal/inventory overlay, all UI resized for 1080p. All scripts pushed. Pending one in-Godot verification pass (see `DESIGNER_TODO.md` Section 2).
+Milestones 1–4 complete (2D). 3D pivot confirmed. **Milestone 4-3D complete and verified in Godot (2026-05-01):** camera (standard + freelook), sprint/crouch, health/endurance, HUD overlay, 6-tab journal/inventory overlay, all UI resized for 1080p. All 13 in-Godot verification checks pass.
 The system design corpus is complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking — all authored in `/design`). Pipeline tooling has landed under `/tools`.
-Next: open Godot, run `World3D.tscn`, verify the full Milestone 4-3D checklist (`DESIGNER_TODO.md` Section 2), install Zylann Voxel Tools, register `BarkManager` and `WorldClock` autoloads, then start Phase 5-3D — `WorldGenerator.gd` + first Roland Blender model — per `DESIGNER_TODO.md` Section 7.
+Next: **Phase 5-3D** — `WorldGenerator.gd` (Zylann Voxel Tools install required first) + first Roland Blender model + register `BarkManager` and `WorldClock` autoloads. See `DESIGNER_TODO.md` Section 7.
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.

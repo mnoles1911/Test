@@ -23,9 +23,9 @@ Everything before Phase 9-3D can proceed without it.
 
 ---
 
-## Phase 4-3D — Camera + Movement + HUD + UI ← SCRIPTS COMPLETE
+## Phase 4-3D — Camera + Movement + HUD + UI ← COMPLETE & VERIFIED
 
-**Status:** All scripts written and pushed. Pending one in-Godot verification pass.  
+**Status:** Complete and verified in Godot (2026-05-01). All 13 in-Godot checks pass.  
 **Goal:** Third-person camera, full movement (walk/sprint/crouch), health/endurance HUD,
 and tabbed journal/inventory overlay — all working together in `World3D.tscn`.
 Do not proceed to Phase 5-3D until the verification checklist in `DESIGNER_TODO.md` Section 2 passes.
