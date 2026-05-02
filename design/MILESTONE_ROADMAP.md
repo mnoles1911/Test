@@ -62,7 +62,7 @@ The two foundations everything else stands on: the world and the protagonist.
   world coordinates. This is the most important script in the project.
 
 - **`VoxelLodTerrain` in `World3D.tscn`** — Replace the flat floor placeholder.
-  6–8 LOD levels, LOD0 radius ~60m. Mesher: `VoxelMesherTransvoxel`.
+  6–8 LOD levels, LOD0 radius ~60m. Mesher: `VoxelMesherCubes` (blocky).
 
 - **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Prints chunk enter/exit to
   Output as player moves. No actual entity loading yet — just proves the architecture.

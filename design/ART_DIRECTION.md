@@ -396,7 +396,7 @@ OmniLight3D:                  # per warm source — campfire, torch, forge
 
 ### Voxel terrain lighting
 
-Voxel surfaces respond to 3D lighting naturally — no normal maps required on voxel terrain because each voxel face is a real 3D surface. The Transvoxel mesher produces geometry that catches directional and point light correctly.
+Voxel surfaces respond to 3D lighting naturally — no normal maps required on voxel terrain because each voxel face is a real 3D surface. `VoxelMesherCubes` produces hard-edged cubic faces that catch directional and point light with strong, readable shadows — the step faces on a cliff or hillside read clearly as depth.
 
 Normal maps ARE still valuable for:
 - Character models (Roland's armor, cloth textures)

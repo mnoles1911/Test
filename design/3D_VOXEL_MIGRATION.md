@@ -17,9 +17,9 @@ The aesthetic goal: a world that feels ancient and handcrafted — stone cities 
 - **The Skyrim reference** — scale, atmosphere, dramatic landscape lighting. The "Skyrim feel" is about how the world communicates weight and age, not camera perspective.
 
 **What makes voxel work at this scale:**
-- Blocks are **8–16 units** per voxel, not 1-meter Minecraft cubes
-- Terrain uses **smooth voxel meshing** (Transvoxel algorithm) — no visible cube edges on rolling hills
-- Buildings are **hand-assembled voxel structures** — cubes are visible and intentional, like stonework
+- Blocks are **8 voxels per meter** — each cube is 12.5 cm, noticeably blocky but far finer than Minecraft's 1m cubes
+- Terrain uses **blocky voxel meshing** (`VoxelMesherCubes`) — visible cube faces on terrain steps, consistent with MagicaVoxel building style
+- Buildings are **hand-assembled voxel structures** — cubes are visible and intentional, like stonework. Terrain and buildings share the same block language.
 - Characters are **low-poly 3D models** (Blender → GLTF) or **billboard sprites** (Sprite3D facing camera)
 - Lighting is **real 3D** — DirectionalLight3D for sun/moon, PointLight3D for torches and fires, SDFGI for global illumination
 
@@ -80,14 +80,14 @@ All the **game logic** autoloads work without modification. They are data and UI
 
 This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent projects and supports:
 - `VoxelTerrain` — infinite streaming terrain with LOD
-- `VoxelMesherTransvoxel` — smooth voxel meshing (no visible cube edges on terrain)
+- `VoxelMesherCubes` — smooth voxel meshing (no visible cube edges on terrain)
 - `VoxelMesherCubes` — blocky Minecraft-style meshing (for buildings and structures)
 - `VoxelInstancer` — scatter props (trees, rocks) across terrain efficiently
 - Custom voxel generators via GDScript or C++
 
 **For this project:**
 - Node: `VoxelLodTerrain` (LOD streaming — required for 12km × 10km open world)
-- Terrain mesher: `VoxelMesherTransvoxel` (smooth hills, cliff edges, river banks)
+- Terrain mesher: `VoxelMesherCubes` (smooth hills, cliff edges, river banks)
 - Buildings: MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain. `VoxelMesherCubes` for any terrain-carved structures (rare).
 - Terrain is static (generated from `WorldGenerator.gd`, not editable by player)
 - Scope: full open world — 12km × 10km playable Mira, 125:1 linear compression

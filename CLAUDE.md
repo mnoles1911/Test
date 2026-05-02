@@ -108,8 +108,8 @@ Next: open Godot, install Zylann Voxel Tools, verify Player3D moves on World3D u
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
-- **Voxel scale**: 6–8 voxels per meter (confirmed from concept art validation — NOT Minecraft 1-meter cubes)
-- **Terrain**: `VoxelLodTerrain` with `VoxelMesherTransvoxel` (smooth organic terrain, LOD streaming) + `VoxelMesherCubes` (buildings). Static, procedurally generated — not editable by player.
+- **Voxel scale**: 8 voxels per meter (confirmed — each block is 12.5 cm, noticeably blocky but finer than Minecraft's 1m cubes)
+- **Terrain**: `VoxelLodTerrain` with `VoxelMesherCubes` (blocky stepped terrain, matches MagicaVoxel building style). Static, generated from a **3D density field** in `WorldGenerator.gd` — not a heightmap, so overhangs, caves, and cliff lips are supported. Not editable by player.
 - **World scale**: Playable Mira 12km × 10km, compression 125:1 linear (1 game meter ≈ 125 fictional meters). Playable Thal ~7km × 5.5km.
 - **Props/buildings**: MagicaVoxel → export .glb → Godot MeshInstance3D
 - **Characters**: Low-poly Blender models from Act I onward (.glb, 200–500 tris named characters, flat-shaded, rigged). No billboard sprites for characters. Portraits (256×320 px) unchanged for dialogue UI.
