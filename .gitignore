@@ -6,6 +6,21 @@ IsometricRPGMono/publish/
 # Godot 4 editor cache (regenerated on open; machine-specific)
 .godot/
 
+# Godot 4.4+ script UID sidecars (regenerated on open; commit noise for a
+# solo project — Godot recreates them on file rename if missing)
+*.uid
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+
+# Zylann's Voxel Tools plugin — ~100 MB of cross-platform native binaries.
+# Distributed via GitHub Releases, not the Godot Asset Library.
+# See DESIGNER_TODO.md Section 1 and design/ART_PIPELINE.md → "Tool 2:
+# Zylann's Voxel Tools" for the install steps. Each developer installs
+# locally; we do NOT commit this to keep the repo small.
+addons/zylann.voxel/
+
 # TTS audio output (rendered from scripts; manifests are kept)
 # Keeps audio/dialogue/**/manifest.json tracked, ignores binary audio.
 audio/dialogue/**/*.mp3
