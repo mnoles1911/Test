@@ -403,3 +403,87 @@ var direction: Vector3 = Vector3(input_dir.x, 0.0, input_dir.y)
 # Never map input_dir.y → velocity.y — that launches the player into the air.
 # The ground plane is XZ; Y is always gravity only.
 ```
+
+**Camera-relative movement (Player3D.gd uses this):**
+```gdscript
+var local_dir := Vector3(input_dir.x, 0.0, input_dir.y)
+var direction := (transform.basis * local_dir).normalized()
+# Multiplying by transform.basis rotates the input vector by the player body's
+# current facing. CameraRig rotates the player body to match camera yaw, so
+# W always moves toward where the camera is looking. Do NOT use a global
+# direction here — that breaks camera-relative movement.
+```
+
+---
+
+## Critical scene hierarchies
+
+These node structures are load-bearing. Scripts use hardcoded `$NodeName` references
+and will throw errors if the hierarchy differs.
+
+**Player3D / CameraRig:**
+```
+Player3D (CharacterBody3D + Player3D.gd)
+└── CameraTarget (Node3D)
+    └── SpringArm3D (+ CameraRig.gd)   ← arm_length, elevation_degrees set here
+        └── Camera3D
+```
+CameraRig walks up the tree with `get_parent().get_parent()` to get the
+CharacterBody3D. If you add a wrapper node between them, the camera breaks.
+
+**NPC (NPC.gd):**
+```
+NPCNode (CharacterBody3D + NPC.gd)
+├── MeshInstance3D
+├── CollisionShape3D
+├── BarkArea (Area3D)          ← must be named exactly "BarkArea"
+│   └── CollisionShape3D
+└── InteractArea (Area3D)      ← must be named exactly "InteractArea"
+    └── CollisionShape3D
+```
+Assign an `NPCData` resource (.tres file from `/assets/npcs/`) in the Inspector.
+Tier 0 background NPCs do NOT use NPC.gd — plain Node3D only.
+
+**Two camera modes in CameraRig:**
+- **Standard** (default): mouse horizontal rotates the Player3D body so Roland
+  faces the camera's forward. W always moves toward the camera.
+- **Freelook** (hold `freelook_camera` action, default F2): mouse orbits the
+  camera arm without rotating Roland. On release, arm re-centers behind Roland.
+  Used to look around without changing facing direction.
+
+---
+
+## Autoload registration status
+
+Registered in `project.godot` (active now):
+`GameState`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
+`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `JournalUI`, `Dialogic`
+
+**NOT yet registered — must be added in Project Settings → Autoload:**
+- `scripts/BarkManager.gd` → node name `BarkManager`
+- `scripts/WorldClock.gd` → node name `WorldClock`
+
+Scripts that reference these autoloads must guard with `get_node_or_null`
+until they are registered, or they will crash on startup.
+
+---
+
+## Pipeline tools (run from repo root)
+
+**strip_draft.py** — converts a human-readable dialogue draft to a clean TTS script:
+```bash
+python3 tools/strip_draft.py dialogue/drafts/act1_scene_sorting_room.md
+# writes → dialogue/scripts/act1_scene_sorting_room.txt
+```
+Extracts only spoken lines from the `## Script (Prose)` section. Deterministic —
+same draft always produces the same output. Does NOT invent performance tags.
+
+**render_bulk.py** — renders a TTS script to audio via ElevenLabs:
+```bash
+ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scene_sorting_room.txt
+# writes → assets/audio/dialogue/act1_scene_sorting_room/*.ogg
+# writes → assets/audio/dialogue/act1_scene_sorting_room/manifest.json
+```
+Idempotent — reruns skip lines whose text hash is unchanged. Shows cost estimate
+before any network call. Default hard cap: $5 per run (`--cost-cap` to change).
+Requires `dialogue/CHARACTER_VOICES.md` to have voice IDs for every character in the script.
