@@ -326,12 +326,17 @@ Organized by development phase. Build within each phase in the order listed.
 
 ### Phase 5-3D — Open World Foundation
 
-- [ ] **`WorldGenerator.gd`** ← foundation; everything stands on this
-  Extends `VoxelGeneratorScript`. Layered `FastNoiseLite` terrain. Must encode:
-  Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500), Aldwater valley channel,
-  Ashfields (low, flat east of Spine), forced-flat zones at all settlement coordinates
-  (see CLAUDE.md → World coordinate reference).
-  Reference: `design/ART_PIPELINE.md` → Tool 2, `design/3D_VOXEL_MIGRATION.md`
+- [ ] **`WorldGenerator` (VoxelGeneratorGraph)** ← foundation; everything stands on this
+  Implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass) assigned to `VoxelLodTerrain`.
+  **Pipeline:** Author terrain in **Gaea** → export 32-bit EXR heightmap + RGB biome splatmap →
+  import both as Image resources in Godot → wire into VoxelGeneratorGraph:
+  - Image node (heightmap EXR) + XZ scale → surface SDF
+  - 3D Noise nodes → cave/overhang SDF
+  - `SdfSmoothSubtract` → combined → `CHANNEL_SDF`
+  - Image node (biome splatmap) → `CHANNEL_INDICES`
+  Must encode: Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500), Aldwater valley,
+  Ashfields, forced-flat settlement zones (see CLAUDE.md → World coordinate reference).
+  Reference: `design/ART_PIPELINE.md` → Tool 2
 
 - [ ] **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Phase 5 version just prints
   chunk coordinates to Output as player moves. Full entity loading in Phase 6.

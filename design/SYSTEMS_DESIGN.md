@@ -15,19 +15,26 @@
 
 ---
 
-## Combat System — Active Turn-Based with Timing
+## Combat System — Real-Time Action (3D)
+
+> Full spec: `design/COMBAT_DESIGN_3D.md`. This section covers party roster and design intent only.
 
 ### Core Loop
 
-Turn-based at its core. Player selects actions from a menu. Actions have real-time timing windows that modify outcome.
+Real-time action combat in the open world scene — no separate combat scene. Roland attacks, dodges, blocks, and uses lock-on with direct button input. Enemy AI runs simultaneously (see `design/ENEMY_AI.md`). No menu selections during combat.
 
 ### Timing Mechanics
 
-**Attack timing.** A bar or arc sweeps across a target zone. Press at the right moment for bonus damage. Miss the window: normal damage. Hit the window: damage bonus + possible status effect.
+**Attack:** LMB tap = light attack; hold = power attack (charge bar fills to release point).  
+**Block/Parry:** RMB hold = block (reduces damage); RMB tap at correct moment = parry (stagger enemy).  
+**Dodge:** Space bar — directional roll away from attacks. Costs endurance.  
+**Lock-on:** Middle Mouse — snaps camera to nearest enemy in forward arc; cycles with arrow keys.
 
-**Block timing.** Enemy telegraphs before attacking. Press block in the window to reduce damage significantly. Miss: take full damage. Perfect block (tight window): reflect small damage or stagger enemy.
+Full timing windows, parry flash cues, and accessibility options (lenient timing): `design/ACCESSIBILITY_AND_SETTINGS.md`.
 
-**Charge/hold.** Some abilities require holding through a fill bar. Release at full charge for maximum power. Used primarily by Corvus's environmental magic in Game Two — sustained effort with a visible cost meter.
+### Charge/hold
+
+Power attacks require holding LMB through a charge bar. Used for breaking block stances. Also used by Corvus's environmental magic in Game Two — sustained effort with a visible cost meter.
 
 ### Game One Party Roster
 
@@ -133,6 +140,24 @@ The binding site (valley below Drûn-Khazad's western approach), the Brotherhood
 - **World triggers**: `Area3D` nodes that exist when their surrounding chunks are loaded — initiates dialogue, combat, or story beats. Must fire immediately on load if the player is already inside the trigger volume.
 - **Investigation points**: `InvestigationPoint` nodes (Area3D) placed at authored locations; Roland examines them on E-press
 
+### Water and Swimming
+
+Bodies of water (lakes, rivers, the Aldwater, coastal inlets near Caer Brannoch) are traversable.
+
+**Water bodies** have two layers:
+- Visual: `MeshInstance3D` with Boujie Water Shader (Asset Library #2070) — a LOD ring mesh, one draw call, supports ocean-scale visuals
+- Physics: `Area3D` with `CollisionShape3D` volume, tagged `water_volume`; Player3D detects entry/exit via body_entered/body_exited
+
+**Swimming state machine** (managed in `Player3D.gd`):
+- `WALKING` → `SWIMMING_SURFACE` on water entry above waist; `motion_mode` switches to `MOTION_MODE_FLOATING`; endurance no longer affected by sprinting
+- `SWIMMING_SURFACE` → `SWIMMING_SUBMERGED` on full submersion; muffled audio, underwater visual filter
+- `SWIMMING_SUBMERGED` → breath 30s timer counts down; at zero, drowning damage begins (HP per second); surfacing resets breath
+- `SWIMMING_SURFACE/SUBMERGED` → `WALKING` on floor contact (CharacterBody3D detects `is_on_floor()`)
+
+**River currents:** `Area3D` current volumes store a `current_direction: Vector3` and `current_strength: float`. Player3D adds `current_direction * current_strength * delta` to velocity each frame while inside. (Note: Godot 4.4 bug — `CharacterBody3D.get_gravity()` ignores Area3D gravity overrides; manual velocity addition is the correct implementation.)
+
+Full spec: `design/SWIMMING_AND_WATER.md`.
+
 ### No quest markers
 
 The player's primary navigation tool is Roland's journal and his conversations. NPCs will tell the player where to go if asked — but asking counts as a dialogue beat, and characters notice when Roland needs help finding something he should already know.
@@ -218,16 +243,3 @@ Per `/lore/SIDE_QUESTS_GAME1.md`, Game One has seven side quests. None are manda
 
 System requirement: side quest flags must persist across games via GameState.gd, and Game Two must be capable of querying Game One's flag set on import.
 
----
-
-## Implementation Priority for Milestone 1
-
-Per the project root CLAUDE.md, Milestone 1 is the first walkable scene with lighting. None of the systems above need to be built yet. Build in this order:
-
-1. Player movement (CharacterBody2D, 8-directional)
-2. Camera follow at 3/4 angle
-3. One zone scene with TileMap
-4. PointLight2D + CanvasModulate for atmosphere
-5. One Area2D trigger that prints "dialogue trigger fired" to console
-
-Build each step. Verify it works. Then add the next. Combat, faction tracking, dialogue branching, and save serialization all come later.

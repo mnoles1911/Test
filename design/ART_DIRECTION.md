@@ -82,7 +82,7 @@ Pale blue-white, #C8E0F0. Absorbs light and returns it slightly warmer. Its pres
 ## Resolution and Asset Scale
 
 - **Viewport resolution**: 1920×1080 native (no pixel resolution target — 3D renders at display resolution)
-- **Voxel block size**: 6–8 voxels per meter (NOT 1-meter Minecraft cubes — fine-grain detail that reads as stone texture, cobblestone, timber planks)
+- **Voxel block size**: 8 voxels per meter (NOT 1-meter Minecraft cubes — each block is 12.5 cm; noticeably blocky but fine enough to read as stone texture, cobblestone, timber planks)
 - **Character models — named characters**: 500–1500 triangles (low-to-mid poly Blender export). This is the look of Yaromir and the Lirien-Thal Aelorin in the concept art sheets — readable silhouette, no per-pixel texture detail, but enough geometry for armor shape and cloth drape.
 - **Character models — background NPCs**: voxel-block humanoids built in MagicaVoxel at 8×16 voxels tall. These are the crowd figures visible in the market and courtyard concept sheets. Fast to produce, visually consistent with the world.
 - **Portrait art (dialogue)**: 256×320 pixels — painted at this resolution for the 1080p viewport
@@ -290,7 +290,7 @@ Eastern Mira beyond the Spine. Grey dead ground, thin soil over ancient lava bed
 
 - **Atmosphere**: thin, muted, perpetually overcast. Roland grew up near here. The haze is normal to him.
 - **Tiles**: cracked grey ground, occasional basalt outcropping, sparse dead grass
-- **Lighting**: the binding site atmospheric shift — CanvasModulate warms slightly toward orange during the Crown assembly ritual sequence. Subtle. The world responding to something being made right.
+- **Lighting**: the binding site atmospheric shift — `WorldEnvironment` ambient tint and fog color shift slightly toward orange during the Crown assembly ritual sequence. Subtle. The world responding to something being made right.
 
 ### The Sorrowmarsh (referenced; possibly visited in side quests)
 Dead wetland. Site of the Second Age battle that broke Mordvar's first host. Nothing grows. Ghost-lights at night.

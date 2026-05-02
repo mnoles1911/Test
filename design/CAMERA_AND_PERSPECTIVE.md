@@ -32,30 +32,39 @@ Player3D (CharacterBody3D)
         └── Camera3D         ← at the end of the arm
 ```
 
-### CameraRig.gd key exports:
+### CameraRig.gd key exports (live implementation):
 
 ```gdscript
-@export var arm_length: float = 5.0
-# Standard third-person distance. SpringArm3D shortens this automatically
-# when walls or terrain block the camera — no manual per-room configuration needed.
-
+@export var arm_length: float = 5.0        # Default arm length; SpringArm3D shortens in tight spaces
+@export var zoom_min: float = 2.0          # Closest scroll-in (meters)
+@export var zoom_max: float = 10.0         # Furthest scroll-out (meters)
+@export var zoom_speed: float = 0.5        # Arm length change per scroll tick
 @export var elevation_degrees: float = 15.0
-# Degrees above horizontal. 10–20 for standard over-shoulder.
-# Player can tilt within vertical_min/max range below.
-
-@export var horizontal_sensitivity: float = 0.3
+@export var horizontal_sensitivity: float = 0.15
+@export var vertical_sensitivity: float = 0.10
 @export var vertical_min_degrees: float = -20.0
 @export var vertical_max_degrees: float = 45.0
-
-@export var dialogue_arm_length: float = 3.5
-# Arm length to tween to when Dialogic opens a Tier 2/3 conversation.
-# Pulls camera in and drifts slightly to profile framing.
+@export var key_rotation_speed: float = 90.0   # Degrees/s for arrow key rotation
+@export var dialogue_arm_length: float = 3.5   # Tweened to on Dialogic open
+@export var dialogue_tween_duration: float = 0.3
+@export var lock_on_lerp_speed: float = 5.0
+@export var lock_on_horizontal_offset: float = 0.3  # Radians left offset so target appears in right frame half
 ```
 
+**Two camera modes (both implemented in `CameraRig.gd`):**
+
+- **Standard** (default): mouse horizontal rotates the `Player3D` body — Roland faces and moves toward where the camera looks. `_yaw_offset` is always 0.
+- **Freelook** (hold F2): mouse orbits the camera arm around Roland without rotating the body. On F2 release, yaw lerps back to 0 and pitch restores to pre-freelook value. Any mouse movement during re-centering cancels pitch restoration immediately.
+
+**Scroll wheel zoom:** `InputEventMouseButton` scroll up/down adjusts `arm_length` within `zoom_min`/`zoom_max`. This check runs before the MouseMotion guard in `_input()` — if the guard ran first, scroll events would be silently dropped.
+
 ### Input map additions required:
-- `camera_left` / `camera_right` — Q/E or right stick horizontal
-- `camera_up` / `camera_down` — right stick vertical (gamepad) or mouse Y
-- `lock_on` — middle mouse button or right stick click
+- `camera_left` / `camera_right` — Left/Right Arrow (KB fallback) or right stick horizontal
+- `camera_up` / `camera_down` — Up/Down Arrow (KB fallback) or right stick vertical
+- `lock_on` — Middle Mouse Button or right stick click
+- `freelook_camera` — F2 (hold)
+
+**KB+M primary:** Camera rotation is driven by `InputEventMouseMotion` directly in `CameraRig.gd` — no Input Map action needed for mouse drag. Arrow keys are a keyboard fallback only.
 
 ---
 
