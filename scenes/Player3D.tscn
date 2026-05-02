@@ -44,10 +44,10 @@ surface_material_override/0 = SubResource("StandardMaterial3D_1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
 
 [node name="SpringArm3D" type="SpringArm3D" parent="CameraTarget"]
-spring_length = 12.0
+spring_length = 5.0
 script = ExtResource("2_rig")
-elevation_degrees = 50.0
-arm_length = 12.0
+elevation_degrees = 15.0
+arm_length = 5.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraTarget/SpringArm3D"]
 current = true

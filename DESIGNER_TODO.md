@@ -20,24 +20,31 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Plugins. Required for Milestone 5-3D (terrain generation).
   Reference: `design/3D_VOXEL_MIGRATION.md`, `design/ART_PIPELINE.md`
 
-- [ ] **Configure the full Input Map per `design/INPUT_AND_CONTROLS.md`**
-  Project Settings → Input Map → add each action below. Full table in the design doc.
-  **KB+M defaults (confirmed):**
-  - `interact` — E
-  - `sprint` — Left Shift
-  - `attack` — Left Mouse Button (tap = light, hold ≥0.20s = power)
-  - `block` — Right Mouse Button (hold = block, tap = parry)
-  - `dodge` — Space
-  - `lock_on` — Middle Mouse Button (or Tab)
-  - `quick_slot_next` — E (context: only fires when no interactable in range; use F during dev until context logic is in place)
-  - `quick_slot_prev` — Q
-  - `camera_left` — Left Arrow / `camera_right` — Right Arrow (keyboard fallback; mouse motion handles rotation in CameraRig.gd)
-  - `camera_up` — Up Arrow / `camera_down` — Down Arrow (keyboard fallback)
-  - `open_journal` — J
-  - `open_inventory` — I
-  - `pause` — Escape
-  - `debug_overlay` — F1
-  **No conflict:** Q = `quick_slot_prev`, E = `interact`, mouse drag = camera rotation.
+- [x] **Configure the core Input Map per `design/INPUT_AND_CONTROLS.md`** (mostly done — see below)
+  All core actions are now in `project.godot`. Remaining items marked [ ] below.
+  **KB+M defaults (confirmed and live):**
+  - [x] `interact` — E
+  - [x] `sprint` — Left Shift
+  - [x] `attack` — Left Mouse Button (tap = light, hold ≥0.20s = power)
+  - [x] `block` — Right Mouse Button (hold = block, tap = parry)
+  - [x] `dodge` — Space
+  - [x] `lock_on` — Middle Mouse Button
+  - [x] `quick_slot_prev` — Q
+  - [x] `camera_left` — Left Arrow / `camera_right` — Right Arrow (keyboard fallback)
+  - [x] `camera_up` — Up Arrow / `camera_down` — Down Arrow (keyboard fallback)
+  - [x] `freelook_camera` — F2 (hold to orbit camera without rotating Roland; release re-centers)
+  - [x] `open_journal` — J
+  - [x] `open_inventory` — I
+  - [x] `pause` — Escape
+  - [x] `debug_overlay` — F1
+  - [x] `crouch` — C (toggle press; blocks sprint while active)
+  - [ ] `quick_slot_next` — E (context-sensitive; use F as dev placeholder until context logic is in place)
+  - [ ] `next_target` / `prev_target` — optional; scroll wheel zoom takes priority
+  **Movement is WASD-only. Arrow keys = camera rotation only. Mouse drag = camera in standard mode; F2 hold = freelook.**
+
+- [x] **`HUDOverlay` registered as an Autoload** (done — in `project.godot`)
+  Layer 5 CanvasLayer. HP bar (red) and endurance bar (green) at bottom-center. Status label shows CROUCHING / EXHAUSTED.
+  Reads `health`, `max_health`, `endurance`, `max_endurance`, `status_text` from the player each frame via group lookup.
 
 - [ ] **Register `BarkManager` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
@@ -47,12 +54,10 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
   Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
 
-- [ ] **Configure lock-on input action** (required for third-person camera)
-  Project Settings → Input Map → Add:
-  - `lock_on` — Middle Mouse Button (or Tab)
+- [x] **Configure lock-on input action** (done — `lock_on` = Middle Mouse Button in project.godot)
   Camera rotation does NOT need Input Map actions for KB+M — `CameraRig.gd` reads
   `InputEventMouseMotion` directly. Arrow key fallbacks (`camera_left/right/up/down`)
-  are covered by the Input Map task above. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
+  are live. Freelook (`freelook_camera` = F2) is also live. Reference: `design/CAMERA_AND_PERSPECTIVE.md`
 
 - [ ] **Register `EntityRegistry` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/EntityRegistry.gd` → node name: `EntityRegistry`.
@@ -69,18 +74,45 @@ These are settings and installs that survive across all future work. Do them onc
   Required before any music or voiced dialogue work — `Settings.gd` volume sliders
   target the bus names exactly as written above.
 
+- [ ] **Clean up Godot editor cruft from version control**
+  After opening the project in Godot, `git status` shows ~25 untracked `scripts/*.gd.uid`
+  files plus modifications to `project.godot`, `scenes/Player3D.tscn`, `scenes/World.tscn`,
+  and `scenes/World3D.tscn`. Two separate things to handle:
+  - **`.uid` files** — Godot 4.4+ script UID cache. Decide: commit them (Godot's
+    recommendation, keeps script references stable across renames) or add `*.uid` to
+    `.gitignore` (treat as regenerable editor cache). For a solo project, ignoring is
+    simpler. If we ignore: `echo "*.uid" >> .gitignore` then `git rm --cached scripts/*.gd.uid`
+    if any are already tracked.
+  - **Modified `.tscn` and `project.godot`** — open each in Godot and check if the
+    diff reflects real authored changes (the 3D pivot work) or just noise from Godot
+    re-saving on open. If real, commit them on a focused branch. If noise, `git checkout`
+    to discard.
+  Do this before the next feature branch so the working tree is clean.
+
 ---
 
 ## Section 2 — Godot Editor: Scene Work
 
 Scene building and node configuration that has to be done in the editor.
 
-- [ ] **Verify Milestone 4-3D in Godot**
+- [x] **Verify Milestone 4-3D in Godot** ✓ PASSED (2026-05-01) — all 13 checks confirmed in-engine.
   Open `scenes/World3D.tscn` and run it. Confirm:
-  - WASD / arrow keys move the placeholder character on the flat floor
-  - Camera follows in third-person over-shoulder; right stick / Q/E rotates it
+  - WASD moves the placeholder character on the flat floor (camera-relative: W = toward Roland's facing)
+  - Arrow keys rotate the camera only — they do NOT move the character
+  - Mouse drag rotates camera left/right (and rotates Roland's body in standard mode) and tilts up/down
+  - F2 hold enters freelook: mouse orbits camera without turning Roland; release re-centers on both axes
+  - Mouse scroll wheel zooms in/out (arm length 2m–10m)
+  - Camera follows in third-person over-shoulder at ~15° elevation
+  - Hold Left Shift while moving → sprint; endurance bar drains. At 0, sprint locks until endurance > 20
+  - Press C → crouch toggle; speed drops; sprint blocked; status label shows CROUCHING
+  - HP and endurance bars visible bottom-center of screen; values update live
+  - Status label shows EXHAUSTED when sprint is locked
+  - Press Escape → pause menu appears, cursor becomes visible; Resume → cursor hides again
+  - Press J → journal opens with 6 tabs; Tab key cycles tabs; clicking tab headers works; I also opens (to Items tab)
+  - Press Escape or J or I while journal open → closes
   - Campfire glows orange and flickers
   - No clipping through the floor
+  - F1 → debug overlay toggles
   This is the baseline 3D scene test. Nothing built on top of it is trustworthy
   until this passes.
 
@@ -161,7 +193,7 @@ Assets that require external tools (MagicaVoxel, Aseprite, Blender, etc.)
 
 Voice generation tasks for the text-to-speech pipeline.
 
-- [ ] **Create local `.env` file with your ElevenLabs API key**
+- [x] **Create local `.env` file with your ElevenLabs API key**
   At the repo root, create a file named `.env` containing:
   ```
   ELEVENLABS_API_KEY=sk-your-key-here
@@ -252,13 +284,43 @@ Organized by development phase. Build within each phase in the order listed.
 
 ---
 
-### Phase 4-3D — Camera (do this in the next Godot session)
+### Phase 4-3D — Camera, Movement, Health/Endurance, HUD, UI (complete)
 
-- [ ] **Update `CameraRig.gd`** — Rewrite from fixed Hades 50° to third-person over-shoulder.
-  Exports: `arm_length` (5.0m default), `elevation_degrees` (15.0), `horizontal_sensitivity`,
-  `vertical_min/max_degrees`, `dialogue_arm_length` (3.5m). Player-rotatable via camera
-  input actions. SpringArm3D handles collision automatically.
+- [x] **Update `CameraRig.gd`** — Third-person over-shoulder camera, fully implemented.
+  Two modes: standard (mouse H rotates the CharacterBody3D so Roland faces the camera direction)
+  and freelook (F2 hold: mouse H orbits the camera arm without rotating Roland; release re-centers both axes).
+  Scroll wheel zoom (2m–10m). Arrow key fallbacks. Dialogue mode (tween arm length to 3.5m).
+  Lock-on tracking API (`set_lock_on_target`). Mouse mode managed: CAPTURED during play,
+  VISIBLE when any menu opens.
   Reference: `design/CAMERA_AND_PERSPECTIVE.md`
+
+- [x] **Rewrite `Player3D.gd`** — Sprint (Left Shift, drains endurance, locks on exhaustion until recovery),
+  crouch (C toggle, blocks sprint, reduces speed to ~2 m/s), mass-based physics scaling
+  (all movement stats — walk speed, sprint speed, accel, decel — scale via fractional-exponent
+  ratio against `REF_MASS = 70 kg`). DECEL intentionally lower than ACCEL for natural momentum.
+  Health (100 HP) and endurance (100) with drain/regen rates. `status_text` computed property
+  returns "CROUCHING" / "EXHAUSTED" / "" for HUD display.
+
+- [x] **New `HUDOverlay.gd` autoload** — Layer 5 CanvasLayer. HP bar (red, 26px tall) and
+  endurance bar (green, 22px tall) in a 540×110px panel anchored bottom-center, 36px from bottom.
+  Status label above bars (orange). Finds player by "player" group with cached reference.
+  Hides itself cleanly when no player node exists. Registered in `project.godot`.
+
+- [x] **Rewrite `JournalUI.gd` + strip `Journal.tscn`** — Programmatic 6-tab overlay
+  (Quests, Map, Items, Crafting, Codex, Skills). Tab key cycles tabs; clicking tab headers
+  switches tabs. J opens to Quests, I opens to Items. Escape/J/I closes. Mouse becomes
+  visible when open; restores CAPTURED on close. Tree paused while open.
+
+- [x] **Fix `PauseMenu.gd` for 1080p** — Panel 440×400px, title 28px, buttons 22px/44px.
+  Resume button closes menu and resumes game. JournalUI coordination: PauseMenu checks
+  `JournalUI.is_overlay_visible()` before opening; JournalUI handles Escape before PauseMenu.
+
+- [x] **Fix `DebugOverlay.gd` for 1080p** — Tab label 18px, content 15px, scroll offset corrected.
+
+- [x] **Fix `SaveNotification.gd` for 1080p** — Toast label 20px, position updated.
+
+- [x] **Add `mass` export to `NPC.gd`** — Typical values: courier ~55 kg, villager ~72 kg,
+  armoured guard ~110 kg. Documented for use when NPC movement systems are built.
 
 ---
 
@@ -487,8 +549,16 @@ Open questions that need an answer before their dependent systems can be built.
 Run these after any session where you change scenes or scripts:
 
 - [ ] World3D.tscn runs without errors in the Output panel
-- [ ] Player moves on the terrain, camera follows in third-person over-shoulder
-- [ ] Camera rotates with Q/E (or right stick) — does not lock to one angle
+- [ ] WASD moves Roland (camera-relative); arrow keys rotate camera only
+- [ ] Mouse drag: horizontal rotates Roland + camera; vertical tilts camera
+- [ ] F2 hold = freelook (camera orbits without rotating Roland); release re-centers on both axes
+- [ ] Scroll wheel zooms camera in/out (arm length 2m–10m)
+- [ ] HP and endurance bars visible at bottom-center; values update live
+- [ ] Hold Left Shift → sprint; endurance drains; sprint locks at 0; EXHAUSTED shows; sprint re-enables after recovery
+- [ ] Press C → crouch toggle; speed drops; CROUCHING shows; sprint blocked while crouching
+- [ ] Escape → pause menu (cursor visible); Resume → cursor hidden again
+- [ ] J opens journal (6 tabs, Quests first); I opens inventory (Items tab); Tab key cycles tabs; clicking tab headers works
+- [ ] Escape / J / I while journal open → closes overlay
 - [ ] Press E near a dialogue trigger → Dialogic opens
 - [ ] Campfire flickers (OmniLight3D energy varies)
 - [ ] No "Autoload not found" warnings (means a required autoload isn't registered)

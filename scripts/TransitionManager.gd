@@ -149,7 +149,7 @@ func _do_transition(scene_path: String, type: Type) -> void:
 
 	# Determine the fade color.
 	var fade_color: Color = Color(0.0, 0.0, 0.0, 0.0) if type == Type.FADE_BLACK else Color(1.0, 1.0, 1.0, 0.0)
-	var opaque_color: Color  = Color(fade_color.r, fade_color.g, fade_color.b, 1.0)
+	var _opaque_color: Color = Color(fade_color.r, fade_color.g, fade_color.b, 1.0)
 
 	_fade_rect.color = fade_color
 
