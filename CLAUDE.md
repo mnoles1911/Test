@@ -218,7 +218,8 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 **Art and pipeline:**
 - design/ART_DIRECTION.md — palette, location visual identity, architecture by region, shaders
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
-- design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender, billboard sprites
+- design/TECH_STACK.md — full technology stack: every tool, plugin, and pipeline; detailed terrain authoring (Gaea → EXR → VoxelGeneratorGraph); autoload status table
+- design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender; VoxelGeneratorGraph + Gaea EXR pipeline step-by-step
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
 
 **Planning and ops:**
