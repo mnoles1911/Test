@@ -7,7 +7,7 @@
 
 ## Confirmed Approach
 
-**3D voxel open world in Godot 4.3.**
+**3D voxel open world in Godot 4.6.2.**
 
 - **Terrain**: Zylann's Voxel Tools plugin (`godot_voxel`) — `VoxelLodTerrain` with `VoxelMesherCubes` (blocky stepped terrain, LOD streaming). The procedural `VoxelGeneratorGraph` (Gaea EXR + 3D cave noise) produces the **baseline only**. Player edits live as deltas in `VoxelStreamSQLite` per save slot. **Editable / destructible by default** — non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes. Canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
 - **Buildings and structures**: MagicaVoxel (free) → export `.glb` → Godot `MeshInstance3D` for all narratively load-bearing props (settlements, dungeon entrances, lore landmarks). These sit on top of the voxel surface, not carved into it, and are wrapped in NoEditZones.
@@ -25,7 +25,7 @@
 | **Blender** | Character models, rigging, animation | Free |
 | **Aseprite** | Portrait art (dialogue UI, 256×320 px) | ~$20 |
 | **Zylann's Voxel Tools** | Godot 4 voxel terrain plugin | Free / open source |
-| **Godot 4.3** | Scene assembly, rendering, logic | Free |
+| **Godot 4.6.2** | Scene assembly, rendering, logic | Free |
 | AI-assisted generation | Concept reference, texture starting points (always hand-edit) | Variable |
 
 ---
@@ -63,13 +63,20 @@ MagicaVoxel is the standard voxel art tool. It is free, intuitive, and exports d
 
 ## Tool 2: Zylann's Voxel Tools — Terrain
 
-**Plugin repo:** https://github.com/Voxel-And-Module-Tools/godot_voxel
+**Plugin repo:** https://github.com/Zylann/godot_voxel
+**Official docs:** https://voxel-tools.readthedocs.io/en/latest/getting_the_module/
 
-### Installation in Godot 4.3:
-1. Download from the repo (or Godot Asset Library if available)
-2. Copy `addons/zylann.voxel` into `res://addons/`
-3. Project → Project Settings → Plugins → Enable "Voxel Tools"
-4. Restart Godot editor
+This plugin is **NOT in Godot's Asset Library** — it ships native (C++) binaries that the Asset Library doesn't distribute. Two editions exist; we use **GDExtension** because it's a drop-in addon for the standard Godot editor (no custom engine build needed).
+
+### Installation in Godot 4.6.2 (GDExtension edition):
+1. Go to https://github.com/Zylann/godot_voxel/releases and download the latest release asset labeled "GDExtension" matching your platform (Windows / macOS / Linux). Requires Godot 4.4.1+; we're on 4.6.2 stable, so any current release works.
+2. Extract the ZIP — you should get a folder named `zylann.voxel`.
+3. Move that folder into your project's `addons/` directory so the path becomes `addons/zylann.voxel/`.
+4. Restart Godot. The plugin auto-detects on launch.
+5. Project Settings → Plugins → confirm "Voxel Tools" is enabled. (Some releases enable automatically; others require this manual toggle.)
+6. Verify by adding a `VoxelLodTerrain` node to a test scene — if the node type appears in the Add Node dialog, the plugin is live.
+
+**Do NOT use the Module edition** — that's a fully recompiled Godot editor that replaces your Godot install. Heavier setup, same runtime features as GDExtension. Stick with GDExtension.
 
 ### Scene setup for open world terrain:
 ```

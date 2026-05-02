@@ -5,7 +5,7 @@
 
 ## What We're Building (The Target)
 
-**Veloren meets Skyrim, built in Godot 4.3.**
+**Veloren meets Skyrim, built in Godot 4.6.2.**
 
 The aesthetic goal: a world that feels ancient and handcrafted — stone cities with real mass, forests with depth, underground tunnels that feel claustrophobic. Characters and enemies are low-poly 3D or voxel-art models. Lighting is full 3D: dynamic shadows, ambient occlusion, volumetric fog.
 
@@ -75,7 +75,7 @@ All the **game logic** autoloads work without modification. They are data and UI
 ### Voxel Terrain — Zylann's Voxel Tools
 
 **Plugin:** `godot_voxel` by Zylann  
-**Source:** https://github.com/Voxel-And-Module-Tools/godot_voxel  
+**Source:** https://github.com/Zylann/godot_voxel  
 **Godot 4 compatible:** Yes
 
 This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent projects and supports:

@@ -15,10 +15,16 @@ their section with a brief note of what it unlocks.
 
 These are settings and installs that survive across all future work. Do them once.
 
-- [ ] **Install Zylann's Voxel Tools plugin**
-  Open Godot → AssetLib tab → search "Voxel Tools" → install → enable in
-  Project Settings → Plugins. Required for Milestone 5-3D (terrain generation).
-  Reference: `design/3D_VOXEL_MIGRATION.md`, `design/ART_PIPELINE.md`
+- [ ] **Install Zylann's Voxel Tools plugin (GDExtension edition)**
+  This plugin is NOT in Godot's Asset Library — it ships native binaries.
+  Download from GitHub Releases instead:
+  1. Go to https://github.com/Zylann/godot_voxel/releases
+  2. Download the latest "GDExtension" asset matching your platform (Win/Mac/Linux). Requires Godot 4.4.1+; we are on 4.6.2 stable.
+  3. Extract the ZIP and move the resulting `zylann.voxel/` folder into the project's `addons/` directory so the path is `addons/zylann.voxel/`.
+  4. Restart Godot. Project Settings → Plugins → confirm "Voxel Tools" is enabled.
+  5. Verify: a `VoxelLodTerrain` node should appear in the Add Node dialog.
+  Reference: `design/ART_PIPELINE.md` → "Tool 2: Zylann's Voxel Tools" for the full install detail.
+  Required for Milestone 5-3D (terrain generation + destructible terrain core).
 
 - [x] **Configure the core Input Map per `design/INPUT_AND_CONTROLS.md`** (mostly done — see below)
   All core actions are now in `project.godot`. Remaining items marked [ ] below.

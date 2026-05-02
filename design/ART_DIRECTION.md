@@ -7,7 +7,7 @@
 
 ## Art Approach — CONFIRMED: 3D Voxel
 
-**Engine:** Godot 4.3, 3D mode. NOT 2D.  
+**Engine:** Godot 4.6.2, 3D mode. NOT 2D.  
 **Style:** Voxel world (Veloren / Cube World aesthetic) with Skyrim-scale atmosphere.  
 **Full migration plan:** `design/3D_VOXEL_MIGRATION.md`
 

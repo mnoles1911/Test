@@ -21,7 +21,7 @@ This is distinct from:
 
 ---
 
-## Camera Setup in Godot 4.3
+## Camera Setup in Godot 4.6.2
 
 `SpringArm3D` is the right node. It handles camera collision automatically — when terrain or a wall comes between the camera and Roland, the arm shortens rather than clipping through geometry.
 

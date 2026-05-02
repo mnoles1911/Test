@@ -8,7 +8,7 @@ This guide covers installing Dialogic 2, creating character definitions, configu
 
 ## Step 1 — Install Dialogic 2
 
-1. Open Godot 4.3 with this project loaded.
+1. Open Godot 4.6.2 with this project loaded.
 2. Click the **AssetLib** tab at the top of the editor.
 3. Search for **Dialogic**.
 4. Click the result by **Jowan Resso & emilio** (Dialogic 2).

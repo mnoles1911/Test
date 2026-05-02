@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What I'm building
 A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere and open-world scale.
 Single player. Real-time action combat (Witcher 3 / Dark Souls style), 1-vs-many, third-person over-shoulder camera.
-Voxel world built in Godot 4.3 with Zylann's Voxel Tools plugin. GDScript only.
+Voxel world built in Godot 4.6.2 with Zylann's Voxel Tools plugin. GDScript only.
 This is game one of a planned trilogy adapted from a 200-page source manuscript.
 
 **Engine pivot confirmed (2026-04-30):** Switched from 2D pixel art to 3D voxel.
@@ -49,11 +49,11 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - **Milestones 1–3 (2D):** complete — walkable cave + lighting, Henrietta opening dialogue, combat prototype.
 - **Milestone 4 (2D, PR #42):** complete — TransitionManager, expanded GameState, Zone framework, MainMenu/Settings/SaveSlotPicker, DebugOverlay, FlagScheduler, InventoryManager, expanded JournalUI, EnemyData.
 - **3D pivot (PR #43):** complete — `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
-- **Milestone 4-3D (2026-05-01):** complete and verified in Godot — Player3D + CameraRig (standard + freelook), HUDOverlay, JournalUI 6-tab rewrite, CampfireFlicker3D, SpawnPoint3D / RoomTrigger3D / DialogueTrigger3D, Player3D.tscn / World3D.tscn placeholders, all UI resized to 1080p. Outstanding manual step: install Zylann's Voxel Tools plugin from the Asset Library.
+- **Milestone 4-3D (2026-05-01):** complete and verified in Godot — Player3D + CameraRig (standard + freelook), HUDOverlay, JournalUI 6-tab rewrite, CampfireFlicker3D, SpawnPoint3D / RoomTrigger3D / DialogueTrigger3D, Player3D.tscn / World3D.tscn placeholders, all UI resized to 1080p. Outstanding manual step: install Zylann's Voxel Tools plugin (GDExtension edition) from GitHub Releases at https://github.com/Zylann/godot_voxel/releases — NOT distributed via Godot's Asset Library because it ships native binaries.
 - **Milestone 5-3D (next):** VoxelLodTerrain + `VoxelStreamSQLite` + `WorldGenerator` (VoxelGeneratorGraph driven by a Gaea EXR heightmap + 3D cave noise — produces procedural baseline only) + `VoxelEditManager` and `NoEditZoneRegistry` autoloads + first edit verb (pickaxe debug action: swing → voxel removed → material yielded) + first MagicaVoxel exports (campfire, cave wall) + first Roland low-poly Blender model with idle/walk/run animations. Editable terrain wired in from day one. See `DESIGNER_TODO.md` Section 7.
 
 ## Art specification (confirmed — 3D VOXEL)
-- **Engine approach**: Godot 4.3, 3D. Voxel world via Zylann's Voxel Tools plugin.
+- **Engine approach**: Godot 4.6.2, 3D. Voxel world via Zylann's Voxel Tools plugin.
 - **Voxel scale**: 8 voxels per meter (confirmed — each block is 12.5 cm, noticeably blocky but finer than Minecraft's 1m cubes)
 - **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes` (blocky stepped terrain, matches MagicaVoxel building style). The `VoxelGeneratorGraph` produces the **procedural baseline only** (Gaea EXR heightmap + 3D cave noise). **Editable / destructible by default** — every voxel can be modified by player edits (axe, pickaxe, shovel, explosive, spell). Non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes. Edits stored as deltas in `VoxelStreamSQLite` per save slot. Edits persist forever (no world healing). Edited chunks render at LOD0 within the player's edit-detail radius and from a cached LOD-bake mesh beyond it (set `user://saves/slot_{N}/mesh_cache/`). Canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
 - **World scale**: Playable Mira 12km × 10km, compression 125:1 linear (1 game meter ≈ 125 fictional meters). Playable Thal ~7km × 5.5km.
@@ -173,7 +173,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 
 ## Current project state
-Godot 4.3. 3D pivot complete. Open world plan confirmed: VoxelLodTerrain streaming, **editable / destructible terrain by default** (LOD0-clamped + LOD-baked at distance, edits stored as deltas in `VoxelStreamSQLite`, NoEditZones protect settlements and lore landmarks, no world healing), 12km × 10km playable Mira, third-person over-shoulder camera, low-poly Blender character models from Act I.
+Godot 4.6.2. 3D pivot complete. Open world plan confirmed: VoxelLodTerrain streaming, **editable / destructible terrain by default** (LOD0-clamped + LOD-baked at distance, edits stored as deltas in `VoxelStreamSQLite`, NoEditZones protect settlements and lore landmarks, no world healing), 12km × 10km playable Mira, third-person over-shoulder camera, low-poly Blender character models from Act I.
 
 The system design corpus is complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking, destructible terrain — all in `/design`). Pipeline tooling (`tools/strip_draft.py`, `tools/render_bulk.py`) is documented in `tools/README.md` and requires `ELEVENLABS_API_KEY`.
 
@@ -242,7 +242,7 @@ IsometricRPGMono/ and title_screen.svg are leftovers from a prior MonoGame proto
 ## Godot workflow
 
 There is no CLI build, lint, or test command for this project. To verify changes work:
-1. Open the project in Godot 4.3
+1. Open the project in Godot 4.6.2
 2. Run the relevant scene (World3D.tscn for 3D movement/lighting, Combat.tscn for legacy 2D combat)
 3. Check the Output panel for errors and print statements
 4. Test the specific feature manually
