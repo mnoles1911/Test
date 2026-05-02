@@ -46,6 +46,36 @@ Roland's starting weapon (Common-tier short sword) is one-handed. Two-handed wea
 
 **Equipping a two-handed weapon** automatically empties the Off-Hand slot (any shield or torch is moved back to inventory). The UI warns the player before this happens.
 
+### Tools (Edit Verbs)
+
+Tools — axes, pickaxes, shovels — are **weapons that can also edit terrain**. They occupy the Weapon slot when equipped. Each tool has two functions:
+
+1. **Combat use:** swing damages enemies (lower than dedicated weapons). Axe = anti-armor. Pickaxe = blunt. Shovel = light.
+2. **Terrain use:** when the swing connects with a voxel surface (no enemy in front), it removes voxels of the matching material type, yielding the material into Roland's inventory.
+
+| Tool | Slot | Combat damage | Terrain target | Notes |
+|---|---|---|---|---|
+| **Axe** | Weapon | Moderate (anti-armor bias) | Wood (trees, logs) | Felling trees triggers a directional topple animation; trunk resolves into log voxels Roland can pick up |
+| **Pickaxe** | Weapon | Low (blunt) | Rock, stone, ore | Per-swing voxel removal; tier gates material hardness (wooden pick → stone; quality → iron-tier; masterwork → adamant-tier) |
+| **Shovel** | Weapon | Low | Dirt, sand, clay, ash | Faster swing than pickaxe; ash-tier shovel needed for hardened ash voxels |
+
+**Material gating** is independent of skill — a wooden pickaxe cannot mine adamant ore regardless of Mining sub-skill (see `design/SKILLS_AND_PROGRESSION.md` → Crafting → sub-skills). Skill controls speed and yield within the tier the tool can handle.
+
+**Edit speed is intentionally slow.** Each swing has a cooldown comparable to a melee combat swing. Number and velocity of edits per session is far below Minecraft pace — this is a feature, not a bug. It keeps voxel deltas sparse, save sizes small, and the world feeling resistant. Players will not casually reshape kilometers of terrain.
+
+**NoEditZones:** Swings inside a NoEditZone (settlements, dungeon entrances, lore landmarks) silently fail to remove voxels and trigger a Roland bark *"This place doesn't yield to me."* Combat damage to enemies still works inside NoEditZones.
+
+### Explosives
+
+Explosives are **throwables** (quick slot) that produce voxel-removal AOE on detonation in addition to combat damage. Crafted at the Assembly Table — see `design/CRAFTING.md` and `design/ITEM_LIBRARY.md`. Loud — draws enemy attention from a wide radius.
+
+| Item | AOE | Combat damage | Voxel target |
+|---|---|---|---|
+| **Powder Charge** | 2m radius | Light | Stone, rock, ore — useful for breaching cave walls and fortification masonry |
+| **Sapper's Bundle** | 4m radius | Heavy | Same — for serious breach jobs; rare |
+
+Spells are the magical equivalent and become available when magic-using companions join (Game Two onward). Earth-school spells dig; fire spells fell trees and ignite. Spell terrain effects route through `VoxelEditManager` like any other edit verb.
+
 ### Torches
 
 A torch equips to the **Off-Hand slot**. While equipped:

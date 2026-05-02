@@ -70,9 +70,10 @@ All crafting happens at a physical station in the world. There is no crafting fr
 | Station | Location(s) | Produces |
 |---|---|---|
 | **Alchemist's Still** | Herbalist shops, specific quest locations, Roland's camp (unlocked at Act II) | Potions, draughts, compounds, Wanderer's Seal |
-| **Smithing Forge** | Smiths' workshops in settlements | Weapons, armor; weapon/armor maintenance; tier improvement |
-| **Grindstone** | Smiths' workshops, some campsites | Weapon sharpening (faster, lower ceiling than forge) |
-| **Assembly Table** | Roland's camp (available from Act I), certain safe-houses | Throwables, traps, tools, utility items |
+| **Smithing Forge** | Smiths' workshops in settlements | Weapons, armor, **edit-verb tools (axes, pickaxes, shovels)**; weapon/armor/tool maintenance; tier improvement |
+| **Grindstone** | Smiths' workshops, some campsites | Weapon and tool sharpening (faster, lower ceiling than forge) |
+| **Assembly Table** | Roland's camp (available from Act I), certain safe-houses | Throwables, traps, **explosives (Powder Charges, Sapper's Bundles)**, utility items |
+| **Carpentry Bench** | Roland's camp (Act II onward), settlement carpenter shops | **Building schematics for player-built structures** (wall sections, doors, roof tiles, windows, fences, gates) |
 | **Cooking Fire** | Any campfire Roland can interact with, tavern kitchens | Meals; hunger and rest-quality effects |
 
 Roland cannot build new stations from scratch. He uses stations that exist in the world. His camp can have a portable Still and Assembly Table added through story or quest progression.
@@ -157,6 +158,45 @@ Between station visits, Roland can apply **Sharpening Kits** and **Repair Kits**
 Throwables, traps, and utility items. No minigame — pure material management. Select recipe, confirm materials, produce output. Intent choice (Quick / Care / Mastery) affects yield per batch (Quick: 1 fewer unit; Care: base yield; Mastery: 1 additional unit, Veteran+ only).
 
 See `design/ITEM_LIBRARY.md` for all 30 assembly table recipes with materials and outputs.
+
+---
+
+## Carpentry Bench — Player-Built Structures
+
+The Carpentry Bench produces **building schematics** — pre-fabricated structural pieces that the player places in the world to construct shelters, walls, fences, and small buildings. Schematics are the primary mechanism for player construction; per-voxel placement (see below) is for detailing.
+
+### How Schematics Work
+
+A schematic is a `.glb` prop with placement metadata (snap behavior, footprint, material cost). Once crafted, it lives in Roland's inventory as a stack of placeable items. The player enters **Build Mode** (held key, default `B`) — a translucent ghost of the schematic appears at the crosshair, snapping to surface, voxel grid, or adjacent schematic edge as appropriate. Confirm with LMB to place; cancel with RMB.
+
+Placed schematics are stored in `placed_schematics.json` per save slot — see `design/SAVE_SYSTEM.md`. They persist forever like voxel edits.
+
+### Schematic Categories
+
+| Category | Examples | Snap behavior |
+|---|---|---|
+| **Wall** | Wood plank wall, stone wall, log wall | Snap to ground + adjacent wall edge |
+| **Roof** | Thatched panel, wood shingle, slate tile | Snap to wall tops |
+| **Door / Window** | Wooden door, shuttered window | Snap into wall openings |
+| **Floor** | Wood plank, stone tile | Snap to ground or stilts |
+| **Fence / Gate** | Wood fence, palisade gate | Snap to ground, chain to adjacent fence |
+| **Furniture (placeable)** | Bench, work stool, simple bedroll frame | Free placement on flat surface |
+
+Schematic recipes use Common/Quality/Masterwork tiers like other crafted items — affects durability and weather resistance.
+
+### Per-Voxel Placement (Build Mode → Detail submode)
+
+Inside Build Mode, the player can switch to **Detail submode** (Tab) to place individual voxel blocks from a stack of "Building Voxels" (basic material blocks crafted from raw stone, wood, dirt, etc.). One block per click, snapping to the voxel grid. Used for chimney variations, custom stair runs, decorative carving — the things schematics can't express.
+
+Per-voxel placements are stored as deltas in `voxel_deltas.sqlite` like any other voxel edit.
+
+### Why Both
+
+Schematics are fast and visually consistent — most of any structure should be schematics. Per-voxel placement is slow but freeform — ideal for the 5–10% of any build that needs a custom touch. A small player-built house = ~30 schematic placements + maybe 100 voxel-detail edits.
+
+### NoEditZone Restriction
+
+Schematic placement and per-voxel placement are both rejected inside NoEditZones (settlements, dungeon entrances, lore landmarks). The build ghost turns red and the placement is refused with a Roland bark *"This place doesn't yield to me."*
 
 ---
 

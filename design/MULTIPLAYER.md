@@ -46,16 +46,36 @@ No third-party netcode library for movement sync — Godot's built-in `Multiplay
 
 ---
 
-## Terrain Sync (Free — No Work Needed)
+## Terrain Sync — Procedural Baseline Free, Edits Authoritative
 
-`VoxelLodTerrain` with `VoxelGeneratorGraph` generates terrain **deterministically** from the same parameters on every client. Both players generate the same terrain independently. Nothing to sync.
+`VoxelLodTerrain` with `VoxelGeneratorGraph` generates the **procedural baseline deterministically** from the same parameters on every client. The baseline costs nothing to sync — both clients regenerate it locally.
+
+**Player edits are different.** Terrain is destructible by default (see `design/3D_VOXEL_MIGRATION.md` → Destructible Terrain). Edits are stored as deltas in the host's `VoxelStreamSQLite` database and must be replicated authoritatively.
+
+**Authority model for terrain edits:**
+- Host owns `voxel_deltas.sqlite`. Host is the source of truth.
+- Edit attempts (host or guest) route through host's `VoxelEditManager`. Host validates against `NoEditZoneRegistry`, applies the delta to the SQLite DB, and broadcasts an `edit_applied(chunk_xyz, voxel_xyz, new_value)` RPC to all peers.
+- Each client applies the same delta to its local in-memory voxel buffer + `EditedChunkRegistry`. The mesh re-bake runs locally on both peers; no mesh data is transmitted.
+- **Conflict policy:** last-writer-wins, arbitrated by host. If both players hit the same voxel within the same tick, host's resolution order decides. No locking.
+
+**Initial-join sync:**
+- On guest connect, host streams the entire `EditedChunkRegistry` set + per-chunk delta blobs from SQLite. With sparse edits this is typically a few hundred KB even on a 40-hour host save — no streaming-as-you-explore policy needed.
+- Guest sees procedural baseline first, then edits "settle in" within 1–2 seconds as deltas arrive. Acceptable.
+- Mesh-bake cache is **not** transmitted — guest regenerates locally on demand.
+
+**Per-client render settings:**
+- View distance and edit-detail radius are local Settings values. Each client picks based on hardware. Host doesn't care.
+
+**Schematic placements (player-built structures):**
+- Same authority model: host owns `placed_schematics.json`; guest placement requests RPC to host; host validates (NoEditZone check, collision, material cost) and broadcasts `schematic_placed(id, transform, schematic_id)`.
 
 Each player gets their own `VoxelViewer` node — the terrain streaming system uses `STREAMING_SYSTEM_CLIPBOX` mode, which supports multiple viewers. Terrain around both players streams simultaneously.
 
 ```
 World3D (Node3D)
 ├── VoxelLodTerrain
-│   └── VoxelGeneratorGraph
+│   ├── VoxelGeneratorGraph    (baseline, deterministic — no sync)
+│   └── VoxelStreamSQLite       (host-authoritative; deltas RPC'd to guest)
 ├── VoxelViewer_P1    ← follows Player 1 (Roland)
 ├── VoxelViewer_P2    ← follows Player 2 (Orion) — added when guest connects
 ├── Player3D (Roland)
@@ -134,7 +154,9 @@ This is the same convention as Dark Souls / Elden Ring summon co-op: the summone
 
 ## What Not to Do
 
-- **Do not sync voxel data** — terrain is deterministic; syncing it doubles bandwidth for zero benefit
+- **Do not sync the procedural baseline** — it's deterministic; syncing it doubles bandwidth for zero benefit. Only voxel deltas and schematic placements sync.
+- **Do not let the guest write directly to `voxel_deltas.sqlite`** — all edits route through host via `@rpc("any_peer")`; host validates NoEditZone and applies; host broadcasts the result.
+- **Do not transmit the mesh-bake cache** — it's regeneratable from the deltas; transmitting it is pure waste.
 - **Do not give guest write access to GameState** — all flag changes go through host via `@rpc`
 - **Do not build co-op into Phase 5–9 systems** — keep single-player path clean; add the `@rpc` layer in Phase 10-3D when Orion's join scene is built
 - **Do not use a dedicated relay server** — ENet direct connect + Steam Remote Play covers the audience; dedicated infra adds cost and complexity with no benefit at this scale

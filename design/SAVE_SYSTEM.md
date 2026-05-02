@@ -49,8 +49,23 @@ Consuming the Seal:
 
 ## Save File Contents
 
-Each save records the complete game state:
+A save slot is a **directory**, not a file. Multiple artifacts live in each slot because the world is destructible — voxel edits and player-placed structures can't fit in a single JSON blob.
 
+```
+user://saves/slot_{0,1,2}/
+├── save.dat                ← JSON game state (flags, inventory, companions, clock, generator version)
+├── save_backup.dat         ← previous save.dat (one-level backup rotation)
+├── voxel_deltas.sqlite     ← VoxelStreamSQLite — every voxel edit as a delta against the procedural baseline
+├── voxel_deltas_backup.sqlite ← previous voxel_deltas.sqlite (one-level backup rotation)
+├── placed_schematics.json  ← player-placed building schematics (position, rotation, schematic_id)
+├── placed_schematics_backup.json
+├── mesh_cache/             ← LOD-baked meshes for edited chunks; regeneratable; EXCLUDED from backup rotation
+└── screenshot.png          ← thumbnail for the load screen (320×180)
+```
+
+### What `save.dat` Contains
+
+- **Generator version stamp** — the `WorldGenerator` (VoxelGeneratorGraph) revision this save was created against. Mismatch on load is a hard error: the game refuses to load and surfaces a clear message. There is no silent migration. (The procedural baseline is what voxel deltas are diffed against — if the generator graph changes, old deltas float in nonsense terrain.)
 - **Current scene** — the `.tscn` file name and Roland's position/rotation in it
 - **GameState flags** — the entire flag dictionary (quests, faction dispositions, story progress, investigation findings, skill XP, camp upgrades, etc.)
 - **InventoryManager state** — Roland's current inventory, equipment, quick slot assignments, Wanderer's Seal count
@@ -59,11 +74,25 @@ Each save records the complete game state:
 - **Play time** — total in-game time elapsed (for player reference; not used mechanically)
 - **Metadata** — save slot, save type (autosave / manual), real-world timestamp, act/chapter label for display in the load screen
 
-### Save File Location
+### What `voxel_deltas.sqlite` Contains
 
-Godot's default user data directory: `user://saves/slot_{0,1,2}/save.dat`
+Managed by Zylann's `VoxelStreamSQLite`. Stores every voxel that has been changed from the procedural baseline as a delta keyed by chunk coordinate. Edits persist forever — no world healing, no auto-pruning. A pit Roland dug in Act I is still there in Act IV.
 
-The backup is written to `user://saves/slot_{0,1,2}/save_backup.dat` — the previous save before the most recent overwrite.
+### What `placed_schematics.json` Contains
+
+Array of `PlacedSchematic` records — `{schematic_id, position, rotation, owner_peer_id}`. Player-built structures use both schematics (for the bulk: walls, doors, roofs) and individual voxel placements (for detailing). Schematic placements live here; per-voxel detail edits live in `voxel_deltas.sqlite`. See `design/3D_VOXEL_MIGRATION.md` → "Player-Built Structures".
+
+### What `mesh_cache/` Contains
+
+LOD-baked meshes for edited chunks that have left the player's edit-detail radius. Regenerated on demand if missing. **Excluded from backup rotation** — the cache can always be rebuilt from `voxel_deltas.sqlite`, so backing it up is wasted disk.
+
+### Save Size Expectations
+
+Voxel edits are intentionally slow and cumbersome (axe / pick / shovel / explosive / spell, all with per-swing budgets and skill-gated speed). A 40-hour single-player save is expected to stay under ~50 MB total: ~100 KB JSON state + a few MB of voxel deltas + tens of MB of mesh cache. Hard cap per slot: 250 MB; warn at 200 MB. If a player approaches the cap, surface a notification with `mesh_cache/` size and offer to clear it (regenerable).
+
+### Backup Rotation
+
+`save.dat`, `voxel_deltas.sqlite`, and `placed_schematics.json` each rotate one level (active + backup). On every save, copy current → backup before overwriting current. Backups are written atomically (write to `.tmp` → rename) to prevent corruption mid-save. `mesh_cache/` is never backed up.
 
 ---
 

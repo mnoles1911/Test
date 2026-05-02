@@ -149,6 +149,19 @@ These consequences are not announced. The player discovers them when Game Two be
 
 ---
 
+## Quest Anchors and Destructible Terrain
+
+The world is destructible by default (see `design/3D_VOXEL_MIGRATION.md`). This affects how quest triggers and locations are authored.
+
+**Rules for quest authors:**
+
+1. **Quest anchors are Area3D volumes, never voxel features.** "Reach the rock outcrop" must be implemented as an `Area3D` whose bounds the player can enter — never as a check against a specific voxel block. The outcrop may or may not still exist visually by the time the player gets there. The Area3D persists regardless.
+2. **Narratively load-bearing locations sit inside NoEditZones.** Settlements, named landmarks, dungeon entrances, lore sites, and any quest-critical structure must be authored as `MeshInstance3D` props inside an `Area3D` registered to the `no_edit_zone` group. The `VoxelEditManager` rejects all writes inside these volumes — players cannot dig under Caer Brannoch's foundation, blow up the Iron Chalice chapel, or bury the entrance to the Underway.
+3. **Author fallback access for likely-edit-adjacent paths.** If a quest path crosses voxel terrain that's *not* in a NoEditZone (a forest road, a riverside trail, a mountain pass), assume the player may have altered it. Provide at least one of: an alternate entry point, an NPC who clears the path on request, or a Roland action that resolves the obstruction (rope-and-piton climb, pickaxe through). "Player buried the only path" should never be a quest-blocking state.
+4. **Roland's bark inside a NoEditZone** when the player attempts a forbidden edit: *"This place doesn't yield to me."* Single line, one-time per session per zone.
+
+---
+
 ## Quest Authoring Guidelines
 
 For writers adding new quests:

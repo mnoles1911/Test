@@ -45,6 +45,16 @@ Settings are organized into four tabs in the Settings screen (accessed from the 
 | **Brightness** | 50 | 0–100 slider | Adjusts `WorldEnvironment` exposure |
 | **Gamma** | 50 | 0–100 slider | Post-process gamma correction |
 | **Field of View** | 75° | 60°–100° | SpringArm3D camera FOV; wider FOV shows more world but may cause discomfort at extremes |
+| **View distance** | 600m | 200m / 400m / 600m / 1km / 1.5km / 2km | LOD streaming horizon for the procedural voxel terrain. Higher = more world visible at distance, more GPU + memory cost. |
+| **Edit detail radius** | 64m | 32m / 64m / 96m / 128m / 192m / 256m | How far out player-edited terrain chunks render at LOD0 (full block precision). Beyond this distance, edited chunks render from a cached LOD-baked mesh — still visible (e.g. your house from across the valley) but without per-block detail. Mandatory floor of 32m for collision safety; cannot go below. Higher = sharper distant edits, more GPU cost when many edits exist. |
+
+### Notes on the Voxel Sliders
+
+**View distance** is the standard "render distance" knob — it bounds how far procedural terrain streams. Hardware-bound. On low-end machines, drop to 400m. On high-end, push to 1.5km or 2km if you want long-sightline vistas.
+
+**Edit detail radius** is the destructible-terrain analog. It only affects chunks that have actual player edits — for a player who hasn't done much terraforming, the setting is invisible. For a player who has built a small house and dug a few mines, it controls whether those structures stay crisp from far away or render in chunky LOD.
+
+The 32m floor is hardcoded — it's the safety boundary where collision and rendering must agree. Edit detail radius can never go below this; the slider's lower stop is 32m. View distance has no lower-bound dependency on edit detail radius; the two sliders are independent.
 
 ---
 

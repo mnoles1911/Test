@@ -102,9 +102,11 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 | Node | Role |
 |---|---|
 | `VoxelLodTerrain` | Streaming open-world terrain with automatic LOD (6–8 levels) |
-| `VoxelGeneratorGraph` | Visual node-graph terrain generator (compiles to compute shader) |
+| `VoxelGeneratorGraph` | Visual node-graph terrain generator (compiles to compute shader) — produces the procedural **baseline** |
+| `VoxelStreamSQLite` | Per-save-slot sqlite database storing every player edit as a voxel delta against the baseline |
 | `VoxelMesherCubes` | Blocky stepped meshing — hard block faces, no smoothing |
 | `VoxelViewer` | One per player — tells the terrain which area to stream |
+| `VoxelTool` | Programmatic API for voxel reads/writes; used by every player edit verb (axe, pick, shovel, explosive, spell) |
 | `VoxelInstancer` | Scatter foliage and props (trees, rocks, grass) across terrain |
 
 **What is NOT used:**
@@ -116,9 +118,16 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 
 **LOD configuration:**
 - `lod_count`: 6–8 levels
-- LOD0 distance: ~60m (full detail near player)
-- Beyond 60m: progressively lower resolution until horizon
+- Mandatory LOD0 radius: 32m (collision + interaction floor — never below this)
+- Default edit-detail radius: 64m (player-configurable 32m–256m via Settings)
+- View distance: 600m default (player-configurable 200m–2km)
 - `STREAMING_SYSTEM_CLIPBOX` mode: required for co-op (multiple VoxelViewers)
+
+**Editable terrain (default behavior):** all voxels in the world are destructible by default. Procedural generation produces the baseline; every player edit is stored as a delta in `VoxelStreamSQLite` under `user://saves/slot_{N}/voxel_deltas.sqlite`. Edits persist forever (no world healing). Non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes that the `VoxelEditManager` autoload checks before any write. Major narrative structures (settlements, dungeon entrances, lore landmarks) are authored as `MeshInstance3D` props on top of terrain inside NoEditZones. Full canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+
+**Edit rendering — LOD0-clamped + LOD-baked at distance:**
+
+Edited chunks within the player's edit-detail radius render at LOD0 (full block precision, deltas applied). When an edited chunk leaves that radius, `VoxelEditManager` generates a one-time LOD1/LOD2 mesh from the *edited* voxel state and caches it under `user://saves/slot_{N}/mesh_cache/`. Subsequent renders at distance use the cached mesh — so a player-built house remains visible (chunky) from far away. The cache is regeneratable; it's excluded from save backup rotation. Procedural (un-edited) chunks render via standard LOD streaming with no cache.
 
 ---
 
@@ -641,7 +650,10 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 | `WorldClock.gd` | ⚠️ Built, not registered | In-game time, schedule dispatch |
 | `EntityRegistry.gd` | 🔲 Not yet built | Spatial entity dictionary by chunk |
 | `EntityStreamer.gd` | 🔲 Not yet built | Loads/unloads world entities by proximity |
-| `WorldGenerator` | 🔲 Not yet built | VoxelGeneratorGraph node (editor, not code) |
+| `WorldGenerator` | 🔲 Not yet built | VoxelGeneratorGraph node (editor, not code) — procedural baseline only |
+| `VoxelEditManager.gd` | 🔲 Not yet built | Async edit queue, EditedChunkRegistry, LOD-bake cache, NoEditZone enforcement, per-frame voxel budget |
+| `NoEditZoneRegistry.gd` | 🔲 Not yet built | Registry of Area3D no-edit volumes; queried before every VoxelTool write |
+| `SchematicLibrary.gd` | 🔲 Not yet built | Registry of placeable building schematics (.glb props with placement metadata) |
 | `FactionManager.gd` | 🔲 Not yet built | Faction disposition wrapper |
 | `QuestManager.gd` | 🔲 Not yet built | Quest flag advancement |
 | `WeatherManager.gd` | 🔲 Not yet built | Weather state and WorldEnvironment tweening |
@@ -663,6 +675,7 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 /assets/
   terrain/                ← Gaea EXR exports (heightmap + splatmap)
   voxel/                  ← MagicaVoxel exports (.glb): props, buildings, dungeon, crown pieces
+    schematics/           ← Player-placeable building schematic props (wall section, door, roof, fence) + .tres metadata
   models/                 ← Blender character exports (.glb)
   portraits/              ← Dialogic portrait art (256×320 px .png)
   audio/
@@ -670,6 +683,14 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
     sfx/
     dialogue/             ← ElevenLabs rendered .ogg + manifest.json per timeline
   npcs/                   ← NPCData .tres resource files (one per character)
+
+/user://saves/slot_{0,1,2}/
+  save.dat                ← JSON game state (flags, inventory, companion state, WorldClock, generator version stamp)
+  save_backup.dat         ← previous save.dat — backup rotation (one level)
+  voxel_deltas.sqlite     ← VoxelStreamSQLite — every voxel edit as a delta against the procedural baseline
+  placed_schematics.json  ← player-placed building schematics (position, rotation, schematic_id)
+  mesh_cache/             ← LOD-baked meshes for edited chunks; regeneratable; excluded from backups
+  screenshot.png          ← thumbnail for the load screen
 
 /dialogue/
   drafts/                 ← human-readable prose drafts

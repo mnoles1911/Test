@@ -63,9 +63,22 @@ Roland's skills are grouped into four domains. Each domain has a progression tra
 
 ### Domain 3 — Crafting
 
-**What improves it:** Actually crafting things. Using a crafting station, preparing herbs, assembling throwables. Each crafted item contributes to Crafting progression. Roland does not need to craft in bulk — consistent use matters more than volume.
+**What improves it:** Actually crafting things. Using a crafting station, preparing herbs, assembling throwables, **felling trees, mining ore, digging earth, building structures**. Each crafted item or terrain edit contributes to Crafting progression. Roland does not need to craft in bulk — consistent use matters more than volume.
 
 **Progression track:** Crafting XP comes from unique recipe use as much as repeat crafting. Trying new recipes advances Crafting faster than mass-producing the same potion. The game rewards experimentation.
+
+**Sub-skills (terrain editing):** The Crafting domain encompasses four edit-verb sub-skills tracked separately and surfaced in the Skills tab. Each gates the **speed and yield** of its verb against tool tier — not whether the verb works at all.
+
+| Sub-skill | What improves it | Effect |
+|---|---|---|
+| **Felling** | Successful tree fells with an axe; using axe on wood-tagged voxels | Faster axe swing → faster trunk topple; higher log yield per fell at higher tiers |
+| **Mining** | Pickaxe strikes that yield ore or stone | Faster swing; higher tiers can mine harder material classes (wooden pickaxe → iron-tier; quality → adamant-tier) |
+| **Excavation** | Shovel use on dirt/sand/clay/ash | Faster swing; larger voxel removal per stroke at higher tiers |
+| **Demolition** | Detonating explosives; spell-driven AOE terrain effects | Larger AOE radius; tighter blast control (fewer accidental wall collapses) |
+
+These sub-skills do not have separate tier names — they roll up into Crafting tier progression. The player sees each sub-skill's contextual notification the first time it advances (*"My axe arm knows the grain better now."*). No numbers, no bars.
+
+**Tool material gating:** independent of skill. A wooden pickaxe cannot mine adamant ore regardless of Mining sub-skill — the player must obtain a higher-tier pickaxe (smithing path). Skill controls speed and yield within the tool's material tier.
 
 **Skill nodes:**
 
@@ -125,6 +138,11 @@ const XP_VALUES = {
     "near_death_survived": 50, # Vitality only
     "endurance_depleted": 20, # Vitality only
     "item_crafted":     30,   # Crafting: per unique recipe (10 for repeat)
+    "tree_felled":       8,   # Crafting (Felling sub-skill)
+    "ore_mined":         5,   # Crafting (Mining sub-skill) — per ore voxel removed
+    "earth_dug":         2,   # Crafting (Excavation sub-skill) — per dirt/sand/ash voxel
+    "explosive_detonated": 15, # Crafting (Demolition sub-skill)
+    "schematic_placed":   6,   # Crafting — per player-built schematic placed
     "dialogue_resolved": 40,  # Exploration: per successful listening-mechanic resolution
     "location_discovered": 15, # Exploration: per unmarked location
 }

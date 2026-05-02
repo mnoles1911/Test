@@ -9,8 +9,9 @@
 
 **3D voxel open world in Godot 4.3.**
 
-- **Terrain**: Zylann's Voxel Tools plugin (`godot_voxel`) — `VoxelLodTerrain` with `VoxelMesherCubes` (blocky stepped terrain, LOD streaming). Generated from a 3D density field in `WorldGenerator.gd` — not a heightmap, so caves and overhangs work. Static, not editable by player.
-- **Buildings and structures**: `VoxelMesherCubes` mesher for constructed architecture; MagicaVoxel (free) → export `.glb` → Godot `MeshInstance3D` for props
+- **Terrain**: Zylann's Voxel Tools plugin (`godot_voxel`) — `VoxelLodTerrain` with `VoxelMesherCubes` (blocky stepped terrain, LOD streaming). The procedural `VoxelGeneratorGraph` (Gaea EXR + 3D cave noise) produces the **baseline only**. Player edits live as deltas in `VoxelStreamSQLite` per save slot. **Editable / destructible by default** — non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes. Canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+- **Buildings and structures**: MagicaVoxel (free) → export `.glb` → Godot `MeshInstance3D` for all narratively load-bearing props (settlements, dungeon entrances, lore landmarks). These sit on top of the voxel surface, not carved into it, and are wrapped in NoEditZones.
+- **Player-built structures**: hybrid — schematic props (crafted wall section / door / roof / fence — placed as `MeshInstance3D` with metadata) for the bulk, plus per-voxel placement for detailing. Both persist in the save (`placed_schematics.json` for schematics; `voxel_deltas.sqlite` for per-voxel edits).
 - **Characters**: Low-poly Blender models from Act I onward — `.glb` exports, 200–500 tris for named characters, rigged with `AnimationPlayer`. No billboard sprites for characters.
 - **Lighting**: real 3D — `OmniLight3D`, `DirectionalLight3D`, `WorldEnvironment` with SSAO and fog
 
@@ -42,6 +43,7 @@ MagicaVoxel is the standard voxel art tool. It is free, intuitive, and exports d
 - Building facades (Iron Chalice chapel exterior, Archive entrance)
 - Dungeon set-pieces (stone altars, columns, sarcophagi)
 - Crown pieces (7 distinct objects, each with a visual identity)
+- **Player-placeable building schematics** (wall section, door panel, roof tile, window frame, fence segment, gate). One `.glb` per schematic, plus a `.tres` `SchematicData` file in `assets/voxel/schematics/` listing material cost, weight, snap behavior, and category for the player crafting menu
 
 ### MagicaVoxel export workflow:
 1. Model in MagicaVoxel at the chosen voxel scale (1 voxel = ~0.125m in Godot)
@@ -113,9 +115,20 @@ via `SdfSmoothSubtract` when the voxel is well below the surface. This enables:
 
 ### VoxelLodTerrain configuration:
 - Set `lod_count` to 6–8 levels for 12km world extent
-- Set LOD0 distance to ~60m (matches third-person camera view range)
+- Set mandatory LOD0 radius to 32m (collision + interaction floor — never below this)
+- Default edit-detail radius: 64m (player-configurable 32m–256m via Settings — see `design/ACCESSIBILITY_AND_SETTINGS.md`)
+- Default view distance: 600m (player-configurable 200m–2km)
 - Use **`VoxelMesherCubes`** — produces blocky stepped terrain consistent with MagicaVoxel buildings
-- Use separate `MeshInstance3D` nodes (MagicaVoxel exports) for all buildings — do NOT carve buildings into the terrain
+- Attach **`VoxelStreamSQLite`** to the terrain — edit deltas persist to `user://saves/slot_{N}/voxel_deltas.sqlite`
+- Use separate `MeshInstance3D` nodes (MagicaVoxel exports) for all narratively load-bearing buildings — do NOT carve buildings into the terrain. These props sit inside `NoEditZone` Area3D volumes that buffer the structure ~50–100m in all directions.
+
+### Edit rendering — LOD0-clamped + LOD-baked at distance
+
+Edited chunks within the player's edit-detail radius render at LOD0 (full block precision). When an edited chunk leaves that radius, `VoxelEditManager` generates a one-time LOD1/LOD2 mesh from the edited voxel state and caches it under `user://saves/slot_{N}/mesh_cache/`. Subsequent renders at distance use the cached mesh, so player-built structures stay visible (chunky) from far away. Cache is regeneratable; excluded from save backups.
+
+### NoEditZones — protected geometry
+
+Major narrative structures and settlements are wrapped in Area3D volumes added to the `no_edit_zone` group. The `VoxelEditManager` autoload queries `NoEditZoneRegistry` before any `VoxelTool.do_*` write. Writes inside a NoEditZone are silently rejected. When authoring a settlement scene, drop the building props (MagicaVoxel `.glb`) on the surface and parent them under a single `NoEditZone` Area3D with a buffer of 50–100m. Place a Roland bark trigger `"This place doesn't yield to me."` for player attempts.
 
 ### Mesher choice:
 - `VoxelMesherCubes` — all terrain (stepped, blocky faces; same visual language as MagicaVoxel props)
