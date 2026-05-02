@@ -61,12 +61,32 @@ These are settings and installs that survive across all future work. Do them onc
 
 - [ ] **Register `EntityRegistry` as an Autoload**
   Project Settings → Autoload → path: `res://scripts/EntityRegistry.gd` → node name: `EntityRegistry`.
-  Required before `EntityStreamer` can load/unload world entities. Build after `WorldGenerator.gd`.
+  Required before `EntityStreamer` can load/unload world entities. Build after `WorldGenerator`.
 
-- [ ] **Register `WorldGenerator` in `World3D.tscn`**
-  Add `VoxelLodTerrain` node to `World3D.tscn` → assign `WorldGenerator.gd` as its generator script.
-  Configure LOD count (6–8 levels), LOD0 radius (~60m), `VoxelMesherTransvoxel` as mesher.
-  Reference: `design/ART_PIPELINE.md` → Tool 2, `design/3D_VOXEL_MIGRATION.md`
+- [ ] **Register `VoxelEditManager` as an Autoload**
+  Project Settings → Autoload → path: `res://scripts/VoxelEditManager.gd` → node name: `VoxelEditManager`.
+  Required for any voxel edit (axe / pickaxe / shovel / explosive / spell) to function correctly. Handles async edit queue, EditedChunkRegistry, LOD-bake-on-eviction, NoEditZone enforcement, per-frame voxel budget. Build during Milestone 5-3D. Reference: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+
+- [ ] **Register `NoEditZoneRegistry` as an Autoload**
+  Project Settings → Autoload → path: `res://scripts/NoEditZoneRegistry.gd` → node name: `NoEditZoneRegistry`.
+  Tracks Area3D volumes assigned to the `no_edit_zone` group. Queried by `VoxelEditManager` before every voxel write. Build during Milestone 5-3D. Reference: `design/3D_VOXEL_MIGRATION.md` → "NoEditZones".
+
+- [ ] **Register `SchematicLibrary` as an Autoload** (later — when player construction lands)
+  Project Settings → Autoload → path: `res://scripts/SchematicLibrary.gd` → node name: `SchematicLibrary`.
+  Loads `.tres` schematic resources from `assets/voxel/schematics/`; maps schematic IDs to `.glb` props with placement metadata. Reference: `design/CRAFTING.md` → Carpentry Bench.
+
+- [ ] **Set up VoxelLodTerrain in `World3D.tscn`**
+  Add `VoxelLodTerrain` node to `World3D.tscn`. Add `VoxelGeneratorGraph` as a child (this is `WorldGenerator` — wired in the editor, not GDScript). Add `VoxelStreamSQLite` as a child with stream path `user://saves/slot_{N}/voxel_deltas.sqlite` (the path is set in code at save-load time).
+  Configure: `lod_count` 6–8, mandatory LOD0 radius 32m, default edit-detail radius 64m, mesher = `VoxelMesherCubes` (NOT Transvoxel), `streaming_system` = `STREAMING_SYSTEM_CLIPBOX`.
+  Reference: `design/ART_PIPELINE.md` → Tool 2, `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain", `design/TECH_STACK.md` → Voxel Terrain.
+
+- [ ] **Wire WorldGenerator (VoxelGeneratorGraph)**
+  Open the VoxelGeneratorGraph node → wire it visually:
+  - Heightmap EXR → `Image` input → `Remap` (0–1 → 0–200m) → `SdfPlane` → base SDF
+  - 3D `FastNoiseLite` node → `SdfSmoothSubtract` (carves caves where Y < surface − 8m)
+  - Splatmap EXR → `Image` input → `OutputType: CHANNEL_INDICES` (biome material assignment)
+  - Connect to `OutputSDF`.
+  This produces the procedural baseline only. Player edits live as deltas in `VoxelStreamSQLite`. Stamp a `WORLD_GENERATOR_VERSION` constant in code so save loads can detect mismatches.
 
 - [ ] **Set up the audio bus layout per `design/AUDIO_DESIGN.md`**
   Bottom panel → Audio → add buses: `Music`, `SFX` (with children `Combat`, `Ambient`),
@@ -324,10 +344,11 @@ Organized by development phase. Build within each phase in the order listed.
 
 ---
 
-### Phase 5-3D — Open World Foundation
+### Phase 5-3D — Open World Foundation (Editable Terrain)
 
 - [ ] **`WorldGenerator` (VoxelGeneratorGraph)** ← foundation; everything stands on this
   Implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass) assigned to `VoxelLodTerrain`.
+  **Produces the procedural baseline only — every player edit is diffed against this.**
   **Pipeline:** Author terrain in **Gaea** → export 32-bit EXR heightmap + RGB biome splatmap →
   import both as Image resources in Godot → wire into VoxelGeneratorGraph:
   - Image node (heightmap EXR) + XZ scale → surface SDF
@@ -336,7 +357,20 @@ Organized by development phase. Build within each phase in the order listed.
   - Image node (biome splatmap) → `CHANNEL_INDICES`
   Must encode: Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500), Aldwater valley,
   Ashfields, forced-flat settlement zones (see CLAUDE.md → World coordinate reference).
+  Stamp a `WORLD_GENERATOR_VERSION` constant in code so save loads detect mismatches.
   Reference: `design/ART_PIPELINE.md` → Tool 2
+
+- [ ] **`VoxelEditManager.gd` autoload** — Core of the destructible terrain system. Async edit queue (per-frame voxel budget cap, ~256 voxels/frame default), `EditedChunkRegistry` (in-memory `HashSet[Vector3i]`, populated from `VoxelStreamSQLite` on save load), LOD-bake-on-eviction (one-time LOD1/LOD2 mesh generation when an edited chunk leaves edit-detail radius; cached to `user://saves/slot_{N}/mesh_cache/`; regenerate on demand if missing), NoEditZone enforcement before every `VoxelTool.do_*` call. Public API: `queue_edit_sphere(pos, radius, voxel_value) -> bool`, `queue_edit_box(...)`, `queue_set_voxel(...)`. Returns false if rejected by NoEditZone (caller may bark *"This place doesn't yield to me."* once per session per zone).
+  Reference: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain"
+
+- [ ] **`NoEditZoneRegistry.gd` autoload** — Tracks Area3D volumes registered to the `no_edit_zone` group. `_ready()` walks the scene tree and connects to area `tree_entered` / `tree_exiting` signals so registry updates live as zones load/unload via EntityStreamer. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before every voxel write.
+  Reference: `design/3D_VOXEL_MIGRATION.md` → "NoEditZones"
+
+- [ ] **First edit verb wired in** — Equip a Pickaxe → swing connects with rock voxel → `VoxelEditManager.queue_edit_sphere(pos, 0.5, AIR_VOXEL)` → if accepted, remove voxels and yield "Raw stone" to inventory; advance Mining sub-skill. Proves the full edit pipeline end-to-end (input → manager → NoEditZone check → VoxelTool write → SQLite delta → mesh re-bake → inventory yield → skill XP).
+
+- [ ] **Save / load wiring for editable terrain** — `GameState.save_game()` flushes `VoxelStreamSQLite` and `placed_schematics.json` to slot directory. `GameState.load_game()` validates `WORLD_GENERATOR_VERSION` stamp (hard error on mismatch — surface a clear UI error, do not load), populates `EditedChunkRegistry` from SQLite, hooks `VoxelStreamSQLite` to the slot's database path. Backup rotation per `design/SAVE_SYSTEM.md`.
+
+- [ ] **Test NoEditZone in `World3D.tscn`** — Drop one Area3D registered to group `no_edit_zone` covering a small region (e.g., a 10m × 10m square). Verify pickaxe edits inside the zone are silently rejected and trigger Roland's bark; edits outside work normally.
 
 - [ ] **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Phase 5 version just prints
   chunk coordinates to Output as player moves. Full entity loading in Phase 6.

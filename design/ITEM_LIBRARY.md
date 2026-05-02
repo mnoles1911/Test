@@ -43,6 +43,25 @@ All crafting input materials. This is the master list — cross-reference when d
 | **Preserved fat** | N/A | N/A | Rendered from game animals; purchased from butchers |
 | **Still's spirit** | N/A | N/A | Distilled grain spirit; purchased from taverns and distillers; expensive |
 
+### Voxel-Harvested Raw Materials (player-mined / felled / dug)
+
+These materials come from terrain edits performed with edit-verb tools (axe, pickaxe, shovel). Voxel material type is preserved through harvest — a "stone block" from a cliff face is the same material as a "stone block" purchased from a mason. See `design/3D_VOXEL_MIGRATION.md` → "Player Edit Verbs" for the full tool/material gating chart.
+
+| Material | Source (voxel material) | Tool required | Use |
+|---|---|---|---|
+| **Raw log** | Wood voxels (trees, fallen logs) | Axe (any tier) | Carpentry schematics; campfire fuel |
+| **Hardwood log** | Hardwood voxels (old-growth, oak, ash trees) | Axe (Quality+) | Reinforced schematics; hardwood dowel input |
+| **Raw stone** | Stone voxels (cliffs, surface rock) | Pickaxe (any tier) | Carpentry stone schematics; basic Building Voxels |
+| **Cut stone block** | Worked stone voxels (settlement quarries) | Pickaxe (Quality+) | Quality stone schematics |
+| **Iron ore** | Iron-bearing rock voxels (Spine, certain mountain biomes) | Pickaxe (any tier) | Smelted to iron ingot 2:1 |
+| **Steel ore (rare)** | Spine high-altitude veins | Pickaxe (Quality+) | Direct steel-ingot smelting (1:1) |
+| **Adamant ore** | Deep underground veins; Khorumzad approaches | Pickaxe (Masterwork) | Masterwork weapons/tools |
+| **Coal lump** | Coal voxels (caves, surface seams) | Pickaxe (any tier) | Forge fuel |
+| **Raw dirt** | Dirt voxels (everywhere on surface) | Shovel (any tier) | Carpentry foundations; backfill |
+| **Sand** | Sand voxels (riverbanks, coast) | Shovel (any tier) | Glass crafting (Game Two onward) |
+| **Clay** | Clay voxels (riverbanks) | Shovel (any tier) | Bricks, pottery (some carpentry tier-up recipes) |
+| **Ash compound** | Ash voxels (Ashfields, post-burn zones) | Shovel (any tier — Ashfields ash is hardened, needs ash-tier shovel) | Ashstone dust source; some alchemy |
+
 ### Metals and Minerals
 
 | Material | Source | Use |
@@ -245,6 +264,23 @@ All crafted at the **Smithing Forge** unless noted. Quality tier affects damage 
 | 39 | **Arrowhead Bundle** | Crafting component; 20 per batch; used in certain throwable recipes | Iron ingot (2) | Coal (1) | No ranged weapon in Game One; component for caltrops and trap variants |
 | 40 | **Repair Bracket** | Armor repair component; required for forge-level armor maintenance on plate items | Iron scraps (4) | Coal (1) | Field kits cover minor repairs; plate items need this for major restoration |
 
+### Edit-Verb Tools (Smithing Forge)
+
+Tools occupy the Weapon slot and serve dual function: combat (lower damage than dedicated weapons) and terrain edits (yield voxel material into inventory). Tier gates which voxel materials the tool can harvest. Skill (Felling/Mining/Excavation sub-skills under Crafting domain) gates speed and yield within the tier.
+
+| # | Name | Smithing Tier | Tool Type | Primary Material | Secondary | Material Hardness Cap | Notes |
+|---|---|---|---|---|---|---|---|
+| T1 | **Wood-Hafted Axe** | Common | Axe | Iron ingot (2) | Hardwood dowel (2) | Standard wood | Combat damage 12 (anti-armor bias); felling speed: slow |
+| T2 | **Steel Felling Axe** | Quality | Axe | Steel ingot (2) | Iron ingot (1) | Hardwood dowel | Hardwood + standard wood; combat damage 18 |
+| T3 | **Dwarven Maul-Axe** | Masterwork | Axe | Steel ingot (3) | Flux powder (1) | Hardwood dowel (2) | All wood types; combat damage 26; recipe from Khorumzad |
+| T4 | **Iron Pickaxe** | Common | Pickaxe | Iron ingot (3) | Hardwood dowel | Stone, soft ore | Combat damage 8 (blunt); mining speed: slow |
+| T5 | **Steel Pickaxe** | Quality | Pickaxe | Steel ingot (2) | Iron ingot (1) | Hardwood dowel | Iron-tier ore + below; combat damage 12 |
+| T6 | **Adamant Pickaxe** | Masterwork | Pickaxe | Adamant ore (2) | Steel ingot (2) | Hardwood dowel (2) | All ore types incl. adamant; combat damage 16; recipe from a master smith deep in the Spine |
+| T7 | **Iron Shovel** | Common | Shovel | Iron ingot (2) | Hardwood dowel | Dirt, sand, clay, soft ash | Combat damage 6; excavation speed: standard |
+| T8 | **Steel Shovel** | Quality | Shovel | Steel ingot (2) | Iron ingot (1) | Hardwood dowel | Hardened ash + below; combat damage 9 |
+
+All edit-verb tools have weapon-style condition (degrades with use). Field-sharpenable with Sharpening Kit at reduced effectiveness; full restoration at Grindstone. Tool durability is intentionally lower than a dedicated weapon at the same tier — using a pickaxe as your primary combat weapon is a real tradeoff.
+
 ---
 
 ## Section 3 — Cooking Recipes (15 recipes)
@@ -288,6 +324,17 @@ All crafted at the **Assembly Table**. No alchemy involved — pure material con
 | 7 | **Noise-Maker Pouch** | Thrown or placed; creates loud noise at a location to draw enemy attention | Iron scraps (3) | Rope (short) | — | 3 |
 | 8 | **Venomtip Bundle** | Three needle-darts; thrown at enemy; inflicts poison (5 HP/min for 3 min) | Arrowhead bundle (5) | Nightshade cluster | Leather strip | 1 bundle of 3 |
 
+### Explosives (combat damage + AOE voxel removal)
+
+These are throwables with the additional property of removing voxels in their blast radius. They route through `VoxelEditManager` to apply terrain damage, respecting NoEditZones (a Sapper's Bundle thrown inside a settlement deals combat damage but leaves the masonry intact). Loud — significantly increases enemy detection radius for ~10 seconds.
+
+| # | Name | Effect | Voxel AOE | Primary Material | Secondary | Tertiary | Batch (base) |
+|---|---|---|---|---|---|---|---|
+| 8a | **Powder Charge** | Combat damage 40 in 2m; sets flammable surfaces alight | 2m radius; clears stone/rock/soft ore voxels | Saltpeter (2) | Sulphur | Linen cloth | 2 |
+| 8b | **Sapper's Bundle** | Combat damage 80 in 4m; heavy stagger; destroys wooden structures within radius | 4m radius; clears stone/rock/ore voxels including iron-tier | Saltpeter (4) | Sulphur (2) | Charcoal (2) | 1 |
+
+Spells with voxel-removal properties (Game Two onward, when magic-using companions arrive) route through the same `VoxelEditManager` async edit queue and obey the same NoEditZone rules.
+
 ### Traps (placed in environment)
 
 | # | Name | Effect | Primary Material | Secondary | Tertiary | Batch (base) |
@@ -319,6 +366,78 @@ All crafted at the **Assembly Table**. No alchemy involved — pure material con
 | 28 | **Signal Mirror** | Reflects sunlight; used for long-distance signaling (quest use; certain outdoor scenes have signal options) | Copper ingot (1) | Leather strip | — | 1 |
 | 29 | **Decoy Bundle** | Placed; creates the appearance of a person (shadow/silhouette) to draw enemy attention for 20 seconds | Heavy canvas (2) | Hardwood dowel | — | 1 |
 | 30 | **Fire Starter Kit** | Lights campfires without requiring a nearby flame; also used as a backup to light torches | Wax | Flint fragment (found item) | Charcoal (trace) | 3 |
+
+---
+
+## Section 5 — Carpentry Schematics & Building Voxels
+
+All crafted at the **Carpentry Bench** (Roland's camp from Act II onward, settlement carpenter shops). Schematics are placed via Build Mode (held `B`) — a translucent ghost previews placement; LMB confirms; RMB cancels. NoEditZones reject placement (settlements and lore landmarks are protected).
+
+Each schematic is a `.glb` prop with snap metadata. Quality tier affects durability (Common weathers fast, Masterwork lasts indefinitely) and visual finish.
+
+### Walls and Structural
+
+| # | Name | Tier | Snap | Materials | Batch |
+|---|---|---|---|---|---|
+| S1 | **Plank Wall Section** | Common | Ground + adjacent wall edge | Raw log (4) | 1 |
+| S2 | **Reinforced Plank Wall** | Quality | Ground + adjacent wall edge | Hardwood log (3), Iron scraps (2) | 1 |
+| S3 | **Log Wall Section** | Common | Ground + adjacent wall edge | Raw log (6) | 1 |
+| S4 | **Stone Wall Section** | Common | Ground + adjacent wall edge | Raw stone (8), Clay (2) | 1 |
+| S5 | **Cut Stone Wall Section** | Quality | Ground + adjacent wall edge | Cut stone block (4), Clay (1) | 1 |
+| S6 | **Dwarven Stone Vault Wall** | Masterwork | Ground + adjacent wall edge | Cut stone block (6), Iron ingot (1), Coal (1) | 1 |
+
+### Roofs and Floors
+
+| # | Name | Tier | Snap | Materials | Batch |
+|---|---|---|---|---|---|
+| S7 | **Thatched Roof Panel** | Common | Wall tops | Silkweed fiber (3), Raw log (2) | 1 |
+| S8 | **Wood Shingle Roof Panel** | Quality | Wall tops | Hardwood log (3), Iron scraps (1) | 1 |
+| S9 | **Slate Roof Panel** | Quality | Wall tops | Cut stone block (2), Raw log (1) | 1 |
+| S10 | **Wood Plank Floor** | Common | Ground or stilts | Raw log (3) | 1 |
+| S11 | **Stone Tile Floor** | Common | Ground | Raw stone (4) | 1 |
+
+### Doors, Windows, and Openings
+
+| # | Name | Tier | Snap | Materials | Batch |
+|---|---|---|---|---|---|
+| S12 | **Plank Door** | Common | Wall opening | Raw log (3), Iron scraps (1) | 1 |
+| S13 | **Reinforced Door** | Quality | Wall opening | Hardwood log (3), Iron ingot (1) | 1 |
+| S14 | **Iron-Banded Door** | Masterwork | Wall opening | Hardwood log (4), Iron ingot (3), Coal (1) | 1 |
+| S15 | **Shuttered Window** | Common | Wall opening | Raw log (2), Iron scraps (1) | 1 |
+| S16 | **Glass-Pane Window** | Quality | Wall opening | Raw log (2), Sand (3), Iron scraps (1) | 1 (Game Two onward — glass-making unlocks) |
+
+### Fences, Gates, and Outdoor
+
+| # | Name | Tier | Snap | Materials | Batch |
+|---|---|---|---|---|---|
+| S17 | **Wood Fence Segment** | Common | Ground; chains to adjacent fence | Raw log (2) | 2 |
+| S18 | **Palisade Wall Segment** | Quality | Ground; chains to adjacent palisade | Raw log (5), Iron scraps (1) | 1 |
+| S19 | **Wood Gate** | Common | Between two fence/palisade segments | Raw log (4), Iron scraps (1) | 1 |
+| S20 | **Reinforced Gate** | Quality | Between two palisade segments | Hardwood log (4), Iron ingot (2) | 1 |
+
+### Furniture (Placeable)
+
+| # | Name | Tier | Snap | Materials | Batch |
+|---|---|---|---|---|---|
+| S21 | **Workbench** | Common | Free placement on flat surface | Raw log (3), Iron scraps (1) | 1 |
+| S22 | **Wooden Stool** | Common | Free | Raw log (1) | 1 |
+| S23 | **Bedroll Frame** | Common | Free | Raw log (2), Linen cloth (2) | 1 (acts as Full Rest target if placed inside enclosed structure) |
+| S24 | **Storage Chest** | Common | Free | Raw log (3), Iron scraps (2) | 1 |
+
+### Building Voxels (per-block placement, Detail submode)
+
+In Build Mode → Detail submode (Tab), individual voxel blocks can be placed one-at-a-time on the voxel grid for custom detailing. Each "Building Voxel" is a stack of single-block placements crafted from raw material. These are NOT schematics — they are stored as deltas in `voxel_deltas.sqlite` like any other voxel edit.
+
+| # | Name | Tier | Materials | Batch (blocks) |
+|---|---|---|---|---|
+| BV1 | **Wood Building Block** | Common | Raw log (1) | 16 blocks |
+| BV2 | **Hardwood Building Block** | Quality | Hardwood log (1) | 16 blocks |
+| BV3 | **Stone Building Block** | Common | Raw stone (1) | 16 blocks |
+| BV4 | **Cut Stone Building Block** | Quality | Cut stone block (1) | 16 blocks |
+| BV5 | **Dirt Building Block** | Common | Raw dirt (2) | 32 blocks |
+| BV6 | **Clay Building Block** | Common | Clay (1) | 16 blocks |
+
+Building voxels are slow to place (one per click, no auto-fill). They are intended for the 5–10% of any structure that needs a custom touch — chimney variations, custom stair runs, decorative carving — not for bulk wall construction.
 
 ---
 

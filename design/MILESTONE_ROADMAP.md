@@ -79,10 +79,28 @@ The two foundations everything else stands on: the world and the protagonist.
   import as Image resources → wire into graph (heightmap → surface SDF; 3D noise → caves;
   splatmap → `CHANNEL_INDICES`). Encodes Mira's geography: Spine ridge east (~5000–7000m x),
   Greatwood flat north (~0–2500m z), Aldwater valley, Ashfields, forced-flat settlement zones.
-  This is the most important deliverable in the project.
+  This is the most important deliverable in the project. **The graph produces the procedural
+  baseline only — it is the constant against which every player edit is diffed. Stamp a
+  generator-version constant in code so save loads can detect mismatches.**
 
-- **`VoxelLodTerrain` in `World3D.tscn`** — Replace the flat floor placeholder.
-  6–8 LOD levels, LOD0 radius ~60m. Mesher: `VoxelMesherCubes` (blocky).
+- **`VoxelLodTerrain` + `VoxelStreamSQLite` in `World3D.tscn`** — Replace the flat floor placeholder.
+  6–8 LOD levels. Mandatory LOD0 radius 32m (collision floor). Default edit-detail radius 64m.
+  Mesher: `VoxelMesherCubes` (blocky). Stream backend: `VoxelStreamSQLite` writing to
+  `user://saves/slot_{N}/voxel_deltas.sqlite`.
+
+- **`VoxelEditManager.gd` autoload** — Async edit queue (per-frame voxel budget cap),
+  `EditedChunkRegistry` (in-memory `HashSet<Vector3i>` populated from SQLite on load),
+  LOD-bake-on-eviction (generate LOD1/LOD2 mesh when an edited chunk leaves edit-detail
+  radius; cache to `user://saves/slot_{N}/mesh_cache/`; regenerate if missing), NoEditZone
+  enforcement (queries `NoEditZoneRegistry` before every `VoxelTool.do_*` call). Per
+  `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+
+- **`NoEditZoneRegistry.gd` autoload** — Tracks Area3D volumes registered to the
+  `no_edit_zone` group. `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`.
+
+- **First edit verb wired in** — Pickaxe equipped → swing on rock voxel removes one voxel,
+  yields raw stone into inventory, advances Mining sub-skill. Proves the full edit pipeline
+  (input → VoxelEditManager → NoEditZone check → VoxelTool write → SQLite delta → inventory yield).
 
 - **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Prints chunk enter/exit to
   Output as player moves. No actual entity loading yet — just proves the architecture.
@@ -102,8 +120,12 @@ The two foundations everything else stands on: the world and the protagonist.
 ### Verified when:
 - Roland (real model) walks through generated terrain that reads as Mira's geography
 - Spine ridge visible on the eastern horizon from Aldenholt coordinates
-- LOD transitions invisible within 60m of player
+- LOD transitions invisible within mandatory LOD0 radius (32m)
 - Walk/run cycle animates correctly from velocity
+- Pickaxe-mined voxels persist across save/load (deltas survive in SQLite)
+- A test NoEditZone (placed for verification) silently rejects pickaxe edits and triggers Roland's bark
+- Walking far from a mined voxel and back: edited chunk renders LOD-baked at distance, snaps to LOD0 within edit-detail radius
+- Saving and reloading: voxel_deltas.sqlite re-applies edits exactly, mesh_cache re-generates if cleared
 
 ---
 

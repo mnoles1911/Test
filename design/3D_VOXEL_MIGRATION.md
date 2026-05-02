@@ -89,8 +89,98 @@ This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent
 - Node: `VoxelLodTerrain` (LOD streaming — required for 12km × 10km open world)
 - Terrain mesher: `VoxelMesherCubes` (smooth hills, cliff edges, river banks)
 - Buildings: MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain. `VoxelMesherCubes` for any terrain-carved structures (rare).
-- Terrain is static (generated from `WorldGenerator.gd`, not editable by player)
+- Terrain is **editable / destructible by default**. The procedural `VoxelGeneratorGraph` is the *baseline*; player edits are stored as deltas in `VoxelStreamSQLite` per save slot. See **"Destructible Terrain"** below.
 - Scope: full open world — 12km × 10km playable Mira, 125:1 linear compression
+
+---
+
+## Destructible Terrain
+
+**Default rule:** every voxel in the world is destructible. Non-destructible regions and entities are the exception, declared explicitly via `NoEditZone` Area3D volumes or implemented as `MeshInstance3D` props (not voxel terrain).
+
+This is the canonical spec. Other docs (`SAVE_SYSTEM.md`, `MULTIPLAYER.md`, `ART_PIPELINE.md`, etc.) defer to this section for terrain mutation behavior.
+
+### Edit Model — LOD0-Clamped + LOD-Baked at Distance
+
+The hard constraint: voxel edits and rendered geometry must agree wherever the player can interact with terrain (collision, pathfinding, placement). The cheap optimization: most edits are sparse and small, so we don't need to keep edited chunks at full resolution forever.
+
+**Three radii control the model. All three are independent:**
+
+| Radius | Default | Range | Controls |
+|---|---|---|---|
+| **Mandatory LOD0** | 32m | fixed | Edited chunks within this radius are always rendered + collided at LOD0. Floor for safety. |
+| **Edit detail radius** | 64m (8 chunks) | 32m–256m | Player setting. How far out edited chunks render at LOD0 (full block-precision). |
+| **View distance** | 600m | 200m–2km | Player setting. LOD streaming horizon for procedural (un-edited) terrain. |
+
+**Render decision per chunk per frame:**
+
+```
+for each chunk in view-distance radius:
+    if chunk is within edit-detail radius:
+        load + render at LOD0 with deltas applied (full crispness)
+    else if chunk is in EditedChunkRegistry:
+        load + render from LOD-bake cache (regenerate from edited state if missing)
+    else:
+        load + render procedural baseline at appropriate LOD
+```
+
+The LOD bake is the key trick. When an edited chunk first leaves the edit-detail radius, generate its LOD1/LOD2 meshes from the *edited* voxel state and cache them under `user://saves/slot_{N}/mesh_cache/`. Subsequent renders at distance use the cached mesh, not the procedural baseline. A house the player built remains visible (chunky) from across the valley. The cache is regeneratable — exclude from save backups, regenerate on demand if missing.
+
+### What Persists, What Doesn't
+
+- **Voxel deltas persist forever.** No world healing. A pit Roland dug in Act I is still there in Act IV.
+- **LOD bake cache is disposable.** Lives next to the save; regenerated on demand.
+- **`EditedChunkRegistry` (autoload)** holds the in-memory `HashSet<Vector3i>` of chunks with deltas. Populated from `VoxelStreamSQLite` on save load.
+
+### NoEditZones — The Opt-Out Model
+
+Settlements, named landmarks, quest sites, dungeon set-pieces, and any narratively load-bearing geometry are protected. Two layers:
+
+1. **Major structures = `MeshInstance3D` props.** Buildings (Iron Chalice chapel, Khorumzad façade, Caer Brannoch towers) are MagicaVoxel exports placed on the terrain surface, not carved into voxels. Voxel edits cannot affect them by definition.
+2. **Surrounding terrain protected by `NoEditZone` Area3D volumes.** Each settlement, dungeon entrance, and lore site sits inside an authored Area3D volume that buffers ~50–100m around the structure. The `VoxelEditManager` autoload queries `NoEditZoneRegistry` before applying any `VoxelTool.do_*` write. Writes inside a NoEditZone are silently rejected, with a Roland bark *"This place doesn't yield to me."* on player attempts.
+
+**Authoring rule: if it's narratively load-bearing, it's a MeshInstance3D prop inside a NoEditZone.** The voxel ground/cliffs/forest underneath is the destructible surface. Settlements sit on top.
+
+### Player Edit Verbs
+
+Voxel edits are intentionally slow and cumbersome — far below Minecraft's pace. The number and velocity of edits per session is expected to be a small fraction of a Minecraft session. This shapes the entire system: rare edits = small deltas = small saves = cheap MP sync.
+
+| Tool | Voxel material | Notes |
+|---|---|---|
+| **Axe** | wood (trees, logs, planks) | Felling animation per tree; trunk falls as a directional event, then the tree resolves into voxel logs the player can pick up |
+| **Pickaxe** | rock, stone, ore | Per-swing single-voxel removal at low tiers; multi-voxel at higher tiers. Yields material into inventory. |
+| **Shovel** | dirt, sand, clay, ash | Same swing pattern as pickaxe but for soft materials |
+| **Explosives** | stone walls, fortifications, dense rock | Crafted consumable; AOE 2–4m radius; significant voxel removal in one event. Loud, draws enemy attention. |
+| **Spells** | varies by school | Earth spells dig; Fire spells fell trees + ignite; (Game Two onward, when magic comes online for Roland's allies) |
+
+Tool material gating: each voxel material has a hardness tier. A wooden pickaxe cannot mine adamant ore. Tool tier comes from smithing tier — Common / Quality / Masterwork — same as weapons. Speed scales with the relevant skill (see `design/SKILLS_AND_PROGRESSION.md` → Crafting → Mining/Felling/Excavation/Demolition sub-skills).
+
+All edit verbs share a per-swing voxel-budget cap to prevent stutter. Explosives queue their voxel writes across multiple frames via the `VoxelEditManager` async edit queue.
+
+### Player-Built Structures — Voxel and Schematic
+
+Players build with two mechanisms, used together:
+
+1. **Schematic placement (props).** Crafted building pieces (wall section, door, roof panel, window frame, fence) are `.glb` props placed on the world surface. Stored as `PlacedSchematic` records (position, rotation, schematic_id) in the save. Cheap, fast, looks consistent. Used for the bulk of any structure.
+2. **Voxel placement (per-block).** Player can place individual voxel blocks for detailing — chimney variation, custom stair runs, decorative carving. Stored as deltas in `VoxelStreamSQLite` like any other edit.
+
+Both coexist on the same plot. Schematic walls form the shell; voxel placement tweaks the details. Save format keeps them in separate tables (see `design/SAVE_SYSTEM.md`).
+
+A small player-built house = a few dozen schematic placements + perhaps a hundred voxel deltas. Total save cost: trivial.
+
+### Combat / AI Implications
+
+- Navmesh chunked per voxel chunk. Async rebuild on edit. AI tolerates stale paths for ~1–2s post-edit; enemies stuck > 8s teleport-correct to nearest valid nav node with a small VFX so it doesn't read as a bug.
+- Knockback into terrain that destroys voxels on impact is supported. Power-attack-into-rock dust events are good.
+- Pit-trapping enemies is a viable player tactic. Embraced as a power moment.
+
+### Multiplayer Implications
+
+Sparse edits + MP-sync of `EditedChunkRegistry` deltas on join (typically a few hundred KB even on a long-running host save). Each client sets its own edit-detail radius locally — host doesn't care. Full spec: `design/MULTIPLAYER.md`.
+
+### Save System Implications
+
+Save slot becomes a directory: JSON state + `voxel_deltas.sqlite` + `placed_schematics.json` + `mesh_cache/`. Mesh cache excluded from backup rotation. Generator-version stamp inside the JSON; mismatch on load is a hard error (no silent migration). Full spec: `design/SAVE_SYSTEM.md`.
 
 ### Asset Creation — MagicaVoxel
 
@@ -162,15 +252,19 @@ Third-person over-shoulder camera, player-rotatable:
 - [ ] Create placeholder `World3D.tscn` — flat `GridMap` floor, a few box walls, no voxel terrain yet
 - [ ] Verify: WASD moves the box, camera follows at fixed angle, no clipping through floor
 
-### Milestone 5-3D: Open World Terrain Foundation
+### Milestone 5-3D: Open World Terrain Foundation (Editable)
 
-**Goal:** Walking on streaming VoxelLodTerrain that generates recognizable Mira geography.
+**Goal:** Walking on streaming VoxelLodTerrain that generates recognizable Mira geography, with destructible terrain wired in from the start.
 
 - [ ] Set up `VoxelLodTerrain` node in `World3D.tscn` (replace placeholder floor)
-- [ ] Write `WorldGenerator.gd` — layered FastNoiseLite terrain with Spine ridge east, Greatwood flat north, Aldwater valley center, forced-flat zones at settlement coordinates
-- [ ] Configure LOD levels (6–8 levels for 12km extent; LOD0 radius ~60m)
+- [ ] Wire `VoxelGeneratorGraph` (Gaea EXR heightmap + 3D cave noise) — Spine ridge east, Greatwood flat north, Aldwater valley center, forced-flat zones at settlement coordinates
+- [ ] Configure LOD levels (6–8 levels for 12km extent; mandatory LOD0 radius 32m; default edit-detail radius 64m)
+- [ ] Attach `VoxelStreamSQLite` to the terrain — voxel-delta storage path = `user://saves/slot_{N}/voxel_deltas.sqlite`
+- [ ] Implement `VoxelEditManager` autoload — async edit queue, EditedChunkRegistry, NoEditZoneRegistry, LOD-bake-on-eviction, per-frame voxel budget cap
+- [ ] Implement `NoEditZoneRegistry` — registers Area3D volumes by group `no_edit_zone`; `VoxelEditManager` queries before any write
+- [ ] First test edit verb: pickaxe debug action — single-voxel removal at crosshair, yields material into inventory
 - [ ] Add `EntityStreamer` node — stub that prints chunk load/unload to Output
-- [ ] Verify: player walks on generated terrain, camera follows in third-person, distant terrain LODs are visible, no pop-in within 60m
+- [ ] Verify: player walks on generated terrain, camera follows in third-person, distant terrain LODs are visible, pickaxe edits persist across save/load, edits inside a placed NoEditZone are rejected
 
 ### Milestone 6-3D: First MagicaVoxel Assets
 
@@ -276,7 +370,10 @@ func _physics_process(delta: float) -> void:
   Player3D.gd           ← replaces Player.gd
   CameraRig.gd          ← third-person over-shoulder, lock-on support
   CampfireFlicker3D.gd  ← minor adaptation
-  WorldGenerator.gd     ← NEW: VoxelGeneratorScript subclass, generates Mira terrain
+  WorldGenerator        ← VoxelGeneratorGraph (Godot editor node, NOT a .gd file) — procedural baseline only; player edits live as deltas in VoxelStreamSQLite
+  VoxelEditManager.gd   ← NEW autoload: async edit queue, EditedChunkRegistry, LOD-bake cache management, NoEditZone enforcement, per-frame voxel budget
+  NoEditZoneRegistry.gd ← NEW autoload: registry of Area3D no-edit volumes; queried before every VoxelTool write
+  SchematicLibrary.gd   ← NEW autoload: registry of placeable building schematics (.glb props with placement metadata)
   EntityRegistry.gd     ← NEW: autoload, spatial dictionary of all world entities
   EntityStreamer.gd      ← NEW: node in World3D, loads/unloads entities by player proximity
   Zone.gd               ← interiors only (Vector3 adapt)

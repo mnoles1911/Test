@@ -113,6 +113,8 @@ Every major dialogue outcome sets a flag in GameState.gd. Flags are not hidden �
 
 The game world is a continuous open world — a single `VoxelLodTerrain` streaming scene covering playable Mira (12km × 10km) and Thal (7km × 5.5km), separated by the Shroud Sea (a skybox/loading transition). Entities (NPCs, props, triggers, enemies) load and unload dynamically as the player moves via `EntityStreamer`. Interiors (buildings, dungeon floors) are discrete scenes loaded additively when the player enters a door, then unloaded on exit. The Zone/Room framework applies to interiors only.
 
+**Terrain is destructible by default.** Players can fell trees, mine ore, dig earth, set explosives, and build their own structures (schematics + per-voxel placement) anywhere outside protected `NoEditZone` Area3D volumes. Settlements, lore landmarks, dungeon entrances, and quest-critical sites are wrapped in NoEditZones and constructed from `MeshInstance3D` props sitting on top of the terrain rather than carved into it. Edits persist forever (no world healing) and are stored as deltas in `VoxelStreamSQLite` per save slot. Full canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+
 **World coordinate reference:** See `CLAUDE.md` → World coordinate reference for landmark positions.
 
 Per `/lore/GAME1_PART1.md` and `/lore/GAME1_PART2.md`, the story content areas are:
@@ -176,16 +178,20 @@ Bringing the relevant companion unlocks investigation observations and sometimes
 
 ### Manual + Autosave
 
-- Autosave at every zone transition and before every major story scene
-- Manual save at established rest points (fires, inns, Roland's safe locations)
-- One save file per playthrough, three playthrough slots
-- Encourages commitment; discourages reload-for-optimal-outcome on first play
+- Autosave triggered by Full Rest (sleeping in a bed or established camp cot)
+- Manual save via the **Wanderer's Seal** — a crafted consumable vial. Limited supply.
+- One active save per slot + one backup; three playthrough slots
+- Saves are diegetic and commitments. No quicksave / quickload.
+
+### Save Format
+
+Each save slot is a directory containing JSON game state, `voxel_deltas.sqlite` (every player voxel edit), `placed_schematics.json` (player-built structures), and a regeneratable `mesh_cache/` (LOD-baked meshes for edited chunks). The save also stamps the `WorldGenerator` (VoxelGeneratorGraph) version — mismatch on load is a hard error, no silent migration. Full spec: `design/SAVE_SYSTEM.md`.
 
 ### Cross-Game Persistence
 
 Game One's flag file imports into Game Two. Game Two's into Game Three. The consequence of every choice Roland makes carries forward — see the faction commitment table in `/lore/REFERENCE.md` for which Game One choices alter Game Three's available forces.
 
-This requires GameState.gd to use a forward-compatible serialization format (JSON with versioned schema). Worth establishing now even though it does not matter for Milestone 1.
+This requires GameState.gd to use a forward-compatible serialization format (JSON with versioned schema). Voxel deltas and placed schematics do **not** carry across games — each game is its own world snapshot. Only the JSON flag dictionary persists across game-to-game imports.
 
 ---
 

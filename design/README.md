@@ -103,9 +103,14 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
 - `CAMERA_AND_PERSPECTIVE.md` — third-person over-shoulder follow camera at
   ~15° elevation, player-rotatable, with lock-on for 1-vs-many combat
 - `ART_PIPELINE.md` — MagicaVoxel for props/buildings, Zylann Voxel Tools for
-  terrain (`VoxelLodTerrain` streaming), low-poly Blender characters from Act I
-- `3D_VOXEL_MIGRATION.md` — open-world architecture: 12 km × 10 km playable
-  Mira, streaming voxel terrain, third-person camera, milestone sequence
+  terrain (`VoxelLodTerrain` streaming + `VoxelStreamSQLite` for player edits),
+  schematic-prop pipeline for player-built structures, low-poly Blender
+  characters from Act I
+- `3D_VOXEL_MIGRATION.md` — **canonical destructible-terrain spec**: open-world
+  architecture, 12 km × 10 km playable Mira, streaming voxel terrain editable
+  by default (LOD0-clamped + LOD-baked at distance), NoEditZone protection
+  model, edit verbs, player-built structures, third-person camera, milestone
+  sequence
 - `AUDIO_DESIGN.md` — audio bus layout, music/SFX/voice routing, spatial 3D
   audio, settings volume sliders
 

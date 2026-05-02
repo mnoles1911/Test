@@ -63,6 +63,24 @@ All input is routed through Godot's Input Map. Physical keys are defaults only �
 
 Note: `quick_slot_next` / `quick_slot_prev` are the cycle inputs used mid-combat. The numbered slots 1–4 are for direct selection when there is time.
 
+### Build Mode (Player Construction)
+
+Build Mode is the placement UI for player-built structures (schematics) and per-voxel detail edits. Activated with a held key — releasing the key exits Build Mode. See `design/CRAFTING.md` → Carpentry Bench for the schematic system, and `design/3D_VOXEL_MIGRATION.md` → "Player-Built Structures" for the canonical model.
+
+| Action name | Default (KB) | Default (Controller) | Description |
+|---|---|---|---|
+| `build_mode` | B (hold) | Right shoulder + D-pad up | Hold to enter Build Mode. Releases on key-up. While in Build Mode, a translucent ghost of the selected schematic / building voxel previews placement at the crosshair, snapping appropriately. |
+| `build_confirm` | LMB | A / Cross | Place the schematic / voxel block at the ghost position. Material cost deducted from inventory. Rejected silently inside NoEditZones (ghost turns red). |
+| `build_cancel` | RMB | B / Circle | Cancel placement (no material spent). |
+| `build_rotate` | R | Right stick click | Rotate the ghost 90° around its vertical axis (where applicable). |
+| `build_detail_toggle` | Tab | D-pad right | Toggle between Schematic submode (placing prefab building pieces) and Detail submode (placing single voxel blocks one at a time). |
+| `build_select_next` | Mouse Scroll Up | Right stick up | Cycle to the next schematic / building voxel in the player's crafted inventory. |
+| `build_select_prev` | Mouse Scroll Down | Right stick down | Cycle to the previous schematic / building voxel. |
+
+Edit-verb tools (axe, pickaxe, shovel) are NOT Build Mode actions — they're handled like weapons. Equip the tool in the Weapon slot, then `attack` swings it. If the swing connects with a matching voxel material (and no enemy is in front), `VoxelEditManager` removes voxels and yields material to inventory. Inside a NoEditZone, the swing still animates and damages enemies but does not remove voxels — Roland's bark *"This place doesn't yield to me."* fires once per session per zone.
+
+Explosives (Powder Charge, Sapper's Bundle) are quick-slot throwables — same `quick_slot_*` actions as other throwables.
+
 ### Menu and UI Actions
 
 | Action name | Default (KB) | Default (Controller) | Description |
