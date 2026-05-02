@@ -124,12 +124,37 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 
 ## World and Terrain Pipeline
 
-This is the most complex part of the stack. Terrain is authored in Gaea, exported as image data, and consumed by a VoxelGeneratorGraph node in Godot.
+This is the most complex part of the stack. The pipeline has two stages: **geography planning** (where does everything go) and **terrain sculpting** (what does the ground actually look like). Both feed into the same VoxelGeneratorGraph in Godot.
 
-### Step 1 — Author terrain in Gaea
+### Stage 0 — Geography Planning in Azgaar's Fantasy Map Generator
 
-**Tool:** Gaea (https://quadspinner.com/gaea) — free tier sufficient  
-**What it does:** Procedural terrain sculptor. Build the Spine ridge, Greatwood depression, Aldwater valley, and settlement flat zones using Gaea's node graph.
+**Tool:** Azgaar's Fantasy Map Generator (https://azgaar.github.io/Fantasy-Map-Generator/) — browser-based, free  
+**What it does:** Generates continent shapes, river networks, biome regions, and political borders. Used to establish Mira's overall geography — where the coastlines sit, where the Spine falls, where the Greatwood and Ashfields are — before any terrain sculpting begins.
+
+**How it fits the pipeline:**
+- Generate a Mira-shaped continent with the correct rough proportions
+- Identify region boundaries: Greatwood (north), Spine (east), Aldwater basin (center), Ashfields (southeast)
+- **Export the heightmap** (Azgaar supports PNG heightmap export from the map editor) — use this as a **layout reference** when sculpting in Gaea, not as the final heightmap
+- Azgaar's heightmap is low-resolution and not 32-bit — it is a starting sketch, not production data
+
+**What Azgaar does NOT replace:** Gaea (or World Machine) for final terrain sculpting. Azgaar gives you the geography; Gaea gives you the erosion, the cliff lips, the ridge detail, and the 32-bit EXR the pipeline requires.
+
+**Workflow:**
+1. Generate map in Azgaar, adjust until continent shape and biome placement match the lore
+2. Export heightmap PNG as reference
+3. Load that PNG as a background reference layer in Gaea
+4. Re-sculpt in Gaea using Azgaar's layout as a guide — the Gaea output is what actually goes into Godot
+
+---
+
+### Step 1 — Sculpt terrain in Gaea (primary) or World Machine (alternative)
+
+**Primary tool:** Gaea (https://quadspinner.com/gaea) — free tier sufficient  
+**Alternative:** World Machine (https://www.world-machine.com/) — free Standard edition available; more established, slightly steeper learning curve, equivalent output quality
+
+Both tools produce the same required output: a **32-bit EXR heightmap** and an **RGB splatmap**. Either can be used interchangeably in the pipeline. Gaea is the default choice because its free tier covers this project's needs. World Machine is a proven alternative if Gaea's free tier becomes limiting or if you prefer its node graph style.
+
+**What Gaea/World Machine does:** Procedural terrain sculpture with erosion simulation. Build the Spine ridge, Greatwood depression, Aldwater valley, and settlement flat zones using a node graph — then bake natural erosion and weathering on top.
 
 Key Gaea nodes to use:
 - `Mountain` / `Ridge` — the Spine of the World (east, ~5000–7000m x)
@@ -138,7 +163,9 @@ Key Gaea nodes to use:
 - `Combine` — blend region masks together
 - `Output` — export node; set format to **EXR 32-bit single-channel**
 
-**Export two files from Gaea:**
+World Machine equivalents: `Advanced Perlin` / `Basic Noise` for base, `Erosion` device, `Clamp` device, `Combiner`, `Bitmap Output`.
+
+**Export two files (from either tool):**
 1. **Heightmap** — 32-bit single-channel EXR (grayscale: 0.0 = sea level, 1.0 = max elevation)
 2. **Biome splatmap** — 32-bit RGB EXR (R = grassland, G = forest/Greatwood, B = rock/ash/Ashfields)
 
@@ -241,6 +268,32 @@ Configure in the VoxelInstancer inspector — no GDScript required for basic sca
 ---
 
 ## Asset Creation Tools
+
+### Azgaar's Fantasy Map Generator (Geography Planning)
+
+| | |
+|---|---|
+| **Tool** | Azgaar's Fantasy Map Generator (https://azgaar.github.io/Fantasy-Map-Generator/) |
+| **Cost** | Free, browser-based |
+| **Export format** | PNG heightmap, SVG map, JSON data |
+| **Use for** | Continent shape, river placement, biome regions, political borders — layout reference only |
+
+Used at the start of terrain work to establish where everything sits on Mira before sculpting detail in Gaea. The exported PNG heightmap is a low-resolution layout sketch — load it as a background reference in Gaea, then re-sculpt on top of it. The Azgaar heightmap does NOT go into Godot directly.
+
+---
+
+### Gaea / World Machine (Terrain Sculpting)
+
+| | |
+|---|---|
+| **Primary** | Gaea (https://quadspinner.com/gaea) — free tier |
+| **Alternative** | World Machine (https://www.world-machine.com/) — free Standard edition |
+| **Export format** | 32-bit single-channel EXR (heightmap), 32-bit RGB EXR (splatmap) |
+| **Use for** | Final terrain sculpting with erosion — produces the EXR files that drive VoxelGeneratorGraph |
+
+Both tools are interchangeable in the pipeline. Gaea is the default. World Machine is a proven alternative with a longer track record and equivalent output quality — use it if Gaea's free tier becomes limiting.
+
+---
 
 ### MagicaVoxel (Props and Buildings)
 
