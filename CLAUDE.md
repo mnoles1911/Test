@@ -39,7 +39,6 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /scripts — all .gd files
 - /assets/voxel — MagicaVoxel exports (.glb): props, buildings, dungeon tiles, crown pieces
 - /assets/models — Blender character exports (.glb): Roland, NPCs, enemies
-- /assets/sprites — billboard sprite sheets (Aseprite, 32×48 px, if using Option A characters)
 - /assets/portraits — character portrait images for dialogue (256×320 px)
 - /assets/audio — music and sfx
 - /dialogue — all Dialogic timeline (.dtl) files; also `dialogue/CHARACTER_VOICES.md` (voice IDs + ElevenLabs config per character), `dialogue/PRONUNCIATION.md` (phonetic respellings for lore proper nouns — check before every TTS run), `dialogue/STYLE.md` (line writing rules, mood tags, length targets)
@@ -102,10 +101,10 @@ MILESTONE 4-3D: COMPLETE & VERIFIED IN GODOT (2026-05-01) — First 3D scene wit
 - [ ] Install Zylann's Voxel Tools plugin (manual step in Godot Asset Library)
 - [x] Verified in Godot 4.3 (2026-05-01): all 13 checklist items pass
 
-MILESTONE 5-3D: (not started) — First voxel terrain + MagicaVoxel assets
-- VoxelTerrain node with cave generator script
+MILESTONE 5-3D: (not started) — VoxelLodTerrain + first Roland Blender model
+- VoxelLodTerrain node with WorldGenerator (VoxelGeneratorGraph — Gaea EXR heightmap + 3D cave noise)
 - First MagicaVoxel exports: campfire prop, cave wall tile
-- First billboard sprite: Roland walk cycle (Aseprite → Sprite3D)
+- Roland low-poly Blender model: base mesh + rig + idle/walk/run animations (no billboard sprites)
 
 ## Current milestone
 Milestones 1–4 complete (2D). 3D pivot confirmed. **Milestone 4-3D complete and verified in Godot (2026-05-01):** camera (standard + freelook), sprint/crouch, health/endurance, HUD overlay, 6-tab journal/inventory overlay, all UI resized for 1080p. All 13 in-Godot verification checks pass.
@@ -193,6 +192,8 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/WEATHER_AND_ENVIRONMENT.md — authored weather, six time-of-day periods, WorldClock lighting, environmental hazards
 - design/SAVE_SYSTEM.md — diegetic saves (rest autosave + Wanderer's Seal), three slots, backup rotation
 - design/DEATH_AND_RESPAWN.md — death sequence, authored Roland death lines, Second Wind, no permanent loss
+- design/SWIMMING_AND_WATER.md — water body setup, swimming state machine, breath/drowning, Boujie water shader
+- design/MULTIPLAYER.md — co-op architecture (client-server, ENet, Netfox rollback), terrain sync, narrative canon rule
 
 **Player systems:**
 - design/HUD_AND_UI.md — minimal HUD, HP/endurance bars, quick slots, interaction prompt, bark overlay, menus
@@ -267,7 +268,7 @@ New autoloads (implemented — must still be registered in Project Settings → 
 - `WorldClock.gd` — ticks in-game time (default 240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` and `advance_hours()` for debug/rest
 
 New autoloads specified in design docs (not yet implemented — build in dependency order):
-- `WorldGenerator.gd` — extends `VoxelGeneratorScript`; generates terrain from world coordinates using layered noise + authored biome curves; encodes Spine ridge, Greatwood, Aldwater valley, Ashfields, settlement flat zones; foundation of the open world
+- `WorldGenerator.gd` — implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass); authored world geography sourced from a **Gaea-exported 32-bit EXR heightmap** + biome splatmap; 3D cave noise layer added in the graph for overhangs and cave systems; encodes Spine ridge, Greatwood, Aldwater valley, Ashfields, settlement flat zones; foundation of the open world. See `design/ART_PIPELINE.md` → Tool 2.
 - `EntityRegistry.gd` — spatial dictionary of every world entity (NPCs, props, triggers, enemies) keyed by chunk; stores lightweight `EntityRecord` data objects (type, world position, scene path, saved state); does not instantiate nodes itself
 - `EntityStreamer.gd` — node in `World3D.tscn`; each frame checks player position against `EntityRegistry`, instantiates nodes when in range, saves state and `queue_free()`s them when out of range
 - `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md)

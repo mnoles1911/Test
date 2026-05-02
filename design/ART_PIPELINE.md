@@ -73,60 +73,43 @@ MagicaVoxel is the standard voxel art tool. It is free, intuitive, and exports d
 ```
 World3D (Node3D)
 ├── VoxelLodTerrain       ← streaming open world terrain with LOD
-│   └── WorldGenerator    ← GDScript subclass of VoxelGeneratorScript
+│   └── VoxelGeneratorGraph  ← node-graph generator wired in the Godot editor (NOT a GDScript subclass)
 ├── EntityStreamer         ← node that loads/unloads world entities by player proximity
 ├── Player3D (instance)
 ├── DirectionalLight3D
 └── WorldEnvironment
 ```
 
-### WorldGenerator.gd (starting shape):
+### WorldGenerator — VoxelGeneratorGraph (Godot editor node, not GDScript):
 
-Uses a **3D density field** — not a heightmap. Every voxel gets a density value computed
-from its full (X, Y, Z) world position. Positive density = solid; negative = air.
-This is required to support overhangs, cave ceilings, and cliff lips.
+**`VoxelGeneratorGraph`** is a built-in node in Zylann's plugin. You wire it visually in the
+Godot editor — it compiles to a SIMD/compute shader and runs significantly faster than a
+GDScript subclass could. **Do not write a `VoxelGeneratorScript` GDScript subclass for this.**
 
-```gdscript
-# WorldGenerator.gd — subclass of VoxelGeneratorScript
-# Encodes Mira's terrain as a 3D density field.
-# Base ground shape from 2D noise (fast); overhangs/caves from 3D noise layer on top.
-extends VoxelGeneratorScript
+**Gaea → Godot terrain pipeline:**
+1. Author Mira's terrain in **Gaea** (free tier sufficient) — sculpt the Spine ridge, Greatwood, Aldwater valley, settlement flat zones
+2. Export as a **32-bit single-channel EXR heightmap** (Gaea: Output node → Format: EXR 32-bit)
+3. Export a **biome splatmap** (RGB channels: R = grassland, G = forest, B = rock/ash) as a separate EXR
+4. In Godot, import both files with **"Keep as Image"** import mode (not as textures)
+5. Wire them into the VoxelGeneratorGraph:
+   - Heightmap EXR → `Image` input node → `HeightmapShape` → drives the base SDF surface
+   - 3D `FastNoiseLite` node → `SdfSmoothSubtract` → carves caves (Y below surface only)
+   - Biome splatmap → `Image` input node → `CHANNEL_INDICES` → drives material painting on surface voxels
+6. Assign one `VoxelBlockyLibrary` with tile types matching splatmap channels (grass, forest floor, rock, ash)
 
-func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
-    var size: int = out_buffer.get_size_x()
-    for z in range(size):
-        for x in range(size):
-            for y in range(size):
-                var wx: float = origin_in_voxels.x + x
-                var wy: float = origin_in_voxels.y + y
-                var wz: float = origin_in_voxels.z + z
-                var density: float = _get_density(wx, wy, wz)
-                if density > 0.0:
-                    out_buffer.set_voxel(1, x, y, z, 0)  # solid
-                else:
-                    out_buffer.set_voxel(0, x, y, z, 0)  # air
+**Why VoxelGeneratorGraph over GDScript:**
+- Compiles to native compute shader — orders of magnitude faster than GDScript loops
+- Supports authored heightmap input via `Image` nodes — Gaea geography exactly as sculpted
+- Visual node graph is inspectable and editable without code
+- 3D cave noise layer runs in parallel, not in a GDScript for-loop
 
-func _get_density(wx: float, wy: float, wz: float) -> float:
-    # Base: 2D noise gives ground-level height — fast, drives the broad terrain shape
-    var surface_y: float = _get_surface_height(wx, wz)
-    # Primary density: positive below surface, negative above
-    var density: float = surface_y - wy
-    # Cave layer: 3D noise carves underground voids when noise is high AND we are
-    # well below the surface (prevents caves opening on the surface directly)
-    # Uncomment once base terrain is working:
-    # var cave: float = _cave_noise.get_noise_3d(wx * 0.05, wy * 0.05, wz * 0.05)
-    # if cave > 0.55 and wy < (surface_y - 8):
-    #     density -= 20.0
-    return density
-
-func _get_surface_height(wx: float, wz: float) -> float:
-    # Layered noise + biome curves:
-    # Spine ridge: high elevation at wx ~5000–7000
-    # Greatwood: gentle depression + flat at wz ~0–2500
-    # Aldwater valley: carved channel running west
-    # Settlement zones: forced-flat at named location world coordinates
-    return 0.0  # stub — implement with FastNoiseLite layers
-```
+**3D density field behavior:**
+Positive density = solid voxel; negative = air. The surface is where density crosses zero.
+The Gaea heightmap drives the broad terrain shape; a 3D FastNoiseLite node adds cave voids
+via `SdfSmoothSubtract` when the voxel is well below the surface. This enables:
+- Overhangs (cliff lips where the heightmap surface curves back under itself)
+- Cave ceilings (3D noise carves upward into solid rock)
+- Arch formations (rare but possible without any special casing)
 
 ### VoxelLodTerrain configuration:
 - Set `lod_count` to 6–8 levels for 12km world extent

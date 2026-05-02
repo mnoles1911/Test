@@ -68,15 +68,18 @@ Do not proceed to Phase 5-3D until the verification checklist in `DESIGNER_TODO.
 
 ## Phase 5-3D — Open World Foundation + Roland Character
 
-**Goal:** Walking through recognizable procedurally generated Mira as a real character.
+**Goal:** Walking through recognizable authored Mira geography as a real character.
 The two foundations everything else stands on: the world and the protagonist.
 
 ### Code deliverables
 
-- **`WorldGenerator.gd`** — `VoxelGeneratorScript` subclass. Layered `FastNoiseLite`
-  encoding Mira's terrain: Spine ridge east (~5000–7000m x), Greatwood flat north
-  (~0–2500m z), Aldwater valley, Ashfields, forced-flat zones at all settlement
-  world coordinates. This is the most important script in the project.
+- **`WorldGenerator` (VoxelGeneratorGraph)** — Node assigned to `VoxelLodTerrain`.
+  **Not a GDScript subclass** — a VoxelGeneratorGraph node wired in the Godot editor.
+  Pipeline: author terrain in **Gaea** → export 32-bit EXR heightmap + biome splatmap →
+  import as Image resources → wire into graph (heightmap → surface SDF; 3D noise → caves;
+  splatmap → `CHANNEL_INDICES`). Encodes Mira's geography: Spine ridge east (~5000–7000m x),
+  Greatwood flat north (~0–2500m z), Aldwater valley, Ashfields, forced-flat settlement zones.
+  This is the most important deliverable in the project.
 
 - **`VoxelLodTerrain` in `World3D.tscn`** — Replace the flat floor placeholder.
   6–8 LOD levels, LOD0 radius ~60m. Mesher: `VoxelMesherCubes` (blocky).

@@ -80,8 +80,8 @@ All the **game logic** autoloads work without modification. They are data and UI
 
 This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent projects and supports:
 - `VoxelTerrain` — infinite streaming terrain with LOD
-- `VoxelMesherCubes` — smooth voxel meshing (no visible cube edges on terrain)
-- `VoxelMesherCubes` — blocky Minecraft-style meshing (for buildings and structures)
+- `VoxelMesherCubes` — blocky cube-face meshing; used for all terrain and structures in this project
+- `VoxelMesherTransvoxel` — smooth voxel meshing (not used — eliminates the blocky aesthetic we want)
 - `VoxelInstancer` — scatter props (trees, rocks) across terrain efficiently
 - Custom voxel generators via GDScript or C++
 

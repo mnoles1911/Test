@@ -71,7 +71,7 @@ Audio settings write directly to Godot's AudioServer bus volume. They persist in
 | **Controller vibration** | On | Enables/disables controller rumble (haptic feedback) |
 | **Controller stick deadzone** | 0.15 | 0.05–0.35 slider; higher values prevent drift on worn controllers |
 | **Mouse sensitivity** | 50 | 0–100 slider; affects lock-on target cycling and menu navigation speed |
-| **Invert Y (controller)** | Off | Inverts right stick vertical axis for camera (when horizontal rotation is enabled) |
+| **Invert Y (controller)** | Off | Inverts right stick vertical axis for camera tilt |
 
 ### Keybinding UI
 
