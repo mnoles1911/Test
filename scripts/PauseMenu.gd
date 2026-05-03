@@ -25,6 +25,12 @@ extends CanvasLayer
 const MAIN_MENU_SCENE: String = "res://scenes/ui/MainMenu.tscn"
 const SETTINGS_SCENE: String  = "res://scenes/ui/Settings.tscn"
 
+# Skip the auto-save on EXIT TO MENU / QUIT if the player saved
+# anything (named save OR explicit autosave) within this many
+# seconds. Prevents redundant '[Auto]' files seconds after a
+# manual save just before exiting.
+const RECENT_SAVE_WINDOW_SECONDS: int = 30
+
 
 # =============================================================
 # NODE REFERENCES
@@ -489,9 +495,16 @@ func _show_save_dialog() -> void:
 	_main_panel.visible = false
 	_load_panel.visible = false
 	_save_panel.visible = true
-	# Suggest a default name based on the current scene + timestamp
-	# so the player can just hit Enter for a quick save.
-	var default_name: String = "Save %s" % Time.get_datetime_string_from_system()
+	# If the session originated from a named save (player loaded
+	# "Roland Day 1" or saved as that earlier), pre-fill with the
+	# same name so hitting Enter overwrites the same slot. Falls
+	# back to a fresh timestamp default for new playthroughs and
+	# for sessions whose only saves so far have been autosaves.
+	var default_name: String
+	if GameState.active_save_display_name != "":
+		default_name = GameState.active_save_display_name
+	else:
+		default_name = "Save %s" % Time.get_datetime_string_from_system()
 	_save_name_edit.text = default_name
 	_save_name_edit.select_all()
 	_save_name_edit.grab_focus()
@@ -526,17 +539,19 @@ func _on_settings() -> void:
 
 
 func _on_exit_menu() -> void:
-	# Auto-save with a unique timestamped name so progress isn't
-	# silently lost on exit. Tagged as is_autosave so it counts
-	# against the autosave cap (MAX_AUTOSAVES, FIFO eviction).
-	# Players who want a named save should use SAVE first.
-	GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
+	# Auto-save before leaving so progress isn't silently lost.
+	# But skip the auto-save if the player saved very recently
+	# (named save or prior autosave) — no point creating a
+	# near-duplicate file two seconds after a manual save.
+	if GameState.seconds_since_last_save() > RECENT_SAVE_WINDOW_SECONDS:
+		GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
 	_close()
 	TransitionManager.change_scene(MAIN_MENU_SCENE, "", TransitionManager.Type.FADE_BLACK)
 
 
 func _on_quit() -> void:
-	GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
+	if GameState.seconds_since_last_save() > RECENT_SAVE_WINDOW_SECONDS:
+		GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
 	get_tree().quit()
 
 

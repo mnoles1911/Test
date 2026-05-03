@@ -237,6 +237,8 @@ func reset_for_new_game() -> void:
 	player_spawn_id = ""
 	current_scene = ""
 	active_save_filename = ""
+	active_save_display_name = ""
+	last_save_unix_time = 0
 	_play_time_seconds = 0.0
 
 	_delete_voxel_deltas_files()
@@ -308,6 +310,28 @@ const VOXEL_DELTAS_BASENAME: String = "voxel_deltas.sqlite"
 # The most-recently saved or loaded filename. Used by autosave-on-
 # quit and as the default "current save" reference.
 var active_save_filename: String = ""
+
+# Display name of the active save (the human-readable name typed
+# into the save dialog or shown in the load picker). Pre-fills
+# the save dialog's text field on the next manual save so the
+# player can hit Enter to overwrite the same named save without
+# re-typing — e.g. "Roland Day 1" stays "Roland Day 1" until the
+# player explicitly renames it.
+var active_save_display_name: String = ""
+
+# Unix timestamp of the most recent successful save (any kind).
+# Used by PauseMenu to suppress the redundant auto-save on EXIT
+# TO MENU / QUIT when the player already saved very recently.
+var last_save_unix_time: int = 0
+
+
+func seconds_since_last_save() -> int:
+	# Returns how many seconds since save_game succeeded last,
+	# or a very large number if the player has never saved this
+	# session. Callers use this to gate auto-save logic.
+	if last_save_unix_time == 0:
+		return 999999
+	return int(Time.get_unix_time_from_system()) - last_save_unix_time
 
 
 func _ensure_saves_dir() -> void:
@@ -449,6 +473,13 @@ func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
 	file.store_string(json_string)
 	file.close()
 	active_save_filename = path.get_file()
+	last_save_unix_time = int(Time.get_unix_time_from_system())
+	# Only update the display-name reference for NAMED saves —
+	# autosave names ("[Auto] <timestamp>") shouldn't pre-fill the
+	# next manual save dialog. The player wants to keep editing
+	# their named save's name across sessions.
+	if not is_autosave:
+		active_save_display_name = save_name
 	print("[GameState] Saved '%s' → %s" % [save_name, path])
 	if get_node_or_null("/root/SaveNotification"):
 		SaveNotification.show_notification()
@@ -538,6 +569,16 @@ func load_save_file(filename: String) -> bool:
 
 	active_save_filename = filename
 	var save_label: String = data.get("save_name", filename)
+	# If the loaded save is a NAMED save, remember its display name
+	# so the next manual save dialog pre-fills with the same text
+	# (Roland Day 1 → quick edit → Save again as Roland Day 2).
+	# Autosaves don't pre-fill — the player names their next save
+	# from a clean slate.
+	if not bool(data.get("is_autosave", false)):
+		active_save_display_name = save_label
+	else:
+		active_save_display_name = ""
+	last_save_unix_time = int(Time.get_unix_time_from_system())
 	print("[GameState] Loaded '%s'. Flags: %d, Skill XP entries: %d" % [save_label, _flags.size(), _skill_xp.size()])
 	return true
 
