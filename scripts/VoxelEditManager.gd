@@ -151,6 +151,28 @@ func clear_terrain() -> void:
 	_edited_chunks.clear()
 
 
+func flush_pending_edits() -> void:
+	# Force Zylann to write any in-memory voxel changes through to
+	# VoxelStreamSQLite NOW (rather than waiting for its periodic
+	# auto-flush). Called by GameState.save_game() before writing
+	# the JSON state, so a save captures the latest voxel edits
+	# even if the player saves immediately after digging.
+	#
+	# save_modified_blocks() returns an Array of pending tasks that
+	# complete asynchronously on Zylann's worker thread. We don't
+	# explicitly wait — the SQLite writes complete in the background
+	# and the game is paused during the save dialog, so the
+	# transition out of World3D won't pre-empt them.
+	if _terrain == null:
+		print("[VoxelEditManager] flush_pending_edits: no terrain bound")
+		return
+	if _terrain.has_method("save_modified_blocks"):
+		_terrain.save_modified_blocks()
+		print("[VoxelEditManager] Flushed voxel edits to VoxelStreamSQLite.")
+	else:
+		push_warning("[VoxelEditManager] terrain.save_modified_blocks() not available; voxel edits may not persist")
+
+
 # ============================================================
 # Public API — edit verbs
 # ============================================================

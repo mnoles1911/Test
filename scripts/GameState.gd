@@ -286,6 +286,14 @@ func save_game(save_name: String = "") -> bool:
 	# Capture the live player position before serializing.
 	player_position = _capture_player_position()
 
+	# Flush in-memory voxel edits to the SQLite stream so the save
+	# captures all the digging / explosions the player has done up
+	# to this moment. Without this, edits stay in Zylann's RAM and
+	# are only written periodically — saving + immediately reloading
+	# would lose recent edits.
+	if get_node_or_null("/root/VoxelEditManager"):
+		VoxelEditManager.flush_pending_edits()
+
 	# Stamp the current voxel generator version. Mismatch on load
 	# is a hard error (see load_save_file). Defaults to 0 if the
 	# VoxelEditManager autoload isn't available.

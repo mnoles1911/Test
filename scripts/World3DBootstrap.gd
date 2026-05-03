@@ -42,3 +42,32 @@ func _ready() -> void:
 		print("[World3D] Voxel terrain handed to VoxelEditManager.")
 	else:
 		push_warning("[World3D] VoxelEditManager autoload not registered; voxel edits will not work.")
+
+	# --- Apply saved player position ---
+	# When the world scene loads after a load_save_file() call,
+	# GameState.player_position holds Roland's saved 3D position.
+	# Apply it to the live player so he respawns where the save
+	# was taken. Without this, every load drops Roland at the
+	# scene's default Player3D spawn (Y=35 on noise terrain).
+	#
+	# Skip on a fresh New Game where player_position is the default
+	# Vector3.ZERO — let the scene's default placement win.
+	#
+	# Deferred one frame so the Player3D node has run its own
+	# _ready (collision shape resolved, voxel terrain has had a
+	# chance to load nearby chunks for collision).
+	if get_node_or_null("/root/GameState"):
+		if GameState.player_position != Vector3.ZERO:
+			call_deferred("_apply_saved_player_position")
+
+
+func _apply_saved_player_position() -> void:
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		push_warning("[World3D] No player in tree to apply saved position to")
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+	player.global_position = GameState.player_position
+	print("[World3D] Restored player position to %s" % GameState.player_position)
