@@ -33,6 +33,17 @@ var _root: Control
 var _content_label: Label
 var _tab_label: Label
 
+# "DELETE ALL SAVES" button — shown in the top-right corner of
+# the F1 overlay. Clicked via the manual dispatch pattern in
+# _input (Button.pressed signal doesn't fire because GUI dispatch
+# is broken in this project; same workaround as MainMenu /
+# PauseMenu). Two-click confirmation: first click flips the
+# button label to "CONFIRM?"; second click within 3 seconds
+# actually wipes user://saves/.
+var _delete_saves_btn: Button
+var _delete_saves_armed: bool = false
+var _delete_saves_arm_remaining: float = 0.0
+
 # Always-on coords HUD (separate from the F1 toggleable overlay).
 # Small label in the top-left corner that updates every frame
 # with the player's world position. Useful for "where am I?" and
@@ -68,7 +79,7 @@ func _ready() -> void:
 	print("[DebugOverlay] Initialized.")
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# Live HUD updates — runs every frame the overlay autoload is
 	# alive (always, in practice). Cheap: a few node lookups and
 	# string formats per frame.
@@ -78,6 +89,13 @@ func _process(_delta: float) -> void:
 		_update_coords_label()
 	if _aim_label != null:
 		_update_aim_label()
+
+	# Disarm the delete-saves button after 3 seconds of inactivity.
+	# Prevents an accidental "armed" state from persisting indefinitely.
+	if _delete_saves_armed:
+		_delete_saves_arm_remaining -= delta
+		if _delete_saves_arm_remaining <= 0.0:
+			_disarm_delete_saves()
 
 
 func _build_coords_hud() -> void:
@@ -213,6 +231,21 @@ func _build_ui() -> void:
 	_tab_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.4, 1))
 	_root.add_child(_tab_label)
 
+	# DELETE ALL SAVES button — top-right corner. Two-click
+	# confirmation gates the destructive action.
+	_delete_saves_btn = Button.new()
+	_delete_saves_btn.text = "DELETE ALL SAVES"
+	_delete_saves_btn.add_theme_font_size_override("font_size", 14)
+	_delete_saves_btn.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
+	_delete_saves_btn.size = Vector2(180, 30)
+	_delete_saves_btn.anchor_left = 1.0
+	_delete_saves_btn.anchor_right = 1.0
+	_delete_saves_btn.offset_left = -190
+	_delete_saves_btn.offset_top = 4
+	_delete_saves_btn.offset_right = -10
+	_delete_saves_btn.offset_bottom = 34
+	_root.add_child(_delete_saves_btn)
+
 	# Scrollable content label below.
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -240,12 +273,53 @@ func _unhandled_input(event: InputEvent) -> void:
 				_root.visible = not _root.visible
 				if _root.visible:
 					_refresh()
+				else:
+					_disarm_delete_saves()
 				get_viewport().set_input_as_handled()
 			KEY_TAB:
 				if _root.visible:
 					_current_tab = ((_current_tab + 1) % 3) as DebugTab
 					_refresh()
 					get_viewport().set_input_as_handled()
+
+
+# Manual click dispatch — same workaround as MainMenu / PauseMenu.
+# GUI dispatch is silently disabled in this project, so Button.pressed
+# never fires. We listen in _input and dispatch by hit-testing each
+# interactive Control's global rect.
+func _input(event: InputEvent) -> void:
+	if not enabled or _root == null or not _root.visible:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if _delete_saves_btn != null and _delete_saves_btn.visible \
+		and _delete_saves_btn.get_global_rect().has_point(mb.position):
+		_on_delete_saves_clicked()
+
+
+func _on_delete_saves_clicked() -> void:
+	if not _delete_saves_armed:
+		# First click — arm the button. Visual change so the dev can
+		# see the second click is destructive.
+		_delete_saves_armed = true
+		_delete_saves_arm_remaining = 3.0
+		_delete_saves_btn.text = "CONFIRM? (3s)"
+		return
+	# Second click within window — execute.
+	if get_node_or_null("/root/GameState"):
+		var n: int = GameState.delete_all_save_files()
+		print("[DebugOverlay] Wiped %d save file(s) via debug button." % n)
+	_disarm_delete_saves()
+
+
+func _disarm_delete_saves() -> void:
+	_delete_saves_armed = false
+	_delete_saves_arm_remaining = 0.0
+	if _delete_saves_btn != null:
+		_delete_saves_btn.text = "DELETE ALL SAVES"
 
 
 # =============================================================

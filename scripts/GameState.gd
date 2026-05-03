@@ -556,6 +556,33 @@ func delete_save_file(filename: String) -> bool:
 	return false
 
 
+func delete_all_save_files() -> int:
+	# Wipes every .json file under user://saves/ and returns the
+	# count of files removed. Used by the F1 debug overlay's
+	# "DELETE ALL SAVES" button. Voxel deltas (the SQLite file)
+	# are NOT touched here — that's a separate concern; the player
+	# may want to keep the in-progress world but reset the save
+	# slot list. To wipe BOTH, click NEW GAME from the main menu.
+	_ensure_saves_dir()
+	var dir := DirAccess.open(SAVES_DIR)
+	if dir == null:
+		return 0
+	var deleted: int = 0
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir() and fname.ends_with(".json"):
+			var abs_path: String = ProjectSettings.globalize_path(SAVES_DIR + fname)
+			var err: int = DirAccess.remove_absolute(abs_path)
+			if err == OK:
+				deleted += 1
+		fname = dir.get_next()
+	dir.list_dir_end()
+	active_save_filename = ""
+	print("[GameState] Deleted %d save file(s)." % deleted)
+	return deleted
+
+
 func list_save_files() -> Array:
 	# Returns an array of metadata dictionaries for every save file
 	# in user://saves/. Used by the load picker UI to populate the
