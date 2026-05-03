@@ -2,20 +2,24 @@
 
 [ext_resource type="Script" path="res://scripts/Settings.gd" id="1"]
 
-; === LAYOUT (320x180 native viewport) ===
+; === LAYOUT (1080p — VBox centered ~600px wide) ===
 ;
-;  ┌────────────────────────────────┐
-;  │  ← SETTINGS                   │  ← header
-;  │────────────────────────────────│
-;  │  MASTER   [========--]  80%    │
-;  │  MUSIC    [=======---]  70%    │
-;  │  SFX      [==========]  100%  │
-;  │  [x] Fullscreen                │
-;  │                                │
-;  │  KEYBINDINGS  (coming soon)    │
-;  │                                │
-;  │  [APPLY]        [BACK]         │
-;  └────────────────────────────────┘
+;          ┌──────────────────────────────────────┐
+;          │             SETTINGS                  │
+;          │ ───────────────────────────────────── │
+;          │ MASTER     [████████░░░░░░░░░░] 80%   │
+;          │ MUSIC      [██████████░░░░░░░░] 70%   │
+;          │ SFX        [████████████████░░] 100%  │
+;          │ ☐ Fullscreen                          │
+;          │                                       │
+;          │ KEYBINDINGS  (coming soon)            │
+;          │                                       │
+;          │ [ APPLY ]              [ BACK ]       │
+;          └──────────────────────────────────────┘
+;
+; Node paths preserved verbatim so Settings.gd's @onready references
+; (VBox/MasterRow/MasterSlider, VBox/ButtonRow/BackBtn, etc.) keep
+; working without script changes.
 
 [node name="Settings" type="Control"]
 layout_mode = 3
@@ -31,43 +35,58 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.05, 0.05, 0.08, 1.0)
 
+; VBox sized to a 700×600 panel centered on screen. anchors_preset 8
+; (Center) anchors to the screen center, then offsets push the rect
+; out by half-width / half-height so it stays centered at any
+; resolution.
 [node name="VBox" type="VBoxContainer" parent="."]
-layout_mode = 0
-offset_left = 20.0
-offset_top = 10.0
-offset_right = 300.0
-offset_bottom = 170.0
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -350.0
+offset_top = -300.0
+offset_right = 350.0
+offset_bottom = 300.0
+theme_override_constants/separation = 18
 
 [node name="Header" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 9
-theme_override_colors/font_color = Color(0.9, 0.85, 0.7, 1)
+theme_override_font_sizes/font_size = 56
+theme_override_colors/font_color = Color(0.95, 0.88, 0.7, 1)
 text = "SETTINGS"
+horizontal_alignment = 1
 
 [node name="Divider" type="ColorRect" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 1)
-color = Color(0.35, 0.35, 0.35, 1)
+custom_minimum_size = Vector2(0, 2)
+color = Color(0.45, 0.4, 0.3, 1)
 
 [node name="Spacer1" type="Control" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 4)
+custom_minimum_size = Vector2(0, 18)
 
 ; MASTER VOLUME row.
 [node name="MasterRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
+custom_minimum_size = Vector2(0, 56)
+theme_override_constants/separation = 24
 
 [node name="MasterLabel" type="Label" parent="VBox/MasterRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(60, 0)
-theme_override_font_sizes/font_size = 7
-theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
+custom_minimum_size = Vector2(180, 0)
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
 text = "MASTER"
+vertical_alignment = 1
 
 [node name="MasterSlider" type="HSlider" parent="VBox/MasterRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
+custom_minimum_size = Vector2(0, 32)
 min_value = 0.0
 max_value = 1.0
 step = 0.05
@@ -76,18 +95,22 @@ value = 0.8
 ; MUSIC VOLUME row.
 [node name="MusicRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
+custom_minimum_size = Vector2(0, 56)
+theme_override_constants/separation = 24
 
 [node name="MusicLabel" type="Label" parent="VBox/MusicRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(60, 0)
-theme_override_font_sizes/font_size = 7
-theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
+custom_minimum_size = Vector2(180, 0)
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
 text = "MUSIC"
+vertical_alignment = 1
 
 [node name="MusicSlider" type="HSlider" parent="VBox/MusicRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
+custom_minimum_size = Vector2(0, 32)
 min_value = 0.0
 max_value = 1.0
 step = 0.05
@@ -96,18 +119,22 @@ value = 0.7
 ; SFX VOLUME row.
 [node name="SFXRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
+custom_minimum_size = Vector2(0, 56)
+theme_override_constants/separation = 24
 
 [node name="SFXLabel" type="Label" parent="VBox/SFXRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(60, 0)
-theme_override_font_sizes/font_size = 7
-theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
+custom_minimum_size = Vector2(180, 0)
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
 text = "SFX"
+vertical_alignment = 1
 
 [node name="SFXSlider" type="HSlider" parent="VBox/SFXRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
+custom_minimum_size = Vector2(0, 32)
 min_value = 0.0
 max_value = 1.0
 step = 0.05
@@ -115,25 +142,28 @@ value = 1.0
 
 [node name="Spacer2" type="Control" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 6)
+custom_minimum_size = Vector2(0, 16)
 
 ; Fullscreen toggle.
 [node name="FullscreenCheck" type="CheckBox" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 7
-text = "Fullscreen"
+custom_minimum_size = Vector2(0, 48)
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
+text = "  Fullscreen"
 
 [node name="Spacer3" type="Control" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 4)
+custom_minimum_size = Vector2(0, 12)
 
 ; Keybindings placeholder.
 [node name="KeybindingsLabel" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 7
-theme_override_colors/font_color = Color(0.4, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.5, 0.48, 0.42, 1)
 text = "KEYBINDINGS  (coming soon)"
 
+; Spring spacer pushes the button row to the bottom of the panel.
 [node name="Spacer4" type="Control" parent="VBox"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -141,11 +171,14 @@ size_flags_vertical = 3
 ; Bottom row: Apply + Back.
 [node name="ButtonRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 64)
+theme_override_constants/separation = 24
 
 [node name="ApplyBtn" type="Button" parent="VBox/ButtonRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(60, 14)
-theme_override_font_sizes/font_size = 7
+custom_minimum_size = Vector2(220, 60)
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.7, 0.95, 0.7, 1)
 text = "APPLY"
 flat = true
 
@@ -155,7 +188,8 @@ size_flags_horizontal = 3
 
 [node name="BackBtn" type="Button" parent="VBox/ButtonRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(60, 14)
-theme_override_font_sizes/font_size = 7
+custom_minimum_size = Vector2(220, 60)
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
 text = "BACK"
 flat = true

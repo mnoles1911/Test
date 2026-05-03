@@ -107,6 +107,7 @@ var _ps_played_label: Label
 var _coords_label: Label
 var _aim_label: Label
 var _world_time_label: Label
+var _crosshair_root: Control
 
 enum DebugTab { COMMANDS, CONSOLE, PLAYER_STATE }
 const TAB_NAMES: Array[String] = ["COMMANDS", "CONSOLE", "PLAYER STATE"]
@@ -142,6 +143,7 @@ func _process(delta: float) -> void:
 		_update_aim_label()
 	if _world_time_label != null:
 		_update_world_time_label()
+	_update_crosshair_visibility()
 
 	# DELETE ALL SAVES auto-disarm timer.
 	if _delete_saves_armed:
@@ -813,10 +815,14 @@ func _update_world_time_label() -> void:
 
 func _build_crosshair() -> void:
 	# Two thin ColorRects forming a + at exact screen center.
-	var crosshair_root := Control.new()
-	crosshair_root.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	crosshair_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(crosshair_root)
+	# Visibility is toggled per-frame in _process based on whether
+	# a player exists in the scene, so the reticle disappears
+	# automatically on the title screen, settings menu, and any
+	# other non-gameplay scene.
+	_crosshair_root = Control.new()
+	_crosshair_root.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_crosshair_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_crosshair_root)
 
 	var c := Color(1, 1, 1, 0.7)
 
@@ -825,14 +831,23 @@ func _build_crosshair() -> void:
 	h.size = Vector2(14, 2)
 	h.position = Vector2(-7, -1)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair_root.add_child(h)
+	_crosshair_root.add_child(h)
 
 	var v := ColorRect.new()
 	v.color = c
 	v.size = Vector2(2, 14)
 	v.position = Vector2(-1, -7)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair_root.add_child(v)
+	_crosshair_root.add_child(v)
+
+
+func _update_crosshair_visibility() -> void:
+	# Reticle is gameplay-only — hide when no player is in the tree
+	# (title screen, settings, load picker, etc.).
+	if _crosshair_root == null:
+		return
+	var has_player: bool = not get_tree().get_nodes_in_group("player").is_empty()
+	_crosshair_root.visible = has_player
 
 
 # =============================================================
