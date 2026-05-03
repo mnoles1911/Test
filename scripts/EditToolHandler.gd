@@ -191,7 +191,6 @@ func _try_swing() -> void:
 	# Offset slightly INTO the surface so we target the solid voxel,
 	# not the air voxel above it. The raycast hits the surface; the
 	# voxel center is just inside.
-	var hit_pos: Vector3 = hit.get("position", Vector3.ZERO)
 	var hit_normal: Vector3 = hit.get("normal", Vector3.UP)
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
 
