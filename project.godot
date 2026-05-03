@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Game One"
 config/description="A 2.5D narrative RPG. Mira-Thal Trilogy, Game One."
-run/main_scene="uid://dmnmenu1080"
+run/main_scene="uid://dp3w1world3d"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/run/main_scene="res://scenes/ui/MainMenu.tscn"
 
