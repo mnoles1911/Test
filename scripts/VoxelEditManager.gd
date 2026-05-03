@@ -381,12 +381,12 @@ func _apply_edit(cmd: Dictionary) -> void:
 			edit_applied.emit(center, _world_to_chunk(center))
 
 		"set":
-			# Single-voxel write. Cubes meshing IS discrete, but a
-			# 1.5 m sphere clears ~12 cubes at 8 vox/m — large enough
-			# that a pickaxe swing produces an obvious divot during
-			# the carve-system bring-up. Tune down once the carve is
-			# verified working and gameplay tuning starts.
-			var set_world_radius: float = 1.5
+			# Single-voxel write. Cubes meshing IS discrete; a 0.5 m
+			# sphere clears ~4 cubes at 8 vox/m — feels like a
+			# pickaxe-bite of stone rather than the bring-up-sized
+			# 1.5 m crater. Bump back up only if a player swing needs
+			# to look more dramatic.
+			var set_world_radius: float = 0.5
 			var set_voxel_pos: Vector3  = _terrain.to_local(cmd["pos"])
 			var set_voxel_r: float      = set_world_radius * inv_scale
 			tool.do_sphere(set_voxel_pos, set_voxel_r)

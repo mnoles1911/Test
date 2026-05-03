@@ -132,10 +132,15 @@ func _detonate() -> void:
 	else:
 		_log("VoxelEditManager autoload missing — no terrain edit applied")
 
-	# --- Action log entry for the in-game console ---
-	# TODO: spawn a GPUParticles3D preset once explosion VFX
-	# assets exist. For now the only feedback is the voxel
-	# crater + (future) audio.
+	# --- Visible detonation flash ---
+	# Spawned before the queue_free() at the end of _detonate, parented
+	# to the world so it survives the charge's removal. Without this
+	# the only on-screen feedback is the voxel crater; with carves at
+	# 3 m the crater alone is subtle from a distance and the player
+	# reads "nothing happened." The light + emissive sphere combo gives
+	# a one-frame "BOOM" that's unambiguous regardless of viewing angle.
+	_spawn_detonation_effect(carve_center)
+
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("BOOM at (%.1f, %.1f, %.1f) radius %.1fm" % [
 			carve_center.x, carve_center.y, carve_center.z, aoe_radius_meters
@@ -155,6 +160,57 @@ func _detonate() -> void:
 	# removal to the end of the frame so any in-flight signal
 	# handling completes safely.
 	queue_free()
+
+
+func _spawn_detonation_effect(at_position: Vector3) -> void:
+	# Build a self-cleaning Node3D containing an OmniLight3D and an
+	# emissive sphere mesh that animates outward, then queue_free()s
+	# itself when the tween finishes. Parented to the charge's parent
+	# (the world scene) so it survives the charge's queue_free().
+	var world_root: Node = get_parent()
+	if world_root == null:
+		return
+
+	var fx_root := Node3D.new()
+	world_root.add_child(fx_root)
+	fx_root.global_position = at_position
+
+	# Bright omnidirectional flash. Range scales with blast radius so
+	# bigger charges illuminate more terrain on detonation.
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.6, 0.25)
+	light.light_energy = 25.0
+	light.omni_range = aoe_radius_meters * 3.0
+	fx_root.add_child(light)
+
+	# Emissive translucent sphere — the visible "fireball." Starts
+	# small and animates out to aoe_radius_meters so the burst reads
+	# as expanding rather than instantly appearing at full size.
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.6, 0.25, 0.7)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.6, 0.25)
+	mat.emission_energy_multiplier = 4.0
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # see inside if player is engulfed
+
+	var sphere := SphereMesh.new()
+	sphere.radius = aoe_radius_meters
+	sphere.height = aoe_radius_meters * 2.0
+
+	var mesh_inst := MeshInstance3D.new()
+	mesh_inst.mesh = sphere
+	mesh_inst.material_override = mat
+	mesh_inst.scale = Vector3(0.1, 0.1, 0.1)
+	fx_root.add_child(mesh_inst)
+
+	# Animation: 0.15 s expansion, then 0.3 s fade of both the
+	# emissive sphere and the omni light, then free.
+	var tween := fx_root.create_tween()
+	tween.tween_property(mesh_inst, "scale", Vector3.ONE, 0.15)
+	tween.parallel().tween_property(light, "light_energy", 0.0, 0.4)
+	tween.tween_property(mat, "albedo_color", Color(1.0, 0.6, 0.25, 0.0), 0.3)
+	tween.tween_callback(fx_root.queue_free)
 
 
 func _log(msg: String) -> void:
