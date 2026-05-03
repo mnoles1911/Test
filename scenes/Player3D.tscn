@@ -18,6 +18,7 @@
 [ext_resource type="Script" path="res://scripts/Player3D.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/CameraRig.gd" id="2_rig"]
 [ext_resource type="Script" path="res://scripts/EditToolHandler.gd" id="3_edit_tool"]
+[ext_resource type="Script" path="res://scripts/ThrowableHandler.gd" id="4_throwable"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -67,3 +68,11 @@ view_distance = 256
 ; VoxelEditManager, and yields raw material into the inventory.
 ; See scripts/EditToolHandler.gd.
 script = ExtResource("3_edit_tool")
+
+[node name="ThrowableHandler" type="Node3D" parent="."]
+; Handles throw input for throwable items (Powder Charges, future
+; smoke bombs / oil flasks / caltrops). On the throw input
+; (default: quick_slot_1 = key 1), spawns a throwable in front of
+; Roland with forward velocity. Quick-slot UI rotation comes later.
+; See scripts/ThrowableHandler.gd.
+script = ExtResource("4_throwable")

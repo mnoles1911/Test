@@ -74,6 +74,13 @@ const ITEM_REGISTRY: Dictionary = {
 	"ashsteel_ingot":  {"name": "Ashsteel Ingot",  "type": "crafting_mat","description": "Raw Ashsteel. Required to forge Ashsteel weapons."},
 	"binding_ash":     {"name": "Binding Ash",     "type": "crafting_mat","description": "Ash from the Drûn-Khazad slopes. Used in binding rituals."},
 	"iron_ore":        {"name": "Iron Ore",        "type": "crafting_mat","description": "Common ore. Found throughout the Spine of Mira."},
+
+	# Throwables — explosives clear voxels in their AOE on detonation
+	# in addition to combat damage. Routed through VoxelEditManager so
+	# they respect NoEditZones (still deal damage but leave masonry
+	# intact inside settlements).
+	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 2.0, "combat_damage": 40},
+	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 4.0, "combat_damage": 80},
 }
 
 
@@ -235,10 +242,12 @@ func load_save_data(data: Dictionary) -> void:
 
 func _ready() -> void:
 	print("[InventoryManager] Initialized.")
-	# DEBUG: give Roland a starter pickaxe so the edit-verb pipeline
-	# can be exercised without first wiring up loot / vendors / a
-	# story-driven tool acquisition. Remove (or guard with a debug
-	# flag) when the game opens onto the Iron Chalice scene with
-	# the canon starting inventory.
+	# DEBUG: give Roland a starter pickaxe and some throwables so
+	# the edit-verb and explosives pipelines can be exercised
+	# without first wiring up loot / vendors / a story-driven
+	# acquisition path. Remove (or guard with a debug flag) when
+	# the game opens onto the Iron Chalice scene with the canon
+	# starting inventory.
 	add_item("iron_pickaxe", 1)
 	equip("weapon", "iron_pickaxe")
+	add_item("powder_charge", 5)
