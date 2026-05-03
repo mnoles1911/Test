@@ -116,11 +116,22 @@ func _process(delta: float) -> void:
 	if _swing_cooldown_remaining > 0.0:
 		_swing_cooldown_remaining -= delta
 
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed("attack"):
+	# Poll the action state instead of listening via _unhandled_input.
+	# Why: any Control with mouse_filter=STOP that covers the screen
+	# (HUD overlays, panels) eats the mouse event before
+	# _unhandled_input runs, and the swing silently never fires.
+	# Polling the action state is global — no event-consumption issue.
+	# The mouse-mode check ensures we don't fire tools while the
+	# cursor is visible in a menu.
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
-	print("[EditToolHandler] attack input received")
+	if not Input.is_action_just_pressed("attack"):
+		return
+	_try_swing()
+
+
+func _try_swing() -> void:
+	print("[EditToolHandler] attack action triggered")
 
 	if _swing_cooldown_remaining > 0.0:
 		print("[EditToolHandler]   on cooldown (%.2fs left)" % _swing_cooldown_remaining)

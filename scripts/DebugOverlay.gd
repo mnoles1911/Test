@@ -39,6 +39,15 @@ var _tab_label: Label
 # voxel debugging without having to open the full debug panel.
 var _coords_label: Label
 
+# Always-on "where am I aiming?" debug — a crosshair at screen
+# center plus a label showing the world-space hit position from
+# the camera-forward raycast. If the label says "(no hit)" you
+# know the ray isn't reaching anything; if it has coordinates,
+# you're aiming at terrain at that exact spot.
+var _aim_label: Label
+var _crosshair_h: ColorRect
+var _crosshair_v: ColorRect
+
 enum DebugTab { RECENT, ALL_FLAGS, COMPANIONS }
 var _current_tab: DebugTab = DebugTab.RECENT
 
@@ -53,18 +62,22 @@ func _ready() -> void:
 
 	_build_ui()
 	_build_coords_hud()
+	_build_aim_hud()
 	_root.visible = false
 
 	print("[DebugOverlay] Initialized.")
 
 
 func _process(_delta: float) -> void:
-	# Live coords update — runs every frame the overlay autoload is
-	# alive (always, in practice). Cheap: one node lookup + one
-	# string format per frame.
-	if not enabled or _coords_label == null:
+	# Live HUD updates — runs every frame the overlay autoload is
+	# alive (always, in practice). Cheap: a few node lookups and
+	# string formats per frame.
+	if not enabled:
 		return
-	_update_coords_label()
+	if _coords_label != null:
+		_update_coords_label()
+	if _aim_label != null:
+		_update_aim_label()
 
 
 func _build_coords_hud() -> void:
@@ -99,6 +112,78 @@ func _update_coords_label() -> void:
 	# One decimal place is enough for "where am I" debugging without
 	# making the label flicker too fast as the player walks.
 	_coords_label.text = "X %.1f   Y %.1f   Z %.1f" % [p.x, p.y, p.z]
+
+
+func _build_aim_hud() -> void:
+	# Crosshair at screen center — two thin ColorRects forming a +.
+	# CanvasLayer respects FullRect anchors so we anchor each rect
+	# to screen center via a wrapper Control.
+	var crosshair_root := Control.new()
+	crosshair_root.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	crosshair_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(crosshair_root)
+
+	var crosshair_color := Color(1, 1, 1, 0.7)
+
+	_crosshair_h = ColorRect.new()
+	_crosshair_h.color = crosshair_color
+	_crosshair_h.size = Vector2(14, 2)
+	_crosshair_h.position = Vector2(-7, -1)  # center the rect on (0,0)
+	_crosshair_h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_root.add_child(_crosshair_h)
+
+	_crosshair_v = ColorRect.new()
+	_crosshair_v.color = crosshair_color
+	_crosshair_v.size = Vector2(2, 14)
+	_crosshair_v.position = Vector2(-1, -7)
+	_crosshair_v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_root.add_child(_crosshair_v)
+
+	# "Aim target" label — sits below the coords label in the top-
+	# left corner. Shows the world position the camera-forward ray
+	# is currently hitting, plus distance from the player. Updates
+	# every frame so the developer can see what they're aiming at
+	# without clicking.
+	_aim_label = Label.new()
+	_aim_label.position = Vector2(12, 32)
+	_aim_label.add_theme_font_size_override("font_size", 12)
+	_aim_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5, 0.85))
+	_aim_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_aim_label.add_theme_constant_override("shadow_offset_x", 1)
+	_aim_label.add_theme_constant_override("shadow_offset_y", 1)
+	_aim_label.text = "AIM: —"
+	add_child(_aim_label)
+
+
+func _update_aim_label() -> void:
+	# Query the same raycast EditToolHandler uses on click. If it
+	# returns a hit, show the world position and the distance
+	# from the player. If it returns nothing, show "(no hit)".
+	#
+	# Uses the same code path as the click handler so the label
+	# is a true preview — if this shows coordinates, a click would
+	# remove a voxel exactly there.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		_aim_label.text = "AIM: (no player)"
+		return
+	var player: Node3D = players[0] as Node3D
+	var camera_rig := player.get_node_or_null("CameraTarget/SpringArm3D")
+	if camera_rig == null or not camera_rig.has_method("get_camera_forward_hit"):
+		_aim_label.text = "AIM: (no camera rig)"
+		return
+
+	# Use the same default reach as EditToolHandler (4m from player).
+	var hit: Dictionary = camera_rig.get_camera_forward_hit(4.0)
+	if hit.is_empty():
+		_aim_label.text = "AIM: (no hit within 4m of player)"
+		return
+
+	var hit_pos: Vector3 = hit.get("position", Vector3.ZERO)
+	var dist_from_player: float = player.global_position.distance_to(hit_pos)
+	_aim_label.text = "AIM: (%.1f, %.1f, %.1f)  dist %.1fm" % [
+		hit_pos.x, hit_pos.y, hit_pos.z, dist_from_player
+	]
 
 
 func _build_ui() -> void:

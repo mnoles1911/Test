@@ -32,21 +32,29 @@ fog_density = 0.02
 database_path = "user://voxel_deltas.sqlite"
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
-; Very low frequency = very large features = gentle rolling hills.
-; If the world still feels chaotic, lower this number further.
-frequency = 0.005
+; Ridged fractal noise — produces sharp ridges and walls instead
+; of smooth rolling hills. Combined with multiple octaves, this
+; gives terrain that has actual *features* to aim at: cliffs,
+; ridge lines, valleys, occasional spires.
+;
+; Tune:
+;   frequency      — feature size (lower = bigger features)
+;   fractal_octaves — detail layers (higher = more crunch)
+;   fractal_type 2  — RIDGED (1=FBM smooth, 2=RIDGED ridges)
+noise_type = 1
+frequency = 0.012
+fractal_type = 2
+fractal_octaves = 4
+fractal_lacunarity = 2.0
+fractal_gain = 0.5
 
 [sub_resource type="VoxelGeneratorNoise2D" id="VoxelGen_Noise2D"]
-; 2D heightmap-style noise. The surface follows a 2D noise map,
-; producing rolling hills with no overhangs, no floating islands,
-; no caves. "Normal" walkable terrain.
-;
-; Earlier we used VoxelGeneratorNoise (3D), which produces caves
-; and overhangs anywhere the noise crosses zero — that read as
-; chaotic, especially with default frequency. 2D heightmap is
-; much closer to "a regular outdoor area Roland walks through."
+; height_range bumped to 25m so RIDGED noise produces visible
+; cliffs and ridges. With 8m the variation was barely perceptible;
+; 25m gives terrain Roland can actually hike up, hide behind, or
+; look down from. Noise stays 2D (no overhangs/caves) for now.
 noise = SubResource("TerrainNoise")
-height_range = 8.0
+height_range = 25.0
 
 [sub_resource type="VoxelMesherTransvoxel" id="VoxelMesher_Transvoxel"]
 
@@ -113,4 +121,4 @@ shape = SubResource("NoEditZone_TestShape")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 4)
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 35, 0)

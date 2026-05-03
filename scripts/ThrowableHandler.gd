@@ -65,9 +65,20 @@ func _ready() -> void:
 		push_error("[ThrowableHandler] Parent must be Player3D (CharacterBody3D)")
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed(throw_input_action):
+func _process(_delta: float) -> void:
+	# Poll the action state instead of listening via _unhandled_input
+	# — same rationale as EditToolHandler: UI Control nodes with
+	# mouse_filter=STOP can eat the input event before it reaches
+	# _unhandled_input, silently swallowing the throw.
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
+	if not Input.is_action_just_pressed(throw_input_action):
+		return
+	_try_throw()
+
+
+func _try_throw() -> void:
+	print("[ThrowableHandler] throw action triggered")
 	if _player == null:
 		return
 	if not get_node_or_null("/root/InventoryManager"):
