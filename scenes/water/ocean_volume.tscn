@@ -35,9 +35,16 @@ script = ExtResource("1_water")
 surface_y = 0.0
 
 [node name="ZoneShape" type="CollisionShape3D" parent="."]
-; Volume centered on the Area3D origin. Half-height 15 m below origin
-; means anything at Y in [-15, +15] is "in water" — comfortable
-; margin for diving and shoreline approach.
+; Offset Y=-15 so the BOX's TOP edge sits at the Area3D origin
+; (sea level = world Y=0). Without this offset the 30m-tall box
+; would extend 15m UP into the air above sea level, and Roland
+; spawning above the ocean (Y=+10) would be flagged as "in water"
+; and given swim physics — i.e. he'd hover in mid-air.
+;
+; Now the trigger box spans Y in [-30, 0]: 30m of depth below sea
+; level, no air above. Walking from a beach into the water
+; transitions exactly at the visible water line.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -15, 0)
 shape = SubResource("OceanShape")
 
 [node name="SurfaceMesh" type="MeshInstance3D" parent="."]

@@ -7,7 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/water/water_volume.tscn" id="5_water"]
 [ext_resource type="PackedScene" path="res://scenes/water/ocean_volume.tscn" id="6_ocean"]
 [ext_resource type="Script" uid="uid://n5dio80buqo5" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
-[ext_resource type="Script" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
+[ext_resource type="Script" uid="uid://wh8np2gvneya" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
 sky_top_color = Color(0.05, 0.06, 0.1, 1)
@@ -40,21 +40,10 @@ fractal_type = 2
 fractal_lacunarity = 2.1
 
 [sub_resource type="VoxelGeneratorScript" id="VoxelGen_Cubic"]
-; Attaches CubicHeightmapGenerator.gd via the script property rather
-; than declaring the sub_resource with type="CubicHeightmapGenerator".
-; The class_name version was failing at scene parse with "Cannot get
-; class 'CubicHeightmapGenerator'" because the script's class_name
-; registration depends on the Zylann plugin being loaded before the
-; scene is parsed — and on first launch that ordering isn't
-; guaranteed. Using the plugin's built-in parent type + script
-; attachment side-steps the registry lookup entirely.
 script = ExtResource("8_cubic_gen")
 noise = SubResource("TerrainNoise")
-height_range_voxels = 80.0
-sea_level_voxels = 0
 
 [sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
-color_mode = 0
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]
 size = Vector3(0.5, 0.3, 0.5)
@@ -92,6 +81,7 @@ shadow_enabled = true
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 6
+run_stream_in_editor = false
 stream = SubResource("VoxelStream_SQLite")
 generator = SubResource("VoxelGen_Cubic")
 mesher = SubResource("VoxelMesher_Cubes")

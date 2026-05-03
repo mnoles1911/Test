@@ -65,6 +65,7 @@ var _btn_delete_one: Button
 var _btn_teleport: Button
 var _btn_advance_day: Button
 var _btn_advance_time: Button
+var _btn_fly_mode: Button
 
 # DELETE ALL SAVES — two-click confirm state.
 var _delete_saves_armed: bool = false
@@ -243,10 +244,12 @@ func _build_commands_list_view() -> void:
 	_btn_teleport     = _make_command_row("TELEPORT PLAYER")
 	_btn_advance_day  = _make_command_row("ADVANCE 1 DAY")
 	_btn_advance_time = _make_command_row("ADVANCE TIME...")
+	_btn_fly_mode     = _make_command_row("TOGGLE FLY MODE")
 
 	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
-			_btn_advance_day, _btn_advance_time]:
+			_btn_advance_day, _btn_advance_time, _btn_fly_mode]:
 		_commands_list_view.add_child(b)
+	_refresh_fly_mode_label()
 
 
 func _make_command_row(label: String) -> Button:
@@ -418,6 +421,9 @@ func _show_command_list() -> void:
 		_commands_teleport_view.visible = false
 	if _commands_time_view != null:
 		_commands_time_view.visible = false
+	# Sync fly-mode label in case the player toggled it via some
+	# other route (or returned from a save where fly was on).
+	_refresh_fly_mode_label()
 
 
 func _show_delete_save_view() -> void:
@@ -549,6 +555,37 @@ func _do_advance_time_form() -> void:
 	var hours: int = int(_time_hours_edit.text) if _time_hours_edit.text != "" else 0
 	_advance_time(days, hours)
 	_show_command_list()
+
+
+# --- FLY MODE toggle ---
+
+func _toggle_fly_mode() -> void:
+	# Calls Player3D.toggle_fly_mode and updates the button label so
+	# the player can see whether fly is currently engaged. Logs to
+	# the action console for after-the-fact debugging.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		log_action("DEV: fly mode toggle ignored — no player in scene")
+		return
+	var player := players[0]
+	if not player.has_method("toggle_fly_mode"):
+		log_action("DEV: fly mode toggle ignored — Player3D.toggle_fly_mode missing")
+		return
+	var now_flying: bool = player.toggle_fly_mode()
+	_refresh_fly_mode_label()
+	log_action("DEV: fly mode %s" % ("ON" if now_flying else "OFF"))
+
+
+func _refresh_fly_mode_label() -> void:
+	# Mirrors the player's current fly state into the button text so
+	# the menu reads "TOGGLE FLY MODE  (ON)" / "(OFF)" at a glance.
+	if _btn_fly_mode == null:
+		return
+	var on: bool = false
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if not players.is_empty() and "is_flying" in players[0]:
+		on = bool(players[0].is_flying)
+	_btn_fly_mode.text = "  TOGGLE FLY MODE  (%s)" % ("ON" if on else "OFF")
 
 
 # --- Console tab ---
@@ -954,6 +991,9 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		if _hits_button(_btn_advance_time, pos):
 			_show_time_view()
+			return
+		if _hits_button(_btn_fly_mode, pos):
+			_toggle_fly_mode()
 			return
 		return
 
