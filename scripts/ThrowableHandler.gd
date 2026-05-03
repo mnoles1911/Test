@@ -126,6 +126,20 @@ func _try_throw() -> void:
 	_player.get_parent().add_child(rigid_body)
 	rigid_body.global_position = spawn_pos
 
+	# Push inventory-driven sizing onto the spawned charge.
+	# Without this the PowderCharge.aoe_radius_meters export keeps its
+	# hardcoded default (2.0), and inventory-side tuning of
+	# voxel_aoe_radius is silently ignored — exactly the bug the
+	# "explosives stop carving after 3-4 throws at one spot" log
+	# revealed (radius was 2 m, four overlapping carves of 2 m landed
+	# inside the same crater the first one made).
+	if InventoryManager.ITEM_REGISTRY.has(throwable_item_id):
+		var data: Dictionary = InventoryManager.ITEM_REGISTRY[throwable_item_id]
+		if data.has("voxel_aoe_radius") and "aoe_radius_meters" in rigid_body:
+			rigid_body.aoe_radius_meters = float(data["voxel_aoe_radius"])
+		if data.has("combat_damage") and "combat_damage" in rigid_body:
+			rigid_body.combat_damage = int(data["combat_damage"])
+
 	# Forward + slight upward arc — like an underhand toss.
 	var throw_velocity: Vector3 = (forward + Vector3.UP * 0.3).normalized() * throw_speed_meters_per_second
 	rigid_body.linear_velocity = throw_velocity

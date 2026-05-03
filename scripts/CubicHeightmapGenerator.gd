@@ -62,24 +62,25 @@ class_name CubicHeightmapGenerator
 # average ground sits around Y=10 m, valleys dip to Y=-5 m (flooded
 # coastline), peaks rise to Y=+25 m (hills the player must climb).
 
-@export var quantize_to_meters: bool = true
+@export var quantize_to_meters: bool = false
 # When true, the macro noise is snapped to integer-metre (8-voxel)
-# steps before adding sub-voxel detail. Result: terrain has clear
-# 1 m terraces (Minecraft-style block silhouette) with sub-voxel
-# cubes filling the slope between terraces. Turn off for fully
-# smooth gradient terrain.
+# steps. Produces hard 1 m cliffs at the half-metre noise crossings.
+# Off by default: with quantize on we got jumpable-but-choppy
+# terraces with no smooth grading between them — opposite of the
+# intended "cubic-but-smooth" look. With this off the noise stays
+# continuous and adjacent voxel columns differ by 0-2 voxels, which
+# reads as a natural sub-voxel staircase smoothing each slope.
 
-@export var detail_amplitude_voxels: int = 5
-# Sub-voxel detail amplitude. ±5 voxels = ±62 cm of high-frequency
-# wobble layered over the macro height. Big enough to break perfectly
-# flat metre plateaus into visibly cubic surfaces, small enough that
-# it doesn't overpower the terrace silhouette.
+@export var detail_amplitude_voxels: int = 4
+# Sub-voxel detail amplitude. ±4 voxels = ±50 cm of high-frequency
+# wobble layered on top of the macro height. Adds surface grain so
+# flat stretches of terrain don't read as a single slab.
 
-@export var detail_frequency_multiplier: float = 6.0
+@export var detail_frequency_multiplier: float = 4.5
 # Detail noise is sampled at this multiple of the macro noise's
-# frequency. 6× means each 1 m macro feature contains roughly six
-# cycles of detail variation — enough to read as "textured" rather
-# than uniform across the metre.
+# frequency. ~4-5× means each macro feature contains a handful of
+# detail cycles — enough to read as "textured" without overpowering
+# the macro silhouette.
 
 @export var color_jitter: float = 0.10
 # Per-voxel deterministic colour jitter applied as ± this fraction
