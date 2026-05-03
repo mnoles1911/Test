@@ -136,9 +136,12 @@ func _dispatch_scroll(delta_pixels: int) -> void:
 	# Only the load picker has a scrollable list. Find the
 	# ScrollContainer that wraps _load_list_container and adjust
 	# its vertical scroll position.
-	print("[MainMenu] _dispatch_scroll(%d), load_panel.visible=%s" % [
-		delta_pixels, _load_panel.visible if _load_panel else "null"
-	])
+	# Stringify the visibility separately so the ternary returns a
+	# consistent type (avoids the INCOMPATIBLE_TERNARY warning).
+	var panel_state: String = "null"
+	if _load_panel != null:
+		panel_state = str(_load_panel.visible)
+	print("[MainMenu] _dispatch_scroll(%d), load_panel.visible=%s" % [delta_pixels, panel_state])
 	if not _load_panel.visible:
 		return
 	if _load_list_container == null:
