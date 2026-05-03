@@ -62,6 +62,33 @@ class_name CubicHeightmapGenerator
 # average ground sits around Y=10 m, valleys dip to Y=-5 m (flooded
 # coastline), peaks rise to Y=+25 m (hills the player must climb).
 
+@export var quantize_to_meters: bool = true
+# When true, the macro noise is snapped to integer-metre (8-voxel)
+# steps before adding sub-voxel detail. Result: terrain has clear
+# 1 m terraces (Minecraft-style block silhouette) with sub-voxel
+# cubes filling the slope between terraces. Turn off for fully
+# smooth gradient terrain.
+
+@export var detail_amplitude_voxels: int = 5
+# Sub-voxel detail amplitude. ±5 voxels = ±62 cm of high-frequency
+# wobble layered over the macro height. Big enough to break perfectly
+# flat metre plateaus into visibly cubic surfaces, small enough that
+# it doesn't overpower the terrace silhouette.
+
+@export var detail_frequency_multiplier: float = 6.0
+# Detail noise is sampled at this multiple of the macro noise's
+# frequency. 6× means each 1 m macro feature contains roughly six
+# cycles of detail variation — enough to read as "textured" rather
+# than uniform across the metre.
+
+@export var color_jitter: float = 0.10
+# Per-voxel deterministic colour jitter applied as ± this fraction
+# of brightness. Without it, a flat top of voxels at the same height
+# all get the same lerped colour and the surface reads as one smooth
+# slab — the eye loses the sub-voxel grid even though the geometry
+# IS cubed. 0.10 = ±10 % brightness gives subtle but visible grain.
+# Set to 0 to disable.
+
 @export var sea_level_voxels: int = 0
 # Voxel-Y coordinate that should correspond to "ocean surface".
 # Ground at or below this Y is submerged when the OceanVolume Area3D
@@ -104,10 +131,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 
 	# Bound the heightmap range so we can skip blocks fully above or
 	# fully below terrain without per-voxel work. Includes the bias
-	# offset so the early-out test stays correct after height_offset
-	# pushes the column up or down.
-	var max_ground_y: int = int(height_range_voxels * 0.5) + height_offset_voxels + 1
-	var min_ground_y: int = -int(height_range_voxels * 0.5) + height_offset_voxels - 1
+	# offset and the detail amplitude so the early-out test stays
+	# correct after macro quantization + detail layering shift the
+	# column ±detail_amplitude voxels.
+	var max_ground_y: int = int(height_range_voxels * 0.5) + height_offset_voxels + detail_amplitude_voxels + 1
+	var min_ground_y: int = -int(height_range_voxels * 0.5) + height_offset_voxels - detail_amplitude_voxels - 1
 	var block_min_y: int = origin_in_voxels.y
 	var block_max_y: int = origin_in_voxels.y + (size.y * stride) - 1
 
@@ -134,21 +162,59 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
 			var world_z: int = origin_in_voxels.z + z * stride
-			# Noise output is in [-1, 1]. Scale to half-range so total
-			# relief == height_range_voxels.
-			var n: float = noise.get_noise_2d(float(world_x), float(world_z))
-			var ground_y: int = int(n * half_range) + height_offset_voxels
+
+			# --- Macro height: wide-feature noise, optionally quantized
+			#     to integer-metre (8-voxel) steps for terraced look. ---
+			var n_macro: float = noise.get_noise_2d(float(world_x), float(world_z))
+			var macro_y: int
+			if quantize_to_meters:
+				# roundi → terraces centred on integer metres rather
+				# than always rounded down. Cliff transitions happen
+				# at the half-metre crossings of the macro noise.
+				var macro_meters: int = roundi(n_macro * half_range / 8.0)
+				macro_y = macro_meters * 8
+			else:
+				macro_y = int(n_macro * half_range)
+
+			# --- Detail height: high-frequency sub-metre wobble. ---
+			# Reuses the same noise resource sampled at a higher
+			# frequency — saves an Inspector slot and a second noise
+			# resource while still de-correlating from the macro shape
+			# (the multiplier produces a different visit pattern over
+			# the noise field).
+			var n_detail: float = noise.get_noise_2d(
+				float(world_x) * detail_frequency_multiplier,
+				float(world_z) * detail_frequency_multiplier,
+			)
+			var detail_y: int = int(n_detail * float(detail_amplitude_voxels))
+
+			var ground_y: int = macro_y + detail_y + height_offset_voxels
 
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
 				if world_y > ground_y:
 					continue
-				# Lerp color based on this voxel's height within the
-				# overall range. Using world_y (not ground_y) so the
-				# vertical face of a cliff fades smoothly rather than
-				# painting all ledge tops the same shade.
+
+				# Base colour from the height lerp. world_y (not
+				# ground_y) so a tall cliff face fades smoothly rather
+				# than painting every cube on the ledge the same shade.
 				var t: float = clamp((float(world_y) + half_range - float(height_offset_voxels)) / height_range_voxels, 0.0, 1.0)
 				var c: Color = color_low.lerp(color_high, t)
+
+				# --- Per-voxel deterministic colour jitter ---
+				# Triple-prime hash mixes the three coords into one
+				# pseudo-random byte. Adding a small ± offset to RGB
+				# breaks up the otherwise-uniform colour of any flat
+				# top, so the eye picks up individual cubes and the
+				# 12.5 cm sub-voxel grid becomes visible against the
+				# 1 m macro terraces.
+				if color_jitter > 0.0:
+					var hash_val: int = ((world_x * 73856093) ^ (world_y * 19349663) ^ (world_z * 83492791)) & 0xFF
+					var j: float = (float(hash_val) / 255.0 - 0.5) * color_jitter
+					c.r = clampf(c.r + j, 0.0, 1.0)
+					c.g = clampf(c.g + j, 0.0, 1.0)
+					c.b = clampf(c.b + j, 0.0, 1.0)
+
 				out_buffer.set_voxel(c.to_rgba32(), x, y, z, VoxelBuffer.CHANNEL_COLOR)
 
 
