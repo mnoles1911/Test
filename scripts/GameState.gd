@@ -15,10 +15,17 @@ extends Node
 # =============================================================
 # PLAYER POSITION AND SCENE TRACKING
 # =============================================================
-# TransitionManager updates these before every scene change so the
-# receiving scene knows where to spawn the player.
+# TransitionManager updates `current_scene` before every scene change.
+# `player_position` is captured from the live player at save time via
+# a group lookup — see _capture_player_position(). It's persisted to
+# the save and applied on load when the scene re-instances.
 
-var player_position: Vector2 = Vector2.ZERO
+var player_position: Vector3 = Vector3.ZERO
+var player_rotation_y: float = 0.0
+# Player's facing direction in radians. Captured at save time from
+# the live Player3D's rotation.y so the load drops Roland looking
+# the same way he was looking when the save was taken.
+
 var current_scene: String = ""
 var player_spawn_id: String = ""
 # player_spawn_id is the name of the SpawnPoint node the receiving scene
@@ -101,6 +108,87 @@ func set_companion(companion_id: String, active: bool) -> void:
 
 
 # =============================================================
+# SKILL XP — learn-by-doing progression
+# =============================================================
+# Per design/SKILLS_AND_PROGRESSION.md:
+#   Four domains: COMBAT, VITALITY, CRAFTING, EXPLORATION
+#   Each has sub-skills (e.g. crafting/mining, crafting/felling)
+#   Tier names: Novice / Trained / Veteran / Master
+#
+# Storage uses string keys "<domain>/<sub_skill>" because dictionary
+# keys are easier to debug than enum-int pairs and survive JSON
+# round-tripping cleanly. Sub-skill names are lowercase strings.
+#
+# Roland's Crafting domain right now has four sub-skills wired:
+#   crafting/mining       — pickaxe on rock/ore voxels
+#   crafting/felling      — axe on wood voxels
+#   crafting/excavation   — shovel on dirt/sand/clay/ash voxels
+#   crafting/demolition   — explosives + spell terrain effects
+#
+# Award XP via add_skill_xp(SkillDomain.CRAFTING, "mining", 5).
+# Tier thresholds match design/SKILLS_AND_PROGRESSION.md Section
+# "How Skill Progress is Tracked".
+
+enum SkillDomain { COMBAT, VITALITY, CRAFTING, EXPLORATION }
+
+const TIER_NAMES: Array = ["Novice", "Trained", "Veteran", "Master"]
+
+# Tier thresholds per domain — total XP needed to enter each tier.
+# Index = tier (0=Novice, 1=Trained, 2=Veteran, 3=Master).
+const TIER_THRESHOLDS: Dictionary = {
+	SkillDomain.COMBAT:      [0, 300, 700, 1200],
+	SkillDomain.VITALITY:    [0, 200, 500, 900],
+	SkillDomain.CRAFTING:    [0, 150, 400, 800],
+	SkillDomain.EXPLORATION: [0, 250, 600, 1000],
+}
+
+# In-memory storage. Keys: "0/mining", "2/parry_success", etc.
+# (the leading int is the SkillDomain enum value).
+var _skill_xp: Dictionary = {}
+
+# Fired after every XP award. UI listeners can subscribe to update
+# the Skills tab in real time without polling.
+signal skill_xp_changed(domain: int, sub_skill: String, new_xp: int)
+
+func add_skill_xp(domain: int, sub_skill: String, amount: int) -> void:
+	# Award amount XP to a sub-skill under a domain. Idempotent in
+	# the sense that calling repeatedly just stacks XP; no caps until
+	# the design adds them.
+	var key: String = "%d/%s" % [domain, sub_skill]
+	var current: int = _skill_xp.get(key, 0)
+	var new_value: int = current + amount
+	_skill_xp[key] = new_value
+	skill_xp_changed.emit(domain, sub_skill, new_value)
+	print("[GameState] Skill XP: %s += %d (total %d)" % [key, amount, new_value])
+
+func get_skill_xp(domain: int, sub_skill: String) -> int:
+	# Returns 0 for any (domain, sub_skill) Roland has never earned.
+	return _skill_xp.get("%d/%s" % [domain, sub_skill], 0)
+
+func get_domain_total_xp(domain: int) -> int:
+	# Sums every sub-skill XP under a domain. Used for tier rollup.
+	var prefix: String = "%d/" % domain
+	var total: int = 0
+	for key in _skill_xp.keys():
+		if key.begins_with(prefix):
+			total += _skill_xp[key]
+	return total
+
+func get_skill_tier(domain: int) -> String:
+	# Returns the tier name string for the given domain based on
+	# total XP across all its sub-skills.
+	var total: int = get_domain_total_xp(domain)
+	var thresholds: Array = TIER_THRESHOLDS.get(domain, [0])
+	var tier_index: int = 0
+	for i in range(thresholds.size()):
+		if total >= thresholds[i]:
+			tier_index = i
+		else:
+			break
+	return TIER_NAMES[tier_index]
+
+
+# =============================================================
 # CURRENT ENEMY
 # =============================================================
 # Set this to an EnemyData resource before calling
@@ -111,86 +199,367 @@ var current_enemy_data = null  # Holds an EnemyData resource, or null for defaul
 
 
 # =============================================================
-# SAVE AND LOAD — MULTI-SLOT
+# NEW GAME RESET
 # =============================================================
-# Three save slots (0, 1, 2). The active slot is tracked in active_save_slot.
-# Autosaves always go to active_save_slot.
-# The slot picker UI (SaveSlotPicker.tscn) lets the player choose a slot
-# for manual saves and loads.
+# Called when the player clicks NEW GAME from the main menu.
+# Clears every piece of session state that persists across scene
+# transitions in autoloads — without this, a "New Game" inherits
+# voxel edits, flags, inventory, skill XP, and player position
+# from the previous playthrough running in the same Godot session.
 #
-# File names: user://save_0.json, user://save_1.json, user://save_2.json
+# What gets reset:
+#   - GameState in-memory state (flags, companions, skill XP,
+#     position, rotation, scene refs, play time, active save)
+#   - InventoryManager (clears inventory + equipped slots, then
+#     re-applies the debug starting kit: pickaxe + 5 charges)
+#   - Voxel deltas on disk (user://voxel_deltas.sqlite plus
+#     Zylann's auxiliary -journal / -wal / -shm files)
+#
+# What does NOT get reset (preserved across playthroughs):
+#   - Saved files in user://saves/ — players manage those by name
+#     via the load picker
+#   - Settings (display, audio, controls) — player preferences
+#   - The randomly-loaded menu background
+
+func reset_for_new_game() -> void:
+	_flags.clear()
+	_flag_history.clear()
+	_skill_xp.clear()
+	_companions = {
+		"orion":  false,
+		"dagna":  false,
+		"corvus": false,
+		"seren":  false,
+		"aldric": false,
+	}
+	player_position = Vector3.ZERO
+	player_rotation_y = 0.0
+	player_spawn_id = ""
+	current_scene = ""
+	active_save_filename = ""
+	active_save_display_name = ""
+	last_save_unix_time = 0
+	_play_time_seconds = 0.0
+
+	_delete_voxel_deltas_files()
+
+	if get_node_or_null("/root/InventoryManager"):
+		InventoryManager.reset_to_defaults()
+
+	print("[GameState] Reset for new game.")
+
+
+func _delete_voxel_deltas_files() -> void:
+	# Delete voxel_deltas.sqlite plus any Zylann SQLite auxiliary
+	# files (-journal, -wal, -shm). Without removing the journals,
+	# SQLite may recreate the database from them on next open and
+	# resurrect the deleted edits.
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	var deleted: int = 0
+	while fname != "":
+		if not dir.current_is_dir() and fname.begins_with(VOXEL_DELTAS_BASENAME):
+			var abs_path: String = ProjectSettings.globalize_path("user://" + fname)
+			var err: int = DirAccess.remove_absolute(abs_path)
+			if err == OK:
+				deleted += 1
+				print("[GameState] Deleted: %s" % fname)
+			else:
+				push_warning("[GameState] Failed to delete %s (err %d)" % [fname, err])
+		fname = dir.get_next()
+	dir.list_dir_end()
+	print("[GameState] Cleared %d voxel-delta file(s)." % deleted)
+
+
+# =============================================================
+# SAVE AND LOAD — NAMED FILES
+# =============================================================
+# Saves are stored as JSON files in user://saves/, one per save.
+# Each file's basename is a slugified version of the player-given
+# save name; the full display name is stored inside the JSON.
+#
+# Examples:
+#   "First Cave"         → user://saves/first_cave.json
+#   "Roland Day 3"       → user://saves/roland_day_3.json
 #
 # "user://" is a Godot shorthand for the OS user data folder:
 #   Windows: %APPDATA%\Godot\app_userdata\Game One\
 #   Linux:   ~/.local/share/godot/app_userdata/Game One/
 #   Mac:     ~/Library/Application Support/Godot/app_userdata/Game One/
+#
+# The PauseMenu Save button opens a small dialog asking the player
+# to name the save; the Load button opens a picker overlay that
+# lists every save with its name, last-played timestamp, and the
+# coordinates Roland was at when the save was taken.
 
-const SAVE_SLOT_COUNT: int = 3
-const SAVE_PATH: String = "user://save.json"  # legacy — kept for compatibility checks
+const SAVES_DIR: String = "user://saves/"
 
-var active_save_slot: int = 0
-# Which slot autosaves go to. Set when the player picks a slot.
+# Legacy slot-file path — kept only for backward-compat detection.
+const LEGACY_SAVE_PATH: String = "user://save.json"
 
-func save_path_for_slot(slot: int) -> String:
-	return "user://save_%d.json" % slot
+# Voxel-edit-delta SQLite database path. Must match the
+# database_path on the VoxelStreamSQLite sub_resource in
+# scenes/World3D.tscn — wiping this file (and Zylann's
+# auxiliary -journal / -wal / -shm files) on New Game gives
+# the player a clean baseline.
+const VOXEL_DELTAS_BASENAME: String = "voxel_deltas.sqlite"
 
-func save_game(slot: int = -1) -> void:
-	# slot = -1 means "use active_save_slot".
-	if slot < 0:
-		slot = active_save_slot
-	slot = clampi(slot, 0, SAVE_SLOT_COUNT - 1)
+# The most-recently saved or loaded filename. Used by autosave-on-
+# quit and as the default "current save" reference.
+var active_save_filename: String = ""
+
+# Display name of the active save (the human-readable name typed
+# into the save dialog or shown in the load picker). Pre-fills
+# the save dialog's text field on the next manual save so the
+# player can hit Enter to overwrite the same named save without
+# re-typing — e.g. "Roland Day 1" stays "Roland Day 1" until the
+# player explicitly renames it.
+var active_save_display_name: String = ""
+
+# Unix timestamp of the most recent successful save (any kind).
+# Used by PauseMenu to suppress the redundant auto-save on EXIT
+# TO MENU / QUIT when the player already saved very recently.
+var last_save_unix_time: int = 0
+
+
+func seconds_since_last_save() -> int:
+	# Returns how many seconds since save_game succeeded last,
+	# or a very large number if the player has never saved this
+	# session. Callers use this to gate auto-save logic.
+	if last_save_unix_time == 0:
+		return 999999
+	return int(Time.get_unix_time_from_system()) - last_save_unix_time
+
+
+func _ensure_saves_dir() -> void:
+	# Create user://saves/ on first use. DirAccess.make_dir_absolute
+	# silently no-ops if the directory already exists.
+	if not DirAccess.dir_exists_absolute(SAVES_DIR):
+		DirAccess.make_dir_absolute(SAVES_DIR)
+
+
+func _slugify(display_name: String) -> String:
+	# Convert a display name into a filesystem-safe slug.
+	# "My Save 1!" → "my_save_1"
+	# Empty or all-symbols → "untitled"
+	#
+	# Parameter is named display_name (not name) because Node has a
+	# `name` property — using `name` here would shadow it and emit
+	# a SHADOWED_VARIABLE_BASE_CLASS warning at parse time.
+	var s := display_name.to_lower().strip_edges()
+	var out := ""
+	for i in range(s.length()):
+		var c := s[i]
+		if (c >= "a" and c <= "z") or (c >= "0" and c <= "9"):
+			out += c
+		elif c == " " or c == "_" or c == "-":
+			out += "_"
+	# Collapse repeated underscores so "  hi  " doesn't become "__hi__".
+	while out.find("__") != -1:
+		out = out.replace("__", "_")
+	out = out.trim_prefix("_").trim_suffix("_")
+	if out.is_empty():
+		out = "untitled"
+	return out
+
+
+func save_path_for_name(save_name: String) -> String:
+	return SAVES_DIR + _slugify(save_name) + ".json"
+
+
+func _capture_player_position() -> Vector3:
+	# Pull the live player's world position via group lookup so the
+	# save reflects exactly where Roland was when the player hit save.
+	# Falls back to the cached player_position if no player is in
+	# the scene tree (e.g. on a main-menu save attempt).
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return player_position
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return player_position
+	return player.global_position
+
+
+func _capture_player_rotation_y() -> float:
+	# Y rotation in radians (the only rotation axis Player3D uses
+	# — pitch and roll live on the camera, not the body). Captured
+	# at save time so reload preserves which way Roland was looking.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return player_rotation_y
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return player_rotation_y
+	return player.rotation.y
+
+
+const MAX_AUTOSAVES: int = 5
+# Hard cap on simultaneous autosaves on disk. After every autosave
+# write, the oldest autosaves beyond this count are deleted (FIFO
+# eviction). Named saves (is_autosave == false) are never pruned;
+# the player manages those by name via the load picker's DELETE
+# button.
+
+func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
+	# Write the current game state to user://saves/{slug}.json.
+	#
+	# save_name: the human-readable name shown in the load picker.
+	#   Empty string is auto-replaced with a timestamp-based default.
+	# is_autosave: marks this save as an autosave for FIFO pruning
+	#   (max MAX_AUTOSAVES kept). Named saves pass false here and
+	#   accumulate freely until the player manually deletes them.
+	#
+	# Returns true on success, false on failure (path error, write
+	# failure). The PauseMenu shows a toast on success.
+	_ensure_saves_dir()
+
+	if save_name.strip_edges() == "":
+		save_name = "Save %s" % Time.get_datetime_string_from_system()
+
+	# Capture the live player position + facing direction before
+	# serializing. _capture_* helpers fall back to cached values
+	# if no player exists in the scene tree.
+	player_position = _capture_player_position()
+	player_rotation_y = _capture_player_rotation_y()
+
+	# Flush in-memory voxel edits to the SQLite stream so the save
+	# captures all the digging / explosions the player has done up
+	# to this moment. Without this, edits stay in Zylann's RAM and
+	# are only written periodically — saving + immediately reloading
+	# would lose recent edits.
+	if get_node_or_null("/root/VoxelEditManager"):
+		VoxelEditManager.flush_pending_edits()
+
+	# Stamp the current voxel generator version. Mismatch on load
+	# is a hard error (see load_save_file). Defaults to 0 if the
+	# VoxelEditManager autoload isn't available.
+	var voxel_gen_version: int = 0
+	if get_node_or_null("/root/VoxelEditManager"):
+		voxel_gen_version = VoxelEditManager.WORLD_GENERATOR_VERSION
 
 	var data: Dictionary = {
-		"version": 2,
-		"slot": slot,
+		"version": 5,
+		"save_name": save_name,
+		"is_autosave": is_autosave,
 		"timestamp": Time.get_datetime_string_from_system(),
+		"unix_time": Time.get_unix_time_from_system(),
 		"play_time_seconds": _play_time_seconds,
-		"player_position": {"x": player_position.x, "y": player_position.y},
+		"player_position": {
+			"x": player_position.x,
+			"y": player_position.y,
+			"z": player_position.z,
+		},
+		"player_rotation_y": player_rotation_y,
 		"current_scene": current_scene,
 		"flags": _flags.duplicate(),
 		"companions": _companions.duplicate(),
+		"skill_xp": _skill_xp.duplicate(),
+		"voxel_generator_version": voxel_gen_version,
 	}
-	var path: String = save_path_for_slot(slot)
+
+	if get_node_or_null("/root/InventoryManager"):
+		data["inventory"] = InventoryManager.get_save_data()
+
+	var path: String = save_path_for_name(save_name)
 	var json_string: String = JSON.stringify(data, "\t")
-	var file = FileAccess.open(path, FileAccess.WRITE)
-	if file:
-		file.store_string(json_string)
-		file.close()
-		print("[GameState] Saved to slot %d (%s)." % [slot, path])
-		if get_node_or_null("/root/SaveNotification"):
-			SaveNotification.show_notification()
-	else:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
 		push_error("[GameState] Could not write save file: " + path)
-
-func load_game(slot: int = -1) -> void:
-	if slot < 0:
-		slot = active_save_slot
-	slot = clampi(slot, 0, SAVE_SLOT_COUNT - 1)
-
-	var path: String = save_path_for_slot(slot)
-	if not FileAccess.file_exists(path):
-		# Fall back to the legacy single save file so old saves still work.
-		if FileAccess.file_exists(SAVE_PATH):
-			path = SAVE_PATH
-		else:
-			print("[GameState] No save file found for slot %d." % slot)
-			return
-
-	var file = FileAccess.open(path, FileAccess.READ)
-	if not file:
-		push_error("[GameState] Could not open save file: " + path)
-		return
-	var result = JSON.parse_string(file.get_as_text())
+		return false
+	file.store_string(json_string)
 	file.close()
-	if result == null:
-		push_error("[GameState] Save file JSON is malformed.")
+	active_save_filename = path.get_file()
+	last_save_unix_time = int(Time.get_unix_time_from_system())
+	# Only update the display-name reference for NAMED saves —
+	# autosave names ("[Auto] <timestamp>") shouldn't pre-fill the
+	# next manual save dialog. The player wants to keep editing
+	# their named save's name across sessions.
+	if not is_autosave:
+		active_save_display_name = save_name
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("%s save: '%s'" % [
+			"AUTO" if is_autosave else "Named", save_name
+		])
+	else:
+		print("[GameState] Saved '%s' → %s" % [save_name, path])
+	if get_node_or_null("/root/SaveNotification"):
+		SaveNotification.show_notification()
+
+	# After an autosave write succeeds, prune old autosaves so disk
+	# usage stays bounded. Named saves are not affected.
+	if is_autosave:
+		_prune_autosaves(MAX_AUTOSAVES)
+
+	return true
+
+
+func _prune_autosaves(max_keep: int) -> void:
+	# Lists every save flagged is_autosave, sorts newest-first
+	# (list_save_files already does this), and deletes everything
+	# past max_keep. The just-written autosave is the newest and
+	# therefore always retained.
+	var autosaves: Array = []
+	for s in list_save_files():
+		if s.get("is_autosave", false):
+			autosaves.append(s)
+	if autosaves.size() <= max_keep:
 		return
-	var data: Dictionary = result
+	for entry in autosaves.slice(max_keep):
+		var fname: String = entry.get("filename", "")
+		if fname == "":
+			continue
+		print("[GameState] Pruning old autosave: %s" % fname)
+		delete_save_file(fname)
+
+
+func load_save_file(filename: String) -> bool:
+	# Loads a save by filename (just the basename, e.g. "first_cave.json").
+	# Returns true on success, false on missing file / parse error / version
+	# mismatch.
+	_ensure_saves_dir()
+	var path: String = SAVES_DIR + filename
+	if not FileAccess.file_exists(path):
+		# Legacy fallback: try the user://save.json path from the old
+		# slot-based system if the named file doesn't exist.
+		if FileAccess.file_exists(LEGACY_SAVE_PATH) and filename == LEGACY_SAVE_PATH.get_file():
+			path = LEGACY_SAVE_PATH
+		else:
+			push_warning("[GameState] No save file found: " + path)
+			return false
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_error("[GameState] Could not open save file: " + path)
+		return false
+	var parsed = JSON.parse_string(file.get_as_text())
+	file.close()
+	if parsed == null:
+		push_error("[GameState] Save file JSON is malformed: " + path)
+		return false
+	var data: Dictionary = parsed
+
+	# --- Voxel generator version check (HARD ERROR on mismatch) ---
+	if data.has("voxel_generator_version") and get_node_or_null("/root/VoxelEditManager"):
+		var saved_ver: int = int(data["voxel_generator_version"])
+		var current_ver: int = VoxelEditManager.WORLD_GENERATOR_VERSION
+		if saved_ver != current_ver:
+			push_error("[GameState] Save was made with terrain generator v%d but current is v%d. Cannot load — the procedural baseline has changed and player voxel edits would no longer match the world." % [saved_ver, current_ver])
+			return false
+
+	# --- Restore state ---
 	if data.has("player_position"):
-		player_position = Vector2(
-			data["player_position"].get("x", 0.0),
-			data["player_position"].get("y", 0.0)
+		var p: Dictionary = data["player_position"]
+		player_position = Vector3(
+			float(p.get("x", 0.0)),
+			float(p.get("y", 0.0)),
+			float(p.get("z", 0.0)),
 		)
+	if data.has("player_rotation_y"):
+		player_rotation_y = float(data["player_rotation_y"])
 	if data.has("current_scene"):
 		current_scene = data["current_scene"]
 	if data.has("flags"):
@@ -198,36 +567,128 @@ func load_game(slot: int = -1) -> void:
 	if data.has("companions"):
 		for key in data["companions"]:
 			_companions[key] = data["companions"][key]
-	if data.has("slot"):
-		active_save_slot = data["slot"]
-	print("[GameState] Loaded slot %d. Flags: %d" % [slot, _flags.size()])
+	if data.has("skill_xp"):
+		_skill_xp = data["skill_xp"]
+	if data.has("inventory") and get_node_or_null("/root/InventoryManager"):
+		InventoryManager.load_save_data(data["inventory"])
 
-func delete_save(slot: int = -1) -> void:
-	if slot < 0:
-		slot = active_save_slot
-	var path: String = save_path_for_slot(slot)
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
-		print("[GameState] Deleted save slot %d." % slot)
+	active_save_filename = filename
+	var save_label: String = data.get("save_name", filename)
+	# If the loaded save is a NAMED save, remember its display name
+	# so the next manual save dialog pre-fills with the same text
+	# (Roland Day 1 → quick edit → Save again as Roland Day 2).
+	# Autosaves don't pre-fill — the player names their next save
+	# from a clean slate.
+	if not bool(data.get("is_autosave", false)):
+		active_save_display_name = save_label
+	else:
+		active_save_display_name = ""
+	last_save_unix_time = int(Time.get_unix_time_from_system())
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Loaded save: '%s'" % save_label)
+	else:
+		print("[GameState] Loaded '%s'. Flags: %d, Skill XP entries: %d" % [save_label, _flags.size(), _skill_xp.size()])
+	return true
 
-func get_slot_info(slot: int) -> Dictionary:
-	# Returns metadata for a slot without fully loading it.
-	# Used by the slot picker UI to show timestamps and scene names.
-	var path: String = save_path_for_slot(slot)
+
+func delete_save_file(filename: String) -> bool:
+	var path: String = SAVES_DIR + filename
 	if not FileAccess.file_exists(path):
-		return {"exists": false, "slot": slot}
-	var file = FileAccess.open(path, FileAccess.READ)
-	if not file:
-		return {"exists": false, "slot": slot}
-	var result = JSON.parse_string(file.get_as_text())
+		return false
+	var err: int = DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	if err == OK:
+		print("[GameState] Deleted save: " + filename)
+		if active_save_filename == filename:
+			active_save_filename = ""
+		return true
+	push_error("[GameState] Failed to delete save: " + filename)
+	return false
+
+
+func delete_all_save_files() -> int:
+	# Wipes every .json file under user://saves/ and returns the
+	# count of files removed. Used by the F1 debug overlay's
+	# "DELETE ALL SAVES" button. Voxel deltas (the SQLite file)
+	# are NOT touched here — that's a separate concern; the player
+	# may want to keep the in-progress world but reset the save
+	# slot list. To wipe BOTH, click NEW GAME from the main menu.
+	_ensure_saves_dir()
+	var dir := DirAccess.open(SAVES_DIR)
+	if dir == null:
+		return 0
+	var deleted: int = 0
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir() and fname.ends_with(".json"):
+			var abs_path: String = ProjectSettings.globalize_path(SAVES_DIR + fname)
+			var err: int = DirAccess.remove_absolute(abs_path)
+			if err == OK:
+				deleted += 1
+		fname = dir.get_next()
+	dir.list_dir_end()
+	active_save_filename = ""
+	print("[GameState] Deleted %d save file(s)." % deleted)
+	return deleted
+
+
+func list_save_files() -> Array:
+	# Returns an array of metadata dictionaries for every save file
+	# in user://saves/. Used by the load picker UI to populate the
+	# list. Sorted by unix_time descending (newest first).
+	#
+	# Each entry has:
+	#   filename:       String  — basename, used by load_save_file
+	#   save_name:      String  — human-readable display name
+	#   timestamp:      String  — ISO datetime when the save was made
+	#   unix_time:      int     — for sorting
+	#   player_position: Vector3
+	#   current_scene:  String
+	#   play_time_seconds: float
+	_ensure_saves_dir()
+	var saves: Array = []
+	var dir := DirAccess.open(SAVES_DIR)
+	if dir == null:
+		return saves
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir() and fname.ends_with(".json"):
+			var meta: Dictionary = _read_save_metadata(SAVES_DIR + fname)
+			if not meta.is_empty():
+				meta["filename"] = fname
+				saves.append(meta)
+		fname = dir.get_next()
+	dir.list_dir_end()
+	# Newest first.
+	saves.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a.get("unix_time", 0) > b.get("unix_time", 0))
+	return saves
+
+
+func _read_save_metadata(path: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
 	file.close()
-	if result == null:
-		return {"exists": false, "slot": slot}
+	if parsed == null:
+		return {}
+	var data: Dictionary = parsed
+	var p: Dictionary = data.get("player_position", {})
 	return {
-		"exists": true,
-		"slot": slot,
-		"timestamp": result.get("timestamp", "unknown"),
-		"current_scene": result.get("current_scene", ""),
+		"save_name": data.get("save_name", path.get_file()),
+		"is_autosave": bool(data.get("is_autosave", false)),
+		"timestamp": data.get("timestamp", "unknown"),
+		"unix_time": int(data.get("unix_time", 0)),
+		"player_position": Vector3(
+			float(p.get("x", 0.0)),
+			float(p.get("y", 0.0)),
+			float(p.get("z", 0.0)),
+		),
+		"player_rotation_y": float(data.get("player_rotation_y", 0.0)),
+		"current_scene": data.get("current_scene", ""),
+		"play_time_seconds": float(data.get("play_time_seconds", 0.0)),
 	}
 
 

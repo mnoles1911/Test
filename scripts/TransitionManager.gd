@@ -96,8 +96,13 @@ func change_scene(scene_path: String, spawn_id: String = "", type: Type = Type.F
 	GameState.player_spawn_id = spawn_id
 	GameState.current_scene = scene_path
 
-	# Autosave before every scene change.
-	GameState.save_game()
+	# (Previously called GameState.save_game() here on every scene
+	# transition. Removed: it created an untagged save on top of the
+	# PauseMenu's already-explicit '[Auto]' save on EXIT TO MENU and
+	# QUIT, so going to the menu produced two saves at the same
+	# timestamp. Save points are now exclusively the explicit player
+	# action (SAVE button) and the on-exit/on-quit auto-save in
+	# PauseMenu, both of which produce one named/autosave file each.)
 
 	_do_transition(scene_path, type)
 

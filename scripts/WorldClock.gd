@@ -103,7 +103,10 @@ func _ready() -> void:
 	_real_seconds_per_game_minute = real_seconds_per_game_hour / 60.0
 
 	# Restore time from a loaded save, or start fresh.
-	var saved_hour: String = GameState.get_flag("world_hour")
+	# GameState.get_flag returns its default (false / bool) when a
+	# flag is unset — pass "" so the type is consistent and the
+	# emptiness check works as a "not yet saved" signal.
+	var saved_hour: String = str(GameState.get_flag("world_hour", ""))
 	if saved_hour != "":
 		load_from_state()
 	else:
@@ -225,6 +228,9 @@ func set_time(hour: int, minute: int = 0) -> void:
 ##   WorldClock.advance_hours(8)  ← skip 8 game hours
 func advance_hours(hours: int) -> void:
 	var target_hour: int = (current_hour + hours) % 24
+	# Integer truncation IS what we want here — days_elapsed is the
+	# whole-number count of days crossed by the time skip.
+	@warning_ignore("integer_division")
 	var days_elapsed: int = (current_hour + hours) / 24
 	if days_elapsed > 0:
 		current_day += days_elapsed

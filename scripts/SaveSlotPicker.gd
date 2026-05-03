@@ -1,15 +1,21 @@
 extends Control
-# SaveSlotPicker — shown when the player manually saves or loads.
+# SaveSlotPicker — legacy stand-alone scene for selecting saves.
+#
+# The PauseMenu now hosts the canonical save dialog and load picker
+# (built inline in scripts/PauseMenu.gd). This stand-alone scene is
+# retained for the MainMenu / dedicated save-screen workflow but
+# refactored to use the new named-save API rather than the old
+# 3-slot system.
 #
 # What this does in plain English:
-#   Displays three save slots with their timestamps and current location.
-#   The player clicks a slot to save into it or load from it.
-#   The mode (SAVE vs LOAD) is set before this scene is shown via GameState flag
-#   or by passing a signal/mode — here we use a simple exported var.
+#   On enter, lists every save file in user://saves/. The player
+#   picks one to load. (Save-naming uses PauseMenu's inline dialog
+#   and is not exposed here any more — naming a save inline at
+#   the moment of saving is more discoverable than a separate
+#   save-mode screen.)
 #
-# Usage from PauseMenu or MainMenu:
-#   GameState.set_flag("slot_picker_mode", "save")  ← or "load"
-#   TransitionManager.change_scene("res://scenes/ui/SaveSlotPicker.tscn", "", TransitionManager.Type.CUT)
+# Usage:
+#   TransitionManager.change_scene("res://scenes/ui/SaveSlotPicker.tscn", ...)
 
 
 # =============================================================
@@ -27,59 +33,53 @@ extends Control
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back)
-
-	var mode: String = GameState.get_flag("slot_picker_mode", "save")
-	header_label.text = "— SAVE GAME —" if mode == "save" else "— LOAD GAME —"
-
-	_build_slot_rows(mode)
-
-	print("[SaveSlotPicker] Ready in mode: %s" % mode)
+	header_label.text = "— LOAD GAME —"
+	_build_save_rows()
+	print("[SaveSlotPicker] Ready (named-save mode).")
 
 
-func _build_slot_rows(mode: String) -> void:
+func _build_save_rows() -> void:
 	# Remove any existing children.
 	for child in slot_rows.get_children():
 		child.queue_free()
 
-	for i in range(GameState.SAVE_SLOT_COUNT):
-		var info: Dictionary = GameState.get_slot_info(i)
-		var row := _make_slot_row(i, info, mode)
+	var saves: Array = GameState.list_save_files()
+	if saves.is_empty():
+		var lbl := Label.new()
+		lbl.text = "No saves found."
+		lbl.add_theme_font_size_override("font_size", 16)
+		slot_rows.add_child(lbl)
+		return
+
+	for save_meta in saves:
+		var row := _make_save_row(save_meta)
 		slot_rows.add_child(row)
 
 
-func _make_slot_row(slot: int, info: Dictionary, mode: String) -> Control:
+func _make_save_row(meta: Dictionary) -> Control:
 	var hbox := HBoxContainer.new()
-	hbox.custom_minimum_size = Vector2(0, 22)
+	hbox.custom_minimum_size = Vector2(0, 32)
 
-	# Slot number label.
-	var num_lbl := Label.new()
-	num_lbl.text = "SLOT %d" % (slot + 1)
-	num_lbl.custom_minimum_size = Vector2(40, 0)
-	num_lbl.add_theme_font_size_override("font_size", 7)
-	num_lbl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
-	hbox.add_child(num_lbl)
-
-	# Info label (timestamp + scene or "Empty").
+	# Save info: name + timestamp + coords.
 	var info_lbl := Label.new()
-	if info.get("exists", false):
-		var scene_short: String = info.get("current_scene", "").get_file().get_basename()
-		info_lbl.text = "%s\n%s" % [info.get("timestamp", "?"), scene_short]
-	else:
-		info_lbl.text = "Empty"
+	var pos: Vector3 = meta.get("player_position", Vector3.ZERO)
+	info_lbl.text = "%s\n%s    (%.0f, %.0f, %.0f)" % [
+		meta.get("save_name", "?"),
+		meta.get("timestamp", "?"),
+		pos.x, pos.y, pos.z,
+	]
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_lbl.add_theme_font_size_override("font_size", 6)
-	info_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65, 1))
+	info_lbl.add_theme_font_size_override("font_size", 12)
+	info_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
 	hbox.add_child(info_lbl)
 
-	# Action button.
+	# Load button.
 	var btn := Button.new()
-	btn.text = "SAVE" if mode == "save" else "LOAD"
+	btn.text = "LOAD"
 	btn.flat = true
-	btn.custom_minimum_size = Vector2(36, 0)
-	btn.add_theme_font_size_override("font_size", 7)
-	if mode == "load" and not info.get("exists", false):
-		btn.disabled = true
-	btn.pressed.connect(_on_slot_pressed.bind(slot, mode))
+	btn.custom_minimum_size = Vector2(60, 0)
+	btn.add_theme_font_size_override("font_size", 12)
+	btn.pressed.connect(_on_save_pressed.bind(meta.get("filename", "")))
 	hbox.add_child(btn)
 
 	return hbox
@@ -89,17 +89,16 @@ func _make_slot_row(slot: int, info: Dictionary, mode: String) -> Control:
 # HANDLERS
 # =============================================================
 
-func _on_slot_pressed(slot: int, mode: String) -> void:
-	if mode == "save":
-		GameState.active_save_slot = slot
-		GameState.save_game(slot)
-		TransitionManager.go_back()
-	else:
-		GameState.load_game(slot)
-		var scene: String = GameState.current_scene
-		if scene == "" or not ResourceLoader.exists(scene):
-			scene = "res://scenes/World.tscn"
-		TransitionManager.change_scene(scene, GameState.player_spawn_id)
+func _on_save_pressed(filename: String) -> void:
+	if filename == "":
+		return
+	if not GameState.load_save_file(filename):
+		return
+	var scene: String = GameState.current_scene
+	if scene == "" or not ResourceLoader.exists(scene):
+		scene = "res://scenes/World3D.tscn"
+	TransitionManager.change_scene(scene, GameState.player_spawn_id)
+
 
 func _on_back() -> void:
 	TransitionManager.go_back()

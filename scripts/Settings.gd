@@ -26,8 +26,8 @@ const SETTINGS_PATH: String = "user://settings.json"
 @onready var music_slider: HSlider     = $VBox/MusicRow/MusicSlider
 @onready var sfx_slider: HSlider       = $VBox/SFXRow/SFXSlider
 @onready var fullscreen_check: CheckBox = $VBox/FullscreenCheck
-@onready var back_btn: Button          = $VBox/BackBtn
-@onready var apply_btn: Button         = $VBox/ApplyBtn
+@onready var back_btn: Button          = $VBox/ButtonRow/BackBtn
+@onready var apply_btn: Button         = $VBox/ButtonRow/ApplyBtn
 
 
 # =============================================================

@@ -58,11 +58,17 @@ extends SpringArm3D
 @export var vertical_sensitivity: float = 0.10
 # Camera speed for mouse up/down. Slightly lower than horizontal is natural.
 
-@export var vertical_min_degrees: float = -20.0
-# Lowest the player can tilt the camera (negative = looking more downward).
+@export var vertical_min_degrees: float = -80.0
+# Lowest the player can tilt the camera (negative = looking down).
+# -80° puts the aim almost straight down — Roland can mine voxels
+# at his feet, dig pits directly under him, etc. Anything close to
+# -90° looks weird because the camera arm starts clipping into the
+# ground; -80° is the practical limit before that becomes ugly.
 
-@export var vertical_max_degrees: float = 45.0
-# Highest the player can tilt the camera.
+@export var vertical_max_degrees: float = 70.0
+# Highest the player can tilt the camera (looking up).
+# 70° lets Roland aim at overhead voxels (tunnel ceilings,
+# overhanging cliffs) without flipping the camera over the top.
 
 @export var key_rotation_speed: float = 90.0
 # Degrees per second when using arrow keys to rotate the camera.
@@ -266,3 +272,51 @@ func exit_dialogue_mode() -> void:
 	_in_dialogue = false
 	var tween: Tween = create_tween()
 	tween.tween_property(self, "spring_length", arm_length, dialogue_tween_duration)
+
+
+# --- Forward raycast helper (used by EditToolHandler for voxel targeting) ---
+
+func get_camera_forward_hit(max_distance_from_player: float = 5.0) -> Dictionary:
+	# Casts a ray forward from the center of the screen (where the
+	# crosshair sits). max_distance_from_player is measured from the
+	# player's position, NOT the camera's position — the camera sits
+	# spring_length meters behind the player on the spring arm, so
+	# we extend the ray length to account for that gap.
+	#
+	# The player's own CharacterBody3D is excluded from the raycast.
+	# Without this exclusion, the ray (which starts behind the player
+	# and goes forward) hits Roland's capsule before reaching any
+	# terrain — every aim returns a "hit" on Roland's body, even when
+	# the crosshair is pointing at empty sky.
+	#
+	# Returns the standard Godot intersect_ray hit dict on hit, or
+	# an empty dict on miss.
+	#
+	# Hit dict keys: "position" (world Vector3), "normal" (Vector3),
+	# "collider" (Object), "collider_id" (int), "rid" (RID), "shape" (int).
+	var camera: Camera3D = get_node_or_null("Camera3D")
+	if camera == null:
+		return {}
+
+	# Center of the viewport — where the crosshair would be drawn.
+	var viewport_size: Vector2 = camera.get_viewport().get_visible_rect().size
+	var screen_center: Vector2 = viewport_size * 0.5
+
+	var origin: Vector3 = camera.project_ray_origin(screen_center)
+	var direction: Vector3 = camera.project_ray_normal(screen_center)
+
+	# Extend the ray length so max_distance_from_player is measured
+	# from the player's position rather than the camera's.
+	var ray_length: float = max_distance_from_player + spring_length
+
+	var space_state: PhysicsDirectSpaceState3D = camera.get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(origin, origin + direction * ray_length)
+
+	# Exclude the player's CharacterBody3D RID. _player is set in
+	# _ready (one parent up the tree). If it's null for any reason,
+	# we fall through with no exclusion — the ray hitting the player
+	# is degraded behavior but not a crash.
+	if _player != null:
+		params.exclude = [_player.get_rid()]
+
+	return space_state.intersect_ray(params)

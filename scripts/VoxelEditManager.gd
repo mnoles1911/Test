@@ -40,20 +40,44 @@ extends Node
 
 
 # ============================================================
+# Save-format compatibility
+# ============================================================
+
+const WORLD_GENERATOR_VERSION: int = 1
+# Bump this constant whenever the procedural baseline produced by
+# VoxelGeneratorGraph (or the placeholder VoxelGeneratorFlat) changes
+# shape — e.g. when we swap to a new EXR heightmap, change cave
+# parameters, or add new biome material indices.
+#
+# GameState.save_game() stamps this version into every save. On
+# load, mismatch is treated as a HARD ERROR — the procedural
+# baseline has changed, so player voxel deltas (stored against the
+# old baseline) would float in nonsense terrain.
+#
+# There is no silent migration. If we want to keep old saves loading
+# after a generator change, the policy needs an explicit decision per
+# change (re-bake the baseline, discard deltas, whatever) — not a
+# default behavior.
+
+
+# ============================================================
 # Configuration (tunable in the Inspector once registered)
 # ============================================================
 
-@export var voxels_per_frame: int = 256
-# Maximum number of voxels we'll attempt to write per physics frame.
-# This is the throttle that prevents big edits (explosives, spells)
-# from stuttering the frame rate.
+@export var voxels_per_frame: int = 200000
+# Soft per-frame budget for the voxel edit queue. With one 2m
+# explosive sphere at 8 vox/m costing ~17000 voxels, this lets
+# ~10 sphere edits drain in a single physics frame, so rapid
+# explosive throws don't bottleneck on the queue.
 #
-# 256 is a starting guess. Real sweet spot depends on voxel size,
-# mesher cost, and target hardware. Tune up if edits feel sluggish in
-# play; tune down if you see frame drops during heavy edit traffic.
+# (The earlier 256 was way too low — it forced one sphere per
+# frame, which combined with rapid throws and Zylann's mesh
+# rebuild timing produced the "spam-thrown explosives don't
+# carve" bug. With this much higher budget, queued edits drain
+# the same physics frame they're submitted.)
 #
-# A single command (e.g. one big sphere) can exceed this in one go —
-# the budget gates how many commands we *start* per frame, not how
+# A single command can still exceed the budget in one go — the
+# budget gates how many commands we *start* per frame, not how
 # big each one is allowed to be.
 
 @export var max_queue_length: int = 2048
@@ -130,6 +154,28 @@ func clear_terrain() -> void:
 	_edited_chunks.clear()
 
 
+func flush_pending_edits() -> void:
+	# Force Zylann to write any in-memory voxel changes through to
+	# VoxelStreamSQLite NOW (rather than waiting for its periodic
+	# auto-flush). Called by GameState.save_game() before writing
+	# the JSON state, so a save captures the latest voxel edits
+	# even if the player saves immediately after digging.
+	#
+	# save_modified_blocks() returns an Array of pending tasks that
+	# complete asynchronously on Zylann's worker thread. We don't
+	# explicitly wait — the SQLite writes complete in the background
+	# and the game is paused during the save dialog, so the
+	# transition out of World3D won't pre-empt them.
+	if _terrain == null:
+		print("[VoxelEditManager] flush_pending_edits: no terrain bound")
+		return
+	if _terrain.has_method("save_modified_blocks"):
+		_terrain.save_modified_blocks()
+		print("[VoxelEditManager] Flushed voxel edits to VoxelStreamSQLite.")
+	else:
+		push_warning("[VoxelEditManager] terrain.save_modified_blocks() not available; voxel edits may not persist")
+
+
 # ============================================================
 # Public API — edit verbs
 # ============================================================
@@ -150,6 +196,7 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 	# _physics_process when this command's turn comes up in the queue.
 
 	if not _check_edit_allowed(world_pos):
+		print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
 		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping sphere edit")
@@ -161,6 +208,9 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 		"radius": radius,
 		"value": voxel_value,
 	})
+	print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
+		radius, world_pos, _edit_queue.size()
+	])
 	return true
 
 
@@ -249,11 +299,18 @@ func _physics_process(_delta: float) -> void:
 	if _edit_queue.is_empty():
 		return
 
+	var initial_queue: int = _edit_queue.size()
 	var voxels_used: int = 0
+	var processed: int = 0
 	while not _edit_queue.is_empty() and voxels_used < voxels_per_frame:
 		var cmd: Dictionary = _edit_queue.pop_front()
 		voxels_used += _estimate_voxel_cost(cmd)
 		_apply_edit(cmd)
+		processed += 1
+	if processed > 0:
+		print("[VoxelEditManager] frame drain: %d processed, %d remain (started with %d)" % [
+			processed, _edit_queue.size(), initial_queue
+		])
 
 
 # ============================================================
@@ -266,13 +323,28 @@ func _apply_edit(cmd: Dictionary) -> void:
 	# new one each time per Zylann's recommended usage.
 	var tool: VoxelTool = _terrain.get_voxel_tool()
 	if tool == null:
+		print("[VoxelEditManager] _apply_edit: terrain.get_voxel_tool() returned null")
 		return
 
-	# We're using VoxelMesherCubes (blocky terrain), which reads from
-	# CHANNEL_TYPE — integer voxel material IDs. (For smooth terrain
-	# with Transvoxel, you'd use CHANNEL_SDF instead, but we don't.)
-	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	tool.value = cmd.get("value", 0)
+	print("[VoxelEditManager] _apply_edit: type=%s pos=%s value=%d" % [
+		cmd.get("type", "?"),
+		cmd.get("pos", Vector3.ZERO),
+		cmd.get("value", 0),
+	])
+
+	# Edits target the signed distance field channel (CHANNEL_SDF)
+	# because the test world uses VoxelMesherTransvoxel which reads
+	# SDF. When the world swaps to VoxelMesherBlocky + a
+	# VoxelBlockyLibrary (the design intent), this becomes
+	# CHANNEL_TYPE again with type-id writes.
+	tool.channel = VoxelBuffer.CHANNEL_SDF
+
+	# Voxel value 0 = air = "carve" (subtract). Anything else = "fill"
+	# (add). For now every edit verb passes 0 (pickaxe carves, axe
+	# carves a tree-shaped hole, explosive carves a sphere). Block
+	# placement (Build Mode) will pass a non-zero material ID.
+	var carve_mode: bool = cmd.get("value", 0) == 0
+	tool.mode = VoxelTool.MODE_REMOVE if carve_mode else VoxelTool.MODE_ADD
 
 	match cmd["type"]:
 		"sphere":
@@ -292,10 +364,18 @@ func _apply_edit(cmd: Dictionary) -> void:
 			edit_applied.emit(center, _world_to_chunk(center))
 
 		"set":
-			# set_voxel takes a voxel-grid coordinate (Vector3i),
-			# not a world-space position. Convert.
-			tool.set_voxel(_world_to_voxel(cmd["pos"]), cmd["value"])
-			_mark_chunk(_world_to_chunk(cmd["pos"]))
+			# Single-voxel write. With SDF meshing there's no clean
+			# "remove exactly one voxel" operation — the surface is
+			# defined by smooth distance values, not discrete cells.
+			# Use a small sphere (~0.3m, roughly 2-3 voxels at our
+			# 8-vox/m scale) so a pickaxe click produces a visible
+			# divot. When we move to VoxelMesherBlocky with a library,
+			# this branch becomes a true single-cell write again.
+			tool.do_sphere(cmd["pos"], 0.3)
+			_mark_chunks_in_aabb(
+				cmd["pos"] - Vector3.ONE * 0.3,
+				cmd["pos"] + Vector3.ONE * 0.3,
+			)
 			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
 

@@ -59,7 +59,11 @@ func _build_ui() -> void:
 	const BAR_END_HEIGHT: float = 22.0    # Height of the endurance bar.
 
 	# Root control anchored to bottom-center of the viewport.
+	# mouse_filter = IGNORE so this purely-visual HUD never
+	# intercepts clicks meant for menus or the world. The HUD
+	# only displays HP/endurance/status; it doesn't take input.
 	_root = Control.new()
+	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.anchor_left   = 0.5
 	_root.anchor_right  = 0.5
 	_root.anchor_top    = 1.0
@@ -74,6 +78,7 @@ func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0.0, 0.0, 0.0, 0.55)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(bg)
 
 	# Vertical layout inside the panel.
@@ -84,6 +89,7 @@ func _build_ui() -> void:
 	vbox.offset_right  = -14
 	vbox.offset_bottom = -10
 	vbox.add_theme_constant_override("separation", 6)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(vbox)
 
 	# --- Status label (CROUCHING / EXHAUSTED) ---

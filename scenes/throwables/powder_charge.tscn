@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://dpowdercharge_001"]
+
+[ext_resource type="Script" path="res://scripts/throwables/PowderCharge.gd" id="1_charge"]
+
+[sub_resource type="SphereShape3D" id="ChargeShape"]
+radius = 0.12
+
+[sub_resource type="SphereMesh" id="ChargeMesh"]
+radius = 0.12
+height = 0.24
+radial_segments = 12
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="ChargeMat"]
+; Placeholder visual — a small dark linen-wrapped sphere. Replace
+; with a real MagicaVoxel prop once the bomb model is authored.
+albedo_color = Color(0.18, 0.13, 0.09, 1)
+metallic = 0.0
+roughness = 0.85
+
+[node name="PowderCharge" type="RigidBody3D"]
+mass = 0.5
+contact_monitor = true
+max_contacts_reported = 4
+script = ExtResource("1_charge")
+aoe_radius_meters = 2.0
+combat_damage = 40
+fuse_seconds = 3.0
+
+[node name="Visual" type="MeshInstance3D" parent="."]
+mesh = SubResource("ChargeMesh")
+surface_material_override/0 = SubResource("ChargeMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("ChargeShape")

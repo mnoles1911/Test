@@ -3,21 +3,19 @@ extends CanvasLayer
 #
 # What this does in plain English:
 #   Press ESC during the game to pause everything and show a small menu:
-#     RESUME — closes the menu and unpauses
-#     SAVE   — saves immediately (shows the SaveNotification toast)
-#     LOAD   — reloads the last save
+#     RESUME  — closes the menu and unpauses
+#     SAVE    — opens a dialog where Roland names the save, then writes it
+#     LOAD    — opens a picker listing every save with name + time + coords
 #     SETTINGS — opens the Settings screen
 #     EXIT TO MENU — saves and returns to the main menu
-#     QUIT   — saves and closes the application
+#     QUIT    — saves and closes the application
 #
-# This is an Autoload so it's always available regardless of the current scene.
-# It uses get_tree().paused = true to freeze all game nodes while the menu
-# is visible. The CanvasLayer itself has process_mode = ALWAYS so it keeps
-# running while the game is paused.
-#
-# The journal (J) also pauses the game in a similar way. They don't
-# conflict because _unhandled_input() checks visibility: only the
-# visible overlay handles ESC/J.
+# Three sub-panels live inside the same CanvasLayer:
+#   1. Main pause panel   (RESUME / SAVE / LOAD / ...)
+#   2. Save name dialog   (LineEdit for save name + Confirm / Cancel)
+#   3. Load picker        (scrollable list of saves, Load / Delete per row)
+# Only one is visible at a time. Save and Load buttons hide the main
+# panel and show their respective sub-panel; Cancel returns to main.
 
 
 # =============================================================
@@ -27,18 +25,37 @@ extends CanvasLayer
 const MAIN_MENU_SCENE: String = "res://scenes/ui/MainMenu.tscn"
 const SETTINGS_SCENE: String  = "res://scenes/ui/Settings.tscn"
 
+# Skip the auto-save on EXIT TO MENU / QUIT if the player saved
+# anything (named save OR explicit autosave) within this many
+# seconds. Prevents redundant '[Auto]' files seconds after a
+# manual save just before exiting.
+const RECENT_SAVE_WINDOW_SECONDS: int = 30
+
 
 # =============================================================
 # NODE REFERENCES
 # =============================================================
 
+# Main pause panel.
 var _root: Control
+var _main_panel: Panel
 var _resume_btn: Button
 var _save_btn: Button
 var _load_btn: Button
 var _settings_btn: Button
 var _exit_menu_btn: Button
 var _quit_btn: Button
+
+# Save name dialog.
+var _save_panel: Panel
+var _save_name_edit: LineEdit
+var _save_confirm_btn: Button
+var _save_cancel_btn: Button
+
+# Load picker.
+var _load_panel: Panel
+var _load_list_container: VBoxContainer
+var _load_cancel_btn: Button
 
 
 # =============================================================
@@ -51,44 +68,58 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	_build_ui()
+	_build_save_dialog()
+	_build_load_picker()
 	_root.visible = false
 
 	print("[PauseMenu] Initialized.")
 
 
 func _build_ui() -> void:
-	# Build the pause menu programmatically so no .tscn is needed for an Autoload.
-
+	# Top-level Control covers the screen and dims with a backdrop.
+	# The three sub-panels are siblings inside this Control; only
+	# one is visible at any time.
+	#
+	# IMPORTANT: every Control in this hierarchy explicitly opts into
+	# PROCESS_MODE_ALWAYS. Without it, paused parent nodes block
+	# input from reaching their children — buttons wouldn't be
+	# clickable while the game tree is paused. PROCESS_MODE_INHERIT
+	# (the default) cascades from World3D's pausable state for any
+	# Control that doesn't override.
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_root)
 
-	# Dark backdrop.
 	var backdrop := ColorRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.color = Color(0.0, 0.0, 0.0, 0.65)
+	backdrop.process_mode = Node.PROCESS_MODE_ALWAYS
+	# Backdrop catches clicks outside the panel so they don't fall
+	# through to the paused game world. STOP is the default but make
+	# it explicit.
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.add_child(backdrop)
 
-	# Centered panel — sized for 1920×1080, not the old 320×180 viewport.
-	var frame := Panel.new()
-	frame.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	frame.offset_left   = -220
-	frame.offset_top    = -200
-	frame.offset_right  =  220
-	frame.offset_bottom =  200
-	_root.add_child(frame)
+	# --- Main pause panel ---
+	_main_panel = Panel.new()
+	_main_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_main_panel.offset_left   = -220
+	_main_panel.offset_top    = -200
+	_main_panel.offset_right  =  220
+	_main_panel.offset_bottom =  200
+	_main_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root.add_child(_main_panel)
 
-	# VBox inside the panel.
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	vbox.offset_left   =  6
 	vbox.offset_top    =  6
 	vbox.offset_right  = -6
 	vbox.offset_bottom = -6
-	frame.add_child(vbox)
+	vbox.process_mode = Node.PROCESS_MODE_ALWAYS
+	_main_panel.add_child(vbox)
 
-	# Title.
 	var title_lbl := Label.new()
 	title_lbl.text = "— PAUSED —"
 	title_lbl.add_theme_font_size_override("font_size", 28)
@@ -96,13 +127,11 @@ func _build_ui() -> void:
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title_lbl)
 
-	# Divider.
 	var div := ColorRect.new()
 	div.custom_minimum_size = Vector2(0, 1)
 	div.color = Color(0.35, 0.35, 0.35, 1)
 	vbox.add_child(div)
 
-	# Helper to create a flat button — sized for 1920×1080.
 	var make_btn := func(label: String) -> Button:
 		var b := Button.new()
 		b.text = label
@@ -122,13 +151,193 @@ func _build_ui() -> void:
 	for btn in [_resume_btn, _save_btn, _load_btn, _settings_btn, _exit_menu_btn, _quit_btn]:
 		vbox.add_child(btn)
 
-	# Connect handlers.
 	_resume_btn.pressed.connect(_on_resume)
 	_save_btn.pressed.connect(_on_save)
 	_load_btn.pressed.connect(_on_load)
 	_settings_btn.pressed.connect(_on_settings)
 	_exit_menu_btn.pressed.connect(_on_exit_menu)
 	_quit_btn.pressed.connect(_on_quit)
+
+
+func _build_save_dialog() -> void:
+	# Save name dialog — appears when SAVE is clicked. Player types
+	# a name and confirms; the save writes to user://saves/{slug}.json.
+	_save_panel = Panel.new()
+	_save_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_save_panel.offset_left   = -260
+	_save_panel.offset_top    = -120
+	_save_panel.offset_right  =  260
+	_save_panel.offset_bottom =  120
+	_save_panel.visible = false
+	_save_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root.add_child(_save_panel)
+
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left   = 12
+	v.offset_top    = 12
+	v.offset_right  = -12
+	v.offset_bottom = -12
+	v.add_theme_constant_override("separation", 12)
+	v.process_mode = Node.PROCESS_MODE_ALWAYS
+	_save_panel.add_child(v)
+
+	var title := Label.new()
+	title.text = "— SAVE GAME —"
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+
+	var prompt := Label.new()
+	prompt.text = "Name this save:"
+	prompt.add_theme_font_size_override("font_size", 16)
+	prompt.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
+	v.add_child(prompt)
+
+	_save_name_edit = LineEdit.new()
+	_save_name_edit.add_theme_font_size_override("font_size", 18)
+	_save_name_edit.placeholder_text = "e.g. Roland Day 1"
+	_save_name_edit.process_mode = Node.PROCESS_MODE_ALWAYS
+	# Submit on Enter.
+	_save_name_edit.text_submitted.connect(func(_text: String): _on_save_confirm())
+	v.add_child(_save_name_edit)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 12)
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(btn_row)
+
+	_save_confirm_btn = Button.new()
+	_save_confirm_btn.text = "CONFIRM"
+	_save_confirm_btn.add_theme_font_size_override("font_size", 18)
+	_save_confirm_btn.custom_minimum_size = Vector2(140, 40)
+	_save_confirm_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_save_confirm_btn.pressed.connect(_on_save_confirm)
+	btn_row.add_child(_save_confirm_btn)
+
+	_save_cancel_btn = Button.new()
+	_save_cancel_btn.text = "CANCEL"
+	_save_cancel_btn.add_theme_font_size_override("font_size", 18)
+	_save_cancel_btn.custom_minimum_size = Vector2(140, 40)
+	_save_cancel_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_save_cancel_btn.pressed.connect(_show_main_panel)
+	btn_row.add_child(_save_cancel_btn)
+
+
+func _build_load_picker() -> void:
+	# Load picker — appears when LOAD is clicked. Lists every save
+	# with name, last-played timestamp, and the world coordinates
+	# Roland was at when the save was taken.
+	_load_panel = Panel.new()
+	_load_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_load_panel.offset_left   = -340
+	_load_panel.offset_top    = -260
+	_load_panel.offset_right  =  340
+	_load_panel.offset_bottom =  260
+	_load_panel.visible = false
+	_load_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root.add_child(_load_panel)
+
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left   = 12
+	v.offset_top    = 12
+	v.offset_right  = -12
+	v.offset_bottom = -12
+	v.add_theme_constant_override("separation", 8)
+	v.process_mode = Node.PROCESS_MODE_ALWAYS
+	_load_panel.add_child(v)
+
+	var title := Label.new()
+	title.text = "— LOAD GAME —"
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+
+	# Scrollable list — sized to fill panel space.
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
+	v.add_child(scroll)
+
+	_load_list_container = VBoxContainer.new()
+	_load_list_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_load_list_container.add_theme_constant_override("separation", 4)
+	_load_list_container.process_mode = Node.PROCESS_MODE_ALWAYS
+	scroll.add_child(_load_list_container)
+
+	_load_cancel_btn = Button.new()
+	_load_cancel_btn.text = "CANCEL"
+	_load_cancel_btn.add_theme_font_size_override("font_size", 18)
+	_load_cancel_btn.custom_minimum_size = Vector2(140, 40)
+	_load_cancel_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_load_cancel_btn.pressed.connect(_show_main_panel)
+	v.add_child(_load_cancel_btn)
+
+
+func _populate_load_list() -> void:
+	# Rebuild the list of save rows from disk. Called every time
+	# the picker opens so deletions and new saves show up live.
+	for child in _load_list_container.get_children():
+		child.queue_free()
+
+	var saves: Array = GameState.list_save_files()
+	if saves.is_empty():
+		var empty_lbl := Label.new()
+		empty_lbl.text = "No saves yet. Use SAVE to create one."
+		empty_lbl.add_theme_font_size_override("font_size", 14)
+		empty_lbl.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65, 1))
+		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_load_list_container.add_child(empty_lbl)
+		return
+
+	for meta in saves:
+		_load_list_container.add_child(_make_save_row(meta))
+
+
+func _make_save_row(meta: Dictionary) -> Control:
+	# A single row in the load picker. Two-column layout: info (left,
+	# expanding) and action buttons (right).
+	var hbox := HBoxContainer.new()
+	hbox.custom_minimum_size = Vector2(0, 56)
+	hbox.add_theme_constant_override("separation", 8)
+	hbox.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var pos: Vector3 = meta.get("player_position", Vector3.ZERO)
+
+	var info_lbl := Label.new()
+	info_lbl.text = "%s\n%s   X %.0f  Y %.0f  Z %.0f" % [
+		meta.get("save_name", "?"),
+		meta.get("timestamp", "?"),
+		pos.x, pos.y, pos.z,
+	]
+	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info_lbl.add_theme_font_size_override("font_size", 14)
+	info_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	info_lbl.process_mode = Node.PROCESS_MODE_ALWAYS
+	hbox.add_child(info_lbl)
+
+	var load_btn := Button.new()
+	load_btn.text = "LOAD"
+	load_btn.add_theme_font_size_override("font_size", 14)
+	load_btn.custom_minimum_size = Vector2(80, 40)
+	load_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	load_btn.pressed.connect(_on_load_select.bind(meta.get("filename", "")))
+	hbox.add_child(load_btn)
+
+	var delete_btn := Button.new()
+	delete_btn.text = "DELETE"
+	delete_btn.add_theme_font_size_override("font_size", 14)
+	delete_btn.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5, 1))
+	delete_btn.custom_minimum_size = Vector2(80, 40)
+	delete_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	delete_btn.pressed.connect(_on_load_delete.bind(meta.get("filename", "")))
+	hbox.add_child(delete_btn)
+
+	return hbox
 
 
 # =============================================================
@@ -144,10 +353,111 @@ func _unhandled_input(event: InputEvent) -> void:
 			if journal != null and journal.is_overlay_visible():
 				return
 			if _root.visible:
-				_on_resume()
+				# Sub-panels: Escape returns to the main pause panel,
+				# not directly to gameplay. Players can re-Escape to
+				# unpause from the main panel.
+				if _save_panel.visible or _load_panel.visible:
+					_show_main_panel()
+				else:
+					_on_resume()
 			else:
 				_open()
 			get_viewport().set_input_as_handled()
+
+
+# Mouse handler — bypasses Godot's gui_input routing.
+#
+# Why: GUI dispatch is silently disabled in this project (likely
+# Dialogic's input subsystem listening to LMB events globally
+# interfering, see chat history). _input still fires for all
+# mouse events regardless of GUI state, so we manually route:
+#   - LMB → click dispatch (button-rect lookup)
+#   - Wheel → scroll dispatch (find the visible ScrollContainer
+#     and adjust scroll_vertical)
+#
+# Only fires when the pause menu is open (gates on _root.visible).
+func _input(event: InputEvent) -> void:
+	if not _root.visible:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed:
+		return
+	if mb.button_index == MOUSE_BUTTON_LEFT:
+		_dispatch_click(mb.position)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+		_dispatch_scroll(-60)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		_dispatch_scroll(60)
+
+
+func _dispatch_scroll(delta_pixels: int) -> void:
+	# Find the ScrollContainer in the currently-visible sub-panel
+	# and scroll it by delta_pixels. Only the load picker has a
+	# scrollable list; main and save panels don't need scrolling.
+	if not _load_panel.visible:
+		return
+	# The ScrollContainer is the parent of _load_list_container.
+	var scroll: ScrollContainer = _load_list_container.get_parent() as ScrollContainer
+	if scroll == null:
+		return
+	scroll.scroll_vertical += delta_pixels
+
+
+func _dispatch_click(pos: Vector2) -> void:
+	# Routes a click to whichever interactive Control's rect
+	# contains it. Mirrors what _gui_input + Button.pressed
+	# would do, but works regardless of mouse_mode state.
+	# Sub-panel visibility decides which set of buttons is active.
+
+	if _save_panel.visible:
+		# Save dialog: confirm + cancel. The LineEdit handles its own
+		# text input (Godot routes typing through focus, not gui_input).
+		if _hits(_save_confirm_btn, pos):
+			_on_save_confirm()
+			return
+		if _hits(_save_cancel_btn, pos):
+			_show_main_panel()
+			return
+		return
+
+	if _load_panel.visible:
+		# Load picker: cancel + per-row LOAD/DELETE buttons.
+		if _hits(_load_cancel_btn, pos):
+			print("[PauseMenu] dispatch: hit LOAD CANCEL → main panel")
+			_show_main_panel()
+			return
+		for row in _load_list_container.get_children():
+			if not (row is HBoxContainer):
+				continue
+			for child in row.get_children():
+				if child is Button and _hits(child as Button, pos):
+					print("[PauseMenu] dispatch: hit row button '%s'" % (child as Button).text)
+					(child as Button).pressed.emit()
+					return
+		print("[PauseMenu] dispatch: pos %s missed all load-picker buttons" % pos)
+		return
+
+	# Main pause panel.
+	if _main_panel.visible:
+		if _hits(_resume_btn,    pos): _on_resume();    return
+		if _hits(_save_btn,      pos): _on_save();      return
+		if _hits(_load_btn,      pos): _on_load();      return
+		if _hits(_settings_btn,  pos): _on_settings();  return
+		if _hits(_exit_menu_btn, pos): _on_exit_menu(); return
+		if _hits(_quit_btn,      pos): _on_quit();      return
+
+
+func _hits(ctrl: Control, pos: Vector2) -> bool:
+	# True if pos is inside the Control's screen-space rect AND
+	# the Control is visible AND not disabled. Disabled buttons
+	# (e.g. LOAD when no saves exist) should NOT respond to clicks.
+	if ctrl == null or not ctrl.visible:
+		return false
+	if ctrl is Button and (ctrl as Button).disabled:
+		return false
+	return ctrl.get_global_rect().has_point(pos)
 
 
 func is_open() -> bool:
@@ -155,15 +465,18 @@ func is_open() -> bool:
 
 
 # =============================================================
-# OPEN / CLOSE
+# OPEN / CLOSE / SUB-PANEL SWITCHING
 # =============================================================
 
 func _open() -> void:
 	_root.visible = true
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_load_btn.disabled = not FileAccess.file_exists(GameState.SAVE_PATH)
+	# Disable LOAD if there are no saves on disk.
+	_load_btn.disabled = GameState.list_save_files().is_empty()
+	_show_main_panel()
 	print("[PauseMenu] Opened.")
+
 
 func _close() -> void:
 	_root.visible = false
@@ -172,33 +485,122 @@ func _close() -> void:
 	print("[PauseMenu] Closed.")
 
 
+func _show_main_panel() -> void:
+	_main_panel.visible = true
+	_save_panel.visible = false
+	_load_panel.visible = false
+
+
+func _show_save_dialog() -> void:
+	_main_panel.visible = false
+	_load_panel.visible = false
+	_save_panel.visible = true
+	# If the session originated from a named save (player loaded
+	# "Roland Day 1" or saved as that earlier), pre-fill with the
+	# same name so hitting Enter overwrites the same slot. Falls
+	# back to a fresh timestamp default for new playthroughs and
+	# for sessions whose only saves so far have been autosaves.
+	var default_name: String
+	if GameState.active_save_display_name != "":
+		default_name = GameState.active_save_display_name
+	else:
+		default_name = "Save %s" % Time.get_datetime_string_from_system()
+	_save_name_edit.text = default_name
+	_save_name_edit.select_all()
+	_save_name_edit.grab_focus()
+
+
+func _show_load_picker() -> void:
+	_main_panel.visible = false
+	_save_panel.visible = false
+	_load_panel.visible = true
+	_populate_load_list()
+
+
 # =============================================================
-# BUTTON HANDLERS
+# BUTTON HANDLERS — main panel
 # =============================================================
 
 func _on_resume() -> void:
 	_close()
 
+
 func _on_save() -> void:
-	GameState.save_game()
+	_show_save_dialog()
+
 
 func _on_load() -> void:
-	_close()
-	GameState.load_game()
-	var scene: String = GameState.current_scene
-	if scene == "" or not ResourceLoader.exists(scene):
-		scene = "res://scenes/World3D.tscn"
-	TransitionManager.change_scene(scene, GameState.player_spawn_id)
+	_show_load_picker()
+
 
 func _on_settings() -> void:
 	_close()
 	TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
 
+
 func _on_exit_menu() -> void:
-	GameState.save_game()
+	# Auto-save before leaving so progress isn't silently lost.
+	# But skip the auto-save if the player saved very recently
+	# (named save or prior autosave) — no point creating a
+	# near-duplicate file two seconds after a manual save.
+	if GameState.seconds_since_last_save() > RECENT_SAVE_WINDOW_SECONDS:
+		GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
 	_close()
 	TransitionManager.change_scene(MAIN_MENU_SCENE, "", TransitionManager.Type.FADE_BLACK)
 
+
 func _on_quit() -> void:
-	GameState.save_game()
+	if GameState.seconds_since_last_save() > RECENT_SAVE_WINDOW_SECONDS:
+		GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
 	get_tree().quit()
+
+
+# =============================================================
+# BUTTON HANDLERS — save dialog
+# =============================================================
+
+func _on_save_confirm() -> void:
+	var name_input: String = _save_name_edit.text.strip_edges()
+	if name_input == "":
+		# Empty → fall back to a timestamp default; save_game()
+		# applies the same default when called with an empty string.
+		name_input = ""
+	if GameState.save_game(name_input):
+		# Successful save returns to the main pause panel so the
+		# player sees the SAVE notification + confirmation that
+		# nothing else broke.
+		_show_main_panel()
+		# Re-enable the LOAD button now that there's at least one save.
+		_load_btn.disabled = false
+
+
+# =============================================================
+# BUTTON HANDLERS — load picker
+# =============================================================
+
+func _on_load_select(filename: String) -> void:
+	print("[PauseMenu] _on_load_select called with filename='%s'" % filename)
+	if filename == "":
+		print("[PauseMenu]   ! empty filename, returning")
+		return
+	if not GameState.load_save_file(filename):
+		print("[PauseMenu] Load failed for: %s" % filename)
+		return
+	_close()
+	var scene: String = GameState.current_scene
+	print("[PauseMenu]   GameState.current_scene='%s'" % scene)
+	if scene == "" or not ResourceLoader.exists(scene):
+		print("[PauseMenu]   scene unresolvable, falling back to World3D.tscn")
+		scene = "res://scenes/World3D.tscn"
+	print("[PauseMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
+	TransitionManager.change_scene(scene, GameState.player_spawn_id)
+
+
+func _on_load_delete(filename: String) -> void:
+	if filename == "":
+		return
+	GameState.delete_save_file(filename)
+	# Refresh the picker in place so the deleted row disappears.
+	_populate_load_list()
+	# Disable LOAD on the main panel if the last save was deleted.
+	_load_btn.disabled = GameState.list_save_files().is_empty()

@@ -52,13 +52,13 @@ These are settings and installs that survive across all future work. Do them onc
   Layer 5 CanvasLayer. HP bar (red) and endurance bar (green) at bottom-center. Status label shows CROUCHING / EXHAUSTED.
   Reads `health`, `max_health`, `endurance`, `max_endurance`, `status_text` from the player each frame via group lookup.
 
-- [ ] **Register `BarkManager` as an Autoload**
-  Project Settings → Autoload → path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
-  Required for all bark lines to fire in-game. Reference: `design/NPC_SYSTEM.md`
+- [x] **Register `BarkManager` as an Autoload** (done — registered in `project.godot` `[autoload]` section)
+  Path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
+  Required for all bark lines to fire in-game; also unblocks NPC.gd which references the autoload directly.
 
-- [ ] **Register `WorldClock` as an Autoload**
-  Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
-  Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
+- [x] **Register `WorldClock` as an Autoload** (done — registered in `project.godot` `[autoload]` section)
+  Path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
+  Required for NPC daily schedules and time-of-day bark triggers.
 
 - [x] **Configure lock-on input action** (done — `lock_on` = Middle Mouse Button in project.godot)
   Camera rotation does NOT need Input Map actions for KB+M — `CameraRig.gd` reads
@@ -587,7 +587,49 @@ Open questions that need an answer before their dependent systems can be built.
 
 ---
 
-## Section 9 — Verification Checklist (after each Godot session)
+## Section 9 — Future ideas (parking lot — not blocking any milestone)
+
+Ideas captured during dev that aren't on the critical path. Each is
+a short pitch; promote to a real section when scope is committed.
+
+- **Player blueprint capture system** — let the player inspect any
+  voxel arrangement they encounter or build (a hut they made, a
+  cliffside watchtower they like, a settlement gatehouse they
+  walked past in a NoEditZone) and capture it as a saved
+  "blueprint". Mechanic sketch:
+  - In Build Mode, a new "Capture" submode lets the player
+    drag-select a 3D bounding box around the target structure.
+  - The system reads voxel-delta data + placed schematics in the
+    volume and writes them out as a `PlayerBlueprint` resource —
+    name, dimensions, material manifest, voxel + schematic
+    contents.
+  - Blueprints live in `user://saves/slot_{N}/blueprints/` (or a
+    shared `user://blueprints/` cross-save library) so they
+    survive across playthroughs.
+  - In Build Mode → Blueprint submode, the player picks a
+    captured blueprint from a list. A translucent ghost previews
+    placement; rotate / mirror options on the ghost. Materials
+    from inventory are consumed on confirm (or the blueprint
+    drops as a buildable outline that fills in over time as the
+    player adds materials, à la Valheim build sites).
+  - Capture from inside a NoEditZone is allowed (read-only); it's
+    the *placement* that NoEditZone protection blocks.
+  - Lore framing: Roland keeps a folio of sketches. Captured
+    structures appear as journal entries with hand-drawn
+    elevations.
+  - Implementation surface: extends the existing Schematic
+    system (`SchematicLibrary` autoload). Blueprints become a
+    second category alongside crafted schematics.
+  - Affects: `design/3D_VOXEL_MIGRATION.md` →
+    "Player-Built Structures", `design/CRAFTING.md` →
+    "Carpentry Bench", `design/JOURNAL_UI.md` (a Blueprints tab
+    or sub-tab), `design/SAVE_SYSTEM.md` (per-slot blueprint
+    folder vs. cross-save library — designer call).
+  - Not blocking; pencil in for post-Act-I when player
+    construction has been exercised.
+
+
+## Section 10 — Verification Checklist (after each Godot session)
 
 Run these after any session where you change scenes or scripts:
 

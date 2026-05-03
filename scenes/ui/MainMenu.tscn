@@ -1,107 +1,31 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=2 format=3 uid="uid://dmnmenu1080"]
 
-; MainMenu.gd drives all the logic.
-[ext_resource type="Script" path="res://scripts/MainMenu.gd" id="1"]
+; MainMenu — the homescreen / title screen.
+;
+; A standalone 2D scene that closes World3D fully when shown.
+; Built for 1920x1080. All UI is constructed programmatically by
+; MainMenu.gd in _ready(); this .tscn just provides the root
+; Control + a dark fallback background. The background is
+; overlaid with a randomly-picked concept-art image at runtime
+; (if any exist in assets/menu_backgrounds/).
 
-; === LAYOUT (320x180 native viewport) ===
-;
-;  ┌────────────────────────────────┐
-;  │                                │
-;  │        GAME ONE                │  ← title
-;  │    Mira-Thal Trilogy           │  ← subtitle
-;  │                                │
-;  │        NEW GAME                │  ← buttons
-;  │        LOAD GAME               │
-;  │        SETTINGS                │
-;  │        QUIT                    │
-;  │                                │
-;  └────────────────────────────────┘
-;
-; Root Control fills the viewport.
+[ext_resource type="Script" path="res://scripts/MainMenu.gd" id="1_script"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-script = ExtResource("1")
+mouse_filter = 1
+script = ExtResource("1_script")
 
-; Dark background.
 [node name="Background" type="ColorRect" parent="."]
+; Dark fallback shown when no concept art images are present.
+; mouse_filter = 2 (IGNORE) so it can never absorb a click meant
+; for the buttons rendered above it.
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.05, 0.05, 0.08, 1.0)
-
-; Center column: title + buttons.
-[node name="VBox" type="VBoxContainer" parent="."]
-layout_mode = 0
-offset_left = 100.0
-offset_top = 30.0
-offset_right = 220.0
-offset_bottom = 160.0
-
-; Game title.
-[node name="TitleLabel" type="Label" parent="VBox"]
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.9, 0.85, 0.7, 1)
-text = "GAME ONE"
-
-; Subtitle.
-[node name="SubtitleLabel" type="Label" parent="VBox"]
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 7
-theme_override_colors/font_color = Color(0.5, 0.48, 0.42, 1)
-text = "Mira-Thal Trilogy"
-
-; Spacer between title and buttons.
-[node name="Spacer" type="Control" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 16)
-
-; NEW GAME button.
-[node name="NewGameBtn" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 8
-text = "NEW GAME"
-flat = true
-
-; LOAD GAME button.
-[node name="LoadGameBtn" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 8
-text = "LOAD GAME"
-flat = true
-
-; SETTINGS button.
-[node name="SettingsBtn" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 8
-text = "SETTINGS"
-flat = true
-
-; QUIT button.
-[node name="QuitBtn" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 14)
-theme_override_font_sizes/font_size = 8
-text = "QUIT"
-flat = true
-
-; Version stamp in the bottom-left corner.
-[node name="VersionLabel" type="Label" parent="."]
-layout_mode = 0
-offset_left = 4.0
-offset_top = 170.0
-offset_right = 120.0
-offset_bottom = 180.0
-theme_override_font_sizes/font_size = 6
-theme_override_colors/font_color = Color(0.3, 0.3, 0.3, 1)
-text = "Milestone 4 — dev build"
+mouse_filter = 2
+color = Color(0.04, 0.04, 0.06, 1)
