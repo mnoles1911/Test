@@ -79,8 +79,8 @@ const ITEM_REGISTRY: Dictionary = {
 	# in addition to combat damage. Routed through VoxelEditManager so
 	# they respect NoEditZones (still deal damage but leave masonry
 	# intact inside settlements).
-	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 2.0, "combat_damage": 40},
-	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 4.0, "combat_damage": 80},
+	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 10.0, "combat_damage": 40},
+	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 20.0, "combat_damage": 80},
 }
 
 
