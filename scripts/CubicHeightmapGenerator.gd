@@ -71,24 +71,35 @@ class_name CubicHeightmapGenerator
 # continuous and adjacent voxel columns differ by 0-2 voxels, which
 # reads as a natural sub-voxel staircase smoothing each slope.
 
+@export var mid_amplitude_voxels: int = 16
+# Mid-scale noise amplitude. ±16 voxels = ±2 m. Drives the "rolling
+# hills" / "1-2 m undulation" layer that Lay-of-the-Land terrain
+# uses to keep every metre of ground visually interesting (paths
+# winding over small humps, dips between trees, etc) on top of the
+# wide macro silhouette.
+
+@export var mid_frequency_multiplier: float = 8.0
+# Mid noise is sampled at 8× the macro noise frequency. With macro
+# at ~0.002, mid sits around ~0.016 — features ~8 m wide, the
+# right scale for "every few metres elevation changes."
+
 @export var detail_amplitude_voxels: int = 4
-# Sub-voxel detail amplitude. ±4 voxels = ±50 cm of high-frequency
-# wobble layered on top of the macro height. Adds surface grain so
-# flat stretches of terrain don't read as a single slab.
+# High-frequency detail amplitude. ±4 voxels = ±50 cm of surface
+# grain layered on top of macro+mid. Breaks up perfectly flat
+# stretches into textured surface.
 
-@export var detail_frequency_multiplier: float = 4.5
-# Detail noise is sampled at this multiple of the macro noise's
-# frequency. ~4-5× means each macro feature contains a handful of
-# detail cycles — enough to read as "textured" without overpowering
-# the macro silhouette.
+@export var detail_frequency_multiplier: float = 30.0
+# Detail noise is sampled at 30× macro frequency — features ~1-2 m
+# wide. Pushed up from 4.5× so detail varies cube-by-cube rather
+# than smooth-blending across the metre with mid noise.
 
-@export var color_jitter: float = 0.10
+@export var color_jitter: float = 0.25
 # Per-voxel deterministic colour jitter applied as ± this fraction
-# of brightness. Without it, a flat top of voxels at the same height
-# all get the same lerped colour and the surface reads as one smooth
-# slab — the eye loses the sub-voxel grid even though the geometry
-# IS cubed. 0.10 = ±10 % brightness gives subtle but visible grain.
-# Set to 0 to disable.
+# of brightness. Without strong jitter, voxels at the same height
+# share a colour and the sub-voxel grid disappears into a smooth
+# slab. 0.25 = ±25 % brightness — matches the contrasty per-cube
+# look of reference cubic-voxel games like Lay of the Land. Set
+# to 0 to disable; drop toward 0.10 for a softer, more uniform look.
 
 @export var sea_level_voxels: int = 0
 # Voxel-Y coordinate that should correspond to "ocean surface".
@@ -132,11 +143,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 
 	# Bound the heightmap range so we can skip blocks fully above or
 	# fully below terrain without per-voxel work. Includes the bias
-	# offset and the detail amplitude so the early-out test stays
-	# correct after macro quantization + detail layering shift the
-	# column ±detail_amplitude voxels.
-	var max_ground_y: int = int(height_range_voxels * 0.5) + height_offset_voxels + detail_amplitude_voxels + 1
-	var min_ground_y: int = -int(height_range_voxels * 0.5) + height_offset_voxels - detail_amplitude_voxels - 1
+	# offset, the mid layer amplitude, and the detail amplitude so
+	# the early-out test stays correct after all three layers stack.
+	var extra_amplitude: int = mid_amplitude_voxels + detail_amplitude_voxels
+	var max_ground_y: int = int(height_range_voxels * 0.5) + height_offset_voxels + extra_amplitude + 1
+	var min_ground_y: int = -int(height_range_voxels * 0.5) + height_offset_voxels - extra_amplitude - 1
 	var block_min_y: int = origin_in_voxels.y
 	var block_max_y: int = origin_in_voxels.y + (size.y * stride) - 1
 
@@ -177,19 +188,30 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			else:
 				macro_y = int(n_macro * half_range)
 
-			# --- Detail height: high-frequency sub-metre wobble. ---
-			# Reuses the same noise resource sampled at a higher
-			# frequency — saves an Inspector slot and a second noise
-			# resource while still de-correlating from the macro shape
-			# (the multiplier produces a different visit pattern over
-			# the noise field).
+			# --- Mid height: 8-m-scale rolling hills layered on the
+			#     macro silhouette. This is the layer that makes every
+			#     metre of terrain visually interesting (paths winding
+			#     over small humps, dips between trees) instead of
+			#     long uniform slopes. ±2 m amplitude. ---
+			var n_mid: float = noise.get_noise_2d(
+				float(world_x) * mid_frequency_multiplier,
+				float(world_z) * mid_frequency_multiplier,
+			)
+			var mid_y: int = int(n_mid * float(mid_amplitude_voxels))
+
+			# --- Detail height: cube-by-cube high-frequency wobble.
+			#     ±50 cm at ~1-2 m feature scale. Reuses the same
+			#     noise resource sampled at higher frequency — the
+			#     multiplier produces a different visit pattern over
+			#     the noise field, so it de-correlates from macro/mid
+			#     enough to look like independent variation. ---
 			var n_detail: float = noise.get_noise_2d(
 				float(world_x) * detail_frequency_multiplier,
 				float(world_z) * detail_frequency_multiplier,
 			)
 			var detail_y: int = int(n_detail * float(detail_amplitude_voxels))
 
-			var ground_y: int = macro_y + detail_y + height_offset_voxels
+			var ground_y: int = macro_y + mid_y + detail_y + height_offset_voxels
 
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
