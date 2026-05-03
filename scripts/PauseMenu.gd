@@ -73,6 +73,13 @@ func _build_ui() -> void:
 	# Top-level Control covers the screen and dims with a backdrop.
 	# The three sub-panels are siblings inside this Control; only
 	# one is visible at any time.
+	#
+	# IMPORTANT: every Control in this hierarchy explicitly opts into
+	# PROCESS_MODE_ALWAYS. Without it, paused parent nodes block
+	# input from reaching their children — buttons wouldn't be
+	# clickable while the game tree is paused. PROCESS_MODE_INHERIT
+	# (the default) cascades from World3D's pausable state for any
+	# Control that doesn't override.
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -81,6 +88,11 @@ func _build_ui() -> void:
 	var backdrop := ColorRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.color = Color(0.0, 0.0, 0.0, 0.65)
+	backdrop.process_mode = Node.PROCESS_MODE_ALWAYS
+	# Backdrop catches clicks outside the panel so they don't fall
+	# through to the paused game world. STOP is the default but make
+	# it explicit.
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.add_child(backdrop)
 
 	# --- Main pause panel ---
@@ -90,6 +102,7 @@ func _build_ui() -> void:
 	_main_panel.offset_top    = -200
 	_main_panel.offset_right  =  220
 	_main_panel.offset_bottom =  200
+	_main_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	_root.add_child(_main_panel)
 
 	var vbox := VBoxContainer.new()
@@ -98,6 +111,7 @@ func _build_ui() -> void:
 	vbox.offset_top    =  6
 	vbox.offset_right  = -6
 	vbox.offset_bottom = -6
+	vbox.process_mode = Node.PROCESS_MODE_ALWAYS
 	_main_panel.add_child(vbox)
 
 	var title_lbl := Label.new()
@@ -149,6 +163,7 @@ func _build_save_dialog() -> void:
 	_save_panel.offset_right  =  260
 	_save_panel.offset_bottom =  120
 	_save_panel.visible = false
+	_save_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	_root.add_child(_save_panel)
 
 	var v := VBoxContainer.new()
@@ -158,6 +173,7 @@ func _build_save_dialog() -> void:
 	v.offset_right  = -12
 	v.offset_bottom = -12
 	v.add_theme_constant_override("separation", 12)
+	v.process_mode = Node.PROCESS_MODE_ALWAYS
 	_save_panel.add_child(v)
 
 	var title := Label.new()
@@ -214,6 +230,7 @@ func _build_load_picker() -> void:
 	_load_panel.offset_right  =  340
 	_load_panel.offset_bottom =  260
 	_load_panel.visible = false
+	_load_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	_root.add_child(_load_panel)
 
 	var v := VBoxContainer.new()
@@ -223,6 +240,7 @@ func _build_load_picker() -> void:
 	v.offset_right  = -12
 	v.offset_bottom = -12
 	v.add_theme_constant_override("separation", 8)
+	v.process_mode = Node.PROCESS_MODE_ALWAYS
 	_load_panel.add_child(v)
 
 	var title := Label.new()
@@ -236,11 +254,13 @@ func _build_load_picker() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
 	v.add_child(scroll)
 
 	_load_list_container = VBoxContainer.new()
 	_load_list_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_load_list_container.add_theme_constant_override("separation", 4)
+	_load_list_container.process_mode = Node.PROCESS_MODE_ALWAYS
 	scroll.add_child(_load_list_container)
 
 	_load_cancel_btn = Button.new()
@@ -278,6 +298,7 @@ func _make_save_row(meta: Dictionary) -> Control:
 	var hbox := HBoxContainer.new()
 	hbox.custom_minimum_size = Vector2(0, 56)
 	hbox.add_theme_constant_override("separation", 8)
+	hbox.process_mode = Node.PROCESS_MODE_ALWAYS
 
 	var pos: Vector3 = meta.get("player_position", Vector3.ZERO)
 
@@ -290,6 +311,7 @@ func _make_save_row(meta: Dictionary) -> Control:
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info_lbl.add_theme_font_size_override("font_size", 14)
 	info_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	info_lbl.process_mode = Node.PROCESS_MODE_ALWAYS
 	hbox.add_child(info_lbl)
 
 	var load_btn := Button.new()

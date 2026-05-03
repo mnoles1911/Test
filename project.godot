@@ -16,9 +16,9 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Game One"
 config/description="A 2.5D narrative RPG. Mira-Thal Trilogy, Game One."
-run/main_scene="uid://dp3w1world3d"
+run/main_scene="uid://dmnmenu1080"
 config/features=PackedStringArray("4.6", "GL Compatibility")
-config/run/main_scene="res://scenes/World3D.tscn"
+config/run/main_scene="res://scenes/ui/MainMenu.tscn"
 
 [autoload]
 
@@ -31,11 +31,11 @@ FlagScheduler="*res://scripts/FlagScheduler.gd"
 InventoryManager="*res://scripts/InventoryManager.gd"
 JournalUI="*res://scenes/ui/Journal.tscn"
 HUDOverlay="*res://scripts/HUDOverlay.gd"
-BarkManager="*res://scripts/BarkManager.gd"
-WorldClock="*res://scripts/WorldClock.gd"
 NoEditZoneRegistry="*res://scripts/NoEditZoneRegistry.gd"
 VoxelEditManager="*res://scripts/VoxelEditManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
+BarkManager="*res://scripts/BarkManager.gd"
+WorldClock="*res://scripts/WorldClock.gd"
 
 [dialogic]
 
