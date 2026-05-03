@@ -35,6 +35,12 @@ extends Control
 const WORLD_SCENE: String    = "res://scenes/World3D.tscn"
 const SETTINGS_SCENE: String = "res://scenes/ui/Settings.tscn"
 
+# Folder scanned for menu-background images. Drop PNG / JPG / WEBP
+# files in here and the homescreen picks one at random on each
+# launch. See assets/menu_backgrounds/README.md for guidance on
+# image specs (1920×1080 minimum, vertical safe area, etc.).
+const MENU_BACKGROUNDS_DIR: String = "res://assets/menu_backgrounds/"
+
 
 # =============================================================
 # NODE REFERENCES (all built in _ready)
@@ -60,10 +66,98 @@ var _load_cancel_btn: Button
 func _ready() -> void:
 	# This scene must accept input even though no game is paused.
 	# Default PROCESS_MODE_INHERIT works fine here (nothing's paused).
+	_setup_background()
 	_build_main_column()
 	_build_load_picker()
 	_show_main_column()
 	print("[MainMenu] Ready.")
+
+
+# Diagnostic catch-all — if buttons aren't responding, this print
+# tells us whether mouse input even reaches the MainMenu scene.
+# - Print fires on click → input is reaching MainMenu, the issue
+#   is somewhere in the button hierarchy (focus, mouse_filter,
+#   layout).
+# - Print does NOT fire → an autoload at a higher CanvasLayer is
+#   absorbing the click before it reaches MainMenu.
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			print("[MainMenu] _input: LMB at %s" % mb.position)
+
+
+# =============================================================
+# BACKGROUND IMAGE
+# =============================================================
+
+func _setup_background() -> void:
+	# Picks a random image from assets/menu_backgrounds/ and shows
+	# it as a full-screen TextureRect over the dark Background
+	# ColorRect from the .tscn. If the folder is empty (or doesn't
+	# exist), the dark fallback stays in place.
+	#
+	# A semi-transparent tint is layered on top of the image so
+	# the title and buttons remain readable against busy art.
+	var tex: Texture2D = _load_random_background()
+	if tex == null:
+		print("[MainMenu] No menu backgrounds found — using dark fallback.")
+		return
+
+	# Insert just above the Background ColorRect so it covers the
+	# fallback but stays behind all UI added later.
+	var bg_node: Node = get_node_or_null("Background")
+	var insert_index: int = (bg_node.get_index() + 1) if bg_node != null else 0
+
+	var bg_image := TextureRect.new()
+	bg_image.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_image.texture = tex
+	bg_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	# IGNORE so the image never absorbs clicks meant for the buttons.
+	bg_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg_image)
+	move_child(bg_image, insert_index)
+
+	# Darkening tint for legibility — sits between the image and
+	# the menu UI. Tuned at 50% to keep art visible while the title
+	# text stays readable against most pieces.
+	var tint := ColorRect.new()
+	tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tint.color = Color(0, 0, 0, 0.5)
+	tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tint)
+	move_child(tint, insert_index + 1)
+
+
+func _load_random_background() -> Texture2D:
+	# Returns a randomly-picked Texture2D from MENU_BACKGROUNDS_DIR,
+	# or null if the directory is missing or has no image files.
+	var dir := DirAccess.open(MENU_BACKGROUNDS_DIR)
+	if dir == null:
+		return null
+
+	var images: Array = []
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir():
+			var lower := fname.to_lower()
+			if lower.ends_with(".png") \
+				or lower.ends_with(".jpg") \
+				or lower.ends_with(".jpeg") \
+				or lower.ends_with(".webp"):
+				images.append(fname)
+		fname = dir.get_next()
+	dir.list_dir_end()
+
+	if images.is_empty():
+		return null
+
+	var pick: String = images[randi() % images.size()]
+	var path: String = MENU_BACKGROUNDS_DIR + pick
+	print("[MainMenu] Loaded background: %s" % pick)
+	return load(path) as Texture2D
 
 
 # =============================================================
@@ -73,18 +167,25 @@ func _ready() -> void:
 func _build_main_column() -> void:
 	# Vertical column centered horizontally, ~30% from the top of
 	# the screen. Title on top, buttons below.
+	#
+	# IMPORTANT: _main_panel uses MOUSE_FILTER_PASS so clicks fall
+	# through to the buttons inside instead of being absorbed by
+	# the empty area of the wrapper Control. The buttons themselves
+	# have STOP filter (default) and consume their own clicks.
 	_main_panel = Control.new()
 	_main_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_main_panel.offset_left   = -260
 	_main_panel.offset_top    = -300
 	_main_panel.offset_right  =  260
 	_main_panel.offset_bottom =  300
+	_main_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_main_panel)
 
 	var v := VBoxContainer.new()
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.add_theme_constant_override("separation", 14)
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.mouse_filter = Control.MOUSE_FILTER_PASS
 	_main_panel.add_child(v)
 
 	# --- Title ---
@@ -143,6 +244,7 @@ func _build_main_column() -> void:
 	version.anchor_bottom = 1.0
 	version.offset_top = -32
 	version.offset_bottom = -16
+	version.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(version)
 
 
