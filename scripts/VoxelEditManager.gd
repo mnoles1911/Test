@@ -43,7 +43,7 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 3
+const WORLD_GENERATOR_VERSION: int = 4
 # Bump this constant whenever the procedural baseline produced by
 # VoxelGeneratorGraph (or the placeholder VoxelGeneratorFlat) changes
 # shape — e.g. when we swap to a new EXR heightmap, change cave

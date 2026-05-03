@@ -68,13 +68,26 @@ class_name CubicHeightmapGenerator
 # multiple block types.
 
 
+func _get_used_channels_mask() -> int:
+	# CRITICAL — without this override, Zylann assumes the generator
+	# writes only the default (SDF) channel and never allocates
+	# CHANNEL_COLOR in the chunk buffer. The mesher then tries to
+	# read an unallocated channel and throws "Central buffer must be
+	# valid" — thousands of times, once per streamed chunk.
+	#
+	# Returning a bitmask of channels we write tells the engine which
+	# channels to set up before calling _generate_block.
+	return 1 << VoxelBuffer.CHANNEL_COLOR
+
+
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
 	# Engine calls this for every chunk the player approaches. We
 	# fill out_buffer with COLOR values for that chunk.
-
-	# Make sure COLOR has enough bit depth to hold packed RGBA8888.
-	# Default channel depth is too narrow for full color.
-	out_buffer.set_channel_depth(VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
+	#
+	# Channel depth is set up by the engine based on
+	# _get_used_channels_mask above — we don't need to call
+	# set_channel_depth here. (Calling it from inside _generate_block
+	# can race with the engine's internal allocation pipeline.)
 
 	var size: Vector3i = out_buffer.get_size()
 	var stride: int = 1 << lod  # 1 at LOD0, 2 at LOD1, etc.
