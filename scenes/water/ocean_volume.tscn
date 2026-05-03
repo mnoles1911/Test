@@ -27,26 +27,26 @@ metallic = 0.5
 roughness = 0.15
 
 [node name="OceanVolume" type="Area3D" groups=["water_volume"]]
-; Large, ambient ocean. Sea level raised to world Y=6 so water is
-; accessible from average terrain elevation (~Y=10 with the current
-; height_offset_voxels=80) — players walk down slopes into water
-; rather than the water plane being buried under terrain. Drop both
-; surface_y and the ZoneShape/SurfaceMesh offsets together if you
-; tune the ocean elevation later — these three values must agree.
+; Large, ambient ocean. Sea level set to world Y=-10. Water is
+; visible only where terrain dips below Y=-10 (deep valleys / coast).
+; If you re-bias the terrain (height_offset_voxels) so the world
+; doesn't reach this low, the ocean plane stays hidden under all
+; terrain. Drop surface_y and both ZoneShape / SurfaceMesh offsets
+; together when retuning — the three numbers must agree.
 script = ExtResource("1_water")
-surface_y = 6.0
+surface_y = -10.0
 
 [node name="ZoneShape" type="CollisionShape3D" parent="."]
-; Trigger box top sits at world Y=6 (sea level). 30m-tall shape
-; offset Y=-9 → spans Y in [-24, 6]. Top of box matches surface_y
-; above; bottom is 24m underwater so the player can dive without
+; Trigger box top sits at world Y=-10 (sea level). 30m-tall shape
+; offset Y=-25 → spans Y in [-40, -10]. Top of box matches surface_y
+; above; bottom is 30m underwater so the player can dive without
 ; punching through the trigger.
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -25, 0)
 shape = SubResource("OceanShape")
 
 [node name="SurfaceMesh" type="MeshInstance3D" parent="."]
-; Visible water plane at sea level (world Y=6). PlaneMesh's surface
+; Visible water plane at sea level (world Y=-10). PlaneMesh's surface
 ; is perpendicular to +Y by default, so no rotation needed.
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
 mesh = SubResource("OceanSurfaceMesh")
 surface_material_override/0 = SubResource("OceanMat")
