@@ -5,6 +5,8 @@
 [ext_resource type="Script" uid="uid://djebxbfkbbd03" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
 [ext_resource type="Script" uid="uid://d1vw32cgtbcv4" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
 [ext_resource type="PackedScene" path="res://scenes/water/water_volume.tscn" id="5_water"]
+[ext_resource type="PackedScene" path="res://scenes/water/ocean_volume.tscn" id="6_ocean"]
+[ext_resource type="Script" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
 sky_top_color = Color(0.05, 0.06, 0.1, 1)
@@ -32,15 +34,28 @@ fog_density = 0.02
 database_path = "user://voxel_deltas.sqlite"
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
-frequency = 0.012
+; Lower frequency = larger features. At voxel-grid coords (1 voxel = 1
+; grid unit), 0.006 puts hill peaks roughly every 50-80 voxels (~6-10m
+; in world units after the 0.125 terrain scale). Ridged fractal with
+; 5 octaves gives sharp ridgelines + soft valleys.
+frequency = 0.006
 fractal_type = 2
-fractal_octaves = 4
+fractal_octaves = 5
+fractal_lacunarity = 2.1
 
-[sub_resource type="VoxelGeneratorNoise2D" id="VoxelGen_Noise2D"]
+[sub_resource type="CubicHeightmapGenerator" id="VoxelGen_Cubic"]
+; Custom heightmap generator that writes the TYPE channel so
+; VoxelMesherCubes can render hard-edged blocks (no Transvoxel
+; smoothing). Each solid voxel becomes one cube. See
+; scripts/CubicHeightmapGenerator.gd for the per-block fill loop.
 noise = SubResource("TerrainNoise")
-height_range = 25.0
+height_range_voxels = 80.0
+sea_level_voxels = 0
 
-[sub_resource type="VoxelMesherTransvoxel" id="VoxelMesher_Transvoxel"]
+[sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
+; Renders one cube per solid voxel — the look the design doc calls
+; "blocky stepped terrain, matches MagicaVoxel building style"
+; (CLAUDE.md → Art specification → Terrain). Reads CHANNEL_TYPE.
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]
 size = Vector3(0.5, 0.3, 0.5)
@@ -63,17 +78,42 @@ script = ExtResource("4_bootstrap")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1612514652]
 environment = SubResource("Environment_1")
 
+[node name="DayNightCycle" type="Node" parent="." unique_id=2000000021]
+; Drives Sun, Moon, and sky colors from WorldClock each frame. Sees
+; its three siblings via NodePath defaults (../Sun, ../Moon,
+; ../WorldEnvironment), so as long as those node names match this
+; just works.
+script = ExtResource("7_daynight")
+
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1383847949]
-transform = Transform3D(0.7071, -0.5, 0.5, 0, 0.7071, 0.7071, -0.7071, -0.5, 0.5, 0, 8, 0)
-light_color = Color(0.7, 0.75, 0.85, 1)
-light_energy = 0.4
+; Sun's transform is overwritten every frame by DayNightCycle, so the
+; baked basis doesn't matter — only the light_color / light_energy
+; defaults below take effect on the very first frame before
+; _process runs. DayNightCycle takes over after that.
+light_color = Color(1, 0.97, 0.92, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Moon" type="DirectionalLight3D" parent="." unique_id=2000000020]
+; The moon. Same DirectionalLight3D as the Sun but cooler, dimmer.
+; DayNightCycle keeps it 12 hours behind the Sun so when the Sun
+; sets in the west, the Moon rises in the east. Shadows enabled so
+; nighttime scenes still cast meaningful shadows from cliffs and
+; the player.
+light_color = Color(0.55, 0.65, 0.85, 1)
+light_energy = 0.0
 shadow_enabled = true
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
+; Scale 0.125 = 1 voxel grid unit renders as 0.125 m in world space,
+; which is 8 voxels per meter. CLAUDE.md spec is 8 vox/m (12.5 cm
+; voxels). The voxel-grid coordinates stay integer-sized, the visual
+; rendering shrinks to fit Godot's metric world.
+transform = Transform3D(0.125, 0, 0, 0, 0.125, 0, 0, 0, 0.125, 0, 0, 0)
 lod_count = 6
 stream = SubResource("VoxelStream_SQLite")
-generator = SubResource("VoxelGen_Noise2D")
-mesher = SubResource("VoxelMesher_Transvoxel")
+generator = SubResource("VoxelGen_Cubic")
+mesher = SubResource("VoxelMesher_Cubes")
 
 [node name="Campfire" type="OmniLight3D" parent="." unique_id=98083291]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.5, 0)
@@ -102,7 +142,21 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 5, 0)
 shape = SubResource("NoEditZone_TestShape")
 
 [node name="WaterVolume_Test" parent="." unique_id=1135040027 instance=ExtResource("5_water")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 4)
+; Small test pond — kept from the swimming batch so we can verify the
+; small/local-water path still works alongside the ocean. ~10×3×10 m,
+; tucked away from the central spawn area.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18, 0, 4)
+
+[node name="OceanVolume" parent="." unique_id=2000000010 instance=ExtResource("6_ocean")]
+; The OCEAN. Dedicated 200×30×200 m water volume centered at the
+; world origin. Sea level is Y=0, so any voxel terrain lower than
+; that is submerged. surface_y=0 inside the ocean scene. Roland walks
+; in from the beach and starts swimming as soon as his head drops
+; below Y=0.
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 35, 0)
+; Spawn 10m above world origin. With the scaled voxel terrain peaking
+; near Y=+5 m and the ocean at Y=0 m, this drops Roland into the air
+; just above the highest hills — gravity settles him onto solid ground
+; within a second or two.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)

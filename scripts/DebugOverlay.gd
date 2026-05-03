@@ -50,18 +50,21 @@ var _player_state_tab: VBoxContainer
 # Commands tab — three sub-views inside the COMMANDS tab. Only one
 # is visible at a time; the rest are hidden. Sub-views switch by
 # clicking a command in the list, and BACK in a sub-view returns.
-enum CommandView { LIST, DELETE_SAVE, TELEPORT }
+enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP }
 var _commands_view: CommandView = CommandView.LIST
 
 # Sub-view containers.
 var _commands_list_view: VBoxContainer
 var _commands_delete_save_view: VBoxContainer
 var _commands_teleport_view: VBoxContainer
+var _commands_time_view: VBoxContainer
 
 # Command list buttons.
 var _btn_delete_all: Button
 var _btn_delete_one: Button
 var _btn_teleport: Button
+var _btn_advance_day: Button
+var _btn_advance_time: Button
 
 # DELETE ALL SAVES — two-click confirm state.
 var _delete_saves_armed: bool = false
@@ -77,6 +80,12 @@ var _teleport_y_edit: LineEdit
 var _teleport_z_edit: LineEdit
 var _teleport_confirm_btn: Button
 var _teleport_back_btn: Button
+
+# Time-skip sub-view fields.
+var _time_days_edit: LineEdit
+var _time_hours_edit: LineEdit
+var _time_confirm_btn: Button
+var _time_back_btn: Button
 
 # Console tab.
 var _console_scroll: ScrollContainer
@@ -215,6 +224,7 @@ func _build_commands_tab() -> void:
 	_build_commands_list_view()
 	_build_commands_delete_save_view()
 	_build_commands_teleport_view()
+	_build_commands_time_view()
 	_show_command_list()
 
 
@@ -226,11 +236,14 @@ func _build_commands_list_view() -> void:
 	_commands_list_view.add_theme_constant_override("separation", 4)
 	_commands_tab.add_child(_commands_list_view)
 
-	_btn_delete_all = _make_command_row("DELETE ALL SAVES")
-	_btn_delete_one = _make_command_row("DELETE A SAVE FILE")
-	_btn_teleport   = _make_command_row("TELEPORT PLAYER")
+	_btn_delete_all   = _make_command_row("DELETE ALL SAVES")
+	_btn_delete_one   = _make_command_row("DELETE A SAVE FILE")
+	_btn_teleport     = _make_command_row("TELEPORT PLAYER")
+	_btn_advance_day  = _make_command_row("ADVANCE 1 DAY")
+	_btn_advance_time = _make_command_row("ADVANCE TIME...")
 
-	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport]:
+	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
+			_btn_advance_day, _btn_advance_time]:
 		_commands_list_view.add_child(b)
 
 
@@ -401,6 +414,8 @@ func _show_command_list() -> void:
 		_commands_delete_save_view.visible = false
 	if _commands_teleport_view != null:
 		_commands_teleport_view.visible = false
+	if _commands_time_view != null:
+		_commands_time_view.visible = false
 
 
 func _show_delete_save_view() -> void:
@@ -408,6 +423,7 @@ func _show_delete_save_view() -> void:
 	_commands_list_view.visible = false
 	_commands_delete_save_view.visible = true
 	_commands_teleport_view.visible = false
+	_commands_time_view.visible = false
 	_populate_delete_save_list()
 
 
@@ -416,6 +432,7 @@ func _show_teleport_view() -> void:
 	_commands_list_view.visible = false
 	_commands_delete_save_view.visible = false
 	_commands_teleport_view.visible = true
+	_commands_time_view.visible = false
 
 	# Pre-fill the X/Y/Z fields with Roland's current position so
 	# small relative teleports ("10 meters that way") are quick.
@@ -449,6 +466,86 @@ func _do_teleport() -> void:
 	if player is CharacterBody3D:
 		(player as CharacterBody3D).velocity = Vector3.ZERO
 	log_action("DEV: teleported to (%.2f, %.2f, %.2f)" % [x, y, z])
+	_show_command_list()
+
+
+# --- TIME-SKIP sub-view ---
+
+func _build_commands_time_view() -> void:
+	_commands_time_view = VBoxContainer.new()
+	_commands_time_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_time_view.add_theme_constant_override("separation", 8)
+	_commands_time_view.visible = false
+	_commands_tab.add_child(_commands_time_view)
+
+	_time_back_btn = _make_command_row("← BACK")
+	_commands_time_view.add_child(_time_back_btn)
+
+	var hint := Label.new()
+	hint.text = "Type a number of DAYS and/or HOURS to advance, then click ADVANCE.  Either field can be left blank (treated as 0)."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_time_view.add_child(hint)
+
+	_time_days_edit  = _make_axis_input("days")
+	_time_hours_edit = _make_axis_input("hours")
+	_commands_time_view.add_child(_make_axis_row("Days",  _time_days_edit))
+	_commands_time_view.add_child(_make_axis_row("Hours", _time_hours_edit))
+
+	_time_confirm_btn = Button.new()
+	_time_confirm_btn.text = "ADVANCE"
+	_time_confirm_btn.add_theme_font_size_override("font_size", 16)
+	_time_confirm_btn.add_theme_color_override("font_color", Color(0.6, 0.9, 0.6, 1))
+	_time_confirm_btn.custom_minimum_size = Vector2(160, 36)
+	_commands_time_view.add_child(_time_confirm_btn)
+
+
+func _show_time_view() -> void:
+	_commands_view = CommandView.TIME_SKIP
+	_commands_list_view.visible = false
+	_commands_delete_save_view.visible = false
+	_commands_teleport_view.visible = false
+	_commands_time_view.visible = true
+
+	# Default to 0 / 0 so the player isn't forced to clear an old entry.
+	_time_days_edit.text = "0"
+	_time_hours_edit.text = "0"
+	_time_days_edit.grab_focus()
+	_time_days_edit.select_all()
+
+
+func _advance_time(days: int, hours: int) -> void:
+	# Single-source-of-truth path through WorldClock.advance_hours so the
+	# in-game clock, all the GameState time flags, NPC schedules, and
+	# the day-night cycle all roll forward together. Negative inputs
+	# are clamped to 0 — going backwards in time would mismatch save
+	# state in subtle ways and we don't have a use case for it.
+	if days < 0:
+		days = 0
+	if hours < 0:
+		hours = 0
+	var total_hours: int = days * 24 + hours
+	if total_hours <= 0:
+		log_action("DEV: time skip ignored (0 hours requested)")
+		return
+	if not get_node_or_null("/root/WorldClock"):
+		log_action("DEV: time skip failed — WorldClock not available")
+		return
+	WorldClock.advance_hours(total_hours)
+	log_action("DEV: advanced time by %d day(s) %d hour(s) → Day %d %s" % [
+		days, hours, WorldClock.current_day, WorldClock.get_time_string()
+	])
+
+
+func _do_advance_time_form() -> void:
+	# Read the form inputs, coerce to int, and dispatch via _advance_time.
+	# Empty fields are treated as 0 so a user who only fills DAYS gets a
+	# pure day skip without having to type "0" into HOURS.
+	var days: int = int(_time_days_edit.text) if _time_days_edit.text != "" else 0
+	var hours: int = int(_time_hours_edit.text) if _time_hours_edit.text != "" else 0
+	_advance_time(days, hours)
 	_show_command_list()
 
 
@@ -836,6 +933,13 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 		if _hits_button(_btn_teleport, pos):
 			_show_teleport_view()
 			return
+		if _hits_button(_btn_advance_day, pos):
+			# Quick path — instant +24 hours. No submenu.
+			_advance_time(1, 0)
+			return
+		if _hits_button(_btn_advance_time, pos):
+			_show_time_view()
+			return
 		return
 
 	# DELETE A SAVE sub-view: BACK or per-row DELETE.
@@ -877,6 +981,21 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		if _hits_control(_teleport_z_edit, pos):
 			_teleport_z_edit.grab_focus()
+			return
+
+	# TIME-SKIP sub-view: BACK / ADVANCE / focus on a LineEdit.
+	if _commands_view == CommandView.TIME_SKIP:
+		if _hits_button(_time_back_btn, pos):
+			_show_command_list()
+			return
+		if _hits_button(_time_confirm_btn, pos):
+			_do_advance_time_form()
+			return
+		if _hits_control(_time_days_edit, pos):
+			_time_days_edit.grab_focus()
+			return
+		if _hits_control(_time_hours_edit, pos):
+			_time_hours_edit.grab_focus()
 			return
 
 
