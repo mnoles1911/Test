@@ -454,11 +454,14 @@ func _show_load_picker() -> void:
 # =============================================================
 
 func _on_new_game() -> void:
-	# Fresh playthrough — clear the active save reference (no
-	# auto-overwrite of an old save on next exit) and load World3D.
+	# Fresh playthrough — wipe every piece of session state that
+	# persists across scene transitions in autoloads (voxel deltas
+	# on disk, GameState flags + skill XP + companions, inventory,
+	# player position/rotation). Without this reset, "New Game"
+	# inherits the previous playthrough's voxel edits, inventory,
+	# and flags from autoload memory.
 	print("[MainMenu] NEW GAME pressed")
-	GameState.active_save_filename = ""
-	GameState.player_spawn_id = ""
+	GameState.reset_for_new_game()
 	TransitionManager.change_scene(WORLD_SCENE, "default")
 
 

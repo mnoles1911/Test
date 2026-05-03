@@ -242,12 +242,29 @@ func load_save_data(data: Dictionary) -> void:
 
 func _ready() -> void:
 	print("[InventoryManager] Initialized.")
-	# DEBUG: give Roland a starter pickaxe and some throwables so
-	# the edit-verb and explosives pipelines can be exercised
-	# without first wiring up loot / vendors / a story-driven
-	# acquisition path. Remove (or guard with a debug flag) when
-	# the game opens onto the Iron Chalice scene with the canon
-	# starting inventory.
+	# Initial inventory is established via reset_to_defaults so the
+	# starting kit is defined in one place — same content runs at
+	# autoload init AND when the player clicks NEW GAME from the
+	# main menu (see GameState.reset_for_new_game).
+	reset_to_defaults()
+
+
+func reset_to_defaults() -> void:
+	# Wipes the in-memory inventory + equipment slots and re-applies
+	# the debug starting kit (pickaxe + 5 powder charges). Called
+	# from _ready at autoload init, and from
+	# GameState.reset_for_new_game on NEW GAME so a new playthrough
+	# doesn't inherit items from the previous one.
+	#
+	# Remove (or guard with a debug flag) when the game opens onto
+	# the Iron Chalice scene with the canon Game-One starting
+	# inventory authored elsewhere.
+	_inventory.clear()
+	_equipped = {
+		"weapon": "",
+		"armor":  "",
+		"accessory": "",
+	}
 	add_item("iron_pickaxe", 1)
 	equip("weapon", "iron_pickaxe")
 	add_item("powder_charge", 5)

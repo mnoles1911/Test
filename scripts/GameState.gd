@@ -199,6 +199,80 @@ var current_enemy_data = null  # Holds an EnemyData resource, or null for defaul
 
 
 # =============================================================
+# NEW GAME RESET
+# =============================================================
+# Called when the player clicks NEW GAME from the main menu.
+# Clears every piece of session state that persists across scene
+# transitions in autoloads — without this, a "New Game" inherits
+# voxel edits, flags, inventory, skill XP, and player position
+# from the previous playthrough running in the same Godot session.
+#
+# What gets reset:
+#   - GameState in-memory state (flags, companions, skill XP,
+#     position, rotation, scene refs, play time, active save)
+#   - InventoryManager (clears inventory + equipped slots, then
+#     re-applies the debug starting kit: pickaxe + 5 charges)
+#   - Voxel deltas on disk (user://voxel_deltas.sqlite plus
+#     Zylann's auxiliary -journal / -wal / -shm files)
+#
+# What does NOT get reset (preserved across playthroughs):
+#   - Saved files in user://saves/ — players manage those by name
+#     via the load picker
+#   - Settings (display, audio, controls) — player preferences
+#   - The randomly-loaded menu background
+
+func reset_for_new_game() -> void:
+	_flags.clear()
+	_flag_history.clear()
+	_skill_xp.clear()
+	_companions = {
+		"orion":  false,
+		"dagna":  false,
+		"corvus": false,
+		"seren":  false,
+		"aldric": false,
+	}
+	player_position = Vector3.ZERO
+	player_rotation_y = 0.0
+	player_spawn_id = ""
+	current_scene = ""
+	active_save_filename = ""
+	_play_time_seconds = 0.0
+
+	_delete_voxel_deltas_files()
+
+	if get_node_or_null("/root/InventoryManager"):
+		InventoryManager.reset_to_defaults()
+
+	print("[GameState] Reset for new game.")
+
+
+func _delete_voxel_deltas_files() -> void:
+	# Delete voxel_deltas.sqlite plus any Zylann SQLite auxiliary
+	# files (-journal, -wal, -shm). Without removing the journals,
+	# SQLite may recreate the database from them on next open and
+	# resurrect the deleted edits.
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	var deleted: int = 0
+	while fname != "":
+		if not dir.current_is_dir() and fname.begins_with(VOXEL_DELTAS_BASENAME):
+			var abs_path: String = ProjectSettings.globalize_path("user://" + fname)
+			var err: int = DirAccess.remove_absolute(abs_path)
+			if err == OK:
+				deleted += 1
+				print("[GameState] Deleted: %s" % fname)
+			else:
+				push_warning("[GameState] Failed to delete %s (err %d)" % [fname, err])
+		fname = dir.get_next()
+	dir.list_dir_end()
+	print("[GameState] Cleared %d voxel-delta file(s)." % deleted)
+
+
+# =============================================================
 # SAVE AND LOAD — NAMED FILES
 # =============================================================
 # Saves are stored as JSON files in user://saves/, one per save.
@@ -224,6 +298,13 @@ const SAVES_DIR: String = "user://saves/"
 # Legacy slot-file path — kept only for backward-compat detection.
 const LEGACY_SAVE_PATH: String = "user://save.json"
 
+# Voxel-edit-delta SQLite database path. Must match the
+# database_path on the VoxelStreamSQLite sub_resource in
+# scenes/World3D.tscn — wiping this file (and Zylann's
+# auxiliary -journal / -wal / -shm files) on New Game gives
+# the player a clean baseline.
+const VOXEL_DELTAS_BASENAME: String = "voxel_deltas.sqlite"
+
 # The most-recently saved or loaded filename. Used by autosave-on-
 # quit and as the default "current save" reference.
 var active_save_filename: String = ""
@@ -236,11 +317,15 @@ func _ensure_saves_dir() -> void:
 		DirAccess.make_dir_absolute(SAVES_DIR)
 
 
-func _slugify(name: String) -> String:
+func _slugify(display_name: String) -> String:
 	# Convert a display name into a filesystem-safe slug.
 	# "My Save 1!" → "my_save_1"
 	# Empty or all-symbols → "untitled"
-	var s := name.to_lower().strip_edges()
+	#
+	# Parameter is named display_name (not name) because Node has a
+	# `name` property — using `name` here would shadow it and emit
+	# a SHADOWED_VARIABLE_BASE_CLASS warning at parse time.
+	var s := display_name.to_lower().strip_edges()
 	var out := ""
 	for i in range(s.length()):
 		var c := s[i]

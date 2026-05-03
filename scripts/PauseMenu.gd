@@ -359,12 +359,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
-# LMB click handler — bypasses Godot's gui_input routing for the
-# same reason MainMenu does: when Input.mouse_mode is held in
-# CAPTURED state by upstream code (CameraRig from World3D), the
-# GUI dispatch system goes silent. _input still fires for all
-# mouse events regardless, so we manually route clicks to whichever
-# Control's global rect contains them.
+# Mouse handler — bypasses Godot's gui_input routing.
+#
+# Why: GUI dispatch is silently disabled in this project (likely
+# Dialogic's input subsystem listening to LMB events globally
+# interfering, see chat history). _input still fires for all
+# mouse events regardless of GUI state, so we manually route:
+#   - LMB → click dispatch (button-rect lookup)
+#   - Wheel → scroll dispatch (find the visible ScrollContainer
+#     and adjust scroll_vertical)
 #
 # Only fires when the pause menu is open (gates on _root.visible).
 func _input(event: InputEvent) -> void:
@@ -373,9 +376,27 @@ func _input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
-	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+	if not mb.pressed:
 		return
-	_dispatch_click(mb.position)
+	if mb.button_index == MOUSE_BUTTON_LEFT:
+		_dispatch_click(mb.position)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+		_dispatch_scroll(-60)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		_dispatch_scroll(60)
+
+
+func _dispatch_scroll(delta_pixels: int) -> void:
+	# Find the ScrollContainer in the currently-visible sub-panel
+	# and scroll it by delta_pixels. Only the load picker has a
+	# scrollable list; main and save panels don't need scrolling.
+	if not _load_panel.visible:
+		return
+	# The ScrollContainer is the parent of _load_list_container.
+	var scroll: ScrollContainer = _load_list_container.get_parent() as ScrollContainer
+	if scroll == null:
+		return
+	scroll.scroll_vertical += delta_pixels
 
 
 func _dispatch_click(pos: Vector2) -> void:
