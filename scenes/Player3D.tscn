@@ -50,15 +50,14 @@ surface_material_override/0 = SubResource("StandardMaterial3D_1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
 
 [node name="SpringArm3D" type="SpringArm3D" parent="CameraTarget"]
-; Pulled back from 5 m to 8 m so more of the landscape is visible in
-; the third-person framing. At 5 m on a 1.7 m Roland, he filled too
-; much of the screen and made terrain features feel small; at 8 m
-; the camera frames roughly his full body plus 4-5 m of surrounding
-; terrain on each side.
-spring_length = 8.0
+; Settled at 6 m after testing 5 m (player looked huge) and 8 m
+; (camera felt detached). 6 m frames Roland clearly while keeping
+; ~3 m of surrounding terrain on each side. Player can still scroll
+; the wheel to zoom in to 2 m or out to 10 m at runtime.
+spring_length = 6.0
 script = ExtResource("2_rig")
 elevation_degrees = 15.0
-arm_length = 8.0
+arm_length = 6.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraTarget/SpringArm3D"]
 current = true

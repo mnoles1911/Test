@@ -349,10 +349,23 @@ func _apply_edit(cmd: Dictionary) -> void:
 	tool.mode = VoxelTool.MODE_SET
 	tool.value = cmd.get("value", 0)
 
+	# CRITICAL — VoxelTool.do_sphere / do_box take voxel-grid coords,
+	# NOT world-space. The terrain has transform.scale = 0.125 (8 vox
+	# per metre), so a world position must be divided by that scale
+	# before being passed to the tool. terrain.to_local() applies the
+	# inverse transform (which for our scale-only setup is *=8).
+	#
+	# Symptom of getting this wrong: queue drains, _apply_edit logs
+	# correctly, BUT the carve appears 1/8 the size and 8x closer to
+	# origin than where the player actually swung. Terrain looks
+	# untouched because the tiny carve is nowhere near the impact.
+	var inv_scale: float = 1.0 / _terrain.scale.x
+
 	match cmd["type"]:
 		"sphere":
-			# do_sphere takes world-space center and radius (meters).
-			tool.do_sphere(cmd["pos"], cmd["radius"])
+			var voxel_pos: Vector3    = _terrain.to_local(cmd["pos"])
+			var voxel_radius: float   = cmd["radius"] * inv_scale
+			tool.do_sphere(voxel_pos, voxel_radius)
 			_mark_chunks_in_aabb(
 				cmd["pos"] - Vector3.ONE * cmd["radius"],
 				cmd["pos"] + Vector3.ONE * cmd["radius"],
@@ -360,23 +373,26 @@ func _apply_edit(cmd: Dictionary) -> void:
 			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
 		"box":
-			# do_box takes two world-space corner positions.
-			tool.do_box(cmd["min"], cmd["max"])
+			var voxel_min: Vector3 = _terrain.to_local(cmd["min"])
+			var voxel_max: Vector3 = _terrain.to_local(cmd["max"])
+			tool.do_box(voxel_min, voxel_max)
 			_mark_chunks_in_aabb(cmd["min"], cmd["max"])
 			var center: Vector3 = (cmd["min"] + cmd["max"]) * 0.5
 			edit_applied.emit(center, _world_to_chunk(center))
 
 		"set":
-			# Single-voxel write. Cubes meshing IS discrete (one cube
-			# per voxel), so a 0.3 m sphere here clears ~2-3 cubes at
-			# 8 vox/m — gives a pickaxe swing a visible divot rather
-			# than disappearing one ~12.5 cm cube the player can barely
-			# see. Tune down to 0.15 m if individual-cube precision
-			# becomes desirable.
-			tool.do_sphere(cmd["pos"], 0.3)
+			# Single-voxel write. Cubes meshing IS discrete, but a
+			# 1.5 m sphere clears ~12 cubes at 8 vox/m — large enough
+			# that a pickaxe swing produces an obvious divot during
+			# the carve-system bring-up. Tune down once the carve is
+			# verified working and gameplay tuning starts.
+			var set_world_radius: float = 1.5
+			var set_voxel_pos: Vector3  = _terrain.to_local(cmd["pos"])
+			var set_voxel_r: float      = set_world_radius * inv_scale
+			tool.do_sphere(set_voxel_pos, set_voxel_r)
 			_mark_chunks_in_aabb(
-				cmd["pos"] - Vector3.ONE * 0.3,
-				cmd["pos"] + Vector3.ONE * 0.3,
+				cmd["pos"] - Vector3.ONE * set_world_radius,
+				cmd["pos"] + Vector3.ONE * set_world_radius,
 			)
 			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
