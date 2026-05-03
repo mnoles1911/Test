@@ -43,17 +43,24 @@ class_name CubicHeightmapGenerator
 
 @export var noise: FastNoiseLite
 # 2D noise source. FastNoiseLite with fractal_type=RIDGED (2),
-# 5 octaves, frequency ~0.006 gives ridge/valley terrain. Lower
-# frequency = bigger features.
+# 5 octaves, frequency ~0.002 gives wide, landscape-scale ridges
+# and valleys. Lower frequency = bigger features.
 
-@export var height_range_voxels: float = 480.0
-# Total vertical relief in VOXEL units (not metres). Heightmap output
-# is centered around voxel-Y = 0, so half goes above sea level
-# (Y > 0) and half below (Y < 0). At terrain scale 0.125, 480 voxels
-# = 60 metres of vertical relief in world space — hills tower well
-# above the player (1.7 m tall) at the design's 8 vox/m resolution.
-# Pair with a FastNoiseLite frequency of ~0.002 on the exported noise
-# resource (lower = wider ridges and valleys, more landscape-scale).
+@export var height_range_voxels: float = 240.0
+# Total vertical relief in VOXEL units (not metres). At terrain scale
+# 0.125, 240 voxels = 30 metres of relief in world space — meaningful
+# hills relative to a 1.7 m player but not crushing walls. Pair with
+# FastNoiseLite frequency ~0.002 on the noise resource for wide,
+# landscape-scale ridges instead of tight bumps.
+
+@export var height_offset_voxels: int = 80
+# Vertical bias applied to every column AFTER the noise → height map.
+# Without this, ground_y is centered on Y = 0, which means half the
+# world spawns BELOW sea level (under water) and the player at Y=10
+# stares at a flat ocean with terrain walls poking up around them.
+# Default +80 voxels = +10 m biases terrain mostly above sea level:
+# average ground sits around Y=10 m, valleys dip to Y=-5 m (flooded
+# coastline), peaks rise to Y=+25 m (hills the player must climb).
 
 @export var sea_level_voxels: int = 0
 # Voxel-Y coordinate that should correspond to "ocean surface".
@@ -96,9 +103,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var stride: int = 1 << lod  # 1 at LOD0, 2 at LOD1, etc.
 
 	# Bound the heightmap range so we can skip blocks fully above or
-	# fully below terrain without per-voxel work.
-	var max_ground_y: int = int(height_range_voxels * 0.5) + 1
-	var min_ground_y: int = -int(height_range_voxels * 0.5) - 1
+	# fully below terrain without per-voxel work. Includes the bias
+	# offset so the early-out test stays correct after height_offset
+	# pushes the column up or down.
+	var max_ground_y: int = int(height_range_voxels * 0.5) + height_offset_voxels + 1
+	var min_ground_y: int = -int(height_range_voxels * 0.5) + height_offset_voxels - 1
 	var block_min_y: int = origin_in_voxels.y
 	var block_max_y: int = origin_in_voxels.y + (size.y * stride) - 1
 
@@ -128,7 +137,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			# Noise output is in [-1, 1]. Scale to half-range so total
 			# relief == height_range_voxels.
 			var n: float = noise.get_noise_2d(float(world_x), float(world_z))
-			var ground_y: int = int(n * half_range)
+			var ground_y: int = int(n * half_range) + height_offset_voxels
 
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
@@ -138,7 +147,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				# overall range. Using world_y (not ground_y) so the
 				# vertical face of a cliff fades smoothly rather than
 				# painting all ledge tops the same shade.
-				var t: float = clamp((float(world_y) + half_range) / height_range_voxels, 0.0, 1.0)
+				var t: float = clamp((float(world_y) + half_range - float(height_offset_voxels)) / height_range_voxels, 0.0, 1.0)
 				var c: Color = color_low.lerp(color_high, t)
 				out_buffer.set_voxel(c.to_rgba32(), x, y, z, VoxelBuffer.CHANNEL_COLOR)
 
