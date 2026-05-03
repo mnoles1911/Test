@@ -21,8 +21,18 @@ These are settings and installs that survive across all future work. Do them onc
   1. Go to https://github.com/Zylann/godot_voxel/releases
   2. Download the latest "GDExtension" asset matching your platform (Win/Mac/Linux). Requires Godot 4.4.1+; we are on 4.6.2 stable.
   3. Extract the ZIP and move the resulting `zylann.voxel/` folder into the project's `addons/` directory so the path is `addons/zylann.voxel/`.
-  4. Restart Godot. Project Settings → Plugins → confirm "Voxel Tools" is enabled.
-  5. Verify: a `VoxelLodTerrain` node should appear in the Add Node dialog.
+  4. **macOS only — strip Gatekeeper quarantine.** Files downloaded via a browser get an `com.apple.quarantine` extended attribute; macOS then refuses to load the unsigned dylib with "library load disallowed by system policy". Run from a Terminal, from the project root:
+     ```
+     xattr -dr com.apple.quarantine addons/zylann.voxel/
+     ```
+     Skip this step on Windows or Linux.
+  5. **macOS only — also strip quarantine from Godot.app.** If Godot.app itself is quarantined, macOS App Translocation runs it from a randomized read-only sandbox path and resource resolution breaks. Move Godot.app to `/Applications/` (canonical location prevents translocation), then run:
+     ```
+     xattr -dr com.apple.quarantine /Applications/Godot.app
+     ```
+     First launch: right-click → Open (not double-click), confirm the unsigned-app dialog once.
+  6. Restart Godot. Project Settings → Plugins → confirm "Voxel Tools" is enabled.
+  7. Verify: a `VoxelLodTerrain` node should appear in the Add Node dialog.
   Reference: `design/ART_PIPELINE.md` → "Tool 2: Zylann's Voxel Tools" for the full install detail.
   Required for Milestone 5-3D (terrain generation + destructible terrain core).
 

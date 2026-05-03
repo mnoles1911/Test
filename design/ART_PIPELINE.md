@@ -72,9 +72,15 @@ This plugin is **NOT in Godot's Asset Library** — it ships native (C++) binari
 1. Go to https://github.com/Zylann/godot_voxel/releases and download the latest release asset labeled "GDExtension" matching your platform (Windows / macOS / Linux). Requires Godot 4.4.1+; we're on 4.6.2 stable, so any current release works.
 2. Extract the ZIP — you should get a folder named `zylann.voxel`.
 3. Move that folder into your project's `addons/` directory so the path becomes `addons/zylann.voxel/`.
-4. Restart Godot. The plugin auto-detects on launch.
-5. Project Settings → Plugins → confirm "Voxel Tools" is enabled. (Some releases enable automatically; others require this manual toggle.)
-6. Verify by adding a `VoxelLodTerrain` node to a test scene — if the node type appears in the Add Node dialog, the plugin is live.
+4. **macOS only — strip Gatekeeper quarantine** from the addon and from Godot.app itself, or the unsigned dylib will fail to load. From a Terminal, run:
+   ```
+   xattr -dr com.apple.quarantine /path/to/your/project/addons/zylann.voxel/
+   xattr -dr com.apple.quarantine /Applications/Godot.app
+   ```
+   Also: keep Godot.app in `/Applications/`, not `~/Downloads/` — macOS App Translocation runs apps from a randomized read-only sandbox when launched from Downloads, which breaks GDExtension resource resolution. Without this step, you will see errors like *"library load disallowed by system policy"* and *"Can't open dynamic library"* with `AppTranslocation` paths in the Godot Output panel. Skip this step on Windows or Linux.
+5. Restart Godot. The plugin auto-detects on launch.
+6. Project Settings → Plugins → confirm "Voxel Tools" is enabled. (Some releases enable automatically; others require this manual toggle.)
+7. Verify by adding a `VoxelLodTerrain` node to a test scene — if the node type appears in the Add Node dialog, the plugin is live.
 
 **Do NOT use the Module edition** — that's a fully recompiled Godot editor that replaces your Godot install. Heavier setup, same runtime features as GDExtension. Stick with GDExtension.
 
