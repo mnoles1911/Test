@@ -104,7 +104,10 @@ func _on_body_entered(body: Node) -> void:
 	# exactly where the charge landed.
 	if _detonated:
 		return
-	_log("Impact with '%s' at %s" % [body.name if body != null else "?", global_position])
+	var body_label: String = "?"
+	if body != null:
+		body_label = String(body.name)
+	_log("Impact with '%s' at %s" % [body_label, global_position])
 	_detonate()
 
 
@@ -135,7 +138,7 @@ func _detonate() -> void:
 	# crater + (future) audio.
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("BOOM at (%.1f, %.1f, %.1f) radius %.1fm" % [
-			detonate_pos.x, detonate_pos.y, detonate_pos.z, aoe_radius_meters
+			carve_center.x, carve_center.y, carve_center.z, aoe_radius_meters
 		])
 
 	# --- Crafting/Demolition sub-skill XP ---

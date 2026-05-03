@@ -563,7 +563,9 @@ func _refresh_player_state_tab() -> void:
 			var hp: Vector3 = hit.get("position", Vector3.ZERO)
 			var dist: float = player.global_position.distance_to(hp)
 			var collider = hit.get("collider")
-			var collider_name: String = "?" if collider == null else (collider as Node).name
+			var collider_name: String = "?"
+			if collider != null:
+				collider_name = String((collider as Node).name)
 			_ps_aim_label.text = "Aim Target:  (%.1f, %.1f, %.1f)  dist %.1fm  hit '%s'" % [
 				hp.x, hp.y, hp.z, dist, collider_name
 			]
