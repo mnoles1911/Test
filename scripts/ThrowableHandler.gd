@@ -78,7 +78,10 @@ func _process(_delta: float) -> void:
 
 
 func _try_throw() -> void:
-	print("[ThrowableHandler] throw action triggered")
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Throw triggered (%s)" % throwable_item_id)
+	else:
+		print("[ThrowableHandler] throw action triggered")
 	if _player == null:
 		return
 	if not get_node_or_null("/root/InventoryManager"):

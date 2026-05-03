@@ -96,7 +96,10 @@ func add_item(item_id: String, quantity: int = 1) -> void:
 		push_warning("[Inventory] Unknown item id: '%s'" % item_id)
 		return
 	_inventory[item_id] = _inventory.get(item_id, 0) + quantity
-	print("[Inventory] Added %d × %s. Total: %d" % [quantity, item_id, _inventory[item_id]])
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Inventory: +%d %s (total %d)" % [quantity, item_id, _inventory[item_id]])
+	else:
+		print("[Inventory] Added %d × %s. Total: %d" % [quantity, item_id, _inventory[item_id]])
 	GameState.set_flag("has_item_" + item_id, true)
 
 func remove_item(item_id: String, quantity: int = 1) -> bool:
@@ -104,10 +107,14 @@ func remove_item(item_id: String, quantity: int = 1) -> bool:
 	if current < quantity:
 		return false
 	_inventory[item_id] = current - quantity
-	if _inventory[item_id] == 0:
+	var remaining: int = _inventory[item_id]
+	if remaining == 0:
 		_inventory.erase(item_id)
 		GameState.set_flag("has_item_" + item_id, false)
-	print("[Inventory] Removed %d × %s." % [quantity, item_id])
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Inventory: -%d %s (left %d)" % [quantity, item_id, remaining])
+	else:
+		print("[Inventory] Removed %d × %s." % [quantity, item_id])
 	return true
 
 func has_item(item_id: String) -> bool:

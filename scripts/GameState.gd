@@ -480,7 +480,12 @@ func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
 	# their named save's name across sessions.
 	if not is_autosave:
 		active_save_display_name = save_name
-	print("[GameState] Saved '%s' → %s" % [save_name, path])
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("%s save: '%s'" % [
+			"AUTO" if is_autosave else "Named", save_name
+		])
+	else:
+		print("[GameState] Saved '%s' → %s" % [save_name, path])
 	if get_node_or_null("/root/SaveNotification"):
 		SaveNotification.show_notification()
 
@@ -579,7 +584,10 @@ func load_save_file(filename: String) -> bool:
 	else:
 		active_save_display_name = ""
 	last_save_unix_time = int(Time.get_unix_time_from_system())
-	print("[GameState] Loaded '%s'. Flags: %d, Skill XP entries: %d" % [save_label, _flags.size(), _skill_xp.size()])
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Loaded save: '%s'" % save_label)
+	else:
+		print("[GameState] Loaded '%s'. Flags: %d, Skill XP entries: %d" % [save_label, _flags.size(), _skill_xp.size()])
 	return true
 
 

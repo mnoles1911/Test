@@ -101,7 +101,12 @@ func _detonate() -> void:
 	# TODO: spawn a GPUParticles3D preset once explosion VFX
 	# assets exist. For now the only feedback is the voxel
 	# crater + (future) audio.
-	print("[PowderCharge] BOOM at %s (radius %.1fm)" % [global_position, aoe_radius_meters])
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("BOOM at (%.1f, %.1f, %.1f) radius %.1fm" % [
+			global_position.x, global_position.y, global_position.z, aoe_radius_meters
+		])
+	else:
+		print("[PowderCharge] BOOM at %s (radius %.1fm)" % [global_position, aoe_radius_meters])
 
 	# --- Crafting/Demolition sub-skill XP ---
 	# Per design/SKILLS_AND_PROGRESSION.md — explosive_detonated = 15.

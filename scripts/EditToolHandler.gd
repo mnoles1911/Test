@@ -230,8 +230,16 @@ func _try_swing() -> void:
 	if not accepted:
 		# Rejected by NoEditZone. The bark system will eventually fire
 		# Roland's "This place doesn't yield to me." line here.
-		print("[EditToolHandler] This place doesn't yield to me.")
+		if get_node_or_null("/root/DebugOverlay"):
+			DebugOverlay.log_action("Edit rejected: NoEditZone at %s" % voxel_world_pos)
+		else:
+			print("[EditToolHandler] This place doesn't yield to me.")
 		return
+
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Mined %s with %s at (%.1f, %.1f, %.1f)" % [
+			voxel_material, equipped_id, voxel_world_pos.x, voxel_world_pos.y, voxel_world_pos.z
+		])
 
 	# --- Yield raw material into inventory ---
 	var yield_item: String = VOXEL_MATERIAL_YIELDS.get(voxel_material, "")
