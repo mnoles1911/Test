@@ -43,11 +43,14 @@ extends RigidBody3D
 # when EnemyAI exists; currently unused but stored so the value
 # survives the throw → detonate flow.
 
-@export var fuse_seconds: float = 3.0
+@export var fuse_seconds: float = 2.0
 # Fuse delay if the charge doesn't impact-detonate. Counts down
-# from the moment the charge is spawned. 3 seconds is roughly
-# Roland's reaction window — long enough to throw and back away,
-# short enough that he can't camp it.
+# from the moment the charge is spawned. 2 seconds is short
+# enough that charges thrown from a high point detonate before
+# falling out of Zylann's near-LOD collision range (~30-60m
+# from the player). Bumped down from 3s after charges were
+# observed falling to Y=-60+ during the fuse and detonating in
+# unloaded territory below the world.
 
 
 # =============================================================
@@ -90,17 +93,25 @@ func _detonate() -> void:
 	_detonated = true
 
 	# --- Pick a detonation point that actually hits terrain ---
-	# If the fuse expires mid-air or the charge fell past the
-	# voxel terrain's collision radius (which only generates on
-	# near LODs), the charge's current position is in empty
-	# sky / underground — a sphere carve there removes nothing
-	# visible. Raycast straight down from the charge's position
-	# to find the nearest ground surface, and detonate there
-	# instead. Falls back to the current position if no ground
-	# is within 100m (e.g. thrown over the edge of the world).
-	var detonate_pos: Vector3 = _find_ground_below(global_position, 100.0)
+	# Three cases to handle:
+	#   1. Fuse expires while charge is above terrain (mid-air
+	#      detonation in normal flight) — raycast DOWN to find
+	#      the surface below.
+	#   2. Charge fell past Zylann's near-LOD collision and is
+	#      now BELOW the terrain mass (thrown from a high point,
+	#      lands far from the player) — raycast UP finds the
+	#      underside; carve there to leave a tunnel/cavity.
+	#   3. No terrain in either direction (thrown into a void or
+	#      far past Zylann's collision range entirely) — abort
+	#      the carve so we don't queue a useless edit at empty
+	#      coordinates that would never produce a visible crater.
+	var detonate_pos: Vector3 = _find_nearest_terrain(global_position, 200.0)
+	if detonate_pos == Vector3.INF:
+		_log("No terrain found above or below charge at %s — aborting (fell into void / past collision LOD)" % global_position)
+		queue_free()
+		return
 	if detonate_pos != global_position:
-		_log("Snapped detonation from air %s to ground %s" % [global_position, detonate_pos])
+		_log("Snapped detonation from %s to nearest terrain %s" % [global_position, detonate_pos])
 
 	# --- Voxel removal in the AOE ---
 	if get_node_or_null("/root/VoxelEditManager"):
@@ -128,37 +139,6 @@ func _detonate() -> void:
 			detonate_pos.x, detonate_pos.y, detonate_pos.z, aoe_radius_meters
 		])
 
-
-func _find_ground_below(from_pos: Vector3, max_distance: float) -> Vector3:
-	# Cast a downward ray to find the nearest solid surface. Returns
-	# the impact position on success, or the original from_pos if
-	# nothing hit within max_distance.
-	#
-	# Used to ensure the fuse-expired-mid-air case still carves
-	# visible terrain instead of carving empty air at the charge's
-	# floating position.
-	var space_state := get_world_3d().direct_space_state
-	var params := PhysicsRayQueryParameters3D.create(
-		from_pos,
-		from_pos + Vector3(0, -max_distance, 0),
-	)
-	# Exclude the charge itself so the ray doesn't hit its own
-	# collision shape immediately.
-	params.exclude = [get_rid()]
-	var hit: Dictionary = space_state.intersect_ray(params)
-	if hit.is_empty():
-		return from_pos
-	return hit.get("position", from_pos)
-
-
-func _log(msg: String) -> void:
-	# Centralized logger: feeds the in-game CONSOLE tab when
-	# DebugOverlay is available, falls back to print otherwise.
-	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("[PowderCharge] " + msg)
-	else:
-		print("[PowderCharge] " + msg)
-
 	# --- Crafting/Demolition sub-skill XP ---
 	# Per design/SKILLS_AND_PROGRESSION.md — explosive_detonated = 15.
 	if get_node_or_null("/root/GameState"):
@@ -173,3 +153,53 @@ func _log(msg: String) -> void:
 	# removal to the end of the frame so any in-flight signal
 	# handling completes safely.
 	queue_free()
+
+
+func _find_nearest_terrain(from_pos: Vector3, max_distance: float) -> Vector3:
+	# Try DOWN first (charge floating above terrain): this is the
+	# normal case. If a ray straight down hits something, return
+	# the hit point.
+	#
+	# If the down-ray finds nothing, try UP — the charge probably
+	# fell past Zylann's collision and is now below the terrain
+	# mass. The up-ray hits the underside of the lowest voxel,
+	# which is close enough to the surface that a 2m carve from
+	# there cuts into the visible terrain.
+	#
+	# If neither direction finds terrain, return Vector3.INF as a
+	# sentinel — the caller should abort the carve rather than
+	# queue an edit at coordinates with nothing around them.
+	var space_state := get_world_3d().direct_space_state
+
+	var down_params := PhysicsRayQueryParameters3D.create(
+		from_pos, from_pos + Vector3(0, -max_distance, 0)
+	)
+	down_params.exclude = [get_rid()]
+	var hit_down: Dictionary = space_state.intersect_ray(down_params)
+	if not hit_down.is_empty():
+		return hit_down.get("position", from_pos)
+
+	var up_params := PhysicsRayQueryParameters3D.create(
+		from_pos, from_pos + Vector3(0, max_distance, 0)
+	)
+	up_params.exclude = [get_rid()]
+	var hit_up: Dictionary = space_state.intersect_ray(up_params)
+	if not hit_up.is_empty():
+		return hit_up.get("position", from_pos)
+
+	return Vector3.INF
+
+
+func _log(msg: String) -> void:
+	# Centralized logger: feeds the in-game CONSOLE tab when
+	# DebugOverlay is available, falls back to print otherwise.
+	#
+	# (Earlier this function was accidentally polluted with the
+	# tail of _detonate — XP awarding and queue_free were
+	# attached here instead of staying in _detonate where they
+	# belong. That made every single log call double-award XP
+	# and try to free the charge. Now _log just logs.)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("[PowderCharge] " + msg)
+	else:
+		print("[PowderCharge] " + msg)
