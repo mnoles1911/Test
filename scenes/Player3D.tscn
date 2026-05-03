@@ -51,3 +51,10 @@ arm_length = 5.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraTarget/SpringArm3D"]
 current = true
+
+[node name="VoxelViewer" type="VoxelViewer" parent="."]
+; Tells the voxel terrain which area to stream around the player.
+; Without this node, the VoxelLodTerrain in World3D won't know where
+; to load chunks. Position is the player's world position; the
+; terrain streams chunks within `view_distance` of this node.
+view_distance = 256
