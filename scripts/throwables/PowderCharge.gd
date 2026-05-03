@@ -37,10 +37,13 @@ extends RigidBody3D
 # CONFIGURATION
 # =============================================================
 
-@export var aoe_radius_meters: float = 2.0
-# Sphere radius of the voxel-removal blast and damage area. The
-# Powder Charge default is 2m; Sapper's Bundle uses ~4m. Set per
-# instance from the inventory item's voxel_aoe_radius field.
+@export var aoe_radius_meters: float = 3.0
+# Sphere radius of the voxel-removal blast and damage area, in
+# metres. ThrowableHandler overwrites this on spawn from
+# InventoryManager.ITEM_REGISTRY[item_id]["voxel_aoe_radius"]
+# (currently 3.0 for powder_charge, 6.0 for sappers_bundle), so the
+# @export default only matters when an instance is spawned outside
+# the normal flow (e.g. dropped via the editor for testing).
 
 @export var combat_damage: int = 40
 # Damage applied to enemies in the AOE on detonation. Hooked up

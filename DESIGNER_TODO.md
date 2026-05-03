@@ -348,36 +348,38 @@ Organized by development phase. Build within each phase in the order listed.
 
 ---
 
-### Phase 5-3D — Open World Foundation (Editable Terrain)
+### Phase 5-3D — Open World Foundation (Editable Terrain) ✅ LARGELY COMPLETE (2026-05-03)
 
-- [ ] **`WorldGenerator` (VoxelGeneratorGraph)** ← foundation; everything stands on this
-  Implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass) assigned to `VoxelLodTerrain`.
-  **Produces the procedural baseline only — every player edit is diffed against this.**
-  **Pipeline:** Author terrain in **Gaea** → export 32-bit EXR heightmap + RGB biome splatmap →
-  import both as Image resources in Godot → wire into VoxelGeneratorGraph:
-  - Image node (heightmap EXR) + XZ scale → surface SDF
-  - 3D Noise nodes → cave/overhang SDF
-  - `SdfSmoothSubtract` → combined → `CHANNEL_SDF`
-  - Image node (biome splatmap) → `CHANNEL_INDICES`
-  Must encode: Spine ridge (wx ~5000–7000), Greatwood flat (wz ~0–2500), Aldwater valley,
-  Ashfields, forced-flat settlement zones (see CLAUDE.md → World coordinate reference).
-  Stamp a `WORLD_GENERATOR_VERSION` constant in code so save loads detect mismatches.
-  Reference: `design/ART_PIPELINE.md` → Tool 2
+- [x] **`CubicHeightmapGenerator` (custom GDScript)** — replaces the originally-planned VoxelGeneratorGraph + Gaea EXR pipeline. `VoxelGeneratorScript` subclass in `scripts/CubicHeightmapGenerator.gd`, attached to the `VoxelLodTerrain` node in `World3D.tscn`. Writes `CHANNEL_COLOR` per voxel via macro + mid + detail noise layers + per-voxel colour jitter. Live-tunable in the Inspector via `@export_range` sliders + `Preset` enum (LAY_OF_THE_LAND / MINECRAFT_BLOCKY / SMOOTH_GRADIENT / CUSTOM). The Gaea pipeline may return for v1 Mira authoring; for now this generator is sufficient.
 
-- [ ] **`VoxelEditManager.gd` autoload** — Core of the destructible terrain system. Async edit queue (per-frame voxel budget cap, ~256 voxels/frame default), `EditedChunkRegistry` (in-memory `HashSet[Vector3i]`, populated from `VoxelStreamSQLite` on save load), LOD-bake-on-eviction (one-time LOD1/LOD2 mesh generation when an edited chunk leaves edit-detail radius; cached to `user://saves/slot_{N}/mesh_cache/`; regenerate on demand if missing), NoEditZone enforcement before every `VoxelTool.do_*` call. Public API: `queue_edit_sphere(pos, radius, voxel_value) -> bool`, `queue_edit_box(...)`, `queue_set_voxel(...)`. Returns false if rejected by NoEditZone (caller may bark *"This place doesn't yield to me."* once per session per zone).
-  Reference: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain"
+- [x] **`VoxelEditManager.gd` autoload** — registered in `project.godot`. Async edit queue (per-frame voxel budget 200000), `EditedChunkRegistry` (`Dictionary<Vector3i, bool>`), NoEditZone enforcement, world→voxel coord conversion (`terrain.to_local()` + `1/scale.x` for radii), `WORLD_GENERATOR_VERSION = 7` stamped into saves. Public API: `queue_edit_sphere(pos, radius, voxel_value) -> bool`, `queue_edit_box(...)`, `queue_set_voxel(...)`. Returns false on NoEditZone rejection.
 
-- [ ] **`NoEditZoneRegistry.gd` autoload** — Tracks Area3D volumes registered to the `no_edit_zone` group. `_ready()` walks the scene tree and connects to area `tree_entered` / `tree_exiting` signals so registry updates live as zones load/unload via EntityStreamer. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before every voxel write.
-  Reference: `design/3D_VOXEL_MIGRATION.md` → "NoEditZones"
+- [x] **`NoEditZoneRegistry.gd` autoload** — registered in `project.godot`. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before every voxel write.
 
-- [ ] **First edit verb wired in** — Equip a Pickaxe → swing connects with rock voxel → `VoxelEditManager.queue_edit_sphere(pos, 0.5, AIR_VOXEL)` → if accepted, remove voxels and yield "Raw stone" to inventory; advance Mining sub-skill. Proves the full edit pipeline end-to-end (input → manager → NoEditZone check → VoxelTool write → SQLite delta → mesh re-bake → inventory yield → skill XP).
+- [x] **First edit verb (pickaxe) wired in** — `EditToolHandler.gd` (child of Player3D). Camera raycast → `VoxelEditManager.queue_set_voxel` (carves a 0.5 m bite) → material yield to InventoryManager (`raw_stone` etc.) → Mining sub-skill XP via `GameState.add_skill_xp`.
 
-- [ ] **Save / load wiring for editable terrain** — `GameState.save_game()` flushes `VoxelStreamSQLite` and `placed_schematics.json` to slot directory. `GameState.load_game()` validates `WORLD_GENERATOR_VERSION` stamp (hard error on mismatch — surface a clear UI error, do not load), populates `EditedChunkRegistry` from SQLite, hooks `VoxelStreamSQLite` to the slot's database path. Backup rotation per `design/SAVE_SYSTEM.md`.
+- [x] **Test NoEditZone in `World3D.tscn`** — 10×10×10 m Area3D at world (8, 5, 0) registered to `no_edit_zone` group. Pickaxe + explosive carves inside it are silently rejected.
 
-- [ ] **Test NoEditZone in `World3D.tscn`** — Drop one Area3D registered to group `no_edit_zone` covering a small region (e.g., a 10m × 10m square). Verify pickaxe edits inside the zone are silently rejected and trigger Roland's bark; edits outside work normally.
+- [x] **Explosive throwables wired in** — `PowderCharge.gd` + `ThrowableHandler.gd`. Camera-aimed (carries pitch), inventory-driven AOE (`voxel_aoe_radius` in `ITEM_REGISTRY`), visible OmniLight3D + emissive sphere flash on detonation.
+
+- [x] **Save / load wiring for editable terrain** — `GameState.save_game()` calls `VoxelEditManager.flush_pending_edits()` then writes JSON state including `WORLD_GENERATOR_VERSION` stamp + `WorldClock` time + `_skill_xp` + `InventoryManager` save data. Load validates the version stamp (hard error on mismatch).
+
+- [x] **Swimming + drowning state machine** — `Player3D._update_water_state` polls `water_volume` group. `WaterVolume.gd` exposes `surface_y` (world-space) and `get_current_velocity()`. Ocean raised to Y=6 so water is accessible at average terrain elevation. Drowning ticks at 5 HP/s after 30 s submerged.
+
+- [x] **Day/night cycle** — `DayNightCycle.gd` on `World3D` rotates Sun/Moon `DirectionalLight3D` and lerps sky/fog colours each frame from `WorldClock`'s continuous hour float.
+
+- [x] **Movement mechanics** — Jump on Space (when grounded, 7 m/s velocity, ~1.22 m peak), debug fly mode (F1 toggle, teleports to 100 m, 10× walk speed, no gravity).
 
 - [ ] **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Phase 5 version just prints
-  chunk coordinates to Output as player moves. Full entity loading in Phase 6.
+  chunk coordinates to Output as player moves. Full entity loading in Phase 6. **Not yet
+  needed** — current world has no streamed entities beyond Player3D.
+
+#### Outstanding for Phase 5-3D polish (defer to next batch):
+- [ ] **Roland low-poly Blender model** — currently a 0.4×1.7×0.25 m green box placeholder.
+- [ ] **MagicaVoxel exports** — campfire prop, cave wall props.
+- [ ] **Surface decoration pass** — scatter 1-3 voxel vertical pillars (grass / stone / flowers, color-varied) on terrain top during generation. Biggest remaining visual gap vs. the Lay-of-the-Land reference look.
+- [ ] **LOD-bake-on-eviction caching** — `user://saves/slot_{N}/mesh_cache/`. Render optimization, not correctness gate. Defer until perf becomes an issue.
+- [ ] **Multi-slot voxel save directories** — currently `user://voxel_deltas.sqlite` is shared. Refactor to `user://saves/slot_{N}/voxel_deltas.sqlite` once save-slot UI is exercised.
 
 ---
 

@@ -102,16 +102,18 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 | Node | Role |
 |---|---|
 | `VoxelLodTerrain` | Streaming open-world terrain with automatic LOD (6–8 levels) |
-| `VoxelGeneratorGraph` | Visual node-graph terrain generator (compiles to compute shader) — produces the procedural **baseline** |
-| `VoxelStreamSQLite` | Per-save-slot sqlite database storing every player edit as a voxel delta against the baseline |
-| `VoxelMesherCubes` | Blocky stepped meshing — hard block faces, no smoothing |
+| `VoxelGeneratorScript` (subclassed as `CubicHeightmapGenerator`) | Custom GDScript generator that writes `CHANNEL_COLOR` per-voxel using layered noise (macro + mid + detail) and per-voxel colour jitter. Replaces the originally-planned VoxelGeneratorGraph + Gaea EXR import — see `scripts/CubicHeightmapGenerator.gd`. |
+| `VoxelStreamSQLite` | Per-save-slot sqlite database storing every player edit as a voxel delta against the baseline (`user://voxel_deltas.sqlite`) |
+| `VoxelMesherCubes` | Blocky stepped meshing — hard cubic faces. Reads `CHANNEL_COLOR` (alpha=0 → no cube; alpha>0 → packed RGBA cube). |
 | `VoxelViewer` | One per player — tells the terrain which area to stream |
-| `VoxelTool` | Programmatic API for voxel reads/writes; used by every player edit verb (axe, pick, shovel, explosive, spell) |
+| `VoxelTool` (specifically `VoxelToolLodTerrain` from `terrain.get_voxel_tool()`) | Programmatic API for voxel reads/writes. **Coordinates are voxel-grid space, NOT world** — pass `terrain.to_local(world_pos)` for position and `world_radius / terrain.scale.x` for radius. |
 | `VoxelInstancer` | Scatter foliage and props (trees, rocks, grass) across terrain |
 
 **What is NOT used:**
 - `VoxelMesherTransvoxel` — smooths geometry; eliminates the blocky aesthetic. Do not use.
+- `VoxelMesherBlocky` — model-library based; we use Cubes (per-voxel RGBA) instead.
 - `VoxelTerrain` (non-LOD variant) — for small finite worlds only; not suitable for 12km extent
+- `VoxelGeneratorGraph` + Gaea EXR — was the original plan; replaced by the GDScript generator above. The Gaea pipeline may return for the v1 Mira terrain authoring pass; for now noise-driven generation is sufficient.
 - `VoxelGeneratorScript` GDScript subclass — too slow; use VoxelGeneratorGraph instead
 
 **Voxel scale:** 8 voxels per meter (each block = 12.5 cm). Noticeably blocky but finer than Minecraft's 1m blocks. All assets (MagicaVoxel props, building exports) are authored at this scale.
@@ -643,21 +645,22 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 | `InventoryManager.gd` | ✅ Active | Items, equipment, crafting recipes |
 | `JournalUI.gd` | ✅ Active | 6-tab overlay (Quests/Map/Items/Crafting/Codex/Skills) |
 | `HUDOverlay.gd` | ✅ Active | HP + endurance bars, status label |
-| `Settings.gd` | ✅ Active | Display, audio, controls, accessibility settings |
-| `MainMenu.gd` | ✅ Active | Main menu UI |
 | `Dialogic` | ✅ Active | Dialogue system |
-| `BarkManager.gd` | ⚠️ Built, not registered | Spatial bark audio + line selection |
-| `WorldClock.gd` | ⚠️ Built, not registered | In-game time, schedule dispatch |
+| `BarkManager.gd` | ✅ Active | Spatial bark audio + line selection |
+| `WorldClock.gd` | ✅ Active | In-game time, schedule dispatch |
+| `VoxelEditManager.gd` | ✅ Active | Async edit queue, EditedChunkRegistry, NoEditZone enforcement, per-frame voxel budget |
+| `NoEditZoneRegistry.gd` | ✅ Active | Registry of Area3D no-edit volumes; queried before every VoxelTool write |
+| `Settings.gd` | NOT autoload | Scene-attached script on `scenes/ui/Settings.tscn` (TransitionManager-loaded scene) |
+| `MainMenu.gd` | NOT autoload | Scene-attached script on `scenes/ui/MainMenu.tscn` |
+| `WorldGenerator` | ✅ As `CubicHeightmapGenerator` | Custom `VoxelGeneratorScript` that writes CHANNEL_COLOR with macro+mid+detail noise layers + per-voxel colour jitter. Configured on the `VoxelLodTerrain` node in `World3D.tscn`, NOT registered as autoload (lives on the terrain). Replaced the planned VoxelGeneratorGraph + Gaea EXR pipeline. |
 | `EntityRegistry.gd` | 🔲 Not yet built | Spatial entity dictionary by chunk |
 | `EntityStreamer.gd` | 🔲 Not yet built | Loads/unloads world entities by proximity |
-| `WorldGenerator` | 🔲 Not yet built | VoxelGeneratorGraph node (editor, not code) — procedural baseline only |
-| `VoxelEditManager.gd` | 🔲 Not yet built | Async edit queue, EditedChunkRegistry, LOD-bake cache, NoEditZone enforcement, per-frame voxel budget |
-| `NoEditZoneRegistry.gd` | 🔲 Not yet built | Registry of Area3D no-edit volumes; queried before every VoxelTool write |
 | `SchematicLibrary.gd` | 🔲 Not yet built | Registry of placeable building schematics (.glb props with placement metadata) |
 | `FactionManager.gd` | 🔲 Not yet built | Faction disposition wrapper |
 | `QuestManager.gd` | 🔲 Not yet built | Quest flag advancement |
 | `WeatherManager.gd` | 🔲 Not yet built | Weather state and WorldEnvironment tweening |
 | `CompanionManager.gd` | 🔲 Not yet built | Companion HP, state, save serialization |
+| `LOD-bake-on-eviction` | 🔲 Deferred | LOD1/LOD2 mesh cache for edited chunks under `user://saves/slot_{N}/mesh_cache/` — render optimization, not correctness gate |
 
 ---
 
