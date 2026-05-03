@@ -277,15 +277,17 @@ func get_camera_forward_hit(max_distance_from_player: float = 5.0) -> Dictionary
 	# spring_length meters behind the player on the spring arm, so
 	# we extend the ray length to account for that gap.
 	#
+	# The player's own CharacterBody3D is excluded from the raycast.
+	# Without this exclusion, the ray (which starts behind the player
+	# and goes forward) hits Roland's capsule before reaching any
+	# terrain — every aim returns a "hit" on Roland's body, even when
+	# the crosshair is pointing at empty sky.
+	#
 	# Returns the standard Godot intersect_ray hit dict on hit, or
 	# an empty dict on miss.
 	#
 	# Hit dict keys: "position" (world Vector3), "normal" (Vector3),
 	# "collider" (Object), "collider_id" (int), "rid" (RID), "shape" (int).
-	#
-	# Used by EditToolHandler.gd to find the voxel the player is aiming
-	# at; the design uses this for "investigation prompts", lock-on
-	# candidate finding, etc.
 	var camera: Camera3D = get_node_or_null("Camera3D")
 	if camera == null:
 		return {}
@@ -298,12 +300,17 @@ func get_camera_forward_hit(max_distance_from_player: float = 5.0) -> Dictionary
 	var direction: Vector3 = camera.project_ray_normal(screen_center)
 
 	# Extend the ray length so max_distance_from_player is measured
-	# from the player's position rather than the camera's. Without
-	# this, a 4m-reach pickaxe with a 5m spring arm would have the
-	# ray end 1m BEHIND the player and never hit any voxel surface
-	# in front of them.
+	# from the player's position rather than the camera's.
 	var ray_length: float = max_distance_from_player + spring_length
 
 	var space_state: PhysicsDirectSpaceState3D = camera.get_world_3d().direct_space_state
 	var params := PhysicsRayQueryParameters3D.create(origin, origin + direction * ray_length)
+
+	# Exclude the player's CharacterBody3D RID. _player is set in
+	# _ready (one parent up the tree). If it's null for any reason,
+	# we fall through with no exclusion — the ray hitting the player
+	# is degraded behavior but not a crash.
+	if _player != null:
+		params.exclude = [_player.get_rid()]
+
 	return space_state.intersect_ray(params)

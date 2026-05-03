@@ -164,8 +164,26 @@ func _try_swing() -> void:
 		print("[EditToolHandler]   raycast hit nothing within %.1fm" % max_reach_meters)
 		_swing_cooldown_remaining = swing_cooldown_seconds
 		return
+
+	# The raycast extends through the camera arm + max_reach so it
+	# can reach max_reach meters past the player. But the hit might
+	# be on something close to the camera (a wall behind the
+	# player) rather than something within tool range. Verify the
+	# hit position is within max_reach_meters of the PLAYER, not
+	# just within the ray length.
+	var player := get_parent() as CharacterBody3D
+	var hit_pos: Vector3 = hit.get("position", Vector3.ZERO)
+	if player != null:
+		var dist_from_player: float = player.global_position.distance_to(hit_pos)
+		if dist_from_player > max_reach_meters:
+			print("[EditToolHandler]   target out of reach (%.1fm > %.1fm)" % [
+				dist_from_player, max_reach_meters
+			])
+			_swing_cooldown_remaining = swing_cooldown_seconds
+			return
+
 	print("[EditToolHandler]   ray hit at %s, normal %s, collider=%s" % [
-		hit.get("position", Vector3.ZERO),
+		hit_pos,
 		hit.get("normal", Vector3.UP),
 		hit.get("collider"),
 	])

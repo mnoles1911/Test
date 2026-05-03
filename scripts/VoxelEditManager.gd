@@ -287,7 +287,14 @@ func _apply_edit(cmd: Dictionary) -> void:
 	# new one each time per Zylann's recommended usage.
 	var tool: VoxelTool = _terrain.get_voxel_tool()
 	if tool == null:
+		print("[VoxelEditManager] _apply_edit: terrain.get_voxel_tool() returned null")
 		return
+
+	print("[VoxelEditManager] _apply_edit: type=%s pos=%s value=%d" % [
+		cmd.get("type", "?"),
+		cmd.get("pos", Vector3.ZERO),
+		cmd.get("value", 0),
+	])
 
 	# Edits target the signed distance field channel (CHANNEL_SDF)
 	# because the test world uses VoxelMesherTransvoxel which reads
