@@ -359,6 +359,77 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
+# LMB click handler — bypasses Godot's gui_input routing for the
+# same reason MainMenu does: when Input.mouse_mode is held in
+# CAPTURED state by upstream code (CameraRig from World3D), the
+# GUI dispatch system goes silent. _input still fires for all
+# mouse events regardless, so we manually route clicks to whichever
+# Control's global rect contains them.
+#
+# Only fires when the pause menu is open (gates on _root.visible).
+func _input(event: InputEvent) -> void:
+	if not _root.visible:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	_dispatch_click(mb.position)
+
+
+func _dispatch_click(pos: Vector2) -> void:
+	# Routes a click to whichever interactive Control's rect
+	# contains it. Mirrors what _gui_input + Button.pressed
+	# would do, but works regardless of mouse_mode state.
+	# Sub-panel visibility decides which set of buttons is active.
+
+	if _save_panel.visible:
+		# Save dialog: confirm + cancel. The LineEdit handles its own
+		# text input (Godot routes typing through focus, not gui_input).
+		if _hits(_save_confirm_btn, pos):
+			_on_save_confirm()
+			return
+		if _hits(_save_cancel_btn, pos):
+			_show_main_panel()
+			return
+		return
+
+	if _load_panel.visible:
+		# Load picker: cancel + per-row LOAD/DELETE buttons.
+		if _hits(_load_cancel_btn, pos):
+			_show_main_panel()
+			return
+		for row in _load_list_container.get_children():
+			if not (row is HBoxContainer):
+				continue
+			for child in row.get_children():
+				if child is Button and _hits(child as Button, pos):
+					(child as Button).pressed.emit()
+					return
+		return
+
+	# Main pause panel.
+	if _main_panel.visible:
+		if _hits(_resume_btn,    pos): _on_resume();    return
+		if _hits(_save_btn,      pos): _on_save();      return
+		if _hits(_load_btn,      pos): _on_load();      return
+		if _hits(_settings_btn,  pos): _on_settings();  return
+		if _hits(_exit_menu_btn, pos): _on_exit_menu(); return
+		if _hits(_quit_btn,      pos): _on_quit();      return
+
+
+func _hits(ctrl: Control, pos: Vector2) -> bool:
+	# True if pos is inside the Control's screen-space rect AND
+	# the Control is visible AND not disabled. Disabled buttons
+	# (e.g. LOAD when no saves exist) should NOT respond to clicks.
+	if ctrl == null or not ctrl.visible:
+		return false
+	if ctrl is Button and (ctrl as Button).disabled:
+		return false
+	return ctrl.get_global_rect().has_point(pos)
+
+
 func is_open() -> bool:
 	return _root != null and _root.visible
 
