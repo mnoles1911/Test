@@ -32,27 +32,23 @@ fog_density = 0.02
 database_path = "user://voxel_deltas.sqlite"
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
-; Low-frequency 3D noise produces rolling hills and overhangs.
-; frequency below 0.05 = large features; higher = more rugged.
-noise_type = 1
-frequency = 0.025
+; Very low frequency = very large features = gentle rolling hills.
+; If the world still feels chaotic, lower this number further.
+frequency = 0.005
 
-[sub_resource type="VoxelGeneratorNoise" id="VoxelGen_Noise"]
-; 3D-noise generator that fills CHANNEL_SDF — the channel
-; VoxelMesherTransvoxel reads. Default settings give you bumpy
-; ground with caves, walkable on top.
+[sub_resource type="VoxelGeneratorNoise2D" id="VoxelGen_Noise2D"]
+; 2D heightmap-style noise. The surface follows a 2D noise map,
+; producing rolling hills with no overhangs, no floating islands,
+; no caves. "Normal" walkable terrain.
 ;
-; This is a TEST GENERATOR. The design intent is Mira terrain
-; authored in Gaea via VoxelGeneratorGraph; that becomes a
-; follow-up batch.
+; Earlier we used VoxelGeneratorNoise (3D), which produces caves
+; and overhangs anywhere the noise crosses zero — that read as
+; chaotic, especially with default frequency. 2D heightmap is
+; much closer to "a regular outdoor area Roland walks through."
 noise = SubResource("TerrainNoise")
+height_range = 8.0
 
 [sub_resource type="VoxelMesherTransvoxel" id="VoxelMesher_Transvoxel"]
-; Smooth meshing of the SDF surface. NOT the design's blocky
-; aesthetic — that needs VoxelMesherBlocky + a VoxelBlockyLibrary
-; with at least one voxel model defined. Switching to that is a
-; follow-up; for now, smooth terrain proves the pipeline
-; (edits, save/load, NoEditZone, explosives) works end-to-end.
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]
 size = Vector3(0.5, 0.3, 0.5)
@@ -84,7 +80,7 @@ shadow_enabled = true
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 6
 stream = SubResource("VoxelStream_SQLite")
-generator = SubResource("VoxelGen_Noise")
+generator = SubResource("VoxelGen_Noise2D")
 mesher = SubResource("VoxelMesher_Transvoxel")
 
 [node name="Campfire" type="OmniLight3D" parent="." unique_id=98083291]
@@ -117,8 +113,4 @@ shape = SubResource("NoEditZone_TestShape")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 4)
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
-; Spawn at Y=30 because VoxelGeneratorNoise produces terrain at
-; varying heights — could be -10m to +10m in any chunk. Spawning
-; high lets Roland fall onto whatever the noise gives him,
-; instead of risking a spawn-inside-terrain situation.
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15, 0)

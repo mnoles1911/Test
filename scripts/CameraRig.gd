@@ -270,18 +270,22 @@ func exit_dialogue_mode() -> void:
 
 # --- Forward raycast helper (used by EditToolHandler for voxel targeting) ---
 
-func get_camera_forward_hit(max_distance: float = 5.0) -> Dictionary:
+func get_camera_forward_hit(max_distance_from_player: float = 5.0) -> Dictionary:
 	# Casts a ray forward from the center of the screen (where the
-	# crosshair sits) out to max_distance meters. Returns the standard
-	# Godot intersect_ray hit dict on hit, or an empty dict on miss.
+	# crosshair sits). max_distance_from_player is measured from the
+	# player's position, NOT the camera's position — the camera sits
+	# spring_length meters behind the player on the spring arm, so
+	# we extend the ray length to account for that gap.
+	#
+	# Returns the standard Godot intersect_ray hit dict on hit, or
+	# an empty dict on miss.
 	#
 	# Hit dict keys: "position" (world Vector3), "normal" (Vector3),
 	# "collider" (Object), "collider_id" (int), "rid" (RID), "shape" (int).
 	#
-	# Used by EditToolHandler.gd to find which voxel the player is
-	# aiming at when they press the attack action while a tool is
-	# equipped. Could also be used later for "what am I looking at?"
-	# investigation prompts, lock-on candidate finding, etc.
+	# Used by EditToolHandler.gd to find the voxel the player is aiming
+	# at; the design uses this for "investigation prompts", lock-on
+	# candidate finding, etc.
 	var camera: Camera3D = get_node_or_null("Camera3D")
 	if camera == null:
 		return {}
@@ -293,6 +297,13 @@ func get_camera_forward_hit(max_distance: float = 5.0) -> Dictionary:
 	var origin: Vector3 = camera.project_ray_origin(screen_center)
 	var direction: Vector3 = camera.project_ray_normal(screen_center)
 
+	# Extend the ray length so max_distance_from_player is measured
+	# from the player's position rather than the camera's. Without
+	# this, a 4m-reach pickaxe with a 5m spring arm would have the
+	# ray end 1m BEHIND the player and never hit any voxel surface
+	# in front of them.
+	var ray_length: float = max_distance_from_player + spring_length
+
 	var space_state: PhysicsDirectSpaceState3D = camera.get_world_3d().direct_space_state
-	var params := PhysicsRayQueryParameters3D.create(origin, origin + direction * max_distance)
+	var params := PhysicsRayQueryParameters3D.create(origin, origin + direction * ray_length)
 	return space_state.intersect_ray(params)

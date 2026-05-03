@@ -33,6 +33,12 @@ var _root: Control
 var _content_label: Label
 var _tab_label: Label
 
+# Always-on coords HUD (separate from the F1 toggleable overlay).
+# Small label in the top-left corner that updates every frame
+# with the player's world position. Useful for "where am I?" and
+# voxel debugging without having to open the full debug panel.
+var _coords_label: Label
+
 enum DebugTab { RECENT, ALL_FLAGS, COMPANIONS }
 var _current_tab: DebugTab = DebugTab.RECENT
 
@@ -46,9 +52,53 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	_build_ui()
+	_build_coords_hud()
 	_root.visible = false
 
 	print("[DebugOverlay] Initialized.")
+
+
+func _process(_delta: float) -> void:
+	# Live coords update — runs every frame the overlay autoload is
+	# alive (always, in practice). Cheap: one node lookup + one
+	# string format per frame.
+	if not enabled or _coords_label == null:
+		return
+	_update_coords_label()
+
+
+func _build_coords_hud() -> void:
+	# A small always-visible label in the top-left corner showing
+	# Roland's current world position. NOT inside the F1 toggle
+	# overlay — this lives directly on the CanvasLayer so it
+	# stays visible during normal play. Tied to `enabled` so a
+	# release build with enabled=false hides everything.
+	_coords_label = Label.new()
+	_coords_label.position = Vector2(12, 12)
+	_coords_label.add_theme_font_size_override("font_size", 14)
+	_coords_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	# Add a subtle drop-shadow so the label reads on light backgrounds.
+	_coords_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_coords_label.add_theme_constant_override("shadow_offset_x", 1)
+	_coords_label.add_theme_constant_override("shadow_offset_y", 1)
+	_coords_label.text = "X 0.0  Y 0.0  Z 0.0"
+	add_child(_coords_label)
+
+
+func _update_coords_label() -> void:
+	# Find the player by group. Group "player" is set on the
+	# Player3D scene root (see scenes/Player3D.tscn).
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		_coords_label.text = "(no player)"
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+	var p: Vector3 = player.global_position
+	# One decimal place is enough for "where am I" debugging without
+	# making the label flicker too fast as the player walks.
+	_coords_label.text = "X %.1f   Y %.1f   Z %.1f" % [p.x, p.y, p.z]
 
 
 func _build_ui() -> void:

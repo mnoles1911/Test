@@ -120,13 +120,18 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("attack"):
 		return
+	print("[EditToolHandler] attack input received")
+
 	if _swing_cooldown_remaining > 0.0:
+		print("[EditToolHandler]   on cooldown (%.2fs left)" % _swing_cooldown_remaining)
 		return
 
 	# --- What's equipped? ---
 	if not get_node_or_null("/root/InventoryManager"):
+		print("[EditToolHandler]   no InventoryManager autoload")
 		return
 	var equipped_id: String = InventoryManager.get_equipped("weapon")
+	print("[EditToolHandler]   equipped weapon = '%s'" % equipped_id)
 	if equipped_id == "":
 		return
 
@@ -136,19 +141,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	var item_data: Dictionary = InventoryManager.ITEM_REGISTRY.get(equipped_id, {})
 	var target_materials: Array = item_data.get("tool_target_materials", [])
 	if target_materials.is_empty():
-		# Equipped item is not a terrain-edit tool. Combat handler
-		# would handle it — but combat is not wired yet.
+		print("[EditToolHandler]   '%s' is not a terrain-edit tool" % equipped_id)
 		return
 
 	# --- Find the voxel the player is aiming at ---
 	if _camera_rig == null:
+		print("[EditToolHandler]   no _camera_rig reference")
 		return
 	var hit: Dictionary = _camera_rig.get_camera_forward_hit(max_reach_meters)
 	if hit.is_empty():
-		# Aimed at empty space — no voxel to edit. Still spend the
-		# cooldown so spam-clicking doesn't bypass swing pacing.
+		print("[EditToolHandler]   raycast hit nothing within %.1fm" % max_reach_meters)
 		_swing_cooldown_remaining = swing_cooldown_seconds
 		return
+	print("[EditToolHandler]   ray hit at %s, normal %s, collider=%s" % [
+		hit.get("position", Vector3.ZERO),
+		hit.get("normal", Vector3.UP),
+		hit.get("collider"),
+	])
 
 	# Offset slightly INTO the surface so we target the solid voxel,
 	# not the air voxel above it. The raycast hits the surface; the
