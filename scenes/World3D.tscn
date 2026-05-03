@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/water/water_volume.tscn" id="5_water"]
 [ext_resource type="PackedScene" path="res://scenes/water/ocean_volume.tscn" id="6_ocean"]
 [ext_resource type="Script" uid="uid://n5dio80buqo5" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
+[ext_resource type="Script" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
 sky_top_color = Color(0.05, 0.06, 0.1, 1)
@@ -38,20 +39,21 @@ frequency = 0.006
 fractal_type = 2
 fractal_lacunarity = 2.1
 
-[sub_resource type="CubicHeightmapGenerator" id="VoxelGen_Cubic"]
+[sub_resource type="VoxelGeneratorScript" id="VoxelGen_Cubic"]
+; Attaches CubicHeightmapGenerator.gd via the script property rather
+; than declaring the sub_resource with type="CubicHeightmapGenerator".
+; The class_name version was failing at scene parse with "Cannot get
+; class 'CubicHeightmapGenerator'" because the script's class_name
+; registration depends on the Zylann plugin being loaded before the
+; scene is parsed — and on first launch that ordering isn't
+; guaranteed. Using the plugin's built-in parent type + script
+; attachment side-steps the registry lookup entirely.
+script = ExtResource("8_cubic_gen")
 noise = SubResource("TerrainNoise")
 height_range_voxels = 80.0
 sea_level_voxels = 0
 
 [sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
-; Renders one cube per solid voxel — the look the design doc calls
-; "blocky stepped terrain, matches MagicaVoxel building style"
-; (CLAUDE.md → Art specification → Terrain).
-;
-; color_mode = 0 (COLOR_RAW): each voxel's CHANNEL_COLOR value is a
-; packed RGBA8888 read directly. Default mode is palette-indexed,
-; which would interpret our packed RGBA as palette indices and
-; produce monocolor cubes regardless of what we wrote.
 color_mode = 0
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]
