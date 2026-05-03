@@ -332,19 +332,22 @@ func _apply_edit(cmd: Dictionary) -> void:
 		cmd.get("value", 0),
 	])
 
-	# Edits target the signed distance field channel (CHANNEL_SDF)
-	# because the test world uses VoxelMesherTransvoxel which reads
-	# SDF. When the world swaps to VoxelMesherBlocky + a
-	# VoxelBlockyLibrary (the design intent), this becomes
-	# CHANNEL_TYPE again with type-id writes.
-	tool.channel = VoxelBuffer.CHANNEL_SDF
+	# Edits target CHANNEL_COLOR because the world uses VoxelMesherCubes,
+	# which reads packed RGBA per-voxel. CHANNEL_SDF / CHANNEL_TYPE are
+	# the wrong channel for Cubes — writes go through but the mesher
+	# never sees them, so terrain looked untouched even though the queue
+	# drained. (When/if we ever swap mesher, this is the line to revisit
+	# alongside the generator's _get_used_channels_mask.)
+	tool.channel = VoxelBuffer.CHANNEL_COLOR
 
-	# Voxel value 0 = air = "carve" (subtract). Anything else = "fill"
-	# (add). For now every edit verb passes 0 (pickaxe carves, axe
-	# carves a tree-shaped hole, explosive carves a sphere). Block
-	# placement (Build Mode) will pass a non-zero material ID.
-	var carve_mode: bool = cmd.get("value", 0) == 0
-	tool.mode = VoxelTool.MODE_REMOVE if carve_mode else VoxelTool.MODE_ADD
+	# Cubes uses one mode: SET. The packed RGBA value to write goes in
+	# tool.value. value 0 means alpha=0 = air = "carved" (no cube emitted
+	# by the mesher). Non-zero = fill of that color (Build-Mode block
+	# placement, future). MODE_REMOVE / MODE_ADD only mean something for
+	# SDF channels — they were silently no-oping for the COLOR channel
+	# even when the channel was right.
+	tool.mode = VoxelTool.MODE_SET
+	tool.value = cmd.get("value", 0)
 
 	match cmd["type"]:
 		"sphere":
@@ -364,13 +367,12 @@ func _apply_edit(cmd: Dictionary) -> void:
 			edit_applied.emit(center, _world_to_chunk(center))
 
 		"set":
-			# Single-voxel write. With SDF meshing there's no clean
-			# "remove exactly one voxel" operation — the surface is
-			# defined by smooth distance values, not discrete cells.
-			# Use a small sphere (~0.3m, roughly 2-3 voxels at our
-			# 8-vox/m scale) so a pickaxe click produces a visible
-			# divot. When we move to VoxelMesherBlocky with a library,
-			# this branch becomes a true single-cell write again.
+			# Single-voxel write. Cubes meshing IS discrete (one cube
+			# per voxel), so a 0.3 m sphere here clears ~2-3 cubes at
+			# 8 vox/m — gives a pickaxe swing a visible divot rather
+			# than disappearing one ~12.5 cm cube the player can barely
+			# see. Tune down to 0.15 m if individual-cube precision
+			# becomes desirable.
 			tool.do_sphere(cmd["pos"], 0.3)
 			_mark_chunks_in_aabb(
 				cmd["pos"] - Vector3.ONE * 0.3,

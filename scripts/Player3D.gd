@@ -46,6 +46,11 @@ const BASE_DECEL: float        = 12.0   # m/s² rate to ramp DOWN to zero
 # especially noticeable at higher mass values.
 
 const GRAVITY: float = 20.0
+# Initial upward velocity applied on jump. With GRAVITY=20 m/s², a
+# 7 m/s jump peaks at v²/(2g) ≈ 1.22 m — well clear of a single voxel
+# (12.5 cm) or a stair-stepped two-voxel ledge, comfortable for
+# hopping over rocks.
+const JUMP_VELOCITY: float = 7.0
 # Stronger than real-world 9.8 m/s². Game gravity should feel snappy on drops.
 
 
@@ -294,6 +299,13 @@ func _physics_process(delta: float) -> void:
 		# Normal gravity when not in water.
 		if not is_on_floor():
 			velocity.y -= GRAVITY * delta
+		# Jump: Space (dodge action) launches Roland straight up while
+		# grounded. Gates on is_on_floor() so the player can't double-
+		# jump or air-hop. Reuses the dodge action because there's no
+		# combat dodge yet; when combat lands and dodge becomes a roll,
+		# this can split into a dedicated `jump` Input Map action.
+		elif Input.is_action_just_pressed("dodge"):
+			velocity.y = JUMP_VELOCITY
 
 	# --- Breath / drowning ---
 	if _is_submerged:
