@@ -27,28 +27,26 @@ metallic = 0.5
 roughness = 0.15
 
 [node name="OceanVolume" type="Area3D" groups=["water_volume"]]
-; Large, ambient ocean. The OceanVolume sits at world Y=0 so any
-; voxel terrain valley below Y=0 is automatically submerged. surface_y
-; matches the visual SurfaceMesh position so the swimming logic
-; transitions exactly at the visible water line.
+; Large, ambient ocean. Sea level raised to world Y=6 so water is
+; accessible from average terrain elevation (~Y=10 with the current
+; height_offset_voxels=80) — players walk down slopes into water
+; rather than the water plane being buried under terrain. Drop both
+; surface_y and the ZoneShape/SurfaceMesh offsets together if you
+; tune the ocean elevation later — these three values must agree.
 script = ExtResource("1_water")
-surface_y = 0.0
+surface_y = 6.0
 
 [node name="ZoneShape" type="CollisionShape3D" parent="."]
-; Offset Y=-15 so the BOX's TOP edge sits at the Area3D origin
-; (sea level = world Y=0). Without this offset the 30m-tall box
-; would extend 15m UP into the air above sea level, and Roland
-; spawning above the ocean (Y=+10) would be flagged as "in water"
-; and given swim physics — i.e. he'd hover in mid-air.
-;
-; Now the trigger box spans Y in [-30, 0]: 30m of depth below sea
-; level, no air above. Walking from a beach into the water
-; transitions exactly at the visible water line.
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -15, 0)
+; Trigger box top sits at world Y=6 (sea level). 30m-tall shape
+; offset Y=-9 → spans Y in [-24, 6]. Top of box matches surface_y
+; above; bottom is 24m underwater so the player can dive without
+; punching through the trigger.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -9, 0)
 shape = SubResource("OceanShape")
 
 [node name="SurfaceMesh" type="MeshInstance3D" parent="."]
-; Visible water plane at sea level (Y=0). PlaneMesh has its surface
-; perpendicular to +Y by default, so no rotation needed.
+; Visible water plane at sea level (world Y=6). PlaneMesh's surface
+; is perpendicular to +Y by default, so no rotation needed.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
 mesh = SubResource("OceanSurfaceMesh")
 surface_material_override/0 = SubResource("OceanMat")

@@ -41,65 +41,118 @@ class_name CubicHeightmapGenerator
 #     LODs each voxel covers (1 << lod) grid units, so we step the
 #     noise by that stride.
 
+# =============================================================
+# PRESETS — quick-apply tuning bundles for live iteration
+# =============================================================
+#
+# Iteration loop with the designer:
+#   1. Run World3D.tscn (F5)
+#   2. In the running scene tree, find VoxelLodTerrain → generator
+#   3. Pick a preset from the dropdown to A/B between bundled looks,
+#      OR drag the @export_range sliders below to fine-tune one
+#      parameter at a time
+#   4. Walk around → terrain chunks not yet streamed will use new
+#      params; force a refresh by walking far enough to unload then
+#      back in
+#   5. When a setting feels right, tell Claude the values and we'll
+#      bake them into a named preset
+#
+# Add new presets to the PRESETS dict; the enum + dropdown updates
+# automatically.
+
+enum Preset {
+	CUSTOM,
+	LAY_OF_THE_LAND,
+	MINECRAFT_BLOCKY,
+	SMOOTH_GRADIENT,
+}
+
+const PRESETS: Dictionary = {
+	Preset.LAY_OF_THE_LAND: {
+		"color_jitter": 0.25,
+		"mid_amplitude_voxels": 16,
+		"mid_frequency_multiplier": 8.0,
+		"detail_amplitude_voxels": 4,
+		"detail_frequency_multiplier": 30.0,
+		"quantize_to_meters": false,
+	},
+	Preset.MINECRAFT_BLOCKY: {
+		"color_jitter": 0.05,
+		"mid_amplitude_voxels": 0,
+		"detail_amplitude_voxels": 0,
+		"quantize_to_meters": true,
+	},
+	Preset.SMOOTH_GRADIENT: {
+		"color_jitter": 0.05,
+		"mid_amplitude_voxels": 4,
+		"mid_frequency_multiplier": 6.0,
+		"detail_amplitude_voxels": 0,
+		"quantize_to_meters": false,
+	},
+}
+
+# Re-entrancy guard so applying a preset's params doesn't recursively
+# trigger the preset setter while it's writing them. Without it,
+# selecting a preset would fight itself as each `set(key, ...)` call
+# re-invoked the preset setter.
+var _applying_preset: bool = false
+
+@export var preset: Preset = Preset.CUSTOM:
+	set(value):
+		preset = value
+		if _applying_preset:
+			return
+		if value != Preset.CUSTOM and PRESETS.has(value):
+			_applying_preset = true
+			for key in PRESETS[value]:
+				set(key, PRESETS[value][key])
+			# Reset to CUSTOM after applying so the dropdown shows
+			# "you're now in custom-tuned mode" rather than implying
+			# the params still match the preset (which they may not
+			# after subsequent manual tweaks).
+			preset = Preset.CUSTOM
+			_applying_preset = false
+
+
+# =============================================================
+# CORE PARAMETERS — tunable in the Inspector while the scene runs
+# =============================================================
+
 @export var noise: FastNoiseLite
 # 2D noise source. FastNoiseLite with fractal_type=RIDGED (2),
 # 5 octaves, frequency ~0.002 gives wide, landscape-scale ridges
 # and valleys. Lower frequency = bigger features.
 
-@export var height_range_voxels: float = 240.0
-# Total vertical relief in VOXEL units (not metres). At terrain scale
-# 0.125, 240 voxels = 30 metres of relief in world space — meaningful
-# hills relative to a 1.7 m player but not crushing walls. Pair with
-# FastNoiseLite frequency ~0.002 on the noise resource for wide,
-# landscape-scale ridges instead of tight bumps.
+@export_range(0.0, 1024.0, 1.0) var height_range_voxels: float = 240.0
+# Total vertical relief in VOXEL units. At terrain scale 0.125,
+# 240 voxels = 30 m of world relief.
 
-@export var height_offset_voxels: int = 80
-# Vertical bias applied to every column AFTER the noise → height map.
-# Without this, ground_y is centered on Y = 0, which means half the
-# world spawns BELOW sea level (under water) and the player at Y=10
-# stares at a flat ocean with terrain walls poking up around them.
-# Default +80 voxels = +10 m biases terrain mostly above sea level:
-# average ground sits around Y=10 m, valleys dip to Y=-5 m (flooded
-# coastline), peaks rise to Y=+25 m (hills the player must climb).
+@export_range(-200, 400, 1) var height_offset_voxels: int = 80
+# Vertical bias applied to every column. +80 vox = +10 m, biasing
+# terrain mostly above sea level so the player spawns on land.
 
 @export var quantize_to_meters: bool = false
-# When true, the macro noise is snapped to integer-metre (8-voxel)
-# steps. Produces hard 1 m cliffs at the half-metre noise crossings.
-# Off by default: with quantize on we got jumpable-but-choppy
-# terraces with no smooth grading between them — opposite of the
-# intended "cubic-but-smooth" look. With this off the noise stays
-# continuous and adjacent voxel columns differ by 0-2 voxels, which
-# reads as a natural sub-voxel staircase smoothing each slope.
+# When true, macro noise snaps to integer-metre (8-voxel) steps —
+# Minecraft-style terraces. Off = continuous noise, smooth grading.
 
-@export var mid_amplitude_voxels: int = 16
-# Mid-scale noise amplitude. ±16 voxels = ±2 m. Drives the "rolling
-# hills" / "1-2 m undulation" layer that Lay-of-the-Land terrain
-# uses to keep every metre of ground visually interesting (paths
-# winding over small humps, dips between trees, etc) on top of the
-# wide macro silhouette.
+@export_range(0, 64, 1) var mid_amplitude_voxels: int = 16
+# Mid-scale noise amplitude in voxels. ±16 vox = ±2 m. The
+# "rolling hills" layer — every metre of ground varies up/down.
 
-@export var mid_frequency_multiplier: float = 8.0
-# Mid noise is sampled at 8× the macro noise frequency. With macro
-# at ~0.002, mid sits around ~0.016 — features ~8 m wide, the
-# right scale for "every few metres elevation changes."
+@export_range(1.0, 20.0, 0.5) var mid_frequency_multiplier: float = 8.0
+# Mid noise sampled at this multiple of macro frequency. Higher =
+# tighter rolling-hill features.
 
-@export var detail_amplitude_voxels: int = 4
-# High-frequency detail amplitude. ±4 voxels = ±50 cm of surface
-# grain layered on top of macro+mid. Breaks up perfectly flat
-# stretches into textured surface.
+@export_range(0, 16, 1) var detail_amplitude_voxels: int = 4
+# Cube-by-cube detail amplitude. ±4 vox = ±50 cm. Surface grain.
 
-@export var detail_frequency_multiplier: float = 30.0
-# Detail noise is sampled at 30× macro frequency — features ~1-2 m
-# wide. Pushed up from 4.5× so detail varies cube-by-cube rather
-# than smooth-blending across the metre with mid noise.
+@export_range(1.0, 80.0, 0.5) var detail_frequency_multiplier: float = 30.0
+# Detail noise sampled at this multiple of macro frequency. 30× =
+# features ~1-2 m wide, varies cube-by-cube.
 
-@export var color_jitter: float = 0.25
-# Per-voxel deterministic colour jitter applied as ± this fraction
-# of brightness. Without strong jitter, voxels at the same height
-# share a colour and the sub-voxel grid disappears into a smooth
-# slab. 0.25 = ±25 % brightness — matches the contrasty per-cube
-# look of reference cubic-voxel games like Lay of the Land. Set
-# to 0 to disable; drop toward 0.10 for a softer, more uniform look.
+@export_range(0.0, 0.5, 0.01) var color_jitter: float = 0.25
+# Per-voxel brightness variation as ± fraction. 0.25 = ±25 %
+# brightness, the contrasty per-cube look of cubic-voxel games.
 
 @export var sea_level_voxels: int = 0
 # Voxel-Y coordinate that should correspond to "ocean surface".
