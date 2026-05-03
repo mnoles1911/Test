@@ -246,6 +246,12 @@ func reset_for_new_game() -> void:
 	if get_node_or_null("/root/InventoryManager"):
 		InventoryManager.reset_to_defaults()
 
+	# Reset the in-game clock to 8:00 AM Day 1. Without this the clock
+	# keeps ticking from the previous playthrough's last saved time.
+	if get_node_or_null("/root/WorldClock"):
+		WorldClock.current_day = 1
+		WorldClock.set_time(8, 0)
+
 	print("[GameState] Reset for new game.")
 
 
@@ -571,6 +577,14 @@ func load_save_file(filename: String) -> bool:
 		_skill_xp = data["skill_xp"]
 	if data.has("inventory") and get_node_or_null("/root/InventoryManager"):
 		InventoryManager.load_save_data(data["inventory"])
+
+	# WorldClock writes its time into _flags every minute, so restoring
+	# _flags above already brought the saved hour/minute/day back into
+	# GameState. But WorldClock keeps its own in-memory copy that needs
+	# to re-read those flags before the next tick — otherwise the clock
+	# keeps ticking from wherever it was when load was clicked.
+	if get_node_or_null("/root/WorldClock"):
+		WorldClock.load_from_state()
 
 	active_save_filename = filename
 	var save_label: String = data.get("save_name", filename)

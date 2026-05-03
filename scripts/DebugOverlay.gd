@@ -91,6 +91,7 @@ var _ps_health_label: Label
 var _ps_endurance_label: Label
 var _ps_equipped_label: Label
 var _ps_aim_label: Label
+var _ps_time_label: Label
 
 # Always-on HUD (visible without F1).
 var _coords_label: Label
@@ -501,10 +502,11 @@ func _build_player_state_tab() -> void:
 	_ps_endurance_label = _make_state_label()
 	_ps_equipped_label  = _make_state_label()
 	_ps_aim_label       = _make_state_label()
+	_ps_time_label      = _make_state_label()
 
 	for lbl in [_ps_position_label, _ps_rotation_label, _ps_pitch_label,
 				_ps_health_label, _ps_endurance_label, _ps_equipped_label,
-				_ps_aim_label]:
+				_ps_aim_label, _ps_time_label]:
 		_player_state_tab.add_child(lbl)
 
 
@@ -520,6 +522,10 @@ func _refresh_player_state_tab() -> void:
 	# Pull live values from the player + camera + inventory each
 	# frame the tab is visible. Cheap (a few group lookups + string
 	# formats per frame).
+	# WorldClock is global — show its state even when no player is loaded
+	# (e.g. the user opens F1 from the title screen).
+	_refresh_world_clock_label()
+
 	var players: Array = get_tree().get_nodes_in_group("player")
 	if players.is_empty():
 		_ps_position_label.text   = "Position:    (no player in scene)"
@@ -569,6 +575,22 @@ func _refresh_player_state_tab() -> void:
 			_ps_aim_label.text = "Aim Target:  (%.1f, %.1f, %.1f)  dist %.1fm  hit '%s'" % [
 				hp.x, hp.y, hp.z, dist, collider_name
 			]
+
+
+func _refresh_world_clock_label() -> void:
+	# Reads the autoloaded clock and renders day + time + period.
+	# Falls back to a dash if WorldClock isn't registered (shouldn't
+	# happen — listed in project.godot — but guarded anyway so the
+	# debug overlay never breaks if the autoload list shifts).
+	if not get_node_or_null("/root/WorldClock"):
+		_ps_time_label.text = "World Time:  —"
+		return
+	var period: String = WorldClock.get_time_of_day_period()
+	_ps_time_label.text = "World Time:  Day %d   %s   (%s)" % [
+		WorldClock.current_day,
+		WorldClock.get_time_string(),
+		period,
+	]
 
 
 # --- Tab switching ---
