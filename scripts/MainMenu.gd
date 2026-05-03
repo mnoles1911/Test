@@ -109,26 +109,41 @@ func _on_debug_rect_input(event: InputEvent) -> void:
 		print("[MainMenu] DEBUG RECT CLICKED — input pipeline works.")
 
 
-# LMB click handler — bypasses Godot's gui_input routing.
+# Mouse handler — bypasses Godot's gui_input routing.
 #
-# Why: Godot's GUI input dispatch (Button.pressed signal) only
-# fires when Input.mouse_mode is MOUSE_MODE_VISIBLE. If anything
-# upstream captures the mouse (CameraRig from a prior World3D
-# run, etc.) and the captured state survives, _gui_input never
-# fires for any Control even when the cursor is visually shown.
-#
-# Workaround: handle clicks in _input (Node-level, fires regardless
-# of mouse_mode) and manually check whether the click position
-# overlaps each interactive Control's global rect. This is robust
-# against the mouse_mode quirk and works reliably.
+# Why: GUI dispatch is silently disabled in this project (see
+# chat history; likely Dialogic's input subsystem). _input fires
+# regardless, so we manually route:
+#   - LMB → click dispatch (button-rect lookup)
+#   - Wheel → scroll dispatch (find the visible ScrollContainer
+#     and adjust scroll_vertical)
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
-	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+	if not mb.pressed:
 		return
-	print("[MainMenu] _input: LMB at %s, mouse_mode=%d" % [mb.position, Input.mouse_mode])
-	_dispatch_click(mb.position)
+	if mb.button_index == MOUSE_BUTTON_LEFT:
+		print("[MainMenu] _input: LMB at %s, mouse_mode=%d" % [mb.position, Input.mouse_mode])
+		_dispatch_click(mb.position)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+		_dispatch_scroll(-60)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		_dispatch_scroll(60)
+
+
+func _dispatch_scroll(delta_pixels: int) -> void:
+	# Only the load picker has a scrollable list. Find the
+	# ScrollContainer that wraps _load_list_container and adjust
+	# its vertical scroll position.
+	if not _load_panel.visible:
+		return
+	if _load_list_container == null:
+		return
+	var scroll: ScrollContainer = _load_list_container.get_parent() as ScrollContainer
+	if scroll == null:
+		return
+	scroll.scroll_vertical += delta_pixels
 
 
 func _dispatch_click(pos: Vector2) -> void:
