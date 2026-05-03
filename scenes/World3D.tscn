@@ -32,27 +32,11 @@ fog_density = 0.02
 database_path = "user://voxel_deltas.sqlite"
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
-; Ridged fractal noise — produces sharp ridges and walls instead
-; of smooth rolling hills. Combined with multiple octaves, this
-; gives terrain that has actual *features* to aim at: cliffs,
-; ridge lines, valleys, occasional spires.
-;
-; Tune:
-;   frequency      — feature size (lower = bigger features)
-;   fractal_octaves — detail layers (higher = more crunch)
-;   fractal_type 2  — RIDGED (1=FBM smooth, 2=RIDGED ridges)
-noise_type = 1
 frequency = 0.012
 fractal_type = 2
 fractal_octaves = 4
-fractal_lacunarity = 2.0
-fractal_gain = 0.5
 
 [sub_resource type="VoxelGeneratorNoise2D" id="VoxelGen_Noise2D"]
-; height_range bumped to 25m so RIDGED noise produces visible
-; cliffs and ridges. With 8m the variation was barely perceptible;
-; 25m gives terrain Roland can actually hike up, hide behind, or
-; look down from. Noise stays 2D (no overhangs/caves) for now.
 noise = SubResource("TerrainNoise")
 height_range = 25.0
 
