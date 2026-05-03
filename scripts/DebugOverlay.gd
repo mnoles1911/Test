@@ -47,10 +47,36 @@ var _commands_tab: VBoxContainer
 var _console_tab: VBoxContainer
 var _player_state_tab: VBoxContainer
 
-# Commands tab.
-var _delete_saves_btn: Button
+# Commands tab — three sub-views inside the COMMANDS tab. Only one
+# is visible at a time; the rest are hidden. Sub-views switch by
+# clicking a command in the list, and BACK in a sub-view returns.
+enum CommandView { LIST, DELETE_SAVE, TELEPORT }
+var _commands_view: CommandView = CommandView.LIST
+
+# Sub-view containers.
+var _commands_list_view: VBoxContainer
+var _commands_delete_save_view: VBoxContainer
+var _commands_teleport_view: VBoxContainer
+
+# Command list buttons.
+var _btn_delete_all: Button
+var _btn_delete_one: Button
+var _btn_teleport: Button
+
+# DELETE ALL SAVES — two-click confirm state.
 var _delete_saves_armed: bool = false
 var _delete_saves_arm_remaining: float = 0.0
+
+# DELETE A SAVE sub-view.
+var _delete_save_back_btn: Button
+var _delete_save_list: VBoxContainer
+
+# TELEPORT sub-view.
+var _teleport_x_edit: LineEdit
+var _teleport_y_edit: LineEdit
+var _teleport_z_edit: LineEdit
+var _teleport_confirm_btn: Button
+var _teleport_back_btn: Button
 
 # Console tab.
 var _console_scroll: ScrollContainer
@@ -166,6 +192,7 @@ func _make_tab_container() -> VBoxContainer:
 # --- Commands tab ---
 
 func _build_commands_tab() -> void:
+	# Top-level heading shared across all command sub-views.
 	var heading := Label.new()
 	heading.text = "DEV COMMANDS"
 	heading.add_theme_font_size_override("font_size", 16)
@@ -179,24 +206,244 @@ func _build_commands_tab() -> void:
 	div.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_commands_tab.add_child(div)
 
-	# DELETE ALL SAVES — same button as before, just relocated
-	# from the corner into the tab. Two-click confirmation logic
-	# unchanged: first click arms, second within 3s wipes saves.
-	_delete_saves_btn = Button.new()
-	_delete_saves_btn.text = "DELETE ALL SAVES"
-	_delete_saves_btn.add_theme_font_size_override("font_size", 16)
-	_delete_saves_btn.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
-	_delete_saves_btn.custom_minimum_size = Vector2(280, 44)
-	_commands_tab.add_child(_delete_saves_btn)
+	_build_commands_list_view()
+	_build_commands_delete_save_view()
+	_build_commands_teleport_view()
+	_show_command_list()
 
-	# Hint about future commands so the tab doesn't feel empty.
+
+# --- Commands LIST view (default — clickable command rows) ---
+
+func _build_commands_list_view() -> void:
+	_commands_list_view = VBoxContainer.new()
+	_commands_list_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_list_view.add_theme_constant_override("separation", 4)
+	_commands_tab.add_child(_commands_list_view)
+
+	_btn_delete_all = _make_command_row("DELETE ALL SAVES")
+	_btn_delete_one = _make_command_row("DELETE A SAVE FILE")
+	_btn_teleport   = _make_command_row("TELEPORT PLAYER")
+
+	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport]:
+		_commands_list_view.add_child(b)
+
+
+func _make_command_row(label: String) -> Button:
+	# Flat, left-aligned button styled as a list row. Visually
+	# uniform so the list reads as a menu of equal-weight options.
+	var b := Button.new()
+	b.text = "  " + label
+	b.flat = true
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1))
+	b.custom_minimum_size = Vector2(0, 36)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return b
+
+
+# --- DELETE A SAVE sub-view ---
+
+func _build_commands_delete_save_view() -> void:
+	_commands_delete_save_view = VBoxContainer.new()
+	_commands_delete_save_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_delete_save_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_commands_delete_save_view.add_theme_constant_override("separation", 6)
+	_commands_delete_save_view.visible = false
+	_commands_tab.add_child(_commands_delete_save_view)
+
+	_delete_save_back_btn = _make_command_row("← BACK")
+	_commands_delete_save_view.add_child(_delete_save_back_btn)
+
 	var hint := Label.new()
-	hint.text = "(more commands as needed: give item, teleport, set time of day, etc.)"
-	hint.add_theme_font_size_override("font_size", 12)
-	hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 1))
+	hint.text = "Click a save's DELETE button to remove it."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_delete_save_view.add_child(hint)
+
+	# Scrollable list of saves so an arbitrary number fits.
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
+	_commands_delete_save_view.add_child(scroll)
+
+	_delete_save_list = VBoxContainer.new()
+	_delete_save_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_delete_save_list.add_theme_constant_override("separation", 4)
+	scroll.add_child(_delete_save_list)
+
+
+func _populate_delete_save_list() -> void:
+	# Refreshes the rows from disk every time the sub-view opens
+	# so deletions show up live.
+	for child in _delete_save_list.get_children():
+		child.queue_free()
+
+	if not get_node_or_null("/root/GameState"):
+		return
+	var saves: Array = GameState.list_save_files()
+	if saves.is_empty():
+		var empty := Label.new()
+		empty.text = "(no saves on disk)"
+		empty.add_theme_font_size_override("font_size", 14)
+		empty.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
+		empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_delete_save_list.add_child(empty)
+		return
+
+	for meta in saves:
+		_delete_save_list.add_child(_make_delete_save_row(meta))
+
+
+func _make_delete_save_row(meta: Dictionary) -> Control:
+	# One row per save: name + timestamp on the left, DELETE on the right.
+	var hbox := HBoxContainer.new()
+	hbox.custom_minimum_size = Vector2(0, 36)
+	hbox.add_theme_constant_override("separation", 8)
+
+	var info := Label.new()
+	info.text = "%s   (%s)" % [
+		meta.get("save_name", "?"),
+		meta.get("timestamp", "?"),
+	]
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_font_size_override("font_size", 14)
+	info.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_child(info)
+
+	var del := Button.new()
+	del.text = "DELETE"
+	del.add_theme_font_size_override("font_size", 14)
+	del.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
+	del.custom_minimum_size = Vector2(80, 32)
+	# Stash the filename in the button's metadata so _input dispatch
+	# can read it at click time without rebuilding closures.
+	del.set_meta("save_filename", meta.get("filename", ""))
+	hbox.add_child(del)
+
+	return hbox
+
+
+# --- TELEPORT sub-view ---
+
+func _build_commands_teleport_view() -> void:
+	_commands_teleport_view = VBoxContainer.new()
+	_commands_teleport_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_teleport_view.add_theme_constant_override("separation", 8)
+	_commands_teleport_view.visible = false
+	_commands_tab.add_child(_commands_teleport_view)
+
+	_teleport_back_btn = _make_command_row("← BACK")
+	_commands_teleport_view.add_child(_teleport_back_btn)
+
+	var hint := Label.new()
+	hint.text = "Type X / Y / Z and click TELEPORT.  Default values are Roland's current position."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_commands_tab.add_child(hint)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_teleport_view.add_child(hint)
+
+	_teleport_x_edit = _make_axis_input("X")
+	_teleport_y_edit = _make_axis_input("Y")
+	_teleport_z_edit = _make_axis_input("Z")
+	_commands_teleport_view.add_child(_make_axis_row("X", _teleport_x_edit))
+	_commands_teleport_view.add_child(_make_axis_row("Y", _teleport_y_edit))
+	_commands_teleport_view.add_child(_make_axis_row("Z", _teleport_z_edit))
+
+	_teleport_confirm_btn = Button.new()
+	_teleport_confirm_btn.text = "TELEPORT"
+	_teleport_confirm_btn.add_theme_font_size_override("font_size", 16)
+	_teleport_confirm_btn.add_theme_color_override("font_color", Color(0.6, 0.9, 0.6, 1))
+	_teleport_confirm_btn.custom_minimum_size = Vector2(160, 36)
+	_commands_teleport_view.add_child(_teleport_confirm_btn)
+
+
+func _make_axis_input(axis: String) -> LineEdit:
+	var le := LineEdit.new()
+	le.placeholder_text = "%s coord" % axis
+	le.add_theme_font_size_override("font_size", 16)
+	le.custom_minimum_size = Vector2(140, 30)
+	le.process_mode = Node.PROCESS_MODE_ALWAYS
+	return le
+
+
+func _make_axis_row(axis: String, edit: LineEdit) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var lbl := Label.new()
+	lbl.text = axis + ":"
+	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1))
+	lbl.custom_minimum_size = Vector2(24, 0)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lbl)
+	row.add_child(edit)
+	return row
+
+
+# --- Sub-view switching ---
+
+func _show_command_list() -> void:
+	_commands_view = CommandView.LIST
+	if _commands_list_view != null:
+		_commands_list_view.visible = true
+	if _commands_delete_save_view != null:
+		_commands_delete_save_view.visible = false
+	if _commands_teleport_view != null:
+		_commands_teleport_view.visible = false
+
+
+func _show_delete_save_view() -> void:
+	_commands_view = CommandView.DELETE_SAVE
+	_commands_list_view.visible = false
+	_commands_delete_save_view.visible = true
+	_commands_teleport_view.visible = false
+	_populate_delete_save_list()
+
+
+func _show_teleport_view() -> void:
+	_commands_view = CommandView.TELEPORT
+	_commands_list_view.visible = false
+	_commands_delete_save_view.visible = false
+	_commands_teleport_view.visible = true
+
+	# Pre-fill the X/Y/Z fields with Roland's current position so
+	# small relative teleports ("10 meters that way") are quick.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if not players.is_empty():
+		var p: Vector3 = (players[0] as Node3D).global_position
+		_teleport_x_edit.text = "%.2f" % p.x
+		_teleport_y_edit.text = "%.2f" % p.y
+		_teleport_z_edit.text = "%.2f" % p.z
+	# Focus the X field so the player can start typing immediately.
+	_teleport_x_edit.grab_focus()
+	_teleport_x_edit.select_all()
+
+
+func _do_teleport() -> void:
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		log_action("Teleport: no player in scene")
+		return
+	var player: Node3D = players[0] as Node3D
+	# Float coercion — strings might be "12", "12.5", "-3.14", etc.
+	# Empty fields default to current position so the dev can leave
+	# axes they don't want to change blank.
+	var x: float = float(_teleport_x_edit.text) if _teleport_x_edit.text != "" else player.global_position.x
+	var y: float = float(_teleport_y_edit.text) if _teleport_y_edit.text != "" else player.global_position.y
+	var z: float = float(_teleport_z_edit.text) if _teleport_z_edit.text != "" else player.global_position.z
+	var target := Vector3(x, y, z)
+	player.global_position = target
+	# Zero velocity so Roland doesn't keep falling through whatever
+	# was there before the teleport.
+	if player is CharacterBody3D:
+		(player as CharacterBody3D).velocity = Vector3.ZERO
+	log_action("DEV: teleported to (%.2f, %.2f, %.2f)" % [x, y, z])
+	_show_command_list()
 
 
 # --- Console tab ---
@@ -456,12 +703,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F1:
 				_root.visible = not _root.visible
-				if not _root.visible:
-					_disarm_delete_saves()
-				else:
-					# Make sure the displayed tab content is fresh
-					# the moment the panel opens.
+				if _root.visible:
+					# Free the mouse cursor so the player can click
+					# command buttons. CameraRig captures the mouse
+					# during gameplay; without this, the cursor stays
+					# locked at screen center and clicks land on the
+					# wrong target.
+					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 					_show_tab(_current_tab)
+				else:
+					# Re-capture the mouse so gameplay aiming resumes.
+					# If the pause menu / journal is also open they'll
+					# set their own VISIBLE state next frame.
+					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+					_disarm_delete_saves()
+					_show_command_list()
 				get_viewport().set_input_as_handled()
 			KEY_TAB:
 				if _root.visible:
@@ -493,10 +749,79 @@ func _input(event: InputEvent) -> void:
 	if mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 
-	# COMMANDS tab buttons.
-	if _current_tab == DebugTab.COMMANDS and _delete_saves_btn != null \
-		and _delete_saves_btn.get_global_rect().has_point(mb.position):
-		_on_delete_saves_clicked()
+	# COMMANDS tab — dispatch by sub-view.
+	if _current_tab == DebugTab.COMMANDS:
+		_dispatch_commands_click(mb.position)
+
+
+func _dispatch_commands_click(pos: Vector2) -> void:
+	# COMMANDS LIST view: which top-level command did the player click?
+	if _commands_view == CommandView.LIST:
+		if _hits_button(_btn_delete_all, pos):
+			_on_delete_saves_clicked()
+			return
+		if _hits_button(_btn_delete_one, pos):
+			_show_delete_save_view()
+			return
+		if _hits_button(_btn_teleport, pos):
+			_show_teleport_view()
+			return
+		return
+
+	# DELETE A SAVE sub-view: BACK or per-row DELETE.
+	if _commands_view == CommandView.DELETE_SAVE:
+		if _hits_button(_delete_save_back_btn, pos):
+			_show_command_list()
+			return
+		# Walk the dynamic save rows; each row's right-side Button
+		# carries the filename in its meta dict.
+		for row in _delete_save_list.get_children():
+			if not (row is HBoxContainer):
+				continue
+			for child in row.get_children():
+				if child is Button and _hits_button(child as Button, pos):
+					var fname: String = (child as Button).get_meta("save_filename", "")
+					if fname == "":
+						return
+					if get_node_or_null("/root/GameState"):
+						GameState.delete_save_file(fname)
+						log_action("DEV: deleted save '%s'" % fname)
+					_populate_delete_save_list()
+					return
+		return
+
+	# TELEPORT sub-view: BACK / CONFIRM / focus on a LineEdit.
+	if _commands_view == CommandView.TELEPORT:
+		if _hits_button(_teleport_back_btn, pos):
+			_show_command_list()
+			return
+		if _hits_button(_teleport_confirm_btn, pos):
+			_do_teleport()
+			return
+		# Click on a LineEdit → focus it for typing.
+		if _hits_control(_teleport_x_edit, pos):
+			_teleport_x_edit.grab_focus()
+			return
+		if _hits_control(_teleport_y_edit, pos):
+			_teleport_y_edit.grab_focus()
+			return
+		if _hits_control(_teleport_z_edit, pos):
+			_teleport_z_edit.grab_focus()
+			return
+
+
+func _hits_button(b: Button, pos: Vector2) -> bool:
+	# True if the button is visible, not disabled, and the click
+	# is inside its global rect.
+	if b == null or not b.visible or b.disabled:
+		return false
+	return b.get_global_rect().has_point(pos)
+
+
+func _hits_control(c: Control, pos: Vector2) -> bool:
+	if c == null or not c.visible:
+		return false
+	return c.get_global_rect().has_point(pos)
 
 
 # =============================================================
@@ -507,7 +832,7 @@ func _on_delete_saves_clicked() -> void:
 	if not _delete_saves_armed:
 		_delete_saves_armed = true
 		_delete_saves_arm_remaining = DELETE_SAVES_ARM_SECONDS
-		_delete_saves_btn.text = "CONFIRM? (%ds)" % int(DELETE_SAVES_ARM_SECONDS)
+		_btn_delete_all.text = "  CONFIRM? (%ds)" % int(DELETE_SAVES_ARM_SECONDS)
 		return
 	if get_node_or_null("/root/GameState"):
 		var n: int = GameState.delete_all_save_files()
@@ -518,5 +843,5 @@ func _on_delete_saves_clicked() -> void:
 func _disarm_delete_saves() -> void:
 	_delete_saves_armed = false
 	_delete_saves_arm_remaining = 0.0
-	if _delete_saves_btn != null:
-		_delete_saves_btn.text = "DELETE ALL SAVES"
+	if _btn_delete_all != null:
+		_btn_delete_all.text = "  DELETE ALL SAVES"
