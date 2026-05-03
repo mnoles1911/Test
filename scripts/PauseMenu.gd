@@ -502,15 +502,17 @@ func _on_settings() -> void:
 
 
 func _on_exit_menu() -> void:
-	# Auto-save with a default name so progress isn't silently lost
-	# on exit. Players who want a named save should use SAVE first.
-	GameState.save_game("Auto-save on exit")
+	# Auto-save with a unique timestamped name so progress isn't
+	# silently lost on exit. Tagged as is_autosave so it counts
+	# against the autosave cap (MAX_AUTOSAVES, FIFO eviction).
+	# Players who want a named save should use SAVE first.
+	GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
 	_close()
 	TransitionManager.change_scene(MAIN_MENU_SCENE, "", TransitionManager.Type.FADE_BLACK)
 
 
 func _on_quit() -> void:
-	GameState.save_game("Auto-save on quit")
+	GameState.save_game("[Auto] " + Time.get_datetime_string_from_system(), true)
 	get_tree().quit()
 
 

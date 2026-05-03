@@ -70,4 +70,11 @@ func _apply_saved_player_position() -> void:
 	if player == null:
 		return
 	player.global_position = GameState.player_position
-	print("[World3D] Restored player position to %s" % GameState.player_position)
+	# Restore facing direction (Y rotation only — pitch and roll
+	# live on the camera, not the body). The CameraRig follows the
+	# player body's rotation.y in standard mode, so this also gets
+	# the camera looking the same way Roland was looking at save.
+	player.rotation.y = GameState.player_rotation_y
+	print("[World3D] Restored player position to %s, rotation_y=%.2f rad" % [
+		GameState.player_position, GameState.player_rotation_y
+	])

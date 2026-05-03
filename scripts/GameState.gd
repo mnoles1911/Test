@@ -21,6 +21,11 @@ extends Node
 # the save and applied on load when the scene re-instances.
 
 var player_position: Vector3 = Vector3.ZERO
+var player_rotation_y: float = 0.0
+# Player's facing direction in radians. Captured at save time from
+# the live Player3D's rotation.y so the load drops Roland looking
+# the same way he was looking when the save was taken.
+
 var current_scene: String = ""
 var player_spawn_id: String = ""
 # player_spawn_id is the name of the SpawnPoint node the receiving scene
@@ -270,11 +275,34 @@ func _capture_player_position() -> Vector3:
 	return player.global_position
 
 
-func save_game(save_name: String = "") -> bool:
+func _capture_player_rotation_y() -> float:
+	# Y rotation in radians (the only rotation axis Player3D uses
+	# — pitch and roll live on the camera, not the body). Captured
+	# at save time so reload preserves which way Roland was looking.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return player_rotation_y
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return player_rotation_y
+	return player.rotation.y
+
+
+const MAX_AUTOSAVES: int = 5
+# Hard cap on simultaneous autosaves on disk. After every autosave
+# write, the oldest autosaves beyond this count are deleted (FIFO
+# eviction). Named saves (is_autosave == false) are never pruned;
+# the player manages those by name via the load picker's DELETE
+# button.
+
+func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
 	# Write the current game state to user://saves/{slug}.json.
 	#
 	# save_name: the human-readable name shown in the load picker.
-	# Empty string is auto-replaced with a timestamp-based default.
+	#   Empty string is auto-replaced with a timestamp-based default.
+	# is_autosave: marks this save as an autosave for FIFO pruning
+	#   (max MAX_AUTOSAVES kept). Named saves pass false here and
+	#   accumulate freely until the player manually deletes them.
 	#
 	# Returns true on success, false on failure (path error, write
 	# failure). The PauseMenu shows a toast on success.
@@ -283,8 +311,11 @@ func save_game(save_name: String = "") -> bool:
 	if save_name.strip_edges() == "":
 		save_name = "Save %s" % Time.get_datetime_string_from_system()
 
-	# Capture the live player position before serializing.
+	# Capture the live player position + facing direction before
+	# serializing. _capture_* helpers fall back to cached values
+	# if no player exists in the scene tree.
 	player_position = _capture_player_position()
+	player_rotation_y = _capture_player_rotation_y()
 
 	# Flush in-memory voxel edits to the SQLite stream so the save
 	# captures all the digging / explosions the player has done up
@@ -302,8 +333,9 @@ func save_game(save_name: String = "") -> bool:
 		voxel_gen_version = VoxelEditManager.WORLD_GENERATOR_VERSION
 
 	var data: Dictionary = {
-		"version": 4,
+		"version": 5,
 		"save_name": save_name,
+		"is_autosave": is_autosave,
 		"timestamp": Time.get_datetime_string_from_system(),
 		"unix_time": Time.get_unix_time_from_system(),
 		"play_time_seconds": _play_time_seconds,
@@ -312,6 +344,7 @@ func save_game(save_name: String = "") -> bool:
 			"y": player_position.y,
 			"z": player_position.z,
 		},
+		"player_rotation_y": player_rotation_y,
 		"current_scene": current_scene,
 		"flags": _flags.duplicate(),
 		"companions": _companions.duplicate(),
@@ -334,7 +367,32 @@ func save_game(save_name: String = "") -> bool:
 	print("[GameState] Saved '%s' → %s" % [save_name, path])
 	if get_node_or_null("/root/SaveNotification"):
 		SaveNotification.show_notification()
+
+	# After an autosave write succeeds, prune old autosaves so disk
+	# usage stays bounded. Named saves are not affected.
+	if is_autosave:
+		_prune_autosaves(MAX_AUTOSAVES)
+
 	return true
+
+
+func _prune_autosaves(max_keep: int) -> void:
+	# Lists every save flagged is_autosave, sorts newest-first
+	# (list_save_files already does this), and deletes everything
+	# past max_keep. The just-written autosave is the newest and
+	# therefore always retained.
+	var autosaves: Array = []
+	for s in list_save_files():
+		if s.get("is_autosave", false):
+			autosaves.append(s)
+	if autosaves.size() <= max_keep:
+		return
+	for entry in autosaves.slice(max_keep):
+		var fname: String = entry.get("filename", "")
+		if fname == "":
+			continue
+		print("[GameState] Pruning old autosave: %s" % fname)
+		delete_save_file(fname)
 
 
 func load_save_file(filename: String) -> bool:
@@ -379,6 +437,8 @@ func load_save_file(filename: String) -> bool:
 			float(p.get("y", 0.0)),
 			float(p.get("z", 0.0)),
 		)
+	if data.has("player_rotation_y"):
+		player_rotation_y = float(data["player_rotation_y"])
 	if data.has("current_scene"):
 		current_scene = data["current_scene"]
 	if data.has("flags"):
@@ -457,6 +517,7 @@ func _read_save_metadata(path: String) -> Dictionary:
 	var p: Dictionary = data.get("player_position", {})
 	return {
 		"save_name": data.get("save_name", path.get_file()),
+		"is_autosave": bool(data.get("is_autosave", false)),
 		"timestamp": data.get("timestamp", "unknown"),
 		"unix_time": int(data.get("unix_time", 0)),
 		"player_position": Vector3(
@@ -464,6 +525,7 @@ func _read_save_metadata(path: String) -> Dictionary:
 			float(p.get("y", 0.0)),
 			float(p.get("z", 0.0)),
 		),
+		"player_rotation_y": float(data.get("player_rotation_y", 0.0)),
 		"current_scene": data.get("current_scene", ""),
 		"play_time_seconds": float(data.get("play_time_seconds", 0.0)),
 	}
