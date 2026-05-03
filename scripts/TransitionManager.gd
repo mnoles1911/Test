@@ -88,7 +88,13 @@ func change_scene(scene_path: String, spawn_id: String = "", type: Type = Type.F
 	_is_transitioning = true
 
 	# Push current scene onto history before leaving it.
+	# On first launch GameState.current_scene is empty (TransitionManager
+	# was never called before), so fall back to the tree's actual scene
+	# path — that way go_back() can return to MainMenu even from the
+	# very first scene change the player triggers.
 	var current_path: String = GameState.current_scene
+	if current_path == "" and get_tree().current_scene != null:
+		current_path = get_tree().current_scene.scene_file_path
 	if current_path != "":
 		_push_history(current_path, GameState.player_spawn_id)
 
@@ -127,6 +133,14 @@ func fade_in_only() -> void:
 
 func has_history() -> bool:
 	return not _scene_history.is_empty()
+
+
+func peek_back() -> String:
+	# Returns the scene path that go_back() would transition to,
+	# without actually popping it. Returns "" if history is empty.
+	if _scene_history.is_empty():
+		return ""
+	return _scene_history.back()["path"]
 
 
 # =============================================================

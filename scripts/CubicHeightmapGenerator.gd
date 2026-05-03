@@ -46,11 +46,14 @@ class_name CubicHeightmapGenerator
 # 5 octaves, frequency ~0.006 gives ridge/valley terrain. Lower
 # frequency = bigger features.
 
-@export var height_range_voxels: float = 80.0
+@export var height_range_voxels: float = 480.0
 # Total vertical relief in VOXEL units (not metres). Heightmap output
 # is centered around voxel-Y = 0, so half goes above sea level
-# (Y > 0) and half below (Y < 0). At terrain scale 0.125, 80 voxels
-# = 10 metres of vertical relief in world space.
+# (Y > 0) and half below (Y < 0). At terrain scale 0.125, 480 voxels
+# = 60 metres of vertical relief in world space — hills tower well
+# above the player (1.7 m tall) at the design's 8 vox/m resolution.
+# Pair with a FastNoiseLite frequency of ~0.002 on the exported noise
+# resource (lower = wider ridges and valleys, more landscape-scale).
 
 @export var sea_level_voxels: int = 0
 # Voxel-Y coordinate that should correspond to "ocean surface".
