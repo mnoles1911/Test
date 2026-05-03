@@ -274,20 +274,24 @@ func _show_load_picker() -> void:
 func _on_new_game() -> void:
 	# Fresh playthrough — clear the active save reference (no
 	# auto-overwrite of an old save on next exit) and load World3D.
+	print("[MainMenu] NEW GAME pressed")
 	GameState.active_save_filename = ""
 	GameState.player_spawn_id = ""
 	TransitionManager.change_scene(WORLD_SCENE, "default")
 
 
 func _on_load() -> void:
+	print("[MainMenu] LOAD pressed")
 	_show_load_picker()
 
 
 func _on_settings() -> void:
+	print("[MainMenu] SETTINGS pressed")
 	TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
 
 
 func _on_quit() -> void:
+	print("[MainMenu] QUIT pressed")
 	get_tree().quit()
 
 

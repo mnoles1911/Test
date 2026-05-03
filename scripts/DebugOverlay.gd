@@ -86,8 +86,15 @@ func _build_coords_hud() -> void:
 	# overlay — this lives directly on the CanvasLayer so it
 	# stays visible during normal play. Tied to `enabled` so a
 	# release build with enabled=false hides everything.
+	#
+	# mouse_filter = IGNORE so this label can NEVER intercept a
+	# click. The DebugOverlay CanvasLayer sits at layer 98, above
+	# the main menu (layer 0), pause menu (layer 50), and journal
+	# (layer 10) — without IGNORE, a Label here at higher layer
+	# can swallow clicks meant for a button on a lower layer.
 	_coords_label = Label.new()
 	_coords_label.position = Vector2(12, 12)
+	_coords_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_coords_label.add_theme_font_size_override("font_size", 14)
 	_coords_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
 	# Add a subtle drop-shadow so the label reads on light backgrounds.
@@ -143,9 +150,10 @@ func _build_aim_hud() -> void:
 	# left corner. Shows the world position the camera-forward ray
 	# is currently hitting, plus distance from the player. Updates
 	# every frame so the developer can see what they're aiming at
-	# without clicking.
+	# without clicking. Same IGNORE filter so it can't block clicks.
 	_aim_label = Label.new()
 	_aim_label.position = Vector2(12, 32)
+	_aim_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_aim_label.add_theme_font_size_override("font_size", 12)
 	_aim_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5, 0.85))
 	_aim_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
