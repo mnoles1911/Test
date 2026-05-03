@@ -63,6 +63,14 @@ var _detonated: bool = false
 
 var _fuse_remaining: float
 
+# Tracks whether the detonation was triggered by collision impact
+# or by the fuse running out. Set in _on_body_entered / _physics_process
+# right before they call _detonate. Used to decide whether to trust
+# the charge's current position (impact: yes — we already collided
+# with terrain) or to raycast for the nearest surface (fuse: yes —
+# charge is somewhere in flight).
+var _detonation_source: String = "fuse"
+
 
 func _ready() -> void:
 	_fuse_remaining = fuse_seconds
@@ -76,6 +84,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_fuse_remaining -= delta
 	if _fuse_remaining <= 0.0:
+		_detonation_source = "fuse"
 		_log("Fuse expired mid-air at %s — detonating" % global_position)
 		_detonate()
 
@@ -85,6 +94,7 @@ func _on_body_entered(body: Node) -> void:
 	# collision), the ground, walls.
 	if _detonated:
 		return
+	_detonation_source = "impact"
 	_log("Impact with '%s' at %s" % [body.name if body != null else "?", global_position])
 	_detonate()
 
@@ -93,25 +103,40 @@ func _detonate() -> void:
 	_detonated = true
 
 	# --- Pick a detonation point that actually hits terrain ---
-	# Three cases to handle:
-	#   1. Fuse expires while charge is above terrain (mid-air
-	#      detonation in normal flight) — raycast DOWN to find
-	#      the surface below.
-	#   2. Charge fell past Zylann's near-LOD collision and is
-	#      now BELOW the terrain mass (thrown from a high point,
-	#      lands far from the player) — raycast UP finds the
-	#      underside; carve there to leave a tunnel/cavity.
-	#   3. No terrain in either direction (thrown into a void or
-	#      far past Zylann's collision range entirely) — abort
-	#      the carve so we don't queue a useless edit at empty
-	#      coordinates that would never produce a visible crater.
-	var detonate_pos: Vector3 = _find_nearest_terrain(global_position, 200.0)
-	if detonate_pos == Vector3.INF:
-		_log("No terrain found above or below charge at %s — aborting (fell into void / past collision LOD)" % global_position)
-		queue_free()
-		return
-	if detonate_pos != global_position:
-		_log("Snapped detonation from %s to nearest terrain %s" % [global_position, detonate_pos])
+	# Behavior depends on how the detonation was triggered:
+	#
+	#   IMPACT — body_entered fired, so we already collided with
+	#     a solid (terrain, wall, ground). The charge's current
+	#     position is on/near that surface. Trust it; the carve
+	#     will bite into the body we just hit.
+	#
+	#     A raycast from the charge's position can return nothing
+	#     in this case because the charge has penetrated slightly
+	#     into the collision mesh — the ray origin is inside the
+	#     solid mass and intersect_ray exits without registering
+	#     a hit. So we don't bother raycasting on impact.
+	#
+	#   FUSE — charge is in mid-air and the timer ran out. Try a
+	#     downward ray (normal mid-air case). If that misses
+	#     (e.g. the charge fell past Zylann's near-LOD collision
+	#     and is now in unloaded territory), try upward. If both
+	#     miss, fall back to the charge's current position — the
+	#     carve might not affect anything visible there, but
+	#     it's better than silently aborting and confusing the
+	#     player.
+	var detonate_pos: Vector3 = global_position
+	if _detonation_source == "fuse":
+		var found: Vector3 = _find_nearest_terrain(global_position, 200.0)
+		if found != Vector3.INF:
+			detonate_pos = found
+			if detonate_pos != global_position:
+				_log("Snapped fuse detonation from %s to terrain %s" % [global_position, detonate_pos])
+		else:
+			# No terrain found via raycast (likely past collision
+			# range). Carve at the charge's position anyway —
+			# may produce a crater if the chunks are loaded by
+			# the time the queue drains; if not, it's a no-op.
+			_log("Fuse detonation at %s — no raycast hit, carving at charge position anyway" % global_position)
 
 	# --- Voxel removal in the AOE ---
 	if get_node_or_null("/root/VoxelEditManager"):
