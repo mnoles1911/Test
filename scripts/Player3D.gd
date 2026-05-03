@@ -132,6 +132,25 @@ var _current_water_volume: Node = null
 # Cached reference to the water_volume Area3D Roland is currently
 # inside, or null if dry. Used to query surface_y and current.
 
+# =============================================================
+# DEBUG FLY MODE
+# =============================================================
+
+var is_flying: bool = false
+# When true, gravity is disabled, swim/water physics are skipped, and
+# Roland flies in the direction the camera is facing at FLY_SPEED_MULT
+# times normal walk speed. Toggled via the F1 debug overlay's
+# TOGGLE FLY MODE command (see DebugOverlay.gd).
+
+const FLY_SPEED_MULT: float = 10.0
+# Multiplier on walk speed while flying. 10x means ~50 m/s — fast
+# enough to cross the test world in seconds, slow enough that the
+# camera can keep up.
+
+const FLY_TELEPORT_HEIGHT: float = 100.0
+# Y coordinate Roland is teleported to when fly mode is first
+# engaged (per the design ask "teleport up to Y=100").
+
 # Precomputed from mass — calculated once in _ready().
 # Call _recalculate_movement_stats() if mass changes at runtime.
 var _walk_speed:   float
@@ -199,6 +218,15 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
+	# --- Fly mode short-circuit ---
+	# Debug-only flight that ignores gravity, water, and the
+	# voxel-terrain collision floor. Movement direction comes from
+	# the camera's forward vector (with pitch) instead of the
+	# player body's rotation.
+	if is_flying:
+		_physics_process_flying(delta)
+		return
+
 	# --- Detect water (must run BEFORE movement decisions) ---
 	# Walks the water_volume group; first overlapping water Area3D
 	# wins. Sets _in_water, _is_submerged, _current_water_volume.
@@ -311,7 +339,20 @@ func _update_water_state() -> void:
 		if not area is Area3D:
 			continue
 		var area3d := area as Area3D
-		if area3d.overlaps_body(self):
+		if not area3d.overlaps_body(self):
+			continue
+		# Even if the trigger Area3D overlaps the player, only count
+		# this as "in water" if the player's FEET are at-or-below the
+		# water's surface_y. Without this guard, a water volume whose
+		# collision shape extends above its surface (e.g. the ocean's
+		# 30m-tall box that overhangs the air above sea level for
+		# editor-resilience) would put the player into swim physics
+		# while still standing on dry land or hovering above the
+		# surface.
+		var surface_y: float = INF
+		if "surface_y" in area3d:
+			surface_y = float(area3d.surface_y)
+		if global_position.y <= surface_y:
 			_current_water_volume = area3d
 			_in_water = true
 			break
@@ -321,3 +362,76 @@ func _update_water_state() -> void:
 		_is_submerged = _current_water_volume.is_position_submerged(global_position, HEAD_OFFSET_METERS)
 	else:
 		_is_submerged = false
+
+
+# =============================================================
+# DEBUG — FLY MODE
+# =============================================================
+
+func _physics_process_flying(delta: float) -> void:
+	# Movement uses the camera's forward vector (with pitch) so the
+	# player flies wherever they're looking. Held WASD steers
+	# horizontally relative to that forward, Space climbs, Crouch
+	# descends. No gravity, no water, no floor snapping.
+	motion_mode = MOTION_MODE_FLOATING
+
+	# Camera basis: walk up the rig — Player3D > CameraTarget >
+	# SpringArm3D > Camera3D — so we get the actual look direction
+	# including yaw + pitch. Falls back to body forward if the rig
+	# isn't where we expect.
+	var camera: Camera3D = get_node_or_null("CameraTarget/SpringArm3D/Camera3D") as Camera3D
+	var basis: Basis
+	if camera != null:
+		basis = camera.global_transform.basis
+	else:
+		basis = transform.basis
+
+	# WASD input.
+	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	# Forward = -Z, right = +X. Use the camera's basis directly so
+	# pitch carries — if the camera looks down 30°, W flies 30° down.
+	var forward: Vector3 = -basis.z
+	var right:   Vector3 = basis.x
+	var dir: Vector3 = (right * input_dir.x) + (forward * input_dir.y)
+
+	# Vertical input — Space (dodge action) ascends, C (crouch
+	# action) descends. Both held, not toggled. is_action_pressed
+	# returns true while the bound key is held even though crouch
+	# is a press-toggle elsewhere; the held semantics here are
+	# what we want for fly mode.
+	var v_input: float = 0.0
+	if Input.is_action_pressed("dodge"):
+		v_input += 1.0
+	if Input.is_action_pressed("crouch"):
+		v_input -= 1.0
+	dir.y += v_input
+
+	if dir.length_squared() > 0.0001:
+		dir = dir.normalized()
+
+	var fly_speed: float = _walk_speed * FLY_SPEED_MULT
+	# Direct velocity assignment — no acceleration ramp. Flying
+	# should feel responsive, not weighty.
+	velocity = dir * fly_speed
+	move_and_slide()
+
+
+func toggle_fly_mode() -> bool:
+	# Public toggle for the F1 debug overlay. Returns the new state
+	# (true = flying, false = grounded).
+	#
+	# On engagement: teleport up to FLY_TELEPORT_HEIGHT so the player
+	# pops above any terrain peaks and can see the world from above.
+	# On disengagement: zero velocity so we don't suddenly fall at
+	# whatever fly-speed Roland was moving at.
+	is_flying = not is_flying
+	if is_flying:
+		global_position.y = FLY_TELEPORT_HEIGHT
+		velocity = Vector3.ZERO
+		# Clear water state so the swim HUD doesn't linger.
+		_in_water = false
+		_is_submerged = false
+		_current_water_volume = null
+	else:
+		velocity = Vector3.ZERO
+	return is_flying

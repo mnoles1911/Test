@@ -5,6 +5,9 @@
 [ext_resource type="Script" uid="uid://djebxbfkbbd03" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
 [ext_resource type="Script" uid="uid://d1vw32cgtbcv4" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
 [ext_resource type="PackedScene" path="res://scenes/water/water_volume.tscn" id="5_water"]
+[ext_resource type="PackedScene" path="res://scenes/water/ocean_volume.tscn" id="6_ocean"]
+[ext_resource type="Script" uid="uid://n5dio80buqo5" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
+[ext_resource type="Script" uid="uid://wh8np2gvneya" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
 sky_top_color = Color(0.05, 0.06, 0.1, 1)
@@ -32,15 +35,15 @@ fog_density = 0.02
 database_path = "user://voxel_deltas.sqlite"
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
-frequency = 0.012
+frequency = 0.006
 fractal_type = 2
-fractal_octaves = 4
+fractal_lacunarity = 2.1
 
-[sub_resource type="VoxelGeneratorNoise2D" id="VoxelGen_Noise2D"]
+[sub_resource type="VoxelGeneratorScript" id="VoxelGen_Cubic"]
+script = ExtResource("8_cubic_gen")
 noise = SubResource("TerrainNoise")
-height_range = 25.0
 
-[sub_resource type="VoxelMesherTransvoxel" id="VoxelMesher_Transvoxel"]
+[sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]
 size = Vector3(0.5, 0.3, 0.5)
@@ -63,17 +66,26 @@ script = ExtResource("4_bootstrap")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1612514652]
 environment = SubResource("Environment_1")
 
+[node name="DayNightCycle" type="Node" parent="." unique_id=2000000021]
+script = ExtResource("7_daynight")
+
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1383847949]
-transform = Transform3D(0.7071, -0.5, 0.5, 0, 0.7071, 0.7071, -0.7071, -0.5, 0.5, 0, 8, 0)
-light_color = Color(0.7, 0.75, 0.85, 1)
-light_energy = 0.4
+light_color = Color(1, 0.97, 0.92, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Moon" type="DirectionalLight3D" parent="." unique_id=2000000020]
+light_color = Color(0.55, 0.65, 0.85, 1)
+light_energy = 0.0
 shadow_enabled = true
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 6
+run_stream_in_editor = false
 stream = SubResource("VoxelStream_SQLite")
-generator = SubResource("VoxelGen_Noise2D")
-mesher = SubResource("VoxelMesher_Transvoxel")
+generator = SubResource("VoxelGen_Cubic")
+mesher = SubResource("VoxelMesher_Cubes")
+transform = Transform3D(0.125, 0, 0, 0, 0.125, 0, 0, 0, 0.125, 0, 0, 0)
 
 [node name="Campfire" type="OmniLight3D" parent="." unique_id=98083291]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.5, 0)
@@ -102,7 +114,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 5, 0)
 shape = SubResource("NoEditZone_TestShape")
 
 [node name="WaterVolume_Test" parent="." unique_id=1135040027 instance=ExtResource("5_water")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18, 0, 4)
+
+[node name="OceanVolume" parent="." unique_id=2000000010 instance=ExtResource("6_ocean")]
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 35, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)

@@ -1,0 +1,54 @@
+[gd_scene format=3 uid="uid://docean_volume_001"]
+
+[ext_resource type="Script" path="res://scripts/WaterVolume.gd" id="1_water"]
+
+[sub_resource type="BoxShape3D" id="OceanShape"]
+; Big horizontal slab — 200×30×200 m. Vertically goes 15 m below sea
+; level (where Roland is fully submerged) up to 15 m above (so the
+; ocean still "owns" anyone who somehow ends up below the surface
+; on terrain near the edge).
+size = Vector3(200, 30, 200)
+
+[sub_resource type="PlaneMesh" id="OceanSurfaceMesh"]
+; Flat plane 200×200 m. Sits at the top of the volume so its visible
+; surface aligns with surface_y.
+size = Vector2(200, 200)
+subdivide_width = 4
+subdivide_depth = 4
+
+[sub_resource type="StandardMaterial3D" id="OceanMat"]
+; Placeholder material until the Boujie Water Shader (Asset Library
+; #2070) lands. Slightly more opaque than the test pond so the player
+; can clearly see the ocean horizon. Subtle metallic + low roughness
+; gives basic specular highlight from the sun.
+albedo_color = Color(0.16, 0.32, 0.48, 0.78)
+transparency = 1
+metallic = 0.5
+roughness = 0.15
+
+[node name="OceanVolume" type="Area3D" groups=["water_volume"]]
+; Large, ambient ocean. The OceanVolume sits at world Y=0 so any
+; voxel terrain valley below Y=0 is automatically submerged. surface_y
+; matches the visual SurfaceMesh position so the swimming logic
+; transitions exactly at the visible water line.
+script = ExtResource("1_water")
+surface_y = 0.0
+
+[node name="ZoneShape" type="CollisionShape3D" parent="."]
+; Offset Y=-15 so the BOX's TOP edge sits at the Area3D origin
+; (sea level = world Y=0). Without this offset the 30m-tall box
+; would extend 15m UP into the air above sea level, and Roland
+; spawning above the ocean (Y=+10) would be flagged as "in water"
+; and given swim physics — i.e. he'd hover in mid-air.
+;
+; Now the trigger box spans Y in [-30, 0]: 30m of depth below sea
+; level, no air above. Walking from a beach into the water
+; transitions exactly at the visible water line.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -15, 0)
+shape = SubResource("OceanShape")
+
+[node name="SurfaceMesh" type="MeshInstance3D" parent="."]
+; Visible water plane at sea level (Y=0). PlaneMesh has its surface
+; perpendicular to +Y by default, so no rotation needed.
+mesh = SubResource("OceanSurfaceMesh")
+surface_material_override/0 = SubResource("OceanMat")
