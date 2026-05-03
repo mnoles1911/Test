@@ -64,17 +64,20 @@ const WORLD_GENERATOR_VERSION: int = 1
 # Configuration (tunable in the Inspector once registered)
 # ============================================================
 
-@export var voxels_per_frame: int = 256
-# Maximum number of voxels we'll attempt to write per physics frame.
-# This is the throttle that prevents big edits (explosives, spells)
-# from stuttering the frame rate.
+@export var voxels_per_frame: int = 200000
+# Soft per-frame budget for the voxel edit queue. With one 2m
+# explosive sphere at 8 vox/m costing ~17000 voxels, this lets
+# ~10 sphere edits drain in a single physics frame, so rapid
+# explosive throws don't bottleneck on the queue.
 #
-# 256 is a starting guess. Real sweet spot depends on voxel size,
-# mesher cost, and target hardware. Tune up if edits feel sluggish in
-# play; tune down if you see frame drops during heavy edit traffic.
+# (The earlier 256 was way too low — it forced one sphere per
+# frame, which combined with rapid throws and Zylann's mesh
+# rebuild timing produced the "spam-thrown explosives don't
+# carve" bug. With this much higher budget, queued edits drain
+# the same physics frame they're submitted.)
 #
-# A single command (e.g. one big sphere) can exceed this in one go —
-# the budget gates how many commands we *start* per frame, not how
+# A single command can still exceed the budget in one go — the
+# budget gates how many commands we *start* per frame, not how
 # big each one is allowed to be.
 
 @export var max_queue_length: int = 2048
@@ -193,6 +196,7 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 	# _physics_process when this command's turn comes up in the queue.
 
 	if not _check_edit_allowed(world_pos):
+		print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
 		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping sphere edit")
@@ -204,6 +208,9 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 		"radius": radius,
 		"value": voxel_value,
 	})
+	print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
+		radius, world_pos, _edit_queue.size()
+	])
 	return true
 
 
@@ -292,11 +299,18 @@ func _physics_process(_delta: float) -> void:
 	if _edit_queue.is_empty():
 		return
 
+	var initial_queue: int = _edit_queue.size()
 	var voxels_used: int = 0
+	var processed: int = 0
 	while not _edit_queue.is_empty() and voxels_used < voxels_per_frame:
 		var cmd: Dictionary = _edit_queue.pop_front()
 		voxels_used += _estimate_voxel_cost(cmd)
 		_apply_edit(cmd)
+		processed += 1
+	if processed > 0:
+		print("[VoxelEditManager] frame drain: %d processed, %d remain (started with %d)" % [
+			processed, _edit_queue.size(), initial_queue
+		])
 
 
 # ============================================================
