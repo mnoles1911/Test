@@ -57,6 +57,11 @@ var _load_panel: Panel
 var _load_list_container: VBoxContainer
 var _load_cancel_btn: Button
 
+# Set to true by Settings._on_back() when returning from Settings to
+# a gameplay scene. _process() watches for the world scene to finish
+# loading, then re-opens the pause menu automatically.
+var _reopen_pending: bool = false
+
 
 # =============================================================
 # LIFECYCLE
@@ -462,6 +467,27 @@ func _hits(ctrl: Control, pos: Vector2) -> bool:
 
 func is_open() -> bool:
 	return _root != null and _root.visible
+
+
+func request_reopen() -> void:
+	# Called by Settings._on_back() when the player was in-game.
+	# PauseMenu will reopen itself once the world scene finishes loading.
+	_reopen_pending = true
+
+
+func _process(_delta: float) -> void:
+	if not _reopen_pending:
+		return
+	# Wait until the scene tree has a current scene and it is NOT
+	# Settings (which might still be alive during the fade-out).
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		return
+	var path: String = scene.scene_file_path
+	if "Settings" in path or "settings" in path:
+		return
+	_reopen_pending = false
+	_open()
 
 
 # =============================================================

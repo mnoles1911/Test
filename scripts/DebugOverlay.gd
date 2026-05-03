@@ -567,7 +567,7 @@ func _toggle_fly_mode() -> void:
 	if players.is_empty():
 		log_action("DEV: fly mode toggle ignored — no player in scene")
 		return
-	var player := players[0]
+	var player: Node = players[0]
 	if not player.has_method("toggle_fly_mode"):
 		log_action("DEV: fly mode toggle ignored — Player3D.toggle_fly_mode missing")
 		return
