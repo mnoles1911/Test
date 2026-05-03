@@ -25,7 +25,11 @@ radius = 0.4
 height = 1.7
 
 [sub_resource type="BoxMesh" id="BoxMesh_1"]
-size = Vector3(0.6, 1.7, 0.6)
+; Realistic-ish human silhouette: 0.4 m wide × 1.7 m tall × 0.25 m deep.
+; Matches average adult shoulder width / depth so Roland reads as a
+; person on the voxel terrain instead of a 0.6 m wide green pillar
+; that looked giant relative to 12.5 cm voxel cubes.
+size = Vector3(0.4, 1.7, 0.25)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
 albedo_color = Color(0.2, 0.8, 0.2, 1)
@@ -46,10 +50,15 @@ surface_material_override/0 = SubResource("StandardMaterial3D_1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
 
 [node name="SpringArm3D" type="SpringArm3D" parent="CameraTarget"]
-spring_length = 5.0
+; Pulled back from 5 m to 8 m so more of the landscape is visible in
+; the third-person framing. At 5 m on a 1.7 m Roland, he filled too
+; much of the screen and made terrain features feel small; at 8 m
+; the camera frames roughly his full body plus 4-5 m of surrounding
+; terrain on each side.
+spring_length = 8.0
 script = ExtResource("2_rig")
 elevation_degrees = 15.0
-arm_length = 5.0
+arm_length = 8.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraTarget/SpringArm3D"]
 current = true
