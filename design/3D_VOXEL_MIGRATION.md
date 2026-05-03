@@ -87,9 +87,9 @@ This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent
 
 **For this project:**
 - Node: `VoxelLodTerrain` (LOD streaming — required for 12km × 10km open world)
-- Terrain mesher: `VoxelMesherCubes` (smooth hills, cliff edges, river banks)
-- Buildings: MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain. `VoxelMesherCubes` for any terrain-carved structures (rare).
-- Terrain is **editable / destructible by default**. The procedural `VoxelGeneratorGraph` is the *baseline*; player edits are stored as deltas in `VoxelStreamSQLite` per save slot. See **"Destructible Terrain"** below.
+- Terrain mesher: `VoxelMesherCubes` (hard-edged cubic terrain, blocky stepped slopes — reads `CHANNEL_COLOR`)
+- Buildings: MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain. Carved-structure terrain is rare.
+- Terrain is **editable / destructible by default**. The procedural baseline is currently produced by `CubicHeightmapGenerator` (custom GDScript `VoxelGeneratorScript` subclass — see `scripts/CubicHeightmapGenerator.gd`) using layered noise + per-voxel colour jitter. Player edits are stored as deltas in `VoxelStreamSQLite` per save slot. The originally-planned VoxelGeneratorGraph + Gaea EXR pipeline may return for v1 Mira terrain authoring later. See **"Destructible Terrain"** below.
 - Scope: full open world — 12km × 10km playable Mira, 125:1 linear compression
 
 ---
@@ -258,15 +258,18 @@ Third-person over-shoulder camera, player-rotatable:
 
 **Goal:** Walking on streaming VoxelLodTerrain that generates recognizable Mira geography, with destructible terrain wired in from the start.
 
-- [ ] Set up `VoxelLodTerrain` node in `World3D.tscn` (replace placeholder floor)
-- [ ] Wire `VoxelGeneratorGraph` (Gaea EXR heightmap + 3D cave noise) — Spine ridge east, Greatwood flat north, Aldwater valley center, forced-flat zones at settlement coordinates
-- [ ] Configure LOD levels (6–8 levels for 12km extent; mandatory LOD0 radius 32m; default edit-detail radius 64m)
-- [ ] Attach `VoxelStreamSQLite` to the terrain — voxel-delta storage path = `user://saves/slot_{N}/voxel_deltas.sqlite`
-- [ ] Implement `VoxelEditManager` autoload — async edit queue, EditedChunkRegistry, NoEditZoneRegistry, LOD-bake-on-eviction, per-frame voxel budget cap
-- [ ] Implement `NoEditZoneRegistry` — registers Area3D volumes by group `no_edit_zone`; `VoxelEditManager` queries before any write
-- [ ] First test edit verb: pickaxe debug action — single-voxel removal at crosshair, yields material into inventory
-- [ ] Add `EntityStreamer` node — stub that prints chunk load/unload to Output
-- [ ] Verify: player walks on generated terrain, camera follows in third-person, distant terrain LODs are visible, pickaxe edits persist across save/load, edits inside a placed NoEditZone are rejected
+- [x] Set up `VoxelLodTerrain` node in `World3D.tscn` (replaced placeholder floor)
+- [x] Wire procedural baseline — currently `CubicHeightmapGenerator` (GDScript) producing macro+mid+detail noise + per-voxel jitter. The Gaea EXR heightmap path (Spine ridge east, Greatwood flat north, etc.) is **deferred** to v1 Mira authoring; the GDScript generator is sufficient for current bring-up.
+- [x] Configure LOD levels (6 levels active in `World3D.tscn`)
+- [x] Attach `VoxelStreamSQLite` to the terrain — currently single shared `user://voxel_deltas.sqlite` (per-slot directories deferred until save-slot UI is exercised)
+- [x] Implement `VoxelEditManager` autoload — registered, async queue with 200000 vox/frame budget, EditedChunkRegistry, NoEditZone enforcement, world→voxel coord conversion, `WORLD_GENERATOR_VERSION` save stamp. **LOD-bake-on-eviction is deferred** (render optimization, not correctness gate).
+- [x] Implement `NoEditZoneRegistry` autoload — registered, group-based registry, queried before every voxel write
+- [x] First test edit verb: pickaxe debug action — works end-to-end (carve → material yield → mining XP)
+- [x] Explosive carve verb (PowderCharge + ThrowableHandler, camera-aimed, detonation flash) — bonus, not in original scope
+- [x] Swimming + drowning state machine — bonus, not in original scope
+- [x] Day/night cycle from WorldClock — bonus, not in original scope
+- [ ] `EntityStreamer` node stub — defer until any streamed entities exist
+- [x] Verify: player walks on generated terrain, camera follows in third-person, distant terrain LODs visible, edits persist across save/load via SQLite + version stamp, edits inside the test NoEditZone are rejected
 
 ### Milestone 6-3D: First MagicaVoxel Assets
 

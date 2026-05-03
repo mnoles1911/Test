@@ -19,11 +19,13 @@ WaterBody (Node3D)
     └── CollisionShape3D           ← BoxShape3D spanning the water body
 ```
 
-**WaterVisual:** Uses the **Boujie Water Shader** (Godot Asset Library #2070, compatible with Godot 4.1+, GDScript).
-- LOD ring mesh — efficient single draw call even at ocean scale
-- Supports animated surface, reflections, shoreline foam
+**WaterVisual:** Currently a placeholder `StandardMaterial3D` on a `PlaneMesh` (transparent blue, slight metallic + low roughness). The **Boujie Water Shader** (Godot Asset Library #2070) is the planned drop-in replacement — adds animated surface, reflections, shoreline foam, single-draw LOD ring mesh — but it has not been installed in this project. Swap when the asset lands. Current shader is functional for swim-system testing.
+- LOD ring mesh — efficient single draw call even at ocean scale (Boujie)
+- Supports animated surface, reflections, shoreline foam (Boujie)
 - Works with `WorldEnvironment` fog for underwater transitions
 - Tag: set `WaterVolume` metadata `water_depth: float` to indicate max depth (used for submersion detection)
+
+**Current implementation (2026-05-03):** `scripts/WaterVolume.gd` exposes `surface_y: float` (world-space Y of the water surface) and `get_current_velocity() -> Vector3` (river current). `Player3D._update_water_state()` polls every Area3D in the `water_volume` group; first overlap wins; `_in_water` is set when feet `global_position.y <= surface_y`. Swim physics is `MOTION_MODE_FLOATING` with gravity replaced by damping toward zero. Submersion uses a head offset of 1.5 m above feet; submerged for >30 s drains HP at 5/s.
 
 **WaterVolume (`Area3D`):** Collision volume covering the full 3D extent of the water body — not just the surface.
 - Connect `body_entered` and `body_exited` to `Player3D._on_water_volume_entered/exited()`

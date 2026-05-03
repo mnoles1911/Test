@@ -89,11 +89,15 @@ World3D (Node3D)
 └── WorldEnvironment
 ```
 
-### WorldGenerator — VoxelGeneratorGraph (Godot editor node, not GDScript):
+### WorldGenerator — current implementation vs. v1 plan
 
-**`VoxelGeneratorGraph`** is a built-in node in Zylann's plugin. You wire it visually in the
+> **CURRENT (2026-05-03):** The active baseline generator is `CubicHeightmapGenerator`, a GDScript `VoxelGeneratorScript` subclass at `scripts/CubicHeightmapGenerator.gd`. It writes `CHANNEL_COLOR` per voxel via macro + mid + detail noise layers + per-voxel colour jitter. Live-tunable in the Inspector via `@export_range` sliders + `Preset` enum. This was a deliberate divergence from the original Gaea + VoxelGeneratorGraph plan — quicker to iterate, doesn't require external Gaea authoring, and works directly with `VoxelMesherCubes`. The Gaea pipeline below remains the v1 Mira plan (authored geography for the 12 km × 10 km playable map) and is the document of record for that work. Current generator is "good enough" for the destructible-voxel core to land.
+
+**Original v1 Gaea pipeline (deferred — return for v1 Mira authoring):**
+
+`VoxelGeneratorGraph` is a built-in node in Zylann's plugin you wire visually in the
 Godot editor — it compiles to a SIMD/compute shader and runs significantly faster than a
-GDScript subclass could. **Do not write a `VoxelGeneratorScript` GDScript subclass for this.**
+GDScript subclass could.
 
 **Gaea → Godot terrain pipeline:**
 1. Author Mira's terrain in **Gaea** (free tier sufficient) — sculpt the Spine ridge, Greatwood, Aldwater valley, settlement flat zones

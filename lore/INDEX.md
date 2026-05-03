@@ -10,6 +10,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 
 | File | Contents |
 |---|---|
+| [README.md](README.md) | Lore-corpus orientation: how the trilogy's narrative is organized across files |
 | [WORLD.md](WORLD.md) | Geography (Mira and Thal), the Three Ages, religion, magic system |
 | [WORLD_GEOGRAPHY.md](WORLD_GEOGRAPHY.md) | Terrain, scale, rivers, coastlines, roads, settlements table — map reference |
 | ~~CITY_DESCRIPTIONS.md~~ | **Deleted** — fully consolidated into individual location files in `locations/`. No unique content remained. |
@@ -106,10 +107,7 @@ Individual location files live in `lore/locations/`. Each file includes: physica
 
 | File | Contents |
 |---|---|
-| [MAP_GENERATION_GUIDE.md](MAP_GENERATION_GUIDE.md) | Tolkien-style map prompt, draw instructions for Mira/Thal/Shroud Sea, label hierarchy, condensed image prompt |
-| [MAP_POSITION_GRID.md](MAP_POSITION_GRID.md) | Proportional x/y coordinates (% of map) for all settlements and geographic features |
-| [MAP_NEGATIVE_SPACE.md](MAP_NEGATIVE_SPACE.md) | What is deliberately absent from the map and why |
-| [MAP_ISLAND_SIZING.md](MAP_ISLAND_SIZING.md) | Relative size guide: Copper Isles vs Pilgrim's Chain |
+| [MAP_GENERATION_GUIDE.md](MAP_GENERATION_GUIDE.md) | Tolkien-style map prompt, draw instructions for Mira/Thal/Shroud Sea, label hierarchy, condensed image prompt. Includes the position grid, negative-space rules, and island sizing inline (the previously-separate MAP_POSITION_GRID / MAP_NEGATIVE_SPACE / MAP_ISLAND_SIZING files were consolidated into this guide). |
 
 ---
 

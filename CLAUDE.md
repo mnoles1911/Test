@@ -50,12 +50,24 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - **Milestone 4 (2D, PR #42):** complete — TransitionManager, expanded GameState, Zone framework, MainMenu/Settings/SaveSlotPicker, DebugOverlay, FlagScheduler, InventoryManager, expanded JournalUI, EnemyData.
 - **3D pivot (PR #43):** complete — `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
 - **Milestone 4-3D (2026-05-01):** complete and verified in Godot — Player3D + CameraRig (standard + freelook), HUDOverlay, JournalUI 6-tab rewrite, CampfireFlicker3D, SpawnPoint3D / RoomTrigger3D / DialogueTrigger3D, Player3D.tscn / World3D.tscn placeholders, all UI resized to 1080p. Outstanding manual step: install Zylann's Voxel Tools plugin (GDExtension edition) from GitHub Releases at https://github.com/Zylann/godot_voxel/releases — NOT distributed via Godot's Asset Library because it ships native binaries.
-- **Milestone 5-3D (next):** VoxelLodTerrain + `VoxelStreamSQLite` + `WorldGenerator` (VoxelGeneratorGraph driven by a Gaea EXR heightmap + 3D cave noise — produces procedural baseline only) + `VoxelEditManager` and `NoEditZoneRegistry` autoloads + first edit verb (pickaxe debug action: swing → voxel removed → material yielded) + first MagicaVoxel exports (campfire, cave wall) + first Roland low-poly Blender model with idle/walk/run animations. Editable terrain wired in from day one. See `DESIGNER_TODO.md` Section 7.
+- **Milestone 5-3D (largely complete, 2026-05-03):** Core destructible-voxel slice is shipping and verified in-game.
+  - VoxelLodTerrain + `VoxelStreamSQLite` per-edit deltas ✅
+  - **`CubicHeightmapGenerator`** (custom GDScript subclass of `VoxelGeneratorScript`) — replaced the originally-planned `VoxelGeneratorGraph` + Gaea EXR pipeline. Produces the procedural baseline via macro + mid + detail noise layers + per-voxel colour jitter, writing `CHANNEL_COLOR` for `VoxelMesherCubes`. Live-tunable via `@export_range` sliders + Preset enum (`LAY_OF_THE_LAND`, `MINECRAFT_BLOCKY`, `SMOOTH_GRADIENT`, `CUSTOM`). The Gaea EXR pipeline may return for v1 Mira terrain authoring later.
+  - `VoxelEditManager` autoload (queue, NoEditZone gate, world→voxel coord conversion, per-frame voxel budget) ✅
+  - `NoEditZoneRegistry` autoload ✅
+  - Pickaxe carve verb (`EditToolHandler` + `InventoryManager` material yields) ✅
+  - Explosive carve (`PowderCharge` + `ThrowableHandler`, camera-aimed throws, visible detonation flash) ✅
+  - Swimming + drowning state machine (`Player3D._update_water_state`, `WaterVolume.gd`) ✅
+  - Day/night cycle (`DayNightCycle.gd` driven by `WorldClock`) ✅
+  - Ocean (sea level Y=6) + test water volume ✅
+  - Jump on Space (when grounded) + fly-mode debug toggle ✅
+  - Settings UI fully functional (manual `_input` dispatch since Dialogic intercepts GUI events project-wide) ✅
+  - Outstanding: low-poly Blender Roland model (still a 0.4×1.7×0.25 m green box placeholder), MagicaVoxel exports (campfire, cave wall props), surface decoration pass (grass/stone vertical pillars to break up bare cube fields). See `DESIGNER_TODO.md` Section 7 for next-batch work and `design/LESSONS_LEARNED.md` for the bring-up bug log.
 
 ## Art specification (confirmed — 3D VOXEL)
 - **Engine approach**: Godot 4.6.2, 3D. Voxel world via Zylann's Voxel Tools plugin.
 - **Voxel scale**: 8 voxels per meter (confirmed — each block is 12.5 cm, noticeably blocky but finer than Minecraft's 1m cubes)
-- **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes` (blocky stepped terrain, matches MagicaVoxel building style). The `VoxelGeneratorGraph` produces the **procedural baseline only** (Gaea EXR heightmap + 3D cave noise). **Editable / destructible by default** — every voxel can be modified by player edits (axe, pickaxe, shovel, explosive, spell). Non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes. Edits stored as deltas in `VoxelStreamSQLite` per save slot. Edits persist forever (no world healing). Edited chunks render at LOD0 within the player's edit-detail radius and from a cached LOD-bake mesh beyond it (set `user://saves/slot_{N}/mesh_cache/`). Canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+- **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes` (blocky stepped terrain, matches MagicaVoxel building style). Procedural baseline produced by **`CubicHeightmapGenerator`** (custom `VoxelGeneratorScript` GDScript subclass — `scripts/CubicHeightmapGenerator.gd`) writing `CHANNEL_COLOR` per voxel via layered noise (macro 30 m relief + mid 2 m rolling hills + detail 50 cm grain) and per-voxel colour jitter (~±25 % brightness). Replaces the planned VoxelGeneratorGraph + Gaea EXR pipeline; Gaea may return for v1 Mira authoring later. **Editable / destructible by default** — every voxel can be modified by player edits (axe, pickaxe, shovel, explosive, spell). Non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes. Edits stored as deltas in `VoxelStreamSQLite` (`user://voxel_deltas.sqlite`). Edits persist forever (no world healing). LOD-bake-on-eviction is **deferred** — edited chunks far from the player currently re-render from disk deltas via Zylann's standard streaming. Canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
 - **World scale**: Playable Mira 12km × 10km, compression 125:1 linear (1 game meter ≈ 125 fictional meters). Playable Thal ~7km × 5.5km.
 - **Props/buildings**: MagicaVoxel → export .glb → Godot MeshInstance3D. All narratively load-bearing structures (settlements, dungeon entrances, lore landmarks) sit on top of the voxel surface inside NoEditZones — never carved into voxels.
 - **Player-built structures**: hybrid — schematic props (crafted at the Carpentry Bench: walls, roofs, doors, fences) for the bulk + per-voxel placement (Build Mode → Detail submode) for custom detailing.
@@ -161,8 +173,8 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 **Art and pipeline:**
 - design/ART_DIRECTION.md — palette, location visual identity, architecture by region, shaders
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
-- design/TECH_STACK.md — full technology stack: every tool, plugin, and pipeline; detailed terrain authoring (Gaea → EXR → VoxelGeneratorGraph); autoload status table
-- design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender; VoxelGeneratorGraph + Gaea EXR pipeline step-by-step
+- design/TECH_STACK.md — full technology stack: every tool, plugin, and pipeline; current generator (`CubicHeightmapGenerator`); autoload status table (kept in sync with `project.godot`)
+- design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender. Note: the Gaea → EXR → VoxelGeneratorGraph pipeline section is aspirational (planned for v1 Mira authoring); current implementation uses `CubicHeightmapGenerator`
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
 
 **Planning and ops:**
@@ -194,23 +206,29 @@ The system design corpus is complete (combat, AI, companions, factions, quests, 
 - `NPCData.gd` — Resource: npc_id, Tier enum, disposition, bark_triggers, schedule entries (one .tres per character, expected in `/assets/npcs/` once that directory exists)
 - `NPCScheduleEntry.gd` — Resource: hour_start, hour_end, location_id, animation
 
-**Implemented but not yet registered as autoloads** (must be added in Project Settings → Autoload before scripts that reference them can run):
-- `BarkManager.gd` — loads bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`; picks random non-repeating line; plays spatial audio from `assets/audio/barks/`; falls back to Output print if BarkOverlay UI is absent
-- `WorldClock.gd` — ticks in-game time (default 240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` and `advance_hours()` for debug/rest
+**Voxel + world systems (in place, autoloaded):**
+- `VoxelEditManager.gd` — autoload. Async edit queue (per-frame voxel budget cap), `EditedChunkRegistry` (`Dictionary<Vector3i, bool>` of chunks with deltas), NoEditZone enforcement before every `VoxelTool.do_*` call, `WORLD_GENERATOR_VERSION` constant (currently 7) stamped into saves. Coord conversion handles `terrain.transform.scale = 0.125` → voxel-grid space. **Always route voxel writes through this autoload.** See `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+- `NoEditZoneRegistry.gd` — autoload. Registers Area3D volumes by group `no_edit_zone`. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before any voxel write.
+- `CubicHeightmapGenerator.gd` — `@tool` `VoxelGeneratorScript` subclass attached to the `VoxelLodTerrain` node in `World3D.tscn` (NOT an autoload). Live-tunable via `@export_range` sliders + Preset enum (LAY_OF_THE_LAND / MINECRAFT_BLOCKY / SMOOTH_GRADIENT / CUSTOM). Replaces the originally-planned VoxelGeneratorGraph + Gaea EXR pipeline.
+- `WorldClock.gd` — autoload. Ticks in-game time (240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` / `advance_hours()` for debug/rest. Save/load includes the wall-clock state.
+- `BarkManager.gd` — autoload. Loads bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`; picks random non-repeating line; plays spatial audio from `assets/audio/barks/`; falls back to Output print if BarkOverlay UI is absent.
+- `WaterVolume.gd` — script attached to any Area3D in the `water_volume` group. Exposes `surface_y` (world-space) and `get_current_velocity()` for river flow. Player3D polls overlapping volumes per-frame for swim physics.
+- `DayNightCycle.gd` — Node script on `World3D` driving Sun + Moon `DirectionalLight3D` rotation and sky/fog colour from `WorldClock`'s continuous hour float.
+- `EditToolHandler.gd` — child of Player3D. Pickaxe/axe/shovel swing detection: raycast from camera, NoEditZone-gated voxel removal via `VoxelEditManager`, material yield to `InventoryManager`.
+- `ThrowableHandler.gd` — child of Player3D. Throw input (default key 1) instances throwables, copies `voxel_aoe_radius` + `combat_damage` from `ITEM_REGISTRY` onto the spawned RigidBody3D, applies camera-aimed velocity (carries pitch).
+- `PowderCharge.gd` (and the throwable scene) — RigidBody3D explosive. Impact-only detonation, sphere carve via `VoxelEditManager`, visible OmniLight3D + emissive sphere flash that animates and self-frees via Tween.
 
 **Specified in design docs but not yet implemented** (build in dependency order):
-- `WorldGenerator` — implemented as a **`VoxelGeneratorGraph`** node (not a GDScript subclass, not an autoload); authored geography from a Gaea-exported 32-bit EXR heightmap + biome splatmap; 3D cave noise layer for overhangs and caves; encodes Spine ridge, Greatwood, Aldwater valley, Ashfields, settlement flat zones. **Produces the procedural baseline only — every player edit is diffed against this.** Stamp a generator-version constant in code so save loads can detect mismatches. See `design/ART_PIPELINE.md` → Tool 2.
-- `VoxelEditManager.gd` — autoload. Async edit queue (per-frame voxel budget cap), `EditedChunkRegistry` (`HashSet<Vector3i>` of chunks with deltas, populated from SQLite on load), LOD-bake-on-eviction (one-time LOD1/LOD2 mesh generation when an edited chunk leaves the player's edit-detail radius; cached to `user://saves/slot_{N}/mesh_cache/`), NoEditZone enforcement before every `VoxelTool.do_*` call. See `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
-- `NoEditZoneRegistry.gd` — autoload. Registers Area3D volumes by group `no_edit_zone`. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before any voxel write.
 - `SchematicLibrary.gd` — autoload. Registry of placeable building schematics (`.glb` props with placement metadata in `assets/voxel/schematics/`). Player crafts schematics at the Carpentry Bench; placements saved to `user://saves/slot_{N}/placed_schematics.json`.
-- `EntityRegistry.gd` — spatial dictionary of every world entity keyed by chunk; lightweight `EntityRecord` data objects; does not instantiate nodes itself
-- `EntityStreamer.gd` — node in `World3D.tscn`; instantiates / saves / `queue_free()`s entities by player range
-- `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md)
-- `QuestManager.gd` — quest flag management (design/QUEST_SYSTEM.md)
-- `WeatherManager.gd` — weather state, WorldEnvironment tweening, weather overrides (design/WEATHER_AND_ENVIRONMENT.md)
-- `CompanionManager.gd` — companion active state, HP, save serialization (design/COMPANION_SYSTEM.md)
+- `EntityRegistry.gd` — spatial dictionary of every world entity keyed by chunk; lightweight `EntityRecord` data objects; does not instantiate nodes itself.
+- `EntityStreamer.gd` — node in `World3D.tscn`; instantiates / saves / `queue_free()`s entities by player range.
+- `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md).
+- `QuestManager.gd` — quest flag management (design/QUEST_SYSTEM.md).
+- `WeatherManager.gd` — weather state, WorldEnvironment tweening, weather overrides (design/WEATHER_AND_ENVIRONMENT.md).
+- `CompanionManager.gd` — companion active state, HP, save serialization (design/COMPANION_SYSTEM.md).
+- LOD-bake-on-eviction caching under `user://saves/slot_{N}/mesh_cache/` — render optimization for edited chunks far from the player. **Deferred** until perf becomes an issue; current LOD streaming is sufficient.
 
-Manual setup still required: see `DESIGNER_TODO.md` → Section 1 (Zylann Voxel Tools install, audio bus layout per `design/AUDIO_DESIGN.md`, Autoload registration for `BarkManager` / `WorldClock` / `VoxelEditManager` / `NoEditZoneRegistry` / `SchematicLibrary` / `EntityRegistry`).
+Manual setup still required: see `DESIGNER_TODO.md` → Section 1 (Zylann Voxel Tools install, audio bus layout per `design/AUDIO_DESIGN.md`).
 
 ## World coordinate reference (playable Mira, origin = NW corner)
 | Location | Game x | Game z |
@@ -364,11 +382,11 @@ Tier 0 background NPCs do NOT use NPC.gd — plain Node3D only.
   camera arm without rotating Roland. On release, arm re-centers behind Roland.
   Used to look around without changing facing direction.
 
-**VoxelLodTerrain (in World3D.tscn — to be built in Milestone 5-3D):**
+**VoxelLodTerrain (in World3D.tscn — wired and active):**
 ```
 World3D (Node3D)
 ├── VoxelLodTerrain
-│   ├── VoxelGeneratorGraph        ← procedural baseline only (Gaea EXR + 3D noise)
+│   ├── CubicHeightmapGenerator   ← custom GDScript noise generator (CHANNEL_COLOR + macro/mid/detail noise + per-voxel jitter)
 │   └── VoxelStreamSQLite           ← per-save-slot delta DB
 ├── VoxelViewer (child of Player3D)
 ├── EntityStreamer
