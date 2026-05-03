@@ -40,6 +40,27 @@ extends Node
 
 
 # ============================================================
+# Save-format compatibility
+# ============================================================
+
+const WORLD_GENERATOR_VERSION: int = 1
+# Bump this constant whenever the procedural baseline produced by
+# VoxelGeneratorGraph (or the placeholder VoxelGeneratorFlat) changes
+# shape — e.g. when we swap to a new EXR heightmap, change cave
+# parameters, or add new biome material indices.
+#
+# GameState.save_game() stamps this version into every save. On
+# load, mismatch is treated as a HARD ERROR — the procedural
+# baseline has changed, so player voxel deltas (stored against the
+# old baseline) would float in nonsense terrain.
+#
+# There is no silent migration. If we want to keep old saves loading
+# after a generator change, the policy needs an explicit decision per
+# change (re-bake the baseline, discard deltas, whatever) — not a
+# default behavior.
+
+
+# ============================================================
 # Configuration (tunable in the Inspector once registered)
 # ============================================================
 

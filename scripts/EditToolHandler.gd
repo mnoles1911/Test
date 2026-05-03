@@ -53,6 +53,26 @@ const VOXEL_MATERIAL_YIELDS: Dictionary = {
 	"dirt":  "raw_dirt",
 }
 
+# Map from equipped tool item_id to the Crafting sub-skill that gets
+# XP on a successful edit. Pickaxe → mining, axe → felling, etc.
+# Sub-skill names match the design doc XP_VALUES table in
+# design/SKILLS_AND_PROGRESSION.md.
+const TOOL_SUB_SKILLS: Dictionary = {
+	"iron_pickaxe": "mining",
+	"iron_axe":     "felling",
+	"iron_shovel":  "excavation",
+}
+
+# XP awarded per successful single-voxel edit. Matches the design
+# doc's XP_VALUES entries (ore_mined=5, tree_felled=8, earth_dug=2).
+# A bigger edit (sphere via explosives) awards more — per-edit value
+# is a coarse proxy for "voxels touched."
+const TOOL_XP_PER_EDIT: Dictionary = {
+	"iron_pickaxe": 5,
+	"iron_axe":     8,
+	"iron_shovel":  2,
+}
+
 
 # =============================================================
 # RUNTIME STATE
@@ -166,3 +186,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var yield_item: String = VOXEL_MATERIAL_YIELDS.get(voxel_material, "")
 	if yield_item != "":
 		InventoryManager.add_item(yield_item, 1)
+
+	# --- Award Crafting sub-skill XP ---
+	# Each tool maps to its corresponding sub-skill (mining/felling/
+	# excavation). XP rolls up to the Crafting domain tier.
+	if get_node_or_null("/root/GameState"):
+		var sub_skill: String = TOOL_SUB_SKILLS.get(equipped_id, "")
+		var xp_amount: int = TOOL_XP_PER_EDIT.get(equipped_id, 0)
+		if sub_skill != "" and xp_amount > 0:
+			GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, sub_skill, xp_amount)
