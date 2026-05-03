@@ -286,7 +286,7 @@ func _build_all_flags_text() -> String:
 		return "No flags set."
 	lines.insert(0, "scene: %s" % GameState.current_scene)
 	lines.insert(1, "spawn_id: %s" % GameState.player_spawn_id)
-	lines.insert(2, "save_slot: %d" % GameState.active_save_slot)
+	lines.insert(2, "active_save: %s" % (GameState.active_save_filename if GameState.active_save_filename != "" else "(none)"))
 	lines.insert(3, "")
 	return "\n".join(lines)
 

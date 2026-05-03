@@ -41,8 +41,8 @@ func _ready() -> void:
 	settings_btn.pressed.connect(_on_settings)
 	quit_btn.pressed.connect(_on_quit)
 
-	# Grey out Load Game if there is no save file.
-	load_game_btn.disabled = not FileAccess.file_exists(GameState.SAVE_PATH)
+	# Grey out Load Game if there are no saves on disk.
+	load_game_btn.disabled = GameState.list_save_files().is_empty()
 
 	print("[MainMenu] Ready.")
 
@@ -52,16 +52,22 @@ func _ready() -> void:
 # =============================================================
 
 func _on_new_game() -> void:
-	# Delete any existing save so there's no stale state.
-	GameState.delete_save()
-	# Clear the in-memory state as well.
+	# A fresh playthrough does NOT delete existing saves any more —
+	# saves are named files; players manage them via the load picker.
+	# Just clear the active reference so we don't accidentally write
+	# back to an old save on quit.
+	GameState.active_save_filename = ""
 	GameState.player_spawn_id = ""
 	TransitionManager.change_scene(WORLD_SCENE, "default")
 
 func _on_load_game() -> void:
-	GameState.load_game()
+	# Load the most recent save (first in the list — sorted newest first).
+	var saves: Array = GameState.list_save_files()
+	if saves.is_empty():
+		print("[MainMenu] No saves to load.")
+		return
+	GameState.load_save_file(saves[0]["filename"])
 	var scene: String = GameState.current_scene
-	# Fallback in case the saved scene is empty or the file has moved.
 	if scene == "" or not ResourceLoader.exists(scene):
 		scene = WORLD_SCENE
 	TransitionManager.change_scene(scene, GameState.player_spawn_id)
