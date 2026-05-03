@@ -116,7 +116,7 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 - `VoxelGeneratorGraph` + Gaea EXR — was the original plan; replaced by the GDScript generator above. The Gaea pipeline may return for the v1 Mira terrain authoring pass; for now noise-driven generation is sufficient.
 - `VoxelGeneratorScript` GDScript subclass — too slow; use VoxelGeneratorGraph instead
 
-**Voxel scale:** 8 voxels per meter (each block = 12.5 cm). Noticeably blocky but finer than Minecraft's 1m blocks. All assets (MagicaVoxel props, building exports) are authored at this scale.
+**Voxel scale:** 6 voxels per meter (each block ≈ 16.7 cm) — locked 2026-05-03. Chunky enough to read as cubic, finer than Minecraft's 1 m blocks. All assets (MagicaVoxel props, building exports) are authored at this scale. `VoxelLodTerrain.transform.scale = 0.166667`.
 
 **LOD configuration:**
 - `lod_count`: 6–8 levels
@@ -317,7 +317,7 @@ Both tools are interchangeable in the pipeline. Gaea is the default. World Machi
 
 **Workflow:** Model → Export `.glb` with vertex colors enabled → Import to Godot → `MeshInstance3D` → set `BaseMaterial3D.vertex_color_use_as_albedo = true`.
 
-**Scale:** 1 MagicaVoxel block = 0.125m in Godot (8 voxels per meter). A human-height doorway = 16 blocks tall.
+**Scale:** 1 MagicaVoxel block ≈ 0.167 m in Godot (6 voxels per meter). A 1.8 m doorway ≈ 11 blocks tall.
 
 Buildings are placed as `MeshInstance3D` nodes on the terrain surface — they are NOT carved into the voxel data.
 

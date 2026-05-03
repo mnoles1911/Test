@@ -34,7 +34,7 @@ class_name CubicHeightmapGenerator
 #
 #   - origin_in_voxels and the inner X/Y/Z indices are in voxel-grid
 #     space (1 voxel = 1 grid unit). The VoxelLodTerrain node's
-#     transform scale (currently 0.125) maps voxel-grid coords →
+#     transform scale (locked at 0.166667 = 1/6) maps voxel-grid coords →
 #     world-space metres at render time. This script does NOT need
 #     to know about world scale.
 #   - LOD: at LOD 0 we sample one grid unit per voxel. At higher
@@ -62,17 +62,30 @@ class_name CubicHeightmapGenerator
 
 enum Preset {
 	CUSTOM,
+	MOUNTAIN_VALLEY,
 	LAY_OF_THE_LAND,
 	MINECRAFT_BLOCKY,
 	SMOOTH_GRADIENT,
 }
 
+# All voxel-amplitude values are in the project's locked 6 vox/m grid.
+# Physical metre conversion: voxels / 6 = metres.
 const PRESETS: Dictionary = {
+	Preset.MOUNTAIN_VALLEY: {
+		"height_range_voxels": 480.0,           # 80 m peak-to-trough
+		"height_offset_voxels": 30,             # +5 m bias
+		"mid_amplitude_voxels": 24,             # ±4 m rocky undulation
+		"mid_frequency_multiplier": 6.0,        # ~6 m feature width
+		"detail_amplitude_voxels": 6,           # ±1 m surface roughness
+		"detail_frequency_multiplier": 25.0,
+		"color_jitter": 0.18,                   # natural, less stark
+		"quantize_to_meters": false,
+	},
 	Preset.LAY_OF_THE_LAND: {
 		"color_jitter": 0.25,
-		"mid_amplitude_voxels": 16,
+		"mid_amplitude_voxels": 12,             # ±2 m
 		"mid_frequency_multiplier": 8.0,
-		"detail_amplitude_voxels": 4,
+		"detail_amplitude_voxels": 3,           # ±0.5 m
 		"detail_frequency_multiplier": 30.0,
 		"quantize_to_meters": false,
 	},
@@ -84,7 +97,7 @@ const PRESETS: Dictionary = {
 	},
 	Preset.SMOOTH_GRADIENT: {
 		"color_jitter": 0.05,
-		"mid_amplitude_voxels": 4,
+		"mid_amplitude_voxels": 3,              # ±0.5 m
 		"mid_frequency_multiplier": 6.0,
 		"detail_amplitude_voxels": 0,
 		"quantize_to_meters": false,
@@ -130,48 +143,51 @@ var _applying_preset: bool = false
 @export var noise: FastNoiseLite
 
 ## Total vertical relief from the macro noise layer, in VOXELS
-## (8 voxels = 1 m). Bigger = taller hills/mountains. Default 240
-## = ±15 m macro relief. Tune to set how dramatic the silhouette is.
-@export_range(0.0, 1024.0, 1.0) var height_range_voxels: float = 240.0
+## (6 voxels = 1 m). Bigger = taller mountains. Default 480 = ±40 m
+## macro relief = 80 m peak-to-trough — gives a real mountain-valley
+## silhouette where peaks tower above the 1.8 m player.
+@export_range(0.0, 1500.0, 1.0) var height_range_voxels: float = 480.0
 
 ## Vertical shift applied to every column AFTER the noise. Positive
 ## pushes terrain UP (above sea level); negative pushes DOWN. Default
-## +80 voxels (+10 m) puts average ground above the ocean. Lower this
-## if the OceanVolume.surface_y is sitting under all your terrain.
-@export_range(-200, 400, 1) var height_offset_voxels: int = 80
+## +30 voxels (+5 m) lets the lowest macro values dip below sea level
+## (Y=8 m by default), creating valleys with water and dry uplands.
+## Lower this further if the ocean plane is sitting under all terrain.
+@export_range(-300, 400, 1) var height_offset_voxels: int = 30
 
-## When ON, terrain heights snap to integer-metre (8-voxel) steps —
+## When ON, terrain heights snap to integer-metre (6-voxel) steps —
 ## Minecraft-style terraces with hard 1 m cliffs. When OFF (default),
 ## noise stays continuous and slopes are stair-stepped voxel-by-voxel.
 @export var quantize_to_meters: bool = false
 
-## Rolling-hills layer amplitude in voxels (8 vox = 1 m). Default 16
-## = ±2 m local elevation variation everywhere. Set to 0 for uniform
-## macro slopes with no per-metre variation. The "1-2 m undulations"
-## that make every patch of ground visually interesting.
-@export_range(0, 64, 1) var mid_amplitude_voxels: int = 16
+## Rolling-hills / mid-scale layer amplitude in voxels (6 vox = 1 m).
+## Default 24 = ±4 m of rocky undulation layered on the macro
+## silhouette — the "mountainside roughness" that breaks long uniform
+## slopes. Set to 0 for clean macro slopes with no mid-scale variation.
+@export_range(0, 96, 1) var mid_amplitude_voxels: int = 24
 
-## How tight the rolling-hills features are, as a multiple of macro
+## How tight the mid-scale features are, as a multiple of macro
 ## noise frequency. Higher = tighter wavy ground (lots of small humps);
-## lower = wider rolling hills. Default 8.0 = ~8 m feature width.
-@export_range(1.0, 20.0, 0.5) var mid_frequency_multiplier: float = 8.0
+## lower = wider rolling features. Default 6.0 = ~6 m feature width
+## at the project's noise frequency.
+@export_range(1.0, 20.0, 0.5) var mid_frequency_multiplier: float = 6.0
 
-## Cube-by-cube surface grain amplitude in voxels. Default 4 = ±50 cm
-## wobble layered on the macro+mid output. Adds the "stippled" surface
-## texture so flat tops aren't dead-flat. Set to 0 for clean slopes.
-@export_range(0, 16, 1) var detail_amplitude_voxels: int = 4
+## Cube-by-cube surface grain amplitude in voxels. Default 6 = ±1 m
+## wobble layered on macro+mid. Adds the "stippled" surface texture
+## that breaks up flat tops. Set to 0 for clean slopes.
+@export_range(0, 24, 1) var detail_amplitude_voxels: int = 6
 
 ## How fast the cube-by-cube grain varies, as a multiple of macro
 ## noise frequency. Higher = each adjacent cube very different from
 ## its neighbour (gritty); lower = grain blends smoothly across cubes.
-## Default 30× ≈ 1-2 m feature width.
-@export_range(1.0, 80.0, 0.5) var detail_frequency_multiplier: float = 30.0
+## Default 25× ≈ 1-2 m feature width.
+@export_range(1.0, 80.0, 0.5) var detail_frequency_multiplier: float = 25.0
 
-## Per-voxel brightness variation as ± fraction of base colour. 0.25
-## = ±25 % brightness — strong per-cube contrast like Lay of the Land.
-## 0 = uniform colour per height (sub-voxel grid disappears into a
-## smooth slab). Drop toward 0.10 for softer, more uniform terrain.
-@export_range(0.0, 0.5, 0.01) var color_jitter: float = 0.25
+## Per-voxel brightness variation as ± fraction of base colour. 0.18
+## = ±18 % brightness — natural mountain-rock variation. Push to 0.25
+## for stronger Lay-of-the-Land-style contrast; drop to 0.05 for
+## uniform colour per height.
+@export_range(0.0, 0.5, 0.01) var color_jitter: float = 0.18
 
 ## Reference voxel-Y for "ocean surface". Currently informational only
 ## — actual water elevation lives on `OceanVolume.surface_y` in
@@ -302,7 +318,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				# pseudo-random byte. Adding a small ± offset to RGB
 				# breaks up the otherwise-uniform colour of any flat
 				# top, so the eye picks up individual cubes and the
-				# 12.5 cm sub-voxel grid becomes visible against the
+				# 16.7 cm sub-voxel grid becomes visible against the
 				# 1 m macro terraces.
 				if color_jitter > 0.0:
 					var hash_val: int = ((world_x * 73856093) ^ (world_y * 19349663) ^ (world_z * 83492791)) & 0xFF
