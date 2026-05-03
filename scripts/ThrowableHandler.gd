@@ -51,6 +51,13 @@ extends Node3D
 # Spawn height above Roland's pivot. Roughly chest height — the
 # arm position from which a thrown object leaves a hand.
 
+@export var infinite_inventory: bool = true
+# DEBUG: when true, throws bypass the inventory check and decrement.
+# Useful while tuning detonation behavior, voxel destruction radii,
+# and physics arc — no need to grind for materials between tests.
+# Flip to false (or remove this property entirely) when you want
+# real economy gating again.
+
 
 # =============================================================
 # REFERENCES
@@ -88,12 +95,14 @@ func _try_throw() -> void:
 		return
 
 	# --- Inventory check ---
-	if not InventoryManager.has_item(throwable_item_id):
-		print("[ThrowableHandler] No %s available." % throwable_item_id)
-		return
-
-	# Decrement first so a failed instance doesn't burn the item.
-	InventoryManager.remove_item(throwable_item_id, 1)
+	# Debug mode: skip the inventory gating entirely so testing
+	# explosion behavior doesn't require farming materials.
+	if not infinite_inventory:
+		if not InventoryManager.has_item(throwable_item_id):
+			print("[ThrowableHandler] No %s available." % throwable_item_id)
+			return
+		# Decrement first so a failed instance doesn't burn the item.
+		InventoryManager.remove_item(throwable_item_id, 1)
 
 	# --- Spawn the throwable ---
 	if throwable_scene == null:
