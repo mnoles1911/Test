@@ -368,7 +368,7 @@ func _update_water_state() -> void:
 # DEBUG — FLY MODE
 # =============================================================
 
-func _physics_process_flying(delta: float) -> void:
+func _physics_process_flying(_delta: float) -> void:
 	# Movement uses the camera's forward vector (with pitch) so the
 	# player flies wherever they're looking. Held WASD steers
 	# horizontally relative to that forward, Space climbs, Crouch
@@ -380,18 +380,19 @@ func _physics_process_flying(delta: float) -> void:
 	# including yaw + pitch. Falls back to body forward if the rig
 	# isn't where we expect.
 	var camera: Camera3D = get_node_or_null("CameraTarget/SpringArm3D/Camera3D") as Camera3D
-	var basis: Basis
+	# Renamed from `basis` to avoid shadowing Node3D.basis.
+	var cam_basis: Basis
 	if camera != null:
-		basis = camera.global_transform.basis
+		cam_basis = camera.global_transform.basis
 	else:
-		basis = transform.basis
+		cam_basis = transform.basis
 
 	# WASD input.
 	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	# Forward = -Z, right = +X. Use the camera's basis directly so
 	# pitch carries — if the camera looks down 30°, W flies 30° down.
-	var forward: Vector3 = -basis.z
-	var right:   Vector3 = basis.x
+	var forward: Vector3 = -cam_basis.z
+	var right:   Vector3 = cam_basis.x
 	var dir: Vector3 = (right * input_dir.x) + (forward * input_dir.y)
 
 	# Vertical input — Space (dodge action) ascends, C (crouch
