@@ -578,6 +578,11 @@ func load_save_file(filename: String) -> bool:
 	if data.has("inventory") and get_node_or_null("/root/InventoryManager"):
 		InventoryManager.load_save_data(data["inventory"])
 
+	# Resume the total-play-time counter from the saved value. Without
+	# this, "time in game since inception" would reset to 0 every load.
+	if data.has("play_time_seconds"):
+		_play_time_seconds = float(data["play_time_seconds"])
+
 	# WorldClock writes its time into _flags every minute, so restoring
 	# _flags above already brought the saved hour/minute/day back into
 	# GameState. But WorldClock keeps its own in-memory copy that needs
@@ -714,6 +719,27 @@ var _play_time_seconds: float = 0.0
 
 func _process(delta: float) -> void:
 	_play_time_seconds += delta
+
+
+## Returns total wall-clock seconds the player has been in this run,
+## across all sessions (accumulated and persisted via save/load).
+func get_play_time_seconds() -> float:
+	return _play_time_seconds
+
+
+## Returns total play time formatted as "Hh Mm Ss".
+## Drops the leading hours when zero, e.g. "12m 04s".
+func get_play_time_string() -> String:
+	var total: int = int(_play_time_seconds)
+	# Integer division is intentional — we want whole hours and minutes.
+	@warning_ignore("integer_division")
+	var hours: int = total / 3600
+	@warning_ignore("integer_division")
+	var minutes: int = (total % 3600) / 60
+	var seconds: int = total % 60
+	if hours > 0:
+		return "%dh %02dm %02ds" % [hours, minutes, seconds]
+	return "%dm %02ds" % [minutes, seconds]
 
 
 # =============================================================

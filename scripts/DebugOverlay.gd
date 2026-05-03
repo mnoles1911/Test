@@ -92,10 +92,12 @@ var _ps_endurance_label: Label
 var _ps_equipped_label: Label
 var _ps_aim_label: Label
 var _ps_time_label: Label
+var _ps_played_label: Label
 
 # Always-on HUD (visible without F1).
 var _coords_label: Label
 var _aim_label: Label
+var _world_time_label: Label
 
 enum DebugTab { COMMANDS, CONSOLE, PLAYER_STATE }
 const TAB_NAMES: Array[String] = ["COMMANDS", "CONSOLE", "PLAYER STATE"]
@@ -113,6 +115,7 @@ func _ready() -> void:
 	_build_overlay_panel()
 	_build_coords_hud()
 	_build_aim_hud()
+	_build_world_time_hud()
 	_build_crosshair()
 	_root.visible = false
 
@@ -128,6 +131,8 @@ func _process(delta: float) -> void:
 		_update_coords_label()
 	if _aim_label != null:
 		_update_aim_label()
+	if _world_time_label != null:
+		_update_world_time_label()
 
 	# DELETE ALL SAVES auto-disarm timer.
 	if _delete_saves_armed:
@@ -503,10 +508,11 @@ func _build_player_state_tab() -> void:
 	_ps_equipped_label  = _make_state_label()
 	_ps_aim_label       = _make_state_label()
 	_ps_time_label      = _make_state_label()
+	_ps_played_label    = _make_state_label()
 
 	for lbl in [_ps_position_label, _ps_rotation_label, _ps_pitch_label,
 				_ps_health_label, _ps_endurance_label, _ps_equipped_label,
-				_ps_aim_label, _ps_time_label]:
+				_ps_aim_label, _ps_time_label, _ps_played_label]:
 		_player_state_tab.add_child(lbl)
 
 
@@ -522,8 +528,10 @@ func _refresh_player_state_tab() -> void:
 	# Pull live values from the player + camera + inventory each
 	# frame the tab is visible. Cheap (a few group lookups + string
 	# formats per frame).
-	# WorldClock is global — show its state even when no player is loaded
-	# (e.g. the user opens F1 from the title screen).
+	# WorldClock + play-time are global — show their state even when no
+	# player is loaded (e.g. the user opens F1 from the title screen).
+	# _refresh_world_clock_label updates BOTH the time and the played
+	# labels, so this single call handles both.
 	_refresh_world_clock_label()
 
 	var players: Array = get_tree().get_nodes_in_group("player")
@@ -582,15 +590,19 @@ func _refresh_world_clock_label() -> void:
 	# Falls back to a dash if WorldClock isn't registered (shouldn't
 	# happen — listed in project.godot — but guarded anyway so the
 	# debug overlay never breaks if the autoload list shifts).
-	if not get_node_or_null("/root/WorldClock"):
+	if get_node_or_null("/root/WorldClock"):
+		_ps_time_label.text = "World Time:  Day %d   %s   (%s)" % [
+			WorldClock.current_day,
+			WorldClock.get_time_string(),
+			WorldClock.get_time_of_day_period(),
+		]
+	else:
 		_ps_time_label.text = "World Time:  —"
-		return
-	var period: String = WorldClock.get_time_of_day_period()
-	_ps_time_label.text = "World Time:  Day %d   %s   (%s)" % [
-		WorldClock.current_day,
-		WorldClock.get_time_string(),
-		period,
-	]
+
+	if get_node_or_null("/root/GameState"):
+		_ps_played_label.text = "Played:      %s" % GameState.get_play_time_string()
+	else:
+		_ps_played_label.text = "Played:      —"
 
 
 # --- Tab switching ---
@@ -666,6 +678,40 @@ func _update_aim_label() -> void:
 	var hp: Vector3 = hit.get("position", Vector3.ZERO)
 	var dist: float = player.global_position.distance_to(hp)
 	_aim_label.text = "AIM: (%.1f, %.1f, %.1f)  dist %.1fm" % [hp.x, hp.y, hp.z, dist]
+
+
+func _build_world_time_hud() -> void:
+	# Sits below the AIM label in the top-left corner. Always visible
+	# (no F1 required) so the player can glance at the time of day and
+	# total play time without opening the debug overlay.
+	_world_time_label = Label.new()
+	_world_time_label.position = Vector2(12, 52)
+	_world_time_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_world_time_label.add_theme_font_size_override("font_size", 12)
+	_world_time_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0, 0.85))
+	_world_time_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_world_time_label.add_theme_constant_override("shadow_offset_x", 1)
+	_world_time_label.add_theme_constant_override("shadow_offset_y", 1)
+	_world_time_label.text = "Day 1  08:00  (MORNING)   |   Played: 0m 00s"
+	add_child(_world_time_label)
+
+
+func _update_world_time_label() -> void:
+	# Two pieces: in-game time (Day N HH:MM PERIOD) and total wall-clock
+	# play time across all sessions. WorldClock + GameState are both
+	# autoloads so the labels work on the title screen too — they just
+	# won't tick until a world is loaded.
+	var time_part: String = "—"
+	if get_node_or_null("/root/WorldClock"):
+		time_part = "Day %d  %s  (%s)" % [
+			WorldClock.current_day,
+			WorldClock.get_time_string(),
+			WorldClock.get_time_of_day_period(),
+		]
+	var played_part: String = "—"
+	if get_node_or_null("/root/GameState"):
+		played_part = GameState.get_play_time_string()
+	_world_time_label.text = "%s   |   Played: %s" % [time_part, played_part]
 
 
 func _build_crosshair() -> void:
