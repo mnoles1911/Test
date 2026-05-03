@@ -58,11 +58,17 @@ extends SpringArm3D
 @export var vertical_sensitivity: float = 0.10
 # Camera speed for mouse up/down. Slightly lower than horizontal is natural.
 
-@export var vertical_min_degrees: float = -20.0
-# Lowest the player can tilt the camera (negative = looking more downward).
+@export var vertical_min_degrees: float = -80.0
+# Lowest the player can tilt the camera (negative = looking down).
+# -80° puts the aim almost straight down — Roland can mine voxels
+# at his feet, dig pits directly under him, etc. Anything close to
+# -90° looks weird because the camera arm starts clipping into the
+# ground; -80° is the practical limit before that becomes ugly.
 
-@export var vertical_max_degrees: float = 45.0
-# Highest the player can tilt the camera.
+@export var vertical_max_degrees: float = 70.0
+# Highest the player can tilt the camera (looking up).
+# 70° lets Roland aim at overhead voxels (tunnel ceilings,
+# overhanging cliffs) without flipping the camera over the top.
 
 @export var key_rotation_speed: float = 90.0
 # Degrees per second when using arrow keys to rotate the camera.
