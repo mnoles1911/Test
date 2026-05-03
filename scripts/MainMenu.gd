@@ -109,18 +109,62 @@ func _on_debug_rect_input(event: InputEvent) -> void:
 		print("[MainMenu] DEBUG RECT CLICKED — input pipeline works.")
 
 
-# Diagnostic catch-all — if buttons aren't responding, this print
-# tells us whether mouse input even reaches the MainMenu scene.
-# - Print fires on click → input is reaching MainMenu, the issue
-#   is somewhere in the button hierarchy (focus, mouse_filter,
-#   layout).
-# - Print does NOT fire → an autoload at a higher CanvasLayer is
-#   absorbing the click before it reaches MainMenu.
+# LMB click handler — bypasses Godot's gui_input routing.
+#
+# Why: Godot's GUI input dispatch (Button.pressed signal) only
+# fires when Input.mouse_mode is MOUSE_MODE_VISIBLE. If anything
+# upstream captures the mouse (CameraRig from a prior World3D
+# run, etc.) and the captured state survives, _gui_input never
+# fires for any Control even when the cursor is visually shown.
+#
+# Workaround: handle clicks in _input (Node-level, fires regardless
+# of mouse_mode) and manually check whether the click position
+# overlaps each interactive Control's global rect. This is robust
+# against the mouse_mode quirk and works reliably.
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
-			print("[MainMenu] _input: LMB at %s" % mb.position)
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	print("[MainMenu] _input: LMB at %s, mouse_mode=%d" % [mb.position, Input.mouse_mode])
+	_dispatch_click(mb.position)
+
+
+func _dispatch_click(pos: Vector2) -> void:
+	# Routes a click position to whichever interactive Control's
+	# rect contains it. Handles main panel buttons when visible,
+	# load picker buttons when visible. Mirrors what the GUI
+	# system would do via _gui_input + Button.pressed.
+	if _main_panel != null and _main_panel.visible:
+		if _hits(_new_game_btn, pos): _on_new_game(); return
+		if _hits(_load_btn,     pos): _on_load();     return
+		if _hits(_settings_btn, pos): _on_settings(); return
+		if _hits(_quit_btn,     pos): _on_quit();     return
+	if _load_panel != null and _load_panel.visible:
+		# Cancel button.
+		if _hits(_load_cancel_btn, pos):
+			_show_main_column()
+			return
+		# Per-row LOAD / DELETE buttons. Walk the dynamic list_container.
+		for row in _load_list_container.get_children():
+			if not (row is HBoxContainer):
+				continue
+			# Each row has [info_label, load_btn, delete_btn]; iterate
+			# the children and dispatch on the first matching button.
+			for child in row.get_children():
+				if child is Button and _hits(child as Button, pos):
+					(child as Button).pressed.emit()
+					return
+
+
+func _hits(ctrl: Control, pos: Vector2) -> bool:
+	# Returns true if the click position is inside the Control's
+	# visible global rect. get_global_rect() returns the actual
+	# screen-space rect including any layout/offsets.
+	if ctrl == null or not ctrl.visible:
+		return false
+	return ctrl.get_global_rect().has_point(pos)
 
 
 # =============================================================
