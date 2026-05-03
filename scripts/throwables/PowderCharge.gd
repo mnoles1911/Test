@@ -73,40 +73,91 @@ func _physics_process(delta: float) -> void:
 		return
 	_fuse_remaining -= delta
 	if _fuse_remaining <= 0.0:
+		_log("Fuse expired mid-air at %s — detonating" % global_position)
 		_detonate()
 
 
-func _on_body_entered(_body: Node) -> void:
+func _on_body_entered(body: Node) -> void:
 	# Impact detonation. Any solid body counts: terrain (voxel
-	# collision), the ground, walls. The body argument is unused
-	# — we just need the trigger.
+	# collision), the ground, walls.
 	if _detonated:
 		return
+	_log("Impact with '%s' at %s" % [body.name if body != null else "?", global_position])
 	_detonate()
 
 
 func _detonate() -> void:
 	_detonated = true
 
+	# --- Pick a detonation point that actually hits terrain ---
+	# If the fuse expires mid-air or the charge fell past the
+	# voxel terrain's collision radius (which only generates on
+	# near LODs), the charge's current position is in empty
+	# sky / underground — a sphere carve there removes nothing
+	# visible. Raycast straight down from the charge's position
+	# to find the nearest ground surface, and detonate there
+	# instead. Falls back to the current position if no ground
+	# is within 100m (e.g. thrown over the edge of the world).
+	var detonate_pos: Vector3 = _find_ground_below(global_position, 100.0)
+	if detonate_pos != global_position:
+		_log("Snapped detonation from air %s to ground %s" % [global_position, detonate_pos])
+
 	# --- Voxel removal in the AOE ---
 	if get_node_or_null("/root/VoxelEditManager"):
-		# AIR_VOXEL = 0. queue_edit_sphere returns false if the
-		# blast center is inside a NoEditZone — the visual still
-		# plays but the masonry is preserved.
-		var accepted: bool = VoxelEditManager.queue_edit_sphere(global_position, aoe_radius_meters, 0)
+		# Offset the sphere center a bit BELOW the surface so the
+		# carve bites into the terrain rather than skimming it.
+		# 0.4m down from the hit point puts the sphere center
+		# inside the solid voxels, producing a visible crater.
+		var carve_center: Vector3 = detonate_pos + Vector3(0, -0.4, 0)
+		var accepted: bool = VoxelEditManager.queue_edit_sphere(
+			carve_center, aoe_radius_meters, 0
+		)
 		if not accepted:
-			print("[PowderCharge] Detonation inside NoEditZone — voxels preserved.")
+			_log("Detonation inside NoEditZone — voxels preserved.")
+		else:
+			_log("Carve queued: center=%s radius=%.1fm" % [carve_center, aoe_radius_meters])
+	else:
+		_log("VoxelEditManager autoload missing — no terrain edit applied")
 
-	# --- Particle effect placeholder ---
+	# --- Action log entry for the in-game console ---
 	# TODO: spawn a GPUParticles3D preset once explosion VFX
 	# assets exist. For now the only feedback is the voxel
 	# crater + (future) audio.
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("BOOM at (%.1f, %.1f, %.1f) radius %.1fm" % [
-			global_position.x, global_position.y, global_position.z, aoe_radius_meters
+			detonate_pos.x, detonate_pos.y, detonate_pos.z, aoe_radius_meters
 		])
+
+
+func _find_ground_below(from_pos: Vector3, max_distance: float) -> Vector3:
+	# Cast a downward ray to find the nearest solid surface. Returns
+	# the impact position on success, or the original from_pos if
+	# nothing hit within max_distance.
+	#
+	# Used to ensure the fuse-expired-mid-air case still carves
+	# visible terrain instead of carving empty air at the charge's
+	# floating position.
+	var space_state := get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(
+		from_pos,
+		from_pos + Vector3(0, -max_distance, 0),
+	)
+	# Exclude the charge itself so the ray doesn't hit its own
+	# collision shape immediately.
+	params.exclude = [get_rid()]
+	var hit: Dictionary = space_state.intersect_ray(params)
+	if hit.is_empty():
+		return from_pos
+	return hit.get("position", from_pos)
+
+
+func _log(msg: String) -> void:
+	# Centralized logger: feeds the in-game CONSOLE tab when
+	# DebugOverlay is available, falls back to print otherwise.
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("[PowderCharge] " + msg)
 	else:
-		print("[PowderCharge] BOOM at %s (radius %.1fm)" % [global_position, aoe_radius_meters])
+		print("[PowderCharge] " + msg)
 
 	# --- Crafting/Demolition sub-skill XP ---
 	# Per design/SKILLS_AND_PROGRESSION.md — explosive_detonated = 15.
