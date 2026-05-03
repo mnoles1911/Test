@@ -50,6 +50,34 @@ const GRAVITY: float = 20.0
 
 
 # =============================================================
+# SWIMMING CONSTANTS
+# =============================================================
+# Per design/SWIMMING_AND_WATER.md.
+
+const SWIM_SPEED_FRACTION: float = 0.55
+# Multiplier on walk speed when swimming. Roland moves slower in
+# water. Sprint is disabled in water entirely.
+
+const BREATH_MAX_SECONDS: float = 30.0
+# How long Roland can hold his breath underwater before drowning
+# damage starts. Per the design doc.
+
+const BREATH_REFRESH_RATE: float = 8.0
+# How fast breath refills per second once Roland's head is above
+# water. Faster than the drain rate so a quick surface fully
+# refreshes within a few seconds.
+
+const DROWN_DAMAGE_PER_SECOND: float = 5.0
+# HP lost per second once breath reaches zero. Designed to give
+# the player time to surface (a full HP bar lasts 20 seconds at
+# 5/sec), not to be a punishing instant-death.
+
+const HEAD_OFFSET_METERS: float = 1.5
+# Roughly Roland's eye/head height above his pivot point. Used
+# to determine when his head is below the water surface.
+
+
+# =============================================================
 # HEALTH AND ENDURANCE CONSTANTS
 # =============================================================
 
@@ -87,6 +115,23 @@ var _sprint_locked: bool = false
 # Locked = true when endurance hits 0. Sprint cannot start again until
 # endurance recovers above ENDURANCE_SPRINT_THRESHOLD.
 
+var _in_water: bool = false
+# True if any part of Roland is inside a water_volume Area3D this frame.
+# When true: motion_mode flips to FLOATING, sprint is disabled, swim
+# speed applies. The water Area3D is found via group scan each frame.
+
+var _is_submerged: bool = false
+# True if Roland's head (HEAD_OFFSET_METERS above his pivot) is below
+# the current water volume's surface_y. When true: breath ticks down,
+# drowning damage applies if breath reaches zero.
+
+var _breath_remaining: float = BREATH_MAX_SECONDS
+# Seconds of air left. Refills automatically when not submerged.
+
+var _current_water_volume: Node = null
+# Cached reference to the water_volume Area3D Roland is currently
+# inside, or null if dry. Used to query surface_y and current.
+
 # Precomputed from mass — calculated once in _ready().
 # Call _recalculate_movement_stats() if mass changes at runtime.
 var _walk_speed:   float
@@ -102,6 +147,15 @@ var _decel:        float
 
 var status_text: String:
 	get:
+		# Drowning takes priority — if Roland is out of breath the
+		# player needs to know NOW, not after they read past sprint
+		# state. Breath also wins over crouch.
+		if _is_submerged and _breath_remaining <= 0.0:
+			return "DROWNING"
+		if _is_submerged:
+			return "BREATH: %.0fs" % _breath_remaining
+		if _in_water:
+			return "SWIMMING"
 		if _sprint_locked:
 			return "EXHAUSTED"
 		if _is_crouching:
@@ -145,6 +199,18 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
+	# --- Detect water (must run BEFORE movement decisions) ---
+	# Walks the water_volume group; first overlapping water Area3D
+	# wins. Sets _in_water, _is_submerged, _current_water_volume.
+	_update_water_state()
+
+	# Switch motion mode based on water state. FLOATING ignores the
+	# floor (no fall damage, no automatic gravity application from
+	# CharacterBody3D's grounded path); we still apply gravity below
+	# explicitly, so the only behavioral difference is "no auto floor
+	# snapping" — which is what we want in water.
+	motion_mode = MOTION_MODE_FLOATING if _in_water else MOTION_MODE_GROUNDED
+
 	# --- Read WASD input and convert to camera-relative world direction ---
 	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	var local_dir  := Vector3(input_dir.x, 0.0, input_dir.y)
@@ -153,19 +219,22 @@ func _physics_process(delta: float) -> void:
 	var direction  := (transform.basis * local_dir).normalized()
 	var is_moving  := direction != Vector3.ZERO
 
-	# --- Sprint logic ---
-	# Unlock sprint once endurance recovers enough after exhaustion.
+	# --- Sprint logic (disabled in water — Roland can't sprint while swimming) ---
 	if _sprint_locked and endurance >= ENDURANCE_SPRINT_THRESHOLD:
 		_sprint_locked = false
-	# Shift must be held, crouching must be off, and sprint must not be locked.
 	var wants_sprint := Input.is_action_pressed("sprint") \
 		and not _is_crouching \
-		and not _sprint_locked
+		and not _sprint_locked \
+		and not _in_water
 	_is_sprinting = wants_sprint and is_moving
 
 	# --- Target speed for this frame ---
 	var target_speed: float
-	if _is_crouching:
+	if _in_water:
+		# Swimming is slower than walking. Swim speed scales off
+		# walk speed via the SWIM_SPEED_FRACTION constant.
+		target_speed = _walk_speed * SWIM_SPEED_FRACTION
+	elif _is_crouching:
 		target_speed = _crouch_speed
 	elif _is_sprinting:
 		target_speed = _sprint_speed
@@ -173,10 +242,6 @@ func _physics_process(delta: float) -> void:
 		target_speed = _walk_speed
 
 	# --- Horizontal movement with momentum ---
-	# move_toward() advances velocity toward the target at the configured
-	# rate each frame, creating smooth acceleration and deceleration curves.
-	# The character cannot snap to full speed or stop instantly — momentum
-	# is determined by mass through _accel and _decel.
 	if is_moving:
 		velocity.x = move_toward(velocity.x, direction.x * target_speed, _accel * delta)
 		velocity.z = move_toward(velocity.z, direction.z * target_speed, _accel * delta)
@@ -184,9 +249,36 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, _decel * delta)
 		velocity.z = move_toward(velocity.z, 0.0, _decel * delta)
 
-	# --- Gravity ---
-	if not is_on_floor():
-		velocity.y -= GRAVITY * delta
+	# --- Vertical motion ---
+	if _in_water:
+		# In water, gravity is replaced by gentle damping toward zero.
+		# Roland floats wherever he entered. Walking out of the water
+		# Area3D restores normal gravity. Vertical swim controls (Space
+		# = up, Crouch = down) can be added later; for the slice the
+		# player floats at entry depth.
+		velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
+		# River currents push the player horizontally + vertically.
+		if _current_water_volume != null:
+			var current: Vector3 = _current_water_volume.get_current_velocity()
+			if current.length_squared() > 0.0001:
+				velocity += current * delta
+	else:
+		# Normal gravity when not in water.
+		if not is_on_floor():
+			velocity.y -= GRAVITY * delta
+
+	# --- Breath / drowning ---
+	if _is_submerged:
+		_breath_remaining -= delta
+		if _breath_remaining <= 0.0:
+			_breath_remaining = 0.0
+			# Drowning: drain HP. Roland survives ~20 seconds of
+			# zero-breath time at default HP/damage values.
+			health = maxf(health - DROWN_DAMAGE_PER_SECOND * delta, 0.0)
+	else:
+		# Surfaced (or never submerged) — refresh breath. Faster
+		# than the drain rate so coming up for air is responsive.
+		_breath_remaining = minf(_breath_remaining + BREATH_REFRESH_RATE * delta, BREATH_MAX_SECONDS)
 
 	# --- Endurance drain / regen ---
 	if _is_sprinting:
@@ -196,11 +288,36 @@ func _physics_process(delta: float) -> void:
 			_is_sprinting = false
 			_sprint_locked = true   # Must recover before sprinting again.
 	elif is_moving:
-		# Walking recovers endurance slowly — moving costs less than sprinting
-		# but you're still exerting yourself.
 		endurance = minf(endurance + ENDURANCE_WALK_REGEN * delta, max_endurance)
 	else:
-		# Idle recovers fastest — reward stopping to rest.
 		endurance = minf(endurance + ENDURANCE_IDLE_REGEN * delta, max_endurance)
 
 	move_and_slide()
+
+
+func _update_water_state() -> void:
+	# Find the first water_volume Area3D overlapping the player.
+	# If multiple overlap, the first one in the group wins — water
+	# volumes shouldn't overlap in practice.
+	#
+	# This is a per-frame poll rather than a signal-driven model.
+	# Fewer connections to manage, and the cost is trivial (a few
+	# nodes in the group at most). If the group ever grows large
+	# (hundreds of water bodies), revisit.
+	_current_water_volume = null
+	_in_water = false
+
+	for area in get_tree().get_nodes_in_group("water_volume"):
+		if not area is Area3D:
+			continue
+		var area3d := area as Area3D
+		if area3d.overlaps_body(self):
+			_current_water_volume = area3d
+			_in_water = true
+			break
+
+	# Submersion check uses the cached water volume's surface_y.
+	if _in_water and _current_water_volume.has_method("is_position_submerged"):
+		_is_submerged = _current_water_volume.is_position_submerged(global_position, HEAD_OFFSET_METERS)
+	else:
+		_is_submerged = false

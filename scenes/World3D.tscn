@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://cjxqjr4b8d4jc" path="res://scripts/CampfireFlicker3D.gd" id="2_flicker"]
 [ext_resource type="Script" uid="uid://djebxbfkbbd03" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
 [ext_resource type="Script" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
+[ext_resource type="PackedScene" uid="uid://dwatervolume_001" path="res://scenes/water/water_volume.tscn" id="5_water"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
 sky_top_color = Color(0.05, 0.06, 0.1, 1)
@@ -116,6 +117,13 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 5, 0)
 
 [node name="ZoneShape" type="CollisionShape3D" parent="NoEditZone_Test" unique_id=2000000003]
 shape = SubResource("NoEditZone_TestShape")
+
+[node name="WaterVolume_Test" parent="." instance=ExtResource("5_water")]
+; Test pond — sits offset from spawn so the developer can walk
+; into it. Surface is at Y=1.5 (the water_volume.tscn default).
+; The Area3D extends 1.5m below origin, so submerged depth is
+; reachable just by walking in.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 4)
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
