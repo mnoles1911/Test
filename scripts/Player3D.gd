@@ -48,8 +48,8 @@ const BASE_DECEL: float        = 12.0   # m/s² rate to ramp DOWN to zero
 const GRAVITY: float = 20.0
 # Initial upward velocity applied on jump. With GRAVITY=20 m/s², a
 # 7 m/s jump peaks at v²/(2g) ≈ 1.22 m — well clear of a single voxel
-# (12.5 cm) or a stair-stepped two-voxel ledge, comfortable for
-# hopping over rocks.
+# (~16.7 cm at 6 vox/m) or a stair-stepped two-voxel ledge, comfortable
+# for hopping over rocks.
 const JUMP_VELOCITY: float = 7.0
 # Stronger than real-world 9.8 m/s². Game gravity should feel snappy on drops.
 
@@ -77,9 +77,11 @@ const DROWN_DAMAGE_PER_SECOND: float = 5.0
 # the player time to surface (a full HP bar lasts 20 seconds at
 # 5/sec), not to be a punishing instant-death.
 
-const HEAD_OFFSET_METERS: float = 1.5
-# Roughly Roland's eye/head height above his pivot point. Used
-# to determine when his head is below the water surface.
+const HEAD_OFFSET_METERS: float = 1.6
+# Roughly Roland's eye/head height above his pivot point. With the
+# 1.8 m capsule centered at Y=0.9 above feet, the top is at Y=1.8;
+# eye level sits a touch below the crown at ~1.6 m above feet.
+# Used to determine when his head is below the water surface.
 
 
 # =============================================================

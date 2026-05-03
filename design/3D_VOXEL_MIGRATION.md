@@ -17,7 +17,7 @@ The aesthetic goal: a world that feels ancient and handcrafted — stone cities 
 - **The Skyrim reference** — scale, atmosphere, dramatic landscape lighting. The "Skyrim feel" is about how the world communicates weight and age, not camera perspective.
 
 **What makes voxel work at this scale:**
-- Blocks are **8 voxels per meter** — each cube is 12.5 cm, noticeably blocky but far finer than Minecraft's 1m cubes
+- Blocks are **6 voxels per meter** — each cube is ~16.7 cm, chunky enough to read as cubic but far finer than Minecraft's 1 m cubes (locked 2026-05-03)
 - Terrain uses **blocky voxel meshing** (`VoxelMesherCubes`) — visible cube faces on terrain steps, consistent with MagicaVoxel building style
 - Buildings are **hand-assembled voxel structures** — cubes are visible and intentional, like stonework. Terrain and buildings share the same block language.
 - Characters are **low-poly 3D models** (Blender → GLTF) or **billboard sprites** (Sprite3D facing camera)

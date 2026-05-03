@@ -120,8 +120,8 @@ func _detonate() -> void:
 	# Carve a sphere centered slightly below the charge's position.
 	# The 0.4m down-offset bites the sphere into the surface the
 	# charge collided with so we get a visible crater instead of a
-	# half-air-half-ground skim. (At 8 vox/m our voxels are 12.5cm
-	# each, so 0.4m is roughly 3 voxels deep — well into the solid.)
+	# half-air-half-ground skim. (At 6 vox/m our voxels are ~16.7cm
+	# each, so 0.4m is ~2-3 voxels deep — well into the solid.)
 	var carve_center: Vector3 = global_position + Vector3(0, -0.4, 0)
 
 	if get_node_or_null("/root/VoxelEditManager"):
