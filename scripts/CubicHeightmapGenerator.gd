@@ -97,6 +97,10 @@ const PRESETS: Dictionary = {
 # re-invoked the preset setter.
 var _applying_preset: bool = false
 
+## Quick-apply tuning bundle for the rest of the parameters below.
+## Selecting any value other than CUSTOM batch-writes that bundle's
+## values into the other sliders, then snaps back to CUSTOM so the
+## dropdown signals "you're now in custom-tuned territory."
 @export var preset: Preset = Preset.CUSTOM:
 	set(value):
 		preset = value
@@ -118,56 +122,72 @@ var _applying_preset: bool = false
 # CORE PARAMETERS — tunable in the Inspector while the scene runs
 # =============================================================
 
+## FastNoiseLite resource that drives all three height layers (macro,
+## mid, detail) at different frequency multiples. Tweak this resource's
+## own properties (Type, Octaves, Frequency, Lacunarity) to change the
+## underlying terrain character — ridged vs simplex, fewer/more octaves,
+## etc. Lower frequency = bigger horizontal features.
 @export var noise: FastNoiseLite
-# 2D noise source. FastNoiseLite with fractal_type=RIDGED (2),
-# 5 octaves, frequency ~0.002 gives wide, landscape-scale ridges
-# and valleys. Lower frequency = bigger features.
 
+## Total vertical relief from the macro noise layer, in VOXELS
+## (8 voxels = 1 m). Bigger = taller hills/mountains. Default 240
+## = ±15 m macro relief. Tune to set how dramatic the silhouette is.
 @export_range(0.0, 1024.0, 1.0) var height_range_voxels: float = 240.0
-# Total vertical relief in VOXEL units. At terrain scale 0.125,
-# 240 voxels = 30 m of world relief.
 
+## Vertical shift applied to every column AFTER the noise. Positive
+## pushes terrain UP (above sea level); negative pushes DOWN. Default
+## +80 voxels (+10 m) puts average ground above the ocean. Lower this
+## if the OceanVolume.surface_y is sitting under all your terrain.
 @export_range(-200, 400, 1) var height_offset_voxels: int = 80
-# Vertical bias applied to every column. +80 vox = +10 m, biasing
-# terrain mostly above sea level so the player spawns on land.
 
+## When ON, terrain heights snap to integer-metre (8-voxel) steps —
+## Minecraft-style terraces with hard 1 m cliffs. When OFF (default),
+## noise stays continuous and slopes are stair-stepped voxel-by-voxel.
 @export var quantize_to_meters: bool = false
-# When true, macro noise snaps to integer-metre (8-voxel) steps —
-# Minecraft-style terraces. Off = continuous noise, smooth grading.
 
+## Rolling-hills layer amplitude in voxels (8 vox = 1 m). Default 16
+## = ±2 m local elevation variation everywhere. Set to 0 for uniform
+## macro slopes with no per-metre variation. The "1-2 m undulations"
+## that make every patch of ground visually interesting.
 @export_range(0, 64, 1) var mid_amplitude_voxels: int = 16
-# Mid-scale noise amplitude in voxels. ±16 vox = ±2 m. The
-# "rolling hills" layer — every metre of ground varies up/down.
 
+## How tight the rolling-hills features are, as a multiple of macro
+## noise frequency. Higher = tighter wavy ground (lots of small humps);
+## lower = wider rolling hills. Default 8.0 = ~8 m feature width.
 @export_range(1.0, 20.0, 0.5) var mid_frequency_multiplier: float = 8.0
-# Mid noise sampled at this multiple of macro frequency. Higher =
-# tighter rolling-hill features.
 
+## Cube-by-cube surface grain amplitude in voxels. Default 4 = ±50 cm
+## wobble layered on the macro+mid output. Adds the "stippled" surface
+## texture so flat tops aren't dead-flat. Set to 0 for clean slopes.
 @export_range(0, 16, 1) var detail_amplitude_voxels: int = 4
-# Cube-by-cube detail amplitude. ±4 vox = ±50 cm. Surface grain.
 
+## How fast the cube-by-cube grain varies, as a multiple of macro
+## noise frequency. Higher = each adjacent cube very different from
+## its neighbour (gritty); lower = grain blends smoothly across cubes.
+## Default 30× ≈ 1-2 m feature width.
 @export_range(1.0, 80.0, 0.5) var detail_frequency_multiplier: float = 30.0
-# Detail noise sampled at this multiple of macro frequency. 30× =
-# features ~1-2 m wide, varies cube-by-cube.
 
+## Per-voxel brightness variation as ± fraction of base colour. 0.25
+## = ±25 % brightness — strong per-cube contrast like Lay of the Land.
+## 0 = uniform colour per height (sub-voxel grid disappears into a
+## smooth slab). Drop toward 0.10 for softer, more uniform terrain.
 @export_range(0.0, 0.5, 0.01) var color_jitter: float = 0.25
-# Per-voxel brightness variation as ± fraction. 0.25 = ±25 %
-# brightness, the contrasty per-cube look of cubic-voxel games.
 
+## Reference voxel-Y for "ocean surface". Currently informational only
+## — actual water elevation lives on `OceanVolume.surface_y` in
+## `World3D.tscn` (default Y=8). Kept here for future generator-side
+## logic (e.g. forced sand colour at coastline).
 @export var sea_level_voxels: int = 0
-# Voxel-Y coordinate that should correspond to "ocean surface".
-# Ground at or below this Y is submerged when the OceanVolume Area3D
-# sits at world Y = 0.
 
+## Colour of the LOWEST ground voxels (deep valleys, beach floor).
+## Lerps to `color_high` at peaks based on each voxel's height within
+## the macro range. Default mossy green-brown.
 @export var color_low: Color = Color(0.30, 0.42, 0.18)
-# Color of the lowest ground voxels (deep valleys, beach floor).
-# Mossy green-brown by default.
 
+## Colour of the HIGHEST ground voxels (ridge peaks). Lerps from
+## `color_low` at valleys. Default pale stone-brown. Per-voxel
+## colour jitter (above) is applied on top of this lerp.
 @export var color_high: Color = Color(0.62, 0.55, 0.42)
-# Color of the highest ground voxels (ridge peaks). Pale stone-brown
-# by default. The generator lerps between low and high based on
-# voxel-Y / height_range so terrain reads as varied without needing
-# multiple block types.
 
 
 func _get_used_channels_mask() -> int:
