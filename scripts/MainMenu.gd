@@ -66,11 +66,47 @@ var _load_cancel_btn: Button
 func _ready() -> void:
 	# This scene must accept input even though no game is paused.
 	# Default PROCESS_MODE_INHERIT works fine here (nothing's paused).
+
+	# Force mouse to be visible. If the previous run captured it
+	# (CameraRig in World3D does so) and that state somehow
+	# survived, the menu would render correctly but clicks would
+	# never reach Controls. Set it unconditionally.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
 	_setup_background()
 	_build_main_column()
 	_build_load_picker()
 	_show_main_column()
-	print("[MainMenu] Ready.")
+	_build_debug_click_test()
+
+	print("[MainMenu] Ready. mouse_mode=%d (0=VISIBLE, 2=CAPTURED)" % Input.mouse_mode)
+
+
+# Big red test rectangle to validate the basic click pipeline.
+# If clicking on this prints, but the actual menu buttons don't,
+# the issue is button-specific (focus, layout). If clicking on
+# this also doesn't print, an autoload is absorbing all clicks
+# before they reach MainMenu.
+func _build_debug_click_test() -> void:
+	var rect := ColorRect.new()
+	rect.color = Color(0.8, 0.1, 0.1, 0.85)
+	rect.position = Vector2(20, 200)
+	rect.size = Vector2(200, 80)
+	rect.gui_input.connect(_on_debug_rect_input)
+	add_child(rect)
+
+	var lbl := Label.new()
+	lbl.text = "CLICK ME (debug)"
+	lbl.position = Vector2(30, 230)
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(lbl)
+
+
+func _on_debug_rect_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		print("[MainMenu] DEBUG RECT CLICKED — input pipeline works.")
 
 
 # Diagnostic catch-all — if buttons aren't responding, this print
