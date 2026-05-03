@@ -7,19 +7,23 @@ extends RigidBody3D
 # When the player presses the throw input (currently quick_slot_1
 # bound to "1"), ThrowableHandler.gd spawns one of these in front
 # of Roland with a forward velocity. The charge flies through the
-# air, hits something, and detonates after either:
+# air and detonates ONLY when it physically collides with a solid
+# body — terrain, walls, ground, props.
 #
-#   - any solid impact (body_entered fires), OR
-#   - a 3-second fuse expires (whichever comes first)
+# Charges that never hit anything (thrown off a cliff, into the
+# void, past collision range) silently despawn after their
+# lifetime expires. No mid-air fuse explosions; the player always
+# gets an explosion exactly where the charge landed.
 #
 # Detonation:
 #   1. Calls VoxelEditManager.queue_edit_sphere(pos, radius, AIR=0)
-#      — removes voxels in a sphere. Inside a NoEditZone the call
-#      returns false; voxel removal is silently skipped but the
-#      visual + (future) damage still happen.
-#   2. Spawns a placeholder particle burst (TODO: real GPUParticles3D
-#      preset once VFX assets land).
-#   3. queue_free()s itself.
+#      — removes voxels in a sphere centered slightly below the
+#      charge so the carve bites into the surface it hit.
+#      Inside a NoEditZone the call returns false; voxel removal
+#      is silently skipped (visual + future damage still happen).
+#   2. Awards Crafting/demolition sub-skill XP.
+#   3. (Future) spawns a GPUParticles3D burst once VFX assets land.
+#   4. queue_free()s itself.
 #
 # Combat damage to nearby enemies is a TODO — no enemies exist yet.
 # When EnemyAI lands, this script will iterate over enemies in
@@ -43,14 +47,23 @@ extends RigidBody3D
 # when EnemyAI exists; currently unused but stored so the value
 # survives the throw → detonate flow.
 
-@export var fuse_seconds: float = 2.0
-# Fuse delay if the charge doesn't impact-detonate. Counts down
-# from the moment the charge is spawned. 2 seconds is short
-# enough that charges thrown from a high point detonate before
-# falling out of Zylann's near-LOD collision range (~30-60m
-# from the player). Bumped down from 3s after charges were
-# observed falling to Y=-60+ during the fuse and detonating in
-# unloaded territory below the world.
+@export var lifetime_seconds: float = 10.0
+# Cleanup timer for charges that never impact anything (thrown
+# off a cliff, into deep water, past collision range). On expire
+# the charge is despawned silently — NO detonation, NO BOOM, NO
+# XP, NO carve. Charges only ever produce explosions when they
+# physically hit something.
+#
+# 10 seconds is generous; most thrown charges hit terrain within
+# 1-3 seconds. The window only matters as a memory cleanup
+# safety net so abandoned charges don't accumulate.
+#
+# (Earlier this was a 'fuse_seconds' that triggered mid-air
+# detonation on expiry. That produced confusing 'BOOM with no
+# crater' results when charges fell past Zylann's near-LOD
+# collision range. Switched to impact-only detonation — simpler
+# and the player always sees an explosion exactly where they
+# expect: where the charge actually landed.)
 
 
 # =============================================================
@@ -61,40 +74,36 @@ var _detonated: bool = false
 # Single-use guard. body_entered can fire multiple times before
 # queue_free completes; this prevents double-detonation.
 
-var _fuse_remaining: float
-
-# Tracks whether the detonation was triggered by collision impact
-# or by the fuse running out. Set in _on_body_entered / _physics_process
-# right before they call _detonate. Used to decide whether to trust
-# the charge's current position (impact: yes — we already collided
-# with terrain) or to raycast for the nearest surface (fuse: yes —
-# charge is somewhere in flight).
-var _detonation_source: String = "fuse"
+var _lifetime_remaining: float
 
 
 func _ready() -> void:
-	_fuse_remaining = fuse_seconds
-	# Connect the impact signal so we detonate on collision. The
-	# signal is fired once per body that enters our area.
+	_lifetime_remaining = lifetime_seconds
+	# Detonate on collision with any solid body.
 	body_entered.connect(_on_body_entered)
 
 
 func _physics_process(delta: float) -> void:
 	if _detonated:
 		return
-	_fuse_remaining -= delta
-	if _fuse_remaining <= 0.0:
-		_detonation_source = "fuse"
-		_log("Fuse expired mid-air at %s — detonating" % global_position)
-		_detonate()
+	# Cleanup timer — silently despawn if the charge has been
+	# alive for longer than its lifetime without hitting anything.
+	# No BOOM, no carve, no XP. Player understands the charge
+	# disappeared into nothing.
+	_lifetime_remaining -= delta
+	if _lifetime_remaining <= 0.0:
+		_log("Lifetime expired without impact — despawning silently at %s" % global_position)
+		_detonated = true
+		queue_free()
 
 
 func _on_body_entered(body: Node) -> void:
-	# Impact detonation. Any solid body counts: terrain (voxel
-	# collision), the ground, walls.
+	# The only path to detonation. Any solid body fires this:
+	# terrain, walls, ground, props. Impact-only behavior is
+	# simpler and means the player always gets an explosion
+	# exactly where the charge landed.
 	if _detonated:
 		return
-	_detonation_source = "impact"
 	_log("Impact with '%s' at %s" % [body.name if body != null else "?", global_position])
 	_detonate()
 
@@ -102,56 +111,21 @@ func _on_body_entered(body: Node) -> void:
 func _detonate() -> void:
 	_detonated = true
 
-	# --- Pick a detonation point that actually hits terrain ---
-	# Behavior depends on how the detonation was triggered:
-	#
-	#   IMPACT — body_entered fired, so we already collided with
-	#     a solid (terrain, wall, ground). The charge's current
-	#     position is on/near that surface. Trust it; the carve
-	#     will bite into the body we just hit.
-	#
-	#     A raycast from the charge's position can return nothing
-	#     in this case because the charge has penetrated slightly
-	#     into the collision mesh — the ray origin is inside the
-	#     solid mass and intersect_ray exits without registering
-	#     a hit. So we don't bother raycasting on impact.
-	#
-	#   FUSE — charge is in mid-air and the timer ran out. Try a
-	#     downward ray (normal mid-air case). If that misses
-	#     (e.g. the charge fell past Zylann's near-LOD collision
-	#     and is now in unloaded territory), try upward. If both
-	#     miss, fall back to the charge's current position — the
-	#     carve might not affect anything visible there, but
-	#     it's better than silently aborting and confusing the
-	#     player.
-	var detonate_pos: Vector3 = global_position
-	if _detonation_source == "fuse":
-		var found: Vector3 = _find_nearest_terrain(global_position, 200.0)
-		if found != Vector3.INF:
-			detonate_pos = found
-			if detonate_pos != global_position:
-				_log("Snapped fuse detonation from %s to terrain %s" % [global_position, detonate_pos])
-		else:
-			# No terrain found via raycast (likely past collision
-			# range). Carve at the charge's position anyway —
-			# may produce a crater if the chunks are loaded by
-			# the time the queue drains; if not, it's a no-op.
-			_log("Fuse detonation at %s — no raycast hit, carving at charge position anyway" % global_position)
+	# Carve a sphere centered slightly below the charge's position.
+	# The 0.4m down-offset bites the sphere into the surface the
+	# charge collided with so we get a visible crater instead of a
+	# half-air-half-ground skim. (At 8 vox/m our voxels are 12.5cm
+	# each, so 0.4m is roughly 3 voxels deep — well into the solid.)
+	var carve_center: Vector3 = global_position + Vector3(0, -0.4, 0)
 
-	# --- Voxel removal in the AOE ---
 	if get_node_or_null("/root/VoxelEditManager"):
-		# Offset the sphere center a bit BELOW the surface so the
-		# carve bites into the terrain rather than skimming it.
-		# 0.4m down from the hit point puts the sphere center
-		# inside the solid voxels, producing a visible crater.
-		var carve_center: Vector3 = detonate_pos + Vector3(0, -0.4, 0)
 		var accepted: bool = VoxelEditManager.queue_edit_sphere(
 			carve_center, aoe_radius_meters, 0
 		)
-		if not accepted:
-			_log("Detonation inside NoEditZone — voxels preserved.")
-		else:
+		if accepted:
 			_log("Carve queued: center=%s radius=%.1fm" % [carve_center, aoe_radius_meters])
+		else:
+			_log("Detonation inside NoEditZone — voxels preserved.")
 	else:
 		_log("VoxelEditManager autoload missing — no terrain edit applied")
 
@@ -178,41 +152,6 @@ func _detonate() -> void:
 	# removal to the end of the frame so any in-flight signal
 	# handling completes safely.
 	queue_free()
-
-
-func _find_nearest_terrain(from_pos: Vector3, max_distance: float) -> Vector3:
-	# Try DOWN first (charge floating above terrain): this is the
-	# normal case. If a ray straight down hits something, return
-	# the hit point.
-	#
-	# If the down-ray finds nothing, try UP — the charge probably
-	# fell past Zylann's collision and is now below the terrain
-	# mass. The up-ray hits the underside of the lowest voxel,
-	# which is close enough to the surface that a 2m carve from
-	# there cuts into the visible terrain.
-	#
-	# If neither direction finds terrain, return Vector3.INF as a
-	# sentinel — the caller should abort the carve rather than
-	# queue an edit at coordinates with nothing around them.
-	var space_state := get_world_3d().direct_space_state
-
-	var down_params := PhysicsRayQueryParameters3D.create(
-		from_pos, from_pos + Vector3(0, -max_distance, 0)
-	)
-	down_params.exclude = [get_rid()]
-	var hit_down: Dictionary = space_state.intersect_ray(down_params)
-	if not hit_down.is_empty():
-		return hit_down.get("position", from_pos)
-
-	var up_params := PhysicsRayQueryParameters3D.create(
-		from_pos, from_pos + Vector3(0, max_distance, 0)
-	)
-	up_params.exclude = [get_rid()]
-	var hit_up: Dictionary = space_state.intersect_ray(up_params)
-	if not hit_up.is_empty():
-		return hit_up.get("position", from_pos)
-
-	return Vector3.INF
 
 
 func _log(msg: String) -> void:
