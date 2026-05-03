@@ -289,11 +289,19 @@ func _apply_edit(cmd: Dictionary) -> void:
 	if tool == null:
 		return
 
-	# We're using VoxelMesherCubes (blocky terrain), which reads from
-	# CHANNEL_TYPE — integer voxel material IDs. (For smooth terrain
-	# with Transvoxel, you'd use CHANNEL_SDF instead, but we don't.)
-	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	tool.value = cmd.get("value", 0)
+	# Edits target the signed distance field channel (CHANNEL_SDF)
+	# because the test world uses VoxelMesherTransvoxel which reads
+	# SDF. When the world swaps to VoxelMesherBlocky + a
+	# VoxelBlockyLibrary (the design intent), this becomes
+	# CHANNEL_TYPE again with type-id writes.
+	tool.channel = VoxelBuffer.CHANNEL_SDF
+
+	# Voxel value 0 = air = "carve" (subtract). Anything else = "fill"
+	# (add). For now every edit verb passes 0 (pickaxe carves, axe
+	# carves a tree-shaped hole, explosive carves a sphere). Block
+	# placement (Build Mode) will pass a non-zero material ID.
+	var carve_mode: bool = cmd.get("value", 0) == 0
+	tool.mode = VoxelTool.MODE_REMOVE if carve_mode else VoxelTool.MODE_ADD
 
 	match cmd["type"]:
 		"sphere":
@@ -313,10 +321,18 @@ func _apply_edit(cmd: Dictionary) -> void:
 			edit_applied.emit(center, _world_to_chunk(center))
 
 		"set":
-			# set_voxel takes a voxel-grid coordinate (Vector3i),
-			# not a world-space position. Convert.
-			tool.set_voxel(_world_to_voxel(cmd["pos"]), cmd["value"])
-			_mark_chunk(_world_to_chunk(cmd["pos"]))
+			# Single-voxel write. With SDF meshing there's no clean
+			# "remove exactly one voxel" operation — the surface is
+			# defined by smooth distance values, not discrete cells.
+			# Use a small sphere (~0.3m, roughly 2-3 voxels at our
+			# 8-vox/m scale) so a pickaxe click produces a visible
+			# divot. When we move to VoxelMesherBlocky with a library,
+			# this branch becomes a true single-cell write again.
+			tool.do_sphere(cmd["pos"], 0.3)
+			_mark_chunks_in_aabb(
+				cmd["pos"] - Vector3.ONE * 0.3,
+				cmd["pos"] + Vector3.ONE * 0.3,
+			)
 			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
 
