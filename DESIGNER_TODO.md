@@ -52,13 +52,13 @@ These are settings and installs that survive across all future work. Do them onc
   Layer 5 CanvasLayer. HP bar (red) and endurance bar (green) at bottom-center. Status label shows CROUCHING / EXHAUSTED.
   Reads `health`, `max_health`, `endurance`, `max_endurance`, `status_text` from the player each frame via group lookup.
 
-- [ ] **Register `BarkManager` as an Autoload**
-  Project Settings → Autoload → path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
-  Required for all bark lines to fire in-game. Reference: `design/NPC_SYSTEM.md`
+- [x] **Register `BarkManager` as an Autoload** (done — registered in `project.godot` `[autoload]` section)
+  Path: `res://scripts/BarkManager.gd` → node name: `BarkManager`.
+  Required for all bark lines to fire in-game; also unblocks NPC.gd which references the autoload directly.
 
-- [ ] **Register `WorldClock` as an Autoload**
-  Project Settings → Autoload → path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
-  Required for NPC daily schedules and time-of-day bark triggers. Reference: `design/NPC_SYSTEM.md`
+- [x] **Register `WorldClock` as an Autoload** (done — registered in `project.godot` `[autoload]` section)
+  Path: `res://scripts/WorldClock.gd` → node name: `WorldClock`.
+  Required for NPC daily schedules and time-of-day bark triggers.
 
 - [x] **Configure lock-on input action** (done — `lock_on` = Middle Mouse Button in project.godot)
   Camera rotation does NOT need Input Map actions for KB+M — `CameraRig.gd` reads
