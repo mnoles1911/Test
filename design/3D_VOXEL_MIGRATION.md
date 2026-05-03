@@ -168,6 +168,8 @@ Both coexist on the same plot. Schematic walls form the shell; voxel placement t
 
 A small player-built house = a few dozen schematic placements + perhaps a hundred voxel deltas. Total save cost: trivial.
 
+**Forward-looking — Player Blueprint Capture** (post-Act-I idea, parked in `DESIGNER_TODO.md` Section 9): a third mechanism where the player captures any voxel arrangement they like — their own builds, ruined structures encountered in the world, settlements (read-only inside NoEditZones) — into a saved `PlayerBlueprint` resource. Captured blueprints can be re-placed elsewhere as ghost outlines that consume materials from inventory. This becomes the player-authored counterpart to crafted schematics: schematics are designer-supplied prefabs; blueprints are player-supplied prefabs. Implementation extends `SchematicLibrary`. Lore framing: Roland keeps a folio of sketches.
+
 ### Combat / AI Implications
 
 - Navmesh chunked per voxel chunk. Async rebuild on edit. AI tolerates stale paths for ~1–2s post-edit; enemies stuck > 8s teleport-correct to nearest valid nav node with a small VFX so it doesn't read as a bug.

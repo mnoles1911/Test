@@ -198,6 +198,16 @@ Schematics are fast and visually consistent — most of any structure should be 
 
 Schematic placement and per-voxel placement are both rejected inside NoEditZones (settlements, dungeon entrances, lore landmarks). The build ghost turns red and the placement is refused with a Roland bark *"This place doesn't yield to me."*
 
+### Player Blueprints (deferred — post-Act-I)
+
+A future addition to the Build Mode toolset: **Capture submode**. Roland approaches any voxel arrangement he likes — his own hut, a watchtower built by another player in co-op, a settlement gatehouse he walked past in a NoEditZone — and drag-selects a 3D bounding box around it. The system reads the voxel deltas + placed schematics inside the volume and saves them as a `PlayerBlueprint` resource (named, dimensions, material manifest, contents). Blueprints are persisted under `user://saves/slot_{N}/blueprints/` (or a shared cross-save library — designer's call when the feature is committed).
+
+In Build Mode → **Blueprint submode**, the player picks a captured blueprint from a list. A translucent ghost previews placement; rotate / mirror controls operate on the ghost. Confirming consumes materials from inventory all at once, OR drops the blueprint as a buildable outline that fills in over time as the player adds materials at the site (Valheim-style).
+
+Capture from inside a NoEditZone is permitted (read-only); only the *placement* of the captured blueprint elsewhere consumes materials. Lore framing: Roland keeps a folio of hand-drawn sketches; captured structures appear in the journal as elevation drawings.
+
+This is the player-authored counterpart to crafted schematics — schematics are designer-supplied prefabs (the bench above), blueprints are player-supplied prefabs (this section). Implementation extends `SchematicLibrary` with a second category. Tracked in `DESIGNER_TODO.md` Section 9 (Future ideas).
+
 ---
 
 ## Cooking Fire
