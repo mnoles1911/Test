@@ -419,6 +419,7 @@ func _dispatch_click(pos: Vector2) -> void:
 	if _load_panel.visible:
 		# Load picker: cancel + per-row LOAD/DELETE buttons.
 		if _hits(_load_cancel_btn, pos):
+			print("[PauseMenu] dispatch: hit LOAD CANCEL → main panel")
 			_show_main_panel()
 			return
 		for row in _load_list_container.get_children():
@@ -426,8 +427,10 @@ func _dispatch_click(pos: Vector2) -> void:
 				continue
 			for child in row.get_children():
 				if child is Button and _hits(child as Button, pos):
+					print("[PauseMenu] dispatch: hit row button '%s'" % (child as Button).text)
 					(child as Button).pressed.emit()
 					return
+		print("[PauseMenu] dispatch: pos %s missed all load-picker buttons" % pos)
 		return
 
 	# Main pause panel.
@@ -561,15 +564,20 @@ func _on_save_confirm() -> void:
 # =============================================================
 
 func _on_load_select(filename: String) -> void:
+	print("[PauseMenu] _on_load_select called with filename='%s'" % filename)
 	if filename == "":
+		print("[PauseMenu]   ! empty filename, returning")
 		return
 	if not GameState.load_save_file(filename):
 		print("[PauseMenu] Load failed for: %s" % filename)
 		return
 	_close()
 	var scene: String = GameState.current_scene
+	print("[PauseMenu]   GameState.current_scene='%s'" % scene)
 	if scene == "" or not ResourceLoader.exists(scene):
+		print("[PauseMenu]   scene unresolvable, falling back to World3D.tscn")
 		scene = "res://scenes/World3D.tscn"
+	print("[PauseMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
 	TransitionManager.change_scene(scene, GameState.player_spawn_id)
 
 

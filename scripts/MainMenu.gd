@@ -136,14 +136,20 @@ func _dispatch_scroll(delta_pixels: int) -> void:
 	# Only the load picker has a scrollable list. Find the
 	# ScrollContainer that wraps _load_list_container and adjust
 	# its vertical scroll position.
+	print("[MainMenu] _dispatch_scroll(%d), load_panel.visible=%s" % [
+		delta_pixels, _load_panel.visible if _load_panel else "null"
+	])
 	if not _load_panel.visible:
 		return
 	if _load_list_container == null:
 		return
 	var scroll: ScrollContainer = _load_list_container.get_parent() as ScrollContainer
 	if scroll == null:
+		print("[MainMenu]   ! ScrollContainer parent not found")
 		return
+	var before: int = scroll.scroll_vertical
 	scroll.scroll_vertical += delta_pixels
+	print("[MainMenu]   scroll_vertical: %d → %d" % [before, scroll.scroll_vertical])
 
 
 func _dispatch_click(pos: Vector2) -> void:
@@ -159,6 +165,7 @@ func _dispatch_click(pos: Vector2) -> void:
 	if _load_panel != null and _load_panel.visible:
 		# Cancel button.
 		if _hits(_load_cancel_btn, pos):
+			print("[MainMenu] dispatch: hit LOAD CANCEL → returning to main")
 			_show_main_column()
 			return
 		# Per-row LOAD / DELETE buttons. Walk the dynamic list_container.
@@ -169,8 +176,10 @@ func _dispatch_click(pos: Vector2) -> void:
 			# the children and dispatch on the first matching button.
 			for child in row.get_children():
 				if child is Button and _hits(child as Button, pos):
+					print("[MainMenu] dispatch: hit row button '%s'" % (child as Button).text)
 					(child as Button).pressed.emit()
 					return
+		print("[MainMenu] dispatch: pos %s missed all load-picker buttons" % pos)
 
 
 func _hits(ctrl: Control, pos: Vector2) -> bool:
@@ -500,14 +509,19 @@ func _on_quit() -> void:
 # =============================================================
 
 func _on_load_select(filename: String) -> void:
+	print("[MainMenu] _on_load_select called with filename='%s'" % filename)
 	if filename == "":
+		print("[MainMenu]   ! empty filename, returning")
 		return
 	if not GameState.load_save_file(filename):
 		print("[MainMenu] Load failed for: %s" % filename)
 		return
 	var scene: String = GameState.current_scene
+	print("[MainMenu]   GameState.current_scene='%s'" % scene)
 	if scene == "" or not ResourceLoader.exists(scene):
+		print("[MainMenu]   scene unresolvable, falling back to WORLD_SCENE")
 		scene = WORLD_SCENE
+	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
 	TransitionManager.change_scene(scene, GameState.player_spawn_id)
 
 
