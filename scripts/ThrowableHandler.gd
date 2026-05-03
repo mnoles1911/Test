@@ -115,11 +115,15 @@ func _try_throw() -> void:
 		return
 	var rigid_body := charge as RigidBody3D
 
-	# Compute spawn position: in front of Roland at chest height.
-	# transform.basis.z is the player body's BACK direction (Godot
-	# convention), so -basis.z points forward.
-	var forward: Vector3 = -_player.transform.basis.z.normalized()
-	var spawn_pos: Vector3 = _player.global_position + (forward * spawn_offset_forward_meters) + Vector3(0, spawn_offset_up_meters, 0)
+	# Spawn position: chest height, slightly in front of Roland's body.
+	# We deliberately use the PLAYER BODY's forward (horizontal only)
+	# for the spawn offset — NOT the camera's aim direction — so the
+	# spawn point stays near Roland's chest regardless of camera pitch.
+	# (Spawning along camera forward would put the charge near the
+	# ground when looking down, which detonates immediately at his
+	# feet.)
+	var body_forward: Vector3 = -_player.transform.basis.z.normalized()
+	var spawn_pos: Vector3 = _player.global_position + (body_forward * spawn_offset_forward_meters) + Vector3(0, spawn_offset_up_meters, 0)
 
 	# Add to the world tree (the player's parent — the World3D root)
 	# so the throwable's lifetime is tied to the world, not Roland.
@@ -128,11 +132,8 @@ func _try_throw() -> void:
 
 	# Push inventory-driven sizing onto the spawned charge.
 	# Without this the PowderCharge.aoe_radius_meters export keeps its
-	# hardcoded default (2.0), and inventory-side tuning of
-	# voxel_aoe_radius is silently ignored — exactly the bug the
-	# "explosives stop carving after 3-4 throws at one spot" log
-	# revealed (radius was 2 m, four overlapping carves of 2 m landed
-	# inside the same crater the first one made).
+	# hardcoded default (2.0) and inventory-side tuning of
+	# voxel_aoe_radius is silently ignored.
 	if InventoryManager.ITEM_REGISTRY.has(throwable_item_id):
 		var data: Dictionary = InventoryManager.ITEM_REGISTRY[throwable_item_id]
 		if data.has("voxel_aoe_radius") and "aoe_radius_meters" in rigid_body:
@@ -140,6 +141,19 @@ func _try_throw() -> void:
 		if data.has("combat_damage") and "combat_damage" in rigid_body:
 			rigid_body.combat_damage = int(data["combat_damage"])
 
-	# Forward + slight upward arc — like an underhand toss.
-	var throw_velocity: Vector3 = (forward + Vector3.UP * 0.3).normalized() * throw_speed_meters_per_second
-	rigid_body.linear_velocity = throw_velocity
+	# Throw direction: follow the camera's aim (includes pitch). The
+	# camera lives a few nodes deep on Player3D — see Player3D.tscn.
+	# Falls back to body_forward if the camera isn't where expected,
+	# so a missing rig still throws something reasonable rather than
+	# silently dropping at Roland's feet.
+	#
+	# No hardcoded upward bias here (the previous +UP*0.3 fought
+	# aiming down). Gravity provides the natural arc; the player
+	# compensates for distance by aiming a bit above the target,
+	# the same way real-world grenade throws work.
+	var aim_direction: Vector3 = body_forward
+	var camera: Camera3D = _player.get_node_or_null("CameraTarget/SpringArm3D/Camera3D") as Camera3D
+	if camera != null:
+		aim_direction = -camera.global_transform.basis.z.normalized()
+
+	rigid_body.linear_velocity = aim_direction * throw_speed_meters_per_second
