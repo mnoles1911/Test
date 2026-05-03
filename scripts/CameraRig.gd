@@ -266,3 +266,33 @@ func exit_dialogue_mode() -> void:
 	_in_dialogue = false
 	var tween: Tween = create_tween()
 	tween.tween_property(self, "spring_length", arm_length, dialogue_tween_duration)
+
+
+# --- Forward raycast helper (used by EditToolHandler for voxel targeting) ---
+
+func get_camera_forward_hit(max_distance: float = 5.0) -> Dictionary:
+	# Casts a ray forward from the center of the screen (where the
+	# crosshair sits) out to max_distance meters. Returns the standard
+	# Godot intersect_ray hit dict on hit, or an empty dict on miss.
+	#
+	# Hit dict keys: "position" (world Vector3), "normal" (Vector3),
+	# "collider" (Object), "collider_id" (int), "rid" (RID), "shape" (int).
+	#
+	# Used by EditToolHandler.gd to find which voxel the player is
+	# aiming at when they press the attack action while a tool is
+	# equipped. Could also be used later for "what am I looking at?"
+	# investigation prompts, lock-on candidate finding, etc.
+	var camera: Camera3D = get_node_or_null("Camera3D")
+	if camera == null:
+		return {}
+
+	# Center of the viewport — where the crosshair would be drawn.
+	var viewport_size: Vector2 = camera.get_viewport().get_visible_rect().size
+	var screen_center: Vector2 = viewport_size * 0.5
+
+	var origin: Vector3 = camera.project_ray_origin(screen_center)
+	var direction: Vector3 = camera.project_ray_normal(screen_center)
+
+	var space_state: PhysicsDirectSpaceState3D = camera.get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(origin, origin + direction * max_distance)
+	return space_state.intersect_ray(params)

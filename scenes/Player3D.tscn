@@ -17,6 +17,7 @@
 
 [ext_resource type="Script" path="res://scripts/Player3D.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/CameraRig.gd" id="2_rig"]
+[ext_resource type="Script" path="res://scripts/EditToolHandler.gd" id="3_edit_tool"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -58,3 +59,11 @@ current = true
 ; to load chunks. Position is the player's world position; the
 ; terrain streams chunks within `view_distance` of this node.
 view_distance = 256
+
+[node name="EditToolHandler" type="Node3D" parent="."]
+; Handles "swing tool, edit voxel" input. Reads the equipped weapon
+; from InventoryManager; if it is an axe / pickaxe / shovel, ray
+; casts forward from the camera, removes the targeted voxel via
+; VoxelEditManager, and yields raw material into the inventory.
+; See scripts/EditToolHandler.gd.
+script = ExtResource("3_edit_tool")

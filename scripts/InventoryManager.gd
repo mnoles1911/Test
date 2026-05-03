@@ -26,8 +26,15 @@ extends Node
 # ITEM REGISTRY
 # =============================================================
 # The master list of all items in the game.
-# Format: { "id": { "name": String, "type": String, "description": String } }
-# Types: "weapon", "armor", "misc", "crafting_mat", "key_item", "crown_piece"
+# Format: { "id": { "name": String, "type": String, "description": String,
+#                   ...optional fields per item type } }
+# Types: "weapon", "armor", "misc", "crafting_mat", "key_item",
+#        "crown_piece", "tool", "throwable"
+#
+# Optional fields used by specific item types:
+#   tools: tool_target_materials (Array[String]), combat_damage (int)
+#   throwables: voxel_aoe_radius (float), combat_damage (int)
+#   raw materials: voxel_material (String) — what voxel tag yielded it
 #
 # This is a static definition — it doesn't change. The inventory tracks
 # which items the player actually has and in what quantity.
@@ -49,6 +56,19 @@ const ITEM_REGISTRY: Dictionary = {
 	# Weapons
 	"iron_sword":      {"name": "Iron Sword",      "type": "weapon",     "description": "Standard Brotherhood blade. Better maintained than most."},
 	"ashsteel_blade":  {"name": "Ashsteel Blade",  "type": "weapon",     "description": "Forged from Ashsteel. Burns cold. The edge never dulls."},
+
+	# Edit-verb tools — go in the weapon slot. tool_target_materials is
+	# the list of voxel-material tags this tool can affect; using the
+	# wrong tool on the wrong material is a no-op.
+	"iron_pickaxe":    {"name": "Iron Pickaxe",    "type": "tool", "description": "Wood-hafted iron pick. For stone, ore, and patient work.",                      "tool_target_materials": ["stone", "ore"], "combat_damage": 8},
+	"iron_axe":        {"name": "Iron Axe",        "type": "tool", "description": "A felling axe. Lighter than it looks; bites trees and armor in equal measure.", "tool_target_materials": ["wood"],         "combat_damage": 12},
+	"iron_shovel":     {"name": "Iron Shovel",     "type": "tool", "description": "Iron blade on a hardwood haft. Earth, sand, ash — anything that yields.",        "tool_target_materials": ["dirt", "sand", "clay", "ash"], "combat_damage": 6},
+
+	# Raw materials — yielded when player removes a voxel of the
+	# matching material with the right tool.
+	"raw_stone":       {"name": "Raw Stone",       "type": "crafting_mat", "description": "A chunk of stone, fresh from the strike of a pick.",  "voxel_material": "stone"},
+	"raw_log":         {"name": "Raw Log",         "type": "crafting_mat", "description": "A length of green wood. Will need seasoning.",         "voxel_material": "wood"},
+	"raw_dirt":        {"name": "Raw Dirt",        "type": "crafting_mat", "description": "Loose earth. Good for filling, less so for building.", "voxel_material": "dirt"},
 
 	# Crafting materials
 	"ashsteel_ingot":  {"name": "Ashsteel Ingot",  "type": "crafting_mat","description": "Raw Ashsteel. Required to forge Ashsteel weapons."},
@@ -215,3 +235,10 @@ func load_save_data(data: Dictionary) -> void:
 
 func _ready() -> void:
 	print("[InventoryManager] Initialized.")
+	# DEBUG: give Roland a starter pickaxe so the edit-verb pipeline
+	# can be exercised without first wiring up loot / vendors / a
+	# story-driven tool acquisition. Remove (or guard with a debug
+	# flag) when the game opens onto the Iron Chalice scene with
+	# the canon starting inventory.
+	add_item("iron_pickaxe", 1)
+	equip("weapon", "iron_pickaxe")
