@@ -37,6 +37,14 @@ extends Node3D
 # continuous voxel-eraser at frame rate. Real animation will replace
 # this once Roland's rig has tool-swing animations.
 
+@export var swing_carve_radius_meters: float = 0.8
+# Sphere radius (meters) of voxel removed per swing. Bigger = more
+# obvious visual chunk per swing, but feels less "precise". 0.8m
+# is roughly a small bucket-sized hole — clearly visible from
+# third-person camera distance, still feels like one pick strike.
+# Tune per tool tier later (e.g. iron pickaxe = 0.5, dwarven
+# pickaxe = 1.0).
+
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
 
@@ -207,10 +215,16 @@ func _try_swing() -> void:
 		return
 
 	# --- Queue the edit ---
+	# Use queue_edit_sphere so the carve size is explicit and
+	# tunable per tool. queue_set_voxel was named for single-voxel
+	# writes and used a hardcoded tiny radius internally — the
+	# resulting divot was hard to see from third-person camera.
 	if not get_node_or_null("/root/VoxelEditManager"):
 		push_warning("[EditToolHandler] VoxelEditManager autoload not registered")
 		return
-	var accepted: bool = VoxelEditManager.queue_set_voxel(voxel_world_pos, AIR_VOXEL)
+	var accepted: bool = VoxelEditManager.queue_edit_sphere(
+		voxel_world_pos, swing_carve_radius_meters, AIR_VOXEL
+	)
 	_swing_cooldown_remaining = swing_cooldown_seconds
 
 	if not accepted:
