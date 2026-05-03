@@ -69,13 +69,13 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/EntityRegistry.gd` → node name: `EntityRegistry`.
   Required before `EntityStreamer` can load/unload world entities. Build after `WorldGenerator`.
 
-- [ ] **Register `VoxelEditManager` as an Autoload**
-  Project Settings → Autoload → path: `res://scripts/VoxelEditManager.gd` → node name: `VoxelEditManager`.
-  Required for any voxel edit (axe / pickaxe / shovel / explosive / spell) to function correctly. Handles async edit queue, EditedChunkRegistry, LOD-bake-on-eviction, NoEditZone enforcement, per-frame voxel budget. Build during Milestone 5-3D. Reference: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
+- [x] **Register `VoxelEditManager` as an Autoload** (done — registered in `project.godot` `[autoload]` section)
+  Path: `res://scripts/VoxelEditManager.gd` → node name: `VoxelEditManager`.
+  Handles async edit queue, EditedChunkRegistry, LOD-bake-on-eviction, NoEditZone enforcement, per-frame voxel budget. Reference: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
 
-- [ ] **Register `NoEditZoneRegistry` as an Autoload**
-  Project Settings → Autoload → path: `res://scripts/NoEditZoneRegistry.gd` → node name: `NoEditZoneRegistry`.
-  Tracks Area3D volumes assigned to the `no_edit_zone` group. Queried by `VoxelEditManager` before every voxel write. Build during Milestone 5-3D. Reference: `design/3D_VOXEL_MIGRATION.md` → "NoEditZones".
+- [x] **Register `NoEditZoneRegistry` as an Autoload** (done — registered in `project.godot` `[autoload]` section)
+  Path: `res://scripts/NoEditZoneRegistry.gd` → node name: `NoEditZoneRegistry`.
+  Tracks Area3D volumes assigned to the `no_edit_zone` group. Queried by `VoxelEditManager` before every voxel write. Listed before `VoxelEditManager` in autoload order so it initializes first (VoxelEditManager queries it on every edit).
 
 - [ ] **Register `SchematicLibrary` as an Autoload** (later — when player construction lands)
   Project Settings → Autoload → path: `res://scripts/SchematicLibrary.gd` → node name: `SchematicLibrary`.
@@ -94,11 +94,9 @@ These are settings and installs that survive across all future work. Do them onc
   - Connect to `OutputSDF`.
   This produces the procedural baseline only. Player edits live as deltas in `VoxelStreamSQLite`. Stamp a `WORLD_GENERATOR_VERSION` constant in code so save loads can detect mismatches.
 
-- [ ] **Set up the audio bus layout per `design/AUDIO_DESIGN.md`**
-  Bottom panel → Audio → add buses: `Music`, `SFX` (with children `Combat`, `Ambient`),
-  `Voice` (with children `NPC`, `Roland`), `UI`. Save as `default_bus_layout.tres`.
-  Required before any music or voiced dialogue work — `Settings.gd` volume sliders
-  target the bus names exactly as written above.
+- [x] **Set up the audio bus layout per `design/AUDIO_DESIGN.md`** (done — `default_bus_layout.tres` committed in PR #94)
+  All 8 buses configured with correct routing: Master / Music / SFX (with Combat + Ambient children) / Voice (with NPC + Roland children) / UI.
+  `Settings.gd` volume sliders target the bus names exactly as authored.
 
 - [ ] **Clean up Godot editor cruft from version control**
   After opening the project in Godot, `git status` shows ~25 untracked `scripts/*.gd.uid`
