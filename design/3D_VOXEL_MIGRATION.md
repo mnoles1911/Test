@@ -175,6 +175,49 @@ A small player-built house = a few dozen schematic placements + perhaps a hundre
 - Navmesh chunked per voxel chunk. Async rebuild on edit. AI tolerates stale paths for ~1–2s post-edit; enemies stuck > 8s teleport-correct to nearest valid nav node with a small VFX so it doesn't read as a bug.
 - Knockback into terrain that destroys voxels on impact is supported. Power-attack-into-rock dust events are good.
 - Pit-trapping enemies is a viable player tactic. Embraced as a power moment.
+- **Ceiling collapse on enemies is now mechanically supported.** Carving the support voxels above an enemy causes the unsupported voxels to fall via `VoxelGravityManager`, dealing damage proportional to cluster size × fall height. See "Voxel Gravity" below.
+
+### Voxel Gravity
+
+After every voxel edit, `VoxelGravityManager` runs a **local 16 m flood-fill** (capped at 32 m) to find voxels that lost their support. Disconnected islands are carved from the terrain and spawned as `FallingVoxelCluster` `RigidBody3D` instances which fall, tip, possibly damage things on impact, and re-deposit as terrain when they come to rest.
+
+**Anchoring rule.** A voxel is anchored if it's connected by a 6-neighbour path to either (a) the edge of the analysis bubble, or (b) a voxel inside a NoEditZone. Everything else is loose and falls. This is intentionally a **local** check — a multi-km arch whose support is removed > 16 m away will not collapse. Bounded compute, matches Minecraft behaviour.
+
+**Tipping behaviour.**
+- Every cluster spawns with custom centre of mass at the voxel-weighted centroid (so L-shaped overhangs tumble around their true CoM, not the geometric centre of their bounding box).
+- Every cluster gets a tiny random angular nudge (±0.05 rad/s on X and Z) so perfectly-vertical columns don't balance forever.
+- "Rod-like" clusters (height ≥ 3× max horizontal extent) get an additional directional impulse at the top of the cluster, pushing **away from the edit origin**. Felled trees fall toward the cut.
+- Default project gravity stays at 9.8 m/s²; clusters override per-body via `gravity_scale` to match `Player3D.GRAVITY = 20 m/s²` exactly.
+
+**Damage on impact.** When a falling cluster's `body_entered` fires on a body with a `health` property:
+```
+damage = voxel_count × fall_height_m × 0.05
+```
+Below `1.5 m` fall height there is no damage (so digging out a small pebble doesn't harm anyone). Each body takes damage at most once per cluster fall. Bodies with `take_damage(amount)` get the call; bodies with only a `health` field (Player3D today) get a direct write.
+
+**Re-deposit on landing.** When a cluster's `RigidBody3D.sleeping` flips true (or after a 10 s failsafe timeout), the cluster's voxel snapshot is transformed through the body's current transform (carrying any rotation from the fall), snapped to the world voxel grid, and written back to terrain via `VoxelEditManager.queue_set_voxels_bulk`. Voxels rejected by NoEditZone (e.g. the cluster fell into a settlement) are silently dropped. The cluster then `queue_free()`s itself.
+
+**Caps and safety.**
+| Constant | Default | Purpose |
+|---|---|---|
+| `analysis_padding_m` | 16 | Half-side of the flood-fill bubble |
+| `max_analysis_side_m` | 32 | Hard cap on bubble size |
+| `max_cluster_voxels` | 4096 | Skip larger clusters (treat as anchored) — one Zylann chunk's worth |
+| `min_cluster_voxels` | 2 | Single-voxel "clusters" carve but don't spawn rigid bodies |
+| `max_scans_per_frame` | 1 | At most one bubble processed per physics frame |
+| `max_active_clusters` | 32 | Beyond this, new clusters carve but don't fall |
+| `scan_queue_max` | 16 | Drop the oldest pending scan if exceeded |
+
+**Files:**
+- `scripts/VoxelGravityManager.gd` — autoload, subscribes to `VoxelEditManager.edit_applied`
+- `scripts/FallingVoxelCluster.gd` + `scenes/voxel/FallingVoxelCluster.tscn` — RigidBody3D scene
+- `scripts/VoxelClusterBuilder.gd` — static utility for mesh, AABB, centroid
+
+**Known limitations.**
+- **Multi-km structural integrity is not modelled.** A giant arch spanning > 32 m won't collapse if you cut only one of its supports.
+- **Re-deposit snaps to the world grid** — a tree that lands at 73° gets stair-stepped voxels, not a smooth diagonal log. Acceptable for the chunky-cube aesthetic.
+- **Re-deposits fire `edit_applied`**, which triggers a follow-up gravity scan. The scan exits cheaply (the just-landed voxels are anchored by construction), but it's wasted work for ~32 frames during a heavy collapse.
+- **Multiplayer determinism is not addressed.** Cluster spawn order depends on per-client edit timing; deferred until Netfox rollback work begins.
 
 ### Multiplayer Implications
 

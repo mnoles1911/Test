@@ -208,10 +208,11 @@ These values are locked for implementation but expected to be adjusted during pl
 
 The world is destructible by default (see `design/3D_VOXEL_MIGRATION.md` → Destructible Terrain). Combat-side implications:
 
-- **Knockback into terrain.** Heavy power attacks that drive an enemy into a wall can chip voxels off on impact. Routes through `VoxelEditManager` async edit queue with a per-impact voxel budget cap (max ~6 voxels). Visual: dust burst + small block ejecta. Not authored, just emergent.
+- **Knockback into terrain.** Heavy power attacks that drive an enemy into a wall can chip voxels off on impact. Routes through `VoxelEditManager` async edit queue with a per-impact voxel budget cap (max ~6 voxels). Visual: dust burst + small block ejecta. Not authored, just emergent. Any voxels left unsupported by the chip will subsequently fall via `VoxelGravityManager`.
 - **Pit-trapping.** Players who dig pits before a fight and lure enemies in is a real tactic. Embraced as a power moment. Anti-cheese: any enemy stuck > 8 seconds teleport-corrects to the nearest valid nav node with a small VFX.
 - **Stale-path tolerance.** When terrain changes, navmesh rebuild is async. AI tolerates stale paths for 1–2 seconds post-edit; enemies will briefly walk into a new wall before re-pathing. Acceptable.
 - **Explosives in combat.** Powder Charge and Sapper's Bundle (see `design/ITEM_LIBRARY.md` → Section 4) deal combat damage AND remove voxels in their AOE. Wall-breach attacks are real; throwing one inside a settlement still deals damage but leaves the masonry intact (NoEditZone).
+- **Crush damage from falling voxels.** Voxels that lose their support fall via `VoxelGravityManager` and damage anything they hit with `damage = voxel_count × fall_height_m × 0.05` (1.5 m minimum fall). This makes ceiling-collapse a real combat verb: cut the rock above the goblin and the rock kills the goblin. See `design/3D_VOXEL_MIGRATION.md` → "Voxel Gravity" for the full spec.
 - **Spell-driven terrain effects** — Game Two onward, when magic-using companions arrive. Earth-school AOE spells dig; fire spells fell trees and ignite. Same `VoxelEditManager` path as explosives; same NoEditZone enforcement.
 - **NoEditZones in combat.** Settlements and lore landmarks reject voxel edits regardless of source. Combat damage to enemies and props inside still works normally; only terrain mutation is blocked.
 

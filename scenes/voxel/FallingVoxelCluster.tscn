@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/FallingVoxelCluster.gd" id="1_cluster"]
+
+[node name="FallingVoxelCluster" type="RigidBody3D"]
+script = ExtResource("1_cluster")
+mass = 50.0
+contact_monitor = true
+max_contacts_reported = 8
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+
+[node name="Collision" type="CollisionShape3D" parent="."]
