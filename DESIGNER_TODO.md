@@ -26,6 +26,26 @@ These are settings and installs that survive across all future work. Do them onc
   Reference: `design/ART_PIPELINE.md` → "Tool 2: Zylann's Voxel Tools" for the full install detail.
   Required for Milestone 5-3D (terrain generation + destructible terrain core).
 
+- [ ] **Verify Zylann `VoxelTool.get_voxel(Vector3i) → int` signature in-editor**
+  The voxel-gravity system (`scripts/VoxelGravityManager.gd`) reads voxels via
+  `tool.get_voxel(world_grid_pos)` to identify unsupported clusters after edits.
+  This signature is documented in Zylann's reference but has churned across
+  plugin versions, and the existing project code never called it before — so
+  it's unverified against the version installed in `addons/zylann.voxel/`.
+  How to verify:
+  1. Open `World3D.tscn` in Godot 4.6.2 with the plugin installed.
+  2. Run the scene. Pickaxe a single voxel out of the ground.
+  3. Check the Output panel for `[VoxelGravityManager]` log lines reporting
+     either "spawned cluster" / "scan complete" or a runtime error mentioning
+     `get_voxel`.
+  4. If you see an error like *"Invalid call. Nonexistent function 'get_voxel'..."*
+     or a signature mismatch, the read loop in `VoxelGravityManager._process_bubble`
+     needs the signature adjusted. Document the actual signature you see and ping
+     for a follow-up commit.
+  If gravity behaves as expected (carve a cliff overhang, watch it fall), the
+  signature is correct and this task can be checked off.
+  Reference: PR #127 (voxel gravity system).
+
 - [x] **Configure the core Input Map per `design/INPUT_AND_CONTROLS.md`** (mostly done — see below)
   All core actions are now in `project.godot`. Remaining items marked [ ] below.
   **KB+M defaults (confirmed and live):**
