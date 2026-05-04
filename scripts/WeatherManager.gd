@@ -197,6 +197,16 @@ var _live_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_strength"]
 var _rain_particles: GPUParticles3D = null
 var _snow_particles: GPUParticles3D = null
 
+# Wet-terrain visual layers (Phase 8).
+# Layer A: full-screen blue-grey tint — RainOverlay child of WeatherManager.
+# Layer B: StandardMaterial3D applied to VoxelLodTerrain.material_override
+# during rain so wet stone reads with specular sheen + slight darkening.
+var _rain_overlay: CanvasLayer = null
+var _wet_terrain_material: StandardMaterial3D = null
+# Tracks whether material_override has been applied. Avoids redundant
+# writes every frame on a stable state.
+var _wet_terrain_active: bool = false
+
 # How high above the camera the particle emitter sits (m). The
 # particles fall from this height; tuning matters for "rain
 # arriving from the sky" vs "rain spawning at face height".
@@ -226,6 +236,14 @@ func _ready() -> void:
 		WorldClock.hour_changed.connect(_on_hour_changed)
 	# Pick an initial wind heading.
 	_resample_wind_target()
+	# Build the rain mood overlay once. Alpha 0 by default; we never
+	# need to free it.
+	var overlay_script := load("res://scripts/RainOverlay.gd")
+	if overlay_script != null:
+		_rain_overlay = overlay_script.new()
+		_rain_overlay.name = "RainOverlay"
+		add_child(_rain_overlay)
+	# Wet-terrain material is also lazy — only built on first wet state.
 
 
 func _process(delta: float) -> void:
@@ -285,6 +303,15 @@ func _process(delta: float) -> void:
 	# interpolated state so the particle count tweens smoothly with
 	# the rest of the transition.
 	_update_particles()
+
+	# Wet-terrain layered visual (Phase 8). Both the screen tint and
+	# the terrain material wetness ramp with the same "wetness"
+	# fraction — currently rain density / max rain density.
+	var wetness: float = lerpf(
+		_state_wetness(current_state),
+		_state_wetness(_target_state),
+		_transition_progress)
+	_update_wet_terrain_visual(wetness)
 
 	# Story override countdown — tick down in seconds, ticking the
 	# remaining "hours" by delta/3600 of a real-world hour. We use real
@@ -463,6 +490,86 @@ func _advance_wind_direction(delta: float) -> void:
 	var step: float = clampf(angle_to, -max_step, max_step)
 	var new_2d: Vector2 = current_2d.rotated(step)
 	wind_direction = Vector3(new_2d.x, 0.0, new_2d.y)
+
+
+# ------------------------------------------------------------
+# Wet-terrain layered visual (Phase 8)
+# ------------------------------------------------------------
+
+# Maximum particle density we treat as 100% wet. Anything above this
+# in a state's profile is clamped — keeps wetness in [0, 1].
+const _MAX_WETNESS_DENSITY: float = 6000.0
+
+
+func _state_wetness(state_id: int) -> float:
+	# Rain states contribute wetness; everything else is dry.
+	# Snow doesn't pre-wet stone (the world wouldn't read as "snowy
+	# AND wet"); future polish could add a separate "frosty" channel.
+	if state_id == State.LIGHT_RAIN or state_id == State.HEAVY_RAIN:
+		var density: float = float(STATE_PROFILES[state_id]["particle_density"])
+		return clampf(density / _MAX_WETNESS_DENSITY, 0.0, 1.0)
+	return 0.0
+
+
+func _update_wet_terrain_visual(wetness: float) -> void:
+	# Layer A — screen tint always-on overlay.
+	if _rain_overlay != null and _rain_overlay.has_method("set_intensity"):
+		_rain_overlay.set_intensity(wetness)
+
+	# Layer B — terrain material override. Apply once on the first
+	# wet frame and animate albedo + roughness via the material's
+	# properties. Remove it (set null) when wetness returns to 0 so
+	# the default vertex-color rendering takes back over.
+	var terrain: Node = _find_voxel_terrain()
+	if terrain == null:
+		return
+	if not (terrain is GeometryInstance3D):
+		# Some Zylann builds don't expose material_override; fall back
+		# silently — Layer A still works.
+		if not _wet_terrain_active and wetness <= 0.001:
+			return
+	if wetness <= 0.001:
+		if _wet_terrain_active:
+			(terrain as GeometryInstance3D).material_override = null
+			_wet_terrain_active = false
+		return
+
+	if _wet_terrain_material == null:
+		_wet_terrain_material = StandardMaterial3D.new()
+		# vertex_color_use_as_albedo lets the underlying voxel-color
+		# information through, so we still see grass-vs-stone tints.
+		_wet_terrain_material.vertex_color_use_as_albedo = true
+		_wet_terrain_material.metallic = 0.05
+
+	# albedo darkens slightly with wetness; roughness drops so the sun
+	# picks out a wet sheen on highlights.
+	var darkening: float = lerpf(1.0, 0.85, wetness)
+	_wet_terrain_material.albedo_color = Color(darkening, darkening, darkening, 1.0)
+	_wet_terrain_material.roughness = lerpf(0.9, 0.3, wetness)
+
+	if not _wet_terrain_active:
+		(terrain as GeometryInstance3D).material_override = _wet_terrain_material
+		_wet_terrain_active = true
+
+
+func _find_voxel_terrain() -> Node:
+	# VoxelLodTerrain isn't in a group by default; walk the scene root.
+	# Cached after first hit so the per-frame cost is one is_instance_valid.
+	if _cached_voxel_terrain != null and is_instance_valid(_cached_voxel_terrain):
+		return _cached_voxel_terrain
+	var root: Node = get_tree().current_scene
+	if root == null:
+		return null
+	for child in root.get_children():
+		# Match by class name string so we don't need to import a class
+		# that may not exist if Zylann isn't installed yet.
+		if child.get_class() == "VoxelLodTerrain" or child.get_class() == "VoxelTerrain":
+			_cached_voxel_terrain = child
+			return child
+	return null
+
+
+var _cached_voxel_terrain: Node = null
 
 
 # ------------------------------------------------------------
