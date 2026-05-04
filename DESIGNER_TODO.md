@@ -677,6 +677,37 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
+- **WeatherManager polish — deferred from PR #132 code review (2026-05-04).**
+  Self-review surfaced these. Each is functionally tolerable today; bundle
+  for a future cleanup pass.
+  - **Lightning arms on `current_state == HEAVY_RAIN`, not `_target_state`.**
+    Means strikes don't start firing until the 30 s fade-in completes, and
+    they keep firing for up to 30 s after target leaves HEAVY_RAIN. Slightly
+    inconsistent with rain particles (which ramp via `_live_*` interpolated
+    values). Fix: arm/disarm based on `_target_state == HEAVY_RAIN`, or on a
+    `_live_rain_density > threshold` check so all rain visuals share one gate.
+  - **`assets/profiles/aldenholt.tres` uses raw int State values.**
+    `authored_sequence = Array[int]([1, 0, 1, 2])` silently breaks if the
+    `WeatherManager.State` enum is reordered. Fix options: (a) add a comment
+    in `WeatherLocationProfile.gd` documenting that the ints must match
+    enum positions, (b) switch `authored_sequence` to `Array[String]`
+    ("overcast", "clear", ...) and resolve via `STATE_NAMES` at load time.
+  - **`Vector3(NAN, NAN, NAN)` sentinel for `trigger_lightning_strike()`.**
+    Code smell — relies on `is_nan()` checks. Cleaner: split into
+    `trigger_lightning_strike()` (random) and `trigger_lightning_strike_at(pos)`,
+    or use a separate `bool has_pos` flag.
+  - **`_advance_wind_direction` early-returns on near-zero `wind_direction`.**
+    Theoretical foot-gun: if external code sets `wind_direction` to zero,
+    the lerp locks up forever. The field is private so it's defence-in-depth.
+    One-line fix: fall back to `(1, 0, 0)` when zero.
+  - **`_ambient_warned_missing` is reused for both ambient OGGs and
+    `thunder_distant.ogg`.** Functionally fine (no key collisions), but the
+    `_ambient_` prefix is semantically wrong for thunder. Rename or split.
+  - **Tween callbacks may run after WeatherManager is freed on quit.**
+    All callbacks check `is_instance_valid` so this is safe today, but
+    shutdown ordering quirks could surface a write to a freed Tween.
+    Low-risk; address if it ever shows up in the log.
+
 
 ## Section 10 — Verification Checklist (after each Godot session)
 
