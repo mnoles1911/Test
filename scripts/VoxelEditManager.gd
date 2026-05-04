@@ -451,17 +451,54 @@ func _apply_edit(cmd: Dictionary) -> void:
 			# therefore guaranteed to work here. set_voxel exists in
 			# Zylann's API but signature has churned across versions —
 			# do_box is the safer pick.
+			#
+			# NoEditZone perf — naive per-voxel intersect_point queries
+			# would stutter for big bulks (a 1000-voxel cluster
+			# re-deposit = 1000 physics queries in one frame). We
+			# pre-flight with a single AABB shape-query: if no zone
+			# overlaps the bulk's AABB at all, every per-voxel check is
+			# guaranteed to return "allowed" and we skip the whole
+			# inner check. Per-voxel checks only run when a zone IS in
+			# the AABB (some voxels in, some out — must check each).
 			var writes: Array = cmd.get("writes", [])
 			if writes.is_empty():
 				return
-			tool.channel = VoxelBuffer.CHANNEL_COLOR
-			tool.mode = VoxelTool.MODE_SET
+
+			# First pass: compute the bulk AABB.
 			var bulk_min: Vector3 = writes[0]["pos"]
 			var bulk_max: Vector3 = writes[0]["pos"]
+			for w0 in writes:
+				var p0: Vector3 = w0["pos"]
+				bulk_min.x = minf(bulk_min.x, p0.x)
+				bulk_min.y = minf(bulk_min.y, p0.y)
+				bulk_min.z = minf(bulk_min.z, p0.z)
+				bulk_max.x = maxf(bulk_max.x, p0.x)
+				bulk_max.y = maxf(bulk_max.y, p0.y)
+				bulk_max.z = maxf(bulk_max.z, p0.z)
+
+			# AABB pre-flight against NoEditZone. If false, the per-voxel
+			# is_point_inside_no_edit_zone check is provably unnecessary.
+			var registry := get_node_or_null("/root/NoEditZoneRegistry")
+			var bulk_overlaps_zone: bool = false
+			if registry != null and registry.has_method("does_aabb_overlap_no_edit_zone"):
+				bulk_overlaps_zone = registry.does_aabb_overlap_no_edit_zone(bulk_min, bulk_max)
+
+			tool.channel = VoxelBuffer.CHANNEL_COLOR
+			tool.mode = VoxelTool.MODE_SET
 			var written: int = 0
 			for w in writes:
 				var w_pos: Vector3 = w["pos"]
-				if not _check_edit_allowed(w_pos):
+				# Per-voxel zone check ONLY when a zone overlaps the bulk
+				# AABB at all. Otherwise this is provably allowed.
+				#
+				# Note: we skip _check_edit_allowed() and call the
+				# registry directly, because _check_edit_allowed emits
+				# edit_rejected_no_edit_zone (the bark trigger) which
+				# would fire per-voxel for a cluster falling into a
+				# settlement — spammy and wrong (it's the cluster's
+				# fault, not the player's).
+				if bulk_overlaps_zone and registry != null \
+						and registry.is_point_inside_no_edit_zone(w_pos):
 					continue
 				tool.value = int(w["value"])
 				var v_pos_f: Vector3 = _terrain.to_local(w_pos)
@@ -472,19 +509,13 @@ func _apply_edit(cmd: Dictionary) -> void:
 				)
 				# 1-voxel box — min inclusive, max exclusive on each axis.
 				tool.do_box(v_pos, v_pos + Vector3.ONE)
-				bulk_min.x = minf(bulk_min.x, w_pos.x)
-				bulk_min.y = minf(bulk_min.y, w_pos.y)
-				bulk_min.z = minf(bulk_min.z, w_pos.z)
-				bulk_max.x = maxf(bulk_max.x, w_pos.x)
-				bulk_max.y = maxf(bulk_max.y, w_pos.y)
-				bulk_max.z = maxf(bulk_max.z, w_pos.z)
 				written += 1
 			if written == 0:
 				return
 			_mark_chunks_in_aabb(bulk_min, bulk_max)
 			var bulk_center: Vector3 = (bulk_min + bulk_max) * 0.5
-			print("[VoxelEditManager] bulk '%s': %d voxels written" % [
-				cmd.get("label", "?"), written
+			print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
+				cmd.get("label", "?"), written, bulk_overlaps_zone
 			])
 			edit_applied.emit(bulk_center, _world_to_chunk(bulk_center))
 

@@ -89,16 +89,23 @@ const EQUILIBRIUM_BREAK_RAD_S: float = 0.05
 # =============================================================
 
 var _voxel_snapshot: Dictionary = {}
-# Vector3i (cluster-local voxel-grid) → int (packed RGBA32). Frozen
-# at spawn. Used for re-deposit.
+# Vector3i (ABSOLUTE world voxel-grid coords) → int (packed RGBA32).
+# Frozen at spawn. Used for mesh build AND re-deposit.
+#
+# IMPORTANT: keys are absolute (e.g. Vector3i(523, 47, 1109)), NOT
+# cluster-local. This is the coordinate system VoxelTool returned
+# them in, and it's what compute_centre_offset / build_cluster_mesh
+# expect — they handle the local-shift internally by subtracting
+# the centroid.
 
 var _centre_offset_m: Vector3 = Vector3.ZERO
-# The (cluster-local-meters) offset between the AABB-min corner and
-# the centre of mass. Mesh vertices are placed at
-# (voxel_pos * VOXEL_SIZE_M) - _centre_offset_m so the cluster
-# pivots around its CoM. We need this to invert the math during
-# re-deposit (going from "world position of a cluster vertex" back
-# to "voxel-grid position to write to").
+# The cluster's centroid in ABSOLUTE world meters, as returned by
+# VoxelClusterBuilder.compute_centre_offset(). Subtracted from each
+# absolute voxel position (in world meters) to map ABSOLUTE → CLUSTER-
+# LOCAL coords with the centre of mass at the rigid body's local
+# origin. Used both at mesh-build time and during re-deposit (we
+# need the same offset to round-trip absolute → local → world after
+# the cluster has rotated).
 
 var _spawn_world_y: float = 0.0
 # Y-coordinate where the cluster started falling. fall_height =
@@ -358,17 +365,25 @@ func _settle_and_redeposit() -> void:
 
 	var writes: Array = []
 	for v_pos_v in _voxel_snapshot.keys():
-		var v_local_grid: Vector3i = v_pos_v
+		# Snapshot keys are ABSOLUTE world voxel-grid positions (not
+		# cluster-local). Same convention used at mesh-build time.
+		var v_abs_grid: Vector3i = v_pos_v
 		# Match the mesh build: subtract _centre_offset_m (which IS
-		# centroid_world from spawn time) so cluster-local coords
-		# orbit the rigid body's CoM. Then add half-voxel so the write
-		# targets the voxel CENTRE rather than its corner.
-		var v_local_m: Vector3 = (Vector3(v_local_grid) * VOXEL_SIZE_M) - _centre_offset_m
+		# the absolute centroid in world meters) to map this voxel's
+		# absolute position into cluster-local meters orbiting the
+		# rigid body's CoM. Then add half-voxel so the write targets
+		# the voxel CENTRE rather than its corner.
+		var v_local_m: Vector3 = (Vector3(v_abs_grid) * VOXEL_SIZE_M) - _centre_offset_m
 		var v_local_centre_m: Vector3 = v_local_m + Vector3.ONE * (VOXEL_SIZE_M * 0.5)
+		# Apply the rigid body's current transform (carries any
+		# rotation + translation accumulated during the fall) to get
+		# the world-space landing position. After a 90° tip, voxels
+		# end up rotated relative to their original orientation —
+		# this is what produces the "tree lying on its side" look.
 		var v_world: Vector3 = global_transform * v_local_centre_m
 		writes.append({
 			"pos": v_world,
-			"value": int(_voxel_snapshot[v_local_grid]),
+			"value": int(_voxel_snapshot[v_abs_grid]),
 		})
 
 	if get_node_or_null("/root/VoxelEditManager"):

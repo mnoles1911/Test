@@ -271,6 +271,23 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 	# practice this is rare because the bubble is centred on a recent
 	# edit, and most edits aren't at the end of a long unsupported
 	# overhang.
+	#
+	# NoEditZone perf — naive per-voxel queries would run an
+	# intersect_point physics call for every non-bottom solid voxel
+	# (potentially thousands). We pre-flight the bubble's world AABB
+	# against the registry once: if no zone overlaps the bubble at all,
+	# every per-voxel check is provably "not in a zone" and we skip the
+	# whole inner check. Per-voxel checks only run when a zone IS in
+	# the bubble.
+	var bubble_min_world: Vector3 = Vector3(min_v) * VOXEL_SIZE_M
+	var bubble_max_world: Vector3 = Vector3(max_v + Vector3i.ONE) * VOXEL_SIZE_M
+	var registry := get_node_or_null("/root/NoEditZoneRegistry")
+	var bubble_has_zones: bool = false
+	if registry != null and registry.has_method("does_aabb_overlap_no_edit_zone"):
+		bubble_has_zones = registry.does_aabb_overlap_no_edit_zone(
+			bubble_min_world, bubble_max_world
+		)
+
 	var anchored: Dictionary = {}  # Vector3i (bubble-local) → true
 	var frontier: Array[Vector3i] = []
 	for v_pos_v in solids.keys():
@@ -281,14 +298,15 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 			anchored[v] = true
 			frontier.append(v)
 			continue
-		# NoEditZone check — convert bubble-local back to world meters.
-		var v_world_centre_m: Vector3 = (
-			Vector3(min_v + v) + Vector3.ONE * 0.5
-		) * VOXEL_SIZE_M
-		var registry := get_node_or_null("/root/NoEditZoneRegistry")
-		if registry != null and registry.is_point_inside_no_edit_zone(v_world_centre_m):
-			anchored[v] = true
-			frontier.append(v)
+		# NoEditZone check — only run if the AABB pre-flight said zones
+		# exist in this bubble. Otherwise it's provably empty.
+		if bubble_has_zones:
+			var v_world_centre_m: Vector3 = (
+				Vector3(min_v + v) + Vector3.ONE * 0.5
+			) * VOXEL_SIZE_M
+			if registry.is_point_inside_no_edit_zone(v_world_centre_m):
+				anchored[v] = true
+				frontier.append(v)
 
 	# Flood-fill anchors through the solid set. 6-connected.
 	const NEIGHBOURS_6: Array = [
