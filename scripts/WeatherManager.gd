@@ -211,6 +211,17 @@ var _wet_terrain_material: StandardMaterial3D = null
 # writes every frame on a stable state.
 var _wet_terrain_active: bool = false
 
+# Ambient audio (Phase 10). One AudioStreamPlayer that crossfades on
+# state change. Files live at res://assets/audio/ambient/{key}.ogg
+# where key is the "ambient_audio" entry in STATE_PROFILES.
+var _ambient_player: AudioStreamPlayer = null
+var _ambient_player_next: AudioStreamPlayer = null   # destination of in-flight crossfade
+var _ambient_current_key: String = ""
+var _ambient_warned_missing: Dictionary = {}   # key -> true once warned
+const AMBIENT_AUDIO_DIR: String = "res://assets/audio/ambient/"
+const AMBIENT_CROSSFADE_S: float = 5.0
+const AMBIENT_TARGET_DB: float = -8.0          # comfortable bed level
+
 # How high above the camera the particle emitter sits (m). The
 # particles fall from this height; tuning matters for "rain
 # arriving from the sky" vs "rain spawning at face height".
@@ -248,6 +259,18 @@ func _ready() -> void:
 		_rain_overlay.name = "RainOverlay"
 		add_child(_rain_overlay)
 	# Wet-terrain material is also lazy — only built on first wet state.
+
+	# Ambient audio bed — single AudioStreamPlayer at -80 dB. We
+	# crossfade INTO this player and a second one we spawn on demand.
+	_ambient_player = AudioStreamPlayer.new()
+	_ambient_player.name = "AmbientAudio"
+	_ambient_player.bus = "Master"
+	_ambient_player.volume_db = -80.0
+	add_child(_ambient_player)
+
+	# Listen to our own state-changed signal so audio swaps fire only
+	# on real state transitions (not every frame).
+	weather_state_changed.connect(_on_weather_state_changed_for_audio)
 
 
 func _process(delta: float) -> void:
@@ -578,6 +601,72 @@ func _update_wet_terrain_visual(wetness: float) -> void:
 	if not _wet_terrain_active:
 		(terrain as GeometryInstance3D).material_override = _wet_terrain_material
 		_wet_terrain_active = true
+
+
+# ------------------------------------------------------------
+# Ambient audio (Phase 10)
+# ------------------------------------------------------------
+
+func _on_weather_state_changed_for_audio(new_state: int, _old_state: int) -> void:
+	var key: String = String(STATE_PROFILES[new_state]["ambient_audio"])
+	_swap_ambient_audio(key)
+
+
+func _swap_ambient_audio(key: String) -> void:
+	# Idempotent — if the new key matches what's already playing, no-op.
+	if key == _ambient_current_key:
+		return
+
+	# Empty key (CLEAR has no ambient bed) — fade the current player
+	# out to silence and stop it.
+	if key.is_empty():
+		_fade_player_out(_ambient_player)
+		_ambient_current_key = ""
+		return
+
+	# Try to load the OGG. Missing files log once and silently skip.
+	var path: String = AMBIENT_AUDIO_DIR + key + ".ogg"
+	if not ResourceLoader.exists(path):
+		if not _ambient_warned_missing.has(key):
+			_ambient_warned_missing[key] = true
+			push_warning("[WeatherManager] Missing ambient audio: %s — see DESIGNER_TODO.md" % path)
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+
+	# Spawn a second player to take over; crossfade the two together.
+	# When the fade-in completes, the old player gets queue_free'd.
+	if _ambient_player_next != null and is_instance_valid(_ambient_player_next):
+		_ambient_player_next.queue_free()
+	_ambient_player_next = AudioStreamPlayer.new()
+	_ambient_player_next.bus = "Master"
+	_ambient_player_next.volume_db = -80.0
+	_ambient_player_next.stream = stream
+	add_child(_ambient_player_next)
+	_ambient_player_next.play()
+
+	var t := create_tween()
+	t.set_parallel(true)
+	t.tween_property(_ambient_player_next, "volume_db", AMBIENT_TARGET_DB, AMBIENT_CROSSFADE_S)
+	t.tween_property(_ambient_player, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
+	t.chain().tween_callback(_finalise_ambient_swap)
+	_ambient_current_key = key
+
+
+func _finalise_ambient_swap() -> void:
+	# The old player has faded out. Free it, promote _next.
+	if _ambient_player != null and is_instance_valid(_ambient_player):
+		_ambient_player.queue_free()
+	_ambient_player = _ambient_player_next
+	_ambient_player_next = null
+
+
+func _fade_player_out(p: AudioStreamPlayer) -> void:
+	if p == null or not is_instance_valid(p):
+		return
+	var t := create_tween()
+	t.tween_property(p, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
 
 
 func _find_voxel_terrain() -> Node:
