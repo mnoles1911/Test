@@ -50,7 +50,7 @@ var _player_state_tab: VBoxContainer
 # Commands tab — three sub-views inside the COMMANDS tab. Only one
 # is visible at a time; the rest are hidden. Sub-views switch by
 # clicking a command in the list, and BACK in a sub-view returns.
-enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP, VIEW_DIST }
+enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP, VIEW_DIST, WEATHER }
 var _commands_view: CommandView = CommandView.LIST
 
 # Sub-view containers.
@@ -59,6 +59,7 @@ var _commands_delete_save_view: VBoxContainer
 var _commands_teleport_view: VBoxContainer
 var _commands_time_view: VBoxContainer
 var _commands_view_dist_view: VBoxContainer
+var _commands_weather_view: VBoxContainer
 
 # Command list buttons.
 var _btn_delete_all: Button
@@ -68,6 +69,7 @@ var _btn_advance_day: Button
 var _btn_advance_time: Button
 var _btn_fly_mode: Button
 var _btn_view_dist: Button
+var _btn_weather: Button
 
 # View-distance sub-view.
 var _view_dist_back_btn: Button
@@ -76,6 +78,15 @@ var _view_dist_minus_500: Button
 var _view_dist_minus_100: Button
 var _view_dist_plus_100: Button
 var _view_dist_plus_500: Button
+
+# WEATHER sub-view widgets. One button per State plus override-clear,
+# force-lightning, and live readouts for current state and wind.
+var _weather_back_btn: Button
+var _weather_state_label: Label
+var _weather_wind_label: Label
+var _weather_state_buttons: Dictionary = {}  # state_id -> Button
+var _weather_clear_override_btn: Button
+var _weather_force_lightning_btn: Button
 
 # DELETE ALL SAVES — two-click confirm state.
 var _delete_saves_armed: bool = false
@@ -166,6 +177,10 @@ func _process(delta: float) -> void:
 	if _root.visible and _current_tab == DebugTab.PLAYER_STATE:
 		_refresh_player_state_tab()
 
+	# Live WEATHER readout refresh while the submenu is open.
+	if _root.visible and _current_tab == DebugTab.COMMANDS and _commands_view == CommandView.WEATHER:
+		_refresh_weather_labels()
+
 
 # =============================================================
 # UI — overlay panel (the F1 toggleable thing)
@@ -239,6 +254,7 @@ func _build_commands_tab() -> void:
 	_build_commands_teleport_view()
 	_build_commands_time_view()
 	_build_commands_view_dist_view()
+	_build_commands_weather_view()
 	_show_command_list()
 
 
@@ -257,10 +273,11 @@ func _build_commands_list_view() -> void:
 	_btn_advance_time = _make_command_row("ADVANCE TIME...")
 	_btn_fly_mode     = _make_command_row("TOGGLE FLY MODE")
 	_btn_view_dist    = _make_command_row("VIEW DISTANCE...")
+	_btn_weather      = _make_command_row("WEATHER...")
 
 	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
 			_btn_advance_day, _btn_advance_time, _btn_fly_mode,
-			_btn_view_dist]:
+			_btn_view_dist, _btn_weather]:
 		_commands_list_view.add_child(b)
 	_refresh_fly_mode_label()
 
@@ -436,6 +453,8 @@ func _show_command_list() -> void:
 		_commands_time_view.visible = false
 	if _commands_view_dist_view != null:
 		_commands_view_dist_view.visible = false
+	if _commands_weather_view != null:
+		_commands_weather_view.visible = false
 	# Sync fly-mode label in case the player toggled it via some
 	# other route (or returned from a save where fly was on).
 	_refresh_fly_mode_label()
@@ -712,6 +731,89 @@ func _get_voxel_viewer() -> VoxelViewer:
 	if players.is_empty():
 		return null
 	return players[0].get_node_or_null("VoxelViewer") as VoxelViewer
+
+
+# --- WEATHER sub-view ---
+
+func _build_commands_weather_view() -> void:
+	# Six state buttons stacked vertically + clear-override + force-lightning
+	# + readouts for current state and live wind. Hidden until the player
+	# clicks WEATHER... in the list view.
+	_commands_weather_view = VBoxContainer.new()
+	_commands_weather_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_weather_view.add_theme_constant_override("separation", 6)
+	_commands_weather_view.visible = false
+	_commands_tab.add_child(_commands_weather_view)
+
+	_weather_back_btn = _make_command_row("← BACK")
+	_commands_weather_view.add_child(_weather_back_btn)
+
+	var hint := Label.new()
+	hint.text = "Forces a weather state for 99 hours. Use CLEAR OVERRIDE to hand control back to the schedule."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_weather_view.add_child(hint)
+
+	_weather_state_label = Label.new()
+	_weather_state_label.add_theme_font_size_override("font_size", 16)
+	_weather_state_label.add_theme_color_override("font_color", Color(0.6, 0.9, 0.6, 1))
+	_weather_state_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_weather_view.add_child(_weather_state_label)
+
+	_weather_wind_label = Label.new()
+	_weather_wind_label.add_theme_font_size_override("font_size", 13)
+	_weather_wind_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.85, 1))
+	_weather_wind_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_weather_view.add_child(_weather_wind_label)
+
+	# State buttons. Order matches enum (CLEAR..SNOW) so clicks read
+	# top-to-bottom from calmest to wildest.
+	if get_node_or_null("/root/WeatherManager") != null:
+		var states: Array = WeatherManager.STATE_NAMES.keys()
+		for state_id in states:
+			var label: String = (WeatherManager.STATE_NAMES[state_id] as String).to_upper()
+			var b: Button = _make_command_row("SET WEATHER: " + label)
+			_weather_state_buttons[state_id] = b
+			_commands_weather_view.add_child(b)
+
+	_weather_clear_override_btn = _make_command_row("CLEAR OVERRIDE")
+	_commands_weather_view.add_child(_weather_clear_override_btn)
+
+	_weather_force_lightning_btn = _make_command_row("FORCE LIGHTNING")
+	_commands_weather_view.add_child(_weather_force_lightning_btn)
+
+
+func _show_weather_view() -> void:
+	_commands_view = CommandView.WEATHER
+	_commands_list_view.visible = false
+	_commands_delete_save_view.visible = false
+	_commands_teleport_view.visible = false
+	_commands_time_view.visible = false
+	_commands_view_dist_view.visible = false
+	_commands_weather_view.visible = true
+	_refresh_weather_labels()
+
+
+func _refresh_weather_labels() -> void:
+	if _weather_state_label == null:
+		return
+	if get_node_or_null("/root/WeatherManager") == null:
+		_weather_state_label.text = "WeatherManager not loaded"
+		_weather_wind_label.text = ""
+		return
+	var state_name: String = WeatherManager.get_state_name()
+	var target_id: int = WeatherManager._target_state
+	var target_name: String = WeatherManager.STATE_NAMES.get(target_id, "?")
+	var override_id: int = WeatherManager._override_state
+	var override_str: String = "none"
+	if override_id != -1:
+		override_str = "%s (%.1f h)" % [WeatherManager.STATE_NAMES.get(override_id, "?"), WeatherManager._override_hours_remaining]
+	_weather_state_label.text = "Current: %s   Target: %s   Override: %s" % [state_name, target_name, override_str]
+	var wind: Vector3 = WeatherManager.wind_direction
+	var strength: float = WeatherManager._live_wind_strength
+	_weather_wind_label.text = "Wind: (%.2f, %.2f) × %.2f" % [wind.x, wind.z, strength]
 
 
 # --- Console tab ---
@@ -1124,6 +1226,9 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 		if _hits_button(_btn_view_dist, pos):
 			_show_view_dist_view()
 			return
+		if _hits_button(_btn_weather, pos):
+			_show_weather_view()
+			return
 		return
 
 	# DELETE A SAVE sub-view: BACK or per-row DELETE.
@@ -1184,6 +1289,32 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 		if _hits_button(_view_dist_plus_500, pos):
 			_adjust_view_distance(500)
 			return
+
+	# WEATHER sub-view: BACK / state buttons / clear / force-lightning.
+	if _commands_view == CommandView.WEATHER:
+		if _hits_button(_weather_back_btn, pos):
+			_show_command_list()
+			return
+		if _hits_button(_weather_clear_override_btn, pos):
+			if get_node_or_null("/root/WeatherManager") != null:
+				WeatherManager.clear_weather_override()
+				log_action("DEV: cleared weather override")
+				_refresh_weather_labels()
+			return
+		if _hits_button(_weather_force_lightning_btn, pos):
+			if get_node_or_null("/root/WeatherManager") != null and WeatherManager.has_method("trigger_lightning_strike"):
+				WeatherManager.trigger_lightning_strike()
+				log_action("DEV: forced lightning")
+			return
+		for state_id in _weather_state_buttons.keys():
+			var b: Button = _weather_state_buttons[state_id]
+			if _hits_button(b, pos):
+				if get_node_or_null("/root/WeatherManager") != null:
+					var state_name: String = WeatherManager.STATE_NAMES.get(state_id, "")
+					WeatherManager.set_weather_override(state_name, 99.0)
+					log_action("DEV: set weather → %s" % state_name)
+					_refresh_weather_labels()
+				return
 
 	# TIME-SKIP sub-view: BACK / ADVANCE / focus on a LineEdit.
 	if _commands_view == CommandView.TIME_SKIP:
