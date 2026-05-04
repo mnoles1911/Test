@@ -41,6 +41,12 @@ const SETTINGS_SCENE: String = "res://scenes/ui/Settings.tscn"
 # image specs (1920×1080 minimum, vertical safe area, etc.).
 const MENU_BACKGROUNDS_DIR: String = "res://assets/menu_backgrounds/"
 
+# Folder scanned for menu music. Drop OGG, MP3, or WAV files in
+# here and the main menu picks one at random on each launch.
+# The file plays through the "Music" audio bus so the player's
+# volume setting (once wired in Settings) will affect it.
+const MENU_MUSIC_DIR: String = "res://assets/audio/music/"
+
 
 # =============================================================
 # NODE REFERENCES (all built in _ready)
@@ -58,6 +64,10 @@ var _load_panel: Panel
 var _load_list_container: VBoxContainer
 var _load_cancel_btn: Button
 
+# Music player — created in _setup_music(), plays one random track
+# from MENU_MUSIC_DIR each time the main menu opens.
+var _music_player: AudioStreamPlayer
+
 
 # =============================================================
 # LIFECYCLE
@@ -74,6 +84,7 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 	_setup_background()
+	_setup_music()
 	_build_main_column()
 	_build_load_picker()
 	_show_main_column()
@@ -118,6 +129,11 @@ func _on_debug_rect_input(event: InputEvent) -> void:
 #   - Wheel → scroll dispatch (find the visible ScrollContainer
 #     and adjust scroll_vertical)
 func _input(event: InputEvent) -> void:
+	# Settings overlay is a higher-priority layer — let it handle its own clicks.
+	var settings = get_node_or_null("/root/Settings")
+	if settings != null and settings.is_open():
+		return
+
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
@@ -499,7 +515,13 @@ func _on_load() -> void:
 
 func _on_settings() -> void:
 	print("[MainMenu] SETTINGS pressed")
-	TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
+	var settings = get_node_or_null("/root/Settings")
+	if settings != null:
+		settings.open(false)
+	else:
+		# Fallback: if Settings autoload somehow isn't present, fall back to
+		# the old scene-navigation approach.
+		TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
 
 
 func _on_quit() -> void:
@@ -534,3 +556,60 @@ func _on_load_delete(filename: String) -> void:
 	GameState.delete_save_file(filename)
 	# Refresh in place so the deleted row disappears.
 	_populate_load_list()
+
+
+# =============================================================
+# MUSIC
+# =============================================================
+
+func _setup_music() -> void:
+	# Picks a random audio file from MENU_MUSIC_DIR and plays it.
+	# If the folder is empty or doesn't exist yet, does nothing.
+	#
+	# The AudioStreamPlayer is created here in code (no .tscn change
+	# needed) and routed to the "Music" bus defined in
+	# default_bus_layout.tres. When the player starts or loads a game
+	# the entire scene is replaced, which automatically frees this
+	# node and stops playback — no manual cleanup needed.
+	var stream: AudioStream = _load_random_music()
+	if stream == null:
+		print("[MainMenu] No menu music found in %s — playing silent." % MENU_MUSIC_DIR)
+		return
+
+	_music_player = AudioStreamPlayer.new()
+	_music_player.stream = stream
+	_music_player.bus = "Music"   # routes through the Music bus in default_bus_layout.tres
+	_music_player.volume_db = 0.0 # 0 dB = full volume; lower this (e.g. -6.0) if it's too loud
+	add_child(_music_player)
+	_music_player.play()
+	print("[MainMenu] Playing menu music on 'Music' bus.")
+
+
+func _load_random_music() -> AudioStream:
+	# Returns a randomly-picked AudioStream from MENU_MUSIC_DIR,
+	# or null if the directory is missing or has no audio files.
+	# Supported formats: .ogg, .mp3, .wav (all work in Godot 4).
+	var dir := DirAccess.open(MENU_MUSIC_DIR)
+	if dir == null:
+		return null
+
+	var tracks: Array = []
+	dir.list_dir_begin()
+	var fname := dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir():
+			var lower := fname.to_lower()
+			if lower.ends_with(".ogg") \
+				or lower.ends_with(".mp3") \
+				or lower.ends_with(".wav"):
+				tracks.append(fname)
+		fname = dir.get_next()
+	dir.list_dir_end()
+
+	if tracks.is_empty():
+		return null
+
+	var pick: String = tracks[randi() % tracks.size()]
+	var path: String = MENU_MUSIC_DIR + pick
+	print("[MainMenu] Loaded music track: %s" % pick)
+	return load(path) as AudioStream

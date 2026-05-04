@@ -110,9 +110,11 @@ func _apply() -> void:
 	if _sun == null or _moon == null or _env == null:
 		return
 
-	# Continuous hour-of-day in [0, 24) so transitions are smooth
-	# rather than stepping at hour boundaries.
-	var h: float = float(WorldClock.current_hour) + float(WorldClock.current_minute) / 60.0
+	# Continuous hour-of-day in [0, 24). We add get_minute_fraction() so the
+	# value advances every frame (not just once per minute), giving the sun and
+	# moon perfectly smooth motion across the sky.
+	var minute_frac: float = WorldClock.get_minute_fraction()
+	var h: float = float(WorldClock.current_hour) + (float(WorldClock.current_minute) + minute_frac) / 60.0
 
 	# --- Sun + moon orbit ---
 	# Convert hour to an angle around the world's left axis. At hour 6

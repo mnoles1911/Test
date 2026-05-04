@@ -1,21 +1,36 @@
-extends Control
-# Settings — the settings screen.
+extends CanvasLayer
+# Settings — persistent overlay for audio/display settings.
 #
 # What this does in plain English:
-#   Shows adjustable options: master volume, music volume, SFX volume,
-#   fullscreen toggle, and a keybindings section (stub for now).
-#   Settings are saved to user://settings.json on Apply and loaded on _ready.
+#   An always-present CanvasLayer (autoload, layer 60) that overlays whatever
+#   scene is currently running. Showing settings does NOT replace the current
+#   scene, so MainMenu music keeps playing while settings are open.
 #
-# Called from: MainMenu._on_settings() and PauseMenu._on_settings()
-# Back navigation:
-#   - Opened from MainMenu  → Back / ESC returns to MainMenu
-#   - Opened from PauseMenu → Back / ESC returns to game + reopens PauseMenu
+#   Both MainMenu and PauseMenu call Settings.open() on the same single
+#   instance — there is only one Settings in the whole game.
+#
+#   open(from_gameplay)  — show the overlay.
+#     Pass true when opened from PauseMenu so closing it re-opens PauseMenu.
+#     Pass false (or omit) when opened from MainMenu.
+#   close()              — save settings, hide the overlay, re-open PauseMenu
+#                          if from_gameplay was true.
+#
+# Button layout:
+#   APPLY          — applies audio changes immediately without closing
+#   SAVE & LEAVE   — saves all settings and closes the overlay
+#   ESC            — same as SAVE & LEAVE
 #
 # Why _input instead of Button.pressed signals:
 #   Dialogic's input subsystem consumes LMB events before Godot's GUI
 #   dispatcher runs, so _gui_input never fires on Button or HSlider.
-#   Both MainMenu and PauseMenu work around this the same way: manual
-#   hit-detection in _input(). We do the same here.
+#   MainMenu, PauseMenu, and DebugOverlay all work around this the same
+#   way: manual hit-detection in _input().
+#
+# Why _content_root.visible instead of CanvasLayer.visible:
+#   CanvasLayer.visible = false suppresses rendering but Control nodes inside
+#   still absorb mouse events (their input filter is independent of the
+#   CanvasLayer's render visibility). This is the same pattern PauseMenu uses:
+#   the CanvasLayer is always present, the content Control is hidden/shown.
 
 
 # =============================================================
@@ -29,17 +44,25 @@ const SETTINGS_PATH: String = "user://settings.json"
 # NODE REFERENCES
 # =============================================================
 
-@onready var master_slider: HSlider     = $VBox/MasterRow/MasterSlider
-@onready var music_slider: HSlider      = $VBox/MusicRow/MusicSlider
-@onready var sfx_slider: HSlider        = $VBox/SFXRow/SFXSlider
-@onready var fullscreen_check: CheckBox = $VBox/FullscreenCheck
-@onready var back_btn: Button           = $VBox/ButtonRow/BackBtn
-@onready var apply_btn: Button          = $VBox/ButtonRow/ApplyBtn
+# The root Control that wraps all visible content. We show/hide THIS
+# rather than the CanvasLayer itself so that mouse-event blocking is tied
+# to actual visual visibility. (CanvasLayer.visible only affects rendering.)
+@onready var _content_root: Control        = $Root
+
+@onready var master_slider: HSlider        = $Root/VBox/MasterRow/MasterSlider
+@onready var music_slider: HSlider         = $Root/VBox/MusicRow/MusicSlider
+@onready var sfx_slider: HSlider           = $Root/VBox/SFXRow/SFXSlider
+@onready var fullscreen_check: CheckBox    = $Root/VBox/FullscreenCheck
+@onready var back_btn: Button              = $Root/VBox/ButtonRow/BackBtn
+@onready var apply_btn: Button             = $Root/VBox/ButtonRow/ApplyBtn
 
 
 # =============================================================
 # STATE
 # =============================================================
+
+# True when opened via PauseMenu; close() will reopen PauseMenu when done.
+var _from_gameplay: bool = false
 
 # Slider currently being dragged (null when nothing is being dragged).
 var _drag_slider: HSlider = null
@@ -50,31 +73,68 @@ var _drag_slider: HSlider = null
 # =============================================================
 
 func _ready() -> void:
-	# Must process even if a parent paused the tree (e.g. leftover
-	# pause state from PauseMenu before the scene change completed).
+	# Always process so sliders/buttons work even while the game tree is
+	# paused (PauseMenu sets paused=true before opening us).
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
-	# PauseMenu._close() sets mouse to CAPTURED before transitioning
-	# here. Sliders and buttons are unclickable with a captured mouse,
-	# so force it visible as soon as Settings loads.
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# Start hidden. We hide _content_root (the child Control), not the
+	# CanvasLayer itself, because CanvasLayer.visible only controls rendering
+	# — the Controls inside would still block mouse events while "invisible".
+	_content_root.visible = false
 
+	# Apply saved settings immediately so the audio buses are at the right
+	# volume before any scene plays audio.
 	_load_settings()
 	_apply_to_audio()
 
-	print("[Settings] Ready.")
+	print("[Settings] Initialized (overlay mode).")
 
 
 # =============================================================
-# INPUT — manual dispatch (mirrors PauseMenu._input pattern)
+# PUBLIC API
+# =============================================================
+
+## Returns true when the settings overlay is currently visible.
+func is_open() -> bool:
+	return _content_root.visible
+
+
+## Show the settings overlay.
+## from_gameplay = true  → was opened from PauseMenu (close() will reopen it).
+## from_gameplay = false → was opened from MainMenu.
+func open(from_gameplay: bool = false) -> void:
+	_from_gameplay = from_gameplay
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_content_root.visible = true
+	print("[Settings] Opened (from_gameplay=%s)." % from_gameplay)
+
+
+## Save settings and hide the overlay.
+## If opened from PauseMenu, re-opens PauseMenu afterwards.
+func close() -> void:
+	_save_settings()
+	_content_root.visible = false
+	if _from_gameplay:
+		var pause_menu: Node = get_node_or_null("/root/PauseMenu")
+		if pause_menu != null and pause_menu.has_method("reopen_after_settings"):
+			pause_menu.reopen_after_settings()
+	print("[Settings] Closed.")
+
+
+# =============================================================
+# INPUT — manual dispatch (mirrors MainMenu / PauseMenu pattern)
 # =============================================================
 
 func _input(event: InputEvent) -> void:
+	if not _content_root.visible:
+		return
+
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				_on_lmb_press(mb.position)
+				get_viewport().set_input_as_handled()
 			else:
 				_drag_slider = null
 
@@ -84,15 +144,17 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# ESC anywhere on the settings screen → same as clicking Back.
+	# ESC anywhere in settings → same as clicking SAVE & LEAVE.
+	if not _content_root.visible:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE or event.physical_keycode == KEY_ESCAPE:
-			_on_back()
+			close()
 			get_viewport().set_input_as_handled()
 
 
 func _on_lmb_press(pos: Vector2) -> void:
-	# Check each slider first — press starts a drag.
+	# Check sliders first — a press on a slider starts a drag.
 	for s in [master_slider, music_slider, sfx_slider]:
 		var slider := s as HSlider
 		if slider.get_global_rect().has_point(pos):
@@ -100,10 +162,12 @@ func _on_lmb_press(pos: Vector2) -> void:
 			_set_slider_from_pos(slider, pos)
 			return
 
-	# Buttons.
+	# SAVE & LEAVE button.
 	if back_btn.get_global_rect().has_point(pos):
-		_on_back()
+		close()
 		return
+
+	# APPLY button.
 	if apply_btn.get_global_rect().has_point(pos):
 		_on_apply()
 		return
@@ -122,8 +186,6 @@ func _update_slider_drag(global_pos: Vector2) -> void:
 
 
 func _set_slider_from_pos(slider: HSlider, global_pos: Vector2) -> void:
-	# Map the mouse X position within the slider's screen rect to a
-	# value in [min_value, max_value].
 	var rect: Rect2 = slider.get_global_rect()
 	var t: float = clamp((global_pos.x - rect.position.x) / rect.size.x, 0.0, 1.0)
 	slider.value = lerp(slider.min_value, slider.max_value, t)
@@ -132,17 +194,6 @@ func _set_slider_from_pos(slider: HSlider, global_pos: Vector2) -> void:
 # =============================================================
 # BUTTON HANDLERS
 # =============================================================
-
-func _on_back() -> void:
-	_save_settings()
-	# If the previous scene was the gameplay world (opened from PauseMenu),
-	# ask PauseMenu to reopen itself once the world scene finishes loading.
-	if _prev_scene_is_gameplay():
-		var pause_menu: Node = get_node_or_null("/root/PauseMenu")
-		if pause_menu != null and pause_menu.has_method("request_reopen"):
-			pause_menu.request_reopen()
-	TransitionManager.go_back()
-
 
 func _on_apply() -> void:
 	_apply_to_audio()
@@ -154,19 +205,6 @@ func _on_fullscreen_toggled(pressed: bool) -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-
-
-# =============================================================
-# CONTEXT HELPERS
-# =============================================================
-
-func _prev_scene_is_gameplay() -> bool:
-	# Returns true when Settings was opened from the PauseMenu (i.e. the
-	# scene we'd return to is a world/gameplay scene, not a menu scene).
-	var prev: String = TransitionManager.peek_back()
-	# Heuristic: menu scenes live in scenes/ui/, gameplay scenes don't.
-	# Adjust this if a menu scene ever lives outside scenes/ui/.
-	return prev != "" and ("ui/" not in prev) and ("MainMenu" not in prev)
 
 
 # =============================================================

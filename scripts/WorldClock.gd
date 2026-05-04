@@ -259,6 +259,16 @@ func is_daytime() -> bool:
 func is_nighttime() -> bool:
 	return not is_daytime()
 
+## Returns how far through the current game minute we are, as a value in [0.0, 1.0).
+## Each game minute takes _real_seconds_per_game_minute real seconds, and
+## _seconds_accumulator tracks how many have elapsed so far in this minute.
+## DayNightCycle uses this so celestial bodies move smoothly every frame
+## instead of jumping once per minute.
+func get_minute_fraction() -> float:
+	if _real_seconds_per_game_minute <= 0.0:
+		return 0.0
+	return clamp(_seconds_accumulator / _real_seconds_per_game_minute, 0.0, 1.0)
+
 # ── Internal Helpers ──────────────────────────────────────────────────────────
 
 func _dialogic_is_running() -> bool:
