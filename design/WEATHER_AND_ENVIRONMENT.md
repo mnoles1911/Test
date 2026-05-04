@@ -165,6 +165,24 @@ func _get_footstep_sound() -> String:
 
 Interior scenes (`World = separate .tscn file`) do not have a `WeatherManager`. Rain sounds from outside can be heard (a looping ambient layer that plays when the indoor scene is loaded and the outdoor weather state is rain), but no particles, no fog, no lighting change.
 
+### Water surface coupling
+
+The custom water shader (`assets/shaders/water.gdshader`) reads two uniforms — `wind_dir` (Vector2 in world XZ) and `wind_strength` (0–5) — that bias wave direction and scale wave amplitude. `WaterVolume.gd` exposes `wind_direction` (Vector3 XZ) and `wind_strength` `@exports`, plus a `set_wind(direction: Vector3, strength: float)` method for programmatic updates.
+
+When `WeatherManager` lands, on every weather state change (or every `WorldClock` tick during smoothed transitions) it iterates every Area3D in the `water_volume` group and calls `set_wind(weather.wind_direction, weather.wind_strength)` on each. Strength conventions:
+
+| Weather | wind_strength |
+|---|---|
+| Clear (calm) | 0.5 |
+| Breeze | 1.0 |
+| Rain | 2.0 |
+| Storm / blizzard | 3.5 |
+| Lethal storm (scripted) | 5.0 |
+
+Smoothing (lerping wind values over a few seconds rather than snapping at state change boundaries) is `WeatherManager`'s responsibility, not `WaterVolume`'s. `WaterVolume.set_wind` snaps; the manager calls it on every interpolation step.
+
+Until `WeatherManager` ships, designers tune wind values per body via the inspector. See `design/SWIMMING_AND_WATER.md` → "Wind & Weather Coupling" for the full WaterVolume API.
+
 ---
 
 ## GDScript Notes

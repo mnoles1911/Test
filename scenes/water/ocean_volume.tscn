@@ -1,6 +1,7 @@
-[gd_scene format=3 uid="uid://docean_volume_001"]
+[gd_scene load_steps=4 format=3 uid="uid://docean_volume_001"]
 
 [ext_resource type="Script" path="res://scripts/WaterVolume.gd" id="1_water"]
+[ext_resource type="ShaderMaterial" path="res://assets/shaders/water_material.tres" id="2_water_mat"]
 
 [sub_resource type="BoxShape3D" id="OceanShape"]
 ; Big horizontal slab — 200×30×200 m. Vertically goes 15 m below sea
@@ -10,21 +11,12 @@
 size = Vector3(200, 30, 200)
 
 [sub_resource type="PlaneMesh" id="OceanSurfaceMesh"]
-; Flat plane 200×200 m. Sits at the top of the volume so its visible
-; surface aligns with surface_y.
+; 200×200 m plane at sea level. Subdivided 32×32 (~1100 verts) so the
+; water shader's vertex displacement has enough vertices to make the
+; wave pattern read across the whole ocean.
 size = Vector2(200, 200)
-subdivide_width = 4
-subdivide_depth = 4
-
-[sub_resource type="StandardMaterial3D" id="OceanMat"]
-; Placeholder material until the Boujie Water Shader (Asset Library
-; #2070) lands. Slightly more opaque than the test pond so the player
-; can clearly see the ocean horizon. Subtle metallic + low roughness
-; gives basic specular highlight from the sun.
-albedo_color = Color(0.16, 0.32, 0.48, 0.78)
-transparency = 1
-metallic = 0.5
-roughness = 0.15
+subdivide_width = 32
+subdivide_depth = 32
 
 [node name="OceanVolume" type="Area3D" groups=["water_volume"]]
 ; Large, ambient ocean. Sea level at world Y=8 — just below the
@@ -49,4 +41,4 @@ shape = SubResource("OceanShape")
 ; is perpendicular to +Y by default, so no rotation needed.
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
 mesh = SubResource("OceanSurfaceMesh")
-surface_material_override/0 = SubResource("OceanMat")
+material_override = ExtResource("2_water_mat")

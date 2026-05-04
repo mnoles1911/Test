@@ -1,0 +1,22 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://b8w4tmh3xzw0a"]
+
+[ext_resource type="Shader" path="res://assets/shaders/water.gdshader" id="1_water_shader"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_water_shader")
+shader_parameter/wave_amplitude_a = 0.08
+shader_parameter/wave_frequency_a = 0.5
+shader_parameter/wave_speed_a = 1.0
+shader_parameter/wave_dir_a = Vector2(1, 0)
+shader_parameter/wave_amplitude_b = 0.04
+shader_parameter/wave_frequency_b = 1.3
+shader_parameter/wave_speed_b = 0.8
+shader_parameter/wave_dir_b = Vector2(0.7, 0.7)
+shader_parameter/wind_dir = Vector2(1, 0)
+shader_parameter/wind_strength = 0.5
+shader_parameter/base_color = Color(0.16, 0.32, 0.48, 0.78)
+shader_parameter/crest_color = Color(0.45, 0.65, 0.78, 0.85)
+shader_parameter/crest_threshold = 0.5
+shader_parameter/metallic_amount = 0.4
+shader_parameter/roughness_amount = 0.18

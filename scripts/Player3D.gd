@@ -77,11 +77,26 @@ const DROWN_DAMAGE_PER_SECOND: float = 5.0
 # the player time to surface (a full HP bar lasts 20 seconds at
 # 5/sec), not to be a punishing instant-death.
 
+const BREATH_RECOVERY_DELAY: float = 2.0
+# Pause (seconds) between surfacing and the start of breath refill.
+# Models the gasp-and-recover beat — Roland surfaces, you see his
+# breath stay drained for a moment, then it climbs back up. Per
+# design/SWIMMING_AND_WATER.md.
+
 const HEAD_OFFSET_METERS: float = 1.6
 # Roughly Roland's eye/head height above his pivot point. With the
 # 1.8 m capsule centered at Y=0.9 above feet, the top is at Y=1.8;
 # eye level sits a touch below the crown at ~1.6 m above feet.
 # Used to determine when his head is below the water surface.
+
+const SWIM_VERTICAL_SPEED: float = 3.0
+# Max vertical climb / dive speed in water (m/s). Slower than the
+# horizontal swim speed so diving feels like work, not flight.
+
+const SWIM_VERTICAL_ACCEL: float = 8.0
+# How fast Roland reaches SWIM_VERTICAL_SPEED when ascending or
+# diving. Decoupled from _accel so swim feel can be tuned without
+# affecting walk/sprint.
 
 
 # =============================================================
@@ -135,9 +150,23 @@ var _is_submerged: bool = false
 var _breath_remaining: float = BREATH_MAX_SECONDS
 # Seconds of air left. Refills automatically when not submerged.
 
+var _breath_recovery_remaining: float = 0.0
+# Countdown that gates breath refill after surfacing. Reset to
+# BREATH_RECOVERY_DELAY every frame Roland is submerged. While
+# above water, ticks down to zero before refill begins. The pause
+# only matters after a real breath drain — at full breath the gate
+# is invisible.
+
 var _current_water_volume: Node = null
 # Cached reference to the water_volume Area3D Roland is currently
 # inside, or null if dry. Used to query surface_y and current.
+
+@export var underwater_filter_path: NodePath = "UnderwaterFilter"
+# Path to the UnderwaterFilter CanvasLayer child. Set in the
+# inspector if the node is renamed or moved. Default matches
+# Player3D.tscn.
+
+var _underwater_filter: Node = null
 
 # =============================================================
 # DEBUG FLY MODE
@@ -195,6 +224,7 @@ var status_text: String:
 
 func _ready() -> void:
 	_recalculate_movement_stats()
+	_underwater_filter = get_node_or_null(underwater_filter_path)
 
 
 func _recalculate_movement_stats() -> void:
@@ -214,6 +244,11 @@ func _recalculate_movement_stats() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("crouch"):
+		# In water, crouch is reused as the dive control (held). Skip
+		# the toggle so pressing crouch underwater doesn't pollute
+		# _is_crouching state that would leak out on surfacing.
+		if _in_water:
+			return
 		_is_crouching = not _is_crouching
 		# Cannot crouch and sprint simultaneously.
 		if _is_crouching:
@@ -286,12 +321,20 @@ func _physics_process(delta: float) -> void:
 
 	# --- Vertical motion ---
 	if _in_water:
-		# In water, gravity is replaced by gentle damping toward zero.
-		# Roland floats wherever he entered. Walking out of the water
-		# Area3D restores normal gravity. Vertical swim controls (Space
-		# = up, Crouch = down) can be added later; for the slice the
-		# player floats at entry depth.
-		velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
+		# In water, gravity is replaced by player-controlled vertical
+		# swim. Space (dodge action) ascends; Crouch dives. Releasing
+		# both decays vertical velocity to zero so Roland floats at
+		# his current depth. Clamp to ±SWIM_VERTICAL_SPEED so a long
+		# hold doesn't accumulate beyond the design max.
+		var ascend  := Input.is_action_pressed("dodge")
+		var descend := Input.is_action_pressed("crouch")
+		if ascend and not descend:
+			velocity.y = move_toward(velocity.y, SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
+		elif descend and not ascend:
+			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
+		else:
+			velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
+		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally + vertically.
 		if _current_water_volume != null:
 			var current: Vector3 = _current_water_volume.get_current_velocity()
@@ -312,15 +355,23 @@ func _physics_process(delta: float) -> void:
 	# --- Breath / drowning ---
 	if _is_submerged:
 		_breath_remaining -= delta
+		_breath_recovery_remaining = BREATH_RECOVERY_DELAY
+		# Reset every submerged frame so the gate restarts from
+		# full delay when Roland surfaces, regardless of how long
+		# he was under.
 		if _breath_remaining <= 0.0:
 			_breath_remaining = 0.0
 			# Drowning: drain HP. Roland survives ~20 seconds of
 			# zero-breath time at default HP/damage values.
 			health = maxf(health - DROWN_DAMAGE_PER_SECOND * delta, 0.0)
 	else:
-		# Surfaced (or never submerged) — refresh breath. Faster
-		# than the drain rate so coming up for air is responsive.
-		_breath_remaining = minf(_breath_remaining + BREATH_REFRESH_RATE * delta, BREATH_MAX_SECONDS)
+		# Surfaced (or never submerged). Wait through the gasp-
+		# and-recover delay before breath starts refilling. Once
+		# the gate clears, refill at BREATH_REFRESH_RATE.
+		if _breath_recovery_remaining > 0.0:
+			_breath_recovery_remaining = maxf(_breath_recovery_remaining - delta, 0.0)
+		else:
+			_breath_remaining = minf(_breath_remaining + BREATH_REFRESH_RATE * delta, BREATH_MAX_SECONDS)
 
 	# --- Endurance drain / regen ---
 	if _is_sprinting:
@@ -376,6 +427,11 @@ func _update_water_state() -> void:
 		_is_submerged = _current_water_volume.is_position_submerged(global_position, HEAD_OFFSET_METERS)
 	else:
 		_is_submerged = false
+
+	# Drive the underwater camera tint. set_active is idempotent —
+	# the filter only updates visibility on actual state changes.
+	if _underwater_filter != null and _underwater_filter.has_method("set_active"):
+		_underwater_filter.set_active(_is_submerged)
 
 
 # =============================================================
@@ -444,6 +500,8 @@ func toggle_fly_mode() -> bool:
 		_in_water = false
 		_is_submerged = false
 		_current_water_volume = null
+		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
+			_underwater_filter.set_active(false)
 	else:
 		velocity = Vector3.ZERO
 	return is_flying
