@@ -83,6 +83,15 @@ const HEAD_OFFSET_METERS: float = 1.6
 # eye level sits a touch below the crown at ~1.6 m above feet.
 # Used to determine when his head is below the water surface.
 
+const SWIM_VERTICAL_SPEED: float = 3.0
+# Max vertical climb / dive speed in water (m/s). Slower than the
+# horizontal swim speed so diving feels like work, not flight.
+
+const SWIM_VERTICAL_ACCEL: float = 8.0
+# How fast Roland reaches SWIM_VERTICAL_SPEED when ascending or
+# diving. Decoupled from _accel so swim feel can be tuned without
+# affecting walk/sprint.
+
 
 # =============================================================
 # HEALTH AND ENDURANCE CONSTANTS
@@ -214,6 +223,11 @@ func _recalculate_movement_stats() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("crouch"):
+		# In water, crouch is reused as the dive control (held). Skip
+		# the toggle so pressing crouch underwater doesn't pollute
+		# _is_crouching state that would leak out on surfacing.
+		if _in_water:
+			return
 		_is_crouching = not _is_crouching
 		# Cannot crouch and sprint simultaneously.
 		if _is_crouching:
@@ -286,12 +300,20 @@ func _physics_process(delta: float) -> void:
 
 	# --- Vertical motion ---
 	if _in_water:
-		# In water, gravity is replaced by gentle damping toward zero.
-		# Roland floats wherever he entered. Walking out of the water
-		# Area3D restores normal gravity. Vertical swim controls (Space
-		# = up, Crouch = down) can be added later; for the slice the
-		# player floats at entry depth.
-		velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
+		# In water, gravity is replaced by player-controlled vertical
+		# swim. Space (dodge action) ascends; Crouch dives. Releasing
+		# both decays vertical velocity to zero so Roland floats at
+		# his current depth. Clamp to ±SWIM_VERTICAL_SPEED so a long
+		# hold doesn't accumulate beyond the design max.
+		var ascend  := Input.is_action_pressed("dodge")
+		var descend := Input.is_action_pressed("crouch")
+		if ascend and not descend:
+			velocity.y = move_toward(velocity.y, SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
+		elif descend and not ascend:
+			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
+		else:
+			velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
+		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally + vertically.
 		if _current_water_volume != null:
 			var current: Vector3 = _current_water_volume.get_current_velocity()
