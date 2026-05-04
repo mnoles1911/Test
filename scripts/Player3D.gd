@@ -77,6 +77,12 @@ const DROWN_DAMAGE_PER_SECOND: float = 5.0
 # the player time to surface (a full HP bar lasts 20 seconds at
 # 5/sec), not to be a punishing instant-death.
 
+const BREATH_RECOVERY_DELAY: float = 2.0
+# Pause (seconds) between surfacing and the start of breath refill.
+# Models the gasp-and-recover beat — Roland surfaces, you see his
+# breath stay drained for a moment, then it climbs back up. Per
+# design/SWIMMING_AND_WATER.md.
+
 const HEAD_OFFSET_METERS: float = 1.6
 # Roughly Roland's eye/head height above his pivot point. With the
 # 1.8 m capsule centered at Y=0.9 above feet, the top is at Y=1.8;
@@ -143,6 +149,13 @@ var _is_submerged: bool = false
 
 var _breath_remaining: float = BREATH_MAX_SECONDS
 # Seconds of air left. Refills automatically when not submerged.
+
+var _breath_recovery_remaining: float = 0.0
+# Countdown that gates breath refill after surfacing. Reset to
+# BREATH_RECOVERY_DELAY every frame Roland is submerged. While
+# above water, ticks down to zero before refill begins. The pause
+# only matters after a real breath drain — at full breath the gate
+# is invisible.
 
 var _current_water_volume: Node = null
 # Cached reference to the water_volume Area3D Roland is currently
@@ -334,15 +347,23 @@ func _physics_process(delta: float) -> void:
 	# --- Breath / drowning ---
 	if _is_submerged:
 		_breath_remaining -= delta
+		_breath_recovery_remaining = BREATH_RECOVERY_DELAY
+		# Reset every submerged frame so the gate restarts from
+		# full delay when Roland surfaces, regardless of how long
+		# he was under.
 		if _breath_remaining <= 0.0:
 			_breath_remaining = 0.0
 			# Drowning: drain HP. Roland survives ~20 seconds of
 			# zero-breath time at default HP/damage values.
 			health = maxf(health - DROWN_DAMAGE_PER_SECOND * delta, 0.0)
 	else:
-		# Surfaced (or never submerged) — refresh breath. Faster
-		# than the drain rate so coming up for air is responsive.
-		_breath_remaining = minf(_breath_remaining + BREATH_REFRESH_RATE * delta, BREATH_MAX_SECONDS)
+		# Surfaced (or never submerged). Wait through the gasp-
+		# and-recover delay before breath starts refilling. Once
+		# the gate clears, refill at BREATH_REFRESH_RATE.
+		if _breath_recovery_remaining > 0.0:
+			_breath_recovery_remaining = maxf(_breath_recovery_remaining - delta, 0.0)
+		else:
+			_breath_remaining = minf(_breath_remaining + BREATH_REFRESH_RATE * delta, BREATH_MAX_SECONDS)
 
 	# --- Endurance drain / regen ---
 	if _is_sprinting:
