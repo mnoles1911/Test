@@ -349,7 +349,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE or event.physical_keycode == KEY_ESCAPE:
 			# Settings overlay takes priority — let it handle its own Escape.
-			var settings: Node = get_node_or_null("/root/Settings")
+			var settings = get_node_or_null("/root/Settings")
 			if settings != null and settings.is_open():
 				return
 			# If the journal/inventory overlay is open, let JournalUI handle
@@ -552,7 +552,7 @@ func _on_settings() -> void:
 	# needs PROCESS_MODE_ALWAYS to work while the tree is paused, and
 	# we don't want to unpause just to open a settings screen).
 	_root.visible = false
-	var settings: Node = get_node_or_null("/root/Settings")
+	var settings = get_node_or_null("/root/Settings")
 	if settings != null:
 		settings.open(true)
 	else:

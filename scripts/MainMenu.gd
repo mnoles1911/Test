@@ -130,7 +130,7 @@ func _on_debug_rect_input(event: InputEvent) -> void:
 #     and adjust scroll_vertical)
 func _input(event: InputEvent) -> void:
 	# Settings overlay is a higher-priority layer — let it handle its own clicks.
-	var settings: Node = get_node_or_null("/root/Settings")
+	var settings = get_node_or_null("/root/Settings")
 	if settings != null and settings.is_open():
 		return
 
@@ -515,7 +515,7 @@ func _on_load() -> void:
 
 func _on_settings() -> void:
 	print("[MainMenu] SETTINGS pressed")
-	var settings: Node = get_node_or_null("/root/Settings")
+	var settings = get_node_or_null("/root/Settings")
 	if settings != null:
 		settings.open(false)
 	else:
