@@ -46,6 +46,33 @@ These are settings and installs that survive across all future work. Do them onc
   signature is correct and this task can be checked off.
   Reference: PR #127 (voxel gravity system).
 
+- [ ] **Add a new voxel material (~10 minutes per material, no GDScript needed)**
+  The voxel-type system shipped four pilot materials (stone, dirt, grass,
+  sand). Adding more materials is the designer's job — anything from snow
+  and marble to the 8 remaining materials specced in
+  `design/ITEM_LIBRARY.md` lines 46–64 (clay, ash, raw log, hardwood log,
+  iron ore, steel ore, adamant ore, coal). Process:
+  1. In Godot's FileSystem dock, navigate to `assets/voxels/materials/`.
+  2. Right-click → **New Resource** → search for `VoxelMaterial` → save as
+     `<name>.tres` (e.g. `snow.tres`, `iron_ore.tres`).
+  3. Click the new file. The Inspector now shows every field.
+  4. Pick an unused `material_id` between 1 and 254. The registry prints
+     used IDs to the Output panel at startup like
+     `[VoxelMaterialRegistry] loaded 4 materials: stone(1), dirt(2),
+     grass(3), sand(4)` — pick anything not in that list.
+  5. Fill in: `id_string` (stable name), `display_name` (UI), color palette
+     (`color_low` / `color_high` / `color_jitter`), `mining_time_seconds`,
+     `allowed_tools` (array of tool item_ids — empty = any), `yield_item_id`
+     + `yield_quantity`, `fall_behavior` (NEVER for solid like stone, SOLID
+     for heavy clusters with custom gravity, LOOSE for sand/gravel),
+     `gravity_scale` (multiplier — 1.0 default), `damage_multiplier`
+     (multiplier on crush damage — 1.0 default).
+  6. If `yield_item_id` references a new item, add it to
+     `InventoryManager.ITEM_REGISTRY` following the existing pattern (see
+     `raw_sand` for an example).
+  7. Restart Godot. The registry validates and loads the new material.
+  Reference: `design/3D_VOXEL_MIGRATION.md` → "Voxel Material System".
+
 - [x] **Configure the core Input Map per `design/INPUT_AND_CONTROLS.md`** (mostly done — see below)
   All core actions are now in `project.godot`. Remaining items marked [ ] below.
   **KB+M defaults (confirmed and live):**

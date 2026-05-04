@@ -219,6 +219,60 @@ Below `1.5 m` fall height there is no damage (so digging out a small pebble does
 - **Re-deposits fire `edit_applied`**, which triggers a follow-up gravity scan. The scan exits cheaply (the just-landed voxels are anchored by construction), but it's wasted work for ~32 frames during a heavy collapse.
 - **Multiplayer determinism is not addressed.** Cluster spawn order depends on per-client edit timing; deferred until Netfox rollback work begins.
 
+### Voxel Material System
+
+Every voxel in the world carries a material identity (stone, dirt, grass, sand, …). The material drives mining time, allowed tools, harvest yield, fall behavior, gravity weight, crush damage, and visual colour. The system is **flyweight** — one `VoxelMaterial` Resource per material, every voxel of that material shares the same Resource reference via a registry lookup.
+
+**Encoding.** Voxels are packed RGBA32 in `VoxelBuffer.CHANNEL_COLOR`. RGB is the visual color; the **alpha byte holds the material id** (1–254). 0 stays reserved for air. The mesher only checks `alpha == 0?` for solid-vs-air, so the alpha byte is otherwise free for our use. Zero memory increase, zero mesher change.
+
+**Adding a new material (designer flow).**
+1. In Godot, navigate to `assets/voxels/materials/` in the FileSystem dock.
+2. Right-click → New Resource → "VoxelMaterial" → save as `<name>.tres`.
+3. Click the new file. Fill in inspector fields:
+   - `id_string` — stable identifier ("snow", "marble")
+   - `material_id` — pick an unused integer 1–254 (registry prints used IDs at startup)
+   - `display_name` — UI string
+   - `color_low` / `color_high` / `color_jitter` — visual palette
+   - `mining_time_seconds` — how long held swing breaks one voxel
+   - `allowed_tools` — array of `InventoryManager` item_ids that can mine this; empty = any
+   - `yield_item_id` + `yield_quantity` — what enters inventory per voxel broken
+   - `fall_behavior` — NEVER (cluster-only fall) / SOLID (cluster with weighting) / LOOSE (sand-style instant column-fall)
+   - `gravity_scale` — multiplier on cluster fall speed (NEVER/SOLID only)
+   - `damage_multiplier` — multiplier on crush damage
+4. If `yield_item_id` references a new item, add it to `InventoryManager.ITEM_REGISTRY`.
+5. Restart the project. The registry validates and registers the new material. Total time: ~10 minutes.
+
+**Pilot v1 materials** (commit 2/6 of the material-system PR):
+
+| Material | id | mining_time | tool | yield | fall | gravity | damage |
+|---|---|---|---|---|---|---|---|
+| stone | 1 | 0.8 s | iron_pickaxe | raw_stone | NEVER | 1.0 | 1.2 |
+| dirt | 2 | 0.3 s | iron_shovel | raw_dirt | NEVER | 0.9 | 0.7 |
+| grass | 3 | 0.3 s | iron_shovel | raw_dirt | NEVER | 0.9 | 0.7 |
+| sand | 4 | 0.2 s | iron_shovel | raw_sand | LOOSE | n/a | 0.5 |
+
+Grass yields raw_dirt (intentional — grass is a thin top-layer skin on dirt; harvest gives dirt). Sand is the only LOOSE material in v1.
+
+**Generator integration.** `CubicHeightmapGenerator` picks materials by altitude band:
+- Top voxel of each ground column = grass (or sand if `ground_y ≤ beach_y_threshold`)
+- Next 3 voxels = dirt
+- Below that = stone
+
+Band thicknesses are exposed as `@export_range` ints on the generator so designers tune layer depth without touching code.
+
+**Save compat.** Adding the material encoding bumped `WORLD_GENERATOR_VERSION` 9 → 10. Saves from earlier versions hard-error on load (no silent migration, per documented policy).
+
+**Files:**
+- `scripts/VoxelMaterial.gd` — Resource subclass with all the per-material fields
+- `scripts/VoxelMaterialRegistry.gd` — autoload, recursive scan + lookup tables + `pack_voxel`
+- `assets/voxels/materials/{stone,dirt,grass,sand}.tres` — pilot material definitions
+
+**Known limitations.**
+- **Generator is band-based, not biome-aware.** Ashfields = ash; Greatwood = wood; Spine = ore-bearing rock — those need a biome layer the generator doesn't have today.
+- **No procedural ore distribution.** Iron/steel/adamant ore .tres files arrive when the ore-vein system lands.
+- **Hot-reload of .tres edits during play not supported.** The registry scans once at `_ready`; restart Godot to pick up edits.
+- **Mixed-material clusters** average `gravity_scale` and take max `damage_multiplier`. Mass-weighted CoM with per-voxel mass is overkill for v1.
+
 ### Multiplayer Implications
 
 Sparse edits + MP-sync of `EditedChunkRegistry` deltas on join (typically a few hundred KB even on a long-running host save). Each client sets its own edit-detail radius locally — host doesn't care. Full spec: `design/MULTIPLAYER.md`.
