@@ -115,9 +115,9 @@ func close() -> void:
 	_save_settings()
 	_content_root.visible = false
 	if _from_gameplay:
-		var pause_menu: Node = get_node_or_null("/root/PauseMenu")
-		if pause_menu != null and pause_menu.has_method("reopen_after_settings"):
-			pause_menu.reopen_after_settings()
+		var pause_menu := get_node_or_null("/root/PauseMenu")
+		if pause_menu != null:
+			pause_menu.call("reopen_after_settings")
 	print("[Settings] Closed.")
 
 

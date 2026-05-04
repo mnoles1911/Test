@@ -130,8 +130,10 @@ func _on_debug_rect_input(event: InputEvent) -> void:
 #     and adjust scroll_vertical)
 func _input(event: InputEvent) -> void:
 	# Settings overlay is a higher-priority layer — let it handle its own clicks.
-	var settings = get_node_or_null("/root/Settings")
-	if settings != null and settings.is_open():
+	# Check the Root Control's visibility directly; avoids calling script methods
+	# on a CanvasLayer reference, which can fail if the script hasn't compiled.
+	var settings_root := get_node_or_null("/root/Settings/Root")
+	if settings_root != null and (settings_root as Control).visible:
 		return
 
 	if not (event is InputEventMouseButton):
@@ -515,12 +517,10 @@ func _on_load() -> void:
 
 func _on_settings() -> void:
 	print("[MainMenu] SETTINGS pressed")
-	var settings = get_node_or_null("/root/Settings")
+	var settings := get_node_or_null("/root/Settings")
 	if settings != null:
-		settings.open(false)
+		settings.call("open", false)
 	else:
-		# Fallback: if Settings autoload somehow isn't present, fall back to
-		# the old scene-navigation approach.
 		TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
 
 
