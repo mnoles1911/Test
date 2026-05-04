@@ -692,10 +692,18 @@ func _adjust_view_distance(delta_m: int) -> void:
 		return
 	# VoxelViewer.view_distance is in voxels. Multiply meters × 6 to convert.
 	# Clamp: 600 vox (100 m) minimum, 18000 vox (3000 m) maximum.
-	var new_dist_vox: int = clamp(int(viewer.view_distance) + delta_m * 6, 600, 18000)
-	viewer.view_distance = new_dist_vox
+	var before_vox: int = int(viewer.view_distance)
+	var requested_vox: int = clamp(before_vox + delta_m * 6, 600, 18000)
+	viewer.view_distance = requested_vox
+	# Read back to verify the write — Zylann's plugin can silently clamp
+	# view_distance against an internal max.
+	var actual_vox: int = int(viewer.view_distance)
 	_refresh_view_dist_label()
-	log_action("DEV: view distance → %d m (%d vox)" % [new_dist_vox / 6, new_dist_vox])
+	log_action("DEV: view distance %d → asked %d, got %d vox" %
+		[before_vox, requested_vox, actual_vox])
+	# Streaming is event-driven: new chunks only generate when the viewer
+	# moves and the streamer re-evaluates. Walk a few meters to see the
+	# wider radius take effect.
 
 
 func _get_voxel_viewer() -> VoxelViewer:
