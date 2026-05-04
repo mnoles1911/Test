@@ -52,7 +52,14 @@ var _meshes: Dictionary = {}
 
 var _dirty_queue: Array = []
 # FIFO of chunk coords pending rebuild. Drained at MESH_BUILDS_PER_FRAME
-# per frame from _process.
+# per frame from _process. Membership tested via _dirty_set (O(1))
+# rather than Array.has (O(n)) — the player-movement loop dirty-marks
+# tens of thousands of chunks at once and per-call has() lookups would
+# blow up to O(n²).
+
+var _dirty_set: Dictionary = {}
+# Mirror of _dirty_queue used as a Set for O(1) membership tests.
+# Always kept in sync: append → set both, pop_front → erase from set.
 
 var _player_chunk: Vector3i = Vector3i.ZERO
 # Chunk the player is currently in. Updated when set_player_chunk is
@@ -91,6 +98,7 @@ func _process(_delta: float) -> void:
 	var built: int = 0
 	while built < MESH_BUILDS_PER_FRAME and not _dirty_queue.is_empty():
 		var chunk: Vector3i = _dirty_queue.pop_front()
+		_dirty_set.erase(chunk)
 		_rebuild_chunk(chunk)
 		built += 1
 
@@ -118,13 +126,16 @@ func set_player_chunk(chunk: Vector3i) -> void:
 			_meshes.erase(existing_chunk)
 
 	# Dirty-mark chunks inside the radius that don't have meshes yet.
-	# This populates the queue lazily as the player moves.
+	# This populates the queue lazily as the player moves. _dirty_set
+	# gives O(1) membership; Array.has would be O(n) per check and the
+	# triple loop runs (2*radius+1)^3 ≈ 117k iterations at radius 24.
 	for dx in range(-radius_chunks, radius_chunks + 1):
 		for dy in range(-radius_chunks, radius_chunks + 1):
 			for dz in range(-radius_chunks, radius_chunks + 1):
 				var c := _player_chunk + Vector3i(dx, dy, dz)
-				if not _meshes.has(c) and not _dirty_queue.has(c):
+				if not _meshes.has(c) and not _dirty_set.has(c):
 					_dirty_queue.append(c)
+					_dirty_set[c] = true
 
 
 # ============================================================
@@ -138,8 +149,9 @@ func _on_water_changed(chunk_coord: Vector3i) -> void:
 	var radius_chunks: int = ceili(MESH_RENDER_RADIUS_M / CHUNK_SIZE_M)
 	if absi(d.x) > radius_chunks or absi(d.y) > radius_chunks or absi(d.z) > radius_chunks:
 		return
-	if not _dirty_queue.has(chunk_coord):
+	if not _dirty_set.has(chunk_coord):
 		_dirty_queue.append(chunk_coord)
+		_dirty_set[chunk_coord] = true
 
 
 # ============================================================

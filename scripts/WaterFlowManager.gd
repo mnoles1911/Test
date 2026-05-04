@@ -142,18 +142,6 @@ func _ready() -> void:
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 
-
-func _physics_process(_delta: float) -> void:
-	# Flow tick at TICK_INTERVAL_FRAMES (~4 Hz). Cheap when no chunks
-	# are dirty — drains _dirty_chunks dictionary and ticks the counter.
-	_frames_since_tick += 1
-	if _frames_since_tick < TICK_INTERVAL_FRAMES:
-		return
-	_frames_since_tick = 0
-	_tick_count = (_tick_count + 1) & 0xFF
-	if not _dirty_chunks.is_empty():
-		_run_flow_tick()
-
 	# Spawn the surface mesher as a child of this autoload. Doing it
 	# in code (rather than as a sibling autoload) keeps the mesher's
 	# parent guaranteed to be us, and lets the mesher pull source
@@ -166,20 +154,43 @@ func _physics_process(_delta: float) -> void:
 		add_child(_chunk_mesher)
 
 
+func _physics_process(_delta: float) -> void:
+	# Flow tick at TICK_INTERVAL_FRAMES (~4 Hz). Cheap when no chunks
+	# are dirty — drains _dirty_chunks dictionary and ticks the counter.
+	_frames_since_tick += 1
+	if _frames_since_tick < TICK_INTERVAL_FRAMES:
+		return
+	_frames_since_tick = 0
+	_tick_count = (_tick_count + 1) & 0xFF
+	if not _dirty_chunks.is_empty():
+		_run_flow_tick()
+
+
 # ============================================================
 # Public API — Player3D query path
 # ============================================================
 
 func set_player_position(world_pos: Vector3) -> void:
 	# Player3D calls this each physics frame. Used to bound the flow
-	# tick (Phase 3+) to a ball around the player and to drive the
-	# chunk mesher's render-radius cull.
+	# tick to a ball around the player and to drive the chunk mesher's
+	# render-radius cull.
 	_player_pos = world_pos
 	var chunk: Vector3i = _world_to_chunk(world_pos)
 	if chunk != _player_chunk:
 		_player_chunk = chunk
 		if _chunk_mesher != null and _chunk_mesher.has_method("set_player_chunk"):
 			_chunk_mesher.set_player_chunk(chunk)
+		# Resume flow on previously-frozen cells now back inside the
+		# active radius. Cells that froze when the player walked away
+		# get re-dirtied so monotone decay + propagation resume. O(cells)
+		# scan per chunk transition — acceptable for sparse cell maps,
+		# revisit if _cells routinely holds 10k+ entries.
+		for cell_pos in _cells.keys():
+			var c: Vector3i = _voxel_to_chunk(cell_pos)
+			if _dirty_chunks.has(c):
+				continue
+			if _chunk_in_active_radius(c):
+				_dirty_chunks[c] = true
 
 
 func is_position_in_water(world_pos: Vector3) -> bool:
@@ -360,17 +371,18 @@ func add_source_region(aabb: AABB, level: int = MAX_LEVEL) -> void:
 	# Designer authoring pattern: drop a Node3D in World3D.tscn with
 	# attached metadata, and the World3DBootstrap script calls this
 	# method on _ready with the metadata's AABB.
+	#
+	# We deliberately do NOT iterate chunks inside the AABB here. A
+	# 200×200 m ocean spans ~69k chunks; dirty-marking each on world
+	# load would emit 69k signals and permanently bloat _dirty_chunks
+	# (cells outside the player's active radius would re-queue every
+	# tick forever). WaterChunkMesher.set_player_chunk lazily dirty-
+	# marks chunks within its render radius on every player chunk
+	# transition, which already covers the visible-water case. The
+	# flow tick doesn't need pre-marking either: source regions exist
+	# implicitly and only spread INTO neighbors when an edit dirties
+	# the boundary chunk.
 	_source_regions.append({"aabb": aabb, "level": clampi(level, MIN_LEVEL, MAX_LEVEL)})
-	# Mark every chunk overlapping the AABB as dirty so Phase 2 mesher
-	# emits surface meshes for them on first frame.
-	var min_chunk: Vector3i = _world_to_chunk(aabb.position)
-	var max_chunk: Vector3i = _world_to_chunk(aabb.position + aabb.size)
-	for cx in range(min_chunk.x, max_chunk.x + 1):
-		for cy in range(min_chunk.y, max_chunk.y + 1):
-			for cz in range(min_chunk.z, max_chunk.z + 1):
-				var chunk := Vector3i(cx, cy, cz)
-				_dirty_chunks[chunk] = true
-				water_changed.emit(chunk)
 
 
 # ============================================================
@@ -394,18 +406,26 @@ func _run_flow_tick() -> void:
 
 	var budget: int = _MAX_FLOW_BUDGET_PER_TICK
 	for chunk in snapshot.keys():
-		# Outside active radius? Re-queue for next tick — we'll
-		# process it when the player gets closer.
+		# Outside active radius? Drop. Cells in those chunks freeze in
+		# place (no decay, no propagation). When the player returns,
+		# either an edit or a player-chunk transition will re-dirty
+		# them. Re-queueing every tick would permanently bloat
+		# _dirty_chunks if the player ever flooded an area then walked
+		# away.
 		if not _chunk_in_active_radius(chunk):
-			_dirty_chunks[chunk] = true
 			continue
 		budget -= _simulate_chunk_gravity(chunk, budget)
 		if budget <= 0:
-			# Spilled the budget. Re-queue any unprocessed chunks for
-			# the next tick.
+			# Spilled the budget. Re-queue ONLY in-radius unprocessed
+			# chunks for the next tick.
 			for remaining in snapshot.keys():
-				if not _dirty_chunks.has(remaining) and remaining != chunk:
-					_dirty_chunks[remaining] = true
+				if remaining == chunk:
+					continue
+				if _dirty_chunks.has(remaining):
+					continue
+				if not _chunk_in_active_radius(remaining):
+					continue
+				_dirty_chunks[remaining] = true
 			break
 
 
@@ -762,11 +782,16 @@ func _world_to_chunk(world_pos: Vector3) -> Vector3i:
 
 func _voxel_to_chunk(voxel_pos: Vector3i) -> Vector3i:
 	# Voxel coord → chunk coord (each chunk is 16 voxels per axis).
-	return Vector3i(
-		voxel_pos.x >> 4 if voxel_pos.x >= 0 else (voxel_pos.x - 15) >> 4,
-		voxel_pos.y >> 4 if voxel_pos.y >= 0 else (voxel_pos.y - 15) >> 4,
-		voxel_pos.z >> 4 if voxel_pos.z >= 0 else (voxel_pos.z - 15) >> 4,
-	)
+	#
+	# GDScript's >> on int is an arithmetic right shift (sign-extends),
+	# which is mathematically equivalent to floor(x / 16) for any signed
+	# x. Earlier versions of this function added a `(x - 15) >> 4` for
+	# negatives — that was over-correction that produced off-by-one
+	# chunks for negative voxel coords (voxel x=-16 → chunk -2 instead
+	# of -1), causing dirty marks and gravity scans to fire on the wrong
+	# chunks for any work near the negative-coord side of origin (e.g.
+	# the test pond at world x=-23).
+	return Vector3i(voxel_pos.x >> 4, voxel_pos.y >> 4, voxel_pos.z >> 4)
 
 
 # ============================================================

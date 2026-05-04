@@ -238,13 +238,20 @@ func _bucket_place_at(world_pos: Vector3) -> void:
 		return
 	var voxel_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
 	# Reject solid terrain at this cell (can't place water inside rock).
+	# Material-id decoding goes through VoxelMaterialRegistry per the
+	# CLAUDE.md "Critical patterns" rule — never decode the alpha byte
+	# by hand.
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
 	if terrain != null:
 		var tool: VoxelTool = terrain.get_voxel_tool()
 		if tool != null:
 			tool.channel = VoxelBuffer.CHANNEL_COLOR
 			var packed: int = tool.get_voxel(voxel_pos)
-			var mat_id: int = packed & 0xFF
+			var mat_id: int = 0
+			if get_node_or_null("/root/VoxelMaterialRegistry"):
+				mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
+			else:
+				mat_id = packed & 0xFF
 			if mat_id != 0:
 				if get_node_or_null("/root/DebugOverlay"):
 					DebugOverlay.log_action("Bucket place rejected: voxel solid.")

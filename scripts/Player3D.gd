@@ -138,9 +138,9 @@ var _sprint_locked: bool = false
 # endurance recovers above ENDURANCE_SPRINT_THRESHOLD.
 
 var _in_water: bool = false
-# True if any part of Roland is inside a water_volume Area3D this frame.
-# When true: motion_mode flips to FLOATING, sprint is disabled, swim
-# speed applies. The water Area3D is found via group scan each frame.
+# True if WaterFlowManager.is_position_in_water reports water at the
+# player's pivot position this frame. When true: motion_mode flips to
+# FLOATING, sprint is disabled, swim speed applies.
 
 var _is_submerged: bool = false
 # True if Roland's head (HEAD_OFFSET_METERS above his pivot) is below
@@ -266,7 +266,6 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# --- Detect water (must run BEFORE movement decisions) ---
-	# Walks the water_volume group; first overlapping water Area3D
 	# Sets _in_water, _is_submerged based on WaterFlowManager queries.
 	_update_water_state()
 
