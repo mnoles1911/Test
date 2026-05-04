@@ -1,0 +1,117 @@
+[gd_scene load_steps=4 format=3 uid="uid://water_phase0_proto"]
+
+; water_phase0.tscn — Phase 0 validation scene for the voxel water refactor.
+;
+; What this tests:
+;   1. Wave shader phase continuity across multiple meshes — the 4×4 grid
+;      of independent PlaneMesh instances all use water_material.tres. If
+;      crests don't align across mesh seams, WaterChunkMesher in Phase 2
+;      needs a different approach (single per-chunk plane vs per-cell faces).
+;   2. Bulk VoxelTool.get_voxel cost at the design tick rate — see the
+;      attached water_phase0_bulk_read_test.gd script.
+;
+; How to run: open this scene in Godot, hit Play. Walk the camera around
+; the grid to confirm wave seams are invisible. Watch the Output panel
+; for the bulk-read timing report every 5 seconds.
+;
+; Throwaway scene — delete after Phase 0 validation completes.
+
+[ext_resource type="ShaderMaterial" path="res://assets/shaders/water_material.tres" id="1_water_mat"]
+[ext_resource type="Script" path="res://scripts/_prototypes/water_phase0_bulk_read_test.gd" id="2_bulk_test"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_Tile"]
+size = Vector2(5, 5)
+subdivide_width = 8
+subdivide_depth = 8
+
+[node name="WaterPhase0" type="Node3D"]
+script = ExtResource("2_bulk_test")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 12, 14)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 5, 0)
+light_energy = 1.2
+
+[node name="MeshGrid" type="Node3D" parent="."]
+
+[node name="Tile_0_0" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.5, 0, -7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_0_1" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0, -7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_0_2" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, -7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_0_3" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 0, -7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_1_0" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.5, 0, -2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_1_1" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0, -2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_1_2" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, -2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_1_3" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 0, -2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_2_0" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.5, 0, 2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_2_1" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0, 2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_2_2" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, 2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_2_3" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 0, 2.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_3_0" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.5, 0, 7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_3_1" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0, 7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_3_2" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, 7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
+
+[node name="Tile_3_3" type="MeshInstance3D" parent="MeshGrid"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 0, 7.5)
+mesh = SubResource("PlaneMesh_Tile")
+material_override = ExtResource("1_water_mat")
