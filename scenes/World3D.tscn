@@ -24,9 +24,33 @@ ambient_light_energy = 0.4
 ssao_enabled = true
 ssao_radius = 1.5
 ssao_intensity = 1.5
-fog_enabled = true
-fog_light_color = Color(0.06, 0.07, 0.1, 1)
-fog_density = 0.003
+fog_enabled = false
+
+[sub_resource type="SphereMesh" id="SunSphereMesh"]
+radius = 25.0
+height = 50.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="SunMat"]
+albedo_color = Color(1.0, 0.95, 0.5, 1)
+emission_enabled = true
+emission = Color(1.0, 0.88, 0.35, 1)
+emission_energy_multiplier = 4.0
+no_depth_test = true
+
+[sub_resource type="SphereMesh" id="MoonSphereMesh"]
+radius = 18.0
+height = 36.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="MoonMat"]
+no_depth_test = true
+albedo_color = Color(0.88, 0.93, 1, 1)
+emission_enabled = true
+emission = Color(0.75, 0.82, 1, 1)
+emission_energy_multiplier = 1.8
 
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_SQLite"]
 database_path = "user://voxel_deltas.sqlite"
@@ -53,19 +77,6 @@ emission_enabled = true
 emission = Color(1, 0.55, 0.25, 1)
 emission_energy_multiplier = 1.5
 
-[sub_resource type="SphereMesh" id="MoonSphereMesh"]
-radius = 18.0
-height = 36.0
-radial_segments = 16
-rings = 8
-
-[sub_resource type="StandardMaterial3D" id="MoonMat"]
-albedo_color = Color(0.88, 0.93, 1.0, 1)
-emission_enabled = true
-emission = Color(0.75, 0.82, 1.0, 1)
-emission_energy_multiplier = 1.8
-no_depth_test = true
-
 [sub_resource type="BoxShape3D" id="TriggerShape"]
 size = Vector3(2, 2, 2)
 
@@ -85,6 +96,16 @@ script = ExtResource("7_daynight")
 light_color = Color(1, 0.97, 0.92, 1)
 light_energy = 1.4
 shadow_enabled = true
+directional_shadow_mode = 2
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 200.0
+directional_shadow_fade_start = 0.85
+
+[node name="SunMesh" type="MeshInstance3D" parent="." unique_id=2000000040]
+visible = false
+cast_shadow = 0
+mesh = SubResource("SunSphereMesh")
+surface_material_override/0 = SubResource("SunMat")
 
 [node name="Moon" type="DirectionalLight3D" parent="." unique_id=2000000020]
 light_color = Color(0.55, 0.65, 0.85, 1)
@@ -93,10 +114,10 @@ shadow_enabled = true
 sky_mode = 1
 
 [node name="MoonMesh" type="MeshInstance3D" parent="." unique_id=2000000030]
+visible = false
+cast_shadow = 0
 mesh = SubResource("MoonSphereMesh")
 surface_material_override/0 = SubResource("MoonMat")
-cast_shadow = 0
-visible = false
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 8

@@ -36,6 +36,7 @@ extends Node
 @export var sun_path: NodePath = "../Sun"
 @export var moon_path: NodePath = "../Moon"
 @export var environment_path: NodePath = "../WorldEnvironment"
+@export var sun_mesh_path: NodePath = "../SunMesh"
 @export var moon_mesh_path: NodePath = "../MoonMesh"
 
 # How far from the camera the moon mesh is positioned (metres).
@@ -72,6 +73,7 @@ const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
 var _env: WorldEnvironment
+var _sun_mesh: MeshInstance3D
 var _moon_mesh: MeshInstance3D
 
 
@@ -80,6 +82,7 @@ func _ready() -> void:
 	_moon = get_node_or_null(moon_path) as DirectionalLight3D
 	_env  = get_node_or_null(environment_path) as WorldEnvironment
 
+	_sun_mesh  = get_node_or_null(sun_mesh_path) as MeshInstance3D
 	_moon_mesh = get_node_or_null(moon_mesh_path) as MeshInstance3D
 
 	if _sun == null:
@@ -148,6 +151,17 @@ func _apply() -> void:
 
 	_sun.light_energy = sun_energy
 	_sun.light_color  = sun_color
+
+	# --- Sun mesh (visible celestial body) ---
+	# Same technique as MoonMesh: position the sphere MOON_DISTANCE metres
+	# from the active camera in the sun's sky direction (+Z of the sun node)
+	# so it always appears in the correct part of the sky.
+	if _sun_mesh != null:
+		_sun_mesh.visible = sun_energy > 0.05
+		var cam: Camera3D = get_viewport().get_camera_3d()
+		if cam != null:
+			var sun_dir: Vector3 = _sun.global_transform.basis.z
+			_sun_mesh.global_position = cam.global_position + sun_dir * MOON_DISTANCE
 
 	# --- Moon energy + color ---
 	# Moon active 20:00 → 05:00 (NIGHT + DEEP_NIGHT), with crossfade
