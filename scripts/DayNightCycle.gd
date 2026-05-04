@@ -88,6 +88,11 @@ var _override_fog_density: float = 0.0
 
 
 func _ready() -> void:
+	# WeatherManager finds us via this group to push the fog override.
+	# Group registration happens here rather than in the .tscn so adding
+	# the script to a new World scene is enough — no node-property edit.
+	add_to_group("day_night_cycle")
+
 	_sun  = get_node_or_null(sun_path) as DirectionalLight3D
 	_moon = get_node_or_null(moon_path) as DirectionalLight3D
 	_env  = get_node_or_null(environment_path) as WorldEnvironment
