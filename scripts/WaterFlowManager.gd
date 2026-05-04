@@ -232,6 +232,52 @@ func get_cells() -> Dictionary:
 
 
 # ============================================================
+# Public API — save/load
+# ============================================================
+
+func get_save_data() -> Array:
+	# Returns the save-format Array of source cells. Flowing cells are
+	# NOT persisted — they regenerate from sources on load via the
+	# normal flow tick. Source REGIONS aren't saved here either; they
+	# come from designer-placed scene data and are re-added by the
+	# scene's bootstrap on each world load.
+	#
+	# Format: Array of {"x", "y", "z"} dicts. Source flag is implicit
+	# (anything in this list is a source). Phase 5+ save format.
+	var entries: Array = []
+	for cell_pos in _cells.keys():
+		var packed: int = _cells[cell_pos]
+		if not _is_source_packed(packed):
+			continue
+		entries.append({"x": cell_pos.x, "y": cell_pos.y, "z": cell_pos.z})
+	return entries
+
+
+func load_save_data(data: Array) -> void:
+	# Restore source cells from a previously-saved entries list. Called
+	# by GameState.load_save_file after the rest of state has loaded.
+	# Doesn't clear flowing cells — they were never saved and would be
+	# empty. Source regions are added separately by the world scene's
+	# bootstrap, not here.
+	for entry in data:
+		if entry is Dictionary and entry.has_all(["x", "y", "z"]):
+			var pos := Vector3i(int(entry["x"]), int(entry["y"]), int(entry["z"]))
+			_cells[pos] = _pack(MAX_LEVEL, true, _tick_count)
+			var chunk: Vector3i = _voxel_to_chunk(pos)
+			_dirty_chunks[chunk] = true
+			water_changed.emit(chunk)
+
+
+func clear_persistent_state() -> void:
+	# Wipes all cells and source regions. Called by GameState before
+	# loading a new save so no stale water carries over from the
+	# previous session.
+	_cells.clear()
+	_source_regions.clear()
+	_dirty_chunks.clear()
+
+
+# ============================================================
 # Public API — source placement
 # ============================================================
 
