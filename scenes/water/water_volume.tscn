@@ -1,21 +1,15 @@
-[gd_scene format=3 uid="uid://dwatervolume_001"]
+[gd_scene load_steps=5 format=3 uid="uid://dwatervolume_001"]
 
 [ext_resource type="Script" path="res://scripts/WaterVolume.gd" id="1_water"]
+[ext_resource type="ShaderMaterial" path="res://assets/shaders/water_material.tres" id="2_water_mat"]
 
 [sub_resource type="BoxShape3D" id="WaterShape"]
-size = Vector3(10, 3, 10)
+size = Vector3(10, 3.5, 10)
 
-[sub_resource type="BoxMesh" id="WaterMesh"]
-size = Vector3(10, 0.05, 10)
-
-[sub_resource type="StandardMaterial3D" id="WaterMat"]
-; Placeholder material — swap to the Boujie Water Shader (Godot
-; Asset Library #2070) for real animated water surface visuals.
-; The placeholder still works for testing the swimming state machine.
-albedo_color = Color(0.18, 0.42, 0.55, 0.65)
-transparency = 1
-metallic = 0.4
-roughness = 0.2
+[sub_resource type="PlaneMesh" id="WaterMesh"]
+size = Vector2(10, 10)
+subdivide_width = 16
+subdivide_depth = 16
 
 [node name="WaterVolume" type="Area3D" groups=["water_volume"]]
 ; A reusable water region. Drop instances of this scene into any
@@ -26,14 +20,17 @@ script = ExtResource("1_water")
 surface_y = 1.5
 
 [node name="ZoneShape" type="CollisionShape3D" parent="."]
-; Volume the player must enter to count as "in water". Default is
-; a 10x3x10 box centered at the Area3D origin — 5m horizontal
-; reach in each direction, 1.5m below to 1.5m above origin.
+; Volume the player must enter to count as "in water". 10x3.5x10 box
+; centered at the Area3D origin — height bumped from 3 to 3.5m to
+; clear the wave-crest displacement so the player still registers
+; as "in water" at peak amplitude.
 shape = SubResource("WaterShape")
 
 [node name="SurfaceMesh" type="MeshInstance3D" parent="."]
 ; Visual of the water surface. Sits at the top of the collision
-; volume so it visually matches surface_y above.
+; volume so it visually matches surface_y above. PlaneMesh with
+; 16x16 subdivisions (~280 verts) so the water shader's vertex
+; displacement actually has vertices to move.
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 mesh = SubResource("WaterMesh")
-surface_material_override/0 = SubResource("WaterMat")
+material_override = ExtResource("2_water_mat")
