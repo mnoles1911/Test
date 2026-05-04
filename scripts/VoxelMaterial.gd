@@ -1,0 +1,223 @@
+class_name VoxelMaterial
+extends Resource
+# VoxelMaterial — one entry in the material registry.
+#
+# What this is in plain English:
+#
+# Every voxel in the world is one of these — stone, dirt, grass, sand.
+# This Resource holds everything a voxel of that material needs to know:
+# what it looks like, how long it takes to mine, what tool can mine it,
+# what the player gets when they break it, and how it falls under
+# gravity.
+#
+# How designers add a new material (the whole point of this system):
+#
+#   1. In Godot, navigate to assets/voxels/materials/ in the FileSystem dock.
+#   2. Right-click → New Resource → "VoxelMaterial" → save as <name>.tres
+#      (e.g. snow.tres, marble.tres, mud.tres).
+#   3. Click the new .tres file. The Inspector now shows every field below.
+#      Fill them in.
+#   4. Pick a material_id between 1 and 254 that no other material uses.
+#      The registry prints "loaded N materials: stone(1), dirt(2), …"
+#      to the Output panel at startup so you can see which IDs are free.
+#   5. Save. Restart the project. The material is live.
+#
+# That's it. No GDScript editing required for new materials.
+#
+# Why a Resource subclass: this mirrors the existing EnemyData /
+# NPCData / NPCScheduleEntry pattern in the project. Designers
+# already know how to author those, and the inspector already gives
+# them a clean UI for filling fields.
+#
+# Reference: design/3D_VOXEL_MIGRATION.md → "Voxel Material System"
+
+
+# =============================================================
+# IDENTITY
+# =============================================================
+
+@export var id_string: String = ""
+# Stable identifier — "stone", "grass", "iron_ore". Used by code that
+# needs to refer to a material by name (e.g. the heightmap generator
+# saying "the surface layer is grass"). This MUST stay the same once
+# saves exist with this material — renaming the .tres file is fine,
+# but changing id_string after release breaks any code that names this
+# material by string.
+
+@export_range(1, 254) var material_id: int = 0
+# 1–254. This integer is what gets packed into the alpha byte of every
+# voxel of this material. The mesher uses alpha for solid-vs-air
+# (alpha == 0 means air); we repurpose the non-zero range as a
+# material lookup key.
+#
+# IMPORTANT: every material in the game must have a UNIQUE
+# material_id. The registry validates this on startup and refuses
+# to load colliding materials with a loud error message naming
+# both .tres files. You'll see the conflict in the Output panel.
+#
+# Reserved values:
+#   0   = air (do not assign — the mesher and the generator both
+#         treat 0 as "no voxel here")
+#   255 = reserved for future use; don't assign
+#
+# In practice we have ~12 raw materials planned for Game One
+# (design/ITEM_LIBRARY.md lines 46-64), so 254 is plenty of headroom.
+
+@export var display_name: String = ""
+# UI string — "Stone", "Grass", "Iron Ore". Shown in the journal,
+# inventory tooltips, etc. Localizable later (Game Two onward).
+
+
+# =============================================================
+# VISUALS — color and per-voxel jitter
+# =============================================================
+
+@export var color_low: Color = Color.WHITE
+# The base color at the BOTTOM of this material's vertical band in the
+# world. For a stone band running Y=0 to Y=50, this is the colour at
+# Y=0. The generator linearly interpolates between color_low and
+# color_high based on each voxel's position within the band.
+
+@export var color_high: Color = Color.WHITE
+# The base color at the TOP of this material's vertical band.
+# Lighter or differently-tinted than color_low typically — sun-
+# bleached stone vs. shadowed valley stone, for example.
+
+@export_range(0.0, 1.0, 0.01) var color_jitter: float = 0.05
+# Per-voxel brightness jitter applied on top of the lerped color.
+# Values are randomized deterministically from voxel coordinates so
+# the same voxel always looks the same colour across save/load.
+#
+# 0.0 = every voxel of this material is the same colour (looks
+#       like a solid wall — visually boring).
+# 0.05 = subtle variation, individual cubes still readable but the
+#        wall looks like one material — the recommended default.
+# 0.2 = strong variation, each cube very visible (good for stone/
+#       gravel; might look noisy for grass).
+
+
+# =============================================================
+# MINING — how the player breaks this material
+# =============================================================
+
+@export_range(0.0, 30.0, 0.1) var mining_time_seconds: float = 0.4
+# How long the player must hold attack to break ONE voxel of this
+# material with a tool that can affect it. Below this you've got the
+# tool but you haven't been swinging long enough.
+#
+# Suggested values:
+#   0.2  - sand, snow, leaves (super fast)
+#   0.3  - dirt, grass, clay
+#   0.6  - soft wood, soft stone
+#   0.8  - hard stone (default for stone)
+#   1.5  - hard wood, iron ore
+#   3.0  - steel ore
+#   5.0  - adamant ore (lore says it's the hardest material)
+#
+# This is a per-voxel time, not a per-swing animation. Tool animation
+# pacing is separate (see swing_cooldown_seconds in EditToolHandler).
+
+@export var allowed_tools: Array[String] = []
+# InventoryManager item_ids that can mine this material. If the
+# equipped tool isn't in this list, swinging at this material has no
+# effect (voxel doesn't break).
+#
+# Empty array means "any tool works" — useful for soft materials that
+# can be dug with bare hands or for the placeholder slice where we
+# don't want to gate everything.
+#
+# Examples:
+#   ["iron_pickaxe", "stone_pickaxe"]  - rocks need a pick
+#   ["iron_shovel", "stone_shovel"]    - dirt/sand need a shovel
+#   ["iron_axe", "stone_axe"]          - wood needs an axe
+#   []                                  - no gating
+#
+# Tool tier gating (Common/Quality/Masterwork) is documented in
+# design/3D_VOXEL_MIGRATION.md lines 148-156. Adamant ore would
+# require ["masterwork_pickaxe"], etc.
+
+@export var yield_item_id: String = ""
+# What the player gets when they break a voxel of this material.
+# References InventoryManager.ITEM_REGISTRY by id (e.g. "raw_stone",
+# "raw_dirt", "raw_log").
+#
+# Empty string means "no yield" — useful for materials that aren't
+# meant to be harvested (e.g. impassable lore-monument stone, or a
+# placeholder material in early development).
+#
+# The registry validates this against ITEM_REGISTRY at startup and
+# warns if the item doesn't exist. Add new items to InventoryManager
+# before pointing a material at them.
+
+@export var yield_quantity: int = 1
+# How many of yield_item_id to add to the inventory per voxel broken.
+# Almost always 1 for v1. Keep this for future tuning (e.g. an "ore
+# chunk" voxel might yield 3 ore lumps).
+
+
+# =============================================================
+# GRAVITY — how this material falls when unsupported
+# =============================================================
+
+enum FallBehavior {
+	NEVER,
+	# Only falls as part of a rigid-body cluster, via VoxelGravityManager.
+	# Default for stone, dirt, grass — anything that should pile up but
+	# not collapse instantly when its neighbour is removed. A stone
+	# block carved out from under another stone block doesn't make the
+	# upper block fall on its own; only when enough of the supporting
+	# structure goes does it collapse as a chunk.
+
+	SOLID,
+	# Same as NEVER for the purposes of this v1 — falls as a rigid-body
+	# cluster — BUT this material's gravity_scale and damage_multiplier
+	# get applied to the cluster. Use this for materials that should
+	# behave like NEVER but with different fall feel (e.g. heavy iron
+	# ore falls faster and hits harder than dirt).
+
+	LOOSE,
+	# Sand model. The voxel falls instantly, column-by-column, into any
+	# air gap directly below it. No rigid body, no tumbling — the voxel
+	# just appears one Y lower (or however many Y values it takes to
+	# land on something solid). This is what makes sand "pour" when you
+	# dig under it.
+}
+
+@export var fall_behavior: FallBehavior = FallBehavior.NEVER
+
+@export_range(0.1, 5.0, 0.05) var gravity_scale: float = 1.0
+# Multiplier on cluster fall speed. Only meaningful for NEVER and
+# SOLID materials (LOOSE materials don't use rigid-body physics).
+#
+# 1.0 = standard fall (matches Player3D.GRAVITY = 20 m/s²)
+# 1.5 = heavier-feeling — iron ore, steel
+# 0.7 = lighter-feeling — pumice, soft wood
+#
+# Mixed clusters (multiple materials) use the AVERAGE gravity_scale
+# across constituent voxels.
+
+@export_range(0.0, 5.0, 0.1) var damage_multiplier: float = 1.0
+# Multiplier on crush damage when a falling cluster of this material
+# lands on something. The base damage is voxel_count × fall_height ×
+# 0.05 (set in FallingVoxelCluster.gd). This multiplier scales it.
+#
+# 1.0 = default
+# 0.3 = soft / cushioned — sand (LOOSE so this rarely matters), snow
+# 1.5 = sharp — flint, broken glass
+# 2.0 = heavy / sharp — iron ore, adamant
+#
+# Mixed clusters take the MAXIMUM damage_multiplier across constituent
+# voxels (the deadliest material in the chunk wins).
+
+
+# =============================================================
+# SOUND — hooks for audio (not wired in v1)
+# =============================================================
+
+@export var step_sound: AudioStream = null
+# Audio played when the player walks on a voxel of this material.
+# Not wired in v1; lands when AudioManager arrives.
+
+@export var break_sound: AudioStream = null
+# Audio played when a voxel of this material is broken by mining.
+# Not wired in v1; lands when AudioManager arrives.
