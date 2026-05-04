@@ -33,9 +33,13 @@ extends Node3D
 # can not reach voxels in front of him.
 
 @export var swing_cooldown_seconds: float = 0.4
-# Minimum seconds between swings. Prevents holding LMB from being a
-# continuous voxel-eraser at frame rate. Real animation will replace
-# this once Roland's rig has tool-swing animations.
+# Animation-pacing cooldown that runs AFTER a successful carve. The
+# cycle is: player holds LMB → swing time accumulates against the
+# target voxel's mining_time_seconds → when full, voxel breaks AND
+# swing_cooldown_seconds locks input briefly so the swing animation
+# has room to reset between voxels. Without this cooldown, breaking
+# soft materials (sand, dirt) would spam multiple voxels per
+# frame the moment mining_time hit zero.
 
 @export var swing_carve_radius_meters: float = 0.8
 # Sphere radius (meters) of voxel removed per swing. Bigger = more
@@ -47,19 +51,6 @@ extends Node3D
 
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
-
-# Map from voxel-material-tag (set by the generator) to the raw
-# material item ID yielded when the player removes that voxel.
-#
-# For the slice, all voxels are tagged "stone" because
-# VoxelGeneratorFlat writes voxel_type=1 uniformly. When we add
-# real material tagging via VoxelGeneratorGraph + a material
-# library, this mapping expands.
-const VOXEL_MATERIAL_YIELDS: Dictionary = {
-	"stone": "raw_stone",
-	"wood":  "raw_log",
-	"dirt":  "raw_dirt",
-}
 
 # Map from equipped tool item_id to the Crafting sub-skill that gets
 # XP on a successful edit. Pickaxe → mining, axe → felling, etc.
@@ -87,6 +78,25 @@ const TOOL_XP_PER_EDIT: Dictionary = {
 # =============================================================
 
 var _swing_cooldown_remaining: float = 0.0
+# Post-carve animation cooldown. Set to swing_cooldown_seconds when
+# a voxel is broken; ticks down each frame; while > 0 the player
+# can't accumulate swing time on a new voxel.
+
+var _current_target_voxel: Vector3i = Vector3i.ZERO
+# The voxel-grid coordinate the player is currently swinging at.
+# Reset (along with _swing_time_on_target) the moment the player
+# looks at a different voxel — partial mining doesn't carry across
+# voxels.
+
+var _has_target: bool = false
+# False when the player isn't aiming at any voxel (raycast missed
+# or attack not held). Distinct from "target = (0,0,0)" since
+# (0,0,0) is a valid voxel position.
+
+var _swing_time_on_target: float = 0.0
+# Accumulated seconds the player has been holding attack against
+# `_current_target_voxel`. When it reaches the target voxel's
+# material's `mining_time_seconds`, the voxel breaks.
 
 
 # =============================================================
@@ -121,115 +131,159 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Tick the post-carve cooldown.
 	if _swing_cooldown_remaining > 0.0:
 		_swing_cooldown_remaining -= delta
 
-	# Poll the action state instead of listening via _unhandled_input.
-	# Why: any Control with mouse_filter=STOP that covers the screen
-	# (HUD overlays, panels) eats the mouse event before
-	# _unhandled_input runs, and the swing silently never fires.
-	# Polling the action state is global — no event-consumption issue.
-	# The mouse-mode check ensures we don't fire tools while the
-	# cursor is visible in a menu.
+	# Mouse must be captured (no menu open) and attack action must be
+	# HELD (not just-pressed) — held-swing accumulator gates progress
+	# rather than per-press carve.
+	#
+	# Why polling instead of _unhandled_input: HUD Control nodes with
+	# mouse_filter=STOP eat the event before _unhandled_input runs,
+	# and the swing silently never fires. Polling the action state is
+	# global.
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_clear_target()
 		return
-	if not Input.is_action_just_pressed("attack"):
+	if not Input.is_action_pressed("attack"):
+		_clear_target()
 		return
-	_try_swing()
-
-
-func _try_swing() -> void:
-	print("[EditToolHandler] attack action triggered")
-
 	if _swing_cooldown_remaining > 0.0:
-		print("[EditToolHandler]   on cooldown (%.2fs left)" % _swing_cooldown_remaining)
+		# Animation reset window after a successful carve. Don't
+		# accumulate during this — the player should feel a beat
+		# between strikes.
 		return
+
+	_tick_held_swing(delta)
+
+
+func _clear_target() -> void:
+	_has_target = false
+	_swing_time_on_target = 0.0
+
+
+func _tick_held_swing(delta: float) -> void:
+	# One frame of held-attack progress. Either advances the swing
+	# accumulator, switches targets, or bails on whatever's gone
+	# wrong (no equipped tool, no raycast hit, etc).
 
 	# --- What's equipped? ---
 	if not get_node_or_null("/root/InventoryManager"):
-		print("[EditToolHandler]   no InventoryManager autoload")
 		return
 	var equipped_id: String = InventoryManager.get_equipped("weapon")
-	print("[EditToolHandler]   equipped weapon = '%s'" % equipped_id)
 	if equipped_id == "":
-		return
-
-	# Look up the equipped item. Tools have a tool_target_materials
-	# field; non-tools (regular weapons) don't, so they fall through
-	# to the combat handler when that lands.
-	var item_data: Dictionary = InventoryManager.ITEM_REGISTRY.get(equipped_id, {})
-	var target_materials: Array = item_data.get("tool_target_materials", [])
-	if target_materials.is_empty():
-		print("[EditToolHandler]   '%s' is not a terrain-edit tool" % equipped_id)
+		_clear_target()
 		return
 
 	# --- Find the voxel the player is aiming at ---
 	if _camera_rig == null:
-		print("[EditToolHandler]   no _camera_rig reference")
 		return
 	var hit: Dictionary = _camera_rig.get_camera_forward_hit(max_reach_meters)
 	if hit.is_empty():
-		print("[EditToolHandler]   raycast hit nothing within %.1fm" % max_reach_meters)
-		_swing_cooldown_remaining = swing_cooldown_seconds
+		_clear_target()
 		return
 
-	# The raycast extends through the camera arm + max_reach so it
-	# can reach max_reach meters past the player. But the hit might
-	# be on something close to the camera (a wall behind the
-	# player) rather than something within tool range. Verify the
-	# hit position is within max_reach_meters of the PLAYER, not
-	# just within the ray length.
+	# The raycast extends through the camera arm + max_reach so it can
+	# reach max_reach meters past the player. Verify the hit position
+	# is within max_reach_meters of the PLAYER, not just within the
+	# ray length.
 	var player := get_parent() as CharacterBody3D
 	var hit_pos: Vector3 = hit.get("position", Vector3.ZERO)
 	if player != null:
 		var dist_from_player: float = player.global_position.distance_to(hit_pos)
 		if dist_from_player > max_reach_meters:
-			print("[EditToolHandler]   target out of reach (%.1fm > %.1fm)" % [
-				dist_from_player, max_reach_meters
-			])
-			_swing_cooldown_remaining = swing_cooldown_seconds
+			_clear_target()
 			return
 
-	print("[EditToolHandler]   ray hit at %s, normal %s, collider=%s" % [
-		hit_pos,
-		hit.get("normal", Vector3.UP),
-		hit.get("collider"),
-	])
-
 	# Offset slightly INTO the surface so we target the solid voxel,
-	# not the air voxel above it. The raycast hits the surface; the
-	# voxel center is just inside.
+	# not the air voxel above it.
 	var hit_normal: Vector3 = hit.get("normal", Vector3.UP)
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
 
-	# --- What material is this voxel? ---
-	# For the slice, every voxel is "stone" — the test generator
-	# writes a single voxel type uniformly. Real per-voxel material
-	# tagging arrives with VoxelGeneratorGraph + a material library.
-	var voxel_material: String = "stone"
-
-	# Tool can only edit matching materials.
-	if not voxel_material in target_materials:
-		print("[EditToolHandler] Wrong tool for material '%s'." % voxel_material)
-		_swing_cooldown_remaining = swing_cooldown_seconds
+	# --- Read the voxel material ---
+	var material: VoxelMaterial = _read_material_at(voxel_world_pos)
+	if material == null:
+		# Voxel is air, registry isn't loaded, or the read failed.
+		# Either way, no swing progress.
+		_clear_target()
 		return
 
-	# --- Queue the edit ---
-	# Use queue_edit_sphere so the carve size is explicit and
-	# tunable per tool. queue_set_voxel was named for single-voxel
-	# writes and used a hardcoded tiny radius internally — the
-	# resulting divot was hard to see from third-person camera.
+	# --- Tool gating ---
+	# A material's allowed_tools list trumps the legacy
+	# tool_target_materials field on the tool itself. Empty
+	# allowed_tools = any tool works.
+	if material.allowed_tools.size() > 0 and not (equipped_id in material.allowed_tools):
+		# Wrong tool — don't accumulate. Could play a "wrong tool"
+		# bark here later.
+		_clear_target()
+		return
+
+	# --- Target stability + accumulate ---
+	# Compute the integer voxel grid coord and compare. If the
+	# player's looking at a different voxel than last frame, reset.
+	var target_grid: Vector3i = VoxelEditManager.world_to_voxel(voxel_world_pos)
+	if not _has_target or _current_target_voxel != target_grid:
+		_current_target_voxel = target_grid
+		_swing_time_on_target = 0.0
+		_has_target = true
+
+	_swing_time_on_target += delta
+
+	if _swing_time_on_target < material.mining_time_seconds:
+		# Still swinging.
+		return
+
+	# --- Carve ---
+	_carve(voxel_world_pos, material, equipped_id)
+	_swing_time_on_target = 0.0
+	_swing_cooldown_remaining = swing_cooldown_seconds
+
+
+func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
+	# Read the voxel at world_pos, decode the material id from the
+	# alpha byte, look up the VoxelMaterial in the registry. Returns
+	# null if the voxel is air, the registry isn't available, or the
+	# read fails for any other reason.
+	#
+	# Reads the same channel the generator writes (CHANNEL_COLOR).
+	# CRITICAL: VoxelTool.get_voxel takes voxel-grid coords (Vector3i),
+	# not world-space metres. We use VoxelEditManager.world_to_voxel
+	# which already does the conversion (multiplies by VOXELS_PER_METER
+	# = 6 and floors).
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return null
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return null
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return null
+	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	var grid_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
+	var packed: int = tool.get_voxel(grid_pos)
+	if (packed & 0xFF) == 0:
+		# Air. Probably aimed at the wrong cell (sub-voxel margin).
+		return null
+	if not get_node_or_null("/root/VoxelMaterialRegistry"):
+		return null
+	var material_id: int = packed & 0xFF
+	return VoxelMaterialRegistry.get_by_id(material_id)
+
+
+func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: String) -> void:
+	# Apply the voxel edit, yield the material's item, and award
+	# crafting XP. Called once per successful held-swing completion.
 	if not get_node_or_null("/root/VoxelEditManager"):
 		push_warning("[EditToolHandler] VoxelEditManager autoload not registered")
 		return
 	var accepted: bool = VoxelEditManager.queue_edit_sphere(
 		voxel_world_pos, swing_carve_radius_meters, AIR_VOXEL
 	)
-	_swing_cooldown_remaining = swing_cooldown_seconds
-
 	if not accepted:
-		# Rejected by NoEditZone. The bark system will eventually fire
-		# Roland's "This place doesn't yield to me." line here.
+		# Rejected by NoEditZone. Bark trigger lives on
+		# VoxelEditManager.edit_rejected_no_edit_zone — no per-call
+		# action needed here.
 		if get_node_or_null("/root/DebugOverlay"):
 			DebugOverlay.log_action("Edit rejected: NoEditZone at %s" % voxel_world_pos)
 		else:
@@ -238,13 +292,15 @@ func _try_swing() -> void:
 
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Mined %s with %s at (%.1f, %.1f, %.1f)" % [
-			voxel_material, equipped_id, voxel_world_pos.x, voxel_world_pos.y, voxel_world_pos.z
+			material.id_string, equipped_id, voxel_world_pos.x, voxel_world_pos.y, voxel_world_pos.z
 		])
 
 	# --- Yield raw material into inventory ---
-	var yield_item: String = VOXEL_MATERIAL_YIELDS.get(voxel_material, "")
-	if yield_item != "":
-		InventoryManager.add_item(yield_item, 1)
+	# Material drives both the item id AND the quantity. Empty
+	# yield_item_id means "this material gives nothing on harvest"
+	# (rare — perhaps placeholder voxels for level geometry).
+	if material.yield_item_id != "":
+		InventoryManager.add_item(material.yield_item_id, material.yield_quantity)
 
 	# --- Award Crafting sub-skill XP ---
 	# Each tool maps to its corresponding sub-skill (mining/felling/
