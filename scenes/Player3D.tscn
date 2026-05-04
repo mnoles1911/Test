@@ -67,7 +67,8 @@ current = true
 ; Without this node, the VoxelLodTerrain in World3D won't know where
 ; to load chunks. Position is the player's world position; the
 ; terrain streams chunks within `view_distance` of this node.
-view_distance = 1000
+; 3000 voxels = 500 m at 6 vox/m scale. Raise in the DebugOverlay if needed.
+view_distance = 3000
 
 [node name="EditToolHandler" type="Node3D" parent="."]
 ; Handles "swing tool, edit voxel" input. Reads the equipped weapon

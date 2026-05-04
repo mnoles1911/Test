@@ -676,9 +676,11 @@ func _refresh_view_dist_label() -> void:
 	if _view_dist_label == null:
 		return
 	var viewer := _get_voxel_viewer()
-	var dist: int = int(viewer.view_distance) if viewer != null else -1
-	if dist >= 0:
-		_view_dist_label.text = "%d m" % dist
+	var dist_vox: int = int(viewer.view_distance) if viewer != null else -1
+	if dist_vox >= 0:
+		# VoxelViewer.view_distance is in voxels; terrain is 6 vox/m.
+		var dist_m: int = dist_vox / 6
+		_view_dist_label.text = "%d m  (%d vox)" % [dist_m, dist_vox]
 	else:
 		_view_dist_label.text = "— (no VoxelViewer)"
 
@@ -688,10 +690,12 @@ func _adjust_view_distance(delta_m: int) -> void:
 	if viewer == null:
 		log_action("DEV: view distance change ignored — VoxelViewer not found")
 		return
-	var new_dist: int = clamp(int(viewer.view_distance) + delta_m, 100, 3000)
-	viewer.view_distance = new_dist
+	# VoxelViewer.view_distance is in voxels. Multiply meters × 6 to convert.
+	# Clamp: 600 vox (100 m) minimum, 18000 vox (3000 m) maximum.
+	var new_dist_vox: int = clamp(int(viewer.view_distance) + delta_m * 6, 600, 18000)
+	viewer.view_distance = new_dist_vox
 	_refresh_view_dist_label()
-	log_action("DEV: view distance → %d m" % new_dist)
+	log_action("DEV: view distance → %d m (%d vox)" % [new_dist_vox / 6, new_dist_vox])
 
 
 func _get_voxel_viewer() -> VoxelViewer:
