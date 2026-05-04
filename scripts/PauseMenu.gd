@@ -349,8 +349,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE or event.physical_keycode == KEY_ESCAPE:
 			# Settings overlay takes priority — let it handle its own Escape.
-			var settings = get_node_or_null("/root/Settings")
-			if settings != null and settings.is_open():
+			# Check the Root Control's visibility directly rather than calling a
+			# script method, since the CanvasLayer reference may not expose it.
+			var settings_root := get_node_or_null("/root/Settings/Root")
+			if settings_root != null and (settings_root as Control).visible:
 				return
 			# If the journal/inventory overlay is open, let JournalUI handle
 			# Escape to close itself instead of opening the pause menu on top.
@@ -552,11 +554,10 @@ func _on_settings() -> void:
 	# needs PROCESS_MODE_ALWAYS to work while the tree is paused, and
 	# we don't want to unpause just to open a settings screen).
 	_root.visible = false
-	var settings = get_node_or_null("/root/Settings")
+	var settings := get_node_or_null("/root/Settings")
 	if settings != null:
-		settings.open(true)
+		settings.call("open", true)
 	else:
-		# Fallback: if Settings autoload isn't present, use scene navigation.
 		_close()
 		TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
 
