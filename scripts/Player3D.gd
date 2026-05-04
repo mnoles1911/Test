@@ -331,10 +331,11 @@ func _physics_process(delta: float) -> void:
 		else:
 			velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
-		# River currents push the player horizontally + vertically.
-		# Phase 1: WaterFlowManager.get_flow_velocity_at returns Vector3.ZERO
-		# (no flow simulation yet). Phase 6 implements gradient-based
-		# velocity so rivers push the player downstream.
+		# River currents push the player horizontally based on the
+		# water level gradient. Active anywhere a flow cell or source
+		# region transition produces a level delta — middle of an
+		# ocean is calm (all level 8 around), but a river feeding an
+		# ocean pushes the player downstream.
 		var wfm: Node = get_node_or_null("/root/WaterFlowManager")
 		if wfm != null:
 			var current: Vector3 = wfm.get_flow_velocity_at(global_position)

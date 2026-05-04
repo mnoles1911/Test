@@ -210,10 +210,58 @@ func get_water_level_at(world_pos: Vector3) -> int:
 	return 0
 
 
-func get_flow_velocity_at(_world_pos: Vector3) -> Vector3:
-	# Phase 1: always zero (no flow simulation yet). Phase 6 implements
-	# the level-gradient → velocity computation.
-	return Vector3.ZERO
+func get_flow_velocity_at(world_pos: Vector3) -> Vector3:
+	# Compute a 3D current vector from the level gradient in the 4
+	# horizontal neighbors. Direction = sum over neighbors of (dir ×
+	# max(0, self_level - neighbor_level)); magnitude scaled by max
+	# delta and capped at FLOW_MAX_SPEED.
+	#
+	# In the middle of an ocean (every neighbor at level 8 too), the
+	# vector cancels to zero — oceans don't push. Currents only
+	# happen at transitions: a river flowing toward an ocean (river
+	# at level 7, ocean cell at level 8) generates a downstream push.
+	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
+	var self_level: int = _level_at_voxel(voxel_pos)
+	if self_level <= MIN_LEVEL:
+		return Vector3.ZERO
+
+	var accum := Vector3.ZERO
+	var max_delta: int = 0
+	for dir in _LATERAL_DIRS:
+		var neighbor: Vector3i = voxel_pos + dir
+		var n_level: int = _level_at_voxel(neighbor)
+		var delta: int = self_level - n_level
+		# Push AWAY from higher-level neighbors (water flows from high
+		# to low). Positive delta means neighbor is lower → push toward
+		# neighbor.
+		if delta > 0:
+			accum += Vector3(dir) * float(delta)
+			if delta > max_delta:
+				max_delta = delta
+
+	if max_delta == 0 or accum.length_squared() < 0.0001:
+		return Vector3.ZERO
+	# Scale: max delta MAX_LEVEL → max FLOW_MAX_SPEED. Linear ramp.
+	var scale: float = (float(max_delta) / float(MAX_LEVEL)) * FLOW_MAX_SPEED
+	return accum.normalized() * scale
+
+
+const FLOW_MAX_SPEED: float = 3.0
+# Maximum river-current push speed (m/s) the player feels. 3.0
+# matches the "Aldwater main channel" guideline in
+# design/SWIMMING_AND_WATER.md. Steeper gradients clamp here.
+
+
+func _level_at_voxel(voxel_pos: Vector3i) -> int:
+	# Voxel-space variant of get_water_level_at, for use inside the
+	# flow loop where world↔voxel conversions would be wasteful.
+	if _cells.has(voxel_pos):
+		return (_cells[voxel_pos] as int) & _LEVEL_MASK
+	var world_pos: Vector3 = _voxel_center_world(voxel_pos)
+	for region in _source_regions:
+		if (region["aabb"] as AABB).has_point(world_pos):
+			return int(region["level"])
+	return 0
 
 
 func get_source_regions() -> Array:
