@@ -344,6 +344,9 @@ func _process(delta: float) -> void:
 		_transition_progress)
 	_update_wet_terrain_visual(wetness)
 
+	# Lightning strike timer — only ticks during HEAVY_RAIN.
+	_process_lightning(delta)
+
 	# Story override countdown — tick down in seconds, ticking the
 	# remaining "hours" by delta/3600 of a real-world hour. We use real
 	# seconds here, not WorldClock hours, so the override expires on a
@@ -710,6 +713,125 @@ func _find_voxel_terrain() -> Node:
 
 
 var _cached_voxel_terrain: Node = null
+
+
+# ------------------------------------------------------------
+# Lightning + thunder (Phase 12)
+# ------------------------------------------------------------
+
+# Time between strikes is randomised in [MIN, MAX]. Only ticks during
+# HEAVY_RAIN; out of state, the timer is paused.
+const LIGHTNING_INTERVAL_MIN_S: float = 8.0
+const LIGHTNING_INTERVAL_MAX_S: float = 20.0
+# Strike distance from the player on the XZ plane. Small range so the
+# strike is always perceptible but never feels right next to the player.
+const LIGHTNING_DIST_MIN_M: float = 80.0
+const LIGHTNING_DIST_MAX_M: float = 250.0
+# How high above the player the strike point sits. Sky-high so the
+# directional light source feels like it's coming "from the clouds".
+const LIGHTNING_STRIKE_HEIGHT_M: float = 60.0
+# Speed of sound — used to delay the thunder audio after the visible
+# flash. 343 m/s is real-world dry-air speed.
+const SPEED_OF_SOUND_M_PER_S: float = 343.0
+
+var _next_lightning_in_s: float = 0.0
+var _lightning_armed: bool = false   # true while current_state is HEAVY_RAIN
+
+
+func _process_lightning(delta: float) -> void:
+	# Arm or disarm based on current state. We use current_state (not
+	# _target_state) so lightning starts when HEAVY_RAIN actually
+	# becomes visible, not when the transition begins.
+	var should_arm: bool = (current_state == State.HEAVY_RAIN)
+	if should_arm and not _lightning_armed:
+		_lightning_armed = true
+		_next_lightning_in_s = randf_range(LIGHTNING_INTERVAL_MIN_S, LIGHTNING_INTERVAL_MAX_S)
+	elif not should_arm and _lightning_armed:
+		_lightning_armed = false
+
+	if not _lightning_armed:
+		return
+
+	_next_lightning_in_s -= delta
+	if _next_lightning_in_s <= 0.0:
+		trigger_lightning_strike()
+		_next_lightning_in_s = randf_range(LIGHTNING_INTERVAL_MIN_S, LIGHTNING_INTERVAL_MAX_S)
+
+
+func trigger_lightning_strike(strike_pos: Vector3 = Vector3(NAN, NAN, NAN)) -> void:
+	# Public API — Phase 3a debug overlay calls this for FORCE LIGHTNING.
+	# Default arg uses NAN sentinel; if any component is NaN, sample a
+	# random position around the player.
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam == null:
+		return
+	var player_pos: Vector3 = cam.global_position
+	if is_nan(strike_pos.x) or is_nan(strike_pos.y) or is_nan(strike_pos.z):
+		var angle: float = randf() * TAU
+		var dist: float = randf_range(LIGHTNING_DIST_MIN_M, LIGHTNING_DIST_MAX_M)
+		strike_pos = player_pos + Vector3(cos(angle) * dist, LIGHTNING_STRIKE_HEIGHT_M, sin(angle) * dist)
+
+	_spawn_lightning_flash(strike_pos)
+	_spawn_thunder_audio(strike_pos, player_pos)
+
+
+func _spawn_lightning_flash(strike_pos: Vector3) -> void:
+	# Transient OmniLight3D. High energy, large range so the side of
+	# the world facing the strike brightens visibly more than the
+	# opposite side — that's what gives the directional cue.
+	var light := OmniLight3D.new()
+	light.global_position = strike_pos
+	light.light_color = Color(1.0, 1.0, 1.0, 1.0)
+	light.light_energy = 0.0
+	light.omni_range = 300.0
+	light.omni_attenuation = 1.0
+	add_child(light)
+
+	# Energy curve: 0 → 30 over 40 ms (snap on), hold 80 ms, fade to 0
+	# over 250 ms. queue_free at the end of the tween.
+	var t := create_tween()
+	t.tween_property(light, "light_energy", 30.0, 0.04)
+	t.tween_interval(0.08)
+	t.tween_property(light, "light_energy", 0.0, 0.25)
+	t.tween_callback(light.queue_free)
+
+
+func _spawn_thunder_audio(strike_pos: Vector3, listener_pos: Vector3) -> void:
+	# Try to load a thunder OGG. If absent, skip silently — Phase 10
+	# already logs missing-audio warnings on a different path; thunder
+	# is rare enough that one warning per session is fine.
+	var path: String = AMBIENT_AUDIO_DIR + "thunder_distant.ogg"
+	if not ResourceLoader.exists(path):
+		if not _ambient_warned_missing.has("thunder_distant"):
+			_ambient_warned_missing["thunder_distant"] = true
+			push_warning("[WeatherManager] Missing thunder audio: %s" % path)
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+
+	var p := AudioStreamPlayer3D.new()
+	p.stream = stream
+	p.global_position = strike_pos
+	p.unit_size = 25.0
+	p.max_distance = 500.0
+	# Real-world delay between flash and rumble. 80 m → 0.23 s,
+	# 250 m → 0.73 s. Plus a 0–0.5 s natural jitter for variety.
+	var distance_m: float = listener_pos.distance_to(strike_pos)
+	var delay_s: float = distance_m / SPEED_OF_SOUND_M_PER_S + randf_range(0.0, 0.5)
+	add_child(p)
+
+	# Wait `delay_s` then play. Free on finish.
+	var t := create_tween()
+	t.tween_interval(delay_s)
+	t.tween_callback(p.play)
+	# Best-effort cleanup — we connect finished, but also queue a
+	# safety queue_free after a generous 12 s so a missed signal
+	# doesn't leak the player.
+	p.finished.connect(p.queue_free)
+	get_tree().create_timer(12.0).timeout.connect(func() -> void:
+		if is_instance_valid(p):
+			p.queue_free())
 
 
 # ------------------------------------------------------------
