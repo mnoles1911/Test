@@ -1,0 +1,24 @@
+#!/bin/sh
+# pre-commit hook — locks project.godot's run/main_scene to MainMenu.
+#
+# Godot editor rewrites run/main_scene whenever you use the "Run This Scene"
+# clapperboard button on a scene tab. This hook silently corrects the value
+# before every commit so the wrong scene never enters version control.
+#
+# Runs automatically on this machine. On a new clone, activate with:
+#   git config core.hooksPath .githooks
+
+PROJ="project.godot"
+CORRECT='run/main_scene="res://scenes/ui/MainMenu.tscn"'
+
+if [ ! -f "$PROJ" ]; then
+    exit 0
+fi
+
+if ! grep -qF "$CORRECT" "$PROJ"; then
+    sed -i "s|^run/main_scene=.*|${CORRECT}|" "$PROJ"
+    git add "$PROJ"
+    printf '[pre-commit] Corrected run/main_scene → MainMenu.tscn\n'
+fi
+
+exit 0
