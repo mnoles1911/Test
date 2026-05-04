@@ -409,15 +409,12 @@ func _physics_process_flying(_delta: float) -> void:
 	var right:   Vector3 = cam_basis.x
 	var dir: Vector3 = (right * input_dir.x) + (forward * input_dir.y)
 
-	# Vertical input — Space (dodge action) ascends, C (crouch
-	# action) descends. Both held, not toggled. is_action_pressed
-	# returns true while the bound key is held even though crouch
-	# is a press-toggle elsewhere; the held semantics here are
-	# what we want for fly mode.
+	# Vertical input — Space (dodge action) ascends, Left Shift
+	# (sprint action) descends. Both held, not toggled.
 	var v_input: float = 0.0
 	if Input.is_action_pressed("dodge"):
 		v_input += 1.0
-	if Input.is_action_pressed("crouch"):
+	if Input.is_action_pressed("sprint"):
 		v_input -= 1.0
 	dir.y += v_input
 

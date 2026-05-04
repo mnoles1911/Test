@@ -1,19 +1,20 @@
 [gd_scene format=3 uid="uid://dp3w1world3d"]
 
 [ext_resource type="PackedScene" uid="uid://dp3l1roland3d" path="res://scenes/Player3D.tscn" id="1_player"]
-[ext_resource type="Script" uid="uid://cjxqjr4b8d4jc" path="res://scripts/CampfireFlicker3D.gd" id="2_flicker"]
-[ext_resource type="Script" uid="uid://djebxbfkbbd03" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
-[ext_resource type="Script" uid="uid://d1vw32cgtbcv4" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
+[ext_resource type="Script" uid="uid://b2pwvkbcyewb" path="res://scripts/CampfireFlicker3D.gd" id="2_flicker"]
+[ext_resource type="Script" uid="uid://d3ymbeeh31nga" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
+[ext_resource type="Script" uid="uid://c6pjntrssbrik" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
 [ext_resource type="PackedScene" path="res://scenes/water/water_volume.tscn" id="5_water"]
 [ext_resource type="PackedScene" path="res://scenes/water/ocean_volume.tscn" id="6_ocean"]
-[ext_resource type="Script" uid="uid://n5dio80buqo5" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
-[ext_resource type="Script" uid="uid://wh8np2gvneya" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
+[ext_resource type="Script" uid="uid://ekwqr2h0r6tf" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
+[ext_resource type="Script" uid="uid://cahyr7gl7p211" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
 
-[sub_resource type="ProceduralSkyMaterial" id="Sky_1"]
-sky_top_color = Color(0.05, 0.06, 0.1, 1)
-sky_horizon_color = Color(0.08, 0.08, 0.12, 1)
-ground_bottom_color = Color(0.02, 0.02, 0.03, 1)
-ground_horizon_color = Color(0.05, 0.04, 0.04, 1)
+[sub_resource type="PhysicalSkyMaterial" id="Sky_1"]
+rayleigh_coefficient = 2.0
+mie_coefficient = 0.005
+mie_eccentricity = 0.8
+sun_disk_scale = 8.0
+exposure = 0.1
 
 [sub_resource type="Sky" id="SkyResource_1"]
 sky_material = SubResource("Sky_1")
@@ -29,7 +30,7 @@ ssao_radius = 1.5
 ssao_intensity = 1.5
 fog_enabled = true
 fog_light_color = Color(0.06, 0.07, 0.1, 1)
-fog_density = 0.02
+fog_density = 0.003
 
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_SQLite"]
 database_path = "user://voxel_deltas.sqlite"
@@ -82,7 +83,7 @@ light_energy = 0.0
 shadow_enabled = true
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
-lod_count = 6
+lod_count = 8
 run_stream_in_editor = false
 stream = SubResource("VoxelStream_SQLite")
 generator = SubResource("VoxelGen_Cubic")
