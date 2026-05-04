@@ -50,7 +50,7 @@ var _player_state_tab: VBoxContainer
 # Commands tab — three sub-views inside the COMMANDS tab. Only one
 # is visible at a time; the rest are hidden. Sub-views switch by
 # clicking a command in the list, and BACK in a sub-view returns.
-enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP }
+enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP, VIEW_DIST }
 var _commands_view: CommandView = CommandView.LIST
 
 # Sub-view containers.
@@ -58,6 +58,7 @@ var _commands_list_view: VBoxContainer
 var _commands_delete_save_view: VBoxContainer
 var _commands_teleport_view: VBoxContainer
 var _commands_time_view: VBoxContainer
+var _commands_view_dist_view: VBoxContainer
 
 # Command list buttons.
 var _btn_delete_all: Button
@@ -66,6 +67,15 @@ var _btn_teleport: Button
 var _btn_advance_day: Button
 var _btn_advance_time: Button
 var _btn_fly_mode: Button
+var _btn_view_dist: Button
+
+# View-distance sub-view.
+var _view_dist_back_btn: Button
+var _view_dist_label: Label
+var _view_dist_minus_500: Button
+var _view_dist_minus_100: Button
+var _view_dist_plus_100: Button
+var _view_dist_plus_500: Button
 
 # DELETE ALL SAVES — two-click confirm state.
 var _delete_saves_armed: bool = false
@@ -228,6 +238,7 @@ func _build_commands_tab() -> void:
 	_build_commands_delete_save_view()
 	_build_commands_teleport_view()
 	_build_commands_time_view()
+	_build_commands_view_dist_view()
 	_show_command_list()
 
 
@@ -245,9 +256,11 @@ func _build_commands_list_view() -> void:
 	_btn_advance_day  = _make_command_row("ADVANCE 1 DAY")
 	_btn_advance_time = _make_command_row("ADVANCE TIME...")
 	_btn_fly_mode     = _make_command_row("TOGGLE FLY MODE")
+	_btn_view_dist    = _make_command_row("VIEW DISTANCE...")
 
 	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
-			_btn_advance_day, _btn_advance_time, _btn_fly_mode]:
+			_btn_advance_day, _btn_advance_time, _btn_fly_mode,
+			_btn_view_dist]:
 		_commands_list_view.add_child(b)
 	_refresh_fly_mode_label()
 
@@ -421,6 +434,8 @@ func _show_command_list() -> void:
 		_commands_teleport_view.visible = false
 	if _commands_time_view != null:
 		_commands_time_view.visible = false
+	if _commands_view_dist_view != null:
+		_commands_view_dist_view.visible = false
 	# Sync fly-mode label in case the player toggled it via some
 	# other route (or returned from a save where fly was on).
 	_refresh_fly_mode_label()
@@ -586,6 +601,105 @@ func _refresh_fly_mode_label() -> void:
 	if not players.is_empty() and "is_flying" in players[0]:
 		on = bool(players[0].is_flying)
 	_btn_fly_mode.text = "  TOGGLE FLY MODE  (%s)" % ("ON" if on else "OFF")
+
+
+# --- VIEW DISTANCE sub-view ---
+
+func _build_commands_view_dist_view() -> void:
+	_commands_view_dist_view = VBoxContainer.new()
+	_commands_view_dist_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_view_dist_view.add_theme_constant_override("separation", 10)
+	_commands_view_dist_view.visible = false
+	_commands_tab.add_child(_commands_view_dist_view)
+
+	_view_dist_back_btn = _make_command_row("← BACK")
+	_commands_view_dist_view.add_child(_view_dist_back_btn)
+
+	var hint := Label.new()
+	hint.text = "Adjusts VoxelViewer streaming radius live. Higher values show more distant terrain at lower LOD. Very high values may cause stuttering while chunks load."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_view_dist_view.add_child(hint)
+
+	_view_dist_label = Label.new()
+	_view_dist_label.add_theme_font_size_override("font_size", 22)
+	_view_dist_label.add_theme_color_override("font_color", Color(0.6, 0.9, 0.6, 1))
+	_view_dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_view_dist_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_view_dist_view.add_child(_view_dist_label)
+
+	# Two rows of step buttons: coarse (+/-500) and fine (+/-100).
+	var row_coarse := HBoxContainer.new()
+	row_coarse.add_theme_constant_override("separation", 8)
+	row_coarse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_view_dist_view.add_child(row_coarse)
+
+	var row_fine := HBoxContainer.new()
+	row_fine.add_theme_constant_override("separation", 8)
+	row_fine.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_view_dist_view.add_child(row_fine)
+
+	_view_dist_minus_500 = _make_step_btn("− 500 m")
+	_view_dist_plus_500  = _make_step_btn("+ 500 m")
+	_view_dist_minus_100 = _make_step_btn("− 100 m")
+	_view_dist_plus_100  = _make_step_btn("+ 100 m")
+
+	row_coarse.add_child(_view_dist_minus_500)
+	row_coarse.add_child(_view_dist_plus_500)
+	row_fine.add_child(_view_dist_minus_100)
+	row_fine.add_child(_view_dist_plus_100)
+
+
+func _make_step_btn(label: String) -> Button:
+	var b := Button.new()
+	b.text = label
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1))
+	b.custom_minimum_size = Vector2(0, 36)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return b
+
+
+func _show_view_dist_view() -> void:
+	_commands_view = CommandView.VIEW_DIST
+	_commands_list_view.visible = false
+	_commands_delete_save_view.visible = false
+	_commands_teleport_view.visible = false
+	_commands_time_view.visible = false
+	_commands_view_dist_view.visible = true
+	_refresh_view_dist_label()
+
+
+func _refresh_view_dist_label() -> void:
+	if _view_dist_label == null:
+		return
+	var viewer := _get_voxel_viewer()
+	var dist: int = int(viewer.view_distance) if viewer != null else -1
+	if dist >= 0:
+		_view_dist_label.text = "%d m" % dist
+	else:
+		_view_dist_label.text = "— (no VoxelViewer)"
+
+
+func _adjust_view_distance(delta_m: int) -> void:
+	var viewer := _get_voxel_viewer()
+	if viewer == null:
+		log_action("DEV: view distance change ignored — VoxelViewer not found")
+		return
+	var new_dist: int = clamp(int(viewer.view_distance) + delta_m, 100, 3000)
+	viewer.view_distance = new_dist
+	_refresh_view_dist_label()
+	log_action("DEV: view distance → %d m" % new_dist)
+
+
+func _get_voxel_viewer() -> VoxelViewer:
+	# VoxelViewer is a direct child of Player3D, which is in the "player" group.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return null
+	return players[0].get_node_or_null("VoxelViewer") as VoxelViewer
 
 
 # --- Console tab ---
@@ -995,6 +1109,9 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 		if _hits_button(_btn_fly_mode, pos):
 			_toggle_fly_mode()
 			return
+		if _hits_button(_btn_view_dist, pos):
+			_show_view_dist_view()
+			return
 		return
 
 	# DELETE A SAVE sub-view: BACK or per-row DELETE.
@@ -1036,6 +1153,24 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		if _hits_control(_teleport_z_edit, pos):
 			_teleport_z_edit.grab_focus()
+			return
+
+	# VIEW DISTANCE sub-view: BACK or step buttons.
+	if _commands_view == CommandView.VIEW_DIST:
+		if _hits_button(_view_dist_back_btn, pos):
+			_show_command_list()
+			return
+		if _hits_button(_view_dist_minus_500, pos):
+			_adjust_view_distance(-500)
+			return
+		if _hits_button(_view_dist_minus_100, pos):
+			_adjust_view_distance(-100)
+			return
+		if _hits_button(_view_dist_plus_100, pos):
+			_adjust_view_distance(100)
+			return
+		if _hits_button(_view_dist_plus_500, pos):
+			_adjust_view_distance(500)
 			return
 
 	# TIME-SKIP sub-view: BACK / ADVANCE / focus on a LineEdit.
