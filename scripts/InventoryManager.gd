@@ -66,9 +66,10 @@ const ITEM_REGISTRY: Dictionary = {
 
 	# Raw materials — yielded when player removes a voxel of the
 	# matching material with the right tool.
-	"raw_stone":       {"name": "Raw Stone",       "type": "crafting_mat", "description": "A chunk of stone, fresh from the strike of a pick.",  "voxel_material": "stone"},
-	"raw_log":         {"name": "Raw Log",         "type": "crafting_mat", "description": "A length of green wood. Will need seasoning.",         "voxel_material": "wood"},
+	"raw_stone":       {"name": "Raw Stone",       "type": "crafting_mat", "description": "A chunk of stone, fresh from the strike of a pick.",   "voxel_material": "stone"},
+	"raw_log":         {"name": "Raw Log",         "type": "crafting_mat", "description": "A length of green wood. Will need seasoning.",          "voxel_material": "wood"},
 	"raw_dirt":        {"name": "Raw Dirt",        "type": "crafting_mat", "description": "Loose earth. Good for filling, less so for building.", "voxel_material": "dirt"},
+	"raw_sand":        {"name": "Raw Sand",        "type": "crafting_mat", "description": "Pale grit, scooped from a riverbank or beach.",         "voxel_material": "sand"},
 
 	# Crafting materials
 	"ashsteel_ingot":  {"name": "Ashsteel Ingot",  "type": "crafting_mat","description": "Raw Ashsteel. Required to forge Ashsteel weapons."},

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "dirt"
+material_id = 2
+display_name = "Dirt"
+color_low = Color(0.32, 0.22, 0.14, 1)
+color_high = Color(0.42, 0.3, 0.18, 1)
+color_jitter = 0.05
+mining_time_seconds = 0.3
+allowed_tools = Array[String](["iron_shovel"])
+yield_item_id = "raw_dirt"
+yield_quantity = 1
+fall_behavior = 0
+gravity_scale = 0.9
+damage_multiplier = 0.7
