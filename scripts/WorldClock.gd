@@ -48,10 +48,11 @@ signal time_of_day_changed(period: String)
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 ## How many real seconds equal one in-game hour.
-## 240 = 4 real minutes per game hour → full day in 96 real minutes (default).
-## 120 = 2 real minutes per game hour → full day in 48 real minutes (faster).
-## 12  = 12 real seconds per game hour → full day in ~5 real minutes (debug speed).
-@export var real_seconds_per_game_hour: float = 240.0
+## 75   = 75 real seconds per game hour → full day in 30 real minutes (default).
+## 120  = 2 real minutes per game hour  → full day in 48 real minutes (slower).
+## 240  = 4 real minutes per game hour  → full day in 96 real minutes (very slow).
+## 12   = 12 real seconds per game hour → full day in ~5 real minutes (debug speed).
+@export var real_seconds_per_game_hour: float = 75.0
 
 ## The hour the game starts at on a fresh save (default: 8 AM).
 @export_range(0, 23) var start_hour: int = 8
