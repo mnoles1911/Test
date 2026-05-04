@@ -162,6 +162,10 @@ var _location_profile: WeatherLocationProfile = null
 # -1 means "no override / no proximity zone active".
 var _override_state: int = -1
 var _override_hours_remaining: float = 0.0
+# Proximity stack: array of {zone, state_id, priority}. The entry with
+# highest priority wins. _proximity_state mirrors the resolved value
+# so _resolve_active_state stays cheap.
+var _proximity_stack: Array = []
 var _proximity_state: int = -1
 
 # What the schedule wants right now. Updated by _on_hour_changed and
@@ -399,14 +403,32 @@ func get_wind_velocity() -> Vector3:
 	return wind_direction * _live_wind_strength
 
 
-# Phase 11 hook — WeatherZone calls these on entry/exit.
-func set_proximity_state(state_id: int) -> void:
-	_proximity_state = state_id
-	_resolve_active_state()
+# Phase 11 hooks — WeatherZone calls these on entry/exit. Stack-based
+# so multiple overlapping zones resolve by priority rather than fighting.
+func push_proximity_zone(zone: Object, state_id: int, priority: int) -> void:
+	# Replace any existing entry for this zone (re-entry, edge cases).
+	for i in range(_proximity_stack.size() - 1, -1, -1):
+		if _proximity_stack[i].zone == zone:
+			_proximity_stack.remove_at(i)
+	_proximity_stack.append({"zone": zone, "state_id": state_id, "priority": priority})
+	_recompute_proximity_state()
 
 
-func clear_proximity_state() -> void:
-	_proximity_state = -1
+func pop_proximity_zone(zone: Object) -> void:
+	for i in range(_proximity_stack.size() - 1, -1, -1):
+		if _proximity_stack[i].zone == zone:
+			_proximity_stack.remove_at(i)
+	_recompute_proximity_state()
+
+
+func _recompute_proximity_state() -> void:
+	var winner: int = -1
+	var best_priority: int = -2147483648
+	for entry in _proximity_stack:
+		if int(entry.priority) > best_priority:
+			best_priority = int(entry.priority)
+			winner = int(entry.state_id)
+	_proximity_state = winner
 	_resolve_active_state()
 
 
@@ -441,6 +463,7 @@ func clear_persistent_state() -> void:
 	_override_state = -1
 	_override_hours_remaining = 0.0
 	_proximity_state = -1
+	_proximity_stack.clear()
 	_transition_progress = 1.0
 
 
