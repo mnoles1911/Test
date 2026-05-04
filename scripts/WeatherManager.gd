@@ -191,6 +191,21 @@ var _live_fog_density: float = STATE_PROFILES[State.CLEAR]["fog_density"]
 var _live_ambient_dim: float = 1.0
 var _live_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_strength"]
 
+# Particle systems. Spawned lazily on the first transition that needs
+# them so a CLEAR-only world never builds the rigs. Position follows
+# the active camera every frame.
+var _rain_particles: GPUParticles3D = null
+var _snow_particles: GPUParticles3D = null
+
+# How high above the camera the particle emitter sits (m). The
+# particles fall from this height; tuning matters for "rain
+# arriving from the sky" vs "rain spawning at face height".
+const PARTICLE_HEIGHT_OFFSET: float = 8.0
+# Half-extents of the emission box (m). Particles emit anywhere
+# inside this, so the rain blanket roughly covers BOX_X*2 × BOX_Z*2 m
+# around the player. 20 m matches typical voxel render distance.
+const PARTICLE_EMISSION_BOX: Vector3 = Vector3(20.0, 0.0, 20.0)
+
 
 # ============================================================
 # Signals
@@ -264,6 +279,12 @@ func _process(delta: float) -> void:
 	# heading.
 	if get_node_or_null("/root/WaterFlowManager") != null:
 		WaterFlowManager.set_global_wind(wind_direction, _live_wind_strength)
+
+	# Particle follow + amount ramp. Done every frame so the rain
+	# blanket tracks the camera; amount is updated each frame from the
+	# interpolated state so the particle count tweens smoothly with
+	# the rest of the transition.
+	_update_particles()
 
 	# Story override countdown — tick down in seconds, ticking the
 	# remaining "hours" by delta/3600 of a real-world hour. We use real
@@ -442,6 +463,158 @@ func _advance_wind_direction(delta: float) -> void:
 	var step: float = clampf(angle_to, -max_step, max_step)
 	var new_2d: Vector2 = current_2d.rotated(step)
 	wind_direction = Vector3(new_2d.x, 0.0, new_2d.y)
+
+
+# ------------------------------------------------------------
+# Particles
+# ------------------------------------------------------------
+
+func _update_particles() -> void:
+	# Active rain density (interpolated). Values < 1 act as "off".
+	var prev_profile: Dictionary = STATE_PROFILES[current_state]
+	var target_profile: Dictionary = STATE_PROFILES[_target_state]
+	var t: float = _transition_progress
+
+	# Rain — both LIGHT_RAIN and HEAVY_RAIN feed into the rain emitter.
+	# We add the contributions from current_state and _target_state
+	# weighted by the transition so rain ramps in/out smoothly.
+	var rain_amount: int = int(round(lerpf(
+		_state_rain_density(current_state),
+		_state_rain_density(_target_state),
+		t)))
+	var snow_amount: int = int(round(lerpf(
+		_state_snow_density(current_state),
+		_state_snow_density(_target_state),
+		t)))
+
+	# Lazily build emitters the first time a non-zero amount is needed.
+	if rain_amount > 0 and _rain_particles == null:
+		_rain_particles = _build_rain_particles()
+		add_child(_rain_particles)
+	if snow_amount > 0 and _snow_particles == null:
+		_snow_particles = _build_snow_particles()
+		add_child(_snow_particles)
+
+	# Position each emitter above the active camera. Emitters that are
+	# sitting at amount = 0 still get repositioned so when they next
+	# turn on, they don't dump particles in the wrong place.
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam != null:
+		var follow_pos: Vector3 = cam.global_position + Vector3(0.0, PARTICLE_HEIGHT_OFFSET, 0.0)
+		if _rain_particles != null:
+			_rain_particles.global_position = follow_pos
+		if _snow_particles != null:
+			_snow_particles.global_position = follow_pos
+
+	if _rain_particles != null:
+		_rain_particles.amount = maxi(1, rain_amount)
+		_rain_particles.emitting = rain_amount > 0
+		# Wind drift writes directly to the particle process material's
+		# gravity vector; the result is rain that visibly slants when
+		# the wind is strong.
+		_apply_wind_to_particles(_rain_particles, _live_wind_strength * 0.3)
+
+	if _snow_particles != null:
+		_snow_particles.amount = maxi(1, snow_amount)
+		_snow_particles.emitting = snow_amount > 0
+		# Snow drifts more than rain at the same wind strength
+		# because the lifetime is much longer; multiplier stays small.
+		_apply_wind_to_particles(_snow_particles, _live_wind_strength * 0.5)
+
+
+func _state_rain_density(state_id: int) -> float:
+	if state_id == State.LIGHT_RAIN or state_id == State.HEAVY_RAIN:
+		return float(STATE_PROFILES[state_id]["particle_density"])
+	return 0.0
+
+
+func _state_snow_density(state_id: int) -> float:
+	if state_id == State.SNOW:
+		return float(STATE_PROFILES[state_id]["particle_density"])
+	return 0.0
+
+
+func _build_rain_particles() -> GPUParticles3D:
+	# Programmatic rain rig. Vertical line meshes falling at high speed
+	# inside a 40×40 m box centred on (and following) the camera.
+	var p := GPUParticles3D.new()
+	p.name = "RainParticles"
+	p.amount = 1
+	p.lifetime = 0.6
+	p.preprocess = 0.3   # so particles are present on first frame
+	p.fixed_fps = 30
+	p.local_coords = false
+
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = PARTICLE_EMISSION_BOX
+	mat.gravity = Vector3(0.0, -25.0, 0.0)
+	mat.initial_velocity_min = 0.0
+	mat.initial_velocity_max = 0.0
+	mat.scale_min = 0.6
+	mat.scale_max = 1.0
+	mat.color = Color(0.6, 0.7, 0.85, 0.55)
+	p.process_material = mat
+
+	# Thin vertical streak — a tall narrow quad is the cheapest
+	# representation that still reads as falling rain at speed.
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(0.02, 0.35)
+	var mesh_mat := StandardMaterial3D.new()
+	mesh_mat.albedo_color = Color(0.7, 0.8, 0.95, 0.75)
+	mesh_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mesh_mat.billboard_keep_scale = true
+	mesh.material = mesh_mat
+	p.draw_pass_1 = mesh
+	return p
+
+
+func _build_snow_particles() -> GPUParticles3D:
+	# Snow falls slowly with longer lifetime and a softer particle.
+	var p := GPUParticles3D.new()
+	p.name = "SnowParticles"
+	p.amount = 1
+	p.lifetime = 4.0
+	p.preprocess = 2.0
+	p.fixed_fps = 30
+	p.local_coords = false
+
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = PARTICLE_EMISSION_BOX
+	mat.gravity = Vector3(0.0, -1.5, 0.0)
+	mat.initial_velocity_min = 0.0
+	mat.initial_velocity_max = 0.2
+	mat.scale_min = 0.04
+	mat.scale_max = 0.08
+	mat.color = Color(1.0, 1.0, 1.0, 0.9)
+	p.process_material = mat
+
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(0.18, 0.18)
+	var mesh_mat := StandardMaterial3D.new()
+	mesh_mat.albedo_color = Color(1.0, 1.0, 1.0, 0.9)
+	mesh_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mesh_mat.billboard_keep_scale = true
+	mesh.material = mesh_mat
+	p.draw_pass_1 = mesh
+	return p
+
+
+func _apply_wind_to_particles(p: GPUParticles3D, drift_factor: float) -> void:
+	# Bias the gravity vector horizontally so falling particles slant
+	# in the wind direction. The vertical component stays the dominant
+	# force; horizontal is only ~drift_factor m/s² of nudge.
+	var mat := p.process_material as ParticleProcessMaterial
+	if mat == null:
+		return
+	var base_g: Vector3 = mat.gravity
+	var horizontal: Vector3 = wind_direction * drift_factor
+	mat.gravity = Vector3(horizontal.x, base_g.y, horizontal.z)
 
 
 # ------------------------------------------------------------
