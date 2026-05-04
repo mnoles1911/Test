@@ -19,13 +19,12 @@ WaterBody (Node3D)
     └── CollisionShape3D           ← BoxShape3D spanning the water body
 ```
 
-**WaterVisual:** Currently a placeholder `StandardMaterial3D` on a `PlaneMesh` (transparent blue, slight metallic + low roughness). The **Boujie Water Shader** (Godot Asset Library #2070) is the planned drop-in replacement — adds animated surface, reflections, shoreline foam, single-draw LOD ring mesh — but it has not been installed in this project. Swap when the asset lands. Current shader is functional for swim-system testing.
-- LOD ring mesh — efficient single draw call even at ocean scale (Boujie)
-- Supports animated surface, reflections, shoreline foam (Boujie)
-- Works with `WorldEnvironment` fog for underwater transitions
-- Tag: set `WaterVolume` metadata `water_depth: float` to indicate max depth (used for submersion detection)
+**WaterVisual:** Custom sine-sum vertex-displacement shader at `assets/shaders/water.gdshader` + shared `assets/shaders/water_material.tres`. Two summed sine waves (different directions, frequencies, speeds, amplitudes) displace `VERTEX.y`; wind biases the dominant wave direction and scales overall amplitude. Crests are tinted slightly lighter than troughs. Both shipping water scenes (`scenes/water/water_volume.tscn`, `scenes/water/ocean_volume.tscn`) reference the same `ShaderMaterial.tres` so a single tune affects every body.
+- Wave domain is world-space XZ → adjacent water bodies stay phase-aligned (no seam if two volumes overlap)
+- Uniforms: `wave_amplitude_a/b`, `wave_frequency_a/b`, `wave_speed_a/b`, `wave_dir_a/b`, `wind_dir`, `wind_strength`, `base_color`, `crest_color`
+- The **Boujie Water Shader** (Godot Asset Library #2070) remains an optional future upgrade for reflections, shoreline foam, and single-draw LOD ring mesh. The custom shader covers the wave-animated surface need with zero third-party dependency.
 
-**Current implementation (2026-05-03):** `scripts/WaterVolume.gd` exposes `surface_y: float` (world-space Y of the water surface) and `get_current_velocity() -> Vector3` (river current). `Player3D._update_water_state()` polls every Area3D in the `water_volume` group; first overlap wins; `_in_water` is set when feet `global_position.y <= surface_y`. Swim physics is `MOTION_MODE_FLOATING` with gravity replaced by damping toward zero. Submersion uses a head offset of 1.5 m above feet; submerged for >30 s drains HP at 5/s.
+**Current implementation (2026-05-04):** `scripts/WaterVolume.gd` exposes `surface_y: float` (world-space Y of the water surface), `get_current_velocity() -> Vector3` (river current), and `set_wind(dir, strength)` (the public hook the future `WeatherManager` will call to drive surface waves). `Player3D._update_water_state()` polls every Area3D in the `water_volume` group; first overlap wins; `_in_water` is set when feet `global_position.y <= surface_y`. Swim physics is `MOTION_MODE_FLOATING` with vertical swim controls (Space ascends, Crouch dives, both held — release to float at depth, capped at ±3 m/s). Submersion uses a head offset of 1.6 m above feet; submerged for >30 s drains HP at 5/s. Surfacing triggers a 2 s gasp pause before breath refill begins. While submerged, a CanvasLayer ColorRect overlay tints the screen blue-green (see `scripts/UnderwaterFilter.gd`).
 
 **WaterVolume (`Area3D`):** Collision volume covering the full 3D extent of the water body — not just the surface.
 - Connect `body_entered` and `body_exited` to `Player3D._on_water_volume_entered/exited()`
@@ -172,8 +171,26 @@ func _physics_process(delta: float) -> void:
 ## Camera Behavior Underwater
 
 - `SpringArm3D` arm shortens to ~2.5m when submerged (auto-handled by SpringArm collision against water surface geometry)
-- `Camera3D` adds a `CameraAttributes` environment blend for slight blue tint and reduced fog distance
-- No special underwater camera script needed — SpringArm collision handles the arm shortening naturally
+- **Underwater tint filter (implemented 2026-05-04):** `scripts/UnderwaterFilter.gd` is a `CanvasLayer` child of Player3D containing a translucent blue-green `ColorRect` (default `Color(0.18, 0.32, 0.42, 0.42)`) that fills the viewport. `Player3D._update_water_state()` calls `set_active(_is_submerged)` every frame; the filter only flips visibility when the state actually changes (idempotent).
+- The `WorldEnvironment` fog approach was rejected: `DayNightCycle.gd` writes `env.fog_light_color` every frame, so any underwater fog tweak would be overwritten on the next tick. The `CanvasLayer` overlay decouples the underwater feel from the day/night system.
+- Future polish: replace the flat `ColorRect` with a `ShaderMaterial` that adds screen-depth fog falloff and slight chromatic aberration. v1 ships with the flat tint — readable, zero shader maintenance.
+
+---
+
+## Wind & Weather Coupling
+
+The water surface shader reads two uniforms (`wind_dir`, `wind_strength`) that bias wave direction and scale wave amplitude. Designers tune them per body via `WaterVolume.gd` `@export` sliders today; the future `WeatherManager` will write them programmatically.
+
+**Public API:**
+
+```gdscript
+# WaterVolume.gd
+func set_wind(direction: Vector3, strength: float) -> void
+```
+
+`direction` is a unit vector in world XZ (Y component ignored). `strength` is 0–5: `0` = dead calm, `1` = breezy, `3` = stormy chop, `5` = lethal storm. Calling this is equivalent to setting both `wind_direction` and `wind_strength` `@exports` at once but pushes the shader uniforms exactly once instead of twice.
+
+**Future WeatherManager wiring:** when weather state changes, iterate every Area3D in the `water_volume` group, call `set_wind(weather.wind_direction, weather.wind_strength)` on each. Smoothing (lerp the values over a few seconds rather than snapping) is the WeatherManager's responsibility, not WaterVolume's.
 
 **Do not** use a separate camera mode for underwater. The standard CameraRig handles it via SpringArm collision.
 

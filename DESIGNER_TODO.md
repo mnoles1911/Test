@@ -794,3 +794,42 @@ generator + mining flow, so this list is more thorough than usual.
 
 - [ ] **No frame stutter on common edits**: pickaxe rapidly through a hillside (mixed grass/dirt/stone). Frame time stays under 16 ms (60 FPS) on the dev machine.
 - [ ] **No frame stutter on collapse**: detonate a powder charge against a cliff face (mixed materials, includes some sand for LOOSE-fall testing). Frame time stays under 33 ms.
+
+### Water system upgrade (PR — one-time)
+
+Validates the new wave shader, vertical swim, breath delay, and underwater filter end-to-end. Run once after PR merges.
+
+**Visuals**
+
+- [ ] **Animated waves**: open `World3D.tscn`, run. Both the test pond and the ocean surface show animated wave displacement (not flat planes). Crests visibly lighter than troughs.
+- [ ] **No seam between adjacent water bodies**: if two volumes overlap or sit edge-to-edge, the wave pattern lines up (world-space XZ as wave domain ensures phase alignment).
+- [ ] **Wave inspector tuning live**: while running, click the test `WaterVolume` in the editor. Drag `wind_strength` from 0 to 3 — waves grow taller in real time. Drag `wind_direction` from `(1, 0, 0)` to `(0, 0, 1)` — wave roll direction shifts.
+
+**Vertical swim**
+
+- [ ] **Ascend on Space**: walk into the test pond. Press and hold Space. Roland climbs at ~3 m/s.
+- [ ] **Descend on Crouch**: in water, press and hold Crouch. Roland dives at ~3 m/s.
+- [ ] **Float on release**: in water, release both. Vertical velocity decays to zero — Roland holds depth.
+- [ ] **Crouch toggle suppressed in water**: pressing Crouch underwater does NOT toggle the standing crouch state. Surface, walk to dry land — Roland is upright (status text not "CROUCHING").
+
+**Breath system**
+
+- [ ] **Submerged drains breath**: dive head-fully under, watch HUD status text. Counts down `BREATH: 30s` → 0 over 30 seconds.
+- [ ] **Drowning damage starts at 0 breath**: hold under for 35+ seconds. Status flips to "DROWNING", HP starts dropping at ~5 HP/s.
+- [ ] **2 s recovery delay**: drain breath to ~10s, surface fully (status flips to "SWIMMING"). For ~2 seconds breath stays at 10s. Then it climbs back up at 8/s.
+- [ ] **Recovery delay resets on re-submerge**: surface for 1 s (less than the 2 s delay), dive again. Submerge → resurface — the delay still pauses 2 s before refill, not 1 s.
+
+**Underwater filter**
+
+- [ ] **Tint visible when submerged**: dive head-fully under. Screen takes on a translucent blue-green tint.
+- [ ] **Tint clears on surface**: surface — tint disappears immediately.
+- [ ] **No tint when waist-deep but head dry**: walk in until waist is wet but head is above the surface. No tint.
+- [ ] **Tint clears on fly mode**: dive, toggle fly mode (F1 debug overlay → TOGGLE FLY MODE). Tint clears.
+
+**Designer ergonomics — adding a new water body**
+
+- [ ] **Under 5 minutes from idea to swim**: stop the project. In the FileSystem dock, duplicate `scenes/water/water_volume.tscn` as `scenes/water/swamp_pool.tscn`. Drop one instance into World3D at a new location. Set `surface_y` and (optionally) `wind_direction` / `wind_strength` in the inspector. Run. Pool animates with its own wind values, swim physics works, breath/drowning gate as expected. Goal: under 5 minutes from "decide to add water" to "swimming in it." If longer, file a follow-up.
+
+**Future WeatherManager smoke test**
+
+- [ ] **set_wind() works at runtime**: from the editor's Remote inspector while running, call `WaterVolume_Test.set_wind(Vector3(0, 0, 1), 3.0)`. Waves shift direction and grow taller without restarting the scene.
