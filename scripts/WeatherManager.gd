@@ -149,6 +149,10 @@ const DEFAULT_RANDOM_DISTRIBUTION: Dictionary = {
 # weather changes feel paced (~3 changes per day).
 const SCHEDULE_TRANSITION_HOURS: Array[int] = [6, 12, 18]
 
+# Active location profile. When null, _roll_random_state falls back to
+# DEFAULT_RANDOM_DISTRIBUTION and SCHEDULE_TRANSITION_HOURS.
+var _location_profile: WeatherLocationProfile = null
+
 
 # ============================================================
 # State
@@ -444,22 +448,46 @@ func _resolve_active_state() -> void:
 
 func _on_hour_changed(new_hour: int) -> void:
 	# Roll a new scheduled state on the configured transition hours.
-	if not new_hour in SCHEDULE_TRANSITION_HOURS:
+	# The profile (if set) overrides the default hour list.
+	var hours: Array = SCHEDULE_TRANSITION_HOURS
+	if _location_profile != null and not _location_profile.transition_hours.is_empty():
+		hours = _location_profile.transition_hours
+	if not new_hour in hours:
 		return
-	_scheduled_state = _roll_random_state()
+	_scheduled_state = _roll_state_for_today()
 	_resolve_active_state()
 
 
+func _roll_state_for_today() -> int:
+	# If a profile is set and today (1-indexed) falls inside its
+	# authored_sequence, use the authored entry deterministically.
+	# Otherwise fall through to weighted random.
+	if _location_profile != null:
+		var day_idx: int = 0
+		if get_node_or_null("/root/WorldClock") != null:
+			day_idx = WorldClock.current_day - 1
+		if day_idx >= 0 and day_idx < _location_profile.authored_sequence.size():
+			return int(_location_profile.authored_sequence[day_idx])
+	return _roll_random_state()
+
+
 func _roll_random_state() -> int:
-	# Weighted random pick from DEFAULT_RANDOM_DISTRIBUTION. Phase 9
-	# replaces this with a per-location profile lookup.
+	# Weighted random pick. Profile overrides the default distribution.
+	var dist: Dictionary = DEFAULT_RANDOM_DISTRIBUTION
+	if _location_profile != null and not _location_profile.random_distribution.is_empty():
+		dist = _location_profile.random_distribution
 	var roll: float = randf()
 	var cumulative: float = 0.0
-	for state_id in DEFAULT_RANDOM_DISTRIBUTION.keys():
-		cumulative += DEFAULT_RANDOM_DISTRIBUTION[state_id]
+	for state_id in dist.keys():
+		cumulative += float(dist[state_id])
 		if roll < cumulative:
-			return state_id
+			return int(state_id)
 	return State.CLEAR
+
+
+# Designer / region-transition hook. Pass null to clear.
+func set_location_profile(profile: WeatherLocationProfile) -> void:
+	_location_profile = profile
 
 
 # ------------------------------------------------------------
