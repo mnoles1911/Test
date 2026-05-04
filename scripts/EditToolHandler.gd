@@ -146,6 +146,17 @@ func _process(delta: float) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_clear_target()
 		return
+
+	# Bucket is one-shot per click (not held). Routes through its own
+	# handler so the held-attack gate below doesn't apply.
+	if Input.is_action_just_pressed("attack") and _swing_cooldown_remaining <= 0.0:
+		var equipped: String = ""
+		if get_node_or_null("/root/InventoryManager"):
+			equipped = InventoryManager.get_equipped("weapon")
+		if equipped == "bucket" or equipped == "bucket_filled":
+			_handle_bucket_click(equipped)
+			return
+
 	if not Input.is_action_pressed("attack"):
 		_clear_target()
 		return
@@ -156,6 +167,111 @@ func _process(delta: float) -> void:
 		return
 
 	_tick_held_swing(delta)
+
+
+func _handle_bucket_click(equipped: String) -> void:
+	# Bucket use is one-shot per click. Two states:
+	#   "bucket"        : swing at water (any source region or flow
+	#                     cell within reach) → fill the bucket.
+	#   "bucket_filled" : swing at empty space → place a permanent
+	#                     source cell at the targeted voxel and
+	#                     empty the bucket.
+	#
+	# Targeting strategy: use the camera forward ray. For a fill
+	# action we need to check whether the targeted air-voxel is
+	# inside water; for a place action we need an air voxel just
+	# in front of the player (one voxel-width along the camera
+	# ray) so we don't try to place inside terrain.
+	if get_node_or_null("/root/WaterFlowManager") == null:
+		return
+	if get_node_or_null("/root/InventoryManager") == null:
+		return
+	if _camera_rig == null:
+		return
+
+	# Compute a target world-space point: max_reach_meters in front
+	# of the camera, regardless of whether the ray hits anything.
+	# (Hitting voxels means we'd target the voxel surface; for water
+	# placement we want to be IN AIR.)
+	var camera: Camera3D = _camera_rig.get_node_or_null("Camera3D") as Camera3D
+	if camera == null:
+		return
+	var aim_origin: Vector3 = camera.global_position
+	var aim_dir: Vector3 = -camera.global_transform.basis.z
+	# Stop the aim shorter than the full reach so we land in front of
+	# the player rather than at the terrain wall.
+	var aim_distance: float = minf(max_reach_meters, 2.5)
+	var target_world: Vector3 = aim_origin + aim_dir * aim_distance
+
+	if equipped == "bucket":
+		_bucket_fill_at(target_world)
+	elif equipped == "bucket_filled":
+		_bucket_place_at(target_world)
+	_swing_cooldown_remaining = swing_cooldown_seconds
+
+
+func _bucket_fill_at(world_pos: Vector3) -> void:
+	# If the target world position is inside any water cell or source
+	# region, swap the bucket → bucket_filled. Otherwise no-op.
+	if not WaterFlowManager.is_position_in_water(world_pos):
+		# Also try the player's feet — Roland is standing in water.
+		var player := get_parent() as CharacterBody3D
+		if player != null and WaterFlowManager.is_position_in_water(player.global_position):
+			pass  # fall through to fill
+		else:
+			return
+	InventoryManager.remove_item("bucket", 1)
+	InventoryManager.add_item("bucket_filled", 1)
+	InventoryManager.equip("weapon", "bucket_filled")
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Bucket filled.")
+	else:
+		print("[EditToolHandler] Bucket filled.")
+
+
+func _bucket_place_at(world_pos: Vector3) -> void:
+	# Place a permanent source cell at the voxel containing world_pos.
+	# Refuses if the voxel is solid terrain or already a water cell.
+	# NoEditZone with blocks_water_flow blocks placement (matching
+	# flow rules).
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return
+	var voxel_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
+	# Reject solid terrain at this cell (can't place water inside rock).
+	# Material-id decoding goes through VoxelMaterialRegistry per the
+	# CLAUDE.md "Critical patterns" rule — never decode the alpha byte
+	# by hand.
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain != null:
+		var tool: VoxelTool = terrain.get_voxel_tool()
+		if tool != null:
+			tool.channel = VoxelBuffer.CHANNEL_COLOR
+			var packed: int = tool.get_voxel(voxel_pos)
+			var mat_id: int = 0
+			if get_node_or_null("/root/VoxelMaterialRegistry"):
+				mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
+			else:
+				mat_id = packed & 0xFF
+			if mat_id != 0:
+				if get_node_or_null("/root/DebugOverlay"):
+					DebugOverlay.log_action("Bucket place rejected: voxel solid.")
+				return
+	# NoEditZone gate.
+	if get_node_or_null("/root/NoEditZoneRegistry") and \
+		NoEditZoneRegistry.is_water_flow_blocked_at(world_pos):
+		if get_node_or_null("/root/DebugOverlay"):
+			DebugOverlay.log_action("Bucket place rejected: NoEditZone.")
+		else:
+			print("[EditToolHandler] This place doesn't yield to me.")
+		return
+	WaterFlowManager.add_source(voxel_pos)
+	InventoryManager.remove_item("bucket_filled", 1)
+	InventoryManager.add_item("bucket", 1)
+	InventoryManager.equip("weapon", "bucket")
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Bucket placed water source at %s." % voxel_pos)
+	else:
+		print("[EditToolHandler] Bucket placed water source.")
 
 
 func _clear_target() -> void:

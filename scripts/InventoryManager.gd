@@ -63,6 +63,8 @@ const ITEM_REGISTRY: Dictionary = {
 	"iron_pickaxe":    {"name": "Iron Pickaxe",    "type": "tool", "description": "Wood-hafted iron pick. For stone, ore, and patient work.",                      "tool_target_materials": ["stone", "ore"], "combat_damage": 8},
 	"iron_axe":        {"name": "Iron Axe",        "type": "tool", "description": "A felling axe. Lighter than it looks; bites trees and armor in equal measure.", "tool_target_materials": ["wood"],         "combat_damage": 12},
 	"iron_shovel":     {"name": "Iron Shovel",     "type": "tool", "description": "Iron blade on a hardwood haft. Earth, sand, ash — anything that yields.",        "tool_target_materials": ["dirt", "sand", "clay", "ash"], "combat_damage": 6},
+	"bucket":          {"name": "Bucket",          "type": "tool", "description": "Empty bucket. Swing at water to fill it.",                                       "tool_target_materials": ["water"], "combat_damage": 0},
+	"bucket_filled":   {"name": "Bucket of Water", "type": "tool", "description": "Sloshes when carried. Swing at empty space to place a water source.",            "tool_target_materials": ["water"], "combat_damage": 0},
 
 	# Raw materials — yielded when player removes a voxel of the
 	# matching material with the right tool.

@@ -43,6 +43,28 @@ func _ready() -> void:
 	else:
 		push_warning("[World3D] VoxelEditManager autoload not registered; voxel edits will not work.")
 
+	# --- Seed water source regions ---
+	# Replace the old WaterVolume_Test and OceanVolume Area3D scenes
+	# (deleted in the voxel-water refactor) with WaterFlowManager source
+	# regions. Source regions are AABBs — O(1) memory regardless of size,
+	# so a 200×200 m ocean costs nothing extra.
+	#
+	# Test pond: 10×3×10 m centered at world (-18, 0, 4), surface at
+	# Y=1.5. Visible animated surface arrives in Phase 2 with the
+	# WaterChunkMesher. Phase 1 only registers the region for swim/
+	# breath physics queries.
+	#
+	# Ocean: 200×200 m at sea level (Y=8). Volume goes 22 m below sea
+	# level so diving deep still registers as in-water.
+	if get_node_or_null("/root/WaterFlowManager"):
+		var pond_aabb := AABB(Vector3(-23.0, -1.5, -1.0), Vector3(10.0, 3.0, 10.0))
+		WaterFlowManager.add_source_region(pond_aabb)
+		var ocean_aabb := AABB(Vector3(-100.0, -22.0, -100.0), Vector3(200.0, 30.0, 200.0))
+		WaterFlowManager.add_source_region(ocean_aabb)
+		print("[World3D] Seeded WaterFlowManager with %d source regions." % 2)
+	else:
+		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
+
 	# --- Apply saved player position ---
 	# When the world scene loads after a load_save_file() call,
 	# GameState.player_position holds Roland's saved 3D position.

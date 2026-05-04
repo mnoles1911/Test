@@ -833,3 +833,50 @@ Validates the new wave shader, vertical swim, breath delay, and underwater filte
 **Future WeatherManager smoke test**
 
 - [ ] **set_wind() works at runtime**: from the editor's Remote inspector while running, call `WaterVolume_Test.set_wind(Vector3(0, 0, 1), 3.0)`. Waves shift direction and grow taller without restarting the scene.
+
+### Voxel water refactor (PR — one-time)
+
+Validates the voxel-based water sim that replaced the Area3D `WaterVolume` model. Run once after the PR merges. Supersedes most of the "Water system upgrade" checklist above — the underwater filter and breath system are unchanged, but everything else (wave shader, swim physics, water authoring) is now driven by `WaterFlowManager`.
+
+**Sources & static water (Phase 1–2)**
+
+- [ ] **Test pond appears**: load `World3D.tscn`. The `World3DBootstrap.add_source_region` call in the script seeds a 10×3×10m AABB at world (-18, 0, 4). A wavy animated water surface should render there (Phase 2 emits the top-plane mesh).
+- [ ] **Ocean appears at sea level**: a 200×200m water surface should render at world Y=8. Walk the camera around — chunks within 64m of the player have meshes; beyond that they're culled.
+- [ ] **Walk into pond → swim physics activate**: motion mode flips to FLOATING, status text "SWIMMING", vertical swim controls work.
+- [ ] **Submerge head**: status text "BREATH: 30s" counts down. Underwater filter (blue-green tint) visible.
+- [ ] **Bare shovel on bank does nothing visible**: we removed the WaterVolume Area3Ds; there's no scene-Tree water node to delete or move.
+
+**Gravity drop (Phase 3)**
+
+- [ ] **Pickaxe under the pond**: equip iron_pickaxe, swing at a stone voxel directly under the pond bank. Within 4 ticks (~1 s), water drops into the new air voxel. Continue carving downward — water cascades down the column.
+- [ ] **Side-tunnel from the pond**: carve a horizontal tunnel out from the pond at sea level. Water doesn't flow yet (gravity-only Phase 3), but the air voxels stay dry. (Lateral spread is Phase 4 below.)
+
+**Lateral spread + decay (Phase 4)**
+
+- [ ] **Horizontal channel fills**: with the side-tunnel from the previous step, water now flows along it. Cells visibly thinner (lower level) the further from the source. Stops 7 cells out from the source (level 8 → 1 → 0).
+- [ ] **Channel evaporates when source removed**: dig out the source-region edge so the channel no longer connects to the pond AABB. Within ~10 seconds the entire channel evaporates as monotone-decay drains it.
+- [ ] **NoEditZone blocks water**: place a NoEditZone Area3D (with attached `NoEditZone.gd` script, `blocks_water_flow=true`) across a player-dug channel. Water dams against the boundary — no cells inside the zone.
+- [ ] **NoEditZone with blocks_water_flow=false lets water through**: toggle the same zone to false. Water flows in.
+
+**Save/load (Phase 5)**
+
+- [ ] **Bucket placement persists**: equip the bucket, fill at the pond, place a water source on a hill. Save (`F5` or campfire). Quit. Reload. The placed source is still there; its downhill cascade is still flowing within a few ticks.
+- [ ] **Pre-v11 saves invalidate**: try to load a save from before the refactor. Should log a version mismatch or refuse to load (per the existing `voxel_generator_version` gate in `GameState.load_save_file`).
+
+**River currents (Phase 6)**
+
+- [ ] **No current in still water**: float in the middle of the pond — no horizontal drift.
+- [ ] **River pushes player downstream**: place a chain of bucket sources stepping down a slope (a river headwater above, terrain channel leading down). Swim into the channel — Roland drifts toward the lower end. Stronger drift where the level gradient is steeper.
+- [ ] **Ocean interior calm**: swim into the middle of the ocean source region. No drift in any direction (every neighbor is also level 8).
+
+**Bucket tool (Phase 7)**
+
+- [ ] **Empty bucket fills at water**: equip the bucket. Click while in the pond (or aimed at any water cell within 2.5m). Bucket → bucket_filled. Inventory shows the swap.
+- [ ] **Filled bucket places water**: equip bucket_filled. Aim at empty space (in air). Click. A water source appears at that voxel. Bucket → bucket. The source begins cascading downward.
+- [ ] **Bucket place rejected by NoEditZone**: aim into a NoEditZone with `blocks_water_flow=true`. Click. Output panel logs "Bucket place rejected: NoEditZone." Bucket stays filled.
+- [ ] **Bucket place rejected by solid voxel**: aim into a stone voxel. Click. Output logs "Bucket place rejected: voxel solid." Bucket stays filled.
+
+**Performance**
+
+- [ ] **No frame stutter on edits near water**: pickaxe rapidly through the pond bank for 10+ seconds. Frame time stays under 16 ms (60 FPS) on the dev machine. WaterFlowManager flow tick costs visible in the profiler — should be < 2 ms per 4 Hz tick.
+- [ ] **Out-of-radius dirty chunks don't burn frames**: build a deep mineshaft 50m+ from any water. Dig rapidly. Flow tick should NOT process those chunks (they're outside ACTIVE_RADIUS_M=20m around the player).

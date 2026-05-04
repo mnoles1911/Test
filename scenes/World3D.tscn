@@ -4,8 +4,6 @@
 [ext_resource type="Script" uid="uid://b2pwvkbcyewb" path="res://scripts/CampfireFlicker3D.gd" id="2_flicker"]
 [ext_resource type="Script" uid="uid://d3ymbeeh31nga" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
 [ext_resource type="Script" uid="uid://c6pjntrssbrik" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
-[ext_resource type="PackedScene" path="res://scenes/water/water_volume.tscn" id="5_water"]
-[ext_resource type="PackedScene" path="res://scenes/water/ocean_volume.tscn" id="6_ocean"]
 [ext_resource type="Script" uid="uid://ekwqr2h0r6tf" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
 [ext_resource type="Script" uid="uid://cahyr7gl7p211" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
 
@@ -160,11 +158,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 5, 0)
 
 [node name="ZoneShape" type="CollisionShape3D" parent="NoEditZone_Test" unique_id=2000000003]
 shape = SubResource("NoEditZone_TestShape")
-
-[node name="WaterVolume_Test" parent="." unique_id=1135040027 instance=ExtResource("5_water")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18, 0, 4)
-
-[node name="OceanVolume" parent="." unique_id=2000000010 instance=ExtResource("6_ocean")]
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 120, 0)

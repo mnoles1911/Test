@@ -43,7 +43,7 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 10
+const WORLD_GENERATOR_VERSION: int = 11
 # Bump this constant whenever the procedural baseline produced by
 # the active generator (currently CubicHeightmapGenerator) changes
 # shape OR encoding — e.g. swap to a new heightmap, change cave

@@ -1,6 +1,6 @@
 # Swimming and Water — Design Spec
 
-Water is a traversable terrain type in the open world. Rivers, lakes, coastal inlets, and the Aldwater are all swimmable. The player is never blocked by water — they wade and swim through it.
+Water is a traversable terrain type in the open world. Rivers, lakes, coastal inlets, and the Aldwater are all swimmable. The player is never blocked by water — they wade and swim through it. **Water is voxel-based and dynamic** — flowing rivers, player-dug channels, bucket-placed sources are all real simulation. See "Voxel Water Architecture" below.
 
 > Cross-reference: `design/SYSTEMS_DESIGN.md` → Exploration → Water and Swimming for the overview.
 > `design/INPUT_AND_CONTROLS.md` for swim_up / swim_down input bindings.
@@ -8,23 +8,48 @@ Water is a traversable terrain type in the open world. Rivers, lakes, coastal in
 
 ---
 
-## Water Body Structure
+## Voxel Water Architecture (canonical, 2026-05-05)
 
-Each water body uses two nodes placed together in the scene:
+Water lives in a `Dictionary<Vector3i, int>` of cells managed by the `WaterFlowManager` autoload, NOT in the voxel terrain's `CHANNEL_COLOR`. VoxelMesherCubes treats alpha-byte as binary opacity AND material-ID; per-voxel transparency is impossible without forking Zylann. The decoupled architecture sidesteps that constraint and adds dynamic flow.
+
+**Two kinds of water source:**
+1. **Source REGIONS** — designer-placed AABBs (oceans, lakes). Stored as a small list, never materialized as cells. `is_position_in_water` AABB-tests against them. A 200×200 m ocean costs O(1) memory.
+2. **Per-cell sources** — single voxel marked is_source=true. Used for buckets, river headwaters, designer-placed pour points.
+
+Both kinds count as `level=8` for the flow rules.
+
+**Flow tick** (every 15 physics frames, ~4 Hz, only inside ACTIVE_RADIUS_M=20m of the player):
+1. **Decay**: non-source cells whose `last_fed_tick` is older than the previous tick decrement their level. Level 0 → cell removed.
+2. **Gravity drop**: every air voxel with water directly above becomes a flow cell at MAX_LEVEL=8.
+3. **Lateral spread**: cells with level>1 push to 4 horizontal neighbors at level-1, gated on (a) neighbor's voxel-below is solid or water (gravity wins), (b) neighbor isn't blocked by a `NoEditZone.blocks_water_flow=true` zone.
+
+**Visuals:** `WaterChunkMesher` (child Node3D under WaterFlowManager autoload) walks the dictionary + source regions per chunk and emits a transparent surface mesh. Reuses the existing sine-sum vertex-displacement shader (`assets/shaders/water.gdshader`). Render-radius cull at 64m around the player; FIFO dirty queue drains 2 chunks/frame. v1 emits source-region top-planes only; per-cell partial-height surfaces deferred.
+
+**Player query API** (used by `Player3D._update_water_state` each physics frame):
+- `is_position_in_water(world_pos: Vector3) -> bool`
+- `get_water_level_at(world_pos: Vector3) -> int` (0–8)
+- `get_flow_velocity_at(world_pos: Vector3) -> Vector3` — derived from the level gradient in 4 horizontal neighbors. Capped at FLOW_MAX_SPEED=3 m/s. Inside source-region interiors the gradient is zero (every neighbor is also level 8) so oceans don't push; rivers feeding oceans naturally produce a downstream pulse at the level transition.
+
+**Edit integration:** `WaterFlowManager._on_edit_applied` listens to `VoxelEditManager.edit_applied` and dirty-marks the edited chunk + 1-chunk neighborhood. Carving voxels under or beside water → those chunks' next flow tick discovers new air-below-water voxels and propagates flow into them. This is what makes "dig a hole near a river → river fills it" work.
+
+**Save format:** per-cell sources persist in the GameState save under `water_sources` (Array of `{x, y, z}` dicts). Source regions are scene data and re-added by `World3DBootstrap` on each load. Flowing cells aren't persisted — they regenerate from sources within a few flow ticks of load. `WORLD_GENERATOR_VERSION=11` after this refactor; pre-v11 saves invalidate.
+
+**Boujie Water Shader** (Godot Asset Library #2070) remains an optional future upgrade for reflections, shoreline foam, and single-draw LOD ring mesh.
+
+---
+
+## Water Body Structure (legacy spec — superseded by Voxel Water Architecture above)
+
+The Area3D-based "two nodes per water body" model documented below was the implementation through PR #130 (2026-05-04). **It was replaced by the voxel-based architecture in 2026-05-05.** This section is kept for context on why the refactor happened and what changed.
 
 ```
-WaterBody (Node3D)
-├── WaterVisual (MeshInstance3D)   ← Boujie Water Shader
+[LEGACY] WaterBody (Node3D)
+├── WaterVisual (MeshInstance3D)   ← shader on a flat plane mesh
 └── WaterVolume (Area3D)           ← physics detection
     └── CollisionShape3D           ← BoxShape3D spanning the water body
 ```
 
-**WaterVisual:** Custom sine-sum vertex-displacement shader at `assets/shaders/water.gdshader` + shared `assets/shaders/water_material.tres`. Two summed sine waves (different directions, frequencies, speeds, amplitudes) displace `VERTEX.y`; wind biases the dominant wave direction and scales overall amplitude. Crests are tinted slightly lighter than troughs. Both shipping water scenes (`scenes/water/water_volume.tscn`, `scenes/water/ocean_volume.tscn`) reference the same `ShaderMaterial.tres` so a single tune affects every body.
-- Wave domain is world-space XZ → adjacent water bodies stay phase-aligned (no seam if two volumes overlap)
-- Uniforms: `wave_amplitude_a/b`, `wave_frequency_a/b`, `wave_speed_a/b`, `wave_dir_a/b`, `wind_dir`, `wind_strength`, `base_color`, `crest_color`
-- The **Boujie Water Shader** (Godot Asset Library #2070) remains an optional future upgrade for reflections, shoreline foam, and single-draw LOD ring mesh. The custom shader covers the wave-animated surface need with zero third-party dependency.
-
-**Current implementation (2026-05-04):** `scripts/WaterVolume.gd` exposes `surface_y: float` (world-space Y of the water surface), `get_current_velocity() -> Vector3` (river current), and `set_wind(dir, strength)` (the public hook the future `WeatherManager` will call to drive surface waves). `Player3D._update_water_state()` polls every Area3D in the `water_volume` group; first overlap wins; `_in_water` is set when feet `global_position.y <= surface_y`. Swim physics is `MOTION_MODE_FLOATING` with vertical swim controls (Space ascends, Crouch dives, both held — release to float at depth, capped at ±3 m/s). Submersion uses a head offset of 1.6 m above feet; submerged for >30 s drains HP at 5/s. Surfacing triggers a 2 s gasp pause before breath refill begins. While submerged, a CanvasLayer ColorRect overlay tints the screen blue-green (see `scripts/UnderwaterFilter.gd`).
+The legacy model worked but couldn't dynamically respond to terrain edits. Carving a voxel at the edge of a `WaterVolume` Area3D left a visible gap (water plane stops at volume edge; new air voxel below isn't filled). No flowing rivers, no player-dug channels, no bucket-placed sources. The voxel water refactor was prompted by needing all three for an open-world destructible-terrain game.
 
 **WaterVolume (`Area3D`):** Collision volume covering the full 3D extent of the water body — not just the surface.
 - Connect `body_entered` and `body_exited` to `Player3D._on_water_volume_entered/exited()`
