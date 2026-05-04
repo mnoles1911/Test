@@ -272,9 +272,11 @@ func _ready() -> void:
 	_ambient_player.volume_db = -80.0
 	add_child(_ambient_player)
 
-	# Listen to our own state-changed signal so audio swaps fire only
-	# on real state transitions (not every frame).
-	weather_state_changed.connect(_on_weather_state_changed_for_audio)
+	# Audio swaps are driven from _resolve_active_state when the target
+	# changes (not from weather_state_changed, which only fires when
+	# the visual transition COMPLETES — 30 s later). Starting the audio
+	# crossfade at the same moment as the visual fade keeps the two
+	# in sync.
 
 
 func _process(delta: float) -> void:
@@ -493,6 +495,10 @@ func _resolve_active_state() -> void:
 	current_state = current_state  # unchanged; serves as "from" in lerp
 	_target_state = resolved
 	_transition_progress = 0.0
+	# Kick the audio crossfade off NOW so it lines up with the start
+	# of the 30 s visual transition (audio crossfade itself is 5 s).
+	var key: String = String(STATE_PROFILES[_target_state]["ambient_audio"])
+	_swap_ambient_audio(key)
 
 
 func _on_hour_changed(new_hour: int) -> void:
@@ -632,11 +638,6 @@ func _update_wet_terrain_visual(wetness: float) -> void:
 # ------------------------------------------------------------
 # Ambient audio (Phase 10)
 # ------------------------------------------------------------
-
-func _on_weather_state_changed_for_audio(new_state: int, _old_state: int) -> void:
-	var key: String = String(STATE_PROFILES[new_state]["ambient_audio"])
-	_swap_ambient_audio(key)
-
 
 func _swap_ambient_audio(key: String) -> void:
 	# Idempotent — if the new key matches what's already playing, no-op.

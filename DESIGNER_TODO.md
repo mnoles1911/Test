@@ -880,3 +880,74 @@ Validates the voxel-based water sim that replaced the Area3D `WaterVolume` model
 
 - [ ] **No frame stutter on edits near water**: pickaxe rapidly through the pond bank for 10+ seconds. Frame time stays under 16 ms (60 FPS) on the dev machine. WaterFlowManager flow tick costs visible in the profiler — should be < 2 ms per 4 Hz tick.
 - [ ] **Out-of-radius dirty chunks don't burn frames**: build a deep mineshaft 50m+ from any water. Dig rapidly. Flow tick should NOT process those chunks (they're outside ACTIVE_RADIUS_M=20m around the player).
+
+---
+
+## Section 11 — Verification: WeatherManager (2026-05-04)
+
+### Audio assets needed (system runs silent without these)
+
+WeatherManager logs a one-time warning per missing OGG and continues — it never crashes. Drop these files at the listed paths to unlock the corresponding audio bed.
+
+- [ ] `assets/audio/ambient/wind_low.ogg` — quiet wind for FOG / SNOW
+- [ ] `assets/audio/ambient/wind_med.ogg` — moderate wind for OVERCAST
+- [ ] `assets/audio/ambient/rain_light.ogg` — gentle rain for LIGHT_RAIN
+- [ ] `assets/audio/ambient/rain_heavy.ogg` — heavy rain for HEAVY_RAIN
+- [ ] `assets/audio/ambient/thunder_distant.ogg` — single rumble, ~3 s, used per lightning strike
+
+### In-Godot verification
+
+**State machine**
+
+- [ ] **Initial state**: open `World3D.tscn` → run. Sky / fog / ambient match a CLEAR or OVERCAST baseline (depends on whether a profile is set).
+- [ ] **Force-set via debug overlay**: F1 → COMMANDS → WEATHER... → click each of the six state buttons. Within 30 s, fog density, sky tint, ambient brightness, and wind strength all transition smoothly to the new state.
+- [ ] **Live readouts update**: while submenu open, `Current:` updates as the transition completes; `Wind:` updates every frame.
+- [ ] **CLEAR OVERRIDE**: click during a forced state. Override clears; weather returns to schedule-driven state.
+
+**Wind**
+
+- [ ] **Direction is gradual**: open WEATHER submenu and watch the `Wind:` line for ~2 minutes. The (x, z) values lerp slowly — never snap, even when forcing rapid state changes.
+- [ ] **Strength tracks state**: HEAVY_RAIN drives ocean wave amplitude visibly higher than CLEAR. Switch back to CLEAR — waves calm within 30 s.
+
+**Particles**
+
+- [ ] **Rain follows the camera**: HEAVY_RAIN, walk forward 30 m. Rain particles stay above and around the camera the whole time.
+- [ ] **Rain slants in wind**: HEAVY_RAIN, watch the falling streaks. They slant in the current wind direction; angle shifts gradually as wind direction drifts.
+- [ ] **Snow drifts slowly**: SNOW state. White flakes fall at ~1.5 m/s², visibly slower than rain.
+- [ ] **CLEAR has no particles**: switch to CLEAR. No emission.
+
+**Wet-terrain visual**
+
+- [ ] **Layer A overlay**: HEAVY_RAIN. Screen has a subtle blue-grey tint (alpha ~0.18). Tint fades to transparent within 30 s when switching to CLEAR.
+- [ ] **Layer B specular sheen**: walk to a stone outcrop during HEAVY_RAIN. Surface visibly darker; sun catches a wet sheen on highlights.
+- [ ] **Layer B disengages**: switch to CLEAR. Terrain returns to dry vertex-color rendering within 30 s.
+- [ ] **Phase 8 graceful fallback**: if your Zylann build doesn't expose `material_override` on `VoxelLodTerrain`, Layer A still shows. No crash.
+
+**Lightning**
+
+- [ ] **Random strikes during HEAVY_RAIN**: stay in the state for 30+ seconds. At least one strike fires.
+- [ ] **Force lightning**: click `FORCE LIGHTNING` in WEATHER submenu. Strike fires immediately. Repeat 5+ times — strike position (and thus directional flash) varies.
+- [ ] **Directional cue**: when a strike fires, the side of the world facing the strike brightens noticeably more than the opposite side.
+- [ ] **Thunder spatial**: thunder rumble comes from the strike's direction (3D audio panning). Far strikes have a longer flash → thunder gap than near strikes.
+
+**Story override**
+
+- [ ] **Override lasts duration**: in the editor remote inspector, call `WeatherManager.set_weather_override("heavy_rain", 0.01)` (≈ 36 real seconds). After ~36 s, weather returns to schedule.
+
+**Schedule rolls**
+
+- [ ] **Hourly rolls only at scheduled hours**: F1 → ADVANCE TIME... → step through several days. Weather rolls happen at hours 6 / 12 / 18, not other hours.
+- [ ] **Authored Aldenholt sequence**: load aldenholt.tres via `WeatherManager.set_location_profile()`. Days 1–4 follow the authored opener (overcast / clear / overcast / light rain) at hour 6.
+
+**WeatherZone**
+
+- [ ] **Place a test zone**: in `World3D.tscn`, drop an Area3D with `WeatherZone.gd`, `weather_state="fog"`, BoxShape3D ~10 m extents near the campfire. Walk in. State swaps to FOG within 30 s. Walk out — state returns to scheduled.
+
+**Save / load**
+
+- [ ] **Round-trip current state**: enter HEAVY_RAIN. Save. Quit Godot. Reopen the save. Weather is still HEAVY_RAIN.
+- [ ] **Round-trip override timer**: set a 1-hour override. Save. Reload. Override timer has the remaining hours intact.
+
+**Performance**
+
+- [ ] **No frame stutter on state change**: cycle through all 6 states rapidly. Frame time stays under 16 ms.
