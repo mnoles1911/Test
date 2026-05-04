@@ -43,11 +43,20 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 9
+const WORLD_GENERATOR_VERSION: int = 10
 # Bump this constant whenever the procedural baseline produced by
-# VoxelGeneratorGraph (or the placeholder VoxelGeneratorFlat) changes
-# shape — e.g. when we swap to a new EXR heightmap, change cave
-# parameters, or add new biome material indices.
+# the active generator (currently CubicHeightmapGenerator) changes
+# shape OR encoding — e.g. swap to a new heightmap, change cave
+# parameters, change biome material indices, or change what the
+# alpha byte means.
+#
+# Version history:
+#   v9  → CubicHeightmapGenerator. Voxels written as packed RGBA;
+#         alpha byte was always 255 for solids. No material concept.
+#   v10 → CubicHeightmapGenerator with material-band assignment.
+#         Alpha byte now encodes the VoxelMaterialRegistry material_id
+#         (1=stone, 2=dirt, 3=grass, 4=sand, …). Surface terrain looks
+#         visibly different (grass-on-top, dirt layer, stone deep).
 #
 # GameState.save_game() stamps this version into every save. On
 # load, mismatch is treated as a HARD ERROR — the procedural

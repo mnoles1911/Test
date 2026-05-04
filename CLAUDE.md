@@ -220,6 +220,8 @@ The system design corpus is complete (combat, AI, companions, factions, quests, 
 - `VoxelGravityManager.gd` — autoload. Subscribes to `VoxelEditManager.edit_applied`. After every edit, runs a local 16 m flood-fill (capped 32 m) to find voxels that lost support, carves them from terrain via bulk write, and spawns `FallingVoxelCluster` `RigidBody3D` instances per disconnected island. Local detection — anything connected to the analysis bubble's edge is treated as anchored. Caps: max cluster size 4096 voxels, max active clusters 32, one bubble processed per physics frame.
 - `FallingVoxelCluster.gd` + `scenes/voxel/FallingVoxelCluster.tscn` — `RigidBody3D` representing one airborne voxel chunk. Custom centre of mass at the voxel-weighted centroid (so L-shapes tumble correctly). Tall thin clusters (height ≥ 3× horizontal) get a directional tip impulse pointing away from the edit origin (felled trees fall toward the cut). Tiny random angular nudge breaks perfect-vertical equilibrium. Re-deposits as terrain via `VoxelEditManager.queue_set_voxels_bulk` when the body sleeps (or after a 10 s failsafe). Damages bodies with a `health` property: `voxel_count × fall_height × 0.05`, with a 1.5 m minimum fall.
 - `VoxelClusterBuilder.gd` — static utility (no state). Builds an `ArrayMesh` from a cluster Dictionary (`Vector3i → packed RGBA`), with per-face culling so interior cube faces are skipped. Also computes the cluster's local AABB, voxel-weighted centroid, and the centre-offset that the mesh build needs to make the rigid body pivot around its true centre of mass. Caches a single shared `StandardMaterial3D` (`vertex_color_use_as_albedo = true`) used by every cluster.
+- `VoxelMaterial.gd` + `assets/voxels/materials/*.tres` — Resource subclass. One `.tres` per material (stone/dirt/grass/sand for v1). Designer fields: `id_string`, `material_id` (1–254, packed into voxel alpha byte), `display_name`, `color_low`/`color_high`/`color_jitter`, `mining_time_seconds`, `allowed_tools`, `yield_item_id`, `yield_quantity`, `fall_behavior` (NEVER/SOLID/LOOSE), `gravity_scale`, `damage_multiplier`. Adding a new material is creating a new `.tres` in the inspector — no GDScript edits.
+- `VoxelMaterialRegistry.gd` — autoload. Recursive scan of `assets/voxels/materials/` at startup. Builds `_by_id` and `_by_string` lookup tables. Validates `material_id` uniqueness 1–254 with loud `push_error` on collision. Public API: `get_by_id`, `get_by_string`, `pack_voxel(material_id, color)`, `material_id_from_packed`, `is_air`. The canonical place for the alpha-byte-as-material-id encoding to live.
 
 **Specified in design docs but not yet implemented** (build in dependency order):
 - `SchematicLibrary.gd` — autoload. Registry of placeable building schematics (`.glb` props with placement metadata in `assets/voxel/schematics/`). Player crafts schematics at the Carpentry Bench; placements saved to `user://saves/slot_{N}/placed_schematics.json`.
@@ -332,6 +334,23 @@ var direction := (transform.basis * local_dir).normalized()
 # direction here — that breaks camera-relative movement.
 ```
 
+**Voxel material lookup — never decode the alpha byte by hand:**
+```gdscript
+# WRONG — hardcodes the encoding scheme. If we change how material IDs
+# get packed, every site that does this manually breaks silently.
+var material_id: int = packed_voxel & 0xFF
+
+# RIGHT — go through the registry. The encoding lives in one place.
+var material_id: int = VoxelMaterialRegistry.material_id_from_packed(packed_voxel)
+var material: VoxelMaterial = VoxelMaterialRegistry.get_by_id(material_id)
+if material == null:
+    return  # voxel is air, or registry isn't loaded yet
+# Now use material.mining_time_seconds, material.yield_item_id,
+# material.fall_behavior, etc.
+```
+Same rule for writes: use `VoxelMaterialRegistry.pack_voxel(mat_id, color)` rather than
+`color.to_rgba32()` whenever you're writing a non-air voxel of a known material.
+
 **Voxel edits MUST go through VoxelEditManager — never raw VoxelTool:**
 ```gdscript
 # WRONG — bypasses NoEditZone check, async budget, EditedChunkRegistry update,
@@ -419,11 +438,13 @@ bark *"This place doesn't yield to me."*
 
 Registered in `project.godot` (active now), in load order:
 `GameState`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
-`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `JournalUI`, `HUDOverlay`,
-`NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `Dialogic`,
-`BarkManager`, `WorldClock`
+`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `VoxelMaterialRegistry`,
+`JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
+`VoxelGravityManager`, `Dialogic`, `BarkManager`, `WorldClock`
 
 Load-order rules to preserve:
+- `InventoryManager` MUST load before `VoxelMaterialRegistry` (the registry validates `yield_item_id` against `ITEM_REGISTRY` at startup).
+- `VoxelMaterialRegistry` MUST load before `VoxelEditManager` (`EditToolHandler` queries the registry on every swing for material lookup).
 - `NoEditZoneRegistry` MUST load before `VoxelEditManager` (the manager queries the registry on every edit).
 - `VoxelEditManager` MUST load before `VoxelGravityManager` (the gravity manager subscribes to `edit_applied` in `_ready`).
 

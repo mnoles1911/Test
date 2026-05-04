@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "sand"
+material_id = 4
+display_name = "Sand"
+color_low = Color(0.78, 0.71, 0.5, 1)
+color_high = Color(0.88, 0.8, 0.58, 1)
+color_jitter = 0.07
+mining_time_seconds = 0.2
+allowed_tools = Array[String](["iron_shovel"])
+yield_item_id = "raw_sand"
+yield_quantity = 1
+fall_behavior = 2
+gravity_scale = 1.0
+damage_multiplier = 0.5

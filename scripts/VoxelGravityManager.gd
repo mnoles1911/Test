@@ -325,20 +325,52 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 			anchored[nbr] = true
 			frontier.append(nbr)
 
-	# --- Collect unanchored voxels & flood-fill into clusters ---
-	var unanchored: Dictionary = {}  # bubble-local → packed RGBA
+	# --- Collect unanchored voxels & partition by fall behavior ---
+	# LOOSE voxels (sand-style) bypass the rigid-body cluster path
+	# entirely — they fall column-by-column instantly. NEVER + SOLID
+	# voxels go through the cluster path where they spawn as rigid
+	# bodies that tip and tumble.
+	#
+	# Material-aware partition: read each unanchored voxel's material
+	# id from its alpha byte, look up the VoxelMaterial in the
+	# registry, and route by fall_behavior. If the registry isn't
+	# loaded (shouldn't happen at runtime), fall back to NEVER for
+	# everything — current gravity behaviour pre-material-system.
+	var unanchored_loose: Dictionary = {}    # bubble-local → packed RGBA (LOOSE materials)
+	var unanchored_cluster: Dictionary = {}  # bubble-local → packed RGBA (NEVER + SOLID materials)
+	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
 	for v_pos_v in solids.keys():
 		var v: Vector3i = v_pos_v
-		if not anchored.has(v):
-			unanchored[v] = solids[v]
+		if anchored.has(v):
+			continue
+		var packed: int = solids[v]
+		var mat_id: int = packed & 0xFF
+		var fall: int = VoxelMaterial.FallBehavior.NEVER
+		if mat_registry != null:
+			var material: VoxelMaterial = mat_registry.get_by_id(mat_id)
+			if material != null:
+				fall = material.fall_behavior
+		if fall == VoxelMaterial.FallBehavior.LOOSE:
+			unanchored_loose[v] = packed
+		else:
+			unanchored_cluster[v] = packed
 
-	if unanchored.is_empty():
+	# --- LOOSE column-fall ---
+	# Sand model: each loose voxel falls straight down to the first
+	# solid (or anchored) cell beneath it. No rigid body, no tumble.
+	# Processed BEFORE cluster spawning because we don't want a
+	# loose voxel that's part of a structurally-failing cliff to
+	# both fall through the cluster path AND the loose path.
+	if not unanchored_loose.is_empty():
+		_handle_loose_voxels(unanchored_loose, anchored, min_v)
+
+	if unanchored_cluster.is_empty():
 		return
 
-	# Group unanchored voxels into connected components.
+	# Group cluster-bound voxels into connected components.
 	var visited: Dictionary = {}
 	var clusters: Array[Dictionary] = []
-	for v_pos_v in unanchored.keys():
+	for v_pos_v in unanchored_cluster.keys():
 		var seed: Vector3i = v_pos_v
 		if visited.has(seed):
 			continue
@@ -348,10 +380,10 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 		visited[seed] = true
 		while not queue.is_empty():
 			var cur2: Vector3i = queue.pop_back()
-			cluster_voxels[cur2] = unanchored[cur2]
+			cluster_voxels[cur2] = unanchored_cluster[cur2]
 			for n_off2 in NEIGHBOURS_6:
 				var nbr2: Vector3i = cur2 + (n_off2 as Vector3i)
-				if not unanchored.has(nbr2):
+				if not unanchored_cluster.has(nbr2):
 					continue
 				if visited.has(nbr2):
 					continue
@@ -362,6 +394,82 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 	# --- Spawn a falling cluster per group ---
 	for cluster_voxels in clusters:
 		_handle_cluster(cluster_voxels, min_v, edit_world_pos, terrain)
+
+
+# =============================================================
+# LOOSE COLUMN-FALL — sand-style instant pour, no rigid body
+# =============================================================
+
+func _handle_loose_voxels(
+	loose_voxels: Dictionary,    # bubble-local Vector3i → packed RGBA
+	anchored: Dictionary,         # bubble-local Vector3i → true (the supported set)
+	bubble_min_v: Vector3i,       # offset to convert bubble-local → absolute world voxels
+) -> void:
+	# For each LOOSE voxel: walk straight down through bubble-local
+	# space until we hit something supported. Carve the original
+	# position; place a copy at the landing position. No physics, no
+	# rigid body, no tumble — just instant column-fall.
+	#
+	# Why we process BOTTOM-UP: a stack of three sand voxels above
+	# an anchored block should all stack tightly on top of the
+	# anchored block, not all collapse to the same Y. By processing
+	# from lowest Y first, each voxel's landing becomes a surface
+	# the next-higher voxel can stack on (we record landings in a
+	# local set so subsequent walks see the new surface).
+	#
+	# Anything that would land BELOW the bubble's bottom face is
+	# placed at the bottom face. We don't know what's below — by
+	# convention "outside the bubble is solid" — so the bottom face
+	# is the safest stop. Imperfect for floating islands; fine for
+	# normal terrain.
+
+	var loose_landings: Dictionary = {}  # bubble-local Vector3i → true
+	var carve_writes: Array = []
+	var place_writes: Array = []
+
+	# Sort keys by Y ascending. This processes the bottom of every
+	# vertical column first.
+	var sorted_keys: Array = loose_voxels.keys()
+	sorted_keys.sort_custom(func(a: Vector3i, b: Vector3i) -> bool: return a.y < b.y)
+
+	for v_pos_v in sorted_keys:
+		var v: Vector3i = v_pos_v
+		# Walk down looking for the first supported cell below.
+		var landing_y: int = v.y
+		while landing_y > 0:
+			var below: Vector3i = Vector3i(v.x, landing_y - 1, v.z)
+			if anchored.has(below) or loose_landings.has(below):
+				break  # land on top of supported / already-landed voxel
+			landing_y -= 1
+		if landing_y == v.y:
+			# No air below — already stable. Don't move.
+			continue
+
+		# Carve original position (write 0 = air).
+		var orig_world_centre: Vector3 = (
+			Vector3(bubble_min_v + v) + Vector3.ONE * 0.5
+		) * VOXEL_SIZE_M
+		carve_writes.append({"pos": orig_world_centre, "value": 0})
+
+		# Place at landing position (write the original packed RGBA so
+		# colour AND material id transfer intact).
+		var landing_local: Vector3i = Vector3i(v.x, landing_y, v.z)
+		var landing_world_centre: Vector3 = (
+			Vector3(bubble_min_v + landing_local) + Vector3.ONE * 0.5
+		) * VOXEL_SIZE_M
+		place_writes.append({"pos": landing_world_centre, "value": loose_voxels[v]})
+
+		loose_landings[landing_local] = true
+
+	# Submit both batches via the existing bulk write API.
+	# Two separate commands so the carve queues before the place —
+	# Zylann processes them in order. (One combined command would
+	# also work because each voxel is at a distinct world pos, but
+	# keeping them separate makes the Output panel logs clearer.)
+	if not carve_writes.is_empty():
+		VoxelEditManager.queue_set_voxels_bulk(carve_writes, "loose_carve_n%d" % carve_writes.size())
+	if not place_writes.is_empty():
+		VoxelEditManager.queue_set_voxels_bulk(place_writes, "loose_place_n%d" % place_writes.size())
 
 
 # =============================================================
@@ -443,10 +551,41 @@ func _handle_cluster(
 		world_root = get_tree().current_scene
 	world_root.add_child(cluster)
 
+	# --- Compute per-cluster gravity_scale and damage_multiplier ---
+	# Mixed clusters can contain multiple materials (e.g. a chunk of
+	# stone + dirt that detached together). Aggregate the per-material
+	# values:
+	#   gravity_scale: AVERAGE across constituent voxels — heterogeneous
+	#                  rock falls at "rocks-and-dirt" speed, somewhere
+	#                  between pure rock and pure dirt.
+	#   damage_multiplier: MAX across constituents — the deadliest
+	#                      material in the chunk wins, because impact
+	#                      damage is dominated by the worst-case
+	#                      crushing element.
+	var gravity_scale_avg: float = 1.0
+	var damage_multiplier_max: float = 1.0
+	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if mat_registry != null:
+		var sum_g: float = 0.0
+		var max_d: float = 0.0
+		var count: int = 0
+		for v_pos_v in absolute_voxels.keys():
+			var packed: int = absolute_voxels[v_pos_v]
+			var mat_id: int = packed & 0xFF
+			var material: VoxelMaterial = mat_registry.get_by_id(mat_id)
+			if material != null:
+				sum_g += material.gravity_scale
+				if material.damage_multiplier > max_d:
+					max_d = material.damage_multiplier
+				count += 1
+		if count > 0:
+			gravity_scale_avg = sum_g / float(count)
+			damage_multiplier_max = max_d
+
 	# Spawn at the cluster's world centroid.
 	var centroid_world: Vector3 = VoxelClusterBuilder.compute_centroid_world(absolute_voxels)
 	cluster.global_position = centroid_world
-	cluster.configure(absolute_voxels, edit_world_pos)
+	cluster.configure(absolute_voxels, edit_world_pos, gravity_scale_avg, damage_multiplier_max)
 
 	_active_clusters.append(cluster)
 	cluster_spawned.emit(cluster)

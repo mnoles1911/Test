@@ -122,6 +122,18 @@ var _bodies_already_damaged: Dictionary = {}
 # instance_id → true. Each body takes damage at most once per cluster
 # fall, even if the cluster grinds along its surface for several frames.
 
+var _gravity_scale_mat: float = 1.0
+# Per-cluster gravity scale, aggregated from constituent materials in
+# VoxelGravityManager._handle_cluster. 1.0 = standard fall speed
+# (matches Player3D.GRAVITY = 20 m/s²). > 1.0 = heavier, falls faster.
+# Multiplied INTO the rigid body's gravity_scale property at
+# configure time.
+
+var _damage_multiplier_mat: float = 1.0
+# Per-cluster damage multiplier, aggregated from constituent materials
+# (max across the cluster — the deadliest material wins). Multiplied
+# INTO the impact-damage formula in _on_body_entered.
+
 
 # =============================================================
 # NODE REFERENCES (assigned in _ready from the scene tree)
@@ -138,6 +150,8 @@ var _collision_shape: CollisionShape3D = null
 func configure(
 	voxel_snapshot: Dictionary,
 	edit_origin_world: Vector3,
+	gravity_scale_material: float = 1.0,
+	damage_multiplier_material: float = 1.0,
 ) -> void:
 	# Called by VoxelGravityManager exactly once, immediately after
 	# the cluster scene is instanced and added to the world. After
@@ -151,9 +165,17 @@ func configure(
 	#                    the cluster to lose support. Used for
 	#                    rod-like clusters (trees) so they tip away
 	#                    from the cut, not in a random direction.
+	# gravity_scale_material: aggregated gravity_scale across the
+	#                    cluster's constituent materials (average).
+	#                    1.0 = matches Player3D.GRAVITY exactly.
+	# damage_multiplier_material: aggregated damage_multiplier (max
+	#                    across constituents). Applied to crush
+	#                    damage. 1.0 = neutral.
 
 	_voxel_snapshot = voxel_snapshot
 	_spawn_world_y = global_position.y
+	_gravity_scale_mat = gravity_scale_material
+	_damage_multiplier_mat = damage_multiplier_material
 
 	if _voxel_snapshot.is_empty():
 		# Defensive — shouldn't happen, but a zero-voxel cluster has
@@ -198,11 +220,18 @@ func configure(
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector3.ZERO
 
-	# Apply custom gravity via custom_integrator so the project's
-	# default gravity (likely 9.8) doesn't override our 20 m/s².
+	# Apply custom gravity via gravity_scale so the project's default
+	# gravity (likely 9.8) doesn't override our 20 m/s², AND so the
+	# cluster's material(s) modulate the fall speed:
+	#
+	#   gravity_scale = (GRAVITY * _gravity_scale_mat) / project_default
+	#
+	# Example: project default 9.8, GRAVITY = 20, material avg = 1.5
+	# (heavy stone-iron-ore mix) → gravity_scale = (20 * 1.5) / 9.8 = 3.06.
+	# A pure-stone cluster with material gravity_scale 1.0 falls at
+	# the standard 20 m/s²; a heavy ore mix falls noticeably faster.
 	custom_integrator = false  # we still want default linear/angular damping
-	gravity_scale = GRAVITY / _project_gravity_magnitude()
-	# Example: project default 9.8, we want 20 → gravity_scale = 2.04.
+	gravity_scale = (GRAVITY * _gravity_scale_mat) / _project_gravity_magnitude()
 
 	# Damping — minimal linear (clusters fall like rocks, not feathers),
 	# modest angular (so a tipped cluster doesn't spin chaotically once
@@ -314,7 +343,10 @@ func _on_body_entered(body: Node) -> void:
 	if fall_height < DAMAGE_MIN_FALL_HEIGHT_M:
 		return
 	var voxel_count: int = _voxel_snapshot.size()
-	var damage: float = float(voxel_count) * fall_height * DAMAGE_PER_VOXEL_PER_METER
+	# Per-cluster damage multiplier (set in configure from the
+	# material aggregation). Stone clusters multiply by ~1.2;
+	# dirt/grass by ~0.7; future iron-ore clusters by ~2.0.
+	var damage: float = float(voxel_count) * fall_height * DAMAGE_PER_VOXEL_PER_METER * _damage_multiplier_mat
 	if damage <= 0.0:
 		return
 	# Apply damage. Player3D exposes `health` directly (no take_damage

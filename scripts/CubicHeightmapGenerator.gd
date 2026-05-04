@@ -198,14 +198,61 @@ var _applying_preset: bool = false
 @export var sea_level_voxels: int = 0
 
 ## Colour of the LOWEST ground voxels (deep valleys, beach floor).
-## Lerps to `color_high` at peaks based on each voxel's height within
-## the macro range. Default mossy green-brown.
+## LEGACY — used only as a fallback when the VoxelMaterialRegistry
+## autoload isn't available (e.g. running this script in isolation
+## for a unit test). In normal play, per-material colours come from
+## the .tres files in `assets/voxels/materials/`.
 @export var color_low: Color = Color(0.30, 0.42, 0.18)
 
-## Colour of the HIGHEST ground voxels (ridge peaks). Lerps from
-## `color_low` at valleys. Default pale stone-brown. Per-voxel
-## colour jitter (above) is applied on top of this lerp.
+## Colour of the HIGHEST ground voxels (ridge peaks). LEGACY — see
+## `color_low` above. The active per-material colour pipeline lives
+## in the .tres files; designers tune those, not these sliders.
 @export var color_high: Color = Color(0.62, 0.55, 0.42)
+
+
+# =============================================================
+# MATERIAL BANDS — which material lives at which depth
+# =============================================================
+#
+# The world is split into vertical bands measured DOWN from each
+# column's ground_y. The top voxel is grass (or sand at coastlines),
+# the next few voxels are dirt, and everything below is stone.
+# Designers can re-tune these without touching code.
+
+## Number of voxels at the very top of each ground column that are
+## grass (the green skin). Default 1 — a single voxel of green over
+## the dirt. Set to 0 to remove grass entirely (e.g. a desert preset).
+@export_range(0, 5, 1) var grass_layer_thickness_voxels: int = 1
+
+## Voxels of dirt directly below the grass layer. Default 3
+## (~50 cm of soil before stone). The chunkier the world, the
+## thicker this layer should feel relative to the player.
+@export_range(0, 12, 1) var dirt_layer_thickness_voxels: int = 3
+
+## At or below this voxel-Y, the top layer of the column is sand
+## instead of grass. Roughly the OceanVolume.surface_y plus a
+## small margin to give beaches their characteristic strip above
+## the waterline. Default 7 ≈ 1 voxel above the test ocean's
+## surface_y of 8 (-1 below it for the tide line).
+@export var beach_y_threshold: int = 7
+
+
+# =============================================================
+# RUNTIME CACHE — material references, looked up once
+# =============================================================
+#
+# `_generate_block` runs on Zylann's worker threads, so we don't
+# want to do a registry lookup per voxel (or even per chunk). We
+# fetch the four pilot materials lazily on first call and cache
+# the references. Writes to these member vars are idempotent
+# (same VoxelMaterial reference every time) so race conditions
+# between worker threads doing the same lookup are harmless.
+
+var _cached_stone: VoxelMaterial = null
+var _cached_dirt: VoxelMaterial = null
+var _cached_grass: VoxelMaterial = null
+var _cached_sand: VoxelMaterial = null
+var _materials_lookup_attempted: bool = false
 
 
 func _get_used_channels_mask() -> int:
@@ -245,12 +292,18 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if block_min_y > max_ground_y:
 		# Entire block is above terrain — leave as air (default 0).
 		return
+
+	# Materials registered? (Lazy lookup; safe across worker threads
+	# because writes are idempotent — every thread fetches the same
+	# VoxelMaterial references.)
+	_ensure_materials_cached()
+
 	if block_max_y < min_ground_y:
-		# Entire block is below terrain — fill solid with the
-		# valley-floor color. This shows the cube faces of any pit
-		# the player digs deep enough to expose underlying voxels.
-		var deep_color: int = color_low.to_rgba32()
-		out_buffer.fill(deep_color, VoxelBuffer.CHANNEL_COLOR)
+		# Entire block is buried deep below terrain — fill solid with
+		# stone. Player only sees these voxels if they dig deep enough
+		# to expose them.
+		var stone_packed: int = _pack_for_material(_cached_stone, _cached_stone.color_low if _cached_stone != null else color_low)
+		out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
 		return
 
 	if noise == null:
@@ -309,37 +362,177 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				if world_y > ground_y:
 					continue
 
-				# Base colour from the height lerp. world_y (not
-				# ground_y) so a tall cliff face fades smoothly rather
-				# than painting every cube on the ledge the same shade.
-				var t: float = clamp((float(world_y) + half_range - float(height_offset_voxels)) / height_range_voxels, 0.0, 1.0)
-				var c: Color = color_low.lerp(color_high, t)
+				# --- Decide which material this voxel is ---
+				# Top layer = grass (or sand at coastlines), next few
+				# voxels = dirt, everything below = stone. The bands
+				# are measured down from this column's ground_y.
+				var depth: int = ground_y - world_y  # 0 = top voxel
+				var material: VoxelMaterial = _select_material_for_depth(depth, ground_y)
 
-				# --- Per-voxel deterministic colour jitter ---
-				# Triple-prime hash mixes the three coords into one
-				# pseudo-random byte. Adding a small ± offset to RGB
-				# breaks up the otherwise-uniform colour of any flat
-				# top, so the eye picks up individual cubes and the
-				# 16.7 cm sub-voxel grid becomes visible against the
-				# 1 m macro terraces.
-				if color_jitter > 0.0:
-					var hash_val: int = ((world_x * 73856093) ^ (world_y * 19349663) ^ (world_z * 83492791)) & 0xFF
-					var j: float = (float(hash_val) / 255.0 - 0.5) * color_jitter
-					c.r = clampf(c.r + j, 0.0, 1.0)
-					c.g = clampf(c.g + j, 0.0, 1.0)
-					c.b = clampf(c.b + j, 0.0, 1.0)
+				# --- Compute colour from the chosen material ---
+				# Each material has its own color_low → color_high
+				# palette and per-voxel jitter. We lerp using the
+				# voxel's height within the macro range (so cliff faces
+				# of the same material still fade smoothly across
+				# vertical extent rather than painting flat).
+				var c: Color = _compute_voxel_color(material, world_x, world_y, world_z, half_range)
 
-				out_buffer.set_voxel(c.to_rgba32(), x, y, z, VoxelBuffer.CHANNEL_COLOR)
+				# --- Pack and write ---
+				# RGB from `c`, alpha byte = material_id. The mesher
+				# only checks alpha != 0 for solid-vs-air, so the
+				# alpha byte is free to encode our material lookup key.
+				var packed: int = _pack_for_material(material, c)
+				out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
 
 
 func _fill_flat(out_buffer: VoxelBuffer, origin: Vector3i, stride: int) -> void:
 	# Ground-truth fallback when no noise resource is configured.
-	# Solid up to Y=0, air above.
+	# Solid up to Y=0, air above. Used only for sanity-checking the
+	# channel wiring without noise; not reached during normal play.
+	_ensure_materials_cached()
 	var size: Vector3i = out_buffer.get_size()
-	var c: int = color_low.to_rgba32()
+	var packed: int = _pack_for_material(_cached_dirt, _cached_dirt.color_low if _cached_dirt != null else color_low)
 	for x in size.x:
 		for z in size.z:
 			for y in size.y:
 				var world_y: int = origin.y + y * stride
 				if world_y <= 0:
-					out_buffer.set_voxel(c, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+					out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+
+
+# =============================================================
+# MATERIAL HELPERS — band selection, colour, and packing
+# =============================================================
+
+func _ensure_materials_cached() -> void:
+	# Lazy first-call lookup of the four pilot materials by id_string.
+	# Resources don't get _ready, so we can't wire this up at script
+	# load time. Instead the first call to _generate_block triggers
+	# the lookup; subsequent calls hit the cached references.
+	#
+	# Thread-safety: Zylann calls _generate_block from worker threads.
+	# Multiple threads racing to populate the cache all write the same
+	# values (same VoxelMaterial Resource references), so the race is
+	# benign. GDScript property writes are individually atomic.
+	if _materials_lookup_attempted:
+		return
+	# Autoload accessor — Godot synthesises a global from the autoload
+	# name. Available from Resource scripts at runtime; in @tool /
+	# editor context the autoload may not be present, in which case the
+	# cache stays null and the legacy color_low/high path runs.
+	var registry: Node = null
+	if Engine.has_singleton("VoxelMaterialRegistry"):
+		registry = Engine.get_singleton("VoxelMaterialRegistry")
+	if registry == null:
+		# Try the autoload accessor via the tree (works at runtime).
+		var ml: SceneTree = Engine.get_main_loop() as SceneTree
+		if ml != null and ml.root != null:
+			registry = ml.root.get_node_or_null("VoxelMaterialRegistry")
+	_materials_lookup_attempted = true
+	if registry == null:
+		# Editor / @tool context with no autoload available. Leave the
+		# cache empty; the colour pipeline will fall back to the legacy
+		# color_low/color_high sliders.
+		return
+	_cached_stone = registry.get_by_string("stone")
+	_cached_dirt = registry.get_by_string("dirt")
+	_cached_grass = registry.get_by_string("grass")
+	_cached_sand = registry.get_by_string("sand")
+
+
+func _select_material_for_depth(depth: int, ground_y: int) -> VoxelMaterial:
+	# `depth` is "voxels below the ground_y of this column" — 0 = the
+	# topmost voxel of the column, 1 = one below, etc.
+	#
+	# Bands (measured from the top down):
+	#   0 to grass_layer_thickness_voxels-1 → top layer (grass or sand)
+	#   next dirt_layer_thickness_voxels    → dirt
+	#   below that                           → stone
+	#
+	# At low altitudes (ground_y at or below beach_y_threshold), the
+	# top layer is sand instead of grass, producing beaches.
+	#
+	# If a material isn't loaded (registry missing or .tres file
+	# absent), we fall through to the next-best option so the
+	# generator still produces SOMETHING rather than air. The
+	# fallback chain: top layer → grass/sand → dirt → stone.
+
+	# Top layer.
+	if depth < grass_layer_thickness_voxels:
+		if ground_y <= beach_y_threshold:
+			if _cached_sand != null:
+				return _cached_sand
+		else:
+			if _cached_grass != null:
+				return _cached_grass
+		# Fall through if the top-layer material isn't loaded.
+
+	# Dirt layer (also catches the fall-through from the top layer).
+	if depth < grass_layer_thickness_voxels + dirt_layer_thickness_voxels:
+		if _cached_dirt != null:
+			return _cached_dirt
+
+	# Everything else is stone.
+	return _cached_stone
+
+
+func _compute_voxel_color(
+	material: VoxelMaterial,
+	world_x: int,
+	world_y: int,
+	world_z: int,
+	half_range: float,
+) -> Color:
+	# Lerp the material's colour palette by altitude, then apply
+	# per-voxel jitter. Identical to the old per-voxel colour code,
+	# but the palette comes from the material's .tres rather than
+	# the global color_low/color_high sliders.
+	var lo: Color = color_low
+	var hi: Color = color_high
+	var jitter_amount: float = color_jitter
+	if material != null:
+		lo = material.color_low
+		hi = material.color_high
+		jitter_amount = material.color_jitter
+
+	var t: float = clamp(
+		(float(world_y) + half_range - float(height_offset_voxels)) / height_range_voxels,
+		0.0,
+		1.0,
+	)
+	var c: Color = lo.lerp(hi, t)
+
+	# Per-voxel deterministic colour jitter — same triple-prime hash
+	# the original generator used. Breaks up uniform colour on flat
+	# tops so individual cubes are visible.
+	if jitter_amount > 0.0:
+		var hash_val: int = ((world_x * 73856093) ^ (world_y * 19349663) ^ (world_z * 83492791)) & 0xFF
+		var j: float = (float(hash_val) / 255.0 - 0.5) * jitter_amount
+		c.r = clampf(c.r + j, 0.0, 1.0)
+		c.g = clampf(c.g + j, 0.0, 1.0)
+		c.b = clampf(c.b + j, 0.0, 1.0)
+	return c
+
+
+func _pack_for_material(material: VoxelMaterial, color: Color) -> int:
+	# Build the packed RGBA32 voxel value with the material id in the
+	# alpha byte. If material is null (registry not loaded), fall
+	# through to a plain to_rgba32 — the voxel will be alpha=255
+	# (legacy behaviour) and won't have a queryable material, but at
+	# least it'll render. This is the editor-only / @tool fallback.
+	if material == null:
+		return color.to_rgba32()
+	# Use the registry helper directly so the alpha-byte-as-id encoding
+	# stays in one place.
+	var registry: Node = null
+	if Engine.has_singleton("VoxelMaterialRegistry"):
+		registry = Engine.get_singleton("VoxelMaterialRegistry")
+	if registry == null:
+		var ml: SceneTree = Engine.get_main_loop() as SceneTree
+		if ml != null and ml.root != null:
+			registry = ml.root.get_node_or_null("VoxelMaterialRegistry")
+	if registry == null:
+		# Inline pack as fallback — same math as registry.pack_voxel.
+		var packed: int = color.to_rgba32()
+		return (packed & 0xFFFFFF00) | (material.material_id & 0xFF)
+	return registry.pack_voxel(material.material_id, color)
