@@ -99,6 +99,15 @@ var _player_pos: Vector3 = Vector3.ZERO
 # frame via set_player_position(). Used to bound dirty-chunk scans
 # to the active radius.
 
+var _player_chunk: Vector3i = Vector3i(2147483647, 2147483647, 2147483647)
+# Last seen player chunk coord. Used to detect chunk transitions and
+# notify WaterChunkMesher (so it can update which chunks have meshes
+# in the render radius).
+
+var _chunk_mesher: Node3D = null
+# Spawned in _ready as a child of this autoload. Owns the per-chunk
+# MeshInstance3Ds for visible water surfaces. See WaterChunkMesher.gd.
+
 
 # ============================================================
 # Lifecycle
@@ -112,6 +121,17 @@ func _ready() -> void:
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 
+	# Spawn the surface mesher as a child of this autoload. Doing it
+	# in code (rather than as a sibling autoload) keeps the mesher's
+	# parent guaranteed to be us, and lets the mesher pull source
+	# regions and signals from us via get_parent().
+	var WaterChunkMesher := load("res://scripts/WaterChunkMesher.gd")
+	if WaterChunkMesher != null:
+		_chunk_mesher = Node3D.new()
+		_chunk_mesher.name = "WaterChunkMesher"
+		_chunk_mesher.set_script(WaterChunkMesher)
+		add_child(_chunk_mesher)
+
 
 # ============================================================
 # Public API — Player3D query path
@@ -119,8 +139,14 @@ func _ready() -> void:
 
 func set_player_position(world_pos: Vector3) -> void:
 	# Player3D calls this each physics frame. Used to bound the flow
-	# tick (Phase 3+) to a ball around the player.
+	# tick (Phase 3+) to a ball around the player and to drive the
+	# chunk mesher's render-radius cull.
 	_player_pos = world_pos
+	var chunk: Vector3i = _world_to_chunk(world_pos)
+	if chunk != _player_chunk:
+		_player_chunk = chunk
+		if _chunk_mesher != null and _chunk_mesher.has_method("set_player_chunk"):
+			_chunk_mesher.set_player_chunk(chunk)
 
 
 func is_position_in_water(world_pos: Vector3) -> bool:
@@ -155,6 +181,21 @@ func get_flow_velocity_at(_world_pos: Vector3) -> Vector3:
 	# Phase 1: always zero (no flow simulation yet). Phase 6 implements
 	# the level-gradient → velocity computation.
 	return Vector3.ZERO
+
+
+func get_source_regions() -> Array:
+	# Read-only accessor for the source-region list. WaterChunkMesher
+	# uses this to find the AABBs that intersect a chunk for surface-
+	# mesh emission. Returning the live list (not a copy) is fine
+	# because the mesher only iterates and does AABB tests.
+	return _source_regions
+
+
+func get_cells() -> Dictionary:
+	# Read-only accessor for the active water cells dictionary. Used
+	# by WaterChunkMesher in Phase 4+ to emit per-cell partial-height
+	# surfaces.
+	return _cells
 
 
 # ============================================================
