@@ -10,6 +10,38 @@ How the world's conditions change over time and affect gameplay, atmosphere, and
 
 ---
 
+## Implementation status (2026-05-04)
+
+The visual core is live in `scripts/WeatherManager.gd` (autoload). Six-state
+machine with 30 s transitions; three trigger sources (story override /
+proximity zone / scheduled random) resolved by priority.
+
+**Shipping:** state machine + tween, fog override via `DayNightCycle.set_fog_override`,
+ambient dim, wind to water shader (with gradual 3°/s direction drift independent
+of state changes), rain + snow `GPUParticles3D` (camera-following, particle
+amount tweens with state), `RainOverlay` `CanvasLayer` mood tint,
+wet-terrain `material_override` specular sheen, directional lightning
+(`OmniLight3D` flash + 3D spatial thunder with realistic distance delay),
+`WeatherLocationProfile` resource for per-region authoring (aldenholt.tres
+seeded), `WeatherZone` `Area3D` proximity stack, save/load round-trip,
+debug overlay submenu with one button per state + FORCE LIGHTNING +
+CLEAR OVERRIDE + live state/wind readouts.
+
+**Deferred (per design decision — visual-only system):**
+- Gameplay hazards (footstep sound coupling, enemy detection-range
+  modifiers, combat consequences). Hooks public; future PR can add.
+- Snow ground accumulation. Particles fall but voxels don't whiten —
+  needs a per-face wetness/snow channel and shader work.
+- Region-boundary auto-swap of location profile. v1 ships one global
+  profile; call `WeatherManager.set_location_profile(profile)` to swap.
+- Interior weather isolation. `InteriorDetector` not yet present; v1
+  treats every scene as exterior.
+- Sun-pulse during lightning (would conflict with `DayNightCycle`'s
+  per-frame sun-energy write). Defer until `DayNightCycle` gains a
+  sun-energy override hook.
+
+---
+
 ## Design Philosophy
 
 **Weather is atmosphere, not obstacle.** Rain does not cancel quests. Fog does not make enemies invisible. Snow does not freeze Roland solid. Weather communicates the world's mood, frames the emotional register of a scene, and adds texture to traversal. It is not a survival mechanic.

@@ -76,8 +76,23 @@ var _env: WorldEnvironment
 var _sun_mesh: MeshInstance3D
 var _moon_mesh: MeshInstance3D
 
+# Weather fog override. While WeatherManager wants to drive fog, it calls
+# set_fog_override(color, density). _apply() then writes those values instead
+# of the time-of-day-driven palette every frame. WeatherManager interpolates
+# the values it passes in (over the 30s state-transition tween), so the
+# override doesn't need its own blend logic here. clear_fog_override() hands
+# fog control back to the day/night palette.
+var _fog_override_active: bool = false
+var _override_fog_color: Color = Color.WHITE
+var _override_fog_density: float = 0.0
+
 
 func _ready() -> void:
+	# WeatherManager finds us via this group to push the fog override.
+	# Group registration happens here rather than in the .tscn so adding
+	# the script to a new World scene is enough — no node-property edit.
+	add_to_group("day_night_cycle")
+
 	_sun  = get_node_or_null(sun_path) as DirectionalLight3D
 	_moon = get_node_or_null(moon_path) as DirectionalLight3D
 	_env  = get_node_or_null(environment_path) as WorldEnvironment
@@ -250,4 +265,20 @@ func _apply() -> void:
 	if sky_mat != null:
 		sky_mat.sky_top_color     = sky_top
 		sky_mat.sky_horizon_color = sky_horizon
-	env.fog_light_color = fog
+	if _fog_override_active:
+		env.fog_light_color = _override_fog_color
+		env.fog_density     = _override_fog_density
+	else:
+		env.fog_light_color = fog
+
+
+# Public API used by WeatherManager. Color and density are written verbatim
+# every frame as long as the override is active — WeatherManager animates them.
+func set_fog_override(color: Color, density: float) -> void:
+	_fog_override_active = true
+	_override_fog_color = color
+	_override_fog_density = density
+
+
+func clear_fog_override() -> void:
+	_fog_override_active = false

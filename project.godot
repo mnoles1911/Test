@@ -39,6 +39,7 @@ WaterFlowManager="*res://scripts/WaterFlowManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 BarkManager="*res://scripts/BarkManager.gd"
 WorldClock="*res://scripts/WorldClock.gd"
+WeatherManager="*res://scripts/WeatherManager.gd"
 
 [dialogic]
 

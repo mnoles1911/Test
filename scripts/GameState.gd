@@ -478,6 +478,11 @@ func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
 	if get_node_or_null("/root/WaterFlowManager"):
 		data["water_sources"] = WaterFlowManager.get_save_data()
 
+	# Weather state — current/target state, override timer. Compact dict;
+	# missing keys read as defaults on load so older saves stay valid.
+	if get_node_or_null("/root/WeatherManager"):
+		data["weather"] = WeatherManager.get_save_data()
+
 	var path: String = save_path_for_name(save_name)
 	var json_string: String = JSON.stringify(data, "\t")
 	var file := FileAccess.open(path, FileAccess.WRITE)
@@ -594,6 +599,14 @@ func load_save_file(filename: String) -> bool:
 		WaterFlowManager.clear_persistent_state()
 		if data.has("water_sources"):
 			WaterFlowManager.load_save_data(data["water_sources"])
+
+	# Reset and reload weather state. clear_persistent_state hands the
+	# fresh world to the schedule-driven path; load_save_data restores
+	# any in-flight override timer from the saved value.
+	if get_node_or_null("/root/WeatherManager"):
+		WeatherManager.clear_persistent_state()
+		if data.has("weather"):
+			WeatherManager.load_save_data(data["weather"])
 
 	# Resume the total-play-time counter from the saved value. Without
 	# this, "time in game since inception" would reset to 0 every load.

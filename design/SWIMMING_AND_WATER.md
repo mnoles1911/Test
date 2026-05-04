@@ -204,18 +204,23 @@ func _physics_process(delta: float) -> void:
 
 ## Wind & Weather Coupling
 
-The water surface shader reads two uniforms (`wind_dir`, `wind_strength`) that bias wave direction and scale wave amplitude. Designers tune them per body via `WaterVolume.gd` `@export` sliders today; the future `WeatherManager` will write them programmatically.
+The water surface shader reads two uniforms (`wind_dir`, `wind_strength`) that bias wave direction and scale wave amplitude. Since the voxel-water refactor (PR #131), water is owned by the `WaterFlowManager` autoload — not per-body `WaterVolume` Area3Ds — and the wind is pushed globally to the shared `assets/shaders/water_material.tres` exactly once per frame.
 
-**Public API:**
+**Public API (live as of 2026-05-04):**
 
 ```gdscript
-# WaterVolume.gd
-func set_wind(direction: Vector3, strength: float) -> void
+# WaterFlowManager.gd (autoload)
+func set_global_wind(direction: Vector3, strength: float) -> void
 ```
 
-`direction` is a unit vector in world XZ (Y component ignored). `strength` is 0–5: `0` = dead calm, `1` = breezy, `3` = stormy chop, `5` = lethal storm. Calling this is equivalent to setting both `wind_direction` and `wind_strength` `@exports` at once but pushes the shader uniforms exactly once instead of twice.
+`direction` is a unit vector in world XZ (Y component ignored). `strength` is 0–5: `0` = dead calm, `1` = breezy, `3` = stormy chop, `5` = lethal storm.
 
-**Future WeatherManager wiring:** when weather state changes, iterate every Area3D in the `water_volume` group, call `set_wind(weather.wind_direction, weather.wind_strength)` on each. Smoothing (lerp the values over a few seconds rather than snapping) is the WeatherManager's responsibility, not WaterVolume's.
+**WeatherManager wiring (live):** `WeatherManager._process` writes the interpolated wind values every frame:
+
+- `wind_strength` interpolates between state profiles during the 30 s state transition (LIGHT_RAIN = 1.5, HEAVY_RAIN = 3.5, FOG = 0.3, etc.).
+- `wind_direction` is decoupled from state changes — `WeatherManager` resamples a new XZ heading every 90 s and lerps `wind_direction` toward it at 3°/s, so direction NEVER snaps when the state changes.
+
+The water material is loaded lazily on the first `set_global_wind` call so cold worlds that never touch weather pay no overhead.
 
 **Do not** use a separate camera mode for underwater. The standard CameraRig handles it via SpringArm collision.
 

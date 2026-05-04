@@ -386,6 +386,42 @@ func add_source_region(aabb: AABB, level: int = MAX_LEVEL) -> void:
 
 
 # ============================================================
+# Global wind (driven by WeatherManager)
+# ============================================================
+
+# Path to the shared water shader material. Every WaterChunkMesher surface
+# references this same .tres, so writing the wind parameters here updates
+# every visible water surface at once.
+const _WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
+var _global_water_material: ShaderMaterial = null
+
+
+func set_global_wind(direction: Vector3, strength: float) -> void:
+	# Pushes wind into the water shader. Called by WeatherManager's per-frame
+	# transition tween whenever the active weather state's wind values change.
+	#
+	# direction: world-space wind heading. Only the XZ component matters; the
+	# shader takes a Vector2.
+	# strength: 0..N multiplier on wave amplitude. State profiles range from
+	# ~0.3 (FOG) to 3.5 (HEAVY_RAIN); the shader's sane upper bound is ~5.0.
+	#
+	# The material is loaded lazily on the first call so we don't pay the
+	# load cost on cold worlds that never touch weather.
+	if _global_water_material == null:
+		_global_water_material = load(_WATER_MATERIAL_PATH) as ShaderMaterial
+		if _global_water_material == null:
+			push_warning("[WaterFlowManager] Could not load %s — wind parameters not applied" % _WATER_MATERIAL_PATH)
+			return
+	var dir_2d: Vector2 = Vector2(direction.x, direction.z)
+	if dir_2d.length() > 0.0001:
+		dir_2d = dir_2d.normalized()
+	else:
+		dir_2d = Vector2(1.0, 0.0)
+	_global_water_material.set_shader_parameter("wind_dir", dir_2d)
+	_global_water_material.set_shader_parameter("wind_strength", maxf(0.0, strength))
+
+
+# ============================================================
 # Edit subscription — dirty chunk tracking
 # ============================================================
 

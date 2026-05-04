@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="WeatherLocationProfile" load_steps=2 format=3 uid="uid://b8wlweath4r1a"]
+
+[ext_resource type="Script" path="res://scripts/WeatherLocationProfile.gd" id="1_weather_profile"]
+
+[resource]
+script = ExtResource("1_weather_profile")
+profile_id = "aldenholt"
+authored_sequence = Array[int]([1, 0, 1, 2])
+random_distribution = {
+0: 0.25,
+1: 0.40,
+2: 0.20,
+3: 0.07,
+4: 0.05,
+5: 0.03
+}
+transition_hours = Array[int]([6, 12, 18])
