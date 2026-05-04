@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "water"
+material_id = 5
+display_name = "Water"
+color_low = Color(0.18, 0.32, 0.48, 1)
+color_high = Color(0.45, 0.65, 0.78, 1)
+color_jitter = 0.02
+mining_time_seconds = 0.1
+allowed_tools = Array[String](["bucket"])
+yield_item_id = ""
+yield_quantity = 0
+fall_behavior = 3
+gravity_scale = 1.0
+damage_multiplier = 0.0

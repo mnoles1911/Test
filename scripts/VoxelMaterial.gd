@@ -181,6 +181,16 @@ enum FallBehavior {
 	# just appears one Y lower (or however many Y values it takes to
 	# land on something solid). This is what makes sand "pour" when you
 	# dig under it.
+
+	LIQUID,
+	# Water model. The voxel does NOT live in CHANNEL_COLOR — it lives
+	# in WaterFlowManager's dictionary as a flow cell. VoxelMesherCubes
+	# never sees liquid voxels (they're invisible to the cube mesher);
+	# WaterChunkMesher emits a separate transparent surface mesh for
+	# them. Flow rules: source cells (designer/player-placed) are
+	# permanent; flowing cells spread cellular-automata-style downward
+	# and laterally with monotone-decay, capped at 8 levels of distance
+	# from a source. See scripts/WaterFlowManager.gd.
 }
 
 @export var fall_behavior: FallBehavior = FallBehavior.NEVER

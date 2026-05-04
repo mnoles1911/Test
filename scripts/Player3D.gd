@@ -157,10 +157,6 @@ var _breath_recovery_remaining: float = 0.0
 # only matters after a real breath drain — at full breath the gate
 # is invisible.
 
-var _current_water_volume: Node = null
-# Cached reference to the water_volume Area3D Roland is currently
-# inside, or null if dry. Used to query surface_y and current.
-
 @export var underwater_filter_path: NodePath = "UnderwaterFilter"
 # Path to the UnderwaterFilter CanvasLayer child. Set in the
 # inspector if the node is renamed or moved. Default matches
@@ -271,7 +267,7 @@ func _physics_process(delta: float) -> void:
 
 	# --- Detect water (must run BEFORE movement decisions) ---
 	# Walks the water_volume group; first overlapping water Area3D
-	# wins. Sets _in_water, _is_submerged, _current_water_volume.
+	# Sets _in_water, _is_submerged based on WaterFlowManager queries.
 	_update_water_state()
 
 	# Switch motion mode based on water state. FLOATING ignores the
@@ -336,8 +332,12 @@ func _physics_process(delta: float) -> void:
 			velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally + vertically.
-		if _current_water_volume != null:
-			var current: Vector3 = _current_water_volume.get_current_velocity()
+		# Phase 1: WaterFlowManager.get_flow_velocity_at returns Vector3.ZERO
+		# (no flow simulation yet). Phase 6 implements gradient-based
+		# velocity so rivers push the player downstream.
+		var wfm: Node = get_node_or_null("/root/WaterFlowManager")
+		if wfm != null:
+			var current: Vector3 = wfm.get_flow_velocity_at(global_position)
 			if current.length_squared() > 0.0001:
 				velocity += current * delta
 	else:
@@ -389,44 +389,28 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_water_state() -> void:
-	# Find the first water_volume Area3D overlapping the player.
-	# If multiple overlap, the first one in the group wins — water
-	# volumes shouldn't overlap in practice.
+	# Query WaterFlowManager (autoload) for water at the player's feet
+	# and head. This replaces the Area3D group-scan model from PR #130
+	# — water now lives in a voxel cell dictionary, not in scene-placed
+	# Area3Ds. See scripts/WaterFlowManager.gd for the storage model.
 	#
-	# This is a per-frame poll rather than a signal-driven model.
-	# Fewer connections to manage, and the cost is trivial (a few
-	# nodes in the group at most). If the group ever grows large
-	# (hundreds of water bodies), revisit.
-	_current_water_volume = null
+	# WaterFlowManager.is_position_in_water tests the active dictionary
+	# AND any registered source regions (oceans, lakes), so a single
+	# query covers per-cell water and large body-of-water AABBs.
 	_in_water = false
+	_is_submerged = false
 
-	for area in get_tree().get_nodes_in_group("water_volume"):
-		if not area is Area3D:
-			continue
-		var area3d := area as Area3D
-		if not area3d.overlaps_body(self):
-			continue
-		# Even if the trigger Area3D overlaps the player, only count
-		# this as "in water" if the player's FEET are at-or-below the
-		# water's surface_y. Without this guard, a water volume whose
-		# collision shape extends above its surface (e.g. the ocean's
-		# 30m-tall box that overhangs the air above sea level for
-		# editor-resilience) would put the player into swim physics
-		# while still standing on dry land or hovering above the
-		# surface.
-		var surface_y: float = INF
-		if "surface_y" in area3d:
-			surface_y = float(area3d.surface_y)
-		if global_position.y <= surface_y:
-			_current_water_volume = area3d
-			_in_water = true
-			break
-
-	# Submersion check uses the cached water volume's surface_y.
-	if _in_water and _current_water_volume.has_method("is_position_submerged"):
-		_is_submerged = _current_water_volume.is_position_submerged(global_position, HEAD_OFFSET_METERS)
-	else:
-		_is_submerged = false
+	var wfm: Node = get_node_or_null("/root/WaterFlowManager")
+	if wfm != null:
+		# Bound the player position cache so the flow tick can scan
+		# only the active radius around the player.
+		wfm.set_player_position(global_position)
+		_in_water = wfm.is_position_in_water(global_position)
+		if _in_water:
+			# Submersion = head also under water. Reusing the existing
+			# HEAD_OFFSET_METERS so the threshold matches PR #130.
+			var head_pos := global_position + Vector3(0.0, HEAD_OFFSET_METERS, 0.0)
+			_is_submerged = wfm.is_position_in_water(head_pos)
 
 	# Drive the underwater camera tint. set_active is idempotent —
 	# the filter only updates visibility on actual state changes.
@@ -499,7 +483,6 @@ func toggle_fly_mode() -> bool:
 		# Clear water state so the swim HUD doesn't linger.
 		_in_water = false
 		_is_submerged = false
-		_current_water_volume = null
 		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 			_underwater_filter.set_active(false)
 	else:
