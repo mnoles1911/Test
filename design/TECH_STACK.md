@@ -648,8 +648,9 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 | `Dialogic` | ✅ Active | Dialogue system |
 | `BarkManager.gd` | ✅ Active | Spatial bark audio + line selection |
 | `WorldClock.gd` | ✅ Active | In-game time, schedule dispatch |
-| `VoxelEditManager.gd` | ✅ Active | Async edit queue, EditedChunkRegistry, NoEditZone enforcement, per-frame voxel budget |
+| `VoxelEditManager.gd` | ✅ Active | Async edit queue, EditedChunkRegistry, NoEditZone enforcement, per-frame voxel budget. Public API: `queue_edit_sphere`, `queue_edit_box`, `queue_set_voxel`, `queue_set_voxels_bulk`, `get_terrain`, `world_to_voxel`. |
 | `NoEditZoneRegistry.gd` | ✅ Active | Registry of Area3D no-edit volumes; queried before every VoxelTool write |
+| `VoxelGravityManager.gd` | ✅ Active | After every voxel edit, runs a local 16 m flood-fill to find unsupported voxel islands and spawns them as `FallingVoxelCluster` rigid bodies. See `design/3D_VOXEL_MIGRATION.md` → "Voxel Gravity". |
 | `Settings.gd` | NOT autoload | Scene-attached script on `scenes/ui/Settings.tscn` (TransitionManager-loaded scene) |
 | `MainMenu.gd` | NOT autoload | Scene-attached script on `scenes/ui/MainMenu.tscn` |
 | `WorldGenerator` | ✅ As `CubicHeightmapGenerator` | Custom `VoxelGeneratorScript` that writes CHANNEL_COLOR with macro+mid+detail noise layers + per-voxel colour jitter. Configured on the `VoxelLodTerrain` node in `World3D.tscn`, NOT registered as autoload (lives on the terrain). Replaced the planned VoxelGeneratorGraph + Gaea EXR pipeline. |

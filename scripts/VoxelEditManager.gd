@@ -260,6 +260,33 @@ func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
 	return true
 
 
+func queue_set_voxels_bulk(voxel_writes: Array, label: String = "bulk") -> bool:
+	# Bulk single-voxel writes — used for falling-voxel cluster re-deposits
+	# where many voxels need to be written at exact grid positions in a
+	# single operation. Each entry in voxel_writes is a Dictionary:
+	#   { "pos": Vector3 (world-space), "value": int (packed RGBA32) }
+	#
+	# All writes are batched into one queue command, processed under one
+	# VoxelTool acquisition. NoEditZone is queried per-voxel and any
+	# rejected writes are silently dropped — a falling cluster that lands
+	# partly inside a settlement will lose the boundary voxels.
+	#
+	# Returns true if the command was queued, false if the queue is full.
+	# An empty voxel_writes array returns true (no-op).
+	if voxel_writes.is_empty():
+		return true
+	if _edit_queue.size() >= max_queue_length:
+		push_warning("VoxelEditManager: queue full, dropping bulk write of %d voxels" % voxel_writes.size())
+		return false
+
+	_edit_queue.append({
+		"type": "bulk",
+		"writes": voxel_writes,
+		"label": label,
+	})
+	return true
+
+
 # ============================================================
 # Public API — queries
 # ============================================================
@@ -283,6 +310,21 @@ func mark_chunk_loaded_with_deltas(chunk_coords: Vector3i) -> void:
 	# a chunk has stored deltas. Pre-populates the registry on game
 	# load so the LOD decision is correct from frame one.
 	_edited_chunks[chunk_coords] = true
+
+
+func get_terrain() -> VoxelLodTerrain:
+	# Read access to the active terrain node. Used by VoxelGravityManager
+	# to acquire a VoxelTool for reading voxel values during flood-fill
+	# connectivity analysis. Returns null if the world scene hasn't called
+	# set_terrain yet.
+	return _terrain
+
+
+func world_to_voxel(world_pos: Vector3) -> Vector3i:
+	# Public coord conversion — exposes the same math used internally
+	# so other systems (gravity manager, build mode) can convert without
+	# duplicating the constants.
+	return _world_to_voxel(world_pos)
 
 
 # ============================================================
@@ -396,6 +438,87 @@ func _apply_edit(cmd: Dictionary) -> void:
 			)
 			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
+		"bulk":
+			# Bulk single-voxel write — cluster re-deposit (and cluster
+			# carve) path. We emit edit_applied ONCE for the whole batch
+			# (with the AABB centre as the world position) so downstream
+			# listeners still react to the overall event without firing
+			# per-voxel.
+			#
+			# Implementation note: we use do_box on 1-voxel boxes rather
+			# than set_voxel(pos, value) because do_box is the only
+			# write API exercised by the existing edit verbs and is
+			# therefore guaranteed to work here. set_voxel exists in
+			# Zylann's API but signature has churned across versions —
+			# do_box is the safer pick.
+			#
+			# NoEditZone perf — naive per-voxel intersect_point queries
+			# would stutter for big bulks (a 1000-voxel cluster
+			# re-deposit = 1000 physics queries in one frame). We
+			# pre-flight with a single AABB shape-query: if no zone
+			# overlaps the bulk's AABB at all, every per-voxel check is
+			# guaranteed to return "allowed" and we skip the whole
+			# inner check. Per-voxel checks only run when a zone IS in
+			# the AABB (some voxels in, some out — must check each).
+			var writes: Array = cmd.get("writes", [])
+			if writes.is_empty():
+				return
+
+			# First pass: compute the bulk AABB.
+			var bulk_min: Vector3 = writes[0]["pos"]
+			var bulk_max: Vector3 = writes[0]["pos"]
+			for w0 in writes:
+				var p0: Vector3 = w0["pos"]
+				bulk_min.x = minf(bulk_min.x, p0.x)
+				bulk_min.y = minf(bulk_min.y, p0.y)
+				bulk_min.z = minf(bulk_min.z, p0.z)
+				bulk_max.x = maxf(bulk_max.x, p0.x)
+				bulk_max.y = maxf(bulk_max.y, p0.y)
+				bulk_max.z = maxf(bulk_max.z, p0.z)
+
+			# AABB pre-flight against NoEditZone. If false, the per-voxel
+			# is_point_inside_no_edit_zone check is provably unnecessary.
+			var registry := get_node_or_null("/root/NoEditZoneRegistry")
+			var bulk_overlaps_zone: bool = false
+			if registry != null and registry.has_method("does_aabb_overlap_no_edit_zone"):
+				bulk_overlaps_zone = registry.does_aabb_overlap_no_edit_zone(bulk_min, bulk_max)
+
+			tool.channel = VoxelBuffer.CHANNEL_COLOR
+			tool.mode = VoxelTool.MODE_SET
+			var written: int = 0
+			for w in writes:
+				var w_pos: Vector3 = w["pos"]
+				# Per-voxel zone check ONLY when a zone overlaps the bulk
+				# AABB at all. Otherwise this is provably allowed.
+				#
+				# Note: we skip _check_edit_allowed() and call the
+				# registry directly, because _check_edit_allowed emits
+				# edit_rejected_no_edit_zone (the bark trigger) which
+				# would fire per-voxel for a cluster falling into a
+				# settlement — spammy and wrong (it's the cluster's
+				# fault, not the player's).
+				if bulk_overlaps_zone and registry != null \
+						and registry.is_point_inside_no_edit_zone(w_pos):
+					continue
+				tool.value = int(w["value"])
+				var v_pos_f: Vector3 = _terrain.to_local(w_pos)
+				var v_pos: Vector3 = Vector3(
+					floori(v_pos_f.x),
+					floori(v_pos_f.y),
+					floori(v_pos_f.z),
+				)
+				# 1-voxel box — min inclusive, max exclusive on each axis.
+				tool.do_box(v_pos, v_pos + Vector3.ONE)
+				written += 1
+			if written == 0:
+				return
+			_mark_chunks_in_aabb(bulk_min, bulk_max)
+			var bulk_center: Vector3 = (bulk_min + bulk_max) * 0.5
+			print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
+				cmd.get("label", "?"), written, bulk_overlaps_zone
+			])
+			edit_applied.emit(bulk_center, _world_to_chunk(bulk_center))
+
 
 func _check_edit_allowed(world_pos: Vector3) -> bool:
 	# Returns true if the edit may proceed (i.e., NOT inside a no-edit
@@ -502,6 +625,8 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 			return int(size.x * size.y * size.z * VOXELS_PER_CUBIC_METER)
 		"set":
 			return 1
+		"bulk":
+			return cmd.get("writes", []).size()
 		_:
 			return 1
 

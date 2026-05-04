@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/FallingVoxelCluster.gd" id="1_cluster"]
+
+[sub_resource type="BoxShape3D" id="PlaceholderBox"]
+; Placeholder shape — silences Godot's "CollisionShape3D has no shape"
+; warning at instantiation time. FallingVoxelCluster.configure() immediately
+; overwrites this with the correctly-sized box from the cluster's AABB
+; before any physics runs, so this resource is never used in practice.
+size = Vector3(0.166667, 0.166667, 0.166667)
+
+[node name="FallingVoxelCluster" type="RigidBody3D"]
+script = ExtResource("1_cluster")
+mass = 50.0
+contact_monitor = true
+max_contacts_reported = 8
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("PlaceholderBox")

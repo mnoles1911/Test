@@ -217,6 +217,9 @@ The system design corpus is complete (combat, AI, companions, factions, quests, 
 - `EditToolHandler.gd` — child of Player3D. Pickaxe/axe/shovel swing detection: raycast from camera, NoEditZone-gated voxel removal via `VoxelEditManager`, material yield to `InventoryManager`.
 - `ThrowableHandler.gd` — child of Player3D. Throw input (default key 1) instances throwables, copies `voxel_aoe_radius` + `combat_damage` from `ITEM_REGISTRY` onto the spawned RigidBody3D, applies camera-aimed velocity (carries pitch).
 - `PowderCharge.gd` (and the throwable scene) — RigidBody3D explosive. Impact-only detonation, sphere carve via `VoxelEditManager`, visible OmniLight3D + emissive sphere flash that animates and self-frees via Tween.
+- `VoxelGravityManager.gd` — autoload. Subscribes to `VoxelEditManager.edit_applied`. After every edit, runs a local 16 m flood-fill (capped 32 m) to find voxels that lost support, carves them from terrain via bulk write, and spawns `FallingVoxelCluster` `RigidBody3D` instances per disconnected island. Local detection — anything connected to the analysis bubble's edge is treated as anchored. Caps: max cluster size 4096 voxels, max active clusters 32, one bubble processed per physics frame.
+- `FallingVoxelCluster.gd` + `scenes/voxel/FallingVoxelCluster.tscn` — `RigidBody3D` representing one airborne voxel chunk. Custom centre of mass at the voxel-weighted centroid (so L-shapes tumble correctly). Tall thin clusters (height ≥ 3× horizontal) get a directional tip impulse pointing away from the edit origin (felled trees fall toward the cut). Tiny random angular nudge breaks perfect-vertical equilibrium. Re-deposits as terrain via `VoxelEditManager.queue_set_voxels_bulk` when the body sleeps (or after a 10 s failsafe). Damages bodies with a `health` property: `voxel_count × fall_height × 0.05`, with a 1.5 m minimum fall.
+- `VoxelClusterBuilder.gd` — static utility (no state). Builds an `ArrayMesh` from a cluster Dictionary (`Vector3i → packed RGBA`), with per-face culling so interior cube faces are skipped. Also computes the cluster's local AABB, voxel-weighted centroid, and the centre-offset that the mesh build needs to make the rigid body pivot around its true centre of mass. Caches a single shared `StandardMaterial3D` (`vertex_color_use_as_albedo = true`) used by every cluster.
 
 **Specified in design docs but not yet implemented** (build in dependency order):
 - `SchematicLibrary.gd` — autoload. Registry of placeable building schematics (`.glb` props with placement metadata in `assets/voxel/schematics/`). Player crafts schematics at the Carpentry Bench; placements saved to `user://saves/slot_{N}/placed_schematics.json`.
@@ -331,19 +334,22 @@ var direction := (transform.basis * local_dir).normalized()
 
 **Voxel edits MUST go through VoxelEditManager — never raw VoxelTool:**
 ```gdscript
-# WRONG — bypasses NoEditZone check, async budget, and EditedChunkRegistry update
+# WRONG — bypasses NoEditZone check, async budget, EditedChunkRegistry update,
+# AND VoxelGravityManager (carved support won't trigger falling-voxel scans)
 var tool := voxel_terrain.get_voxel_tool()
 tool.do_sphere(world_pos, radius)
 
 # RIGHT — VoxelEditManager handles NoEditZone rejection, async queueing,
-# EditedChunkRegistry tracking, and LOD-bake invalidation
+# EditedChunkRegistry tracking, LOD-bake invalidation, and emits the
+# edit_applied signal that VoxelGravityManager subscribes to for gravity scans.
 VoxelEditManager.queue_edit_sphere(world_pos, radius, voxel_value)
 # Returns true if accepted, false if rejected by NoEditZone (caller may bark
 # Roland's "This place doesn't yield to me." line on false).
 ```
 This is non-negotiable. A direct `VoxelTool.do_*` call inside a NoEditZone or
 during heavy edit traffic will desync the EditedChunkRegistry, corrupt the LOD
-cache, or violate the per-frame voxel budget. Always route through the manager.
+cache, violate the per-frame voxel budget, OR (with gravity now wired) leave
+unsupported voxels floating in midair. Always route through the manager.
 
 ---
 
@@ -411,17 +417,19 @@ bark *"This place doesn't yield to me."*
 
 ## Autoload registration status
 
-Registered in `project.godot` (active now):
+Registered in `project.godot` (active now), in load order:
 `GameState`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
-`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `JournalUI`, `HUDOverlay`, `Dialogic`
+`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `JournalUI`, `HUDOverlay`,
+`NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `Dialogic`,
+`BarkManager`, `WorldClock`
+
+Load-order rules to preserve:
+- `NoEditZoneRegistry` MUST load before `VoxelEditManager` (the manager queries the registry on every edit).
+- `VoxelEditManager` MUST load before `VoxelGravityManager` (the gravity manager subscribes to `edit_applied` in `_ready`).
 
 Note: the `JournalUI` autoload entry points at the **scene** `res://scenes/ui/Journal.tscn`, not at `scripts/JournalUI.gd` directly — the script is attached to the scene's root node. Every other autoload above points at a `.gd` file.
 
-**NOT yet registered — must be added in Project Settings → Autoload:**
-- `scripts/BarkManager.gd` → node name `BarkManager`
-- `scripts/WorldClock.gd` → node name `WorldClock`
-- `scripts/VoxelEditManager.gd` → node name `VoxelEditManager` (built in Milestone 5-3D — destructible terrain core)
-- `scripts/NoEditZoneRegistry.gd` → node name `NoEditZoneRegistry` (built in Milestone 5-3D — protects settlements from edits)
+**NOT yet registered — must be added in Project Settings → Autoload when those systems land:**
 - `scripts/SchematicLibrary.gd` → node name `SchematicLibrary` (built when player construction lands)
 
 Scripts that reference these autoloads must guard with `get_node_or_null`

@@ -87,6 +87,50 @@ func is_point_inside_no_edit_zone(world_pos: Vector3) -> bool:
 	return false
 
 
+func does_aabb_overlap_no_edit_zone(aabb_min: Vector3, aabb_max: Vector3) -> bool:
+	# AABB overlap query — single physics call instead of N point queries.
+	# Used as a pre-flight by bulk voxel writes (VoxelEditManager bulk
+	# handler) and by gravity-system flood-fill (VoxelGravityManager) so
+	# that the common case "no zone anywhere near this batch of voxels"
+	# costs ONE physics query instead of one per voxel. Per-voxel point
+	# checks remain the right call when the AABB does overlap a zone
+	# (some voxels in, some out), so this method is a fast-path filter
+	# rather than a replacement.
+	#
+	# Symptom of NOT having this: bulk writes of 1,000+ voxels (a
+	# settled cluster re-depositing) stutter the frame because each
+	# voxel runs intersect_point. With this pre-flight, the cluster
+	# redeposit costs one shape query.
+
+	var space_state: PhysicsDirectSpaceState3D = _get_space_state()
+	if space_state == null:
+		return false
+
+	# Box covering the AABB. Setting size = max - min and translating
+	# by the AABB's centre (since BoxShape3D is centred on its origin).
+	var box := BoxShape3D.new()
+	box.size = aabb_max - aabb_min
+	# Edge case — degenerate AABB (point or line): clamp to a 1-voxel-ish
+	# minimum so the BoxShape3D is non-zero. Otherwise the query may
+	# silently return zero hits even when the point IS inside a zone.
+	box.size.x = maxf(box.size.x, 0.01)
+	box.size.y = maxf(box.size.y, 0.01)
+	box.size.z = maxf(box.size.z, 0.01)
+
+	var params := PhysicsShapeQueryParameters3D.new()
+	params.shape = box
+	params.transform = Transform3D(Basis.IDENTITY, (aabb_min + aabb_max) * 0.5)
+	params.collide_with_areas = true
+	params.collide_with_bodies = false
+
+	var hits: Array[Dictionary] = space_state.intersect_shape(params, 32)
+	for hit in hits:
+		var collider: Object = hit.get("collider")
+		if collider is Node and (collider as Node).is_in_group("no_edit_zone"):
+			return true
+	return false
+
+
 func _get_space_state() -> PhysicsDirectSpaceState3D:
 	# Grab the 3D physics space from the current scene's world.
 	# Returns null if no 3D viewport / world is active yet.
