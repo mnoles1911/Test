@@ -14,7 +14,8 @@ class_name WeatherZone
 #   - Cinematic beats during exploration
 #
 # Multiple zones can be active at once; the highest priority wins
-# (resolved by WeatherManager.set_proximity_state which tracks a stack).
+# (resolved by WeatherManager's stack-based push_proximity_zone /
+# pop_proximity_zone API).
 #
 # Reference: design/WEATHER_AND_ENVIRONMENT.md → proximity trigger
 
@@ -33,6 +34,23 @@ func _ready() -> void:
 	add_to_group("weather_zone")
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	# Godot's body_entered only fires when bodies TRANSITION into the
+	# area. If the player is already inside the zone when the scene
+	# loads (common: zone authored to overlap a spawn point), we'd
+	# never hear about them. call_deferred so the scene tree + physics
+	# space have settled before we read overlapping bodies.
+	call_deferred("_check_initial_overlap")
+
+
+func _check_initial_overlap() -> void:
+	# Treat any player-grouped body already inside the area at scene
+	# load as if it just entered. Idempotent — re-running is safe
+	# because WeatherManager.push_proximity_zone replaces existing
+	# entries for the same zone.
+	for body in get_overlapping_bodies():
+		if body.is_in_group("player"):
+			_on_body_entered(body)
+			return
 
 
 func _on_body_entered(body: Node) -> void:

@@ -198,12 +198,34 @@ var _live_fog_color: Color = STATE_PROFILES[State.CLEAR]["fog_color"]
 var _live_fog_density: float = STATE_PROFILES[State.CLEAR]["fog_density"]
 var _live_ambient_dim: float = 1.0
 var _live_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_strength"]
+var _live_wetness: float = 0.0
+var _live_rain_density: float = 0.0
+var _live_snow_density: float = 0.0
+
+# Blend origins for the transition tween. Snapshotted from _live_* every
+# time the target state changes. Without this, mid-transition target
+# changes (A→B then B→A while halfway through the first tween) snap
+# the visuals back to the original state's profile values before
+# re-tweening, producing a visible jump. With the snapshot, every
+# transition starts from "where the visuals are right now" and walks
+# smoothly to the new target.
+var _blend_origin_fog_color: Color = STATE_PROFILES[State.CLEAR]["fog_color"]
+var _blend_origin_fog_density: float = STATE_PROFILES[State.CLEAR]["fog_density"]
+var _blend_origin_ambient_dim: float = 1.0
+var _blend_origin_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_strength"]
+var _blend_origin_wetness: float = 0.0
+var _blend_origin_rain_density: float = 0.0
+var _blend_origin_snow_density: float = 0.0
 
 # Particle systems. Spawned lazily on the first transition that needs
 # them so a CLEAR-only world never builds the rigs. Position follows
 # the active camera every frame.
 var _rain_particles: GPUParticles3D = null
 var _snow_particles: GPUParticles3D = null
+# Last gravity vector pushed to each particle process material. Skipping
+# redundant writes saves a per-frame GPU buffer rebuild.
+var _rain_last_gravity: Vector3 = Vector3.ZERO
+var _snow_last_gravity: Vector3 = Vector3.ZERO
 
 # Wet-terrain visual layers (Phase 8).
 # Layer A: full-screen blue-grey tint — RainOverlay child of WeatherManager.
@@ -215,11 +237,11 @@ var _wet_terrain_material: StandardMaterial3D = null
 # writes every frame on a stable state.
 var _wet_terrain_active: bool = false
 
-# Ambient audio (Phase 10). One AudioStreamPlayer that crossfades on
-# state change. Files live at res://assets/audio/ambient/{key}.ogg
-# where key is the "ambient_audio" entry in STATE_PROFILES.
+# Ambient audio (Phase 10). _ambient_player advances synchronously to
+# the active state's player; outgoing players each get their own
+# fade-out tween that queue_frees them when done. No shared finaliser,
+# so rapid swaps can't race on a single _finalise callback.
 var _ambient_player: AudioStreamPlayer = null
-var _ambient_player_next: AudioStreamPlayer = null   # destination of in-flight crossfade
 var _ambient_current_key: String = ""
 var _ambient_warned_missing: Dictionary = {}   # key -> true once warned
 const AMBIENT_AUDIO_DIR: String = "res://assets/audio/ambient/"
@@ -264,19 +286,53 @@ func _ready() -> void:
 		add_child(_rain_overlay)
 	# Wet-terrain material is also lazy — only built on first wet state.
 
-	# Ambient audio bed — single AudioStreamPlayer at -80 dB. We
-	# crossfade INTO this player and a second one we spawn on demand.
-	_ambient_player = AudioStreamPlayer.new()
-	_ambient_player.name = "AmbientAudio"
-	_ambient_player.bus = "Master"
-	_ambient_player.volume_db = -80.0
-	add_child(_ambient_player)
+	# Audio: no initial player needed. Swaps spawn a player on demand;
+	# fade-out tweens queue_free outgoing players. Empty key (CLEAR)
+	# means no ambient bed at all.
 
-	# Audio swaps are driven from _resolve_active_state when the target
-	# changes (not from weather_state_changed, which only fires when
-	# the visual transition COMPLETES — 30 s later). Starting the audio
-	# crossfade at the same moment as the visual fade keeps the two
-	# in sync.
+	# Seed the scheduled state immediately so Aldenholt's authored
+	# day-1 weather (or the global random distribution) takes effect on
+	# world load — without this, the world stays forced-CLEAR until the
+	# first transition hour [6, 12, 18] passes (up to 4 in-game hours
+	# of nothing-happens with WorldClock starting at hour 8).
+	_seed_initial_state()
+
+
+# Snaps state machine + blend origins + audio to the rolled scheduled
+# state without playing the 30 s transition tween. Used on world load
+# so the initial frame already has correct atmosphere.
+func _seed_initial_state() -> void:
+	_scheduled_state = _roll_state_for_today()
+	current_state = _scheduled_state
+	_target_state = _scheduled_state
+	_transition_progress = 1.0
+	# Initialise live + blend-origin values to the seeded state's
+	# profile so the first _process tick reads consistent values
+	# rather than CLEAR defaults.
+	var profile: Dictionary = STATE_PROFILES[current_state]
+	_live_fog_color = profile["fog_color"]
+	_live_fog_density = profile["fog_density"]
+	_live_ambient_dim = profile["ambient_dim"]
+	_live_wind_strength = profile["wind_strength"]
+	_live_wetness = _state_wetness(current_state)
+	_live_rain_density = _state_rain_density(current_state)
+	_live_snow_density = _state_snow_density(current_state)
+	_snapshot_blend_origins()
+	# Kick the audio crossfade off so the seeded state has its bed.
+	_swap_ambient_audio(String(profile["ambient_audio"]))
+
+
+func _snapshot_blend_origins() -> void:
+	# Capture every interpolated value as the new "from" point of the
+	# transition. Called when target changes mid-flight so the next
+	# tween starts from where the visuals are RIGHT NOW.
+	_blend_origin_fog_color = _live_fog_color
+	_blend_origin_fog_density = _live_fog_density
+	_blend_origin_ambient_dim = _live_ambient_dim
+	_blend_origin_wind_strength = _live_wind_strength
+	_blend_origin_wetness = _live_wetness
+	_blend_origin_rain_density = _live_rain_density
+	_blend_origin_snow_density = _live_snow_density
 
 
 func _process(delta: float) -> void:
@@ -294,14 +350,21 @@ func _process(delta: float) -> void:
 			current_state = _target_state
 			weather_state_changed.emit(current_state, old_state)
 
-	# Interpolate live values toward target profile.
-	var prev_profile: Dictionary = STATE_PROFILES[current_state]
+	# Interpolate live values from the snapshotted blend origin toward
+	# the target profile. Using the snapshot (instead of
+	# STATE_PROFILES[current_state]) means a mid-transition target
+	# change starts the new tween from "where we are right now," not
+	# from the original from-state's profile values — no visible snap.
 	var target_profile: Dictionary = STATE_PROFILES[_target_state]
 	var t: float = _transition_progress
-	_live_fog_color = (prev_profile["fog_color"] as Color).lerp(target_profile["fog_color"], t)
-	_live_fog_density = lerpf(prev_profile["fog_density"], target_profile["fog_density"], t)
-	_live_ambient_dim = lerpf(prev_profile["ambient_dim"], target_profile["ambient_dim"], t)
-	_live_wind_strength = lerpf(prev_profile["wind_strength"], target_profile["wind_strength"], t)
+	_live_fog_color = _blend_origin_fog_color.lerp(target_profile["fog_color"], t)
+	_live_fog_density = lerpf(_blend_origin_fog_density, target_profile["fog_density"], t)
+	_live_ambient_dim = lerpf(_blend_origin_ambient_dim, target_profile["ambient_dim"], t)
+	_live_wind_strength = lerpf(_blend_origin_wind_strength, target_profile["wind_strength"], t)
+	_live_wetness = lerpf(_blend_origin_wetness, _state_wetness(_target_state), t)
+	_live_rain_density = lerpf(_blend_origin_rain_density, _state_rain_density(_target_state), t)
+	_live_snow_density = lerpf(_blend_origin_snow_density, _state_snow_density(_target_state), t)
+	weather_intensity_changed.emit(_live_wetness)
 
 	# Push fog into DayNightCycle's override slot. We try to find the
 	# DayNightCycle node by group; the script in World3D.tscn registers
@@ -332,19 +395,15 @@ func _process(delta: float) -> void:
 		WaterFlowManager.set_global_wind(wind_direction, _live_wind_strength)
 
 	# Particle follow + amount ramp. Done every frame so the rain
-	# blanket tracks the camera; amount is updated each frame from the
-	# interpolated state so the particle count tweens smoothly with
-	# the rest of the transition.
+	# blanket tracks the camera; amount uses the interpolated _live_*
+	# values so the particle count tweens smoothly with the rest of
+	# the transition (and never snaps on mid-transition target change).
 	_update_particles()
 
 	# Wet-terrain layered visual (Phase 8). Both the screen tint and
-	# the terrain material wetness ramp with the same "wetness"
-	# fraction — currently rain density / max rain density.
-	var wetness: float = lerpf(
-		_state_wetness(current_state),
-		_state_wetness(_target_state),
-		_transition_progress)
-	_update_wet_terrain_visual(wetness)
+	# the terrain material use _live_wetness, which is interpolated
+	# from the blend origin so it never snaps either.
+	_update_wet_terrain_visual(_live_wetness)
 
 	# Lightning strike timer — only ticks during HEAVY_RAIN.
 	_process_lightning(delta)
@@ -427,6 +486,13 @@ func pop_proximity_zone(zone: Object) -> void:
 
 
 func _recompute_proximity_state() -> void:
+	# Drop entries whose zone has been freed (scene change without
+	# explicit pop_proximity_zone). Without this, scene transitions
+	# leak stale entries that hold the wrong state forever.
+	for i in range(_proximity_stack.size() - 1, -1, -1):
+		if not is_instance_valid(_proximity_stack[i].zone):
+			_proximity_stack.remove_at(i)
+
 	var winner: int = -1
 	var best_priority: int = -2147483648
 	for entry in _proximity_stack:
@@ -459,6 +525,18 @@ func load_save_data(data: Dictionary) -> void:
 	_override_hours_remaining = float(data.get("override_hours_remaining", 0.0))
 	# Snap the transition tween — no in-flight interpolation across loads.
 	_transition_progress = 1.0
+	# Sync live values + blend origins to the loaded current_state's
+	# profile so the first frame after load reads consistent values
+	# rather than stale ones from before the load.
+	var profile: Dictionary = STATE_PROFILES[current_state]
+	_live_fog_color = profile["fog_color"]
+	_live_fog_density = profile["fog_density"]
+	_live_ambient_dim = profile["ambient_dim"]
+	_live_wind_strength = profile["wind_strength"]
+	_live_wetness = _state_wetness(current_state)
+	_live_rain_density = _state_rain_density(current_state)
+	_live_snow_density = _state_snow_density(current_state)
+	_snapshot_blend_origins()
 
 
 func clear_persistent_state() -> void:
@@ -470,6 +548,16 @@ func clear_persistent_state() -> void:
 	_proximity_state = -1
 	_proximity_stack.clear()
 	_transition_progress = 1.0
+	# Reset live + blend-origin values to CLEAR profile.
+	var profile: Dictionary = STATE_PROFILES[State.CLEAR]
+	_live_fog_color = profile["fog_color"]
+	_live_fog_density = profile["fog_density"]
+	_live_ambient_dim = profile["ambient_dim"]
+	_live_wind_strength = profile["wind_strength"]
+	_live_wetness = 0.0
+	_live_rain_density = 0.0
+	_live_snow_density = 0.0
+	_snapshot_blend_origins()
 
 
 # ============================================================
@@ -488,11 +576,12 @@ func _resolve_active_state() -> void:
 	if resolved == _target_state:
 		return
 
-	# The tween moves FROM the current visible state TO the new target.
-	# We snap current_state to where the tween is right now so the
-	# blend of profile values continues smoothly without snapping fog
-	# darker before re-brightening.
-	current_state = current_state  # unchanged; serves as "from" in lerp
+	# Snapshot the live values as the new blend origin so the next
+	# tween starts from "where we are right now" rather than snapping
+	# back to the original from-state's profile values. current_state
+	# stays as the formal "from" for reporting purposes; the lerp
+	# itself reads from _blend_origin_*.
+	_snapshot_blend_origins()
 	_target_state = resolved
 	_transition_progress = 0.0
 	# Kick the audio crossfade off NOW so it lines up with the start
@@ -540,9 +629,13 @@ func _roll_random_state() -> int:
 	return State.CLEAR
 
 
-# Designer / region-transition hook. Pass null to clear.
+# Designer / region-transition hook. Pass null to clear. Re-rolls the
+# scheduled state immediately so the new profile takes visible effect
+# without waiting for the next transition_hour.
 func set_location_profile(profile: WeatherLocationProfile) -> void:
 	_location_profile = profile
+	_scheduled_state = _roll_state_for_today()
+	_resolve_active_state()
 
 
 # ------------------------------------------------------------
@@ -643,57 +736,51 @@ func _swap_ambient_audio(key: String) -> void:
 	# Idempotent — if the new key matches what's already playing, no-op.
 	if key == _ambient_current_key:
 		return
-
-	# Empty key (CLEAR has no ambient bed) — fade the current player
-	# out to silence and stop it.
-	if key.is_empty():
-		_fade_player_out(_ambient_player)
-		_ambient_current_key = ""
-		return
-
-	# Try to load the OGG. Missing files log once and silently skip.
-	var path: String = AMBIENT_AUDIO_DIR + key + ".ogg"
-	if not ResourceLoader.exists(path):
-		if not _ambient_warned_missing.has(key):
-			_ambient_warned_missing[key] = true
-			push_warning("[WeatherManager] Missing ambient audio: %s — see DESIGNER_TODO.md" % path)
-		return
-	var stream: AudioStream = load(path) as AudioStream
-	if stream == null:
-		return
-
-	# Spawn a second player to take over; crossfade the two together.
-	# When the fade-in completes, the old player gets queue_free'd.
-	if _ambient_player_next != null and is_instance_valid(_ambient_player_next):
-		_ambient_player_next.queue_free()
-	_ambient_player_next = AudioStreamPlayer.new()
-	_ambient_player_next.bus = "Master"
-	_ambient_player_next.volume_db = -80.0
-	_ambient_player_next.stream = stream
-	add_child(_ambient_player_next)
-	_ambient_player_next.play()
-
-	var t := create_tween()
-	t.set_parallel(true)
-	t.tween_property(_ambient_player_next, "volume_db", AMBIENT_TARGET_DB, AMBIENT_CROSSFADE_S)
-	t.tween_property(_ambient_player, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
-	t.chain().tween_callback(_finalise_ambient_swap)
 	_ambient_current_key = key
 
+	# Capture the outgoing player. _ambient_player advances to the new
+	# one (or null) immediately; the captured reference gets its own
+	# fade-out tween. Each tween operates on its own bound players, so
+	# rapid swaps spawn independent tweens that never race on shared
+	# state. The previous design used a shared _finalise_ambient_swap
+	# callback that could run twice on rapid swaps and null out the
+	# active player.
+	var outgoing: AudioStreamPlayer = _ambient_player
+	var incoming: AudioStreamPlayer = null
 
-func _finalise_ambient_swap() -> void:
-	# The old player has faded out. Free it, promote _next.
-	if _ambient_player != null and is_instance_valid(_ambient_player):
-		_ambient_player.queue_free()
-	_ambient_player = _ambient_player_next
-	_ambient_player_next = null
+	# Empty key (CLEAR) → no incoming player; just fade the outgoing
+	# one to silence and queue_free it.
+	if not key.is_empty():
+		var path: String = AMBIENT_AUDIO_DIR + key + ".ogg"
+		if ResourceLoader.exists(path):
+			var stream: AudioStream = load(path) as AudioStream
+			if stream != null:
+				incoming = AudioStreamPlayer.new()
+				incoming.bus = "Master"
+				incoming.volume_db = -80.0
+				incoming.stream = stream
+				add_child(incoming)
+				incoming.play()
+		elif not _ambient_warned_missing.has(key):
+			_ambient_warned_missing[key] = true
+			push_warning("[WeatherManager] Missing ambient audio: %s — see DESIGNER_TODO.md" % path)
 
+	_ambient_player = incoming
 
-func _fade_player_out(p: AudioStreamPlayer) -> void:
-	if p == null or not is_instance_valid(p):
-		return
-	var t := create_tween()
-	t.tween_property(p, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
+	# Fade in the new player, if any. Independent tween — no shared
+	# state with the fade-out.
+	if incoming != null:
+		var fade_in := create_tween()
+		fade_in.tween_property(incoming, "volume_db", AMBIENT_TARGET_DB, AMBIENT_CROSSFADE_S)
+
+	# Fade out the outgoing player on its own tween that queue_frees it
+	# at the end. The captured `outgoing` reference is bound to this
+	# tween only — even if more swaps fire before this completes, this
+	# tween still queue_frees its specific outgoing player.
+	if outgoing != null and is_instance_valid(outgoing):
+		var fade_out := create_tween()
+		fade_out.tween_property(outgoing, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
+		fade_out.tween_callback(outgoing.queue_free)
 
 
 func _find_voxel_terrain() -> Node:
@@ -840,22 +927,11 @@ func _spawn_thunder_audio(strike_pos: Vector3, listener_pos: Vector3) -> void:
 # ------------------------------------------------------------
 
 func _update_particles() -> void:
-	# Active rain density (interpolated). Values < 1 act as "off".
-	var prev_profile: Dictionary = STATE_PROFILES[current_state]
-	var target_profile: Dictionary = STATE_PROFILES[_target_state]
-	var t: float = _transition_progress
-
-	# Rain — both LIGHT_RAIN and HEAVY_RAIN feed into the rain emitter.
-	# We add the contributions from current_state and _target_state
-	# weighted by the transition so rain ramps in/out smoothly.
-	var rain_amount: int = int(round(lerpf(
-		_state_rain_density(current_state),
-		_state_rain_density(_target_state),
-		t)))
-	var snow_amount: int = int(round(lerpf(
-		_state_snow_density(current_state),
-		_state_snow_density(_target_state),
-		t)))
+	# Particle counts come straight from the live interpolated values
+	# (already lerped from blend origin to target). _live_*_density is
+	# updated each frame in _process; this function just rounds them.
+	var rain_amount: int = int(round(_live_rain_density))
+	var snow_amount: int = int(round(_live_snow_density))
 
 	# Lazily build emitters the first time a non-zero amount is needed.
 	if rain_amount > 0 and _rain_particles == null:
@@ -979,12 +1055,25 @@ func _apply_wind_to_particles(p: GPUParticles3D, drift_factor: float) -> void:
 	# Bias the gravity vector horizontally so falling particles slant
 	# in the wind direction. The vertical component stays the dominant
 	# force; horizontal is only ~drift_factor m/s² of nudge.
+	#
+	# Skip the write if the new vector is within 0.05 m/s² of the last
+	# pushed value. ParticleProcessMaterial property writes dirty the
+	# GPU buffer, so per-frame writes (with wind drifting at 3°/s)
+	# trigger needless rebuilds.
 	var mat := p.process_material as ParticleProcessMaterial
 	if mat == null:
 		return
 	var base_g: Vector3 = mat.gravity
 	var horizontal: Vector3 = wind_direction * drift_factor
-	mat.gravity = Vector3(horizontal.x, base_g.y, horizontal.z)
+	var new_g: Vector3 = Vector3(horizontal.x, base_g.y, horizontal.z)
+	var last_g: Vector3 = _rain_last_gravity if p == _rain_particles else _snow_last_gravity
+	if last_g.distance_to(new_g) < 0.05:
+		return
+	mat.gravity = new_g
+	if p == _rain_particles:
+		_rain_last_gravity = new_g
+	else:
+		_snow_last_gravity = new_g
 
 
 # ------------------------------------------------------------
