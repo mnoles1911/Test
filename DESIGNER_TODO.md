@@ -680,6 +680,8 @@ a short pitch; promote to a real section when scope is committed.
 
 ## Section 10 — Verification Checklist (after each Godot session)
 
+### Per-session quick check
+
 Run these after any session where you change scenes or scripts:
 
 - [ ] World3D.tscn runs without errors in the Output panel
@@ -699,3 +701,96 @@ Run these after any session where you change scenes or scripts:
 - [ ] (Post Milestone 5-3D) VoxelLodTerrain loads terrain chunks without errors; no "chunk generation" errors in Output
 - [ ] No "Bus not found" errors when audio plays (means the audio bus layout from Section 1 is missing)
 - [ ] No "InputMap action not found" errors (means an action from Section 1 isn't configured)
+
+### Voxel gravity system (PR #127 — one-time)
+
+Walks the gravity-system scenarios end-to-end. Run once after the
+plugin is installed and the project launches without parse errors.
+If any test fails, the first diagnostic is the Output panel — every
+gravity-related script logs with a `[VoxelGravityManager]` /
+`[FallingVoxelCluster]` / `[VoxelEditManager]` prefix.
+
+- [ ] **Single-voxel collapse**: pickaxe a voxel out of a flat surface, then pickaxe the voxel directly above it. The exposed voxel above falls and re-deposits.
+- [ ] **Cliff overhang collapse**: fly mode (F1 toggle in DebugOverlay) up to a cliff edge, carve the supporting wall with the pickaxe. Overhang detaches as one cluster, falls, lands, becomes terrain again.
+- [ ] **Powder charge ceiling drop**: dig a small tunnel under flat terrain, throw a powder charge at the ceiling support. Disconnected ceiling chunk falls on Roland and deals damage proportional to size + fall height.
+- [ ] **NoEditZone respect**: place a NoEditZone near a cliff. Carve under the cliff. Cluster falls but does NOT re-deposit any voxels inside the NoEditZone (boundary voxels vanish silently).
+- [ ] **Tipping**: build a tall thin voxel column (1×8×1, ~1.3 m), carve the bottom from one side. Column tips toward the cut and re-deposits as a horizontal log. NOT a vertical column dropped one voxel down.
+- [ ] **Boulder drop**: build a 4×4×4 voxel cube, remove its support. Drops more or less straight with minor wobble.
+- [ ] **L-shaped overhang**: build an L-shape supported only at one end, carve the support. Rotates around its TRUE centroid (not its bounding box centre) as it falls.
+- [ ] **Performance under stress**: detonate 5 powder charges in quick succession against a stepped cliff. Frame time stays under 33 ms; check Output for queue depth logs.
+- [ ] **Save/load round-trip**: trigger a collapse, save (campfire interaction or Wanderer's Seal), quit, reload. Re-deposited voxels are present in their landing positions.
+
+### Voxel material system (PR #129 — one-time)
+
+Validates the type system end-to-end. Run once after PR #129 merges
+and the project relaunches. The material system replaces a lot of the
+generator + mining flow, so this list is more thorough than usual.
+
+**Startup**
+
+- [ ] **Registry load**: launch the project. Output panel shows `[VoxelMaterialRegistry] loaded 4 materials: stone(1), dirt(2), grass(3), sand(4)`. If you see "loaded 0 materials" the .tres files aren't in `assets/voxels/materials/` (check the FileSystem dock).
+- [ ] **No autoload errors**: no `[VoxelMaterialRegistry]` push_error or push_warning lines on launch (other than the expected "InventoryManager not available" warning if InventoryManager loaded after — should NOT happen given the load order; flag if it does).
+- [ ] **ID collision detection**: temporarily edit `dirt.tres` and set `material_id = 1` (collision with stone). Relaunch. Expect a loud `push_error` mentioning both `dirt.tres` and `stone.tres` and refusing to register the duplicate. Revert dirt.tres back to material_id=2.
+
+**Visuals**
+
+- [ ] **Surface colour bands**: open `World3D.tscn`. Surface should be visibly green (grass), beaches near the test water volume tan (sand), exposed cliff faces and underground grey (stone). Brown dirt visible as a thin layer between grass and stone wherever you cut into a hillside.
+- [ ] **No uniform colouring**: each material has subtle per-voxel jitter — individual cubes should be readable as separate cubes, not a flat painted wall.
+
+**Mining time per material**
+
+- [ ] **Stone is slow**: equip iron_pickaxe, hold attack on a stone voxel. ~0.8 s should pass before the voxel breaks.
+- [ ] **Dirt is fast**: equip iron_shovel, hold attack on a dirt voxel. ~0.3 s before break.
+- [ ] **Grass is fast**: shovel on a grass voxel — also ~0.3 s.
+- [ ] **Sand is fastest**: shovel on a sand voxel — ~0.2 s.
+- [ ] **Held timer resets on target switch**: hold attack on a stone voxel for 0.5 s, then look at a different voxel before the first one breaks. The new voxel should require its FULL mining time from zero (the old swing time doesn't transfer).
+
+**Yield per material**
+
+- [ ] **Stone yield**: pickaxe a stone voxel → `raw_stone` count in inventory increments by 1.
+- [ ] **Dirt yield**: shovel a dirt voxel → `raw_dirt` increments.
+- [ ] **Grass yields dirt** (intentional): shovel a grass voxel → `raw_dirt` increments (NOT a separate "raw_grass").
+- [ ] **Sand yield**: shovel a sand voxel → `raw_sand` increments.
+
+**Tool gating**
+
+- [ ] **Pickaxe on sand fails**: equip iron_pickaxe, hold attack on sand. Nothing breaks (sand's `allowed_tools = [iron_shovel]`).
+- [ ] **Shovel on stone fails**: equip iron_shovel, hold attack on stone. Nothing breaks.
+- [ ] **Right tool works**: equip iron_pickaxe on stone OR iron_shovel on dirt/grass/sand. Mining proceeds normally.
+
+**LOOSE column-fall (sand)**
+
+- [ ] **Single sand voxel falls**: dig out a single voxel from under a sand patch. The sand voxel directly above falls into the hole instantly (no rigid-body cluster, no tumble, just a one-voxel snap).
+- [ ] **Sand stack pours**: stack 4–5 sand voxels above an air gap. Carve out the column underneath. The whole stack pours down to fill the gap.
+- [ ] **Sand stops on solid**: dig out the support of a sand stack but leave a stone voxel underneath. Sand lands on the stone and stops there.
+
+**Per-material gravity (rigid-body clusters)**
+
+- [ ] **Stone falls slightly faster than dirt**: build a stone column and a dirt column side-by-side, both 4 voxels tall, both unsupported. Carve their supports. Stone (`gravity_scale = 1.0`) hits the ground slightly faster than dirt (`gravity_scale = 0.9`). Subtle but observable.
+- [ ] **Stone hurts more than dirt**: stand under a stone ceiling and a dirt ceiling of the same size and fall height. The stone collapse deals more damage (`damage_multiplier = 1.2` vs `0.7`).
+
+**Save / load**
+
+- [ ] **Save preserves materials**: trigger a few edits (carve different materials), save, quit, reload. The world looks identical — every voxel still has the right material colour and you can still mine each one with the right tool. Yields are unchanged.
+- [ ] **Old-save rejection**: launch with a save written before the version bump (any save file from PR #127 or earlier). Expect a `WORLD_GENERATOR_VERSION` mismatch error per documented policy. The error should be visible to the player, not a silent crash.
+
+**Designer ergonomics (the headline test)**
+
+- [ ] **Adding a new material under 15 minutes**: stop the project. In the FileSystem dock, navigate to `assets/voxels/materials/`. Right-click → New Resource → search for `VoxelMaterial` → save as `snow.tres`. In the Inspector, fill in:
+  - id_string = "snow"
+  - material_id = 5 (free per the registry's startup print)
+  - display_name = "Snow"
+  - color_low = white-tinted blue, color_high = pure white, color_jitter ≈ 0.05
+  - mining_time_seconds = 0.2
+  - allowed_tools = [iron_shovel]
+  - yield_item_id = "raw_snow"
+  - yield_quantity = 1
+  - fall_behavior = LOOSE
+  - damage_multiplier = 0.3
+
+  Add `raw_snow` to `InventoryManager.ITEM_REGISTRY` (one line, follow the existing pattern). Restart Godot. Output panel should show `loaded 5 materials: stone(1), dirt(2), grass(3), sand(4), snow(5)`. **Total time goal: under 15 minutes from "decide to add snow" to "snow is in the registry."** If it takes longer, the system needs UX work — file a follow-up.
+
+**Performance**
+
+- [ ] **No frame stutter on common edits**: pickaxe rapidly through a hillside (mixed grass/dirt/stone). Frame time stays under 16 ms (60 FPS) on the dev machine.
+- [ ] **No frame stutter on collapse**: detonate a powder charge against a cliff face (mixed materials, includes some sand for LOOSE-fall testing). Frame time stays under 33 ms.
