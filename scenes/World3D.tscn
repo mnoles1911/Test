@@ -121,6 +121,14 @@ surface_material_override/0 = SubResource("MoonMat")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 8
+; lod_distance is the radius (in voxels) of each LOD ring. Default 48 — too
+; tight for our 6 vox/m scale (only 8 m of LOD0 detail). 192 vox = 32 m of
+; full-detail terrain, with each higher LOD ring doubling outward. Total
+; range across 8 LODs ≈ 192 × 128 = 24,576 vox ≈ 4 km. Actual loaded radius
+; is min(this LOD-implied max, VoxelViewer.view_distance), so the viewer
+; must also be set high enough — see Player3D.tscn and the F1 DebugOverlay
+; "View Distance" sub-view.
+lod_distance = 192.0
 run_stream_in_editor = false
 stream = SubResource("VoxelStream_SQLite")
 generator = SubResource("VoxelGen_Cubic")

@@ -676,9 +676,11 @@ func _refresh_view_dist_label() -> void:
 	if _view_dist_label == null:
 		return
 	var viewer := _get_voxel_viewer()
-	var dist: int = int(viewer.view_distance) if viewer != null else -1
-	if dist >= 0:
-		_view_dist_label.text = "%d m" % dist
+	var dist_vox: int = int(viewer.view_distance) if viewer != null else -1
+	if dist_vox >= 0:
+		# VoxelViewer.view_distance is in voxels; terrain is 6 vox/m.
+		var dist_m: int = dist_vox / 6
+		_view_dist_label.text = "%d m  (%d vox)" % [dist_m, dist_vox]
 	else:
 		_view_dist_label.text = "— (no VoxelViewer)"
 
@@ -688,10 +690,20 @@ func _adjust_view_distance(delta_m: int) -> void:
 	if viewer == null:
 		log_action("DEV: view distance change ignored — VoxelViewer not found")
 		return
-	var new_dist: int = clamp(int(viewer.view_distance) + delta_m, 100, 3000)
-	viewer.view_distance = new_dist
+	# VoxelViewer.view_distance is in voxels. Multiply meters × 6 to convert.
+	# Clamp: 600 vox (100 m) minimum, 18000 vox (3000 m) maximum.
+	var before_vox: int = int(viewer.view_distance)
+	var requested_vox: int = clamp(before_vox + delta_m * 6, 600, 18000)
+	viewer.view_distance = requested_vox
+	# Read back to verify the write — Zylann's plugin can silently clamp
+	# view_distance against an internal max.
+	var actual_vox: int = int(viewer.view_distance)
 	_refresh_view_dist_label()
-	log_action("DEV: view distance → %d m" % new_dist)
+	log_action("DEV: view distance %d → asked %d, got %d vox" %
+		[before_vox, requested_vox, actual_vox])
+	# Streaming is event-driven: new chunks only generate when the viewer
+	# moves and the streamer re-evaluates. Walk a few meters to see the
+	# wider radius take effect.
 
 
 func _get_voxel_viewer() -> VoxelViewer:
