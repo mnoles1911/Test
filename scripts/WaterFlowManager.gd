@@ -63,6 +63,12 @@ const _SOURCE_BIT: int = 0x0010
 const _TICK_SHIFT: int = 5
 const _TICK_MASK: int = 0x1FE0  # bits 5–12, shifted up
 
+# Chunk dimensions — must match VoxelEditManager.CHUNK_SIZE_VOXELS and
+# VoxelEditManager.VOXELS_PER_METER. Replicated here so this file
+# doesn't need to call into private helpers on another autoload.
+const CHUNK_SIZE_VOXELS: int = 16
+const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / 6.0  # ≈ 2.667 m
+
 
 # ============================================================
 # Signals
@@ -108,6 +114,21 @@ var _chunk_mesher: Node3D = null
 # Spawned in _ready as a child of this autoload. Owns the per-chunk
 # MeshInstance3Ds for visible water surfaces. See WaterChunkMesher.gd.
 
+var _frames_since_tick: int = 0
+# Counts physics frames since the last flow tick. Tick fires when
+# this hits TICK_INTERVAL_FRAMES.
+
+var _tick_count: int = 0
+# Monotonically increasing tick counter (modulo 256 for the
+# last_fed_tick byte). Phase 4 uses this; Phase 3 just keeps it
+# advancing.
+
+const _MAX_FLOW_BUDGET_PER_TICK: int = 4096
+# Cap on cells placed in a single flow tick. Prevents a sudden flood
+# (e.g. a deep mineshaft carved under the ocean) from spiking frame
+# time. Excess work spills to the next tick via _dirty_chunks
+# remaining populated.
+
 
 # ============================================================
 # Lifecycle
@@ -115,21 +136,33 @@ var _chunk_mesher: Node3D = null
 
 func _ready() -> void:
 	# Subscribe to terrain edits so we know when the player digs near
-	# water and the flow tick (Phase 3+) needs to rescan that area.
+	# water and the flow tick needs to rescan that area.
 	# VoxelEditManager autoload must already be loaded at this point —
 	# project.godot order guarantees it.
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 
+
+func _physics_process(_delta: float) -> void:
+	# Flow tick at TICK_INTERVAL_FRAMES (~4 Hz). Cheap when no chunks
+	# are dirty — drains _dirty_chunks dictionary and ticks the counter.
+	_frames_since_tick += 1
+	if _frames_since_tick < TICK_INTERVAL_FRAMES:
+		return
+	_frames_since_tick = 0
+	_tick_count = (_tick_count + 1) & 0xFF
+	if not _dirty_chunks.is_empty():
+		_run_flow_tick()
+
 	# Spawn the surface mesher as a child of this autoload. Doing it
 	# in code (rather than as a sibling autoload) keeps the mesher's
 	# parent guaranteed to be us, and lets the mesher pull source
 	# regions and signals from us via get_parent().
-	var WaterChunkMesher := load("res://scripts/WaterChunkMesher.gd")
-	if WaterChunkMesher != null:
+	var ChunkMesherScript := load("res://scripts/WaterChunkMesher.gd")
+	if ChunkMesherScript != null:
 		_chunk_mesher = Node3D.new()
 		_chunk_mesher.name = "WaterChunkMesher"
-		_chunk_mesher.set_script(WaterChunkMesher)
+		_chunk_mesher.set_script(ChunkMesherScript)
 		add_child(_chunk_mesher)
 
 
@@ -250,6 +283,175 @@ func add_source_region(aabb: AABB, level: int = MAX_LEVEL) -> void:
 # Edit subscription — dirty chunk tracking
 # ============================================================
 
+# ============================================================
+# Flow simulation
+# ============================================================
+
+func _run_flow_tick() -> void:
+	# Process every dirty chunk inside the active radius. Phase 3
+	# implements gravity drop only — water in any cell or source
+	# region cascades into air voxels directly below.
+	#
+	# Iterating the snapshot lets _on_edit_applied keep populating
+	# _dirty_chunks during the tick (e.g. a cascade chain dirties
+	# new chunks; those get processed next tick).
+	var snapshot: Dictionary = _dirty_chunks.duplicate()
+	_dirty_chunks.clear()
+
+	var budget: int = _MAX_FLOW_BUDGET_PER_TICK
+	for chunk in snapshot.keys():
+		# Outside active radius? Re-queue for next tick — we'll
+		# process it when the player gets closer.
+		if not _chunk_in_active_radius(chunk):
+			_dirty_chunks[chunk] = true
+			continue
+		budget -= _simulate_chunk_gravity(chunk, budget)
+		if budget <= 0:
+			# Spilled the budget. Re-queue any unprocessed chunks for
+			# the next tick.
+			for remaining in snapshot.keys():
+				if not _dirty_chunks.has(remaining) and remaining != chunk:
+					_dirty_chunks[remaining] = true
+			break
+
+
+func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
+	# Walk every voxel position in the chunk. For each AIR voxel that
+	# has water directly above it, place a flow cell here at MAX_LEVEL.
+	# Returns the number of cells placed (caller subtracts from budget).
+	#
+	# Pre-screen: skip the chunk if neither it nor the chunk above has
+	# any water (sources or cells). Saves the inner 4096-voxel scan
+	# for the common case (a dirty chunk without water).
+	var chunk_above: Vector3i = chunk + Vector3i(0, 1, 0)
+	if not _chunk_has_any_water(chunk) and not _chunk_has_any_water(chunk_above):
+		return 0
+
+	var terrain: VoxelLodTerrain = null
+	if get_node_or_null("/root/VoxelEditManager") != null and VoxelEditManager.has_method("get_terrain"):
+		terrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return 0
+	var tool = terrain.get_voxel_tool()
+	if tool == null:
+		return 0
+	# CHANNEL_COLOR = 2 (Zylann constant). Read the packed RGBA value
+	# whose alpha byte is the material id.
+	tool.channel = 2
+
+	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
+	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+
+	var placed: int = 0
+	var dirty_neighbors: Dictionary = {}
+
+	for x in range(voxel_min.x, voxel_max.x):
+		for z in range(voxel_min.z, voxel_max.z):
+			# Iterate top-down in Y. As soon as we find a "water above
+			# air" interface, drop a flow cell. Continue downward so
+			# stacked cascades all fill in one pass.
+			for y in range(voxel_max.y - 1, voxel_min.y - 1, -1):
+				var pos := Vector3i(x, y, z)
+				if _cells.has(pos):
+					continue
+				# Solid? Skip — water can't enter terrain.
+				var packed: int = tool.get_voxel(pos)
+				var mat_id: int = 0
+				if get_node_or_null("/root/VoxelMaterialRegistry") != null:
+					mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
+				else:
+					mat_id = packed & 0xFF
+				if mat_id != 0:
+					continue
+				# Air voxel. Is the position above water?
+				var above := pos + Vector3i(0, 1, 0)
+				if not _is_water_at_voxel(above):
+					continue
+				# Place a flow cell at MAX_LEVEL.
+				_cells[pos] = _pack(MAX_LEVEL, false, _tick_count)
+				placed += 1
+				# Mark the containing chunk dirty (for mesh rebuild)
+				# and enqueue the chunk-below for the next tick (the
+				# cascade chain).
+				var own_chunk: Vector3i = _voxel_to_chunk(pos)
+				dirty_neighbors[own_chunk] = true
+				dirty_neighbors[own_chunk + Vector3i(0, -1, 0)] = true
+				if placed >= budget:
+					break
+			if placed >= budget:
+				break
+		if placed >= budget:
+			break
+
+	# Emit signals + dirty marks for affected chunks. Done after the
+	# scan so we don't re-enter our own _on_edit_applied during it.
+	for c in dirty_neighbors.keys():
+		_dirty_chunks[c] = true
+		water_changed.emit(c)
+
+	return placed
+
+
+func _is_water_at_voxel(voxel_pos: Vector3i) -> bool:
+	# True if this voxel position is occupied by water — either an
+	# active cell or inside a source region.
+	if _cells.has(voxel_pos):
+		return ((_cells[voxel_pos] as int) & _LEVEL_MASK) > 0
+	# Source-region check: AABB.has_point on the voxel's center
+	# (in world space).
+	var world_pos: Vector3 = _voxel_center_world(voxel_pos)
+	for region in _source_regions:
+		if (region["aabb"] as AABB).has_point(world_pos):
+			return true
+	return false
+
+
+func _chunk_has_any_water(chunk: Vector3i) -> bool:
+	# Cheap pre-screen for the gravity scan. True if any cell in
+	# this chunk is in _cells, OR any source region overlaps the
+	# chunk's world-AABB.
+	# O(cells_in_chunk + source_regions). For the common case of
+	# a sparse cell map and a few source regions, this is fast.
+	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
+	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	for cell_pos in _cells.keys():
+		if cell_pos.x >= voxel_min.x and cell_pos.x < voxel_max.x \
+			and cell_pos.y >= voxel_min.y and cell_pos.y < voxel_max.y \
+			and cell_pos.z >= voxel_min.z and cell_pos.z < voxel_max.z:
+			return true
+	var chunk_aabb_min := Vector3(
+		float(chunk.x) * CHUNK_SIZE_M,
+		float(chunk.y) * CHUNK_SIZE_M,
+		float(chunk.z) * CHUNK_SIZE_M,
+	)
+	var chunk_aabb := AABB(chunk_aabb_min, Vector3.ONE * CHUNK_SIZE_M)
+	for region in _source_regions:
+		if chunk_aabb.intersects(region["aabb"] as AABB):
+			return true
+	return false
+
+
+func _chunk_in_active_radius(chunk: Vector3i) -> bool:
+	var chunk_center := Vector3(
+		(float(chunk.x) + 0.5) * CHUNK_SIZE_M,
+		(float(chunk.y) + 0.5) * CHUNK_SIZE_M,
+		(float(chunk.z) + 0.5) * CHUNK_SIZE_M,
+	)
+	return chunk_center.distance_to(_player_pos) <= ACTIVE_RADIUS_M + CHUNK_SIZE_M
+
+
+func _voxel_center_world(voxel_pos: Vector3i) -> Vector3:
+	return Vector3(
+		(float(voxel_pos.x) + 0.5) / 6.0,
+		(float(voxel_pos.y) + 0.5) / 6.0,
+		(float(voxel_pos.z) + 0.5) / 6.0,
+	)
+
+
+# ============================================================
+# Edit subscription — dirty chunk tracking
+# ============================================================
+
 func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i) -> void:
 	# Voxel terrain changed. Mark the chunk + 1-chunk neighborhood
 	# dirty so the flow tick (Phase 3+) rescans the area and the
@@ -288,11 +490,10 @@ func _world_to_chunk(world_pos: Vector3) -> Vector3i:
 	# Convert world-space (meters) to chunk coord. Chunk = 16 voxels =
 	# 16/6 m on a side. Mirrors VoxelEditManager._world_to_chunk; the
 	# constant lives there and we replicate to avoid a private call.
-	const CHUNK_M: float = 16.0 / 6.0
 	return Vector3i(
-		floori(world_pos.x / CHUNK_M),
-		floori(world_pos.y / CHUNK_M),
-		floori(world_pos.z / CHUNK_M),
+		floori(world_pos.x / CHUNK_SIZE_M),
+		floori(world_pos.y / CHUNK_SIZE_M),
+		floori(world_pos.z / CHUNK_SIZE_M),
 	)
 
 
