@@ -10,11 +10,7 @@
 [ext_resource type="Script" uid="uid://cahyr7gl7p211" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
 
 [sub_resource type="PhysicalSkyMaterial" id="Sky_1"]
-rayleigh_coefficient = 2.0
-mie_coefficient = 0.005
-mie_eccentricity = 0.8
 sun_disk_scale = 8.0
-exposure = 0.1
 
 [sub_resource type="Sky" id="SkyResource_1"]
 sky_material = SubResource("Sky_1")
@@ -57,6 +53,19 @@ emission_enabled = true
 emission = Color(1, 0.55, 0.25, 1)
 emission_energy_multiplier = 1.5
 
+[sub_resource type="SphereMesh" id="MoonSphereMesh"]
+radius = 18.0
+height = 36.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="MoonMat"]
+albedo_color = Color(0.88, 0.93, 1.0, 1)
+emission_enabled = true
+emission = Color(0.75, 0.82, 1.0, 1)
+emission_energy_multiplier = 1.8
+no_depth_test = true
+
 [sub_resource type="BoxShape3D" id="TriggerShape"]
 size = Vector3(2, 2, 2)
 
@@ -81,6 +90,13 @@ shadow_enabled = true
 light_color = Color(0.55, 0.65, 0.85, 1)
 light_energy = 0.0
 shadow_enabled = true
+sky_mode = 1
+
+[node name="MoonMesh" type="MeshInstance3D" parent="." unique_id=2000000030]
+mesh = SubResource("MoonSphereMesh")
+surface_material_override/0 = SubResource("MoonMat")
+cast_shadow = 0
+visible = false
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 8

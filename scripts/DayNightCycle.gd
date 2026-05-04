@@ -36,6 +36,12 @@ extends Node
 @export var sun_path: NodePath = "../Sun"
 @export var moon_path: NodePath = "../Moon"
 @export var environment_path: NodePath = "../WorldEnvironment"
+@export var moon_mesh_path: NodePath = "../MoonMesh"
+
+# How far from the camera the moon mesh is positioned (metres).
+# Far enough to appear celestial; no_depth_test on the material
+# ensures fog and terrain depth don't obscure it.
+const MOON_DISTANCE: float = 500.0
 
 
 # Light energy ramps. Sun is bright at noon, moon is a fraction of that.
@@ -66,6 +72,7 @@ const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
 var _env: WorldEnvironment
+var _moon_mesh: MeshInstance3D
 
 
 func _ready() -> void:
@@ -73,12 +80,16 @@ func _ready() -> void:
 	_moon = get_node_or_null(moon_path) as DirectionalLight3D
 	_env  = get_node_or_null(environment_path) as WorldEnvironment
 
+	_moon_mesh = get_node_or_null(moon_mesh_path) as MeshInstance3D
+
 	if _sun == null:
 		push_warning("[DayNightCycle] Sun not found at %s" % sun_path)
 	if _moon == null:
 		push_warning("[DayNightCycle] Moon not found at %s" % moon_path)
 	if _env == null:
 		push_warning("[DayNightCycle] WorldEnvironment not found at %s" % environment_path)
+	if _moon_mesh == null:
+		push_warning("[DayNightCycle] MoonMesh not found at %s" % moon_mesh_path)
 
 	# Apply once at world load so the first rendered frame already has
 	# the right time-of-day look. Without this the lights would default
@@ -155,6 +166,23 @@ func _apply() -> void:
 
 	_moon.light_energy = moon_energy
 	_moon.light_color  = MOON_COLOR
+
+	# --- Moon mesh (visible celestial body) ---
+	# PhysicalSkyMaterial handles the sun disk automatically. The moon
+	# needs a custom mesh because the sky shader can only show one sun-style
+	# disk. We position the mesh MOON_DISTANCE metres from the active camera
+	# in the direction the moon light comes FROM (its local +Z axis), so it
+	# always appears in the correct part of the sky regardless of where the
+	# player is standing. no_depth_test on the material means fog and terrain
+	# depth don't hide it.
+	if _moon_mesh != null:
+		_moon_mesh.visible = moon_energy > 0.05
+		var cam: Camera3D = get_viewport().get_camera_3d()
+		if cam != null:
+			# The DirectionalLight3D shines along its local -Z axis, so the
+			# body it represents appears at +Z in world space.
+			var moon_dir: Vector3 = _moon.global_transform.basis.z
+			_moon_mesh.global_position = cam.global_position + moon_dir * MOON_DISTANCE
 
 	# --- Sky + fog ---
 	var sky_top: Color
