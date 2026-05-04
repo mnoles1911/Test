@@ -57,10 +57,6 @@ var _load_panel: Panel
 var _load_list_container: VBoxContainer
 var _load_cancel_btn: Button
 
-# Set to true by Settings._on_back() when returning from Settings to
-# a gameplay scene. _process() watches for the world scene to finish
-# loading, then re-opens the pause menu automatically.
-var _reopen_pending: bool = false
 
 
 # =============================================================
@@ -352,6 +348,10 @@ func _make_save_row(meta: Dictionary) -> Control:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE or event.physical_keycode == KEY_ESCAPE:
+			# Settings overlay takes priority — let it handle its own Escape.
+			var settings: Node = get_node_or_null("/root/Settings")
+			if settings != null and settings.is_open():
+				return
 			# If the journal/inventory overlay is open, let JournalUI handle
 			# Escape to close itself instead of opening the pause menu on top.
 			var journal := get_node_or_null("/root/JournalUI")
@@ -469,25 +469,13 @@ func is_open() -> bool:
 	return _root != null and _root.visible
 
 
-func request_reopen() -> void:
-	# Called by Settings._on_back() when the player was in-game.
-	# PauseMenu will reopen itself once the world scene finishes loading.
-	_reopen_pending = true
-
-
-func _process(_delta: float) -> void:
-	if not _reopen_pending:
-		return
-	# Wait until the scene tree has a current scene and it is NOT
-	# Settings (which might still be alive during the fade-out).
-	var scene: Node = get_tree().current_scene
-	if scene == null:
-		return
-	var path: String = scene.scene_file_path
-	if "Settings" in path or "settings" in path:
-		return
-	_reopen_pending = false
-	_open()
+## Called by Settings.close() when the player finishes adjusting settings
+## while in-game. Re-shows the pause panel without changing any game state
+## (the tree was already paused; mouse is already visible).
+func reopen_after_settings() -> void:
+	_root.visible = true
+	_show_main_panel()
+	print("[PauseMenu] Reopened after Settings.")
 
 
 # =============================================================
@@ -560,8 +548,17 @@ func _on_load() -> void:
 
 
 func _on_settings() -> void:
-	_close()
-	TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
+	# Hide the pause panel (but keep the game paused — Settings overlay
+	# needs PROCESS_MODE_ALWAYS to work while the tree is paused, and
+	# we don't want to unpause just to open a settings screen).
+	_root.visible = false
+	var settings: Node = get_node_or_null("/root/Settings")
+	if settings != null:
+		settings.open(true)
+	else:
+		# Fallback: if Settings autoload isn't present, use scene navigation.
+		_close()
+		TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
 
 
 func _on_exit_menu() -> void:
