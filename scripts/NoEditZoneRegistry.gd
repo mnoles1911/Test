@@ -131,6 +131,38 @@ func does_aabb_overlap_no_edit_zone(aabb_min: Vector3, aabb_max: Vector3) -> boo
 	return false
 
 
+func is_water_flow_blocked_at(world_pos: Vector3) -> bool:
+	# True if any NoEditZone overlapping world_pos has blocks_water_flow
+	# set to true. Bare Area3Ds (no NoEditZone.gd script attached) are
+	# treated as blocking by default — matching the previous behavior
+	# from before the per-zone flag landed.
+	#
+	# Used by WaterFlowManager when deciding whether to place a flow
+	# cell at a candidate voxel position. See scripts/NoEditZone.gd
+	# for the @export and design/3D_VOXEL_MIGRATION.md for the
+	# locked design.
+	var space_state: PhysicsDirectSpaceState3D = _get_space_state()
+	if space_state == null:
+		return false
+	var params := PhysicsPointQueryParameters3D.new()
+	params.position = world_pos
+	params.collide_with_areas = true
+	params.collide_with_bodies = false
+	var hits: Array[Dictionary] = space_state.intersect_point(params, 32)
+	for hit in hits:
+		var collider: Object = hit.get("collider")
+		if collider is Node and (collider as Node).is_in_group("no_edit_zone"):
+			# If the script provides the flag, honor it. Otherwise
+			# default to "blocks" for backward compatibility with bare
+			# Area3D zones.
+			if "blocks_water_flow" in collider:
+				if (collider as Object).blocks_water_flow:
+					return true
+			else:
+				return true
+	return false
+
+
 func _get_space_state() -> PhysicsDirectSpaceState3D:
 	# Grab the 3D physics space from the current scene's world.
 	# Returns null if no 3D viewport / world is active yet.

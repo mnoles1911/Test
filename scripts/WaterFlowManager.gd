@@ -316,13 +316,18 @@ func _run_flow_tick() -> void:
 
 
 func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
-	# Walk every voxel position in the chunk. For each AIR voxel that
-	# has water directly above it, place a flow cell here at MAX_LEVEL.
-	# Returns the number of cells placed (caller subtracts from budget).
+	# Phase 4: full per-chunk simulation step.
+	#   1. Decay: non-source cells in this chunk that weren't fed in
+	#      the previous tick decrement their level. Level 0 → removed.
+	#   2. Gravity: air voxels with water directly above become flow
+	#      cells at MAX_LEVEL.
+	#   3. Lateral spread: cells (and source-region boundaries) push
+	#      water horizontally into neighbors with solid below, at
+	#      level = self.level - 1.
 	#
-	# Pre-screen: skip the chunk if neither it nor the chunk above has
-	# any water (sources or cells). Saves the inner 4096-voxel scan
-	# for the common case (a dirty chunk without water).
+	# Returns the number of cells modified (caller subtracts from
+	# budget). Pre-screen: skip the chunk if neither it nor the chunk
+	# above has any water.
 	var chunk_above: Vector3i = chunk + Vector3i(0, 1, 0)
 	if not _chunk_has_any_water(chunk) and not _chunk_has_any_water(chunk_above):
 		return 0
@@ -335,61 +340,225 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
 	var tool = terrain.get_voxel_tool()
 	if tool == null:
 		return 0
-	# CHANNEL_COLOR = 2 (Zylann constant). Read the packed RGBA value
-	# whose alpha byte is the material id.
-	tool.channel = 2
+	tool.channel = 2  # CHANNEL_COLOR
 
 	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
 	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
 
-	var placed: int = 0
+	var modified: int = 0
 	var dirty_neighbors: Dictionary = {}
 
+	# ---- 1. Decay pass ----
+	# Iterate cells whose voxel positions fall inside this chunk.
+	# Non-source cells with last_fed_tick != current_tick - 1 (or older)
+	# decrement; level 0 means removed.
+	var prev_tick: int = (_tick_count - 1) & 0xFF
+	var to_remove: Array = []
+	var to_decrement: Array = []
+	for cell_pos in _cells.keys():
+		if cell_pos.x < voxel_min.x or cell_pos.x >= voxel_max.x:
+			continue
+		if cell_pos.y < voxel_min.y or cell_pos.y >= voxel_max.y:
+			continue
+		if cell_pos.z < voxel_min.z or cell_pos.z >= voxel_max.z:
+			continue
+		var packed_cell: int = _cells[cell_pos]
+		if _is_source_packed(packed_cell):
+			continue
+		var fed_tick: int = _last_fed_tick(packed_cell)
+		if fed_tick == prev_tick or fed_tick == _tick_count:
+			continue  # was fed this tick or last — stays alive
+		var current_level: int = _level_of(packed_cell)
+		if current_level <= MIN_LEVEL:
+			to_remove.append(cell_pos)
+		else:
+			to_decrement.append(cell_pos)
+	for r in to_remove:
+		_cells.erase(r)
+		modified += 1
+		dirty_neighbors[_voxel_to_chunk(r)] = true
+	for d in to_decrement:
+		var p: int = _cells[d]
+		var lvl: int = _level_of(p)
+		_cells[d] = _pack(lvl - 1, false, _last_fed_tick(p))
+		modified += 1
+		dirty_neighbors[_voxel_to_chunk(d)] = true
+
+	# ---- 2. Gravity drop pass ----
+	# Air voxel directly below water → place flow cell at MAX_LEVEL.
 	for x in range(voxel_min.x, voxel_max.x):
 		for z in range(voxel_min.z, voxel_max.z):
-			# Iterate top-down in Y. As soon as we find a "water above
-			# air" interface, drop a flow cell. Continue downward so
-			# stacked cascades all fill in one pass.
 			for y in range(voxel_max.y - 1, voxel_min.y - 1, -1):
+				if modified >= budget:
+					break
 				var pos := Vector3i(x, y, z)
 				if _cells.has(pos):
 					continue
-				# Solid? Skip — water can't enter terrain.
-				var packed: int = tool.get_voxel(pos)
-				var mat_id: int = 0
-				if get_node_or_null("/root/VoxelMaterialRegistry") != null:
-					mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
-				else:
-					mat_id = packed & 0xFF
-				if mat_id != 0:
+				if _is_solid_at(tool, pos):
 					continue
-				# Air voxel. Is the position above water?
 				var above := pos + Vector3i(0, 1, 0)
 				if not _is_water_at_voxel(above):
 					continue
-				# Place a flow cell at MAX_LEVEL.
+				if _is_water_blocked_at_voxel(pos):
+					continue
 				_cells[pos] = _pack(MAX_LEVEL, false, _tick_count)
-				placed += 1
-				# Mark the containing chunk dirty (for mesh rebuild)
-				# and enqueue the chunk-below for the next tick (the
-				# cascade chain).
-				var own_chunk: Vector3i = _voxel_to_chunk(pos)
-				dirty_neighbors[own_chunk] = true
-				dirty_neighbors[own_chunk + Vector3i(0, -1, 0)] = true
-				if placed >= budget:
-					break
-			if placed >= budget:
+				modified += 1
+				dirty_neighbors[_voxel_to_chunk(pos)] = true
+				dirty_neighbors[_voxel_to_chunk(pos + Vector3i(0, -1, 0))] = true
+			if modified >= budget:
 				break
-		if placed >= budget:
+		if modified >= budget:
 			break
 
-	# Emit signals + dirty marks for affected chunks. Done after the
-	# scan so we don't re-enter our own _on_edit_applied during it.
+	# ---- 3. Lateral spread pass ----
+	# For each cell or source-region boundary in this chunk, attempt
+	# to spread to 4 horizontal neighbors. Source regions push at
+	# level=MAX_LEVEL; cells push at level-1.
+	var spread_sources: Array = _gather_lateral_sources(chunk, voxel_min, voxel_max)
+	for src in spread_sources:
+		if modified >= budget:
+			break
+		var src_pos: Vector3i = src["pos"]
+		var src_level: int = src["level"]
+		if src_level <= MIN_LEVEL:
+			continue  # nothing to share — level 1 cells don't propagate
+		var target_level: int = src_level - 1
+		for dir in _LATERAL_DIRS:
+			if modified >= budget:
+				break
+			var neighbor: Vector3i = src_pos + dir
+			# Already water at neighbor with sufficient level — refresh
+			# its last_fed_tick so it doesn't decay this tick.
+			if _cells.has(neighbor):
+				var n_packed: int = _cells[neighbor]
+				if _is_source_packed(n_packed):
+					continue
+				var n_lvl: int = _level_of(n_packed)
+				if n_lvl >= target_level:
+					_cells[neighbor] = _pack(n_lvl, false, _tick_count)
+				continue
+			# Source region overlap? Skip — water already here logically.
+			if _is_water_at_voxel(neighbor):
+				continue
+			if _is_solid_at(tool, neighbor):
+				continue
+			if _is_water_blocked_at_voxel(neighbor):
+				continue
+			# Lateral spread requires solid (or water) directly below
+			# OR water below (water can't sit on air laterally; gravity
+			# wins). If the cell-below is air, the gravity pass will
+			# handle the drop on the next tick — don't double-place.
+			var below := neighbor + Vector3i(0, -1, 0)
+			if not (_is_solid_at(tool, below) or _is_water_at_voxel(below)):
+				continue
+			_cells[neighbor] = _pack(target_level, false, _tick_count)
+			modified += 1
+			dirty_neighbors[_voxel_to_chunk(neighbor)] = true
+
 	for c in dirty_neighbors.keys():
 		_dirty_chunks[c] = true
 		water_changed.emit(c)
 
-	return placed
+	return modified
+
+
+# ---- Helpers used by the simulation pass ----
+
+const _LATERAL_DIRS: Array = [
+	Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
+	Vector3i(0, 0, 1), Vector3i(0, 0, -1),
+]
+
+
+func _is_solid_at(tool: Object, voxel_pos: Vector3i) -> bool:
+	var packed: int = tool.get_voxel(voxel_pos)
+	var mat_id: int = 0
+	if get_node_or_null("/root/VoxelMaterialRegistry") != null:
+		mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
+	else:
+		mat_id = packed & 0xFF
+	return mat_id != 0
+
+
+func _is_water_blocked_at_voxel(voxel_pos: Vector3i) -> bool:
+	# Wraps NoEditZoneRegistry.is_water_flow_blocked_at with the world-
+	# space conversion. Returns false if NoEditZoneRegistry isn't
+	# loaded (fail-open: water flows freely if the registry is gone).
+	if get_node_or_null("/root/NoEditZoneRegistry") == null:
+		return false
+	return NoEditZoneRegistry.is_water_flow_blocked_at(_voxel_center_world(voxel_pos))
+
+
+func _gather_lateral_sources(chunk: Vector3i, voxel_min: Vector3i, voxel_max: Vector3i) -> Array:
+	# Build the list of "where can lateral spread originate from in
+	# this chunk?" — cell-based water and source-region cells.
+	#
+	# Cell-based: every cell inside the chunk with level > 1.
+	# Source-region: every voxel position inside this chunk that is
+	# inside a source region. We enumerate the AABB ∩ chunk bounding
+	# box. For source regions much larger than a chunk (the ocean),
+	# every voxel position in the chunk overlapping the region counts —
+	# but lateral spread only matters at the AABB EDGE (interior cells
+	# spread into the same source region, no-op). So we walk the AABB
+	# edge slice intersecting the chunk only.
+	var sources: Array = []
+	for cell_pos in _cells.keys():
+		if cell_pos.x < voxel_min.x or cell_pos.x >= voxel_max.x:
+			continue
+		if cell_pos.y < voxel_min.y or cell_pos.y >= voxel_max.y:
+			continue
+		if cell_pos.z < voxel_min.z or cell_pos.z >= voxel_max.z:
+			continue
+		var packed: int = _cells[cell_pos]
+		var lvl: int = _level_of(packed)
+		if lvl > MIN_LEVEL:
+			sources.append({"pos": cell_pos, "level": lvl})
+	# Source-region edge cells. For each region whose AABB intersects
+	# the chunk, identify the edge voxels along the AABB's XZ
+	# perimeter at the AABB's top Y, intersected with the chunk.
+	# Simpler approach: for every voxel in the chunk, test "is it
+	# inside the region AND has at least one horizontal neighbor that
+	# isn't?" — only edge voxels propagate.
+	for region in _source_regions:
+		var aabb: AABB = region["aabb"] as AABB
+		var lvl_region: int = int(region["level"])
+		# Quick chunk-vs-AABB overlap test in voxel space.
+		var aabb_voxel_min := Vector3i(
+			floori(aabb.position.x * 6.0),
+			floori(aabb.position.y * 6.0),
+			floori(aabb.position.z * 6.0),
+		)
+		var aabb_voxel_max := Vector3i(
+			ceili((aabb.position.x + aabb.size.x) * 6.0),
+			ceili((aabb.position.y + aabb.size.y) * 6.0),
+			ceili((aabb.position.z + aabb.size.z) * 6.0),
+		)
+		var ix_min: int = maxi(voxel_min.x, aabb_voxel_min.x)
+		var ix_max: int = mini(voxel_max.x, aabb_voxel_max.x)
+		var iy_min: int = maxi(voxel_min.y, aabb_voxel_min.y)
+		var iy_max: int = mini(voxel_max.y, aabb_voxel_max.y)
+		var iz_min: int = maxi(voxel_min.z, aabb_voxel_min.z)
+		var iz_max: int = mini(voxel_max.z, aabb_voxel_max.z)
+		if ix_min >= ix_max or iy_min >= iy_max or iz_min >= iz_max:
+			continue
+		for x in range(ix_min, ix_max):
+			for z in range(iz_min, iz_max):
+				# Only the topmost source-region voxel per column
+				# matters for surface-edge spread. Below the surface
+				# we're inside the region — no edge.
+				var top_y: int = iy_max - 1
+				var pos := Vector3i(x, top_y, z)
+				# Edge test: at least one horizontal neighbor NOT in
+				# any source region.
+				var is_edge: bool = false
+				for dir in _LATERAL_DIRS:
+					var n: Vector3i = pos + dir
+					if not _is_water_at_voxel(n):
+						is_edge = true
+						break
+				if is_edge:
+					sources.append({"pos": pos, "level": lvl_region})
+	return sources
 
 
 func _is_water_at_voxel(voxel_pos: Vector3i) -> bool:
