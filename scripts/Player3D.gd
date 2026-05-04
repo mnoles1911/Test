@@ -161,6 +161,13 @@ var _current_water_volume: Node = null
 # Cached reference to the water_volume Area3D Roland is currently
 # inside, or null if dry. Used to query surface_y and current.
 
+@export var underwater_filter_path: NodePath = "UnderwaterFilter"
+# Path to the UnderwaterFilter CanvasLayer child. Set in the
+# inspector if the node is renamed or moved. Default matches
+# Player3D.tscn.
+
+var _underwater_filter: Node = null
+
 # =============================================================
 # DEBUG FLY MODE
 # =============================================================
@@ -217,6 +224,7 @@ var status_text: String:
 
 func _ready() -> void:
 	_recalculate_movement_stats()
+	_underwater_filter = get_node_or_null(underwater_filter_path)
 
 
 func _recalculate_movement_stats() -> void:
@@ -420,6 +428,11 @@ func _update_water_state() -> void:
 	else:
 		_is_submerged = false
 
+	# Drive the underwater camera tint. set_active is idempotent —
+	# the filter only updates visibility on actual state changes.
+	if _underwater_filter != null and _underwater_filter.has_method("set_active"):
+		_underwater_filter.set_active(_is_submerged)
+
 
 # =============================================================
 # DEBUG — FLY MODE
@@ -487,6 +500,8 @@ func toggle_fly_mode() -> bool:
 		_in_water = false
 		_is_submerged = false
 		_current_water_volume = null
+		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
+			_underwater_filter.set_active(false)
 	else:
 		velocity = Vector3.ZERO
 	return is_flying

@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://dp3l1roland3d"]
+[gd_scene load_steps=6 format=3 uid="uid://dp3l1roland3d"]
 
 ; Player3D — the 3D Roland scene.
 ;
@@ -19,6 +19,7 @@
 [ext_resource type="Script" path="res://scripts/CameraRig.gd" id="2_rig"]
 [ext_resource type="Script" path="res://scripts/EditToolHandler.gd" id="3_edit_tool"]
 [ext_resource type="Script" path="res://scripts/ThrowableHandler.gd" id="4_throwable"]
+[ext_resource type="Script" path="res://scripts/UnderwaterFilter.gd" id="5_underwater"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -85,3 +86,18 @@ script = ExtResource("3_edit_tool")
 ; Roland with forward velocity. Quick-slot UI rotation comes later.
 ; See scripts/ThrowableHandler.gd.
 script = ExtResource("4_throwable")
+
+[node name="UnderwaterFilter" type="CanvasLayer" parent="."]
+; Full-screen blue-green tint shown when Roland's head is below
+; the water surface. Player3D toggles via set_active() on submersion
+; state changes. Layer 4 puts it above world but below HUD (layer 5).
+; See scripts/UnderwaterFilter.gd.
+layer = 4
+script = ExtResource("5_underwater")
+
+[node name="TintRect" type="ColorRect" parent="UnderwaterFilter"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+visible = false
+color = Color(0.18, 0.32, 0.42, 0.42)
