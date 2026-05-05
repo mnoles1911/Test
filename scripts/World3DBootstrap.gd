@@ -42,6 +42,26 @@ func _ready() -> void:
 	if "format" in terrain:
 		_configure_voxel_format(terrain)
 
+	# Move per-edit voxel-block updates off the main thread.
+	# `threaded_update_enabled` defaults to FALSE in this Zylann
+	# build, which is what made `tool.do_box(...)` cost ~37 ms per
+	# 3×3×3 mining swing — the mesh rebuild for the affected mesh
+	# blocks ran synchronously on the main thread and was the
+	# entirety of the [SPIKE _apply_edit total=37 ms (carve=37 ms)]
+	# we just measured. Turning it on offloads the work to a worker.
+	if "threaded_update_enabled" in terrain:
+		terrain.set("threaded_update_enabled", true)
+		print("[World3D] terrain.threaded_update_enabled = true")
+	# Defer collision-shape rebuilds so they batch instead of firing
+	# on every single edit. 0.1 s is imperceptible to the player
+	# (they're not pressed flush against the carved face within 100
+	# ms of breaking it), and it lets Zylann coalesce multiple
+	# edits' collision updates. Default 0 means rebuild-immediately,
+	# which is the worst case for stutter.
+	if "collision_update_delay" in terrain:
+		terrain.set("collision_update_delay", 0.1)
+		print("[World3D] terrain.collision_update_delay = 0.1")
+
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
 	# setting. The earlier filtered dump only showed depth/format/
