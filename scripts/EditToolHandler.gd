@@ -438,6 +438,12 @@ func _tick_held_action(delta: float, action: String) -> void:
 		if action != "smooth":
 			# Mine / other verbs: voxel is air or the read failed.
 			# No swing progress.
+			# DIAGNOSTIC — mining keeps bailing here? Means the voxel
+			# read at the aim point came back as air. Throttled.
+			if should_log:
+				print("[EditTool] mine bail: material=null at world=%s (raycast hit=%s normal=%s)" % [
+					voxel_world_pos, hit_pos, hit_normal,
+				])
 			_clear_target()
 			return
 		# Smooth can proceed without a material read. On first load,
@@ -531,6 +537,19 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	tool.channel = VoxelBuffer.CHANNEL_COLOR
 	var grid_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
 	var packed: int = tool.get_voxel(grid_pos)
+	# DIAGNOSTIC — print exactly what tool.get_voxel returned so we can
+	# see whether the read is finding the same data the mesher renders.
+	# Throttled via the existing should_log counter. Remove once mining
+	# is confirmed working.
+	if _held_log_counter == 0:
+		# Sample neighboring cells too so we can see if the aim point
+		# is just slightly off the solid voxel.
+		var p_above: int = tool.get_voxel(grid_pos + Vector3i(0, 1, 0))
+		var p_below: int = tool.get_voxel(grid_pos + Vector3i(0, -1, 0))
+		print("[ReadMat] world=%s grid=%s packed=0x%08X mat=%d (above=0x%08X below=0x%08X)" % [
+			world_pos, grid_pos, packed, (packed >> 24) & 0xFF,
+			p_above, p_below,
+		])
 	# Material id lives in bits 24-31 (the byte the mesher reads as
 	# alpha). 0 = air.
 	var material_id: int = (packed >> 24) & 0xFF
