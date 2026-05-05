@@ -750,6 +750,75 @@ a short pitch; promote to a real section when scope is committed.
   material is null (Zylann first-load streaming gap). Falls back to 0.5 s hold time
   and "terrain" display label. `_do_smooth` reads its own cell data independently.
 
+- **CRITICAL: Voxel-color byte-order encoding mismatch — terrain renders nearly
+  black instead of per-material colors (diagnosed 2026-05-05, NOT fixed).**
+
+  **Symptom:** with `vertex_color_use_as_albedo = true` on `VoxelTerrainMat` in
+  `World3D.tscn` (set this session so vertex colors actually reach the shader),
+  the terrain renders as very dark grey / nearly black instead of grass-green,
+  dirt-brown, stone-grey, sand-tan. With the flag OFF (prior behavior) the
+  terrain renders as flat brown (the StandardMaterial3D's `albedo_color`).
+
+  **Root cause:** byte-order mismatch between Godot's `Color.to_rgba32()` and
+  Zylann's `VoxelMesherCubes` color extraction.
+  - Godot packs `to_rgba32()` as `(R << 24) | (G << 16) | (B << 8) | A` —
+    R is the HIGH byte, A is the LOW byte.
+  - Zylann reads the packed uint32 as `R = bits 0-7, G = 8-15, B = 16-23,
+    A = 24-31` — R is the LOW byte, A is the HIGH byte.
+  - Our current code (`VoxelMaterialRegistry.pack_voxel`,
+    `CubicHeightmapGenerator._generate_block`) does
+    `(c.to_rgba32() & 0xFFFFFF00) | mat_id`, putting `mat_id` in Godot's
+    low (alpha) byte. Zylann then reads that byte as RED. For mat_id 1-4,
+    R becomes 1-4 / 255 ≈ 0.004-0.016 (nearly black). The actual R, G, B
+    bytes from `to_rgba32` end up shuffled into Zylann's G, B, and A slots.
+
+  **Why this was invisible before:** the StandardMaterial3D had
+  `vertex_color_use_as_albedo = false`, so the mesher's vertex colors were
+  ignored entirely and you only saw the material's `albedo_color` (brown).
+  Turning the flag on exposed the encoding bug.
+
+  **Fix path** (mechanical, ~6 files, do this first next session):
+  1. **`scripts/VoxelMaterialRegistry.gd`** — `pack_voxel(mat_id, color)`:
+     replace `(color.to_rgba32() & 0xFFFFFF00) | mat_id` with
+     `r | (g << 8) | (b << 16) | (mat_id << 24)` where r/g/b are the
+     individual `int(color.X * 255.0)` byte values clamped to 0-255.
+  2. **`scripts/VoxelMaterialRegistry.gd`** — `material_id_from_packed(p)`:
+     change `return p & 0xFF` to `return (p >> 24) & 0xFF`.
+  3. **`scripts/VoxelMaterialRegistry.gd`** — `is_air(p)`: change
+     `return (p & 0xFF) == 0` to `return ((p >> 24) & 0xFF) == 0`. (Both
+     work for fully-zero air, but the high-byte check is the canonical
+     definition matching Zylann's mesher's solid-vs-air rule.)
+  4. **`scripts/CubicHeightmapGenerator.gd`** — line 596 (inline pack in
+     `_generate_block`) and line 853 (`_pack_for_material`): same byte-order
+     change as #1.
+  5. **All consumer sites that do `packed & 0xFF` for material_id** —
+     change to `(packed >> 24) & 0xFF` OR call
+     `VoxelMaterialRegistry.material_id_from_packed(packed)`. Sites:
+     - `scripts/EditToolHandler.gd` lines 340, 532, 537, 763, 783, 784,
+       798, 810, 820, 844, 896, 899
+     - `scripts/VoxelGravityManager.gd` lines 324, 333, 448, 728
+     - `scripts/WaterFlowManager.gd` line 639
+     The `FILL_RGB` constant `0x80808000` in `EditToolHandler._do_smooth`
+     also encodes RGB grey in Godot byte order — switch to
+     `0x00808080` (RGB in Zylann order, alpha=0 reserved for mat_id OR via
+     the OR site at line 936: `FILL_RGB | (mat_id << 24)`).
+  6. **`scripts/VoxelClusterBuilder.gd`** lines 301-304 (`_decode_color`):
+     swap the byte extraction so R = low byte, A = high byte (matching the
+     new encoding the mesher reads).
+
+  **Why the `& 0xFF` consumer sites still "kind of work" today:** any solid
+  voxel has non-zero R-byte, so `(packed & 0xFF) != 0` correctly identifies
+  solids. Material-id reads return the R-byte value (0-255) which usually
+  doesn't map to a real material in the registry → registry returns null →
+  consumer-side fallback paths take over. So mining a voxel today might
+  yield wrong items or skip the registry path entirely, but doesn't crash.
+
+  **Verification after the fix:** open `World3D.tscn`, walk around. Surface
+  should show distinct grass-green tops, brown dirt strip, grey/beige stone
+  cliffs, light-tan sand at coastlines. Use `debug_vivid_colors = true` on
+  the generator for a sanity check (red stone / orange dirt / green grass /
+  yellow sand vivid bands).
+
 
 ## Section 10 — Verification Checklist (after each Godot session)
 

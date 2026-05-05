@@ -524,15 +524,17 @@ func _refresh_quick_slot_bar() -> void:
 		# Display name from the registry, with quantity for stackables.
 		var label_text: String = "—"
 		if item_id != "":
-			var name: String = item_id
+			# Local "display_name" rather than "name" — `name` is the
+			# Node base-class property; using it as a local shadows it.
+			var display_name: String = item_id
 			if InventoryManager.ITEM_REGISTRY.has(item_id):
-				name = InventoryManager.ITEM_REGISTRY[item_id].get("name", item_id)
+				display_name = InventoryManager.ITEM_REGISTRY[item_id].get("name", item_id)
 			# Show count for stackables (throwables, materials).
 			var count: int = InventoryManager.get_quantity(item_id)
 			if count > 1:
-				label_text = "%s ×%d" % [name, count]
+				label_text = "%s ×%d" % [display_name, count]
 			else:
-				label_text = name
+				label_text = display_name
 		_quick_slot_labels[i].text = label_text
 
 		# Highlight when this slot's item is the currently-equipped weapon.
