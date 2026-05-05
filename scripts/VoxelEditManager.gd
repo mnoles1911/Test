@@ -258,6 +258,31 @@ func queue_edit_box(min_pos: Vector3, max_pos: Vector3, voxel_value: int) -> boo
 	return true
 
 
+func queue_edit_box_voxels(voxel_min: Vector3i, voxel_max: Vector3i, voxel_value: int) -> bool:
+	# Box edit using integer voxel-grid coordinates directly. Avoids the
+	# floating-point rounding that collapses 3×3×3 carves to 1×1×1 when
+	# queue_edit_box converts via _terrain.to_local() (which can return
+	# -0.999... instead of -1.0, causing truncation to lose a voxel on
+	# each edge). Use this whenever the caller already has voxel-grid
+	# coords (e.g. EditToolHandler._carve).
+	#
+	# NoEditZone check is performed at the box centre in world space —
+	# same coarse-centre policy as queue_edit_box.
+	var world_center: Vector3 = (Vector3(voxel_min) + Vector3(voxel_max) + Vector3.ONE) * 0.5 / VOXELS_PER_METER
+	if not _check_edit_allowed(world_center):
+		return false
+	if _edit_queue.size() >= max_queue_length:
+		push_warning("VoxelEditManager: queue full, dropping box_voxels edit")
+		return false
+	_edit_queue.append({
+		"type": "box_voxels",
+		"min": voxel_min,
+		"max": voxel_max,
+		"value": voxel_value,
+	})
+	return true
+
+
 func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
 	# Single-voxel write. Used for per-block placement in Build Mode →
 	# Detail submode (design/CRAFTING.md → "Per-Voxel Placement"), and
@@ -447,6 +472,16 @@ func _apply_edit(cmd: Dictionary) -> void:
 			_mark_chunks_in_aabb(cmd["min"], cmd["max"])
 			var center: Vector3 = (cmd["min"] + cmd["max"]) * 0.5
 			edit_applied.emit(center, _world_to_chunk(center))
+
+		"box_voxels":
+			# Integer voxel-grid coords — pass directly as Vector3 so
+			# do_box sees exact values with no to_local() rounding.
+			tool.do_box(Vector3(cmd["min"]), Vector3(cmd["max"]))
+			var bv_world_min: Vector3 = Vector3(cmd["min"]) / VOXELS_PER_METER
+			var bv_world_max: Vector3 = (Vector3(cmd["max"]) + Vector3.ONE) / VOXELS_PER_METER
+			_mark_chunks_in_aabb(bv_world_min, bv_world_max)
+			var bv_center: Vector3 = (bv_world_min + bv_world_max) * 0.5
+			edit_applied.emit(bv_center, _world_to_chunk(bv_center))
 
 		"set":
 			# Single-voxel write. Cubes meshing IS discrete; a 0.5 m
@@ -649,6 +684,9 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 		"box":
 			var size: Vector3 = cmd["max"] - cmd["min"]
 			return int(size.x * size.y * size.z * VOXELS_PER_CUBIC_METER)
+		"box_voxels":
+			var size: Vector3i = cmd["max"] - cmd["min"] + Vector3i.ONE
+			return size.x * size.y * size.z
 		"set":
 			return 1
 		"bulk":

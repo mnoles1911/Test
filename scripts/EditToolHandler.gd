@@ -58,14 +58,30 @@ extends Node3D
 # inconsistent across orientations. A box is exactly N×N×N voxels
 # regardless of camera angle, easier to tune.
 
-@export var smooth_voxels_per_side: int = 5
-# Right-click "smooth" verb: levels the 5×5 column of terrain
-# centred on the aim point toward the AVERAGE column height. Each
-# right-click does ONE iteration of smoothing — high spots get one
-# voxel shaved, low spots get one voxel filled. Multiple right-
-# clicks converge toward flat. Cheaper computationally than a
-# single full-flatten pass, easier to control (player can stop
-# halfway and not destroy the natural bumpiness entirely).
+@export var smooth_radius_voxels: int = 3
+# ACTION radius (in voxel units) — the sphere inside which voxels
+# can actually be moved. Centred on the aim voxel. At 6 vox/m
+# this is a ~50 cm radius / ~1 m diameter / ~123-cell sphere
+# (diameter 6–7 voxels). Strictly conservative inside this sphere:
+# voxels are RELOCATED, never created or destroyed. Smaller radius
+# = more deliberate, localized smoothing per click.
+
+@export var smooth_probe_multiplier: float = 1.5
+# PROBE radius = action radius × this multiplier. The probe sphere
+# is read but NEVER modified — it provides context for the "what
+# does smooth look like here" target-height calculation. Without
+# this larger context, smoothing inside the action sphere builds
+# vertically (it can't see surrounding terrain heights, so its
+# flatten pass piles voxels onto receiver columns until they
+# become new pillars). With it, target = median of probe column
+# tops, and the action sphere flattens TOWARD that target instead
+# of toward its own internal mean.
+
+@export var smooth_move_budget: int = 20
+# Max voxel relocations per click. Each "move" is one carve + one
+# fill in different cells inside the action sphere. 20 is enough
+# to make obvious progress on small irregularities in one click;
+# raise for faster convergence at the cost of bigger visual jolts.
 
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
@@ -417,16 +433,23 @@ func _tick_held_action(delta: float, action: String) -> void:
 	# --- Read the voxel material ---
 	var material: VoxelMaterial = _read_material_at(voxel_world_pos)
 	if material == null:
-		# Voxel is air, registry isn't loaded, or the read failed.
-		# Either way, no swing progress.
-		_clear_target()
-		return
+		if action != "smooth":
+			# Mine / other verbs: voxel is air or the read failed.
+			# No swing progress.
+			_clear_target()
+			return
+		# Smooth can proceed without a material read. On first load,
+		# Zylann streams mesh chunks before CHANNEL_COLOR data is
+		# fully populated, so get_voxel() returns 0 (air) and the
+		# material lookup fails even for solid terrain. _do_smooth
+		# reads its own cells independently and handles unloaded
+		# neighbors (reads as 0 = air) without crashing.
 
 	# --- Tool gating ---
 	# Only apply for "mine" — for "smooth", any manual tool works on
 	# any material (the smoothing pass averages column heights;
 	# matching tool-to-material doesn't make sense for that verb).
-	if action == "mine":
+	if action == "mine" and material != null:
 		if material.allowed_tools.size() > 0 and not (equipped_id in material.allowed_tools):
 			# Wrong tool — don't accumulate. Print a throttled
 			# diagnostic so the silent failure isn't mysterious.
@@ -436,6 +459,13 @@ func _tick_held_action(delta: float, action: String) -> void:
 				])
 			_clear_target()
 			return
+
+	# Fallback timing when material is null (smooth on unloaded terrain).
+	# 0.5 s matches a medium-softness material (dirt) so right-clicking
+	# unloaded terrain doesn't feel broken or instantaneous.
+	const SMOOTH_FALLBACK_TIME_S: float = 0.5
+	var mine_secs: float = material.mining_time_seconds if material != null else SMOOTH_FALLBACK_TIME_S
+	var disp_name: String = material.display_name if material != null else "terrain"
 
 	# --- Target stability + accumulate ---
 	# Compute the integer voxel grid coord and compare. If the
@@ -454,13 +484,13 @@ func _tick_held_action(delta: float, action: String) -> void:
 	# mine and smooth — label distinguishes which.
 	mining_active = true
 	mining_progress = clampf(
-		_swing_time_on_target / maxf(material.mining_time_seconds, 0.0001),
+		_swing_time_on_target / maxf(mine_secs, 0.0001),
 		0.0,
 		1.0,
 	)
-	mining_material_label = ("SMOOTHING " + material.display_name) if action == "smooth" else material.display_name
+	mining_material_label = ("SMOOTHING " + disp_name) if action == "smooth" else disp_name
 
-	if _swing_time_on_target < material.mining_time_seconds:
+	if _swing_time_on_target < mine_secs:
 		# Still swinging.
 		return
 
@@ -522,24 +552,23 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 	if not get_node_or_null("/root/VoxelEditManager"):
 		push_warning("[EditToolHandler] VoxelEditManager autoload not registered")
 		return
-	# Snap centre to the nearest voxel grid centre (world-space).
-	# 6 vox/m → each voxel occupies a 1/6 m cell. Centre of voxel
-	# (i, j, k) is at world ((i+0.5)/6, (j+0.5)/6, (k+0.5)/6).
+	# Compute the carve box in integer voxel-grid coordinates.
+	# Using queue_edit_box (world-space) caused _terrain.to_local() to
+	# return -0.999... instead of -1.0 due to FP rounding, collapsing
+	# the 3×3×3 carve to 1×1×1 after truncation. Integer arithmetic
+	# avoids the conversion entirely.
 	const VOXELS_PER_METER: float = 6.0
-	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
-	var snapped: Vector3 = Vector3(
-		(floori(voxel_world_pos.x * VOXELS_PER_METER) + 0.5) * VOXEL_SIZE_M,
-		(floori(voxel_world_pos.y * VOXELS_PER_METER) + 0.5) * VOXEL_SIZE_M,
-		(floori(voxel_world_pos.z * VOXELS_PER_METER) + 0.5) * VOXEL_SIZE_M,
+	var centre_voxel: Vector3i = Vector3i(
+		floori(voxel_world_pos.x * VOXELS_PER_METER),
+		floori(voxel_world_pos.y * VOXELS_PER_METER),
+		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
-	# Half-side in world units: N voxels of 1/6 m each, halved.
-	# For N=3 this is 0.25 m; box AABB is 0.5 m on a side = exactly
-	# 3 voxels.
-	var half_side_m: float = float(swing_carve_voxels_per_side) * VOXEL_SIZE_M * 0.5
-	var box_min: Vector3 = snapped - Vector3.ONE * half_side_m
-	var box_max: Vector3 = snapped + Vector3.ONE * half_side_m
-	var accepted: bool = VoxelEditManager.queue_edit_box(
-		box_min, box_max, AIR_VOXEL
+	# half = (N-1)/2 so that N=3 gives ±1 → 3 voxels inclusive.
+	var half: int = swing_carve_voxels_per_side / 2
+	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
+	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
+	var accepted: bool = VoxelEditManager.queue_edit_box_voxels(
+		box_vmin, box_vmax, AIR_VOXEL
 	)
 	if not accepted:
 		# Rejected by NoEditZone. Bark trigger lives on
@@ -595,41 +624,68 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 
 
 func _do_smooth(aim_pos: Vector3) -> void:
-	# Right-click smoothing pass — CONSERVATIVE: each iteration
-	# moves at most min(N_high, N_low) voxels and creates ZERO net
-	# new voxels. The total solid voxel count inside the smoothed
-	# volume is preserved exactly across the operation.
+	# Right-click smoothing — NEIGHBOR-AWARE GRAVITY-BIASED SMOOTHING.
 	#
-	# Why conservation matters:
-	#  1. The terrain is destructible — net-add smoothing would let
-	#     the player magic free voxels into existence by spamming
-	#     RMB on a hill. Net-remove would let them dissolve voxels
-	#     by spamming on a pit.
-	#  2. Net-add carves trigger VoxelGravityManager scans with
-	#     newly-added voxels above ground; the gravity system can
-	#     spawn FallingVoxelClusters that yank the just-placed
-	#     voxels back out of the column, which is what was making
-	#     smoothed voxels "unmineable" — they were physically gone
-	#     by the time the player aimed at them.
-	#  3. Iteratively converges to flat (each step reduces height
-	#     variance by transferring 1 voxel from the highest column
-	#     to the lowest column).
+	# Mental model: think about how a person actually smooths a wall
+	# or floor. They knock off the bumps that stick out, push the
+	# crumbs into the gaps that are missing voxels, never magic mass
+	# from thin air. Gravity holds: nothing rests on nothing.
 	#
-	# Algorithm:
-	#   1. Read top solid voxel Y for each column in the
-	#      smooth_voxels_per_side × smooth_voxels_per_side grid.
-	#   2. Compute the average top Y.
-	#   3. Sort columns: high = those with top > avg (descending),
-	#      low = those with top < avg (ascending).
-	#   4. Pair high with low (n_pairs = min(n_high, n_low)).
-	#   5. For each pair: carve from high column's top, fill low
-	#      column's top+1 using the carved voxel's material id —
-	#      true "move" semantics. The unpaired remainder keeps its
-	#      voxels where they are (no creates, no destroys).
+	# Two spheres around the aim voxel:
+	#   - PROBE  sphere (smooth_radius_voxels × smooth_probe_multiplier,
+	#     default 1.5×) is READ-ONLY context. Used to compute target_dy
+	#     for column-top redistribution so the action sphere doesn't
+	#     build vertically.
+	#   - ACTION sphere (smooth_radius_voxels) is the editable volume.
+	#     Voxels are RELOCATED inside it; never created, never destroyed.
 	#
-	# Edits route through VoxelEditManager so NoEditZone / async
-	# queue / EditedChunkRegistry all stay consistent with manual
-	# mining.
+	# Each click classifies every action-sphere cell by its 6-face
+	# solid-neighbor count and whether the cell directly below it is
+	# solid. From that we build two priority pools:
+	#
+	#   DONORS (solid cells the algorithm wants to remove):
+	#     Tier 3 — UNSUPPORTED (floater or overhang). Gravity says
+	#       these have to go. Score = 6 - face_solid_count
+	#       (more isolated → higher).
+	#     Tier 2 — PROTRUSION (≤2 face-solid neighbors, but supported).
+	#       Sticks out from the surface. Score = 3 - face_solid_count.
+	#     Tier 1 — ABOVE-TARGET COLUMN TOP (top of column whose top_y >
+	#       target_dy). Excess height. Score = top_y - target_dy.
+	#
+	#   RECEIVERS (air cells the algorithm wants to fill):
+	#     Tier 2 — ENCLOSED POCKET (≥4 face-solid neighbors AND solid
+	#       below). 1×1×1 holes in walls and floors. Highest priority
+	#       fill. Score = face_solid_count - 3.
+	#     Tier 1 — BELOW-TARGET COLUMN-TOP FILL (cell directly above a
+	#       column whose top_y < target_dy; top_y is solid so this cell
+	#       is supported). Score = target_dy - top_y.
+	#
+	#   GRAVITY GATE on receivers: a receiver MUST have a solid cell
+	#   directly below it (or be at the bottom of the action sphere
+	#   where the cell-below check reads from terrain — same gate).
+	#   Cells with no support are never filled, period.
+	#
+	# Pair greedily: highest-tier donor with highest-tier receiver,
+	# walking down both lists. Ties broken by score. Cap at
+	# smooth_move_budget moves per click. Each move = one carve +
+	# one fill carrying the donor's material id.
+	#
+	# Behaviors that fall out:
+	#   - 1×1×1 hole in a wall → tier-2 donor (a protrusion sticking
+	#     off the wall) gets paired with the hole's tier-2 receiver.
+	#     Wall fills in.
+	#   - Floater mid-air → tier-3 donor. Pairs with whatever the best
+	#     receiver in the sphere is. Gone.
+	#   - Overhang ledge → tier-3 donor. Same.
+	#   - Pillar in flat ground → its top is a tier-1 donor. Pairs
+	#     with low-spot tier-1 receivers. Capped at target so the
+	#     pillar doesn't migrate intact onto neighbouring columns.
+	#   - Pit on flat ground → tier-1 receiver. Filled when there's
+	#     a donor anywhere in the sphere. If no donors exist (the
+	#     surrounding terrain is already at target), pit stays.
+	#
+	# Conservation: every move = 1 carve + 1 fill. Net cell change = 0
+	# at the click level, modulo NoEditZone-rejected boundary writes.
 	if not get_node_or_null("/root/VoxelEditManager"):
 		return
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
@@ -642,124 +698,250 @@ func _do_smooth(aim_pos: Vector3) -> void:
 
 	const VOXELS_PER_METER: float = 6.0
 	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
-	# Search Y range (in voxels) above and below the aim point. We
-	# look up to 8 voxels above the aim for "current top" and treat
-	# the column as "open" below if it's air. 8 vox = ~1.3 m which
-	# covers normal terrain noise.
-	const SEARCH_HALF_HEIGHT_VOXELS: int = 8
+	# Default RGB byte for filled voxels. The terrain material reads
+	# only the alpha-byte material id, so mid-grey is a safe colour
+	# placeholder. The fill always carries the donor's mat_id.
+	const FILL_RGB: int = 0x80808000
+	const FACE_OFFSETS: Array = [
+		Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
+		Vector3i(0, 1, 0), Vector3i(0, -1, 0),
+		Vector3i(0, 0, 1), Vector3i(0, 0, -1),
+	]
+	const BELOW_OFFSET: Vector3i = Vector3i(0, -1, 0)
 
-	var n: int = smooth_voxels_per_side
-	var half: int = n / 2  # 5 → 2; 7 → 3
+	var action_radius: int = smooth_radius_voxels
+	var action_radius_sq: int = action_radius * action_radius
+	var probe_radius: int = int(ceili(float(action_radius) * smooth_probe_multiplier))
+	if probe_radius < action_radius:
+		probe_radius = action_radius
+	var probe_radius_sq: int = probe_radius * probe_radius
+	var budget: int = smooth_move_budget
 
-	# Centre voxel coord at the aim point.
 	var centre_grid: Vector3i = Vector3i(
 		floori(aim_pos.x * VOXELS_PER_METER),
 		floori(aim_pos.y * VOXELS_PER_METER),
 		floori(aim_pos.z * VOXELS_PER_METER),
 	)
 
-	# Gather column tops. Each entry: {grid_x, grid_z, top_y, mat_id}.
-	# top_y == centre_grid.y - SEARCH_HALF_HEIGHT_VOXELS - 1 means
-	# "no solid found in search range" — those columns are skipped
-	# (player aimed at a sky chunk or a deep cave roof; smoothing
-	# isn't well-defined there).
-	var columns: Array = []
-	for dz in range(-half, half + 1):
-		for dx in range(-half, half + 1):
-			var col_x: int = centre_grid.x + dx
-			var col_z: int = centre_grid.z + dz
-			var top_y: int = centre_grid.y - SEARCH_HALF_HEIGHT_VOXELS - 1
-			var top_mat: int = 0
-			# Walk DOWN from search top to search bottom to find first solid.
-			for dy in range(SEARCH_HALF_HEIGHT_VOXELS, -SEARCH_HALF_HEIGHT_VOXELS - 1, -1):
-				var probe_y: int = centre_grid.y + dy
-				var packed: int = tool.get_voxel(Vector3i(col_x, probe_y, col_z))
-				if (packed & 0xFF) != 0:
-					top_y = probe_y
-					top_mat = packed & 0xFF
-					break
-			if top_y > centre_grid.y - SEARCH_HALF_HEIGHT_VOXELS - 1:
-				columns.append({
-					"x": col_x,
-					"z": col_z,
-					"top_y": top_y,
-					"mat_id": top_mat,
+	# --- Read PROBE sphere cells once; bucket per column ---
+	# cells[off] = packed RGBA (0 = air). Includes both probe-only
+	# and action cells. action_offsets is the subset inside the
+	# action sphere.
+	var cells: Dictionary = {}
+	var probe_columns: Dictionary = {}
+	var action_columns: Dictionary = {}
+	var action_offsets: Array = []
+	for dy in range(-probe_radius, probe_radius + 1):
+		for dz in range(-probe_radius, probe_radius + 1):
+			for dx in range(-probe_radius, probe_radius + 1):
+				var d2: int = dx * dx + dy * dy + dz * dz
+				if d2 > probe_radius_sq:
+					continue
+				var off: Vector3i = Vector3i(dx, dy, dz)
+				cells[off] = tool.get_voxel(centre_grid + off)
+				var ck: Vector2i = Vector2i(dx, dz)
+				if not probe_columns.has(ck):
+					probe_columns[ck] = []
+				(probe_columns[ck] as Array).append(dy)
+				if d2 <= action_radius_sq:
+					if not action_columns.has(ck):
+						action_columns[ck] = []
+					(action_columns[ck] as Array).append(dy)
+					action_offsets.append(off)
+
+	# --- Compute target_dy = lower-median of probe column tops ---
+	var probe_tops: Array = []
+	for ck in probe_columns.keys():
+		var dys_p: Array = probe_columns[ck]
+		var top_p: int = -1000000
+		for i in range(dys_p.size() - 1, -1, -1):
+			var off_p: Vector3i = Vector3i(ck.x, int(dys_p[i]), ck.y)
+			if (int(cells[off_p]) & 0xFF) != 0:
+				top_p = int(dys_p[i])
+				break
+		if top_p != -1000000:
+			probe_tops.append(top_p)
+
+	if probe_tops.is_empty():
+		return  # whole probe sphere is air — nothing to smooth toward
+
+	probe_tops.sort()
+	@warning_ignore("integer_division")
+	var target_dy: int = int(probe_tops[(probe_tops.size() - 1) / 2])
+
+	# --- Compute action-column tops (post-current state, before any moves) ---
+	var action_tops: Dictionary = {}  # Vector2i ck → {"dy": int, "mat_id": int}
+	for ck in action_columns.keys():
+		var dys_a: Array = action_columns[ck]
+		for i in range(dys_a.size() - 1, -1, -1):
+			var off_a: Vector3i = Vector3i(ck.x, int(dys_a[i]), ck.y)
+			var p_a: int = int(cells[off_a])
+			if (p_a & 0xFF) != 0:
+				action_tops[ck] = {"dy": int(dys_a[i]), "mat_id": p_a & 0xFF}
+				break
+
+	# --- Helper: read a voxel that may be inside or outside the probe sphere ---
+	# We cache outside-probe reads in `cells` too so the same neighbor
+	# isn't re-fetched if multiple action cells share it as a neighbor.
+	# Uses a typed local lambda — captures `tool`, `centre_grid`, `cells` by ref.
+	# (GDScript lambdas can capture by reference for Dictionary.)
+
+	# --- Build donor and receiver pools ---
+	var donors: Array = []
+	var receivers: Array = []
+	for off in action_offsets:
+		var packed: int = int(cells[off])
+		var is_solid: bool = (packed & 0xFF) != 0
+		# Count face-solid neighbors. Pull from cells dict if neighbor is
+		# inside probe; otherwise fetch from terrain (and cache).
+		var face_solid: int = 0
+		for fn in FACE_OFFSETS:
+			var n_off: Vector3i = off + fn
+			var n_packed: int = 0
+			if cells.has(n_off):
+				n_packed = int(cells[n_off])
+			else:
+				n_packed = tool.get_voxel(centre_grid + n_off)
+				cells[n_off] = n_packed  # cache for future neighbor lookups
+			if (n_packed & 0xFF) != 0:
+				face_solid += 1
+		# Cell directly below.
+		var below_off: Vector3i = off + BELOW_OFFSET
+		var below_packed: int = 0
+		if cells.has(below_off):
+			below_packed = int(cells[below_off])
+		else:
+			below_packed = tool.get_voxel(centre_grid + below_off)
+			cells[below_off] = below_packed
+		var supported: bool = (below_packed & 0xFF) != 0
+
+		var ck: Vector2i = Vector2i(off.x, off.z)
+		var col_top_dy: int = -1000000
+		var col_top_mat: int = 0
+		if action_tops.has(ck):
+			col_top_dy = int(action_tops[ck]["dy"])
+			col_top_mat = int(action_tops[ck]["mat_id"])
+		var is_col_top: bool = is_solid and (off.y == col_top_dy)
+
+		if is_solid:
+			# Donor classification, highest-tier wins.
+			var d_tier: int = 0
+			var d_score: int = 0
+			if not supported:
+				d_tier = 3
+				d_score = 6 - face_solid
+			elif face_solid <= 2:
+				d_tier = 2
+				d_score = 3 - face_solid
+			elif is_col_top and col_top_dy > target_dy:
+				d_tier = 1
+				d_score = mini(col_top_dy - target_dy, 6)
+			if d_tier > 0:
+				donors.append({
+					"off": off,
+					"mat_id": packed & 0xFF,
+					"tier": d_tier,
+					"score": d_score,
+				})
+		else:
+			# Receiver classification — gravity gate first.
+			if not supported:
+				continue
+			var r_tier: int = 0
+			var r_score: int = 0
+			# Is this cell directly above the column's current top?
+			var above_top: bool = (col_top_dy != -1000000) and (off.y == col_top_dy + 1)
+			if face_solid >= 4:
+				r_tier = 2
+				r_score = face_solid - 3
+			elif above_top and col_top_dy < target_dy:
+				r_tier = 1
+				r_score = mini(target_dy - col_top_dy, 6)
+			if r_tier > 0:
+				receivers.append({
+					"off": off,
+					"tier": r_tier,
+					"score": r_score,
 				})
 
-	if columns.size() < 2:
-		# Need at least 2 columns to compute a meaningful average.
+	# Sort: tier DESC, then score DESC.
+	var by_priority: Callable = func(a: Dictionary, b: Dictionary) -> bool:
+		var at: int = int(a["tier"])
+		var bt: int = int(b["tier"])
+		if at != bt:
+			return at > bt
+		return int(a["score"]) > int(b["score"])
+	donors.sort_custom(by_priority)
+	receivers.sort_custom(by_priority)
+
+	# --- Greedy pair within budget ---
+	# Each move = one carve + one fill. We mutate `cells` locally so
+	# subsequent moves see the post-state — this means a fill that
+	# closes a 1×1×1 hole won't be re-considered as a receiver later
+	# in the same click.
+	var moves: Array = []
+	var di: int = 0
+	var ri: int = 0
+	while moves.size() < budget and di < donors.size() and ri < receivers.size():
+		var d: Dictionary = donors[di]
+		var r: Dictionary = receivers[ri]
+		var d_off: Vector3i = d["off"]
+		var r_off: Vector3i = r["off"]
+		# Cells we picked might have been mutated by an earlier move
+		# in this same click (e.g., a donor cell already became air
+		# because we filled it earlier as a receiver — unlikely but
+		# safe to guard). Validate before committing.
+		if (int(cells[d_off]) & 0xFF) == 0:
+			di += 1
+			continue
+		if (int(cells[r_off]) & 0xFF) != 0:
+			ri += 1
+			continue
+		if d_off == r_off:
+			# Defensive — donor solid + receiver air rules out this case.
+			ri += 1
+			continue
+		moves.append({
+			"carve": d_off,
+			"fill": r_off,
+			"mat_id": int(d["mat_id"]),
+		})
+		cells[d_off] = 0
+		cells[r_off] = FILL_RGB | int(d["mat_id"])
+		di += 1
+		ri += 1
+
+	if moves.is_empty():
+		# No work to do this click — already smooth, or no valid
+		# donor↔receiver pairs given current pool.
 		return
 
-	# Average top Y. Mean is fine for a per-iteration nudge; median
-	# would be more outlier-robust but a single click only moves
-	# each column by 1 voxel anyway.
-	var sum_y: int = 0
-	for c in columns:
-		sum_y += int(c["top_y"])
-	@warning_ignore("integer_division")
-	var avg_y: int = sum_y / columns.size()
-
-	# Conservation pairing: separate columns by relation to avg,
-	# sort, pair high-with-low.
-	var high_cols: Array = []  # top > avg (will donate a voxel)
-	var low_cols: Array  = []  # top < avg (will receive a voxel)
-	for c in columns:
-		var col_top: int = int(c["top_y"])
-		if col_top > avg_y:
-			high_cols.append(c)
-		elif col_top < avg_y:
-			low_cols.append(c)
-	# At-avg columns (col_top == avg) are skipped entirely — they're
-	# already at the target height.
-
-	# Sort: highest donors first (largest variance reduction per
-	# move), lowest receivers first (same reason on the receive
-	# side). Stable order isn't important for correctness, only for
-	# slightly better visual convergence.
-	high_cols.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["top_y"]) > int(b["top_y"]))
-	low_cols.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["top_y"]) < int(b["top_y"]))
-
-	var n_pairs: int = mini(high_cols.size(), low_cols.size())
-	if n_pairs == 0:
-		# All columns are at avg, OR all are above (no donors with
-		# receivers), OR all are below. Either way, no-op.
-		return
-
-	# Build the bulk edit: each pair contributes ONE carve and ONE
-	# fill. n_pairs × 2 writes. Carved voxel's material is moved
-	# to the receiving column's top+1 — true voxel "move".
+	# --- Emit bulk writes (each move = one carve + one fill) ---
 	var writes: Array = []
-	for i in n_pairs:
-		var donor: Dictionary = high_cols[i]
-		var receiver: Dictionary = low_cols[i]
-
-		# Carve the donor's top voxel.
+	for m in moves:
+		var carve_off: Vector3i = m["carve"]
+		var fill_off: Vector3i = m["fill"]
 		var carve_world: Vector3 = Vector3(
-			(float(donor["x"]) + 0.5) * VOXEL_SIZE_M,
-			(float(donor["top_y"]) + 0.5) * VOXEL_SIZE_M,
-			(float(donor["z"]) + 0.5) * VOXEL_SIZE_M,
+			(float(centre_grid.x + carve_off.x) + 0.5) * VOXEL_SIZE_M,
+			(float(centre_grid.y + carve_off.y) + 0.5) * VOXEL_SIZE_M,
+			(float(centre_grid.z + carve_off.z) + 0.5) * VOXEL_SIZE_M,
 		)
-		writes.append({"pos": carve_world, "value": AIR_VOXEL})
-
-		# Place a voxel ABOVE the receiver's current top, carrying
-		# the donor's material id (true "move" — grass moved from
-		# A appears as grass at B). RGB stays mid-grey because the
-		# current terrain material ignores per-voxel RGB anyway.
 		var fill_world: Vector3 = Vector3(
-			(float(receiver["x"]) + 0.5) * VOXEL_SIZE_M,
-			(float(int(receiver["top_y"]) + 1) + 0.5) * VOXEL_SIZE_M,
-			(float(receiver["z"]) + 0.5) * VOXEL_SIZE_M,
+			(float(centre_grid.x + fill_off.x) + 0.5) * VOXEL_SIZE_M,
+			(float(centre_grid.y + fill_off.y) + 0.5) * VOXEL_SIZE_M,
+			(float(centre_grid.z + fill_off.z) + 0.5) * VOXEL_SIZE_M,
 		)
-		var moved_mat_id: int = int(donor["mat_id"])
-		var packed_fill: int = (0x80808000) | (moved_mat_id & 0xFF)
+		var packed_fill: int = FILL_RGB | (int(m["mat_id"]) & 0xFF)
+		writes.append({"pos": carve_world, "value": AIR_VOXEL})
 		writes.append({"pos": fill_world, "value": packed_fill})
 
-	VoxelEditManager.queue_set_voxels_bulk(writes, "smooth_n%d" % writes.size())
+	VoxelEditManager.queue_set_voxels_bulk(writes, "smooth_3d_n%d" % writes.size())
 	_swing_cooldown_remaining = swing_cooldown_seconds
 
 	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("Smooth: %d voxels moved (avg_y=%d, %d donors, %d receivers)" % [
-			n_pairs, avg_y, high_cols.size(), low_cols.size(),
+		DebugOverlay.log_action("Smooth: %d moves (action r=%d, probe r=%d, target_dy=%d, donors=%d, receivers=%d)" % [
+			moves.size(), action_radius, probe_radius, target_dy,
+			donors.size(), receivers.size(),
 		])
 
 

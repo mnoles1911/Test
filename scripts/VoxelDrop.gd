@@ -32,11 +32,13 @@ class_name VoxelDrop
 # ============================================================
 
 ## How close (in metres) the player must be for auto-pickup.
-## 0.5 m — player must walk DIRECTLY onto the drop, not just near
-## it. Tight pickup range keeps loot collection deliberate (no
-## vacuuming items from across the carve site) and decouples
-## pickup from the 3.5 m manual-tool reach.
-@export var pickup_radius_m: float = 0.5
+## 1.5 m — comfortable walk-by collection without vacuuming items
+## from across the carve site. Roland's collision capsule is ~0.5 m
+## wide so 1.5 m means "the drop is within arm's reach as you pass
+## the spot where it landed." Decoupled from the 3.5 m manual-tool
+## reach so picking up doesn't require the same precise aim mining
+## does.
+@export var pickup_radius_m: float = 1.5
 
 ## Seconds before an uncollected drop despawns. 300 s = 5 minutes,
 ## long enough for the player to mine a chunk, run home to drop

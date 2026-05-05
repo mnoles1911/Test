@@ -740,6 +740,16 @@ a short pitch; promote to a real section when scope is committed.
     shutdown ordering quirks could surface a write to a freed Tween.
     Low-risk; address if it ever shows up in the log.
 
+- ~~**EditToolHandler: mining carve collapses to 1×1×1 on some voxels (FP bug, 2026-05-05).**~~
+  **Fixed 2026-05-05.** Added `VoxelEditManager.queue_edit_box_voxels(min: Vector3i,
+  max: Vector3i, value: int)` and updated `EditToolHandler._carve` to use it.
+  Integer voxel-grid coords bypass `_terrain.to_local()` FP rounding entirely.
+
+- ~~**EditToolHandler: right-click smooth fails on untouched terrain at first load (2026-05-05).**~~
+  **Fixed 2026-05-05.** `_tick_held_action` now allows the smooth verb to proceed when
+  material is null (Zylann first-load streaming gap). Falls back to 0.5 s hold time
+  and "terrain" display label. `_do_smooth` reads its own cell data independently.
+
 
 ## Section 10 — Verification Checklist (after each Godot session)
 

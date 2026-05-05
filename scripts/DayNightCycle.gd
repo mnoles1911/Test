@@ -93,25 +93,21 @@ const FOG_COLOR_DAY: Color   = Color(0.55, 0.65, 0.78)
 const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 
 
-# Sun-rotation quantization. The sun moves ~0.0625°/s on a 96-minute day,
-# which is ~0.001° per frame at 60 fps — small enough that writing a fresh
-# basis every frame just nudges the shadow projection by sub-texel amounts
-# and makes shadow edges crawl/shimmer. Quantizing to 0.5° steps means the
-# basis only changes once every ~8 seconds of real time. Visually the sun
-# still moves smoothly (a 0.5° jump is invisible at this distance), but the
-# shadow map stays identical between updates so cascades don't reproject
-# and edges don't jitter.
-const SUN_ANGLE_QUANTIZE_RAD: float = 0.00873  # ≈ 0.5°
-
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
 var _env: WorldEnvironment
 var _sun_mesh: MeshInstance3D
 var _moon_mesh: MeshInstance3D
 
-# Last quantized sun-angle step we wrote to the basis. INT_MIN sentinel forces
-# the first _apply() call to do an unconditional write.
-var _last_sun_angle_step: int = -2147483648
+# Track shadow-on/off state per light so we only flip shadow_enabled at the
+# transitions (dawn/dusk crossings). Setting shadow_enabled triggers a
+# rendering-server call internally, so we avoid hammering it every frame.
+# -1 = uninitialised (forces first _apply() to write); 0 = off; 1 = on.
+var _sun_shadow_state: int = -1
+var _moon_shadow_state: int = -1
+# Threshold below which a light's shadow rendering is wasted work — its
+# energy is so low the shadows it casts are invisible against the ambient.
+const SHADOW_DISABLE_ENERGY: float = 0.05
 
 # Cached reference to the sky's ShaderMaterial so we don't re-fetch it
 # every frame. Resolved once in _ready(); null if the scene's Sky doesn't
@@ -200,19 +196,12 @@ func _apply() -> void:
 	# the sun is at the east horizon (angle 0), at hour 12 it's at
 	# zenith (angle 90°), at hour 18 it's at the west horizon (180°).
 	var sun_angle_rad: float = (h - 6.0) / 24.0 * TAU
-	# Quantize to discrete steps so the basis only changes when the sun has
-	# actually moved a visible amount. See SUN_ANGLE_QUANTIZE_RAD comment for
-	# why — this is what stops shadow edges from crawling every frame.
-	var sun_angle_step: int = int(round(sun_angle_rad / SUN_ANGLE_QUANTIZE_RAD))
-	if sun_angle_step != _last_sun_angle_step:
-		_last_sun_angle_step = sun_angle_step
-		var quantized_angle: float = float(sun_angle_step) * SUN_ANGLE_QUANTIZE_RAD
-		# Tilt the orbit ~15° so the sun arcs through the south hemisphere
-		# rather than dead-overhead — gives more natural shadow direction.
-		var sun_basis: Basis = Basis().rotated(Vector3.LEFT, quantized_angle).rotated(Vector3.FORWARD, deg_to_rad(15.0))
-		_sun.transform.basis = sun_basis
-		# Moon is the anti-sun — same orbit, half a turn behind.
-		_moon.transform.basis = sun_basis.rotated(Vector3.LEFT, PI)
+	# Tilt the orbit ~15° so the sun arcs through the south hemisphere
+	# rather than dead-overhead — gives more natural shadow direction.
+	var sun_basis: Basis = Basis().rotated(Vector3.LEFT, sun_angle_rad).rotated(Vector3.FORWARD, deg_to_rad(15.0))
+	_sun.transform.basis = sun_basis
+	# Moon is the anti-sun — same orbit, half a turn behind.
+	_moon.transform.basis = sun_basis.rotated(Vector3.LEFT, PI)
 
 	# --- Sun energy + color ---
 	var sun_energy: float
@@ -239,6 +228,15 @@ func _apply() -> void:
 
 	_sun.light_energy = sun_energy
 	_sun.light_color  = sun_color
+
+	# Disable shadow casting when the sun is below the visibility threshold —
+	# at night the sun is pointing through the world from the wrong side and
+	# its shadow map is being maintained for no visible benefit. We only flip
+	# at transitions to avoid per-frame rendering-server overhead.
+	var sun_shadow_target: int = 1 if sun_energy > SHADOW_DISABLE_ENERGY else 0
+	if sun_shadow_target != _sun_shadow_state:
+		_sun.shadow_enabled = sun_shadow_target == 1
+		_sun_shadow_state = sun_shadow_target
 
 	# --- Sun mesh (visible celestial body) ---
 	# Same technique as MoonMesh: position the sphere MOON_DISTANCE metres
@@ -268,6 +266,14 @@ func _apply() -> void:
 
 	_moon.light_energy = moon_energy
 	_moon.light_color  = MOON_COLOR
+
+	# Same dawn/dusk gating for the moon — during the day its shadow map is
+	# wasted work since its light_energy is 0 and any shadows would be
+	# invisible anyway.
+	var moon_shadow_target: int = 1 if moon_energy > SHADOW_DISABLE_ENERGY else 0
+	if moon_shadow_target != _moon_shadow_state:
+		_moon.shadow_enabled = moon_shadow_target == 1
+		_moon_shadow_state = moon_shadow_target
 
 	# --- Moon mesh (visible celestial body) ---
 	# PhysicalSkyMaterial handles the sun disk automatically. The moon

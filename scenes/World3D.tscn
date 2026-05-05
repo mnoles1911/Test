@@ -107,6 +107,7 @@ light_color = Color(1, 0.97, 0.92, 1)
 light_energy = 1.4
 shadow_enabled = true
 shadow_bias = 0.18
+shadow_blur = 3.0
 directional_shadow_mode = 0
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 120.0
@@ -121,6 +122,11 @@ surface_material_override/0 = SubResource("SunMat")
 light_color = Color(0.55, 0.65, 0.85, 1)
 light_energy = 0.0
 shadow_enabled = true
+shadow_bias = 0.18
+shadow_blur = 3.0
+directional_shadow_mode = 0
+directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 120.0
 sky_mode = 1
 
 [node name="MoonMesh" type="MeshInstance3D" parent="." unique_id=2000000030]
