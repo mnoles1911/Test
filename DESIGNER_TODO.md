@@ -686,7 +686,7 @@ a short pitch; promote to a real section when scope is committed.
     inconsistent with rain particles (which ramp via `_live_*` interpolated
     values). Fix: arm/disarm based on `_target_state == HEAVY_RAIN`, or on a
     `_live_rain_density > threshold` check so all rain visuals share one gate.
-  - **`assets/profiles/aldenholt.tres` uses raw int State values.**
+  - **`assets/profiles/mira_temperate.tres` uses raw int State values.**
     `authored_sequence = Array[int]([1, 0, 1, 2])` silently breaks if the
     `WeatherManager.State` enum is reordered. Fix options: (a) add a comment
     in `WeatherLocationProfile.gd` documenting that the ints must match
@@ -968,7 +968,7 @@ WeatherManager logs a one-time warning per missing OGG and continues — it neve
 **Schedule rolls**
 
 - [ ] **Hourly rolls only at scheduled hours**: F1 → ADVANCE TIME... → step through several days. Weather rolls happen at hours 6 / 12 / 18, not other hours.
-- [ ] **Authored Aldenholt sequence**: load aldenholt.tres via `WeatherManager.set_location_profile()`. Days 1–4 follow the authored opener (overcast / clear / overcast / light rain) at hour 6.
+- [ ] **Authored Mira-temperate sequence**: load mira_temperate.tres via `WeatherManager.set_location_profile()`. Days 1–4 follow the authored opener (overcast / clear / overcast / light rain) at hour 6.
 
 **WeatherZone**
 

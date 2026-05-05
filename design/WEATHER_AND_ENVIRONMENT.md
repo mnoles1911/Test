@@ -22,7 +22,7 @@ of state changes), rain + snow `GPUParticles3D` (camera-following, particle
 amount tweens with state), `RainOverlay` `CanvasLayer` mood tint,
 wet-terrain `material_override` specular sheen, directional lightning
 (`OmniLight3D` flash + 3D spatial thunder with realistic distance delay),
-`WeatherLocationProfile` resource for per-region authoring (aldenholt.tres
+`WeatherLocationProfile` resource for per-region authoring (mira_temperate.tres
 seeded), `WeatherZone` `Area3D` proximity stack, save/load round-trip,
 debug overlay submenu with one button per state + FORCE LIGHTNING +
 CLEAR OVERRIDE + live state/wind readouts.

@@ -16,7 +16,7 @@ class_name WeatherLocationProfile
 # swapped via WeatherManager.set_location_profile when the player
 # crosses a region boundary (Phase 11+ wiring — not yet automatic).
 #
-# v1 ships one default profile (assets/profiles/aldenholt.tres). Add
+# v1 ships one default profile (assets/profiles/mira_temperate.tres). Add
 # new profiles by creating a new Resource of this type in the inspector.
 #
 # Reference: design/WEATHER_AND_ENVIRONMENT.md → per-region weather
