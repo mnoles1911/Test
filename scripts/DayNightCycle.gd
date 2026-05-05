@@ -39,6 +39,19 @@ extends Node
 @export var sun_mesh_path: NodePath = "../SunMesh"
 @export var moon_mesh_path: NodePath = "../MoonMesh"
 
+# --- Sky panorama anchors ---
+# Four equirectangular panorama images representing the sky at four
+# anchor times of day. Each frame we pick the two anchors flanking the
+# current hour and cross-fade them via the sky shader. Drop the AI-
+# generated PNGs into assets/sky/ and assign them to these slots in the
+# Inspector on the DayNightCycle node. While any slot is null the sky
+# update is skipped (the shader keeps showing whatever it last had);
+# a one-shot warning is printed at startup so it's obvious art is missing.
+@export var dawn_panorama:  Texture2D = null
+@export var noon_panorama:  Texture2D = null
+@export var dusk_panorama:  Texture2D = null
+@export var night_panorama: Texture2D = null
+
 # How far from the camera the moon mesh is positioned (metres).
 # Far enough to appear celestial; no_depth_test on the material
 # ensures fog and terrain depth don't obscure it.
@@ -76,6 +89,16 @@ var _env: WorldEnvironment
 var _sun_mesh: MeshInstance3D
 var _moon_mesh: MeshInstance3D
 
+# Cached reference to the sky's ShaderMaterial so we don't re-fetch it
+# every frame. Resolved once in _ready(); null if the scene's Sky doesn't
+# use our shader (in which case sky cross-fading is silently skipped and
+# the sun/moon/light/fog logic still runs).
+var _sky_mat: ShaderMaterial = null
+
+# One-shot warning latch so a missing-panorama setup logs once at startup
+# rather than spamming the console every frame from _process.
+var _warned_missing_panoramas: bool = false
+
 # Weather fog override. While WeatherManager wants to drive fog, it calls
 # set_fog_override(color, density). _apply() then writes those values instead
 # of the time-of-day-driven palette every frame. WeatherManager interpolates
@@ -108,6 +131,23 @@ func _ready() -> void:
 		push_warning("[DayNightCycle] WorldEnvironment not found at %s" % environment_path)
 	if _moon_mesh == null:
 		push_warning("[DayNightCycle] MoonMesh not found at %s" % moon_mesh_path)
+
+	# Cache the sky's ShaderMaterial so _update_sky_blend can write to it
+	# without re-fetching it 60 times a second. We accept that this is null
+	# if the project's sky isn't using sky_blend.gdshader — in that case the
+	# sky cross-fade just becomes a no-op and the rest of the cycle keeps
+	# working normally (sun/moon rotation, light energy, fog).
+	if _env != null and _env.environment != null and _env.environment.sky != null:
+		_sky_mat = _env.environment.sky.sky_material as ShaderMaterial
+	if _sky_mat == null:
+		push_warning("[DayNightCycle] Sky ShaderMaterial not found — sky cross-fade disabled")
+
+	# Warn once if any of the four panorama slots is empty. The script
+	# stays alive and skips just the sky update; everything else runs.
+	if _sky_mat != null and (dawn_panorama == null or noon_panorama == null \
+			or dusk_panorama == null or night_panorama == null):
+		push_warning("[DayNightCycle] One or more sky panoramas not assigned in Inspector — sky cross-fade disabled until all four slots are filled")
+		_warned_missing_panoramas = true
 
 	# Apply once at world load so the first rendered frame already has
 	# the right time-of-day look. Without this the lights would default
@@ -259,17 +299,80 @@ func _apply() -> void:
 	var env: Environment = _env.environment
 	if env == null:
 		return
-	var sky_mat: ProceduralSkyMaterial = null
-	if env.sky != null:
-		sky_mat = env.sky.sky_material as ProceduralSkyMaterial
-	if sky_mat != null:
-		sky_mat.sky_top_color     = sky_top
-		sky_mat.sky_horizon_color = sky_horizon
+
+	# Sky panorama cross-fade.
+	# Old version tried to cast env.sky.sky_material to ProceduralSkyMaterial,
+	# but the scene actually used PhysicalSkyMaterial — the cast silently
+	# returned null and the sky_top / sky_horizon writes did nothing.
+	# Now the scene uses our custom sky_blend.gdshader (a ShaderMaterial),
+	# and _update_sky_blend picks two of the four anchor panoramas and
+	# writes the blend factor to the shader. The sky_top/sky_horizon Color
+	# variables computed above remain authoritative for the fog tint and
+	# could be repurposed later (e.g. tinting the panoramas via a colour
+	# multiplier uniform) but currently aren't pushed anywhere visible.
+	_update_sky_blend(h)
+
 	if _fog_override_active:
 		env.fog_light_color = _override_fog_color
 		env.fog_density     = _override_fog_density
 	else:
 		env.fog_light_color = fog
+
+
+# Decide which two anchor panoramas flank the current hour-of-day, then
+# write them and the blend factor to the sky shader.
+#
+# Plain English: The sky is built from four painted images (dawn, noon,
+# dusk, night). At any moment the sky is between two of them — e.g. at
+# 06:30 we're halfway between night and dawn. We sample both and lerp
+# rather than swapping at hard boundaries, which would look like a TV
+# channel change.
+#
+# The hour ranges below match the same dawn/noon/dusk/night breakpoints
+# used by the sun-energy and fog-colour ramps above, so the painted sky
+# transitions stay synchronised with the lighting.
+#
+# Why only two textures, not four? A shader runs per-pixel of the sky
+# every frame. Sampling four panoramas and weighting them is wasteful
+# when by definition only two are ever active at once — the cross-fade
+# happens between adjacent anchors, never across them.
+func _update_sky_blend(h: float) -> void:
+	if _sky_mat == null:
+		return
+	if dawn_panorama == null or noon_panorama == null \
+			or dusk_panorama == null or night_panorama == null:
+		return
+
+	var from_tex: Texture2D
+	var to_tex:   Texture2D
+	var blend:    float
+
+	if h < 5.0:
+		from_tex = night_panorama; to_tex = night_panorama; blend = 0.0
+	elif h < 7.0:
+		# Pre-dawn → dawn: 05:00–07:00
+		from_tex = night_panorama; to_tex = dawn_panorama
+		blend = (h - 5.0) / 2.0
+	elif h < 11.0:
+		# Dawn → midday: 07:00–11:00
+		from_tex = dawn_panorama; to_tex = noon_panorama
+		blend = (h - 7.0) / 4.0
+	elif h < 17.0:
+		from_tex = noon_panorama; to_tex = noon_panorama; blend = 0.0
+	elif h < 19.0:
+		# Late afternoon → dusk: 17:00–19:00
+		from_tex = noon_panorama; to_tex = dusk_panorama
+		blend = (h - 17.0) / 2.0
+	elif h < 21.0:
+		# Dusk → night: 19:00–21:00
+		from_tex = dusk_panorama; to_tex = night_panorama
+		blend = (h - 19.0) / 2.0
+	else:
+		from_tex = night_panorama; to_tex = night_panorama; blend = 0.0
+
+	_sky_mat.set_shader_parameter("texture_from", from_tex)
+	_sky_mat.set_shader_parameter("texture_to",   to_tex)
+	_sky_mat.set_shader_parameter("blend",        blend)
 
 
 # Public API used by WeatherManager. Color and density are written verbatim

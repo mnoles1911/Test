@@ -6,12 +6,14 @@
 [ext_resource type="Script" uid="uid://c6pjntrssbrik" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
 [ext_resource type="Script" uid="uid://ekwqr2h0r6tf" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
 [ext_resource type="Script" uid="uid://cahyr7gl7p211" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
-
-[sub_resource type="PhysicalSkyMaterial" id="Sky_1"]
-sun_disk_scale = 8.0
+[ext_resource type="Material" uid="uid://b8skybl3nd0a1" path="res://assets/shaders/sky_blend_material.tres" id="9_sky_blend"]
+[ext_resource type="Texture2D" uid="uid://cybrgfr0wjji3" path="res://assets/sky/dawn.jpg" id="10_dawn"]
+[ext_resource type="Texture2D" uid="uid://bbtoku1kj7nen" path="res://assets/sky/noon.jpg" id="11_noon"]
+[ext_resource type="Texture2D" uid="uid://jpmo8712egdx" path="res://assets/sky/dusk.jpg" id="12_dusk"]
+[ext_resource type="Texture2D" uid="uid://cjdhv5s5h43i6" path="res://assets/sky/night.jpg" id="13_night"]
 
 [sub_resource type="Sky" id="SkyResource_1"]
-sky_material = SubResource("Sky_1")
+sky_material = ExtResource("9_sky_blend")
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 2
@@ -89,6 +91,10 @@ environment = SubResource("Environment_1")
 
 [node name="DayNightCycle" type="Node" parent="." unique_id=2000000021]
 script = ExtResource("7_daynight")
+dawn_panorama = ExtResource("10_dawn")
+noon_panorama = ExtResource("11_noon")
+dusk_panorama = ExtResource("12_dusk")
+night_panorama = ExtResource("13_night")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1383847949]
 light_color = Color(1, 0.97, 0.92, 1)
