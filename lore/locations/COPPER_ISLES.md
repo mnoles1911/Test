@@ -1,5 +1,14 @@
 # Copper Isles
 
+> ⚠️ **SUPERSEDED.** This file describes an earlier 3 km × 3 km / four-island sketch of the Copper Isles. Game One has been re-scoped: the entire game now takes place inside the Copper Isles archipelago at 5 km × 5 km, with five large islands and a colonial-extraction political backdrop driven by Solgrade-chartered companies. The canonical Copper Isles material now lives in `lore/copper_isles/`:
+> - `lore/copper_isles/README.md` — scope and directory map
+> - `lore/copper_isles/GEOGRAPHY.md` — physical geography
+> - `lore/copper_isles/BACKSTORY.md` — colonial history and politics
+>
+> This file is retained as a historical reference only. Do not edit further; do not cross-reference from new lore. Information below is partially obsolete.
+
+---
+
 **Type:** Region (island archipelago)
 **Kingdom/People:** Independent (city-state equivalent; Copper Isles Port is the main settlement)
 **Position:** Southern Mira shelf (the Copper Shelf) — close enough to Mira's southern coast to be reached easily by small boat

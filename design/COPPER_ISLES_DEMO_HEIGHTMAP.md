@@ -1,5 +1,13 @@
 # Copper Isles Demo Level — Heightmap Generation Spec
 
+> ⚠️ **STALE — DO NOT USE.** This spec was written against the previous 3 km × 3 km / four-island layout of the Copper Isles. Game One has been re-scoped to a 5 km × 5 km playable area with **five** large mountainous islands (peaks up to 580 m as bare marble outcroppings above a ~350 m treeline), a loose linear-arch chain, and roughly fifteen scattered smaller islands. See `lore/copper_isles/GEOGRAPHY.md` for the new canonical geography and `lore/copper_isles/BACKSTORY.md` for the political context.
+>
+> **A full rewrite of this heightmap spec is required before any heightmap authoring begins.** Numbers, coordinates, and per-feature descriptions below are obsolete. Retained only as a structural template for the rewrite.
+
+---
+
+# (Original spec below — retained for reference only)
+
 > **Purpose:** Paste-ready text for generating a heightmap of the Copper Isles archipelago — the first Game One playable demo level. Companion to `lore/locations/COPPER_ISLES.md` (which has the full lore and visual identity).
 >
 > **Tool-agnostic.** Works as a prompt for AI heightmap generators (Midjourney/Stable-Diffusion topographic-prompt workflows), as a brief for Gaea / World Creator / World Machine authoring, or as a hand-painting reference in Krita / Photoshop.
