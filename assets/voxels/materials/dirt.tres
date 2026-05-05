@@ -14,6 +14,6 @@ mining_time_seconds = 0.3
 allowed_tools = Array[String](["iron_shovel"])
 yield_item_id = "raw_dirt"
 yield_quantity = 1
-fall_behavior = 0
+fall_behavior = 4
 gravity_scale = 0.9
 damage_multiplier = 0.7
