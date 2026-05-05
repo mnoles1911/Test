@@ -92,9 +92,12 @@ extends Node
 # Master kill-switch. Disable to debug whether a problem is gravity-
 # related or terrain-related.
 
-@export var perf_log_enabled: bool = true
+@export var perf_log_enabled: bool = false
 # When true, dump phase-by-phase microsecond timings for each
 # analysis bubble. Look for "[PERF VGM]" in the Output panel.
+# OFF by default — gravity scans run on every voxel edit (every
+# tool swing, every PICKUP_DROP collapse) and the print itself
+# contributes to main-thread hitches. Flip on for diagnostics.
 #
 # Phases reported (in order):
 #   read       — copying every voxel in the bubble into the `solids`

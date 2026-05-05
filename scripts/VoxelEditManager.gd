@@ -95,13 +95,14 @@ const WORLD_GENERATOR_VERSION: int = 11
 # happens (e.g. a runaway spell effect). Commands beyond this are
 # rejected at queue time with a push_warning.
 
-@export var perf_log_enabled: bool = true
-# When true, log microsecond timings around each edit application.
-# Look for "[PERF VEM]" in the Output panel. Flip off once perf is
-# acceptable. Specifically helpful for diagnosing the explosive-lag
-# spike — see the matching `perf_log_enabled` on VoxelGravityManager
-# (the gravity scan after each edit is the more likely hot path,
-# but timing both gives the full picture).
+@export var perf_log_enabled: bool = false
+# When true, log microsecond timings around each edit application
+# AND every queue-drain / queue-push event. Look for "[PERF VEM]"
+# and "[VoxelEditManager]" in the Output panel. OFF by default —
+# the unconditional prints on every edit/drain were causing visible
+# main-thread hitches during normal play (gravity-induced
+# PICKUP_DROP carves alone push 27+ writes per swing). Flip on for
+# specific diagnostics, then back off.
 
 
 # ============================================================
@@ -213,7 +214,8 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 	# _physics_process when this command's turn comes up in the queue.
 
 	if not _check_edit_allowed(world_pos):
-		print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
+		if perf_log_enabled:
+			print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
 		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping sphere edit")
@@ -225,9 +227,10 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 		"radius": radius,
 		"value": voxel_value,
 	})
-	print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
-		radius, world_pos, _edit_queue.size()
-	])
+	if perf_log_enabled:
+		print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
+			radius, world_pos, _edit_queue.size()
+		])
 	return true
 
 
@@ -391,7 +394,7 @@ func _physics_process(_delta: float) -> void:
 		voxels_used += _estimate_voxel_cost(cmd)
 		_apply_edit(cmd)
 		processed += 1
-	if processed > 0:
+	if perf_log_enabled and processed > 0:
 		print("[VoxelEditManager] frame drain: %d processed, %d remain (started with %d)" % [
 			processed, _edit_queue.size(), initial_queue
 		])
@@ -407,14 +410,15 @@ func _apply_edit(cmd: Dictionary) -> void:
 	# new one each time per Zylann's recommended usage.
 	var tool: VoxelTool = _terrain.get_voxel_tool()
 	if tool == null:
-		print("[VoxelEditManager] _apply_edit: terrain.get_voxel_tool() returned null")
+		push_warning("[VoxelEditManager] _apply_edit: terrain.get_voxel_tool() returned null")
 		return
 
-	print("[VoxelEditManager] _apply_edit: type=%s pos=%s value=%d" % [
-		cmd.get("type", "?"),
-		cmd.get("pos", Vector3.ZERO),
-		cmd.get("value", 0),
-	])
+	if perf_log_enabled:
+		print("[VoxelEditManager] _apply_edit: type=%s pos=%s value=%d" % [
+			cmd.get("type", "?"),
+			cmd.get("pos", Vector3.ZERO),
+			cmd.get("value", 0),
+		])
 
 	# Edits target CHANNEL_COLOR because the world uses VoxelMesherCubes,
 	# which reads packed RGBA per-voxel. CHANNEL_SDF / CHANNEL_TYPE are
@@ -575,9 +579,10 @@ func _apply_edit(cmd: Dictionary) -> void:
 				return
 			_mark_chunks_in_aabb(bulk_min, bulk_max)
 			var bulk_center: Vector3 = (bulk_min + bulk_max) * 0.5
-			print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
-				cmd.get("label", "?"), written, bulk_overlaps_zone
-			])
+			if perf_log_enabled:
+				print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
+					cmd.get("label", "?"), written, bulk_overlaps_zone
+				])
 			edit_applied.emit(bulk_center, _world_to_chunk(bulk_center))
 
 

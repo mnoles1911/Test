@@ -55,6 +55,14 @@ var _quick_slot_buttons: Array[Button] = [] # transparent click target for right
 # gameplay AND on menus, so we never hide it together with `_root`.
 var _fps_label: Label
 
+# Frame-time sliding window for spike detection. 60 samples = ~1 sec
+# at 60fps, ~0.4 sec at 144fps. Long enough to catch the periodic
+# chunk-streaming hitches; short enough that the worst-ms readout
+# updates fast as stutters come and go. Pre-allocated so the per-
+# frame writeback doesn't allocate.
+var _frame_times: PackedFloat32Array = PackedFloat32Array()
+var _frame_times_idx: int = 0
+
 # Cached so _find_player() doesn't search every frame when the player
 # hasn't changed. Invalidated when the node becomes null.
 var _cached_player: Node = null
@@ -71,6 +79,10 @@ func _ready() -> void:
 	_build_fps_label()
 	_build_mining_bar()
 	_build_quick_slot_bar()
+	# Pre-size the frame-time window so per-frame writes don't allocate.
+	_frame_times.resize(60)
+	for i in _frame_times.size():
+		_frame_times[i] = 0.0
 	print("[HUDOverlay] Initialized.")
 
 
@@ -427,14 +439,28 @@ func _build_ui() -> void:
 # UPDATE LOOP
 # =============================================================
 
-func _process(_delta: float) -> void:
-	# FPS readout updates every frame regardless of player state — we
-	# want it visible on the main menu too so we can spot start-up
-	# stutter. Engine.get_frames_per_second() returns a smoothed
-	# average that updates ~once per second internally; no need for
-	# our own smoothing.
+func _process(delta: float) -> void:
+	# FPS readout + worst-frame spike tracker. Engine's smoothed FPS
+	# average hides hitches; the 60-sample sliding-window worst-delta
+	# is what actually correlates with perceived stutter. The label
+	# shows FPS | worst-ms to make hitches visible at a glance.
 	if _fps_label != null:
-		_fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
+		_frame_times[_frame_times_idx] = delta
+		_frame_times_idx = (_frame_times_idx + 1) % _frame_times.size()
+		var worst: float = 0.0
+		for ft in _frame_times:
+			if ft > worst:
+				worst = ft
+		var worst_ms: int = int(round(worst * 1000.0))
+		_fps_label.text = "FPS: %d  |  worst: %d ms" % [
+			Engine.get_frames_per_second(), worst_ms,
+		]
+		# Tint the label red when worst > 33 ms (= sub-30 fps spike).
+		# Calling out the stutter visually rather than burying it.
+		if worst_ms > 33:
+			_fps_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5, 1.0))
+		else:
+			_fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
 	# Quick-slot number-key dispatch. Polls the four input actions
 	# directly each frame; on just_pressed we equip that slot's bound

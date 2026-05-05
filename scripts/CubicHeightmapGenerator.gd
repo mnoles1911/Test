@@ -270,10 +270,13 @@ var _depth_logged: bool = false
 # PERF INSTRUMENTATION (worker-thread safe; toggleable)
 # =============================================================
 
-@export var perf_log_enabled: bool = true
+@export var perf_log_enabled: bool = false
 # When true, log per-block generation time. Look for "[PERF GEN]" in
 # the Output panel. Filter is in microseconds — see perf_log_min_us.
-# Flip off once generator perf is acceptable.
+# OFF by default — the periodic 100-block summary line happens
+# during chunk streaming, which is exactly when the player is
+# walking around (so the print itself contributes to the perceived
+# stutter). Flip on for diagnostics, then back off.
 
 @export var perf_log_min_us: int = 5000
 # Only log blocks slower than this many microseconds (default 5 ms).
