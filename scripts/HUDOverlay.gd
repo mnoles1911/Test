@@ -443,6 +443,15 @@ func _build_ui() -> void:
 # =============================================================
 
 func _process(delta: float) -> void:
+	# DIAGNOSTIC — log when a single frame exceeds 50 ms so we have a
+	# timeline anchor for correlating with the [SPIKE _apply_edit] /
+	# [SPIKE _process_bubble] / [SPIKE drain] prints in Output. If
+	# this fires WITHOUT any subsystem-spike line, the time is going
+	# somewhere we haven't instrumented (Zylann mesh upload, GPU
+	# compile, scene-tree work, etc.).
+	if delta > 0.050:
+		print("[FRAME SPIKE] delta=%d ms" % int(round(delta * 1000.0)))
+
 	# FPS readout + worst-frame spike tracker. Engine's smoothed FPS
 	# average hides hitches; the 60-sample sliding-window worst-delta
 	# is what actually correlates with perceived stutter. The label

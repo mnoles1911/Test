@@ -392,6 +392,11 @@ func _physics_process(_delta: float) -> void:
 	if _edit_queue.is_empty():
 		return
 
+	# DIAGNOSTIC — time the whole drain so we can see if the queue
+	# is processing many edits in one frame. If a single drain takes
+	# >30 ms but no individual [SPIKE _apply_edit] line fired, that
+	# means many small edits piled up in one frame.
+	var t_drain_start: int = Time.get_ticks_usec()
 	var initial_queue: int = _edit_queue.size()
 	var voxels_used: int = 0
 	var processed: int = 0
@@ -400,6 +405,11 @@ func _physics_process(_delta: float) -> void:
 		voxels_used += _estimate_voxel_cost(cmd)
 		_apply_edit(cmd)
 		processed += 1
+	var t_drain_total: int = Time.get_ticks_usec() - t_drain_start
+	if t_drain_total > 30000:
+		print("[SPIKE drain] processed=%d remaining=%d total=%d us" % [
+			processed, _edit_queue.size(), t_drain_total,
+		])
 	if perf_log_enabled and processed > 0:
 		print("[VoxelEditManager] frame drain: %d processed, %d remain (started with %d)" % [
 			processed, _edit_queue.size(), initial_queue
