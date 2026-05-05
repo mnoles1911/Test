@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What I'm building
 A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere and open-world scale.
-Single player. Real-time action combat (Witcher 3 / Dark Souls style), 1-vs-many, third-person over-shoulder camera.
+Real-time action combat (Witcher 3 / Dark Souls style), 1-vs-many, first person and third camera cameras, cooperative multiplayer with 1-4 friends.
 Voxel world built in Godot 4.6.2 with Zylann's Voxel Tools plugin. GDScript only.
 This is game one of a planned trilogy adapted from a 200-page source manuscript.
 
@@ -18,12 +18,9 @@ I am a writer and game designer, not a programmer.
 Always explain what code does in plain English before writing it.
 Keep all scripts heavily commented.
 Prefer simple, readable solutions over clever ones.
-When I ask for something, tell me if there's a simpler way to achieve it.
 
 ## Genre and tone
-Epic fantasy with grounded emotional stakes. Think LOTR's scale with 
-a single protagonist's intimate perspective. The world feels ancient and real. 
-Mira-Thal is a world of two continents in the third age of its existence. The western continent Mira is the heartland of civilization: four human kingdoms clustered at its center, the ancient Aelorin forests to the north, three dwarven mountain-kingdoms threading the Spine of the World, and the wild eastern frontier where the ash-lands begin. The eastern continent Thal is wilderness — unmapped beyond its fringes, dominated by the Ash Throne's influence, and anchored at its heart by the volcano Drûn-Khazad. The age is paradox: men are more numerous than ever, cities grow, trade flows — but the world's deeper fabric frays. The Aelorin dwindle. Dwarven kings grow old or greedy. Something bound two thousand years ago beneath the volcano is learning, slowly, to breathe again.
+Epic fantasy with grounded emotional stakes — LOTR scale, single-protagonist intimacy. The world is Mira-Thal, third age. See `lore/WORLD.md` for setting canon and `lore/INDEX.md` for the directory map.
 
 ## Core systems (what we're building)
 - Player: CharacterBody3D, 8-directional movement on 3D XZ plane
@@ -46,45 +43,30 @@ Mira-Thal is a world of two continents in the third age of its existence. The we
 - /tools — pipeline scripts run from the repo root (TTS rendering, draft stripping); see `tools/README.md`
 
 ## Milestone history
-- **Milestones 1–3 (2D):** complete — walkable cave + lighting, Henrietta opening dialogue, combat prototype.
-- **Milestone 4 (2D, PR #42):** complete — TransitionManager, expanded GameState, Zone framework, MainMenu/Settings/SaveSlotPicker, DebugOverlay, FlagScheduler, InventoryManager, expanded JournalUI, EnemyData.
-- **3D pivot (PR #43):** complete — `design/3D_VOXEL_MIGRATION.md`, ART_DIRECTION, ART_PIPELINE, CAMERA_AND_PERSPECTIVE all rewritten for 3D voxel.
-- **Milestone 4-3D (2026-05-01):** complete and verified in Godot — Player3D + CameraRig (standard + freelook), HUDOverlay, JournalUI 6-tab rewrite, CampfireFlicker3D, SpawnPoint3D / RoomTrigger3D / DialogueTrigger3D, Player3D.tscn / World3D.tscn placeholders, all UI resized to 1080p. Outstanding manual step: install Zylann's Voxel Tools plugin (GDExtension edition) from GitHub Releases at https://github.com/Zylann/godot_voxel/releases — NOT distributed via Godot's Asset Library because it ships native binaries.
-- **Milestone 5-3D (largely complete, 2026-05-03):** Core destructible-voxel slice is shipping and verified in-game.
-  - VoxelLodTerrain + `VoxelStreamSQLite` per-edit deltas ✅
-  - **`CubicHeightmapGenerator`** (custom GDScript subclass of `VoxelGeneratorScript`) — replaced the originally-planned `VoxelGeneratorGraph` + Gaea EXR pipeline. Produces the procedural baseline via macro + mid + detail noise layers + per-voxel colour jitter, writing `CHANNEL_COLOR` for `VoxelMesherCubes`. Live-tunable via `@export_range` sliders + Preset enum (`LAY_OF_THE_LAND`, `MINECRAFT_BLOCKY`, `SMOOTH_GRADIENT`, `CUSTOM`). The Gaea EXR pipeline may return for v1 Mira terrain authoring later.
-  - `VoxelEditManager` autoload (queue, NoEditZone gate, world→voxel coord conversion, per-frame voxel budget) ✅
-  - `NoEditZoneRegistry` autoload ✅
-  - Pickaxe carve verb (`EditToolHandler` + `InventoryManager` material yields) ✅
-  - Explosive carve (`PowderCharge` + `ThrowableHandler`, camera-aimed throws, visible detonation flash) ✅
-  - Swimming + drowning state machine (`Player3D._update_water_state`, `WaterFlowManager.gd`) ✅
-  - Water surface upgrade (2026-05-04): custom sine-sum vertex-displacement shader (`assets/shaders/water.gdshader`), vertical swim controls (Space ascends, Crouch dives), 2 s breath recovery delay on surfacing, blue-green underwater tint via `UnderwaterFilter` `CanvasLayer` ✅
-  - Voxel water refactor (2026-05-05): replaced Area3D-based `WaterVolume` with voxel-cell flow simulation. `WaterFlowManager` autoload runs a 4 Hz tick that handles gravity drop, lateral spread, monotone-decay evaporation, level-gradient river currents, and per-cell or AABB-region source placement. `WaterChunkMesher` emits the transparent surface meshes. `NoEditZone.gd` companion script with `@export blocks_water_flow` per-zone. Bucket item (fill at water, place water source). World save format bumped to `WORLD_GENERATOR_VERSION = 11`. ✅
-  - Day/night cycle (`DayNightCycle.gd` driven by `WorldClock`) ✅
-  - Ocean (sea level Y=6) + test water volume ✅
-  - Jump on Space (when grounded) + fly-mode debug toggle ✅
-  - Settings UI fully functional (manual `_input` dispatch since Dialogic intercepts GUI events project-wide) ✅
-  - Outstanding: low-poly Blender Roland model (still a 0.4×1.7×0.25 m green box placeholder), MagicaVoxel exports (campfire, cave wall props), surface decoration pass (grass/stone vertical pillars to break up bare cube fields). See `DESIGNER_TODO.md` Section 7 for next-batch work and `design/LESSONS_LEARNED.md` for the bring-up bug log.
-- **Milestone 6-3D Weather (2026-05-04):** WeatherManager autoload live. Six-state machine, 30 s transition tween, three trigger sources (story override / proximity zone / scheduled random). Visuals: fog override through `DayNightCycle`, ambient dim, wind to water shader (gradual direction drift), rain + snow GPUParticles, RainOverlay `CanvasLayer` mood tint, wet-terrain `material_override` specular sheen, directional lightning (`OmniLight3D` flash + spatial `AudioStreamPlayer3D` thunder with realistic delay) during HEAVY_RAIN. WeatherLocationProfile resource for per-region authoring (mira_temperate.tres seeded). WeatherZone Area3D for cinematic proximity overrides. Save/load round-trips state + override timer. Debug overlay WEATHER submenu: one button per state, FORCE LIGHTNING, CLEAR OVERRIDE, live state/wind readouts. Outstanding: ambient audio OGGs (file-existence guard logs once and runs silent until populated — see `DESIGNER_TODO.md`), region-boundary auto-swap of location profile, sun-pulse during lightning (deferred until `DayNightCycle` exposes a sun-energy override hook).
+Completed milestones (see git log for full PR detail; the autoload section below documents what's currently live in-engine):
+- **Milestones 1–4 (2D):** walkable cave, opening dialogue, combat prototype, full UI/state framework.
+- **3D pivot (2026-04-30, PR #43):** all art/camera/migration design docs rewritten for voxel.
+- **Milestone 4-3D (2026-05-01):** Player3D, CameraRig, HUDOverlay, JournalUI, triggers, World3D placeholder.
+- **Milestone 5-3D (2026-05-03):** destructible-voxel slice — VoxelLodTerrain + SQLite deltas, CubicHeightmapGenerator, edit/gravity/water managers, NoEditZones, pickaxe + explosives, swimming, day/night.
+- **Milestone 6-3D Weather (2026-05-04):** WeatherManager — six-state machine, 30 s transitions, fog/wind/particles/lightning, location profiles, proximity zones.
+- **Voxel water refactor (2026-05-05):** Area3D water replaced with voxel-cell flow sim (`WaterFlowManager` 4 Hz tick, `WaterChunkMesher` transparent surfaces, `WORLD_GENERATOR_VERSION = 11`).
 
-## Art specification (confirmed — 3D VOXEL)
-- **Engine approach**: Godot 4.6.2, 3D. Voxel world via Zylann's Voxel Tools plugin.
-- **Voxel scale**: 6 voxels per meter (locked 2026-05-03 — each block is ~16.7 cm, chunky enough to read as cubic but finer than Minecraft's 1m cubes; player is ~11 voxels tall at 1.8 m)
-- **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes` (blocky stepped terrain, matches MagicaVoxel building style). Procedural baseline produced by **`CubicHeightmapGenerator`** (custom `VoxelGeneratorScript` GDScript subclass — `scripts/CubicHeightmapGenerator.gd`) writing `CHANNEL_COLOR` per voxel via layered noise (macro 30 m relief + mid 2 m rolling hills + detail 50 cm grain) and per-voxel colour jitter (~±25 % brightness). Replaces the planned VoxelGeneratorGraph + Gaea EXR pipeline; Gaea may return for v1 Mira authoring later. **Editable / destructible by default** — every voxel can be modified by player edits (axe, pickaxe, shovel, explosive, spell). Non-destructible regions are the exception, declared via `NoEditZone` Area3D volumes. Edits stored as deltas in `VoxelStreamSQLite` (`user://voxel_deltas.sqlite`). Edits persist forever (no world healing). LOD-bake-on-eviction is **deferred** — edited chunks far from the player currently re-render from disk deltas via Zylann's standard streaming. Canonical spec: `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
-- **World scale**: Playable Mira 12km × 10km, compression 125:1 linear (1 game meter ≈ 125 fictional meters). Playable Thal ~7km × 5.5km.
-- **Props/buildings**: MagicaVoxel → export .glb → Godot MeshInstance3D. All narratively load-bearing structures (settlements, dungeon entrances, lore landmarks) sit on top of the voxel surface inside NoEditZones — never carved into voxels.
-- **Player-built structures**: hybrid — schematic props (crafted at the Carpentry Bench: walls, roofs, doors, fences) for the bulk + per-voxel placement (Build Mode → Detail submode) for custom detailing.
-- **Characters**: Low-poly Blender models from Act I onward (.glb, 200–500 tris named characters, flat-shaded, rigged). No billboard sprites for characters. Portraits (256×320 px) unchanged for dialogue UI.
-- **Camera**: SpringArm3D third-person over-shoulder, ~15° above horizontal, player-rotatable. Lock-on system for 1-vs-many melee combat.
-- **Lighting**: OmniLight3D (torches/fire) + DirectionalLight3D (sun/moon) + WorldEnvironment SSAO + fog
-- **Pipeline reference**: `design/ART_PIPELINE.md`
-- **Migration plan**: `design/3D_VOXEL_MIGRATION.md`
+Outstanding pickups: low-poly Blender Roland model (still placeholder green box), MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio OGGs, region-boundary profile auto-swap. See `DESIGNER_TODO.md` and `design/LESSONS_LEARNED.md`.
+
+## Art specification (3D VOXEL)
+- **Voxel scale**: 6 voxels/m (locked 2026-05-03; ~16.7 cm/block, player ~11 voxels tall).
+- **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes`. Procedural baseline from `CubicHeightmapGenerator`. **Destructible by default** — `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`, persist forever.
+- **World scale**: Playable Mira 12 km × 10 km (compression 125:1). Thal ~7 km × 5.5 km.
+- **Props/buildings**: MagicaVoxel → .glb. Narratively load-bearing structures sit inside NoEditZones, never carved.
+- **Player-built**: schematic props (Carpentry Bench) + per-voxel detailing (Build Mode).
+- **Characters**: Blender low-poly .glb (200–500 tris). Portraits unchanged for dialogue.
+- **Camera**: SpringArm3D third-person, ~15° above horizontal, lock-on for 1-vs-many.
+- **Lighting**: OmniLight3D + DirectionalLight3D + WorldEnvironment SSAO + fog.
+- **Canonical refs**: `design/3D_VOXEL_MIGRATION.md` (full spec), `design/ART_PIPELINE.md`, `design/ART_DIRECTION.md`.
 
 ## What I never want
-- Complex code I can't understand
 - Systems built before I need them
 - C# — GDScript only
-- Any advice to switch engines
 
 ## Files requiring regular maintenance
 
@@ -99,6 +81,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | lore/WORLD_GEOGRAPHY.md | New locations, terrain, or settlements established |
 | lore/MAP_GENERATION_GUIDE.md + sibling map files | New settlements, terrain, or geographic features added |
 | design/3D_VOXEL_MIGRATION.md | Canonical destructible-terrain spec — update when edit verbs, NoEditZone rules, mesh-bake behavior, or LOD radii change |
+| design/MINING_TIME_SCALING.md | New voxel material added, baseline `mining_time_seconds` values tuned, volume-scaling formula changed, or tool-tier multipliers wired in |
 | design/SYSTEMS_DESIGN.md | Companion roster changes, faction triggers updated, new game systems added |
 | design/ART_DIRECTION.md | New locations added to the game, palette or shader decisions finalized |
 | design/ITEM_LIBRARY.md | New craftable items, recipes, or input materials added to any section |
@@ -144,6 +127,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/INVENTORY_AND_EQUIPMENT_SYSTEM.md — equipment slots, weight, condition, smithing tiers (mechanics)
 - design/ITEM_LIBRARY.md — master recipe reference: 40 potions, 40 smithable items, 15 meals, 30 assembly items
 - design/CRAFTING.md — crafting station mechanics, intent-based quality, Wanderer's Seal
+- design/MINING_TIME_SCALING.md — per-material `mining_time_seconds` baselines, the `(N³)/8` volume multiplier, planned tool-tier scaling
 - design/REST_AND_CAMP.md — rest mechanics, camp setup, sleep effects, time advancement
 - design/INVESTIGATION_SYSTEM.md — examine system, investigation points, Roland's deduction mechanic
 - design/LOCKPICKING.md — resonance pick radial dial system, lock tiers, pick consumption, skill advancement
@@ -210,29 +194,32 @@ The system design corpus is complete (combat, AI, companions, factions, quests, 
 - `NPCScheduleEntry.gd` — Resource: hour_start, hour_end, location_id, animation
 
 **Voxel + world systems (in place, autoloaded):**
-- `VoxelEditManager.gd` — autoload. Async edit queue (per-frame voxel budget cap), `EditedChunkRegistry` (`Dictionary<Vector3i, bool>` of chunks with deltas), NoEditZone enforcement before every `VoxelTool.do_*` call, `WORLD_GENERATOR_VERSION` constant (currently 8) stamped into saves. Coord conversion handles `terrain.transform.scale = 0.166667` (6 vox/m) → voxel-grid space. **Always route voxel writes through this autoload.** See `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain".
-- `NoEditZoneRegistry.gd` — autoload. Registers Area3D volumes by group `no_edit_zone`. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before any voxel write.
-- `CubicHeightmapGenerator.gd` — `@tool` `VoxelGeneratorScript` subclass attached to the `VoxelLodTerrain` node in `World3D.tscn` (NOT an autoload). Live-tunable via `@export_range` sliders + Preset enum (LAY_OF_THE_LAND / MINECRAFT_BLOCKY / SMOOTH_GRADIENT / CUSTOM). Replaces the originally-planned VoxelGeneratorGraph + Gaea EXR pipeline.
-- `WorldClock.gd` — autoload. Ticks in-game time (240 real s = 1 game hour); emits `hour_changed`, `time_of_day_changed`, `day_changed`; calls `update_schedule(hour)` on `scheduled_npcs` group; pauses during Dialogic timelines; `set_time()` / `advance_hours()` for debug/rest. Save/load includes the wall-clock state.
-- `BarkManager.gd` — autoload. Loads bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`; picks random non-repeating line; plays spatial audio from `assets/audio/barks/`; falls back to Output print if BarkOverlay UI is absent.
-- `WaterFlowManager.gd` — autoload. Voxel-based Minecraft-style water sim. Owns `_cells: Dictionary<Vector3i, int>` of packed water cells (level/source/last_fed_tick bits) plus `_source_regions: Array[{aabb, level}]` for designer-placed oceans/lakes (O(1) memory regardless of body size). Water lives OUTSIDE the voxel terrain — VoxelMesherCubes never sees water voxels because its alpha-byte is binary opacity AND material-ID. `WaterChunkMesher` (child node, see below) emits a separate transparent surface mesh. Subscribes to `VoxelEditManager.edit_applied` to mark dirty chunks; runs a flow tick every 15 physics frames (~4 Hz) inside `ACTIVE_RADIUS_M = 20m` of the player. Public API: `is_position_in_water`, `get_water_level_at`, `get_flow_velocity_at`, `add_source(voxel_pos)`, `add_source_region(aabb, level)`, `remove_source`, `get_save_data` / `load_save_data`. Flow rules: gravity drop (water above air → flow cell at MAX_LEVEL=8), lateral spread (cell with level>1 spreads to 4 horizontal neighbors at level-1, requires solid-or-water below), monotone decay (non-source cells whose `last_fed_tick` is older than previous tick decrement; level 0 → removed). NoEditZones with `blocks_water_flow=true` (the default) act as walls.
-- `WaterChunkMesher.gd` — Node3D spawned as child of `WaterFlowManager` autoload in `_ready`. Owns `_meshes: Dictionary<Vector3i, MeshInstance3D>`, one MeshInstance3D per chunk with water content. Per-chunk surfaces use the existing `assets/shaders/water_material.tres`. Render-radius cull at 64m around the player chunk. Subscribes to `WaterFlowManager.water_changed` to rebuild dirty chunks (FIFO queue, 2 builds/frame). v1 emits source-region top-planes only; per-cell partial-height surfaces deferred. Each surface quad is subdivided 4x4 so the wave-shader vertex displacement has interior verts to move.
-- `assets/shaders/water.gdshader` + `assets/shaders/water_material.tres` — custom sine-sum vertex-displacement shader for animated water surfaces. Two summed sine waves displace `VERTEX.y`; wind biases the dominant wave direction and scales overall amplitude. World-space XZ as wave domain so adjacent water bodies stay phase-aligned. One shared `ShaderMaterial.tres` referenced by every chunk mesh.
-- `UnderwaterFilter.gd` — `CanvasLayer` child of Player3D. Translucent blue-green `ColorRect` overlay shown when `_is_submerged` is true. `set_active(submerged: bool)` is idempotent — only flips visibility on actual state changes. `WorldEnvironment` fog swap was rejected because `DayNightCycle.gd` writes `env.fog_light_color` every frame.
-- `NoEditZone.gd` — optional companion script for Area3Ds in the `no_edit_zone` group. Adds `@export var blocks_water_flow: bool = true`. Auto-adds itself to the group on `_ready` so designers can attach the script and forget the group step. Bare Area3Ds (no script) default to blocking water — backward compatible.
-- `DayNightCycle.gd` — Node script on `World3D` driving Sun + Moon `DirectionalLight3D` rotation and sky/fog colour from `WorldClock`'s continuous hour float.
-- `EditToolHandler.gd` — child of Player3D. Pickaxe/axe/shovel swing detection: raycast from camera, NoEditZone-gated voxel removal via `VoxelEditManager`, material yield to `InventoryManager`.
-- `ThrowableHandler.gd` — child of Player3D. Throw input (default key 1) instances throwables, copies `voxel_aoe_radius` + `combat_damage` from `ITEM_REGISTRY` onto the spawned RigidBody3D, applies camera-aimed velocity (carries pitch).
-- `PowderCharge.gd` (and the throwable scene) — RigidBody3D explosive. Impact-only detonation, sphere carve via `VoxelEditManager`, visible OmniLight3D + emissive sphere flash that animates and self-frees via Tween.
-- `VoxelGravityManager.gd` — autoload. Subscribes to `VoxelEditManager.edit_applied`. After every edit, runs a local 16 m flood-fill (capped 32 m) to find voxels that lost support, carves them from terrain via bulk write, and spawns `FallingVoxelCluster` `RigidBody3D` instances per disconnected island. Local detection — anything connected to the analysis bubble's edge is treated as anchored. Caps: max cluster size 4096 voxels, max active clusters 32, one bubble processed per physics frame.
-- `FallingVoxelCluster.gd` + `scenes/voxel/FallingVoxelCluster.tscn` — `RigidBody3D` representing one airborne voxel chunk. Custom centre of mass at the voxel-weighted centroid (so L-shapes tumble correctly). Tall thin clusters (height ≥ 3× horizontal) get a directional tip impulse pointing away from the edit origin (felled trees fall toward the cut). Tiny random angular nudge breaks perfect-vertical equilibrium. Re-deposits as terrain via `VoxelEditManager.queue_set_voxels_bulk` when the body sleeps (or after a 10 s failsafe). Damages bodies with a `health` property: `voxel_count × fall_height × 0.05`, with a 1.5 m minimum fall.
-- `VoxelClusterBuilder.gd` — static utility (no state). Builds an `ArrayMesh` from a cluster Dictionary (`Vector3i → packed RGBA`), with per-face culling so interior cube faces are skipped. Also computes the cluster's local AABB, voxel-weighted centroid, and the centre-offset that the mesh build needs to make the rigid body pivot around its true centre of mass. Caches a single shared `StandardMaterial3D` (`vertex_color_use_as_albedo = true`) used by every cluster.
-- `VoxelMaterial.gd` + `assets/voxels/materials/*.tres` — Resource subclass. One `.tres` per material (stone/dirt/grass/sand for v1). Designer fields: `id_string`, `material_id` (1–254, packed into voxel alpha byte), `display_name`, `color_low`/`color_high`/`color_jitter`, `mining_time_seconds`, `allowed_tools`, `yield_item_id`, `yield_quantity`, `fall_behavior` (NEVER/SOLID/LOOSE), `gravity_scale`, `damage_multiplier`. Adding a new material is creating a new `.tres` in the inspector — no GDScript edits.
-- `VoxelMaterialRegistry.gd` — autoload. Recursive scan of `assets/voxels/materials/` at startup. Builds `_by_id` and `_by_string` lookup tables. Validates `material_id` uniqueness 1–254 with loud `push_error` on collision. Public API: `get_by_id`, `get_by_string`, `pack_voxel(material_id, color)`, `material_id_from_packed`, `is_air`. The canonical place for the alpha-byte-as-material-id encoding to live.
-- `WeatherManager.gd` — autoload. Six-state machine (CLEAR / OVERCAST / LIGHT_RAIN / HEAVY_RAIN / FOG / SNOW) with 30 s smoothed transitions between profile values (fog colour, fog density, ambient dim, wind strength). Three trigger sources resolved in priority order: `set_weather_override(state, hours)` (story beats) > proximity zone stack (`push_proximity_zone` / `pop_proximity_zone` from `WeatherZone.gd`) > schedule (random rolls at `[6, 12, 18]` per location profile). Wind direction is decoupled — drifts gradually via 3°/s lerp, resampling a new heading every 90 s. Pushes fog through `DayNightCycle.set_fog_override`, ambient dim direct to `WorldEnvironment.environment.ambient_light_energy`, wind to `WaterFlowManager.set_global_wind`. Spawns programmatic `GPUParticles3D` for rain (vertical streaks) and snow (drifting flakes) that follow the camera; particle amount tweens with state. Wet-terrain visual is layered: `RainOverlay` `CanvasLayer` blue-grey screen tint (alpha 0–0.18) plus a `StandardMaterial3D` applied to `VoxelLodTerrain.material_override` (albedo darkens 1.0→0.85, roughness drops 0.9→0.3 for specular wet sheen, vertex_color_use_as_albedo keeps voxel colour info). Ambient audio crossfades 5 s between `assets/audio/ambient/{key}.ogg` files (rain_light, rain_heavy, wind_low, wind_med); missing OGGs log once, system runs silent. Lightning during HEAVY_RAIN every 8–20 s: random horizontal angle + 80–250 m distance from camera, transient `OmniLight3D` flash at strike position (energy 0→30 in 40 ms, hold 80 ms, fade 250 ms — directional cue), `AudioStreamPlayer3D` thunder delayed by `distance / 343 m·s⁻¹` plus 0–0.5 s jitter. Public API: `trigger_lightning_strike(pos)` for forced strikes from debug overlay or story scripts. Save/load via `GameState` round-trips current state + override timer; backward-compatible (older saves load with no override).
-- `RainOverlay.gd` — `CanvasLayer` child of WeatherManager. Translucent blue-grey `ColorRect` filling the viewport, alpha driven by `set_intensity(0..1)`. Spawned programmatically; mirrors the `UnderwaterFilter` pattern.
-- `WeatherLocationProfile.gd` + `assets/profiles/*.tres` — Resource subclass. Designer fields: `profile_id`, `authored_sequence` (`Array[int]` of `WeatherManager.State` for per-day deterministic openings), `random_distribution` (`Dictionary` of state → weight for days beyond the authored window), `transition_hours`. v1 ships `mira_temperate.tres` (overcast / clear / overcast / light-rain authored opener; 40% overcast / 25% clear / 20% light rain weight). Region-boundary auto-swap deferred — call `WeatherManager.set_location_profile(profile)` manually for now.
-- `WeatherZone.gd` — `Area3D` companion. `@export weather_state: String` ("fog", "heavy_rain", ...) and `@export priority: int`. On player entry, calls `WeatherManager.push_proximity_zone(self, state, priority)`; on exit, `pop_proximity_zone`. Stack-based, so multiple overlapping zones resolve by highest priority.
+
+For deep mechanics, read the script header in each `.gd` file. This is a quick reference for what's wired and what its public surface looks like.
+
+- `VoxelEditManager.gd` — async edit queue, NoEditZone gate, EditedChunkRegistry, `WORLD_GENERATOR_VERSION` stamping. **Always route voxel writes through this autoload.** Emits `edit_applied` signal.
+- `NoEditZoneRegistry.gd` — registers `no_edit_zone` group Area3Ds. API: `is_point_inside_no_edit_zone(world_pos)`.
+- `CubicHeightmapGenerator.gd` — `@tool` `VoxelGeneratorScript` attached to `VoxelLodTerrain` in `World3D.tscn` (NOT autoloaded). Layered noise + per-voxel jitter + Preset enum.
+- `WorldClock.gd` — in-game time (240 real s = 1 game hour). Signals: `hour_changed`, `time_of_day_changed`, `day_changed`. Pauses during Dialogic.
+- `BarkManager.gd` — bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`, spatial audio from `assets/audio/barks/`.
+- `WaterFlowManager.gd` — voxel-cell water sim, 4 Hz tick within 20 m of player. Subscribes to `VoxelEditManager.edit_applied`. API: `is_position_in_water`, `get_water_level_at`, `get_flow_velocity_at`, `add_source`, `add_source_region`, `set_global_wind`. Save/load via `get_save_data`/`load_save_data`. Flow rules: gravity drop, lateral spread (level-1 to 4 neighbours), monotone decay; NoEditZones with `blocks_water_flow=true` act as walls.
+- `WaterChunkMesher.gd` — child of WaterFlowManager. Per-chunk transparent meshes via `water_material.tres`, 64 m render cull, FIFO rebuild queue.
+- `assets/shaders/water.gdshader` + `water_material.tres` — sine-sum vertex-displacement, wind-biased, world-space XZ phase-aligned.
+- `UnderwaterFilter.gd` — CanvasLayer on Player3D, blue-green tint when submerged. `set_active(bool)` idempotent.
+- `NoEditZone.gd` — optional Area3D companion script. `@export blocks_water_flow: bool = true`. Auto-joins `no_edit_zone` group.
+- `DayNightCycle.gd` — Node on `World3D`. Drives Sun/Moon DirectionalLight3D + sky/fog colour from WorldClock. Has `set_fog_override` for weather.
+- `EditToolHandler.gd` — Player3D child. Pickaxe/axe/shovel raycast → `VoxelEditManager` → `InventoryManager` yield.
+- `ThrowableHandler.gd` — Player3D child. Throw input spawns `voxel_aoe_radius`/`combat_damage` RigidBody3D with camera-aimed velocity.
+- `PowderCharge.gd` — impact-detonating RigidBody3D throwable. Sphere carve via VoxelEditManager + flash.
+- `VoxelGravityManager.gd` — subscribes to `edit_applied`. Local 16 m flood-fill finds unsupported voxels → spawns `FallingVoxelCluster`. Caps: 4096 voxels/cluster, 32 active clusters, 1 bubble/physics frame.
+- `FallingVoxelCluster.gd` + `scenes/voxel/FallingVoxelCluster.tscn` — RigidBody3D for airborne chunks. Voxel-weighted centroid as COM, tip impulse for tall clusters, re-deposits via `queue_set_voxels_bulk` on sleep. Damages bodies with `health` property: `voxel_count × fall_height × 0.05`.
+- `VoxelClusterBuilder.gd` — static utility. ArrayMesh build with face culling, AABB/centroid/COM offset compute, shared StandardMaterial3D cache.
+- `VoxelMaterial.gd` + `assets/voxels/materials/*.tres` — Resource subclass. Fields: `id_string`, `material_id` (1–254), `color_low/high/jitter`, `mining_time_seconds`, `allowed_tools`, `yield_item_id`, `yield_quantity`, `fall_behavior` (NEVER/SOLID/LOOSE), `gravity_scale`, `damage_multiplier`. Add materials by inspector — no code edits.
+- `VoxelMaterialRegistry.gd` — recursive scan of `assets/voxels/materials/` at startup. API: `get_by_id`, `get_by_string`, `pack_voxel`, `material_id_from_packed`, `is_air`. Canonical home for alpha-byte-as-material-id encoding.
+- `WeatherManager.gd` — six-state machine (CLEAR/OVERCAST/LIGHT_RAIN/HEAVY_RAIN/FOG/SNOW), 30 s transitions. Trigger priority: `set_weather_override(state, hours)` > proximity zone stack > scheduled rolls at `[6, 12, 18]`. Pushes fog via `DayNightCycle.set_fog_override`, wind to `WaterFlowManager.set_global_wind`, ambient dim to WorldEnvironment. GPUParticles3D rain/snow follow camera. RainOverlay tint + voxel terrain wet `material_override`. Lightning during HEAVY_RAIN: OmniLight3D flash + delayed thunder via `distance / 343 m·s⁻¹`. API: `trigger_lightning_strike(pos)`, `push_proximity_zone`, `pop_proximity_zone`, `set_location_profile`. Save/load via GameState.
+- `RainOverlay.gd` — CanvasLayer child of WeatherManager. Blue-grey ColorRect, `set_intensity(0..1)`.
+- `WeatherLocationProfile.gd` + `assets/profiles/*.tres` — Resource. Fields: `profile_id`, `authored_sequence`, `random_distribution`, `transition_hours`. v1: `mira_temperate.tres`. Region auto-swap deferred — call `set_location_profile` manually.
+- `WeatherZone.gd` — Area3D. `@export weather_state: String`, `@export priority: int`. Pushes to WeatherManager stack on entry/exit.
 
 **Specified in design docs but not yet implemented** (build in dependency order):
 - `SchematicLibrary.gd` — autoload. Registry of placeable building schematics (`.glb` props with placement metadata in `assets/voxel/schematics/`). Player crafts schematics at the Carpentry Bench; placements saved to `user://saves/slot_{N}/placed_schematics.json`.
@@ -245,32 +232,10 @@ The system design corpus is complete (combat, AI, companions, factions, quests, 
 
 Manual setup still required: see `DESIGNER_TODO.md` → Section 1 (Zylann Voxel Tools install, audio bus layout per `design/AUDIO_DESIGN.md`).
 
-## World coordinate reference (playable Mira, origin = NW corner)
-| Location | Game x | Game z |
-|---|---|---|
-| Caer Brannoch | 880m | 2,200m |
-| Lirien-Thal | 1,950m | 2,800m |
-| Karaz-Dûn | 5,200m | 2,300m |
-| Aldenholt | 4,400m | 5,800m |
-| Brightwatch | 5,200m | 4,600m |
-| Khorumzad | 5,200m | 5,800m |
-| Solgrade | 4,000m | 7,400m |
-| Kazaad-Brak | 5,200m | 9,000m |
-| Mor-Vethrin | 6,700m | 2,200m |
 
-## Canonical naming (frequent contradictions)
-- Eldermark royal house: Castrove (NOT Vane)
-- Aldric the blacksmith: Aldric Vane (Caelborn line / Aescryd-blooded, not the investigator)
-- The Caelborn investigator: Edran Vane
-- Dagna's surname: Irontrack (NOT Ironkeep)
-- Corvus's surname: Tane (NOT Aldenmere)
-- Vault of Aen-Vael location: below Khorumzad in the Spine of Mira (NOT below Drûn-Khazad)
-- The third dwarven god: Kradir the Unmoving
 
-## Legacy files
-IsometricRPGMono/ and title_screen.svg are leftovers from a prior MonoGame prototype. They are not part of Game One and should not be referenced or extended. They can be deleted when convenient.
 
----
+
 
 ## Godot workflow
 
@@ -471,23 +436,3 @@ Scripts that reference these autoloads must guard with `get_node_or_null`
 until they are registered, or they will crash on startup.
 
 ---
-
-## Pipeline tools (run from repo root)
-
-**strip_draft.py** — converts a human-readable dialogue draft to a clean TTS script:
-```bash
-python3 tools/strip_draft.py dialogue/drafts/act1_scene_sorting_room.md
-# writes → dialogue/scripts/act1_scene_sorting_room.txt
-```
-Extracts only spoken lines from the `## Script (Prose)` section. Deterministic —
-same draft always produces the same output. Does NOT invent performance tags.
-
-**render_bulk.py** — renders a TTS script to audio via ElevenLabs:
-```bash
-ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scene_sorting_room.txt
-# writes → assets/audio/dialogue/act1_scene_sorting_room/*.ogg
-# writes → assets/audio/dialogue/act1_scene_sorting_room/manifest.json
-```
-Idempotent — reruns skip lines whose text hash is unchanged. Shows cost estimate
-before any network call. Default hard cap: $5 per run (`--cost-cap` to change).
-Requires `dialogue/CHARACTER_VOICES.md` to have voice IDs for every character in the script.
