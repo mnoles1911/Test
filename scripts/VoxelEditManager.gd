@@ -135,11 +135,17 @@ var _edited_chunks: Dictionary = {}
 # Signals
 # ============================================================
 
-signal edit_applied(world_pos: Vector3, chunk_coords: Vector3i)
+signal edit_applied(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: AABB)
 # Fired after every successfully applied edit. Caller systems listen to
 # this — for example, to award XP to the Mining/Excavation/Felling
 # sub-skills (per design/SKILLS_AND_PROGRESSION.md), or to spawn a
 # particle effect at the impact site.
+#
+# `edit_aabb` is the world-space bounding box of the affected voxels.
+# Used by VoxelGravityManager to size its analysis bubble — a tiny
+# pickaxe carve does NOT need a 4 m flood-fill scan that costs
+# ~117k voxel reads. Adaptive padding drops the per-scan cost from
+# ~150 ms to a few ms for typical edits.
 
 signal edit_rejected_no_edit_zone(world_pos: Vector3)
 # Fired when an edit is rejected because it's inside a NoEditZone.
@@ -463,11 +469,14 @@ func _apply_edit(cmd: Dictionary) -> void:
 				print("[PERF VEM] sphere r=%.1fm est_vox=%d  do_sphere=%d us  (%.2f ms)" % [
 					cmd["radius"], est_voxels, sphere_us, sphere_us / 1000.0
 				])
-			_mark_chunks_in_aabb(
-				cmd["pos"] - Vector3.ONE * cmd["radius"],
-				cmd["pos"] + Vector3.ONE * cmd["radius"],
+			var s_aabb_min: Vector3 = cmd["pos"] - Vector3.ONE * cmd["radius"]
+			var s_aabb_max: Vector3 = cmd["pos"] + Vector3.ONE * cmd["radius"]
+			_mark_chunks_in_aabb(s_aabb_min, s_aabb_max)
+			edit_applied.emit(
+				cmd["pos"],
+				_world_to_chunk(cmd["pos"]),
+				AABB(s_aabb_min, s_aabb_max - s_aabb_min),
 			)
-			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
 		"box":
 			var voxel_min: Vector3 = _terrain.to_local(cmd["min"])
@@ -475,7 +484,11 @@ func _apply_edit(cmd: Dictionary) -> void:
 			tool.do_box(voxel_min, voxel_max)
 			_mark_chunks_in_aabb(cmd["min"], cmd["max"])
 			var center: Vector3 = (cmd["min"] + cmd["max"]) * 0.5
-			edit_applied.emit(center, _world_to_chunk(center))
+			edit_applied.emit(
+				center,
+				_world_to_chunk(center),
+				AABB(cmd["min"], cmd["max"] - cmd["min"]),
+			)
 
 		"box_voxels":
 			# Integer voxel-grid coords — pass directly as Vector3 so
@@ -485,7 +498,11 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var bv_world_max: Vector3 = (Vector3(cmd["max"]) + Vector3.ONE) / VOXELS_PER_METER
 			_mark_chunks_in_aabb(bv_world_min, bv_world_max)
 			var bv_center: Vector3 = (bv_world_min + bv_world_max) * 0.5
-			edit_applied.emit(bv_center, _world_to_chunk(bv_center))
+			edit_applied.emit(
+				bv_center,
+				_world_to_chunk(bv_center),
+				AABB(bv_world_min, bv_world_max - bv_world_min),
+			)
 
 		"set":
 			# Single-voxel write. Cubes meshing IS discrete; a 0.5 m
@@ -497,11 +514,14 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var set_voxel_pos: Vector3  = _terrain.to_local(cmd["pos"])
 			var set_voxel_r: float      = set_world_radius * inv_scale
 			tool.do_sphere(set_voxel_pos, set_voxel_r)
-			_mark_chunks_in_aabb(
-				cmd["pos"] - Vector3.ONE * set_world_radius,
-				cmd["pos"] + Vector3.ONE * set_world_radius,
+			var sv_aabb_min: Vector3 = cmd["pos"] - Vector3.ONE * set_world_radius
+			var sv_aabb_max: Vector3 = cmd["pos"] + Vector3.ONE * set_world_radius
+			_mark_chunks_in_aabb(sv_aabb_min, sv_aabb_max)
+			edit_applied.emit(
+				cmd["pos"],
+				_world_to_chunk(cmd["pos"]),
+				AABB(sv_aabb_min, sv_aabb_max - sv_aabb_min),
 			)
-			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
 		"bulk":
 			# Bulk single-voxel write — cluster re-deposit (and cluster
@@ -583,7 +603,11 @@ func _apply_edit(cmd: Dictionary) -> void:
 				print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
 					cmd.get("label", "?"), written, bulk_overlaps_zone
 				])
-			edit_applied.emit(bulk_center, _world_to_chunk(bulk_center))
+			edit_applied.emit(
+				bulk_center,
+				_world_to_chunk(bulk_center),
+				AABB(bulk_min, bulk_max - bulk_min),
+			)
 
 
 func _check_edit_allowed(world_pos: Vector3) -> bool:

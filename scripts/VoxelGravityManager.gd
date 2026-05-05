@@ -195,7 +195,7 @@ func _physics_process(_delta: float) -> void:
 	var processed: int = 0
 	while not _scan_queue.is_empty() and processed < max_scans_per_frame:
 		var bubble: Dictionary = _scan_queue.pop_front()
-		_process_bubble(bubble["world_pos"])
+		_process_bubble(bubble["world_pos"], bubble.get("edit_aabb", AABB()))
 		processed += 1
 
 
@@ -231,7 +231,7 @@ func notify_cluster_settled(cluster: Node, landing_pos: Vector3) -> void:
 # SIGNAL HANDLER
 # =============================================================
 
-func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i) -> void:
+func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: AABB) -> void:
 	if not enabled:
 		return
 	# Drop oldest if the queue is full — the player's already moved on
@@ -243,10 +243,12 @@ func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i) -> void:
 	# a "skip_gravity" flag through the bulk command.
 	if _scan_queue.size() >= scan_queue_max:
 		var dropped: Dictionary = _scan_queue.pop_front()
-		print("[VoxelGravityManager] scan queue full, dropping bubble at %s" % dropped["world_pos"])
+		if perf_log_enabled:
+			print("[VoxelGravityManager] scan queue full, dropping bubble at %s" % dropped["world_pos"])
 	_scan_queue.append({
 		"world_pos": world_pos,
 		"chunk": chunk_coords,
+		"edit_aabb": edit_aabb,
 	})
 
 
@@ -254,7 +256,7 @@ func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i) -> void:
 # CORE — process one analysis bubble
 # =============================================================
 
-func _process_bubble(edit_world_pos: Vector3) -> void:
+func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 	# Cap on active clusters before we even read voxels — if we're
 	# already at the limit, skip the whole thing.
 	if get_active_cluster_count() >= max_active_clusters:
@@ -282,8 +284,26 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 		t_start = Time.get_ticks_usec()
 
 	# --- Define the analysis box in voxel-grid space ---
-	# Half-side capped at max_analysis_side_m / 2.
-	var half_side_m: float = minf(analysis_padding_m, max_analysis_side_m * 0.5)
+	# Adaptive padding: the bubble extends a small buffer beyond the
+	# edit's own AABB so we catch voxels that just lost support, but
+	# not so large that scan cost dwarfs the edit cost.
+	# Old behaviour (fixed analysis_padding_m=4 m → 49^3=117k cells per
+	# scan = ~150 ms) caused the explosive-throw freeze: a 0.8 m carve
+	# was triggering a 4 m bubble read. With adaptive padding, that
+	# same carve runs ~1.8 m → ~22^3 ≈ 10k cells, ~10× faster.
+	# Cascade scans (the bulk write of carved unsupported voxels fires
+	# its own edit_applied) get the same shrinking treatment because
+	# their AABB matches their carve.
+	var max_extent: float = maxf(edit_aabb.size.x, maxf(edit_aabb.size.y, edit_aabb.size.z))
+	# Empty/zero AABB (older callers, or carves of zero size) falls back
+	# to the legacy padding so we don't accidentally shrink to zero.
+	var adaptive_half_side_m: float
+	if max_extent <= 0.01:
+		adaptive_half_side_m = analysis_padding_m
+	else:
+		# Half the longest extent + 1 m of buffer for cascade catch.
+		adaptive_half_side_m = max_extent * 0.5 + 1.0
+	var half_side_m: float = clampf(adaptive_half_side_m, 1.0, max_analysis_side_m * 0.5)
 	var half_side_vox: int = int(ceili(half_side_m * VOXELS_PER_METER))
 	# Centre voxel.
 	var centre_v: Vector3i = VoxelEditManager.world_to_voxel(edit_world_pos)
