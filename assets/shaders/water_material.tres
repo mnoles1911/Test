@@ -15,8 +15,15 @@ shader_parameter/wave_speed_b = 0.8
 shader_parameter/wave_dir_b = Vector2(0.7, 0.7)
 shader_parameter/wind_dir = Vector2(1, 0)
 shader_parameter/wind_strength = 0.5
-shader_parameter/base_color = Color(0.16, 0.32, 0.48, 0.78)
-shader_parameter/crest_color = Color(0.45, 0.65, 0.78, 0.85)
+; Light-blue near-opaque water surface. Previously
+; (0.16, 0.32, 0.48, 0.78) — dark navy at 78% opacity which read
+; as "translucent layer you can see through" rather than a body
+; of water. New values: bright sky blue at 95% opacity.
+shader_parameter/base_color = Color(0.42, 0.68, 0.88, 0.95)
+; Crest_color highlights wave peaks. Brightened to a near-white
+; pale blue so wave-shader vertex displacement reads as moving
+; foam rather than a uniform sheet.
+shader_parameter/crest_color = Color(0.78, 0.90, 0.98, 0.97)
 shader_parameter/crest_threshold = 0.5
-shader_parameter/metallic_amount = 0.4
-shader_parameter/roughness_amount = 0.18
+shader_parameter/metallic_amount = 0.2
+shader_parameter/roughness_amount = 0.25

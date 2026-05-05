@@ -71,6 +71,14 @@ var _btn_fly_mode: Button
 var _btn_view_dist: Button
 var _btn_weather: Button
 
+# SQLite voxel-cache size readout. Refreshed each time the F1
+# overlay opens (cheap — just a stat() on user://voxel_deltas.sqlite
+# plus its WAL/journal sidecars). Lives at the top of the command
+# list as an info-only row, no button. With full-caching enabled
+# (save_generator_output = true on VoxelStreamSQLite), this number
+# grows as the player explores; useful for spotting runaway growth.
+var _sqlite_size_label: Label
+
 # View-distance sub-view.
 var _view_dist_back_btn: Button
 var _view_dist_label: Label
@@ -158,13 +166,23 @@ func _process(delta: float) -> void:
 	if not enabled:
 		return
 
-	# Always-on HUD updates (cheap; runs every frame).
+	# Top-left HUD labels (coords / aim / world time) and the
+	# crosshair are gameplay-only — hide them when no player is in
+	# the tree (title screen, settings, load picker, etc.). Same
+	# pattern as _update_crosshair_visibility below.
+	var has_player: bool = not get_tree().get_nodes_in_group("player").is_empty()
 	if _coords_label != null:
-		_update_coords_label()
+		_coords_label.visible = has_player
+		if has_player:
+			_update_coords_label()
 	if _aim_label != null:
-		_update_aim_label()
+		_aim_label.visible = has_player
+		if has_player:
+			_update_aim_label()
 	if _world_time_label != null:
-		_update_world_time_label()
+		_world_time_label.visible = has_player
+		if has_player:
+			_update_world_time_label()
 	_update_crosshair_visibility()
 
 	# DELETE ALL SAVES auto-disarm timer.
@@ -265,6 +283,23 @@ func _build_commands_list_view() -> void:
 	_commands_list_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_commands_list_view.add_theme_constant_override("separation", 4)
 	_commands_tab.add_child(_commands_list_view)
+
+	# --- Info row: voxel-cache size (top of list, above buttons) ---
+	# Auto-refreshed each time the overlay's commands tab is shown.
+	_sqlite_size_label = Label.new()
+	_sqlite_size_label.text = "Voxel cache: —"
+	_sqlite_size_label.add_theme_font_size_override("font_size", 14)
+	_sqlite_size_label.add_theme_color_override("font_color", Color(0.65, 0.85, 0.95, 1))
+	_sqlite_size_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sqlite_size_label.custom_minimum_size = Vector2(0, 26)
+	_commands_list_view.add_child(_sqlite_size_label)
+
+	# Thin divider so the info row reads as separate from the button list.
+	var info_div := ColorRect.new()
+	info_div.custom_minimum_size = Vector2(0, 1)
+	info_div.color = Color(0.25, 0.25, 0.25, 1)
+	info_div.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_list_view.add_child(info_div)
 
 	_btn_delete_all   = _make_command_row("DELETE ALL SAVES")
 	_btn_delete_one   = _make_command_row("DELETE A SAVE FILE")
@@ -458,6 +493,46 @@ func _show_command_list() -> void:
 	# Sync fly-mode label in case the player toggled it via some
 	# other route (or returned from a save where fly was on).
 	_refresh_fly_mode_label()
+	_refresh_sqlite_size_label()
+
+
+func _refresh_sqlite_size_label() -> void:
+	# Sums the SQLite database file plus its sidecar journal/WAL files
+	# (SQLite's `journal_mode = WAL` produces a `-wal` file alongside
+	# the main DB). Reports the total in MB so the player can see how
+	# fast the voxel cache is growing as they explore.
+	#
+	# Cheap — three FileAccess.file_exists + open + get_length calls.
+	# Called whenever the commands list view becomes visible, NOT in
+	# _process, because growth is on the order of MB/sec at most.
+	if _sqlite_size_label == null:
+		return
+	const DB_PATH: String = "user://voxel_deltas.sqlite"
+	const WAL_PATH: String = "user://voxel_deltas.sqlite-wal"
+	const JOURNAL_PATH: String = "user://voxel_deltas.sqlite-journal"
+	var total_bytes: int = 0
+	for path in [DB_PATH, WAL_PATH, JOURNAL_PATH]:
+		if FileAccess.file_exists(path):
+			var f: FileAccess = FileAccess.open(path, FileAccess.READ)
+			if f != null:
+				total_bytes += f.get_length()
+				f.close()
+	if total_bytes == 0:
+		_sqlite_size_label.text = "Voxel cache: (no DB yet)"
+		return
+	# Format with a unit step that stays readable across the file's
+	# growth range — a fresh world is bytes/KB, mid-game is MB, late
+	# game is GB.
+	var size_str: String
+	if total_bytes < 1024:
+		size_str = "%d B" % total_bytes
+	elif total_bytes < 1024 * 1024:
+		size_str = "%.1f KB" % (float(total_bytes) / 1024.0)
+	elif total_bytes < 1024 * 1024 * 1024:
+		size_str = "%.1f MB" % (float(total_bytes) / (1024.0 * 1024.0))
+	else:
+		size_str = "%.2f GB" % (float(total_bytes) / (1024.0 * 1024.0 * 1024.0))
+	_sqlite_size_label.text = "Voxel cache: %s  (full-caching ON)" % size_str
 
 
 func _show_delete_save_view() -> void:
@@ -698,6 +773,9 @@ func _refresh_view_dist_label() -> void:
 	var dist_vox: int = int(viewer.view_distance) if viewer != null else -1
 	if dist_vox >= 0:
 		# VoxelViewer.view_distance is in voxels; terrain is 6 vox/m.
+		# Truncating to whole meters for the label is the intent (the
+		# voxel count is shown in parentheses for precision).
+		@warning_ignore("integer_division")
 		var dist_m: int = dist_vox / 6
 		_view_dist_label.text = "%d m  (%d vox)" % [dist_m, dist_vox]
 	else:
@@ -911,7 +989,10 @@ func _refresh_player_state_tab() -> void:
 
 	var player: Node3D = players[0] as Node3D
 	var p: Vector3 = player.global_position
-	_ps_position_label.text = "Position:    X %.1f   Y %.1f   Z %.1f" % [p.x, p.y, p.z]
+	# Axis labels: Godot is Y-up, so X and Z are both horizontal axes.
+	# The "(E/W)" / "(N/S)" / "(UP)" hints stop "why does walking
+	# sideways change Z and not Y?" confusion at a glance.
+	_ps_position_label.text = "Position:    X %.1f (E/W)   Y %.1f (UP)   Z %.1f (N/S)" % [p.x, p.y, p.z]
 	_ps_rotation_label.text = "Facing:      %+.1f°" % rad_to_deg(player.rotation.y)
 
 	# Camera pitch lives on the SpringArm3D (CameraRig).

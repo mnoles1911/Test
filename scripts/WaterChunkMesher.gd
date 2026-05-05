@@ -25,13 +25,25 @@ extends Node3D
 # Constants
 # ============================================================
 
-# Render radius (m) around the player. Chunks outside this radius get
-# their meshes freed; chunks inside get meshes built/refreshed.
+# Render radius (m) around the player for the per-CHUNK water mesh
+# path. This path now only handles per-cell water (player bucket
+# placements with potentially varying surface heights). Source
+# regions (ocean, lake) are rendered as ONE giant flat plane each
+# via _rebuild_source_region_planes — so the radius here doesn't
+# constrain ocean visibility, only how far around the player we
+# build cell-water meshes.
+#
+# 64 m is plenty for cell water — buckets place water localized to
+# wherever the player is currently editing, well within this radius.
 const MESH_RENDER_RADIUS_M: float = 64.0
 
-# Per-frame mesh rebuild budget. Mirrors VoxelGravityManager's
-# 1-scan-per-frame budget — keeps mesh churn from spiking frame time.
-const MESH_BUILDS_PER_FRAME: int = 2
+# Per-frame mesh rebuild budget. Bumped from 2 → 16 because water
+# mesh builds are extremely cheap (one subdivided quad per region
+# overlap, a few hundred verts max), unlike voxel gravity scans.
+# At 2/frame the dirty queue accumulated faster than it drained
+# during world load — water was invisible for several minutes
+# until the queue caught up.
+const MESH_BUILDS_PER_FRAME: int = 16
 
 # Chunk side length in meters — must match VoxelEditManager constants.
 # Replicated here so this file doesn't need to call into a private
@@ -72,6 +84,40 @@ var _shader_material: Material = null
 var _water_flow_manager: Node = null
 # Cached parent (WaterFlowManager autoload). Resolved in _ready.
 
+# ONE giant flat plane per source region (ocean, lake) — see
+# _rebuild_source_region_planes(). Replaces the per-chunk source-region
+# meshing path that used to choke on radius limits and miss most of the
+# ocean. Source regions are flat by definition, so a single subdivided
+# plane covering the whole AABB is one draw call and renders to the
+# horizon. Per-chunk meshing now only handles per-cell water (player
+# bucket placements) where each cell may have a different surface
+# height.
+var _source_region_planes: Array[MeshInstance3D] = []
+var _follow_log_counter: int = 0
+
+# Subdivision target for source-region planes. Each quad is roughly
+# this many metres on a side. Smaller = more vertices for finer wave
+# displacement; larger = fewer verts for cheaper rendering. 4 m gives
+# clean wave detail (waves have ~2 m wavelength so 4 m sampling
+# captures crests/troughs reasonably). Capped at 256 subdivisions per
+# side total. For our default visible window of 600 m square, that's
+# 600/4 = 150 subdivisions — well under the cap.
+const SOURCE_REGION_QUAD_SIZE_M: float = 4.0
+const SOURCE_REGION_MAX_SUBDIV: int = 256
+
+# Visibility window (m) for source-region water planes. The plane
+# follows the player and renders only this far on each axis, then
+# is clipped by the source region's actual AABB. Beyond this radius
+# the player sees no water — matching how terrain stops at its own
+# view distance, so we don't have "infinite water past the terrain
+# horizon" weirdness.
+#
+# Set to roughly 1.5× the terrain view radius (terrain view_distance
+# is 1500 voxels ≈ 250 m). 400 m here gives a comfortable margin —
+# water reaches a touch past where the last terrain chunks stop, so
+# the visible coastline doesn't appear to float over void.
+const SOURCE_REGION_VISIBLE_HORIZON_M: float = 150.0
+
 
 # ============================================================
 # Lifecycle
@@ -86,11 +132,18 @@ func _ready() -> void:
 	# rebuilding.
 	if _water_flow_manager.has_signal("water_changed"):
 		_water_flow_manager.connect("water_changed", _on_water_changed)
-	# Lazy-load the shader material once. Failure is logged loudly so
-	# we don't ship invisible water by accident.
+	# Lazy-load the shared wave shader material. Failure is logged
+	# loudly so we don't ship invisible water by accident.
 	_shader_material = load("res://assets/shaders/water_material.tres") as Material
 	if _shader_material == null:
 		push_error("[WaterChunkMesher] failed to load water_material.tres — water surfaces will be invisible.")
+	else:
+		print("[WaterChunkMesher] water_material.tres loaded: %s" % _shader_material.get_class())
+
+	# Don't pre-build here — WaterFlowManager.add_source_region calls
+	# _rebuild_source_region_planes for us whenever a region is
+	# registered. That guarantees we always rebuild AFTER the region
+	# list is populated, regardless of scene-load timing.
 
 
 func _process(_delta: float) -> void:
@@ -101,6 +154,26 @@ func _process(_delta: float) -> void:
 		_dirty_set.erase(chunk)
 		_rebuild_chunk(chunk)
 		built += 1
+
+	# Reposition source-region planes to follow the player and clip
+	# against their AABBs. Cheap — one position write per region.
+	# Read player position from the parent WaterFlowManager which
+	# Player3D updates each physics frame via set_player_position.
+	if _water_flow_manager != null and "_player_pos" in _water_flow_manager:
+		var pp: Vector3 = _water_flow_manager._player_pos
+		_update_source_region_plane_positions(pp)
+		# DIAGNOSTIC — fire occasionally so we can see whether the
+		# follow-player update is running at all + what positions
+		# the planes end up at. 1 print per ~2 s (every 120 frames
+		# at 60 fps).
+		_follow_log_counter += 1
+		if _follow_log_counter >= 120:
+			_follow_log_counter = 0
+			var poses: Array[String] = []
+			for inst in _source_region_planes:
+				if inst != null and is_instance_valid(inst):
+					poses.append("vis=%s pos=%s" % [inst.visible, inst.global_position])
+			print("[WaterChunkMesher] follow update: player=%s | planes: %s" % [pp, poses])
 
 
 # ============================================================
@@ -126,16 +199,56 @@ func set_player_chunk(chunk: Vector3i) -> void:
 			_meshes.erase(existing_chunk)
 
 	# Dirty-mark chunks inside the radius that don't have meshes yet.
-	# This populates the queue lazily as the player moves. _dirty_set
-	# gives O(1) membership; Array.has would be O(n) per check and the
-	# triple loop runs (2*radius+1)^3 ≈ 117k iterations at radius 24.
+	# We pre-filter against `_chunk_could_have_water` before queueing —
+	# without this the queue gets flooded with ~117k chunks per
+	# transition (49^3 cube), almost all of them empty (water only
+	# lives at the chunk Y matching a source region's surface_y).
+	# At MESH_BUILDS_PER_FRAME=16, even the bigger budget would take
+	# 7000+ frames to drain that queue, which is why water was
+	# invisible until you'd been falling for minutes.
+	#
+	# After the filter the queue only holds chunks that WILL produce
+	# a quad — typically a 49×1×49 sheet at Y=ocean_chunk_y plus
+	# the small pond chunks. Fits in the budget within a frame.
 	for dx in range(-radius_chunks, radius_chunks + 1):
 		for dy in range(-radius_chunks, radius_chunks + 1):
 			for dz in range(-radius_chunks, radius_chunks + 1):
 				var c := _player_chunk + Vector3i(dx, dy, dz)
-				if not _meshes.has(c) and not _dirty_set.has(c):
-					_dirty_queue.append(c)
-					_dirty_set[c] = true
+				if _meshes.has(c) or _dirty_set.has(c):
+					continue
+				if not _chunk_could_have_water(c):
+					continue
+				_dirty_queue.append(c)
+				_dirty_set[c] = true
+
+
+func _chunk_could_have_water(chunk: Vector3i) -> bool:
+	# Cheap reject: does any source region's surface_y land inside
+	# this chunk's vertical range AND overlap horizontally? Same
+	# math as _gather_surface_quads but boolean — short-circuits as
+	# soon as we find one match.
+	if _water_flow_manager == null \
+			or not _water_flow_manager.has_method("get_source_regions"):
+		return false
+	var chunk_min_x: float = float(chunk.x) * CHUNK_SIZE_M
+	var chunk_min_y: float = float(chunk.y) * CHUNK_SIZE_M
+	var chunk_min_z: float = float(chunk.z) * CHUNK_SIZE_M
+	var chunk_max_x: float = chunk_min_x + CHUNK_SIZE_M
+	var chunk_max_y: float = chunk_min_y + CHUNK_SIZE_M
+	var chunk_max_z: float = chunk_min_z + CHUNK_SIZE_M
+	for region_data in _water_flow_manager.get_source_regions():
+		var aabb: AABB = region_data["aabb"] as AABB
+		var surface_y: float = aabb.position.y + aabb.size.y
+		# Y check first (cheap; rejects ~100% of irrelevant chunks).
+		if surface_y < chunk_min_y or surface_y >= chunk_max_y:
+			continue
+		# XZ overlap check.
+		var aabb_max_x: float = aabb.position.x + aabb.size.x
+		var aabb_max_z: float = aabb.position.z + aabb.size.z
+		if chunk_max_x > aabb.position.x and chunk_min_x < aabb_max_x \
+				and chunk_max_z > aabb.position.z and chunk_min_z < aabb_max_z:
+			return true
+	return false
 
 
 # ============================================================
@@ -180,54 +293,171 @@ func _rebuild_chunk(chunk: Vector3i) -> void:
 		existing.material_override = _shader_material
 		add_child(existing)
 		_meshes[chunk] = existing
+		# Verify the material survived the assignment. If
+		# material_override reads back as null after the line above,
+		# something rejected the assignment (type mismatch, missing
+		# property, etc.). One-time print per chunk creation so we
+		# can confirm the path is live.
+		print("[WaterChunkMesher] CREATED chunk=%s pos=%s mesh_surfaces=%d  material_override=%s  visible=%s" % [
+			chunk,
+			existing.global_position if existing.is_inside_tree() else Vector3.ZERO,
+			mesh.get_surface_count(),
+			"present" if existing.material_override != null else "NULL",
+			existing.visible,
+		])
+	# Always (re)apply the material — guards against a previously-built
+	# MeshInstance3D persisting from before _shader_material was set
+	# correctly. Cheap (just a property write) and idempotent.
+	existing.material_override = _shader_material
 	existing.mesh = mesh
 
 
-func _gather_surface_quads(chunk: Vector3i) -> Array:
-	# Returns an Array of dicts: {"min_x", "min_z", "max_x", "max_z", "y"}
-	# for each top-surface quad that should render in this chunk.
-	var quads: Array = []
-	if _water_flow_manager == null:
-		return quads
+func _gather_surface_quads(_chunk: Vector3i) -> Array:
+	# Returns surface quads to mesh in this chunk. Source regions are
+	# now rendered by the giant per-region planes built in
+	# _rebuild_source_region_planes — NOT here. This function is
+	# reserved for per-cell water (player bucket placements) where
+	# each cell may have a different surface height. Currently empty
+	# (cell rendering is a future phase); leaving the stub so the
+	# call site keeps compiling and the future cell pass slots in
+	# without ripple-changes.
+	#
+	# Returning [] always means _rebuild_chunk free's any old chunk
+	# meshes and creates none — the mesher idles for source-region-
+	# only worlds.
+	return []
 
-	# Chunk's world-space AABB.
-	var chunk_min := Vector3(
-		float(chunk.x) * CHUNK_SIZE_M,
-		float(chunk.y) * CHUNK_SIZE_M,
-		float(chunk.z) * CHUNK_SIZE_M,
-	)
-	var chunk_max := chunk_min + Vector3.ONE * CHUNK_SIZE_M
 
-	# Walk source regions. For each region whose AABB overlaps this
-	# chunk's column AND whose top is inside this chunk's vertical
-	# range, emit a quad at the AABB top.
-	var regions: Array = []
-	if _water_flow_manager.has_method("get_source_regions"):
-		regions = _water_flow_manager.get_source_regions()
+func _rebuild_source_region_planes() -> void:
+	# One subdivided flat plane per source region (ocean, lake).
+	# Spawns one MeshInstance3D each, parented under this node so a
+	# scene unload frees them with us.
+	#
+	# Why a plane and not a chunk-mesh: source regions are flat by
+	# design — the surface is a single Y, no per-cell variance. A
+	# single mesh per region is one draw call regardless of size,
+	# scales to 20+ km oceans for free. The previous chunk-based
+	# path produced a hard cutoff at MESH_RENDER_RADIUS_M because
+	# only chunks within that radius of the player got meshed.
+	#
+	# Idempotent: clears existing planes first so this can be called
+	# again to react to runtime add_source_region (e.g. story event
+	# floods a basin).
+	for plane in _source_region_planes:
+		if is_instance_valid(plane):
+			plane.queue_free()
+	_source_region_planes.clear()
+
+	if _water_flow_manager == null \
+			or not _water_flow_manager.has_method("get_source_regions"):
+		return
+	var regions: Array = _water_flow_manager.get_source_regions()
 	for region_data in regions:
 		var aabb: AABB = region_data["aabb"] as AABB
-		# Horizontal overlap test (XZ rectangle).
-		var overlap_min_x: float = maxf(chunk_min.x, aabb.position.x)
-		var overlap_max_x: float = minf(chunk_max.x, aabb.position.x + aabb.size.x)
-		var overlap_min_z: float = maxf(chunk_min.z, aabb.position.z)
-		var overlap_max_z: float = minf(chunk_max.z, aabb.position.z + aabb.size.z)
-		if overlap_min_x >= overlap_max_x or overlap_min_z >= overlap_max_z:
+		var inst: MeshInstance3D = _build_source_region_plane(aabb)
+		if inst == null:
 			continue
-		# Top Y of the source region (the surface plane).
+		add_child(inst)
+		# Position must be set AFTER add_child — global_position is
+		# only defined inside the tree.
+		var center_x: float = aabb.position.x + aabb.size.x * 0.5
+		var center_z: float = aabb.position.z + aabb.size.z * 0.5
 		var surface_y: float = aabb.position.y + aabb.size.y
-		# Render the surface only if it lies within this chunk's
-		# vertical range. Otherwise the chunk above (or below) owns it.
-		if surface_y < chunk_min.y or surface_y >= chunk_max.y:
-			continue
-		quads.append({
-			"min_x": overlap_min_x,
-			"max_x": overlap_max_x,
-			"min_z": overlap_min_z,
-			"max_z": overlap_max_z,
-			"y": surface_y,
-		})
+		inst.global_position = Vector3(center_x, surface_y, center_z)
+		_source_region_planes.append(inst)
+	print("[WaterChunkMesher] built %d source-region plane(s)." % _source_region_planes.size())
 
-	return quads
+
+func _build_source_region_plane(aabb: AABB) -> MeshInstance3D:
+	# Build a fixed-size plane sized to the visibility window — NOT
+	# the AABB. The plane FOLLOWS the player each frame (see
+	# _update_source_region_plane_positions) and is clipped against
+	# the source region's AABB so water never extends past the actual
+	# water body's footprint.
+	#
+	# Subdivision: SOURCE_REGION_QUAD_SIZE_M per quad, capped at
+	# SOURCE_REGION_MAX_SUBDIV. For our 800 m × 800 m visibility
+	# window at 4 m/quad → 200 subdivisions on each side ≈ 40 k verts.
+	# Single mesh, single draw call.
+	var visible_size: float = SOURCE_REGION_VISIBLE_HORIZON_M * 2.0
+	# Don't make the plane bigger than the AABB itself — for a tiny
+	# pond (10 × 10 m), the plane stays at 10 × 10.
+	var plane_x: float = minf(visible_size, aabb.size.x)
+	var plane_z: float = minf(visible_size, aabb.size.z)
+	var subdiv_x: int = mini(int(plane_x / SOURCE_REGION_QUAD_SIZE_M), SOURCE_REGION_MAX_SUBDIV)
+	var subdiv_z: int = mini(int(plane_z / SOURCE_REGION_QUAD_SIZE_M), SOURCE_REGION_MAX_SUBDIV)
+	subdiv_x = maxi(subdiv_x, 1)
+	subdiv_z = maxi(subdiv_z, 1)
+
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(plane_x, plane_z)
+	plane.subdivide_width = subdiv_x
+	plane.subdivide_depth = subdiv_z
+
+	var inst := MeshInstance3D.new()
+	inst.mesh = plane
+	inst.material_override = _shader_material
+	inst.extra_cull_margin = 64.0
+	return inst
+
+
+func _update_source_region_plane_positions(player_world_pos: Vector3) -> void:
+	# Per-frame reposition (and visibility-cull) for each source-region
+	# plane. Centre the plane on the player's XZ, but clamp into the
+	# source region's AABB so we never render water past the body of
+	# water's actual footprint. If the player is outside the AABB by
+	# more than half the plane's width, the entire plane is hidden.
+	if _water_flow_manager == null \
+			or not _water_flow_manager.has_method("get_source_regions"):
+		return
+	var regions: Array = _water_flow_manager.get_source_regions()
+	# Defensive: if the regions list size doesn't match our planes,
+	# just bail — _rebuild_source_region_planes will fix it.
+	if regions.size() != _source_region_planes.size():
+		return
+	for i in _source_region_planes.size():
+		var inst: MeshInstance3D = _source_region_planes[i]
+		if inst == null or not is_instance_valid(inst):
+			continue
+		var aabb: AABB = regions[i]["aabb"] as AABB
+		var surface_y: float = aabb.position.y + aabb.size.y
+		var plane_mesh: PlaneMesh = inst.mesh as PlaneMesh
+		if plane_mesh == null:
+			continue
+		var plane_w: float = plane_mesh.size.x
+		var plane_d: float = plane_mesh.size.y  # PlaneMesh is XZ-oriented; size.y = depth
+		var half_w: float = plane_w * 0.5
+		var half_d: float = plane_d * 0.5
+
+		# AABB extents in world XZ.
+		var aabb_min_x: float = aabb.position.x
+		var aabb_max_x: float = aabb.position.x + aabb.size.x
+		var aabb_min_z: float = aabb.position.z
+		var aabb_max_z: float = aabb.position.z + aabb.size.z
+
+		# Clamp the plane CENTRE so its full footprint stays inside
+		# the AABB. If the AABB is smaller than the plane on an axis,
+		# centre on the AABB centre instead (the min/max would cross).
+		var center_x: float
+		if plane_w >= aabb.size.x:
+			center_x = (aabb_min_x + aabb_max_x) * 0.5
+		else:
+			center_x = clampf(player_world_pos.x, aabb_min_x + half_w, aabb_max_x - half_w)
+		var center_z: float
+		if plane_d >= aabb.size.z:
+			center_z = (aabb_min_z + aabb_max_z) * 0.5
+		else:
+			center_z = clampf(player_world_pos.z, aabb_min_z + half_d, aabb_max_z - half_d)
+
+		# Hide the plane if the player is far outside the AABB. We
+		# consider "outside" as more than the visibility horizon
+		# beyond any AABB edge.
+		var horizon: float = SOURCE_REGION_VISIBLE_HORIZON_M
+		var outside_x: bool = player_world_pos.x < aabb_min_x - horizon or player_world_pos.x > aabb_max_x + horizon
+		var outside_z: bool = player_world_pos.z < aabb_min_z - horizon or player_world_pos.z > aabb_max_z + horizon
+		inst.visible = not (outside_x or outside_z)
+
+		inst.global_position = Vector3(center_x, surface_y, center_z)
 
 
 func _build_array_mesh(quads: Array) -> ArrayMesh:

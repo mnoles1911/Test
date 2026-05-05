@@ -383,6 +383,16 @@ func add_source_region(aabb: AABB, level: int = MAX_LEVEL) -> void:
 	# implicitly and only spread INTO neighbors when an edit dirties
 	# the boundary chunk.
 	_source_regions.append({"aabb": aabb, "level": clampi(level, MIN_LEVEL, MAX_LEVEL)})
+	# Tell the chunk mesher to rebuild its giant source-region planes
+	# now that we have a new region. Without this trigger, the mesher's
+	# initial deferred call from _ready fires BEFORE World3DBootstrap
+	# adds regions (the autoload's deferred queue runs on the next
+	# idle, but the scene's _ready chain hasn't finished). Result: 0
+	# planes built. Calling here is idempotent — the mesher clears
+	# old planes and rebuilds from the current region list.
+	if _chunk_mesher != null \
+			and _chunk_mesher.has_method("_rebuild_source_region_planes"):
+		_chunk_mesher._rebuild_source_region_planes()
 
 
 # ============================================================
@@ -639,7 +649,12 @@ func _is_water_blocked_at_voxel(voxel_pos: Vector3i) -> bool:
 	return NoEditZoneRegistry.is_water_flow_blocked_at(_voxel_center_world(voxel_pos))
 
 
-func _gather_lateral_sources(chunk: Vector3i, voxel_min: Vector3i, voxel_max: Vector3i) -> Array:
+func _gather_lateral_sources(_chunk: Vector3i, voxel_min: Vector3i, voxel_max: Vector3i) -> Array:
+	# `_chunk` is the chunk Vector3i whose bounds are voxel_min..voxel_max.
+	# Currently unused (the bounds fully determine which voxels we walk),
+	# so it's underscore-prefixed to silence Godot's UNUSED_PARAMETER
+	# warning. Kept in the signature so callers stay readable — passing
+	# the chunk identity makes the call site self-documenting.
 	# Build the list of "where can lateral spread originate from in
 	# this chunk?" — cell-based water and source-region cells.
 	#

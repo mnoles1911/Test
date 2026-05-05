@@ -19,12 +19,11 @@ sky_material = ExtResource("9_sky_blend")
 background_mode = 2
 sky = SubResource("SkyResource_1")
 ambient_light_source = 3
-ambient_light_color = Color(0.1, 0.12, 0.18, 1)
-ambient_light_energy = 0.4
+ambient_light_color = Color(0.22, 0.26, 0.32, 1)
+ambient_light_energy = 0.8
 ssao_enabled = true
 ssao_radius = 1.5
 ssao_intensity = 1.5
-fog_enabled = false
 
 [sub_resource type="SphereMesh" id="SunSphereMesh"]
 radius = 25.0
@@ -33,11 +32,11 @@ radial_segments = 16
 rings = 8
 
 [sub_resource type="StandardMaterial3D" id="SunMat"]
-albedo_color = Color(1.0, 0.95, 0.5, 1)
-emission_enabled = true
-emission = Color(1.0, 0.88, 0.35, 1)
-emission_energy_multiplier = 4.0
 no_depth_test = true
+albedo_color = Color(1, 0.95, 0.5, 1)
+emission_enabled = true
+emission = Color(1, 0.88, 0.35, 1)
+emission_energy_multiplier = 4.0
 
 [sub_resource type="SphereMesh" id="MoonSphereMesh"]
 radius = 18.0
@@ -52,8 +51,13 @@ emission_enabled = true
 emission = Color(0.75, 0.82, 1, 1)
 emission_energy_multiplier = 1.8
 
+[sub_resource type="StandardMaterial3D" id="VoxelTerrainMat"]
+albedo_color = Color(0.45, 0.35, 0.22, 1)
+roughness = 0.85
+
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_SQLite"]
 database_path = "user://voxel_deltas.sqlite"
+save_generator_output = true
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
 seed = 8
@@ -67,6 +71,8 @@ noise = SubResource("TerrainNoise")
 height_range_voxels = 200.0
 
 [sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
+greedy_meshing_enabled = false
+opaque_material = SubResource("VoxelTerrainMat")
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]
 size = Vector3(0.5, 0.3, 0.5)
@@ -100,10 +106,10 @@ night_panorama = ExtResource("13_night")
 light_color = Color(1, 0.97, 0.92, 1)
 light_energy = 1.4
 shadow_enabled = true
-directional_shadow_mode = 2
-directional_shadow_blend_splits = true
-directional_shadow_max_distance = 200.0
+shadow_bias = 0.18
+directional_shadow_mode = 0
 directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 120.0
 
 [node name="SunMesh" type="MeshInstance3D" parent="." unique_id=2000000040]
 visible = false
@@ -124,15 +130,9 @@ mesh = SubResource("MoonSphereMesh")
 surface_material_override/0 = SubResource("MoonMat")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
-lod_count = 8
-; lod_distance is the radius (in voxels) of each LOD ring. Default 48 — too
-; tight for our 6 vox/m scale (only 8 m of LOD0 detail). 192 vox = 32 m of
-; full-detail terrain, with each higher LOD ring doubling outward. Total
-; range across 8 LODs ≈ 192 × 128 = 24,576 vox ≈ 4 km. Actual loaded radius
-; is min(this LOD-implied max, VoxelViewer.view_distance), so the viewer
-; must also be set high enough — see Player3D.tscn and the F1 DebugOverlay
-; "View Distance" sub-view.
-lod_distance = 192.0
+lod_count = 6
+lod_distance = 96.0
+material = SubResource("VoxelTerrainMat")
 run_stream_in_editor = false
 stream = SubResource("VoxelStream_SQLite")
 generator = SubResource("VoxelGen_Cubic")

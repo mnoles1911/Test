@@ -33,6 +33,53 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
+	# DIAGNOSTIC — dump VoxelMesherCubes property list so we can see
+	# which colour-mode flags exist. The terrain material is set to
+	# vertex_color_use_as_albedo=true, but the mesher might still
+	# need configuration (e.g. color_mode = RAW vs PALETTE) before
+	# it actually emits per-voxel CHANNEL_COLOR as vertex colors.
+	if "mesher" in terrain:
+		var mesher: Resource = terrain.mesher
+		if mesher != null:
+			print("[World3D] Mesher class: %s" % mesher.get_class())
+			# Highlight opaque_material specifically — this is the
+			# property that controls whether vertex colours reach
+			# the rendered terrain. If it's null at runtime despite
+			# the .tscn assignment, Godot didn't reimport the scene
+			# or the property name is being silently rejected.
+			var om = mesher.get("opaque_material") if "opaque_material" in mesher else null
+			if om == null:
+				print("[World3D]   ⚠ opaque_material is NULL (vertex colours WILL fall back to default — flat grey).")
+			else:
+				print("[World3D]   ✓ opaque_material is set: %s, vertex_color_use_as_albedo=%s" % [
+					om.get_class(),
+					om.get("vertex_color_use_as_albedo") if "vertex_color_use_as_albedo" in om else "(no such property)",
+				])
+			for prop in mesher.get_property_list():
+				var pname: String = prop.get("name", "")
+				if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
+					continue
+				if pname == "resource_path" or pname == "resource_name":
+					continue
+				print("[World3D]   mesher.%s = %s" % [pname, mesher.get(pname)])
+
+	# Same dump for VoxelStreamSQLite so we can find the right
+	# property name for full-caching mode. With save_generator_output
+	# = true in the .tscn, the cache file should grow into MBs as
+	# the player explores. If it's stuck at 20 KB (only edit deltas),
+	# the property name is wrong for this Zylann build.
+	if "stream" in terrain:
+		var stream: Resource = terrain.stream
+		if stream != null:
+			print("[World3D] Stream class: %s" % stream.get_class())
+			for prop in stream.get_property_list():
+				var pname: String = prop.get("name", "")
+				if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
+					continue
+				if pname == "resource_path" or pname == "resource_name":
+					continue
+				print("[World3D]   stream.%s = %s" % [pname, stream.get(pname)])
+
 	# Guard with get_node_or_null in case the autoload isn't registered
 	# yet (e.g. a fresh project without our autoload entries). The
 	# project should always have it registered, but this prevents a
@@ -54,14 +101,34 @@ func _ready() -> void:
 	# WaterChunkMesher. Phase 1 only registers the region for swim/
 	# breath physics queries.
 	#
-	# Ocean: 200×200 m at sea level (Y=8). Volume goes 22 m below sea
-	# level so diving deep still registers as in-water.
+	# Ocean: massive XZ footprint so the surface continuously fills
+	# every basin within the playable area. Was 200×200 m centred on
+	# origin → terrain past X=±100 / Z=±100 had no water even when
+	# the ground dipped below sea level, producing a sharp vertical
+	# "world edge" cutoff (looked like the lake just stopped). New
+	# footprint is 20000×20000 m centred on origin — covers the
+	# whole 12×10 km playable Mira and still costs O(1) memory
+	# (source regions are AABBs, not voxel cells).
+	#
+	# Surface at Y=10. Generator caps terrain at ~Y=29 (max_ground_y)
+	# and bottoms at ~Y=-9 (min_ground_y) given height_range_voxels=200
+	# + height_offset=60 at terrain scale 1/6. So Y=10 floods low
+	# basins, leaves highlands dry. Volume extends 200 m below
+	# surface so deep dive still registers as submerged.
+	const OCEAN_SURFACE_Y: float = 10.0
+	const OCEAN_DEPTH_M: float   = 200.0
+	const OCEAN_HALF_SIZE_M: float = 10000.0  # ±10 km
 	if get_node_or_null("/root/WaterFlowManager"):
 		var pond_aabb := AABB(Vector3(-23.0, -1.5, -1.0), Vector3(10.0, 3.0, 10.0))
 		WaterFlowManager.add_source_region(pond_aabb)
-		var ocean_aabb := AABB(Vector3(-100.0, -22.0, -100.0), Vector3(200.0, 30.0, 200.0))
+		var ocean_aabb := AABB(
+			Vector3(-OCEAN_HALF_SIZE_M, OCEAN_SURFACE_Y - OCEAN_DEPTH_M, -OCEAN_HALF_SIZE_M),
+			Vector3(OCEAN_HALF_SIZE_M * 2.0, OCEAN_DEPTH_M, OCEAN_HALF_SIZE_M * 2.0),
+		)
 		WaterFlowManager.add_source_region(ocean_aabb)
-		print("[World3D] Seeded WaterFlowManager with %d source regions." % 2)
+		print("[World3D] Seeded WaterFlowManager with %d source regions (ocean surface Y=%.1f, footprint ±%.0f m)." % [
+			2, OCEAN_SURFACE_Y, OCEAN_HALF_SIZE_M,
+		])
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
 
@@ -81,6 +148,71 @@ func _ready() -> void:
 	if get_node_or_null("/root/GameState"):
 		if GameState.player_position != Vector3.ZERO:
 			call_deferred("_apply_saved_player_position")
+		else:
+			# Fresh New Game (no saved position) — snap player to the
+			# top of whatever terrain exists at his X,Z spawn rather
+			# than letting him fall from the scene's default Y=120.
+			# Falling 100+ m through unloaded chunks looks bad and
+			# wastes the first few seconds of play. Retry every
+			# 0.2 s for up to 5 s while terrain streams in.
+			call_deferred("_snap_spawn_to_ground")
+
+
+func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
+	# Raycast straight down from a high point above the player and
+	# place the player on whatever solid surface we hit. If the
+	# raycast misses (terrain chunks not yet loaded), retry after
+	# a short delay until either a hit lands or we run out of retries.
+	#
+	# `retries_remaining` defaults to 25 (× 0.2 s = 5 s total budget).
+	# After that we give up — the player will fall from the scene's
+	# default Y, which is ugly but never permanently stuck.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+
+	# Cast from a high origin DOWN through the player's X,Z. Origin
+	# above the scene's spawn Y (120) by another 100 m so we cover
+	# any terrain peak. Cast down to Y = -200 (well below valley
+	# floors) so we cover any depth.
+	var origin: Vector3 = Vector3(player.global_position.x, 250.0, player.global_position.z)
+	var dest: Vector3 = Vector3(player.global_position.x, -200.0, player.global_position.z)
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(origin, dest)
+	# Exclude the player's own collision shape so we don't hit it.
+	params.exclude = [player.get_rid()]
+	var hit: Dictionary = space.intersect_ray(params)
+
+	if hit.is_empty():
+		# No terrain under spawn yet. Voxel chunks still streaming.
+		if retries_remaining <= 0:
+			print("[World3D] Spawn-snap gave up after retries; falling from default Y.")
+			return
+		# Retry after a short delay using a SceneTreeTimer (no scene
+		# changes / signals needed).
+		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
+		timer.timeout.connect(_snap_spawn_to_ground.bind(retries_remaining - 1))
+		return
+
+	# Hit something. Place player just above the hit point — capsule
+	# is offset by 0.9 m (half-height) so we add a small margin to
+	# avoid clipping into terrain on landing.
+	var ground_y: float = hit["position"].y
+	player.global_position = Vector3(
+		player.global_position.x,
+		ground_y + 1.0,  # 1 m above ground = capsule clears the surface
+		player.global_position.z,
+	)
+	# Zero the player's vertical velocity so any momentum from the
+	# previous-frame fall doesn't punch them back through the surface.
+	if "velocity" in player:
+		player.velocity = Vector3.ZERO
+	print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f)." % [
+		player.global_position.y, ground_y,
+	])
 
 
 func _apply_saved_player_position() -> void:

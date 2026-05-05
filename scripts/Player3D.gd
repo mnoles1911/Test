@@ -45,6 +45,21 @@ const BASE_DECEL: float        = 12.0   # m/s² rate to ramp DOWN to zero
 # they stop. This gives the natural momentum feel of a body with real weight,
 # especially noticeable at higher mass values.
 
+const STEP_HEIGHT: float = 0.30
+# Auto-step / climb height in metres. Roland walks over terrain
+# obstacles up to this tall WITHOUT pressing jump. At 6 vox/m
+# (16.7 cm per voxel), 0.30 m clears a single 1-voxel ledge with
+# ~13 cm of margin to handle the rounded capsule bottom catching
+# on cube corners. A 2-voxel ledge (33 cm) exceeds STEP_HEIGHT and
+# still requires jumping — that's intentional, otherwise the
+# terrain would feel mushy and walls would be meaningless.
+#
+# How it works (see _try_step_up below): after each move_and_slide
+# call where the player hit a wall while walking, we try lifting
+# Roland up to STEP_HEIGHT, sliding forward, and snapping down. If
+# the elevated path is clear, the step succeeds and Roland lands on
+# the ledge. If still blocked, it's a real wall and Roland stops.
+
 const GRAVITY: float = 20.0
 # Initial upward velocity applied on jump. With GRAVITY=20 m/s², a
 # 7 m/s jump peaks at v²/(2g) ≈ 1.22 m — well clear of a single voxel
@@ -97,6 +112,20 @@ const SWIM_VERTICAL_ACCEL: float = 8.0
 # How fast Roland reaches SWIM_VERTICAL_SPEED when ascending or
 # diving. Decoupled from _accel so swim feel can be tuned without
 # affecting walk/sprint.
+
+const SWIM_NATURAL_SINK_SPEED: float = 0.6
+# Default downward drift (m/s) when no swim input is held. Negative
+# Y direction. Models "Roland is heavier than water with his pack
+# and gear" — without active swimming, he slowly sinks. Forces the
+# player to actively press Space to stay afloat in deep water,
+# adding drowning tension. Real humans are slightly buoyant, but
+# slow-sink reads as more game-y and tense.
+
+const SWIM_NATURAL_SINK_ACCEL: float = 2.5
+# How fast the natural sink ramps in. Lower than SWIM_VERTICAL_ACCEL
+# so the moment the player STOPS holding ascend, vertical velocity
+# doesn't snap to negative — it eases down. Feels like buoyancy
+# being lost gradually rather than a harsh "you let go, you sink".
 
 
 # =============================================================
@@ -321,14 +350,23 @@ func _physics_process(delta: float) -> void:
 		# both decays vertical velocity to zero so Roland floats at
 		# his current depth. Clamp to ±SWIM_VERTICAL_SPEED so a long
 		# hold doesn't accumulate beyond the design max.
-		var ascend  := Input.is_action_pressed("dodge")
-		var descend := Input.is_action_pressed("crouch")
+		# Ascend: Space (dodge action). Descend: Shift (sprint action)
+		# OR C (crouch) — both work. Sprint is unused in water (the
+		# swim-speed cap already handles "no extra speed underwater"),
+		# so repurposing Shift for dive maps to player muscle memory
+		# from most modern third-person swimmers (Skyrim, Witcher).
+		var ascend: bool = Input.is_action_pressed("dodge")
+		var descend: bool = Input.is_action_pressed("sprint") or Input.is_action_pressed("crouch")
 		if ascend and not descend:
 			velocity.y = move_toward(velocity.y, SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		elif descend and not ascend:
 			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		else:
-			velocity.y = move_toward(velocity.y, 0.0, _decel * delta)
+			# No vertical input — Roland slowly sinks. Eases toward
+			# SWIM_NATURAL_SINK_SPEED (a small negative value) rather
+			# than zero, so the player must actively swim up to stay
+			# afloat in deep water. Adds tension to drowning timing.
+			velocity.y = move_toward(velocity.y, -SWIM_NATURAL_SINK_SPEED, SWIM_NATURAL_SINK_ACCEL * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally based on the
 		# water level gradient. Active anywhere a flow cell or source
@@ -385,7 +423,116 @@ func _physics_process(delta: float) -> void:
 	else:
 		endurance = minf(endurance + ENDURANCE_IDLE_REGEN * delta, max_endurance)
 
+	# Capture pre-slide state so we can detect "tried to move but got
+	# stopped by a ledge" — see auto-step block below.
+	var pre_slide_pos: Vector3 = global_position
+	var intended_h: Vector3 = Vector3(velocity.x, 0.0, velocity.z) * delta
+
 	move_and_slide()
+
+	# --- Auto-step over small voxel ledges ---
+	# Walking forward into a 1-voxel cube (16.7 cm at 6 vox/m, since
+	# we run at 6 voxels per metre) catches the capsule's rounded
+	# bottom on the cube's top corner at a near-45° contact normal.
+	# Godot classifies that contact as a "wall" rather than a slope,
+	# and the player gets stopped cold. Auto-step lifts Roland up to
+	# STEP_HEIGHT, slides forward, and snaps back down to land on
+	# the ledge.
+	#
+	# Trigger: any non-zero horizontal intent + ANY meaningful drag
+	# (15% slowed counts). Previous threshold (50% blocked) missed
+	# the case where the capsule partially-climbs the corner before
+	# snagging — actual movement was 60-70% of intended, threshold
+	# not met, no step. With 15% threshold any consistent snag
+	# triggers, including very slow walks.
+	#
+	# Velocity floor lowered to 0.001 m of intended motion — a creep
+	# of ~0.06 m/s is enough to trigger. Effectively "if you're
+	# pressing forward at all".
+	if not _in_water and is_on_floor() and velocity.y <= 0.01 \
+			and intended_h.length_squared() > 0.000001:
+		var actual_h: Vector3 = Vector3(
+			global_position.x - pre_slide_pos.x,
+			0.0,
+			global_position.z - pre_slide_pos.z,
+		)
+		# Blocked-fraction: 1.0 = completely stopped, 0.0 = full movement.
+		var blocked: float = 1.0 - clampf(
+			actual_h.length() / intended_h.length(), 0.0, 1.0
+		)
+		if blocked > 0.15:
+			# Use the INTENDED direction for the step probe — actual
+			# may be near-zero, so it gives no direction info. Probe
+			# distance is a fixed 0.4 m forward (about 2.4 voxels at
+			# our scale) so the test reaches PAST the ledge edge even
+			# at slow walking speeds where intended_h is tiny.
+			var probe_dir: Vector3 = intended_h.normalized()
+			_try_step_up(probe_dir * 0.4)
+
+
+func _try_step_up(probe_motion: Vector3) -> void:
+	# Smooth auto-step via velocity kick (NOT instant teleport).
+	#
+	# Old approach: teleport up STEP_HEIGHT, slide forward, snap down.
+	# Felt like a snap because the entire vertical change happened
+	# in one frame — camera jumped by 0.3 m instantly per voxel.
+	#
+	# New approach: probe whether a step IS possible (is the path
+	# forward clear at lifted height?). If yes, apply an UPWARD
+	# velocity kick sized so gravity exactly converts it back to PE
+	# at STEP_HEIGHT. Player traces a smooth parabolic arc — rises,
+	# moves forward (carried by existing horizontal velocity), then
+	# falls onto the new ledge. Reads as a small natural hop.
+	#
+	# Energy math: v = sqrt(2 * g * h). With g=GRAVITY (20) and
+	# h=STEP_HEIGHT (0.3): v = sqrt(12) ≈ 3.46 m/s. Add a small
+	# safety margin (×1.15) so we definitely clear the ledge before
+	# falling. Arc time to apex: v/g ≈ 0.17 s. Horizontal travel in
+	# that time at walk speed 4.5 m/s: ~0.77 m — well past the
+	# 0.4 m probe distance, so the player is over the ledge by the
+	# time they descend.
+	#
+	# Done with move_and_collide(test_only=true) for the probes —
+	# we don't actually want to move during testing, just check
+	# whether the path is clear. The position is unchanged either way.
+	if probe_motion.length_squared() < 0.0001:
+		return
+
+	# 1. Probe up — is there headroom for a STEP_HEIGHT lift?
+	#    test_only=true so we don't actually move; just check.
+	var up_test: KinematicCollision3D = move_and_collide(
+		Vector3.UP * STEP_HEIGHT, true
+	)
+	var available_up: float = STEP_HEIGHT
+	if up_test != null:
+		# Ceiling somewhere in the lift range — get_travel returns
+		# how far we MOVED before hitting (less than full up vector).
+		available_up = absf(up_test.get_travel().y)
+		if available_up < 0.10:
+			# Less than ~0.6 voxels of headroom — can't usefully step.
+			return
+
+	# 2. Probe forward AT the lifted position. We need a multi-step
+	#    test_only check because move_and_collide tests from the
+	#    CURRENT position. Trick: temporarily teleport up, test
+	#    forward, restore — all within one frame, no visual change.
+	var saved_pos: Vector3 = global_position
+	global_position += Vector3.UP * available_up
+	var fwd_test: KinematicCollision3D = move_and_collide(probe_motion, true)
+	global_position = saved_pos
+
+	if fwd_test != null:
+		# Path is still blocked at the lifted height. Real wall.
+		return
+
+	# 3. Apply the upward kick. Gravity (in the next frame's
+	#    velocity update) will arc the player up + over the ledge
+	#    AND back down on its own — no manual snap-down needed.
+	#    velocity.y = max(...) avoids killing an existing upward
+	#    velocity (e.g. the rising edge of a jump that overlapped
+	#    with the auto-step trigger).
+	var kick: float = sqrt(2.0 * GRAVITY * available_up) * 1.15
+	velocity.y = maxf(velocity.y, kick)
 
 
 func _update_water_state() -> void:

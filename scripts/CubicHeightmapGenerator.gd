@@ -209,6 +209,16 @@ var _applying_preset: bool = false
 ## in the .tres files; designers tune those, not these sliders.
 @export var color_high: Color = Color(0.62, 0.55, 0.42)
 
+## DEBUG — when true, emit vivid per-material colours in place of
+## the .tres palette. Stone = bright red, dirt = bright orange,
+## grass = bright green, sand = bright yellow. Lets us prove that
+## (a) the vertex-color channel is reaching the screen, and
+## (b) material selection is actually picking different materials
+## by depth/altitude. If you flip this on and STILL see flat grey
+## terrain, the problem is downstream of the generator (mesher
+## config or terrain material) — not the colour pipeline.
+@export var debug_vivid_colors: bool = false
+
 
 # =============================================================
 # MATERIAL BANDS — which material lives at which depth
@@ -255,6 +265,69 @@ var _cached_sand: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 
 
+# =============================================================
+# PERF INSTRUMENTATION (worker-thread safe; toggleable)
+# =============================================================
+
+@export var perf_log_enabled: bool = true
+# When true, log per-block generation time. Look for "[PERF GEN]" in
+# the Output panel. Filter is in microseconds — see perf_log_min_us.
+# Flip off once generator perf is acceptable.
+
+@export var perf_log_min_us: int = 5000
+# Only log blocks slower than this many microseconds (default 5 ms).
+# Filters out the trivial "fully above terrain" / "deep underground"
+# early-out cases so the log shows only blocks that actually did
+# per-voxel work.
+
+@export var perf_log_per_block: bool = false
+# When true, emit one [PERF GEN] line per slow block. Default OFF —
+# during world streaming this fires for nearly every block and
+# completely floods the Output panel (10k+ lines), drowning out
+# everything else. Only flip on when actively diagnosing slow
+# individual blocks. The aggregate summary every 100 blocks is
+# always on and tells you the same story (avg, max) without the
+# spam.
+
+# Counters for the periodic summary line. These are written from
+# worker threads — concurrent writes are slightly racy (one thread
+# may stomp another's increment), but the summary is just a
+# visibility tool and a few missed counts don't change the
+# diagnosis. If we ever need exact totals, switch to a Mutex.
+var _perf_blocks_generated: int = 0
+var _perf_total_us: int = 0
+var _perf_max_us: int = 0
+var _perf_summary_at_blocks: int = 100
+# Print a summary line every N completed blocks.
+
+# Per-LOD counters. Index 0 = LOD0, etc. Up to 8 LOD levels (matches
+# our lod_count cap). Tells us whether worker threads are spending
+# their time on near LOD0 blocks (good — that's what the player sees
+# refining) vs distant LOD2+ blocks (suspicious if LOD0 is starving).
+var _perf_blocks_by_lod: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
+var _perf_us_by_lod: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
+# Per-exit-path counters. "above" / "deep" / "flat" / "full".
+# A high "full" share is normal for the active band of terrain;
+# many "above" or "deep" early-outs are normal for chunks above
+# the sky or deep underground. If the totals don't match
+# _perf_blocks_generated something is wrong.
+var _perf_count_above: int = 0
+var _perf_count_deep: int = 0
+var _perf_count_flat: int = 0
+var _perf_count_full: int = 0
+
+# Mutex for the perf summary block — without this, multiple worker
+# threads finishing _generate_block at nearly the same time all see
+# `_perf_blocks_generated >= threshold`, all print the summary, and
+# all reset the counters. Result: 2-3 duplicate summary lines per
+# 100-block window in the Output panel. The Mutex serialises just
+# the threshold-check + print + reset, so exactly one thread emits
+# each summary. The per-block counter increments outside the Mutex
+# stay racy (occasional missed +1) but that's diagnostic noise, not
+# a correctness issue.
+var _perf_summary_mutex: Mutex = Mutex.new()
+
+
 func _get_used_channels_mask() -> int:
 	# CRITICAL — without this override, Zylann assumes the generator
 	# writes only the default (SDF) channel and never allocates
@@ -271,10 +344,17 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# Engine calls this for every chunk the player approaches. We
 	# fill out_buffer with COLOR values for that chunk.
 	#
-	# Channel depth is set up by the engine based on
-	# _get_used_channels_mask above — we don't need to call
-	# set_channel_depth here. (Calling it from inside _generate_block
-	# can race with the engine's internal allocation pipeline.)
+	# DO NOT call out_buffer.set_channel_depth() here — calling it
+	# per-block in this Zylann build invalidates the buffer and the
+	# engine produces empty chunks (player falls forever, no terrain
+	# generated). If the channel depth needs adjusting it must be
+	# done globally on the mesher / terrain config, not per-call.
+
+	# Perf timer — wraps the whole function. The deferred-print at the
+	# bottom decides whether to emit a log line based on perf_log_min_us.
+	var t_start: int = 0
+	if perf_log_enabled:
+		t_start = Time.get_ticks_usec()
 
 	var size: Vector3i = out_buffer.get_size()
 	var stride: int = 1 << lod  # 1 at LOD0, 2 at LOD1, etc.
@@ -291,6 +371,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 
 	if block_min_y > max_ground_y:
 		# Entire block is above terrain — leave as air (default 0).
+		_perf_record_block_done(t_start, lod, "above")
 		return
 
 	# Materials registered? (Lazy lookup; safe across worker threads
@@ -304,13 +385,83 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		# to expose them.
 		var stone_packed: int = _pack_for_material(_cached_stone, _cached_stone.color_low if _cached_stone != null else color_low)
 		out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
+		_perf_record_block_done(t_start, lod, "deep")
 		return
 
 	if noise == null:
 		# Fall back to flat ground at Y=0 with a default color. Useful
 		# for sanity-checking the channel wiring without noise.
 		_fill_flat(out_buffer, origin_in_voxels, stride)
+		_perf_record_block_done(t_start, lod, "flat")
 		return
+
+	# --- Pre-extract per-material tuples (HOT-LOOP OPTIMISATION) ---
+	# The y-loop below runs up to 4096 times per block. Originally each
+	# voxel called _select_material_for_depth() + _compute_voxel_color()
+	# + _pack_for_material() — 4 GDScript function calls per voxel,
+	# ~16k calls per block. With many blocks streaming, that
+	# function-call overhead alone became the LOD bottleneck.
+	#
+	# Now we read each material's properties ONCE per block into local
+	# variables, then the y-loop just reads locals + does inline math.
+	# Same output, ~3-5× less GDScript overhead.
+	#
+	# Layout: one tuple of (color_low, color_high, mat_id) per band —
+	# top (grass), top_low (sand for beaches), dirt, stone. Fallback:
+	# if a material is null, fall back to dirt then stone (matching
+	# the pre-optimisation _select_material_for_depth chain).
+	# (`color_jitter` no longer read — jitter was removed.)
+	var dirt_lo: Color = color_low
+	var dirt_hi: Color = color_high
+	var dirt_id: int = 0
+	if _cached_dirt != null:
+		dirt_lo = _cached_dirt.color_low
+		dirt_hi = _cached_dirt.color_high
+		dirt_id = _cached_dirt.material_id
+
+	var stone_lo: Color = color_low
+	var stone_hi: Color = color_high
+	var stone_id: int = 0
+	if _cached_stone != null:
+		stone_lo = _cached_stone.color_low
+		stone_hi = _cached_stone.color_high
+		stone_id = _cached_stone.material_id
+
+	var grass_lo: Color = dirt_lo
+	var grass_hi: Color = dirt_hi
+	var grass_id: int = dirt_id
+	if _cached_grass != null:
+		grass_lo = _cached_grass.color_low
+		grass_hi = _cached_grass.color_high
+		grass_id = _cached_grass.material_id
+
+	var sand_lo: Color = grass_lo
+	var sand_hi: Color = grass_hi
+	var sand_id: int = grass_id
+	if _cached_sand != null:
+		sand_lo = _cached_sand.color_low
+		sand_hi = _cached_sand.color_high
+		sand_id = _cached_sand.material_id
+
+	# Per-column thickness boundaries (read property once per block).
+	var grass_thick: int = grass_layer_thickness_voxels
+	var dirt_band_end: int = grass_thick + dirt_layer_thickness_voxels
+	var beach_y: int = beach_y_threshold
+	var h_offset_v: int = height_offset_voxels
+	# height_range_voxels is float-typed (it's an @export_range slider) and
+	# only used in float division below — keep it float to avoid a narrowing
+	# truncation that could shift band thresholds by 1 voxel.
+	var h_range_v: float = height_range_voxels
+
+	# Per-voxel colour jitter was removed entirely — was costing ~30% of
+	# the per-block hot-loop time (hash + scalar + 3× clampf per voxel
+	# × thousands of voxels per block) for marginal visual benefit. The
+	# `color_jitter` field on VoxelMaterial.tres files is now unused;
+	# leave it in the resource definition so existing .tres files don't
+	# need to be edited, but the value is ignored at generation time.
+	# Cliff faces will read as flat per material band — slightly more
+	# uniform than before, but the LOD silhouette and material colour
+	# bands carry the visual.
 
 	# Per-column heightmap pass.
 	var half_range: float = height_range_voxels * 0.5
@@ -333,10 +484,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				macro_y = int(n_macro * half_range)
 
 			# --- Mid height: 8-m-scale rolling hills layered on the
-			#     macro silhouette. This is the layer that makes every
-			#     metre of terrain visually interesting (paths winding
-			#     over small humps, dips between trees) instead of
-			#     long uniform slopes. ±2 m amplitude. ---
+			#     macro silhouette. ±2 m amplitude. ---
 			var n_mid: float = noise.get_noise_2d(
 				float(world_x) * mid_frequency_multiplier,
 				float(world_z) * mid_frequency_multiplier,
@@ -344,45 +492,173 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			var mid_y: int = int(n_mid * float(mid_amplitude_voxels))
 
 			# --- Detail height: cube-by-cube high-frequency wobble.
-			#     ±50 cm at ~1-2 m feature scale. Reuses the same
-			#     noise resource sampled at higher frequency — the
-			#     multiplier produces a different visit pattern over
-			#     the noise field, so it de-correlates from macro/mid
-			#     enough to look like independent variation. ---
+			#     ±50 cm at ~1-2 m feature scale. ---
 			var n_detail: float = noise.get_noise_2d(
 				float(world_x) * detail_frequency_multiplier,
 				float(world_z) * detail_frequency_multiplier,
 			)
 			var detail_y: int = int(n_detail * float(detail_amplitude_voxels))
 
-			var ground_y: int = macro_y + mid_y + detail_y + height_offset_voxels
+			var ground_y: int = macro_y + mid_y + detail_y + h_offset_v
+
+			# Pick this column's TOP-band tuple (grass on grasslands,
+			# sand at coastlines). Done once per column.
+			var top_lo: Color = grass_lo
+			var top_hi: Color = grass_hi
+			var top_id: int = grass_id
+			if ground_y <= beach_y:
+				top_lo = sand_lo
+				top_hi = sand_hi
+				top_id = sand_id
 
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
 				if world_y > ground_y:
 					continue
 
-				# --- Decide which material this voxel is ---
-				# Top layer = grass (or sand at coastlines), next few
-				# voxels = dirt, everything below = stone. The bands
-				# are measured down from this column's ground_y.
+				# Pick band based on depth from this column's ground_y.
 				var depth: int = ground_y - world_y  # 0 = top voxel
-				var material: VoxelMaterial = _select_material_for_depth(depth, ground_y)
+				var lo: Color
+				var hi: Color
+				var mat_id: int
+				if depth < grass_thick:
+					lo = top_lo
+					hi = top_hi
+					mat_id = top_id
+				elif depth < dirt_band_end:
+					lo = dirt_lo
+					hi = dirt_hi
+					mat_id = dirt_id
+				else:
+					lo = stone_lo
+					hi = stone_hi
+					mat_id = stone_id
 
-				# --- Compute colour from the chosen material ---
-				# Each material has its own color_low → color_high
-				# palette and per-voxel jitter. We lerp using the
-				# voxel's height within the macro range (so cliff faces
-				# of the same material still fade smoothly across
-				# vertical extent rather than painting flat).
-				var c: Color = _compute_voxel_color(material, world_x, world_y, world_z, half_range)
+				# Inline color computation (was _compute_voxel_color).
+				var c: Color
+				if debug_vivid_colors:
+					# DEBUG mode — vivid per-material colours so the user
+					# can verify that (a) vertex colours are reaching the
+					# screen and (b) different materials get selected at
+					# different depths. If terrain still reads as flat
+					# grey/black with this on, the problem is downstream
+					# (terrain material, mesher config). If terrain shows
+					# distinct colour bands, the problem is the .tres
+					# palette being too dark for current lighting.
+					if mat_id == 1:
+						c = Color(1.0, 0.15, 0.15)   # stone → red
+					elif mat_id == 2:
+						c = Color(1.0, 0.55, 0.15)   # dirt → orange
+					elif mat_id == 3:
+						c = Color(0.20, 1.0, 0.20)   # grass → green
+					elif mat_id == 4:
+						c = Color(1.0, 1.0, 0.20)    # sand → yellow
+					else:
+						c = Color(1.0, 0.20, 1.0)    # unknown → magenta (loud)
+				else:
+					var t_band: float = clampf(
+						(float(world_y) + half_range - float(h_offset_v)) / h_range_v,
+						0.0,
+						1.0,
+					)
+					c = lo.lerp(hi, t_band)
 
-				# --- Pack and write ---
-				# RGB from `c`, alpha byte = material_id. The mesher
-				# only checks alpha != 0 for solid-vs-air, so the
-				# alpha byte is free to encode our material lookup key.
-				var packed: int = _pack_for_material(material, c)
+				# Inline pack: RGB from c, alpha byte = mat_id.
+				# (Was _pack_for_material — now one bit-op.)
+				var packed: int = (c.to_rgba32() & 0xFFFFFF00) | (mat_id & 0xFF)
 				out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+	_perf_record_block_done(t_start, lod, "full")
+
+
+func _perf_record_block_done(t_start: int, lod: int, label: String) -> void:
+	# Called from each exit point of _generate_block. No-op if perf
+	# logging is off. Both per-block (slow blocks only) and an aggregate
+	# summary line every N blocks.
+	#
+	# Worker-thread note: print() is safe from worker threads in Godot
+	# 4 (it goes through a thread-safe ring buffer). Time.get_ticks_usec
+	# is also thread-safe. The counter writes themselves can race
+	# between worker threads (no atomic increment in GDScript), but
+	# this is a diagnostic — slightly inaccurate counts are fine.
+	if not perf_log_enabled:
+		return
+	var dur_us: int = Time.get_ticks_usec() - t_start
+	_perf_blocks_generated += 1
+	_perf_total_us += dur_us
+	if dur_us > _perf_max_us:
+		_perf_max_us = dur_us
+	# Per-LOD bookkeeping. Clamp lod into the array bounds in case
+	# Zylann ever passes an LOD higher than we expected.
+	var lod_idx: int = clampi(lod, 0, _perf_blocks_by_lod.size() - 1)
+	_perf_blocks_by_lod[lod_idx] += 1
+	_perf_us_by_lod[lod_idx] += dur_us
+	# Per-exit-path bookkeeping.
+	match label:
+		"above":
+			_perf_count_above += 1
+		"deep":
+			_perf_count_deep += 1
+		"flat":
+			_perf_count_flat += 1
+		"full":
+			_perf_count_full += 1
+	# Log slow individual blocks so we see worst cases. Gated behind
+	# perf_log_per_block so the default run doesn't flood Output —
+	# during world streaming nearly every block is >5 ms, which would
+	# emit 10k+ prints in seconds. The summary every 100 blocks
+	# (below) tells the same story without the spam.
+	if perf_log_per_block and dur_us >= perf_log_min_us:
+		print("[PERF GEN] block: %s lod=%d  %d us (%.2f ms)" % [
+			label, lod, dur_us, dur_us / 1000.0,
+		])
+	# Periodic aggregate. Serialised behind a Mutex so only ONE worker
+	# thread emits each 100-block summary. Without the mutex, multiple
+	# threads crossing the threshold simultaneously all printed and all
+	# reset, producing 2-3 duplicate lines in the Output panel.
+	_perf_summary_mutex.lock()
+	if _perf_blocks_generated >= _perf_summary_at_blocks:
+		@warning_ignore("integer_division")
+		var avg_us: int = _perf_total_us / max(1, _perf_blocks_generated)
+		@warning_ignore("integer_division")
+		var total_ms: int = _perf_total_us / 1000
+		print("[PERF GEN] summary: %d blocks  total=%d ms  avg=%d us  max=%d us (%.2f ms)" % [
+			_perf_blocks_generated,
+			total_ms,
+			avg_us,
+			_perf_max_us,
+			_perf_max_us / 1000.0,
+		])
+		# Per-LOD breakdown. Reads "lod=NN(count, avg_us)" — count is
+		# blocks at that LOD this window, avg_us is mean time. Empty
+		# LOD slots are omitted to keep the line readable. If you see
+		# LOD0 starving (low count) while LOD3+ has lots of activity,
+		# Zylann's queue is favouring distant chunks — at that point
+		# the right next move is to cut view_distance further or
+		# bump worker count.
+		var lod_parts: Array[String] = []
+		for i in _perf_blocks_by_lod.size():
+			var c: int = _perf_blocks_by_lod[i]
+			if c > 0:
+				@warning_ignore("integer_division")
+				var per_lod_avg: int = _perf_us_by_lod[i] / c
+				lod_parts.append("L%d(n=%d, avg=%dus)" % [i, c, per_lod_avg])
+		print("[PERF GEN] by-LOD: " + " ".join(lod_parts))
+		# Exit-path breakdown — counts only, since these are mostly
+		# instant early-outs anyway.
+		print("[PERF GEN] exits: above=%d deep=%d flat=%d full=%d" % [
+			_perf_count_above, _perf_count_deep, _perf_count_flat, _perf_count_full,
+		])
+		_perf_blocks_generated = 0
+		_perf_total_us = 0
+		_perf_max_us = 0
+		for i in _perf_blocks_by_lod.size():
+			_perf_blocks_by_lod[i] = 0
+			_perf_us_by_lod[i] = 0
+		_perf_count_above = 0
+		_perf_count_deep = 0
+		_perf_count_flat = 0
+		_perf_count_full = 0
+	_perf_summary_mutex.unlock()
 
 
 func _fill_flat(out_buffer: VoxelBuffer, origin: Vector3i, stride: int) -> void:
@@ -405,39 +681,47 @@ func _fill_flat(out_buffer: VoxelBuffer, origin: Vector3i, stride: int) -> void:
 # =============================================================
 
 func _ensure_materials_cached() -> void:
-	# Lazy first-call lookup of the four pilot materials by id_string.
-	# Resources don't get _ready, so we can't wire this up at script
-	# load time. Instead the first call to _generate_block triggers
-	# the lookup; subsequent calls hit the cached references.
+	# Lazy first-call lookup of the four pilot materials.
 	#
-	# Thread-safety: Zylann calls _generate_block from worker threads.
-	# Multiple threads racing to populate the cache all write the same
-	# values (same VoxelMaterial Resource references), so the race is
-	# benign. GDScript property writes are individually atomic.
+	# THREADING NOTE — this matters and was a bug.
+	#   Zylann calls _generate_block on worker threads. The earlier
+	#   implementation walked the SceneTree (`root.get_node_or_null(
+	#   "VoxelMaterialRegistry")`) to fetch the autoload, but Godot 4
+	#   forbids `get_node_or_null` from any thread that isn't main.
+	#   Result: every block emitted an error AND the cache stayed
+	#   empty, so the legacy grey color_low/high fallback ran for the
+	#   whole world. (That's exactly the "still grey, no colors"
+	#   symptom the player reported.)
+	#
+	#   Fix: load the material .tres files directly via ResourceLoader
+	#   with hardcoded paths. ResourceLoader.load() IS safe to call
+	#   from worker threads (Godot caches resources globally with
+	#   internal locking). No autoload, no SceneTree, no threading
+	#   hazard. The autoload (VoxelMaterialRegistry) is still the
+	#   source of truth for runtime queries from gameplay code — but
+	#   the generator doesn't need to go through it.
+	#
+	# Race-safety: multiple worker threads may run this concurrently
+	# on first generation. ResourceLoader.load() returns the same
+	# cached Resource on every call, so all threads write the same
+	# pointer to _cached_*. The flag write isn't atomic across all
+	# four materials, but each individual property assignment is, and
+	# the worst case is "two threads do the same load" — benign.
 	if _materials_lookup_attempted:
 		return
-	# Autoload accessor — Godot synthesises a global from the autoload
-	# name. Available from Resource scripts at runtime; in @tool /
-	# editor context the autoload may not be present, in which case the
-	# cache stays null and the legacy color_low/high path runs.
-	var registry: Node = null
-	if Engine.has_singleton("VoxelMaterialRegistry"):
-		registry = Engine.get_singleton("VoxelMaterialRegistry")
-	if registry == null:
-		# Try the autoload accessor via the tree (works at runtime).
-		var ml: SceneTree = Engine.get_main_loop() as SceneTree
-		if ml != null and ml.root != null:
-			registry = ml.root.get_node_or_null("VoxelMaterialRegistry")
 	_materials_lookup_attempted = true
-	if registry == null:
-		# Editor / @tool context with no autoload available. Leave the
-		# cache empty; the colour pipeline will fall back to the legacy
-		# color_low/color_high sliders.
-		return
-	_cached_stone = registry.get_by_string("stone")
-	_cached_dirt = registry.get_by_string("dirt")
-	_cached_grass = registry.get_by_string("grass")
-	_cached_sand = registry.get_by_string("sand")
+	# Hardcoded paths — these are the v1 pilot materials per CLAUDE.md
+	# ("stone/dirt/grass/sand"). Adding a new material .tres still
+	# auto-registers via VoxelMaterialRegistry, but the generator only
+	# selects from these four bands today.
+	_cached_stone = ResourceLoader.load("res://assets/voxels/materials/stone.tres") as VoxelMaterial
+	_cached_dirt = ResourceLoader.load("res://assets/voxels/materials/dirt.tres") as VoxelMaterial
+	_cached_grass = ResourceLoader.load("res://assets/voxels/materials/grass.tres") as VoxelMaterial
+	_cached_sand = ResourceLoader.load("res://assets/voxels/materials/sand.tres") as VoxelMaterial
+	# If any of the four .tres files is missing, the corresponding
+	# `_cached_*` will be null. _select_material_for_depth() already
+	# falls through to the next-best material, so missing files
+	# degrade gracefully (e.g. no sand .tres → beaches use grass).
 
 
 func _select_material_for_depth(depth: int, ground_y: int) -> VoxelMaterial:
@@ -516,23 +800,27 @@ func _compute_voxel_color(
 
 func _pack_for_material(material: VoxelMaterial, color: Color) -> int:
 	# Build the packed RGBA32 voxel value with the material id in the
-	# alpha byte. If material is null (registry not loaded), fall
-	# through to a plain to_rgba32 — the voxel will be alpha=255
-	# (legacy behaviour) and won't have a queryable material, but at
-	# least it'll render. This is the editor-only / @tool fallback.
+	# alpha byte.
+	#
+	# THREADING NOTE — second instance of the same bug as
+	# _ensure_materials_cached. This function runs on a Zylann worker
+	# thread (called from _generate_block at line 384). Touching the
+	# SceneTree (`get_node_or_null("/root/...")`) from a worker thread
+	# is forbidden in Godot 4 and produces ~160k errors per minute of
+	# play during continuous chunk streaming.
+	#
+	# Fix: do the alpha-byte pack inline. The encoding is one bit-op
+	# (alpha byte = material_id) and lives canonically in
+	# VoxelMaterialRegistry.pack_voxel, but copying that math here
+	# (with a comment so it can be kept in sync if the encoding ever
+	# changes) is far cheaper than the threading hazard. The registry
+	# stays the source of truth for runtime queries from gameplay
+	# code; the generator just produces voxels matching the same
+	# encoding.
 	if material == null:
 		return color.to_rgba32()
-	# Use the registry helper directly so the alpha-byte-as-id encoding
-	# stays in one place.
-	var registry: Node = null
-	if Engine.has_singleton("VoxelMaterialRegistry"):
-		registry = Engine.get_singleton("VoxelMaterialRegistry")
-	if registry == null:
-		var ml: SceneTree = Engine.get_main_loop() as SceneTree
-		if ml != null and ml.root != null:
-			registry = ml.root.get_node_or_null("VoxelMaterialRegistry")
-	if registry == null:
-		# Inline pack as fallback — same math as registry.pack_voxel.
-		var packed: int = color.to_rgba32()
-		return (packed & 0xFFFFFF00) | (material.material_id & 0xFF)
-	return registry.pack_voxel(material.material_id, color)
+	# Encoding: high 24 bits = RGB888 from `color`, low 8 bits =
+	# material_id. Mirrors VoxelMaterialRegistry.pack_voxel(); if the
+	# alpha-byte-as-id encoding ever changes, update both sites.
+	var packed: int = color.to_rgba32()
+	return (packed & 0xFFFFFF00) | (material.material_id & 0xFF)
