@@ -498,28 +498,40 @@ func _apply_edit(cmd: Dictionary) -> void:
 		"box":
 			var voxel_min: Vector3 = _terrain.to_local(cmd["min"])
 			var voxel_max: Vector3 = _terrain.to_local(cmd["max"])
+			var t_b_carve_start: int = Time.get_ticks_usec()
 			tool.do_box(voxel_min, voxel_max)
+			t_phase_carve = Time.get_ticks_usec() - t_b_carve_start
+			var t_b_mark_start: int = Time.get_ticks_usec()
 			_mark_chunks_in_aabb(cmd["min"], cmd["max"])
+			t_phase_mark = Time.get_ticks_usec() - t_b_mark_start
 			var center: Vector3 = (cmd["min"] + cmd["max"]) * 0.5
+			var t_b_emit_start: int = Time.get_ticks_usec()
 			edit_applied.emit(
 				center,
 				_world_to_chunk(center),
 				AABB(cmd["min"], cmd["max"] - cmd["min"]),
 			)
+			t_phase_emit = Time.get_ticks_usec() - t_b_emit_start
 
 		"box_voxels":
 			# Integer voxel-grid coords — pass directly as Vector3 so
 			# do_box sees exact values with no to_local() rounding.
+			var t_bv_carve_start: int = Time.get_ticks_usec()
 			tool.do_box(Vector3(cmd["min"]), Vector3(cmd["max"]))
+			t_phase_carve = Time.get_ticks_usec() - t_bv_carve_start
 			var bv_world_min: Vector3 = Vector3(cmd["min"]) / VOXELS_PER_METER
 			var bv_world_max: Vector3 = (Vector3(cmd["max"]) + Vector3.ONE) / VOXELS_PER_METER
+			var t_bv_mark_start: int = Time.get_ticks_usec()
 			_mark_chunks_in_aabb(bv_world_min, bv_world_max)
+			t_phase_mark = Time.get_ticks_usec() - t_bv_mark_start
 			var bv_center: Vector3 = (bv_world_min + bv_world_max) * 0.5
+			var t_bv_emit_start: int = Time.get_ticks_usec()
 			edit_applied.emit(
 				bv_center,
 				_world_to_chunk(bv_center),
 				AABB(bv_world_min, bv_world_max - bv_world_min),
 			)
+			t_phase_emit = Time.get_ticks_usec() - t_bv_emit_start
 
 		"set":
 			# Single-voxel write. Cubes meshing IS discrete; a 0.5 m

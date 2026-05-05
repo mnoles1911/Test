@@ -42,6 +42,30 @@ func _ready() -> void:
 	if "format" in terrain:
 		_configure_voxel_format(terrain)
 
+	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
+	# can hunt for a "max mesh blocks applied per frame" or similar
+	# setting. The earlier filtered dump only showed depth/format/
+	# channel/block matches; the lag investigation now needs a wider
+	# net (anything that controls streaming pacing, threading, view
+	# distance, queue caps, etc.).
+	print("[World3D] Full VoxelLodTerrain property dump:")
+	for prop in terrain.get_property_list():
+		var p_name: String = prop.get("name", "")
+		if p_name == "" or p_name.begins_with("script") or p_name == "resource_local_to_scene":
+			continue
+		if p_name == "resource_path" or p_name == "resource_name":
+			continue
+		# Skip uninteresting Node-level properties (transform, visibility,
+		# editor scaffolding) — those don't have streaming-perf relevance.
+		if p_name in ["transform", "global_transform", "visible",
+				"position", "rotation", "scale", "rotation_order",
+				"top_level", "metadata", "owner", "name",
+				"unique_name_in_owner", "process_priority",
+				"editor_description", "process_mode", "_import_path",
+				"multiplayer", "physics_interpolation_mode"]:
+			continue
+		print("[World3D]   terrain.%s = %s" % [p_name, terrain.get(p_name)])
+
 	if "mesher" in terrain:
 		var mesher: Resource = terrain.mesher
 		if mesher != null:
