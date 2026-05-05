@@ -344,6 +344,13 @@ func _get_used_channels_mask() -> int:
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
 	# Engine calls this for every chunk the player approaches. We
 	# fill out_buffer with COLOR values for that chunk.
+	#
+	# DO NOT call out_buffer.set_channel_depth() here — confirmed
+	# 2026-05-05: even calling on a fresh buffer before any writes
+	# produces empty chunks (terrain disappears, player falls
+	# forever). The depth must be set globally on the terrain or
+	# via a different mechanism entirely (e.g. switching the mesher
+	# to COLOR_PALETTE mode so 1 byte per voxel suffices).
 
 	# Perf timer — wraps the whole function. The deferred-print at the
 	# bottom decides whether to emit a log line based on perf_log_min_us.
@@ -351,27 +358,18 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if perf_log_enabled:
 		t_start = Time.get_ticks_usec()
 
-	# Force CHANNEL_COLOR to 32-bit depth so the full RGBA+mat_id
-	# packed value survives storage. Default Zylann depth for
-	# CHANNEL_COLOR is 8-bit (one byte per voxel), which truncates
-	# our 32-bit packed values down to just the R byte — losing G,
-	# B, and the mat_id alpha-byte the mesher needs to detect solid
-	# voxels and the codebase needs to identify materials.
-	# Done at the START of every block, before any writes. Safe
-	# in this Zylann build (the earlier "empty chunks" failure was
-	# from mid-write or post-write changes; pre-write is fine).
-	# DIAGNOSTIC: log the depth before/after on the first block so we
-	# can confirm the call took effect. Throttled by a flag below.
+	# DIAGNOSTIC: log the channel depth on the first block so we can
+	# confirm what the engine has allocated. Read-only — does NOT mutate.
 	if not _depth_logged:
 		_depth_logged = true
-		var dep_before: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_COLOR)
-		out_buffer.set_channel_depth(VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
-		var dep_after: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_COLOR)
-		print("[Generator] CHANNEL_COLOR depth: before=%d after=%d (DEPTH_32_BIT=%d)" % [
-			dep_before, dep_after, VoxelBuffer.DEPTH_32_BIT,
+		var dep_now: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_COLOR)
+		print("[Generator] CHANNEL_COLOR depth: %d (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
+			dep_now,
+			VoxelBuffer.DEPTH_8_BIT,
+			VoxelBuffer.DEPTH_16_BIT,
+			VoxelBuffer.DEPTH_32_BIT,
+			VoxelBuffer.DEPTH_64_BIT,
 		])
-	else:
-		out_buffer.set_channel_depth(VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
 
 	var size: Vector3i = out_buffer.get_size()
 	var stride: int = 1 << lod  # 1 at LOD0, 2 at LOD1, etc.
