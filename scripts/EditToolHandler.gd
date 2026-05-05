@@ -45,12 +45,11 @@ extends Node3D
 # frame the moment mining_time hit zero.
 
 @export var swing_carve_voxels_per_side: int = 3
-# Manual tools (pickaxe / shovel / axe) carve a CUBE this many voxels
-# on a side per swing. 3 → 3×3×3 = 27 voxels per swing — each tool
-# strike opens up a chunky bite that's clearly visible from third-
-# person distance and reads as a "good hit" without feeling like a
-# bucket-scale carve. Tunable per tool tier later (iron pickaxe = 3,
-# dwarven pickaxe = 4, drill = 5+).
+# Default carve volume on world load. Manual tools (pickaxe / shovel /
+# axe) carve a CUBE this many voxels on a side per swing — runtime
+# value lives in `carve_volume_size` (which the player adjusts via
+# scroll wheel between 1 and `swing_carve_voxels_per_side`). 3×3×3
+# = 27 voxels feels like a "good hit" at third-person distance.
 #
 # Implementation note: we used to use a sphere radius for this, but
 # spheres carve roughly half their voxel volume due to the spherical
@@ -145,6 +144,21 @@ var _current_action: String = ""
 # "MINING" / "SMOOTHING" indicator.
 var smooth_mode: bool = false
 
+# Runtime carve volume — 1, 2, or 3 voxels per side. Player cycles
+# this with the mouse scroll wheel while in mining mode (smooth_mode
+# == false) and a manual tool is equipped. HUD reads this to show
+# the "Volume: 1×1×1" line under the mode label.
+var carve_volume_size: int = 3
+
+# Aim-outline visualisation — a translucent emissive box drawn at
+# the voxel volume the player is currently aiming at. Only visible
+# in mining mode with a manual tool equipped, so the player can see
+# what their next swing will remove. Built in _ready, repositioned
+# every physics frame from the camera raycast.
+var _aim_outline: MeshInstance3D
+var _aim_outline_mesh: BoxMesh
+var _aim_outline_material: StandardMaterial3D
+
 var _held_log_counter: int = 0
 # Throttle counter for held-swing diagnostic prints — only print
 # every Nth frame so we can see where _tick_held_swing bails
@@ -190,8 +204,150 @@ func _ready() -> void:
 	if _camera_rig == null:
 		push_error("[EditToolHandler] CameraTarget/SpringArm3D not found under Player3D")
 
+	# Initial carve volume from the @export default. Player can change
+	# at runtime via scroll wheel; clamp to [1, swing_carve_voxels_per_side].
+	carve_volume_size = clampi(swing_carve_voxels_per_side, 1, swing_carve_voxels_per_side)
+
+	# Build the aim-outline mesh. top_level = true so global_position
+	# is world-space, not relative to the player's transform — the
+	# outline is anchored to where the player is aiming, not to
+	# Roland himself.
+	_build_aim_outline()
+
+
+func _build_aim_outline() -> void:
+	# Translucent emissive box rendered at the voxel volume currently
+	# under the aim ray. Bright cyan + emission so it pops against
+	# any terrain colour (grass green, dirt brown, stone grey, sand
+	# tan all have low cyan content). Drawn double-sided so the
+	# player sees the box even from inside (e.g. if they're looking
+	# at the voxel they're standing on).
+	_aim_outline_material = StandardMaterial3D.new()
+	_aim_outline_material.albedo_color = Color(0.25, 0.95, 1.0, 0.30)
+	_aim_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_aim_outline_material.emission_enabled = true
+	_aim_outline_material.emission = Color(0.30, 1.0, 1.0, 1.0)
+	_aim_outline_material.emission_energy_multiplier = 1.6
+	_aim_outline_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Avoid z-fighting with terrain: render slightly in front via the
+	# render priority + a tiny disable_depth_write so the outline
+	# blends rather than punches through.
+	_aim_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_aim_outline_material.disable_receive_shadows = true
+
+	_aim_outline_mesh = BoxMesh.new()
+	# Default size — overwritten each frame in _update_aim_outline().
+	_aim_outline_mesh.size = Vector3.ONE * 0.5
+
+	_aim_outline = MeshInstance3D.new()
+	_aim_outline.mesh = _aim_outline_mesh
+	_aim_outline.material_override = _aim_outline_material
+	_aim_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_aim_outline.top_level = true
+	_aim_outline.visible = false
+	add_child(_aim_outline)
+
+
+func _update_aim_outline() -> void:
+	# Show the outline only in mining mode with a manual tool, when
+	# the player is actually aiming at a voxel. All other states hide.
+	if _aim_outline == null:
+		return
+	if smooth_mode:
+		_aim_outline.visible = false
+		return
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_aim_outline.visible = false
+		return
+	if get_node_or_null("/root/InventoryManager") == null:
+		_aim_outline.visible = false
+		return
+	var equipped: String = InventoryManager.get_equipped("weapon")
+	if not (equipped in TOOL_SUB_SKILLS):
+		_aim_outline.visible = false
+		return
+	if _camera_rig == null:
+		_aim_outline.visible = false
+		return
+	var hit: Dictionary = _camera_rig.get_camera_forward_hit(max_reach_meters)
+	if hit.is_empty():
+		_aim_outline.visible = false
+		return
+	# Verify the hit is within reach of the PLAYER body, not just the
+	# camera arm — same gate as _tick_held_action so the outline
+	# only shows where the swing would actually land.
+	var hit_pos: Vector3 = hit.get("position", Vector3.ZERO)
+	var hit_normal: Vector3 = hit.get("normal", Vector3.UP)
+	var player := get_parent() as CharacterBody3D
+	if player != null and player.global_position.distance_to(hit_pos) > max_reach_meters:
+		_aim_outline.visible = false
+		return
+
+	# Mirror the carve box computation from _carve so the outline
+	# exactly matches what an LMB press would remove.
+	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
+	const VOXELS_PER_METER: float = 6.0
+	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
+	var centre_voxel: Vector3i = Vector3i(
+		floori(voxel_world_pos.x * VOXELS_PER_METER),
+		floori(voxel_world_pos.y * VOXELS_PER_METER),
+		floori(voxel_world_pos.z * VOXELS_PER_METER),
+	)
+	@warning_ignore("integer_division")
+	var half: int = carve_volume_size / 2
+	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
+	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
+	# World-space size = N voxels × VOXEL_SIZE_M. World-space centre
+	# = midpoint of the inclusive voxel range. Add a tiny scale fudge
+	# (×1.02) so the outline sits just outside the cube faces and
+	# z-fights less with the terrain mesh.
+	var size_m: float = float(carve_volume_size) * VOXEL_SIZE_M
+	_aim_outline_mesh.size = Vector3.ONE * size_m * 1.02
+	var centre_world: Vector3 = (
+		(Vector3(box_vmin) + Vector3(box_vmax) + Vector3.ONE) * 0.5 / VOXELS_PER_METER
+	)
+	_aim_outline.global_position = centre_world
+	_aim_outline.visible = true
+
+
+func _input(event: InputEvent) -> void:
+	# Scroll wheel cycles the carve volume size when the player is in
+	# mining mode with a manual tool equipped. Outside of those
+	# conditions we ignore the event so the camera's zoom keeps
+	# scroll. accept_event() prevents the camera from also seeing
+	# this scroll.
+	if smooth_mode:
+		return
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mb: InputEventMouseButton = event as InputEventMouseButton
+	if not mb.pressed:
+		return
+	# Only cycle when a manual tool is equipped — otherwise scroll
+	# stays as zoom for buckets / throwables / unequipped.
+	if get_node_or_null("/root/InventoryManager") == null:
+		return
+	var equipped: String = InventoryManager.get_equipped("weapon")
+	if not (equipped in TOOL_SUB_SKILLS):
+		return
+	var max_size: int = max(1, swing_carve_voxels_per_side)
+	if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+		carve_volume_size = clampi(carve_volume_size + 1, 1, max_size)
+		get_viewport().set_input_as_handled()
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		carve_volume_size = clampi(carve_volume_size - 1, 1, max_size)
+		get_viewport().set_input_as_handled()
+
 
 func _process(delta: float) -> void:
+	# Aim-outline visibility + position update. Runs every frame
+	# (cheap — one raycast already done elsewhere, plus a
+	# global_position write). The outline is hidden in smoothing
+	# mode and when no manual tool is equipped.
+	_update_aim_outline()
+
 	# Tick the post-carve cooldown.
 	if _swing_cooldown_remaining > 0.0:
 		_swing_cooldown_remaining -= delta
@@ -581,8 +737,10 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 	# Integer division is intentional — even N values floor toward the
 	# centre voxel (N=4 → half=2 → 5-voxel box, slightly larger than
 	# requested; only odd N gives exact symmetric carves).
+	# Uses the runtime `carve_volume_size` (1, 2, or 3) which the
+	# player cycles via mouse wheel in mining mode.
 	@warning_ignore("integer_division")
-	var half: int = swing_carve_voxels_per_side / 2
+	var half: int = carve_volume_size / 2
 	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
 	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
 	var accepted: bool = VoxelEditManager.queue_edit_box_voxels(
