@@ -197,15 +197,69 @@ func is_position_in_water(world_pos: Vector3) -> bool:
 	# True if the world-space point is inside any water cell or any
 	# source region. Used by Player3D to drive swim physics and by
 	# UnderwaterFilter for the submersion tint.
+	#
+	# CRITICAL: a source-region AABB by itself is NOT enough. Old code
+	# returned true any time the query point was inside the ocean's
+	# 20×20 km horizontal AABB and below sea level — which meant any
+	# tunnel the player carved below sea level (even on a mountaintop)
+	# read as flooded. The fix is a per-call check that there's a
+	# clear vertical column of air-or-water from the query voxel up
+	# to the source region's surface_y. Player-carved tunnels have
+	# solid terrain above them (the rest of the hill), which blocks
+	# the path → not water. Real ocean cells have nothing but air
+	# above → water. Same for natural underground caverns whose
+	# ceiling is open via the source AABB's vertical extent.
 	var voxel_pos := _world_to_voxel(world_pos)
 	if _cells.has(voxel_pos):
 		# Cell exists in active dictionary.
 		var packed: int = _cells[voxel_pos]
 		return (packed & _LEVEL_MASK) > 0
 	for region in _source_regions:
-		if (region["aabb"] as AABB).has_point(world_pos):
+		var aabb: AABB = region["aabb"] as AABB
+		if not aabb.has_point(world_pos):
+			continue
+		var surface_y: float = aabb.position.y + aabb.size.y
+		if _has_clear_vertical_path_to_surface(voxel_pos, surface_y):
 			return true
 	return false
+
+
+func _has_clear_vertical_path_to_surface(start_voxel: Vector3i, surface_y_world: float) -> bool:
+	# Walk upward from `start_voxel` to the source region's surface_y.
+	# Returns true if every voxel above start_voxel up to surface is air.
+	# Solid terrain blocks the claim — that's how we tell a real ocean
+	# cell (clear column above) from a player-carved tunnel below sea
+	# level (terrain above blocks the claim).
+	#
+	# Cost: O(surface_y - start_y) tool.get_voxel calls per query. For a
+	# Y=10 ocean and a player at Y=-7, that's ~17 voxels worst-case at
+	# 6 vox/m → ~17 µs per call. Player3D queries this every physics
+	# frame for swim state — ~1 ms/sec overhead, acceptable.
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return true  # Defensive: terrain not yet bound, fall back to AABB-only.
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return true
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return true
+	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	# Surface voxel = floor of (surface_y * VPM) - 1, since the surface
+	# is the TOP face of the highest water voxel and we want to walk up
+	# through air to reach it.
+	var surface_voxel_y: int = int(floor(surface_y_world * VOXELS_PER_METER)) - 1
+	if surface_voxel_y < start_voxel.y:
+		# Query is at or above the surface — trivially "clear" (we're at
+		# the surface itself or above).
+		return true
+	var y: int = start_voxel.y + 1
+	while y <= surface_voxel_y:
+		var packed: int = tool.get_voxel(Vector3i(start_voxel.x, y, start_voxel.z))
+		# Solid voxel detected. Material id lives in bits 24-31.
+		if ((packed >> 24) & 0xFF) != 0:
+			return false
+		y += 1
+	return true
 
 
 func get_water_level_at(world_pos: Vector3) -> int:

@@ -43,7 +43,7 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 11
+const WORLD_GENERATOR_VERSION: int = 12
 # Bump this constant whenever the procedural baseline produced by
 # the active generator (currently CubicHeightmapGenerator) changes
 # shape OR encoding — e.g. swap to a new heightmap, change cave
@@ -57,6 +57,25 @@ const WORLD_GENERATOR_VERSION: int = 11
 #         Alpha byte now encodes the VoxelMaterialRegistry material_id
 #         (1=stone, 2=dirt, 3=grass, 4=sand, …). Surface terrain looks
 #         visibly different (grass-on-top, dirt layer, stone deep).
+#   v12 → World-floor bedrock layer at WORLD_FLOOR_VOXEL_Y (= -50 m).
+#         Generator writes mat_id=6 bedrock at that exact Y; voxels
+#         below are air (the world has a finite bottom). Edits below
+#         the floor are rejected at this manager.
+
+
+# ============================================================
+# World floor (bedrock layer)
+# ============================================================
+
+const WORLD_FLOOR_VOXEL_Y: int = -300
+# Y coordinate (in voxel units, 6 vox/m) of the bedrock layer. Edits
+# whose AABB extends to or below this Y are rejected — bedrock is
+# unbreakable. Mirror of the same constant in
+# `CubicHeightmapGenerator.WORLD_FLOOR_VOXEL_Y`. Keep them in sync.
+
+const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) / 6.0
+# Same value in world-space metres (6 vox/m). Used by world-coord
+# AABB checks below.
 #
 # GameState.save_game() stamps this version into every save. On
 # load, mismatch is treated as a HARD ERROR — the procedural
@@ -223,6 +242,12 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 		if perf_log_enabled:
 			print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
 		return false
+	# Bedrock floor: reject if the sphere extends to or below the world
+	# floor. The bedrock layer is unbreakable; an explosive thrown at
+	# the bedrock just doesn't carve. The voxel layer immediately above
+	# the floor is normal stone and IS mineable.
+	if (world_pos.y - radius) <= WORLD_FLOOR_WORLD_Y:
+		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping sphere edit")
 		return false
@@ -254,6 +279,8 @@ func queue_edit_box(min_pos: Vector3, max_pos: Vector3, voxel_value: int) -> boo
 	var center: Vector3 = (min_pos + max_pos) * 0.5
 	if not _check_edit_allowed(center):
 		return false
+	if min_pos.y <= WORLD_FLOOR_WORLD_Y:
+		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping box edit")
 		return false
@@ -280,6 +307,10 @@ func queue_edit_box_voxels(voxel_min: Vector3i, voxel_max: Vector3i, voxel_value
 	var world_center: Vector3 = (Vector3(voxel_min) + Vector3(voxel_max) + Vector3.ONE) * 0.5 / VOXELS_PER_METER
 	if not _check_edit_allowed(world_center):
 		return false
+	# Bedrock floor: reject if any of the box's voxel-grid Y range is
+	# at-or-below the floor row.
+	if voxel_min.y <= WORLD_FLOOR_VOXEL_Y:
+		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping box_voxels edit")
 		return false
@@ -298,6 +329,8 @@ func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
 	# for any fine-grained edit that touches exactly one voxel.
 
 	if not _check_edit_allowed(world_pos):
+		return false
+	if world_pos.y <= WORLD_FLOOR_WORLD_Y:
 		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping set-voxel edit")
@@ -603,6 +636,11 @@ func _apply_edit(cmd: Dictionary) -> void:
 				# fault, not the player's).
 				if bulk_overlaps_zone and registry != null \
 						and registry.is_point_inside_no_edit_zone(w_pos):
+					continue
+				# Bedrock floor: silently drop any writes at or below the
+				# floor. Falling clusters / re-deposits that would land
+				# on bedrock just don't write — the bedrock layer wins.
+				if w_pos.y <= WORLD_FLOOR_WORLD_Y:
 					continue
 				tool.value = int(w["value"])
 				var v_pos_f: Vector3 = _terrain.to_local(w_pos)

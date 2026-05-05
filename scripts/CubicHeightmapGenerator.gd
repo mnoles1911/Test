@@ -262,8 +262,30 @@ var _cached_stone: VoxelMaterial = null
 var _cached_dirt: VoxelMaterial = null
 var _cached_grass: VoxelMaterial = null
 var _cached_sand: VoxelMaterial = null
+var _cached_bedrock: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 var _depth_logged: bool = false
+
+
+# =============================================================
+# WORLD FLOOR — bedrock layer at the bottom of the world
+# =============================================================
+
+## Y coordinate (in voxel units, 6 vox/m) of the bedrock floor. The
+## generator writes one solid layer of bedrock material at this Y.
+## VoxelEditManager rejects any player edit that would touch or
+## go below this Y, so the bedrock is unbreakable.
+##
+## Default -300 voxels = -50 m. With min natural terrain bottom at
+## ~-7 m (height_offset_voxels=60, half_range=100, so min_ground_y =
+## -100 + 60 = -40 vox = -6.67 m), the player has ~43 m of underground
+## exploration before hitting bedrock. Below the bedrock layer is
+## empty space (no voxels), so digging straight down stops cleanly.
+##
+## CRITICAL: keep this in sync with `VoxelEditManager.WORLD_FLOOR_VOXEL_Y`
+## — they must be the same value or the player will hit invisible
+## edit-rejection above the visible bedrock layer (or vice versa).
+const WORLD_FLOOR_VOXEL_Y: int = -300
 
 
 # =============================================================
@@ -397,12 +419,40 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# VoxelMaterial references.)
 	_ensure_materials_cached()
 
+	# Below-the-world floor: the entire block is below the bedrock layer.
+	# Leave as default (air). The player can never dig down here because
+	# bedrock blocks them above.
+	if block_max_y < WORLD_FLOOR_VOXEL_Y:
+		_perf_record_block_done(t_start, lod, "below_floor")
+		return
+
 	if block_max_y < min_ground_y:
-		# Entire block is buried deep below terrain — fill solid with
-		# stone. Player only sees these voxels if they dig deep enough
-		# to expose them.
+		# Entire block is buried deep below terrain. Three sub-cases
+		# based on where the block sits relative to the world floor:
+		#   - fully above floor → all stone (existing fast path)
+		#   - straddles the floor → bedrock at the floor row, stone above,
+		#     air below (per-voxel write)
+		#   - fully below floor → already returned above
 		var stone_packed: int = _pack_for_material(_cached_stone, _cached_stone.color_low if _cached_stone != null else color_low)
-		out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
+		if block_min_y > WORLD_FLOOR_VOXEL_Y:
+			out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
+		else:
+			# Straddles the floor — per-voxel fill.
+			var bedrock_packed: int = stone_packed
+			if _cached_bedrock != null:
+				bedrock_packed = _pack_for_material(_cached_bedrock, _cached_bedrock.color_high)
+			for y_s in size.y:
+				var world_y_s: int = origin_in_voxels.y + y_s * stride
+				var fill_packed: int = 0
+				if world_y_s == WORLD_FLOOR_VOXEL_Y:
+					fill_packed = bedrock_packed
+				elif world_y_s > WORLD_FLOOR_VOXEL_Y:
+					fill_packed = stone_packed
+				else:
+					continue  # air below floor
+				for x_s in size.x:
+					for z_s in size.z:
+						out_buffer.set_voxel(fill_packed, x_s, y_s, z_s, VoxelBuffer.CHANNEL_COLOR)
 		_perf_record_block_done(t_start, lod, "deep")
 		return
 
@@ -460,6 +510,18 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		sand_lo = _cached_sand.color_low
 		sand_hi = _cached_sand.color_high
 		sand_id = _cached_sand.material_id
+
+	# Bedrock is written at exactly world_y == WORLD_FLOOR_VOXEL_Y.
+	# Pre-pack the bedrock voxel value once per block so the floor row
+	# is a single bit-op + set_voxel call, not a full pack each time.
+	var bedrock_packed_v: int = 0
+	if _cached_bedrock != null:
+		var br_c: Color = _cached_bedrock.color_high
+		var br_r: int = clampi(int(round(br_c.r * 255.0)), 0, 255)
+		var br_g: int = clampi(int(round(br_c.g * 255.0)), 0, 255)
+		var br_b: int = clampi(int(round(br_c.b * 255.0)), 0, 255)
+		bedrock_packed_v = br_r | (br_g << 8) | (br_b << 16) \
+			| ((_cached_bedrock.material_id & 0xFF) << 24)
 
 	# Per-column thickness boundaries (read property once per block).
 	var grass_thick: int = grass_layer_thickness_voxels
@@ -540,6 +602,14 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
 				if world_y > ground_y:
+					continue
+				# World floor enforcement: anything below the bedrock
+				# layer is air (no voxels). The bedrock row itself
+				# writes a special unmineable voxel.
+				if world_y < WORLD_FLOOR_VOXEL_Y:
+					continue
+				if world_y == WORLD_FLOOR_VOXEL_Y and bedrock_packed_v != 0:
+					out_buffer.set_voxel(bedrock_packed_v, x, y, z, VoxelBuffer.CHANNEL_COLOR)
 					continue
 
 				# Pick band based on depth from this column's ground_y.
@@ -764,6 +834,7 @@ func _ensure_materials_cached() -> void:
 	_cached_dirt = ResourceLoader.load("res://assets/voxels/materials/dirt.tres") as VoxelMaterial
 	_cached_grass = ResourceLoader.load("res://assets/voxels/materials/grass.tres") as VoxelMaterial
 	_cached_sand = ResourceLoader.load("res://assets/voxels/materials/sand.tres") as VoxelMaterial
+	_cached_bedrock = ResourceLoader.load("res://assets/voxels/materials/bedrock.tres") as VoxelMaterial
 	# If any of the four .tres files is missing, the corresponding
 	# `_cached_*` will be null. _select_material_for_depth() already
 	# falls through to the next-best material, so missing files

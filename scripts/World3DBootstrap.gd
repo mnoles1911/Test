@@ -161,10 +161,18 @@ func _ready() -> void:
 	# Surface at Y=10. Generator caps terrain at ~Y=29 (max_ground_y)
 	# and bottoms at ~Y=-9 (min_ground_y) given height_range_voxels=200
 	# + height_offset=60 at terrain scale 1/6. So Y=10 floods low
-	# basins, leaves highlands dry. Volume extends 200 m below
-	# surface so deep dive still registers as submerged.
+	# basins, leaves highlands dry.
+	#
+	# OCEAN_DEPTH_M was 200 m, which was nonsense — the AABB extended
+	# almost to the bedrock floor. WaterFlowManager.is_position_in_water
+	# now uses a clear-vertical-path check that prevents tunnel
+	# flooding even with a deep AABB, but a tighter AABB is still good
+	# defence-in-depth (and a bit faster: no clear-path call needed
+	# for queries below the AABB bottom). 18 m extends from Y=-8 to
+	# Y=10, fully covering all natural sub-sea-level terrain
+	# (min_ground_y ≈ -7) plus a small buffer.
 	const OCEAN_SURFACE_Y: float = 10.0
-	const OCEAN_DEPTH_M: float   = 200.0
+	const OCEAN_DEPTH_M: float   = 18.0
 	const OCEAN_HALF_SIZE_M: float = 10000.0  # ±10 km
 	if get_node_or_null("/root/WaterFlowManager"):
 		var pond_aabb := AABB(Vector3(-23.0, -1.5, -1.0), Vector3(10.0, 3.0, 10.0))
