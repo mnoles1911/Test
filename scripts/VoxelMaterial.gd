@@ -101,11 +101,17 @@ extends Resource
 # =============================================================
 
 @export_range(0.0, 30.0, 0.1) var mining_time_seconds: float = 0.4
-# How long the player must hold attack to break ONE voxel of this
-# material with a tool that can affect it. Below this you've got the
-# tool but you haven't been swinging long enough.
+# Baseline swing time for the 2×2×2 (8-voxel) mining volume. The
+# actual swing time scales with the volume the player has selected
+# via the scroll wheel:
+#   1×1×1 (1 voxel)  → 1/8 of this value  (fast precision dig)
+#   2×2×2 (8 voxels) → exactly this value (baseline)
+#   3×3×3 (27 voxels) → 27/8 of this value (slow bulk dig)
+# Smoothing (Tab toggle) uses this value as-is — no volume scaling
+# because the smooth verb operates on a fixed action sphere whose
+# size is independent of the player's carve_volume_size choice.
 #
-# Suggested values:
+# Suggested baseline values (for the 2×2×2 carve):
 #   0.2  - sand, snow, leaves (super fast)
 #   0.3  - dirt, grass, clay
 #   0.6  - soft wood, soft stone
@@ -114,8 +120,9 @@ extends Resource
 #   3.0  - steel ore
 #   5.0  - adamant ore (lore says it's the hardest material)
 #
-# This is a per-voxel time, not a per-swing animation. Tool animation
-# pacing is separate (see swing_cooldown_seconds in EditToolHandler).
+# Tool animation pacing is separate (see swing_cooldown_seconds in
+# EditToolHandler — runs after each successful swing regardless of
+# carve volume).
 
 @export var allowed_tools: Array[String] = []
 # InventoryManager item_ids that can mine this material. If the
