@@ -33,11 +33,24 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
-	# DIAGNOSTIC — dump VoxelMesherCubes property list so we can see
-	# which colour-mode flags exist. The terrain material is set to
-	# vertex_color_use_as_albedo=true, but the mesher might still
-	# need configuration (e.g. color_mode = RAW vs PALETTE) before
-	# it actually emits per-voxel CHANNEL_COLOR as vertex colors.
+	# DIAGNOSTIC — dump the VoxelLodTerrain properties first so we can
+	# find the channel-depth knob. CHANNEL_COLOR's default storage is
+	# 8-bit per voxel (one byte total), which truncates the 32-bit
+	# RGBA+mat_id values our generator writes. We need 32-bit depth
+	# for tool.get_voxel reads to return the full packed value.
+	print("[World3D] Terrain class: %s" % terrain.get_class())
+	print("[World3D] Terrain has set_channel_depth: %s" % terrain.has_method("set_channel_depth"))
+	for prop in terrain.get_property_list():
+		var t_pname: String = prop.get("name", "")
+		if t_pname == "" or t_pname.begins_with("script") or t_pname == "resource_local_to_scene":
+			continue
+		if t_pname == "resource_path" or t_pname == "resource_name":
+			continue
+		# Filter to plausibly-relevant properties for storage format.
+		var lower: String = t_pname.to_lower()
+		if "depth" in lower or "format" in lower or "channel" in lower or "block" in lower:
+			print("[World3D]   terrain.%s = %s" % [t_pname, terrain.get(t_pname)])
+
 	if "mesher" in terrain:
 		var mesher: Resource = terrain.mesher
 		if mesher != null:
