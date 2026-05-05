@@ -198,22 +198,46 @@ func set_player_chunk(chunk: Vector3i) -> void:
 				mesh_inst.queue_free()
 			_meshes.erase(existing_chunk)
 
-	# Dirty-mark chunks inside the radius that don't have meshes yet.
-	# We pre-filter against `_chunk_could_have_water` before queueing —
-	# without this the queue gets flooded with ~117k chunks per
-	# transition (49^3 cube), almost all of them empty (water only
-	# lives at the chunk Y matching a source region's surface_y).
-	# At MESH_BUILDS_PER_FRAME=16, even the bigger budget would take
-	# 7000+ frames to drain that queue, which is why water was
-	# invisible until you'd been falling for minutes.
+	# Dirty-mark chunks newly inside the radius. Water surfaces are 2D
+	# planes at fixed Y values (one per source region — ocean at Y=10,
+	# pond at Y=1.5, etc.), so we only need to check chunks at those
+	# specific Y-chunks rather than every Y in the radius cube.
 	#
-	# After the filter the queue only holds chunks that WILL produce
-	# a quad — typically a 49×1×49 sheet at Y=ocean_chunk_y plus
-	# the small pond chunks. Fits in the budget within a frame.
-	for dx in range(-radius_chunks, radius_chunks + 1):
-		for dy in range(-radius_chunks, radius_chunks + 1):
+	# Earlier impl iterated the full (2*radius+1)^3 cube — at radius
+	# 24 chunks that's 117,649 iterations every time the player walked
+	# 2.7 m (one chunk width). Each iteration did dictionary lookups
+	# and an AABB test against every source region; total cost ran ~50-
+	# 150 ms per chunk transition, producing the "moves OK rotating but
+	# stutters when walking" hitch that's been present since the water
+	# voxel refactor landed.
+	#
+	# New impl: collect the set of unique surface Y-chunks from
+	# WaterFlowManager (typically 1-3 values), then iterate only the
+	# 2D (dx,dz) ring at each of those Ys. With 2 source regions
+	# (ocean + pond at different Ys) this is 49×49×2 = ~4800 iterations
+	# instead of 117,649 — ~24× faster, fits comfortably under 1 ms.
+	if _water_flow_manager == null:
+		return
+	if not _water_flow_manager.has_method("get_source_regions"):
+		return
+	var surface_chunk_ys: Dictionary = {}  # int Y → true (deduped set)
+	for region_data in _water_flow_manager.get_source_regions():
+		var aabb: AABB = region_data["aabb"] as AABB
+		var surface_y_world: float = aabb.position.y + aabb.size.y
+		var y_chunk: int = floori(surface_y_world / CHUNK_SIZE_M)
+		surface_chunk_ys[y_chunk] = true
+	# Iterate the 2D (dx, dz) ring once per distinct surface Y. Most
+	# of the inner-loop chunks already pass _chunk_could_have_water by
+	# construction — we landed at the right Y. We still call the
+	# function to confirm horizontal AABB overlap (rejects ocean
+	# chunks past the configured 20×20 km footprint, etc.).
+	for y_chunk in surface_chunk_ys.keys():
+		var dy: int = (y_chunk as int) - _player_chunk.y
+		if absi(dy) > radius_chunks:
+			continue  # surface is outside vertical render radius
+		for dx in range(-radius_chunks, radius_chunks + 1):
 			for dz in range(-radius_chunks, radius_chunks + 1):
-				var c := _player_chunk + Vector3i(dx, dy, dz)
+				var c := Vector3i(_player_chunk.x + dx, y_chunk, _player_chunk.z + dz)
 				if _meshes.has(c) or _dirty_set.has(c):
 					continue
 				if not _chunk_could_have_water(c):
