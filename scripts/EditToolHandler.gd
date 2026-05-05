@@ -284,7 +284,10 @@ func _update_aim_outline() -> void:
 		return
 
 	# Mirror the carve box computation from _carve so the outline
-	# exactly matches what an LMB press would remove.
+	# exactly matches what an LMB press would remove. Uses the same
+	# asymmetric half_lo/half_hi split so even-N volumes (carve_volume_size
+	# = 2) anchor correctly to a 2-voxel-wide box, not a misaligned
+	# 3-voxel range. KEEP THIS IN SYNC WITH _carve.
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
 	const VOXELS_PER_METER: float = 6.0
 	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
@@ -294,13 +297,18 @@ func _update_aim_outline() -> void:
 		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
 	@warning_ignore("integer_division")
-	var half: int = carve_volume_size / 2
-	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
-	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
+	var half_lo: int = (carve_volume_size - 1) / 2
+	@warning_ignore("integer_division")
+	var half_hi: int = carve_volume_size / 2
+	var box_vmin: Vector3i = centre_voxel - Vector3i(half_lo, half_lo, half_lo)
+	var box_vmax: Vector3i = centre_voxel + Vector3i(half_hi, half_hi, half_hi)
 	# World-space size = N voxels × VOXEL_SIZE_M. World-space centre
-	# = midpoint of the inclusive voxel range. Add a tiny scale fudge
-	# (×1.02) so the outline sits just outside the cube faces and
-	# z-fights less with the terrain mesh.
+	# is the midpoint of the inclusive voxel range — `(vmin + vmax + 1)
+	# * 0.5 / VPM` because vmin/vmax are voxel INDICES (each voxel
+	# occupies the span i .. i+1 in world units after the /VPM scale),
+	# so the "+1" pushes vmax to the FAR face of its voxel.
+	# Tiny scale fudge (×1.02) so the outline sits just outside the
+	# cube faces and z-fights less with the terrain mesh.
 	var size_m: float = float(carve_volume_size) * VOXEL_SIZE_M
 	_aim_outline_mesh.size = Vector3.ONE * size_m * 1.02
 	var centre_world: Vector3 = (
@@ -733,16 +741,27 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 		floori(voxel_world_pos.y * VOXELS_PER_METER),
 		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
-	# half = (N-1)/2 so that N=3 gives ±1 → 3 voxels inclusive.
-	# Integer division is intentional — even N values floor toward the
-	# centre voxel (N=4 → half=2 → 5-voxel box, slightly larger than
-	# requested; only odd N gives exact symmetric carves).
-	# Uses the runtime `carve_volume_size` (1, 2, or 3) which the
-	# player cycles via mouse wheel in mining mode.
+	# Asymmetric split for even N. A 2×2×2 carve has no exact symmetric
+	# anchoring around a single voxel — biasing toward +X/+Y/+Z keeps
+	# the aimed voxel as the box's MIN corner so an even-N carve
+	# never accidentally extends "behind" the player's aim point.
+	#
+	# half_lo = (N-1)/2, half_hi = N/2:
+	#   N=1: lo=0, hi=0 → [c, c]       (1 voxel)
+	#   N=2: lo=0, hi=1 → [c, c+1]     (2 voxels — was 3 with half=1!)
+	#   N=3: lo=1, hi=1 → [c-1, c+1]   (3 voxels)
+	#   N=4: lo=1, hi=2 → [c-1, c+2]   (4 voxels)
+	#
+	# The previous half=N/2 formula collapsed N=2 into the same
+	# 3-voxel range as N=3, which silently destroyed 27 voxels per
+	# swing instead of 8 — and the aim outline (sized to N) didn't
+	# line up with the larger carve.
 	@warning_ignore("integer_division")
-	var half: int = carve_volume_size / 2
-	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
-	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
+	var half_lo: int = (carve_volume_size - 1) / 2
+	@warning_ignore("integer_division")
+	var half_hi: int = carve_volume_size / 2
+	var box_vmin: Vector3i = centre_voxel - Vector3i(half_lo, half_lo, half_lo)
+	var box_vmax: Vector3i = centre_voxel + Vector3i(half_hi, half_hi, half_hi)
 	var accepted: bool = VoxelEditManager.queue_edit_box_voxels(
 		box_vmin, box_vmax, AIR_VOXEL
 	)
