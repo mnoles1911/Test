@@ -564,6 +564,10 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
 	# half = (N-1)/2 so that N=3 gives ±1 → 3 voxels inclusive.
+	# Integer division is intentional — even N values floor toward the
+	# centre voxel (N=4 → half=2 → 5-voxel box, slightly larger than
+	# requested; only odd N gives exact symmetric carves).
+	@warning_ignore("integer_division")
 	var half: int = swing_carve_voxels_per_side / 2
 	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
 	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
@@ -817,10 +821,8 @@ func _do_smooth(aim_pos: Vector3) -> void:
 
 		var ck: Vector2i = Vector2i(off.x, off.z)
 		var col_top_dy: int = -1000000
-		var col_top_mat: int = 0
 		if action_tops.has(ck):
 			col_top_dy = int(action_tops[ck]["dy"])
-			col_top_mat = int(action_tops[ck]["mat_id"])
 		var is_col_top: bool = is_solid and (off.y == col_top_dy)
 
 		if is_solid:

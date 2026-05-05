@@ -448,10 +448,18 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var dirt_band_end: int = grass_thick + dirt_layer_thickness_voxels
 	var beach_y: int = beach_y_threshold
 	var h_offset_v: int = height_offset_voxels
-	# height_range_voxels is float-typed (it's an @export_range slider) and
-	# only used in float division below — keep it float to avoid a narrowing
-	# truncation that could shift band thresholds by 1 voxel.
-	var h_range_v: float = height_range_voxels
+	# Reference depth (in voxels) over which the stone band lerps from
+	# color_high (top, just under dirt) down to color_low (deep). 30 vox
+	# = 5 m at 6 vox/m. Anything deeper than this pegs at color_low.
+	# Sized to give visible vertical variation within the player's
+	# typical mining range without making cliff faces look striped.
+	const STONE_BAND_REF_VOXELS: float = 30.0
+	# Pre-divide the dirt-band lerp denominator. dirt_layer_thickness_voxels
+	# can be 0 (designer turned off the dirt band), so guard against div-zero.
+	var dirt_band_size: int = dirt_band_end - grass_thick
+	var dirt_band_inv_max: float = 0.0
+	if dirt_band_size > 1:
+		dirt_band_inv_max = 1.0 / float(dirt_band_size - 1)
 
 	# Per-voxel colour jitter was removed entirely — was costing ~30% of
 	# the per-block hot-loop time (hash + scalar + 3× clampf per voxel
@@ -556,11 +564,31 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 					else:
 						c = Color(1.0, 0.20, 1.0)    # unknown → magenta (loud)
 				else:
-					var t_band: float = clampf(
-						(float(world_y) + half_range - float(h_offset_v)) / h_range_v,
-						0.0,
-						1.0,
-					)
+					# Lerp within this material's NATURAL band, not the
+					# global world height range. Each material's color_low
+					# is the bottom of its band; color_high is the top.
+					# Without this, a grass voxel at altitude 100 would
+					# look different from a grass voxel at altitude 50 —
+					# same material, different shade — which contradicts
+					# the .tres palette design intent (see VoxelMaterial.gd
+					# docstring on color_low / color_high).
+					var t_band: float
+					if depth < grass_thick:
+						# 1-voxel-thick top layer — no internal band to
+						# lerp across. Use color_high (the lit/exposed
+						# surface tint the material author intended).
+						t_band = 1.0
+					elif depth < dirt_band_end:
+						# Dirt band — top of band → color_high,
+						# bottom of band → color_low.
+						t_band = 1.0 - float(depth - grass_thick) * dirt_band_inv_max
+					else:
+						# Stone band — fade from color_high at the top
+						# of the band (just below dirt) to color_low
+						# over STONE_BAND_REF_VOXELS depth. Anything
+						# deeper pegs at color_low (deep cool stone).
+						var stone_depth: int = depth - dirt_band_end
+						t_band = clampf(1.0 - float(stone_depth) / STONE_BAND_REF_VOXELS, 0.0, 1.0)
 					c = lo.lerp(hi, t_band)
 
 				# Inline pack: RGB from c, alpha byte = mat_id.
