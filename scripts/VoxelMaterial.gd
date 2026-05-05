@@ -161,19 +161,21 @@ extends Resource
 
 enum FallBehavior {
 	NEVER,
-	# Only falls as part of a rigid-body cluster, via VoxelGravityManager.
-	# Default for stone, dirt, grass — anything that should pile up but
-	# not collapse instantly when its neighbour is removed. A stone
-	# block carved out from under another stone block doesn't make the
-	# upper block fall on its own; only when enough of the supporting
-	# structure goes does it collapse as a chunk.
+	# Anchored geometry that never participates in gravity collapse
+	# even when unsupported. Use only for materials that should look
+	# load-bearing on their own (e.g. magic stone that stays put). v1
+	# pilot materials don't use this — terrain materials use
+	# PICKUP_DROP instead.
 
 	SOLID,
-	# Same as NEVER for the purposes of this v1 — falls as a rigid-body
-	# cluster — BUT this material's gravity_scale and damage_multiplier
-	# get applied to the cluster. Use this for materials that should
-	# behave like NEVER but with different fall feel (e.g. heavy iron
-	# ore falls faster and hits harder than dirt).
+	# Falls as a rigid-body cluster via VoxelGravityManager + spawns a
+	# FallingVoxelCluster. The cluster physically tumbles, possibly
+	# damages bodies on impact, and re-deposits as terrain when it
+	# settles. Use this for materials that should fall over and stay
+	# visible as a chunk — chopped tree trunks (so a felled limb lies
+	# on the ground for the player to chop into pieces), heavy ore
+	# boulders, etc. material.gravity_scale and damage_multiplier
+	# scale the cluster physics.
 
 	LOOSE,
 	# Sand model. The voxel falls instantly, column-by-column, into any
@@ -191,6 +193,18 @@ enum FallBehavior {
 	# permanent; flowing cells spread cellular-automata-style downward
 	# and laterally with monotone-decay, capped at 8 levels of distance
 	# from a source. See scripts/WaterFlowManager.gd.
+
+	PICKUP_DROP,
+	# Default for terrain/earth materials (stone, dirt, grass). When an
+	# unsupported voxel of this material is detected, instead of
+	# spawning a rigid-body cluster, we carve the voxel from terrain
+	# and spawn a single VoxelDrop at its world position. The drop
+	# falls under gravity, settles, hovers, and auto-collects when the
+	# player walks within its pickup radius. Net effect: digging out a
+	# cliff face produces a cluster of pickup blocks instead of a
+	# physics-tumbling chunk that re-deposits — easier UX, no need to
+	# re-mine fallen rubble. material.yield_item_id and yield_quantity
+	# drive what the player gets per drop.
 }
 
 @export var fall_behavior: FallBehavior = FallBehavior.NEVER

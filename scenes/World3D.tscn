@@ -71,7 +71,6 @@ noise = SubResource("TerrainNoise")
 height_range_voxels = 200.0
 
 [sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
-greedy_meshing_enabled = false
 opaque_material = SubResource("VoxelTerrainMat")
 
 [sub_resource type="BoxMesh" id="CampfireMesh"]

@@ -93,7 +93,16 @@ var _water_flow_manager: Node = null
 # bucket placements) where each cell may have a different surface
 # height.
 var _source_region_planes: Array[MeshInstance3D] = []
-var _follow_log_counter: int = 0
+
+# Cache for the follow-player position update early-out. _process runs
+# every frame but the plane positions are a deterministic function of
+# the player's XZ — when the player hasn't moved meaningfully, the
+# work is wasted. Re-running the update when player_pos == last is
+# noise that adds up every frame even when the player is far above
+# water. 0.05 m epsilon (squared = 0.0025) means we re-run on actual
+# movement but skip when standing still or doing micro-physics jitter.
+const FOLLOW_UPDATE_EPSILON_SQ: float = 0.0025
+var _last_follow_pos: Vector3 = Vector3(INF, INF, INF)
 
 # Subdivision target for source-region planes. Each quad is roughly
 # this many metres on a side. Smaller = more vertices for finer wave
@@ -156,24 +165,19 @@ func _process(_delta: float) -> void:
 		built += 1
 
 	# Reposition source-region planes to follow the player and clip
-	# against their AABBs. Cheap — one position write per region.
-	# Read player position from the parent WaterFlowManager which
-	# Player3D updates each physics frame via set_player_position.
+	# against their AABBs. Skip entirely when the player hasn't
+	# moved more than FOLLOW_UPDATE_EPSILON_M since the last call —
+	# the plane positions are deterministic from player_pos, so if
+	# player_pos didn't change there's nothing to update. Without
+	# this early-out the function ran every frame (its work was
+	# small but constant noise) AND the diagnostic print fired
+	# every 2 s even when the player was standing still or above
+	# water.
 	if _water_flow_manager != null and "_player_pos" in _water_flow_manager:
 		var pp: Vector3 = _water_flow_manager._player_pos
-		_update_source_region_plane_positions(pp)
-		# DIAGNOSTIC — fire occasionally so we can see whether the
-		# follow-player update is running at all + what positions
-		# the planes end up at. 1 print per ~2 s (every 120 frames
-		# at 60 fps).
-		_follow_log_counter += 1
-		if _follow_log_counter >= 120:
-			_follow_log_counter = 0
-			var poses: Array[String] = []
-			for inst in _source_region_planes:
-				if inst != null and is_instance_valid(inst):
-					poses.append("vis=%s pos=%s" % [inst.visible, inst.global_position])
-			print("[WaterChunkMesher] follow update: player=%s | planes: %s" % [pp, poses])
+		if pp.distance_squared_to(_last_follow_pos) > FOLLOW_UPDATE_EPSILON_SQ:
+			_update_source_region_plane_positions(pp)
+			_last_follow_pos = pp
 
 
 # ============================================================
@@ -198,22 +202,46 @@ func set_player_chunk(chunk: Vector3i) -> void:
 				mesh_inst.queue_free()
 			_meshes.erase(existing_chunk)
 
-	# Dirty-mark chunks inside the radius that don't have meshes yet.
-	# We pre-filter against `_chunk_could_have_water` before queueing —
-	# without this the queue gets flooded with ~117k chunks per
-	# transition (49^3 cube), almost all of them empty (water only
-	# lives at the chunk Y matching a source region's surface_y).
-	# At MESH_BUILDS_PER_FRAME=16, even the bigger budget would take
-	# 7000+ frames to drain that queue, which is why water was
-	# invisible until you'd been falling for minutes.
+	# Dirty-mark chunks newly inside the radius. Water surfaces are 2D
+	# planes at fixed Y values (one per source region — ocean at Y=10,
+	# pond at Y=1.5, etc.), so we only need to check chunks at those
+	# specific Y-chunks rather than every Y in the radius cube.
 	#
-	# After the filter the queue only holds chunks that WILL produce
-	# a quad — typically a 49×1×49 sheet at Y=ocean_chunk_y plus
-	# the small pond chunks. Fits in the budget within a frame.
-	for dx in range(-radius_chunks, radius_chunks + 1):
-		for dy in range(-radius_chunks, radius_chunks + 1):
+	# Earlier impl iterated the full (2*radius+1)^3 cube — at radius
+	# 24 chunks that's 117,649 iterations every time the player walked
+	# 2.7 m (one chunk width). Each iteration did dictionary lookups
+	# and an AABB test against every source region; total cost ran ~50-
+	# 150 ms per chunk transition, producing the "moves OK rotating but
+	# stutters when walking" hitch that's been present since the water
+	# voxel refactor landed.
+	#
+	# New impl: collect the set of unique surface Y-chunks from
+	# WaterFlowManager (typically 1-3 values), then iterate only the
+	# 2D (dx,dz) ring at each of those Ys. With 2 source regions
+	# (ocean + pond at different Ys) this is 49×49×2 = ~4800 iterations
+	# instead of 117,649 — ~24× faster, fits comfortably under 1 ms.
+	if _water_flow_manager == null:
+		return
+	if not _water_flow_manager.has_method("get_source_regions"):
+		return
+	var surface_chunk_ys: Dictionary = {}  # int Y → true (deduped set)
+	for region_data in _water_flow_manager.get_source_regions():
+		var aabb: AABB = region_data["aabb"] as AABB
+		var surface_y_world: float = aabb.position.y + aabb.size.y
+		var y_chunk: int = floori(surface_y_world / CHUNK_SIZE_M)
+		surface_chunk_ys[y_chunk] = true
+	# Iterate the 2D (dx, dz) ring once per distinct surface Y. Most
+	# of the inner-loop chunks already pass _chunk_could_have_water by
+	# construction — we landed at the right Y. We still call the
+	# function to confirm horizontal AABB overlap (rejects ocean
+	# chunks past the configured 20×20 km footprint, etc.).
+	for y_chunk in surface_chunk_ys.keys():
+		var dy: int = (y_chunk as int) - _player_chunk.y
+		if absi(dy) > radius_chunks:
+			continue  # surface is outside vertical render radius
+		for dx in range(-radius_chunks, radius_chunks + 1):
 			for dz in range(-radius_chunks, radius_chunks + 1):
-				var c := _player_chunk + Vector3i(dx, dy, dz)
+				var c := Vector3i(_player_chunk.x + dx, y_chunk, _player_chunk.z + dz)
 				if _meshes.has(c) or _dirty_set.has(c):
 					continue
 				if not _chunk_could_have_water(c):

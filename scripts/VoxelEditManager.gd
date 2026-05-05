@@ -95,13 +95,14 @@ const WORLD_GENERATOR_VERSION: int = 11
 # happens (e.g. a runaway spell effect). Commands beyond this are
 # rejected at queue time with a push_warning.
 
-@export var perf_log_enabled: bool = true
-# When true, log microsecond timings around each edit application.
-# Look for "[PERF VEM]" in the Output panel. Flip off once perf is
-# acceptable. Specifically helpful for diagnosing the explosive-lag
-# spike — see the matching `perf_log_enabled` on VoxelGravityManager
-# (the gravity scan after each edit is the more likely hot path,
-# but timing both gives the full picture).
+@export var perf_log_enabled: bool = false
+# When true, log microsecond timings around each edit application
+# AND every queue-drain / queue-push event. Look for "[PERF VEM]"
+# and "[VoxelEditManager]" in the Output panel. OFF by default —
+# the unconditional prints on every edit/drain were causing visible
+# main-thread hitches during normal play (gravity-induced
+# PICKUP_DROP carves alone push 27+ writes per swing). Flip on for
+# specific diagnostics, then back off.
 
 
 # ============================================================
@@ -134,11 +135,17 @@ var _edited_chunks: Dictionary = {}
 # Signals
 # ============================================================
 
-signal edit_applied(world_pos: Vector3, chunk_coords: Vector3i)
+signal edit_applied(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: AABB)
 # Fired after every successfully applied edit. Caller systems listen to
 # this — for example, to award XP to the Mining/Excavation/Felling
 # sub-skills (per design/SKILLS_AND_PROGRESSION.md), or to spawn a
 # particle effect at the impact site.
+#
+# `edit_aabb` is the world-space bounding box of the affected voxels.
+# Used by VoxelGravityManager to size its analysis bubble — a tiny
+# pickaxe carve does NOT need a 4 m flood-fill scan that costs
+# ~117k voxel reads. Adaptive padding drops the per-scan cost from
+# ~150 ms to a few ms for typical edits.
 
 signal edit_rejected_no_edit_zone(world_pos: Vector3)
 # Fired when an edit is rejected because it's inside a NoEditZone.
@@ -213,7 +220,8 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 	# _physics_process when this command's turn comes up in the queue.
 
 	if not _check_edit_allowed(world_pos):
-		print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
+		if perf_log_enabled:
+			print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
 		return false
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping sphere edit")
@@ -225,9 +233,10 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 		"radius": radius,
 		"value": voxel_value,
 	})
-	print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
-		radius, world_pos, _edit_queue.size()
-	])
+	if perf_log_enabled:
+		print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
+			radius, world_pos, _edit_queue.size()
+		])
 	return true
 
 
@@ -391,7 +400,7 @@ func _physics_process(_delta: float) -> void:
 		voxels_used += _estimate_voxel_cost(cmd)
 		_apply_edit(cmd)
 		processed += 1
-	if processed > 0:
+	if perf_log_enabled and processed > 0:
 		print("[VoxelEditManager] frame drain: %d processed, %d remain (started with %d)" % [
 			processed, _edit_queue.size(), initial_queue
 		])
@@ -402,19 +411,30 @@ func _physics_process(_delta: float) -> void:
 # ============================================================
 
 func _apply_edit(cmd: Dictionary) -> void:
+	# DIAGNOSTIC — auto-print phase breakdown when this single edit
+	# takes >30 ms. Lets us see whether the spike comes from the
+	# carve (`tool.do_sphere`/etc.), `_mark_chunks_in_aabb`, the
+	# emit, or something invisible inside Zylann's post-carve path.
+	# Remove once the explosive-throw spike is traced.
+	var t_apply_start: int = Time.get_ticks_usec()
+	var t_phase_carve: int = 0
+	var t_phase_mark: int = 0
+	var t_phase_emit: int = 0
+
 	# Pull a fresh VoxelTool from the terrain. We do NOT cache the
 	# VoxelTool because it can become stale across frames — grab a
 	# new one each time per Zylann's recommended usage.
 	var tool: VoxelTool = _terrain.get_voxel_tool()
 	if tool == null:
-		print("[VoxelEditManager] _apply_edit: terrain.get_voxel_tool() returned null")
+		push_warning("[VoxelEditManager] _apply_edit: terrain.get_voxel_tool() returned null")
 		return
 
-	print("[VoxelEditManager] _apply_edit: type=%s pos=%s value=%d" % [
-		cmd.get("type", "?"),
-		cmd.get("pos", Vector3.ZERO),
-		cmd.get("value", 0),
-	])
+	if perf_log_enabled:
+		print("[VoxelEditManager] _apply_edit: type=%s pos=%s value=%d" % [
+			cmd.get("type", "?"),
+			cmd.get("pos", Vector3.ZERO),
+			cmd.get("value", 0),
+		])
 
 	# Edits target CHANNEL_COLOR because the world uses VoxelMesherCubes,
 	# which reads packed RGBA per-voxel. CHANNEL_SDF / CHANNEL_TYPE are
@@ -449,39 +469,59 @@ func _apply_edit(cmd: Dictionary) -> void:
 		"sphere":
 			var voxel_pos: Vector3    = _terrain.to_local(cmd["pos"])
 			var voxel_radius: float   = cmd["radius"] * inv_scale
-			var t_sphere_start: int = 0
-			if perf_log_enabled:
-				t_sphere_start = Time.get_ticks_usec()
+			var t_carve_start: int = Time.get_ticks_usec()
 			tool.do_sphere(voxel_pos, voxel_radius)
-			if perf_log_enabled:
-				var sphere_us: int = Time.get_ticks_usec() - t_sphere_start
-				var est_voxels: int = _estimate_voxel_cost(cmd)
-				print("[PERF VEM] sphere r=%.1fm est_vox=%d  do_sphere=%d us  (%.2f ms)" % [
-					cmd["radius"], est_voxels, sphere_us, sphere_us / 1000.0
-				])
-			_mark_chunks_in_aabb(
-				cmd["pos"] - Vector3.ONE * cmd["radius"],
-				cmd["pos"] + Vector3.ONE * cmd["radius"],
+			t_phase_carve = Time.get_ticks_usec() - t_carve_start
+			var s_aabb_min: Vector3 = cmd["pos"] - Vector3.ONE * cmd["radius"]
+			var s_aabb_max: Vector3 = cmd["pos"] + Vector3.ONE * cmd["radius"]
+			var t_mark_start: int = Time.get_ticks_usec()
+			_mark_chunks_in_aabb(s_aabb_min, s_aabb_max)
+			t_phase_mark = Time.get_ticks_usec() - t_mark_start
+			var t_emit_start: int = Time.get_ticks_usec()
+			edit_applied.emit(
+				cmd["pos"],
+				_world_to_chunk(cmd["pos"]),
+				AABB(s_aabb_min, s_aabb_max - s_aabb_min),
 			)
-			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
+			t_phase_emit = Time.get_ticks_usec() - t_emit_start
 
 		"box":
 			var voxel_min: Vector3 = _terrain.to_local(cmd["min"])
 			var voxel_max: Vector3 = _terrain.to_local(cmd["max"])
+			var t_b_carve_start: int = Time.get_ticks_usec()
 			tool.do_box(voxel_min, voxel_max)
+			t_phase_carve = Time.get_ticks_usec() - t_b_carve_start
+			var t_b_mark_start: int = Time.get_ticks_usec()
 			_mark_chunks_in_aabb(cmd["min"], cmd["max"])
+			t_phase_mark = Time.get_ticks_usec() - t_b_mark_start
 			var center: Vector3 = (cmd["min"] + cmd["max"]) * 0.5
-			edit_applied.emit(center, _world_to_chunk(center))
+			var t_b_emit_start: int = Time.get_ticks_usec()
+			edit_applied.emit(
+				center,
+				_world_to_chunk(center),
+				AABB(cmd["min"], cmd["max"] - cmd["min"]),
+			)
+			t_phase_emit = Time.get_ticks_usec() - t_b_emit_start
 
 		"box_voxels":
 			# Integer voxel-grid coords — pass directly as Vector3 so
 			# do_box sees exact values with no to_local() rounding.
+			var t_bv_carve_start: int = Time.get_ticks_usec()
 			tool.do_box(Vector3(cmd["min"]), Vector3(cmd["max"]))
+			t_phase_carve = Time.get_ticks_usec() - t_bv_carve_start
 			var bv_world_min: Vector3 = Vector3(cmd["min"]) / VOXELS_PER_METER
 			var bv_world_max: Vector3 = (Vector3(cmd["max"]) + Vector3.ONE) / VOXELS_PER_METER
+			var t_bv_mark_start: int = Time.get_ticks_usec()
 			_mark_chunks_in_aabb(bv_world_min, bv_world_max)
+			t_phase_mark = Time.get_ticks_usec() - t_bv_mark_start
 			var bv_center: Vector3 = (bv_world_min + bv_world_max) * 0.5
-			edit_applied.emit(bv_center, _world_to_chunk(bv_center))
+			var t_bv_emit_start: int = Time.get_ticks_usec()
+			edit_applied.emit(
+				bv_center,
+				_world_to_chunk(bv_center),
+				AABB(bv_world_min, bv_world_max - bv_world_min),
+			)
+			t_phase_emit = Time.get_ticks_usec() - t_bv_emit_start
 
 		"set":
 			# Single-voxel write. Cubes meshing IS discrete; a 0.5 m
@@ -493,11 +533,14 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var set_voxel_pos: Vector3  = _terrain.to_local(cmd["pos"])
 			var set_voxel_r: float      = set_world_radius * inv_scale
 			tool.do_sphere(set_voxel_pos, set_voxel_r)
-			_mark_chunks_in_aabb(
-				cmd["pos"] - Vector3.ONE * set_world_radius,
-				cmd["pos"] + Vector3.ONE * set_world_radius,
+			var sv_aabb_min: Vector3 = cmd["pos"] - Vector3.ONE * set_world_radius
+			var sv_aabb_max: Vector3 = cmd["pos"] + Vector3.ONE * set_world_radius
+			_mark_chunks_in_aabb(sv_aabb_min, sv_aabb_max)
+			edit_applied.emit(
+				cmd["pos"],
+				_world_to_chunk(cmd["pos"]),
+				AABB(sv_aabb_min, sv_aabb_max - sv_aabb_min),
 			)
-			edit_applied.emit(cmd["pos"], _world_to_chunk(cmd["pos"]))
 
 		"bulk":
 			# Bulk single-voxel write — cluster re-deposit (and cluster
@@ -575,10 +618,23 @@ func _apply_edit(cmd: Dictionary) -> void:
 				return
 			_mark_chunks_in_aabb(bulk_min, bulk_max)
 			var bulk_center: Vector3 = (bulk_min + bulk_max) * 0.5
-			print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
-				cmd.get("label", "?"), written, bulk_overlaps_zone
-			])
-			edit_applied.emit(bulk_center, _world_to_chunk(bulk_center))
+			if perf_log_enabled:
+				print("[VoxelEditManager] bulk '%s': %d voxels written (zone_check=%s)" % [
+					cmd.get("label", "?"), written, bulk_overlaps_zone
+				])
+			edit_applied.emit(
+				bulk_center,
+				_world_to_chunk(bulk_center),
+				AABB(bulk_min, bulk_max - bulk_min),
+			)
+
+	# DIAGNOSTIC — auto-print phase breakdown for slow edits.
+	var t_apply_total: int = Time.get_ticks_usec() - t_apply_start
+	if t_apply_total > 30000:  # 30 ms
+		print("[SPIKE _apply_edit] type=%s total=%d us (carve=%d  mark=%d  emit=%d)" % [
+			cmd.get("type", "?"), t_apply_total,
+			t_phase_carve, t_phase_mark, t_phase_emit,
+		])
 
 
 func _check_edit_allowed(world_pos: Vector3) -> bool:

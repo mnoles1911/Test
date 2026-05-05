@@ -786,7 +786,7 @@ func _voxel_center_world(voxel_pos: Vector3i) -> Vector3:
 # Edit subscription — dirty chunk tracking
 # ============================================================
 
-func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i) -> void:
+func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i, _edit_aabb: AABB) -> void:
 	# Voxel terrain changed. Mark the chunk + 1-chunk neighborhood
 	# dirty so the flow tick (Phase 3+) rescans the area and the
 	# surface mesher (Phase 2) rebuilds affected meshes.

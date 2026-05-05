@@ -92,9 +92,12 @@ extends Node
 # Master kill-switch. Disable to debug whether a problem is gravity-
 # related or terrain-related.
 
-@export var perf_log_enabled: bool = true
+@export var perf_log_enabled: bool = false
 # When true, dump phase-by-phase microsecond timings for each
 # analysis bubble. Look for "[PERF VGM]" in the Output panel.
+# OFF by default — gravity scans run on every voxel edit (every
+# tool swing, every PICKUP_DROP collapse) and the print itself
+# contributes to main-thread hitches. Flip on for diagnostics.
 #
 # Phases reported (in order):
 #   read       — copying every voxel in the bubble into the `solids`
@@ -182,13 +185,17 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if not enabled:
 		return
+	# Drain pending drop spawns regardless of scan-queue state — they
+	# pile up after a big carve and need to come out smoothly even on
+	# frames when no new scan runs.
+	_drain_pending_drops()
 	if _scan_queue.is_empty():
 		return
 	# Process at most max_scans_per_frame bubbles.
 	var processed: int = 0
 	while not _scan_queue.is_empty() and processed < max_scans_per_frame:
 		var bubble: Dictionary = _scan_queue.pop_front()
-		_process_bubble(bubble["world_pos"])
+		_process_bubble(bubble["world_pos"], bubble.get("edit_aabb", AABB()))
 		processed += 1
 
 
@@ -224,7 +231,7 @@ func notify_cluster_settled(cluster: Node, landing_pos: Vector3) -> void:
 # SIGNAL HANDLER
 # =============================================================
 
-func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i) -> void:
+func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: AABB) -> void:
 	if not enabled:
 		return
 	# Drop oldest if the queue is full — the player's already moved on
@@ -236,10 +243,12 @@ func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i) -> void:
 	# a "skip_gravity" flag through the bulk command.
 	if _scan_queue.size() >= scan_queue_max:
 		var dropped: Dictionary = _scan_queue.pop_front()
-		print("[VoxelGravityManager] scan queue full, dropping bubble at %s" % dropped["world_pos"])
+		if perf_log_enabled:
+			print("[VoxelGravityManager] scan queue full, dropping bubble at %s" % dropped["world_pos"])
 	_scan_queue.append({
 		"world_pos": world_pos,
 		"chunk": chunk_coords,
+		"edit_aabb": edit_aabb,
 	})
 
 
@@ -247,7 +256,7 @@ func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i) -> void:
 # CORE — process one analysis bubble
 # =============================================================
 
-func _process_bubble(edit_world_pos: Vector3) -> void:
+func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 	# Cap on active clusters before we even read voxels — if we're
 	# already at the limit, skip the whole thing.
 	if get_active_cluster_count() >= max_active_clusters:
@@ -261,22 +270,39 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 		return
 	tool.channel = VoxelBuffer.CHANNEL_COLOR
 
-	# Perf-log phase timers. Initialised to 0; only used when
-	# perf_log_enabled. Captured at each phase boundary so we can see
-	# which phase dominates the wall time of an explosive scan.
-	var t_start: int = 0
+	# DIAGNOSTIC — always capture t_start so we can auto-print slow
+	# scans without needing perf_log_enabled. Phase timers below stay
+	# gated for the detailed [PERF VGM] line; the auto-print is a
+	# lightweight safety net specifically for hunting freeze sources.
+	var t_start: int = Time.get_ticks_usec()
 	var t_after_read: int = 0
 	var t_after_anchor_pre: int = 0
 	var t_after_floodfill: int = 0
 	var t_after_partition: int = 0
 	var t_after_loose: int = 0
 	var t_after_cluster: int = 0
-	if perf_log_enabled:
-		t_start = Time.get_ticks_usec()
 
 	# --- Define the analysis box in voxel-grid space ---
-	# Half-side capped at max_analysis_side_m / 2.
-	var half_side_m: float = minf(analysis_padding_m, max_analysis_side_m * 0.5)
+	# Adaptive padding: the bubble extends a small buffer beyond the
+	# edit's own AABB so we catch voxels that just lost support, but
+	# not so large that scan cost dwarfs the edit cost.
+	# Old behaviour (fixed analysis_padding_m=4 m → 49^3=117k cells per
+	# scan = ~150 ms) caused the explosive-throw freeze: a 0.8 m carve
+	# was triggering a 4 m bubble read. With adaptive padding, that
+	# same carve runs ~1.8 m → ~22^3 ≈ 10k cells, ~10× faster.
+	# Cascade scans (the bulk write of carved unsupported voxels fires
+	# its own edit_applied) get the same shrinking treatment because
+	# their AABB matches their carve.
+	var max_extent: float = maxf(edit_aabb.size.x, maxf(edit_aabb.size.y, edit_aabb.size.z))
+	# Empty/zero AABB (older callers, or carves of zero size) falls back
+	# to the legacy padding so we don't accidentally shrink to zero.
+	var adaptive_half_side_m: float
+	if max_extent <= 0.01:
+		adaptive_half_side_m = analysis_padding_m
+	else:
+		# Half the longest extent + 1 m of buffer for cascade catch.
+		adaptive_half_side_m = max_extent * 0.5 + 1.0
+	var half_side_m: float = clampf(adaptive_half_side_m, 1.0, max_analysis_side_m * 0.5)
 	var half_side_vox: int = int(ceili(half_side_m * VOXELS_PER_METER))
 	# Centre voxel.
 	var centre_v: Vector3i = VoxelEditManager.world_to_voxel(edit_world_pos)
@@ -437,8 +463,9 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 	# registry, and route by fall_behavior. If the registry isn't
 	# loaded (shouldn't happen at runtime), fall back to NEVER for
 	# everything — current gravity behaviour pre-material-system.
-	var unanchored_loose: Dictionary = {}    # bubble-local → packed RGBA (LOOSE materials)
-	var unanchored_cluster: Dictionary = {}  # bubble-local → packed RGBA (NEVER + SOLID materials)
+	var unanchored_loose: Dictionary = {}    # bubble-local → packed RGBA (LOOSE)
+	var unanchored_pickup: Dictionary = {}   # bubble-local → packed RGBA (PICKUP_DROP)
+	var unanchored_cluster: Dictionary = {}  # bubble-local → packed RGBA (NEVER + SOLID)
 	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
 	for v_pos_v in solids.keys():
 		var v: Vector3i = v_pos_v
@@ -453,7 +480,13 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 				fall = material.fall_behavior
 		if fall == VoxelMaterial.FallBehavior.LOOSE:
 			unanchored_loose[v] = packed
+		elif fall == VoxelMaterial.FallBehavior.PICKUP_DROP:
+			unanchored_pickup[v] = packed
 		else:
+			# NEVER and SOLID both go through the rigid-body cluster
+			# path. Trees / wood materials use SOLID so a felled limb
+			# physically tumbles down; the player can chop the resting
+			# log afterwards as fresh terrain voxels.
 			unanchored_cluster[v] = packed
 	if perf_log_enabled:
 		t_after_partition = Time.get_ticks_usec()
@@ -468,6 +501,15 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 		_handle_loose_voxels(unanchored_loose, anchored, min_v)
 	if perf_log_enabled:
 		t_after_loose = Time.get_ticks_usec()
+
+	# --- PICKUP_DROP carve + spawn drops ---
+	# Terrain materials (stone, dirt, grass) skip the rigid-body
+	# tumble. Each unsupported voxel becomes a single VoxelDrop at
+	# its world position — falls under gravity, hovers, auto-collects
+	# when the player walks within pickup_radius_m. Better UX than
+	# physics-tumbling re-deposits for routine terrain digging.
+	if not unanchored_pickup.is_empty():
+		_handle_pickup_voxels(unanchored_pickup, min_v)
 
 	if unanchored_cluster.is_empty():
 		if perf_log_enabled:
@@ -518,6 +560,16 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 			t_after_floodfill, t_after_partition, t_after_loose,
 			t_after_cluster,
 		)
+
+	# DIAGNOSTIC — always print when a single bubble scan exceeds 30 ms.
+	# Helps trace where the explosive-throw freeze is going.
+	var t_end: int = Time.get_ticks_usec()
+	var total_us: int = t_end - t_start
+	if total_us > 30000:
+		print("[SPIKE _process_bubble] total=%d us  bubble_vol=%d  solids=%d  cluster_voxels=%d  clusters=%d" % [
+			total_us, bubble_volume, solids.size(),
+			unanchored_cluster.size(), clusters.size(),
+		])
 
 
 func _perf_log_bubble(
@@ -624,6 +676,118 @@ func _handle_loose_voxels(
 		VoxelEditManager.queue_set_voxels_bulk(carve_writes, "loose_carve_n%d" % carve_writes.size())
 	if not place_writes.is_empty():
 		VoxelEditManager.queue_set_voxels_bulk(place_writes, "loose_place_n%d" % place_writes.size())
+
+
+# =============================================================
+# PICKUP_DROP — carve unsupported voxels and spawn pickups
+# =============================================================
+
+## Hard cap on VoxelDrops spawned per scan. A single huge collapse
+## (carve out the base of a 100-voxel cliff) shouldn't spawn 100
+## RigidBody3Ds in flight at once — performance + visual mess. If the
+## set exceeds this number, we still carve every voxel (so the world
+## state is consistent) but only spawn drops for the first N. The
+## rest of the items are silently lost; that's the cost of not having
+## a stacking-into-fewer-drops grouping pass yet (could add later).
+@export var max_pickup_drops_per_scan: int = 32
+
+## Max VoxelDrop instantiations per physics frame. RigidBody3D + mesh
+## + collision-shape construction is expensive; spawning 32 in one
+## frame caused a visible freeze on explosive throws (each carve uncovers
+## many unsupported voxels at once). Drained from `_pending_drops` at
+## this rate so the spike from a big AOE carve smears across multiple
+## frames instead of hitching the main thread.
+@export var max_drop_spawns_per_frame: int = 4
+
+# Pending drop spawns queued by _handle_pickup_voxels, drained by
+# _physics_process at max_drop_spawns_per_frame per tick. Each entry
+# is a Dictionary: { "pos": Vector3, "item_id": String, "color": Color,
+# "count": int }. The carves themselves still happen synchronously
+# (in the bulk write batch) so the world state is consistent
+# immediately; only the cosmetic drop spawn is deferred.
+var _pending_drops: Array = []
+
+
+func _handle_pickup_voxels(
+	pickup_voxels: Dictionary,    # bubble-local Vector3i → packed RGBA
+	bubble_min_v: Vector3i,
+) -> void:
+	# For each PICKUP_DROP voxel: queue a carve write AND queue a
+	# pending drop spawn. The actual VoxelDrop instantiation happens
+	# in _physics_process at max_drop_spawns_per_frame per tick — this
+	# avoids the multi-RigidBody3D-construction freeze on big AOE
+	# carves (explosives, future spells).
+	#
+	# Drops are parented to the World3D scene root (via the player's
+	# parent in _drain_pending_drops) so they outlive the player's
+	# own lifetime and stay where they fell.
+	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if mat_registry == null:
+		return
+	var carve_writes: Array = []
+	var drops_queued: int = 0
+	for v_pos_v in pickup_voxels.keys():
+		var v: Vector3i = v_pos_v
+		var packed: int = pickup_voxels[v]
+		var mat_id: int = packed & 0xFF
+		var material: VoxelMaterial = mat_registry.get_by_id(mat_id)
+		# World-space centre of this voxel cell.
+		var world_centre: Vector3 = (
+			Vector3(bubble_min_v + v) + Vector3.ONE * 0.5
+		) * VOXEL_SIZE_M
+		# Always carve the voxel — keeps the world consistent even if
+		# we hit the spawn cap below or have no material registered.
+		carve_writes.append({"pos": world_centre, "value": 0})
+		# Skip the drop spawn when over the cap or when the material
+		# has no yield (rare placeholder materials).
+		if drops_queued >= max_pickup_drops_per_scan:
+			continue
+		if material == null or material.yield_item_id == "":
+			continue
+		_pending_drops.append({
+			"pos": world_centre,
+			"item_id": material.yield_item_id,
+			"color": material.color_low,
+			"count": material.yield_quantity,
+		})
+		drops_queued += 1
+	if not carve_writes.is_empty():
+		VoxelEditManager.queue_set_voxels_bulk(
+			carve_writes, "pickup_carve_n%d" % carve_writes.size()
+		)
+
+
+func _drain_pending_drops() -> void:
+	# Spawn at most max_drop_spawns_per_frame VoxelDrops per physics
+	# frame from the pending queue. Each spawn = one new RigidBody3D
+	# + mesh + collision shape, which is moderately expensive; trickle
+	# the work out instead of doing 32 at once.
+	if _pending_drops.is_empty():
+		return
+	var world_root: Node = _find_world_root_for_drops()
+	if world_root == null:
+		return
+	var spawned: int = 0
+	while spawned < max_drop_spawns_per_frame and not _pending_drops.is_empty():
+		var d: Dictionary = _pending_drops.pop_front()
+		var drop: VoxelDrop = VoxelDrop.new()
+		drop.setup(d["item_id"], d["color"], int(d["count"]))
+		world_root.add_child(drop)
+		drop.global_position = d["pos"]
+		spawned += 1
+
+
+func _find_world_root_for_drops() -> Node:
+	# VoxelDrops want the World3D scene root as a parent so they
+	# outlive the player. The autoload itself doesn't have a direct
+	# scene reference, so we walk up from any registered "player"
+	# group node. Falls back to current_scene if no player exists.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if not players.is_empty():
+		var p: Node = players[0]
+		if p != null and p.get_parent() != null:
+			return p.get_parent()
+	return get_tree().current_scene
 
 
 # =============================================================

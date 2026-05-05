@@ -263,16 +263,20 @@ var _cached_dirt: VoxelMaterial = null
 var _cached_grass: VoxelMaterial = null
 var _cached_sand: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
+var _depth_logged: bool = false
 
 
 # =============================================================
 # PERF INSTRUMENTATION (worker-thread safe; toggleable)
 # =============================================================
 
-@export var perf_log_enabled: bool = true
+@export var perf_log_enabled: bool = false
 # When true, log per-block generation time. Look for "[PERF GEN]" in
 # the Output panel. Filter is in microseconds — see perf_log_min_us.
-# Flip off once generator perf is acceptable.
+# OFF by default — the periodic 100-block summary line happens
+# during chunk streaming, which is exactly when the player is
+# walking around (so the print itself contributes to the perceived
+# stutter). Flip on for diagnostics, then back off.
 
 @export var perf_log_min_us: int = 5000
 # Only log blocks slower than this many microseconds (default 5 ms).
@@ -344,17 +348,31 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# Engine calls this for every chunk the player approaches. We
 	# fill out_buffer with COLOR values for that chunk.
 	#
-	# DO NOT call out_buffer.set_channel_depth() here — calling it
-	# per-block in this Zylann build invalidates the buffer and the
-	# engine produces empty chunks (player falls forever, no terrain
-	# generated). If the channel depth needs adjusting it must be
-	# done globally on the mesher / terrain config, not per-call.
+	# DO NOT call out_buffer.set_channel_depth() here — confirmed
+	# 2026-05-05: even calling on a fresh buffer before any writes
+	# produces empty chunks (terrain disappears, player falls
+	# forever). The depth must be set globally on the terrain or
+	# via a different mechanism entirely (e.g. switching the mesher
+	# to COLOR_PALETTE mode so 1 byte per voxel suffices).
 
 	# Perf timer — wraps the whole function. The deferred-print at the
 	# bottom decides whether to emit a log line based on perf_log_min_us.
 	var t_start: int = 0
 	if perf_log_enabled:
 		t_start = Time.get_ticks_usec()
+
+	# DIAGNOSTIC: log the channel depth on the first block so we can
+	# confirm what the engine has allocated. Read-only — does NOT mutate.
+	if not _depth_logged:
+		_depth_logged = true
+		var dep_now: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_COLOR)
+		print("[Generator] CHANNEL_COLOR depth: %d (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
+			dep_now,
+			VoxelBuffer.DEPTH_8_BIT,
+			VoxelBuffer.DEPTH_16_BIT,
+			VoxelBuffer.DEPTH_32_BIT,
+			VoxelBuffer.DEPTH_64_BIT,
+		])
 
 	var size: Vector3i = out_buffer.get_size()
 	var stride: int = 1 << lod  # 1 at LOD0, 2 at LOD1, etc.

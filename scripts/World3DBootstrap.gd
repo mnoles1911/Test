@@ -33,11 +33,59 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
-	# DIAGNOSTIC — dump VoxelMesherCubes property list so we can see
-	# which colour-mode flags exist. The terrain material is set to
-	# vertex_color_use_as_albedo=true, but the mesher might still
-	# need configuration (e.g. color_mode = RAW vs PALETTE) before
-	# it actually emits per-voxel CHANNEL_COLOR as vertex colors.
+	# Configure the terrain's CHANNEL_COLOR storage depth to 32-bit.
+	# Default is 8-bit (1 byte per voxel), which truncates our packed
+	# RGBA+mat_id values to just the R byte. The right knob lives on
+	# VoxelLodTerrain.format — a VoxelFormat resource that's null by
+	# default. We instantiate it, override the channel depth, and
+	# assign it BEFORE the terrain starts streaming chunks.
+	if "format" in terrain:
+		_configure_voxel_format(terrain)
+
+	# Move per-edit voxel-block updates off the main thread.
+	# `threaded_update_enabled` defaults to FALSE in this Zylann
+	# build, which is what made `tool.do_box(...)` cost ~37 ms per
+	# 3×3×3 mining swing — the mesh rebuild for the affected mesh
+	# blocks ran synchronously on the main thread and was the
+	# entirety of the [SPIKE _apply_edit total=37 ms (carve=37 ms)]
+	# we just measured. Turning it on offloads the work to a worker.
+	if "threaded_update_enabled" in terrain:
+		terrain.set("threaded_update_enabled", true)
+		print("[World3D] terrain.threaded_update_enabled = true")
+	# Defer collision-shape rebuilds so they batch instead of firing
+	# on every single edit. 0.1 s is imperceptible to the player
+	# (they're not pressed flush against the carved face within 100
+	# ms of breaking it), and it lets Zylann coalesce multiple
+	# edits' collision updates. Default 0 means rebuild-immediately,
+	# which is the worst case for stutter.
+	if "collision_update_delay" in terrain:
+		terrain.set("collision_update_delay", 0.1)
+		print("[World3D] terrain.collision_update_delay = 0.1")
+
+	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
+	# can hunt for a "max mesh blocks applied per frame" or similar
+	# setting. The earlier filtered dump only showed depth/format/
+	# channel/block matches; the lag investigation now needs a wider
+	# net (anything that controls streaming pacing, threading, view
+	# distance, queue caps, etc.).
+	print("[World3D] Full VoxelLodTerrain property dump:")
+	for prop in terrain.get_property_list():
+		var p_name: String = prop.get("name", "")
+		if p_name == "" or p_name.begins_with("script") or p_name == "resource_local_to_scene":
+			continue
+		if p_name == "resource_path" or p_name == "resource_name":
+			continue
+		# Skip uninteresting Node-level properties (transform, visibility,
+		# editor scaffolding) — those don't have streaming-perf relevance.
+		if p_name in ["transform", "global_transform", "visible",
+				"position", "rotation", "scale", "rotation_order",
+				"top_level", "metadata", "owner", "name",
+				"unique_name_in_owner", "process_priority",
+				"editor_description", "process_mode", "_import_path",
+				"multiplayer", "physics_interpolation_mode"]:
+			continue
+		print("[World3D]   terrain.%s = %s" % [p_name, terrain.get(p_name)])
+
 	if "mesher" in terrain:
 		var mesher: Resource = terrain.mesher
 		if mesher != null:
@@ -156,6 +204,75 @@ func _ready() -> void:
 			# wastes the first few seconds of play. Retry every
 			# 0.2 s for up to 5 s while terrain streams in.
 			call_deferred("_snap_spawn_to_ground")
+
+
+func _configure_voxel_format(terrain: Object) -> void:
+	# Set CHANNEL_COLOR depth to 32-bit so our packed RGBA + mat_id
+	# values survive storage. Default is 8-bit (1 byte per voxel),
+	# which truncates to just the R byte and loses both the rest of
+	# the color and the material id.
+	#
+	# The knob is VoxelLodTerrain.format — a VoxelFormat resource
+	# that's null by default. We construct one, override the
+	# CHANNEL_COLOR depth, and assign it BEFORE the terrain starts
+	# streaming chunks. Per-block set_channel_depth in _generate_block
+	# was tried and confirmed to break generation entirely (terrain
+	# disappears) — the global format resource is the right path.
+	#
+	# The exact API of VoxelFormat depends on the Zylann build. We
+	# probe a couple of common patterns: a method (set_channel_depth)
+	# or an array property (channel_depths). One should work.
+	var fmt: Resource = null
+	if ClassDB.class_exists("VoxelFormat"):
+		fmt = ClassDB.instantiate("VoxelFormat")
+	if fmt == null:
+		push_warning("[World3D] VoxelFormat class not found; CHANNEL_COLOR will stay at 8-bit and mining will be broken.")
+		return
+
+	print("[World3D] VoxelFormat created: %s" % fmt.get_class())
+	# Dump every property of the new format so we can see the API
+	# surface and pick the right knob if our guesses miss.
+	for prop in fmt.get_property_list():
+		var pname: String = prop.get("name", "")
+		if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
+			continue
+		if pname == "resource_path" or pname == "resource_name":
+			continue
+		print("[World3D]   format.%s = %s" % [pname, fmt.get(pname)])
+
+	var configured: bool = false
+
+	# Path 1 — method-based API: VoxelFormat.set_channel_depth(channel, depth)
+	if fmt.has_method("set_channel_depth"):
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
+		print("[World3D] Set CHANNEL_COLOR depth via fmt.set_channel_depth(...)")
+		configured = true
+
+	# Path 2 — typed per-channel property: VoxelFormat.color_depth = X
+	if not configured and "color_depth" in fmt:
+		fmt.set("color_depth", VoxelBuffer.DEPTH_32_BIT)
+		print("[World3D] Set CHANNEL_COLOR depth via fmt.color_depth")
+		configured = true
+
+	# Path 3 — array property indexed by channel
+	if not configured and "channel_depths" in fmt:
+		var depths = fmt.get("channel_depths")
+		if depths is Array:
+			depths[VoxelBuffer.CHANNEL_COLOR] = VoxelBuffer.DEPTH_32_BIT
+			fmt.set("channel_depths", depths)
+			print("[World3D] Set CHANNEL_COLOR depth via fmt.channel_depths[CHANNEL_COLOR]")
+			configured = true
+
+	if not configured:
+		push_warning("[World3D] VoxelFormat exists but no known API path worked; CHANNEL_COLOR will stay at 8-bit.")
+
+	# Assign the format BEFORE terrain begins generating blocks. The
+	# property in our diagnostic dump showed up as `format`, so just
+	# write to it. If the terrain has already started generating, this
+	# may not retroactively fix existing chunks — fresh save / new game
+	# may be needed for the depth to apply across the world.
+	terrain.set("format", fmt)
+	print("[World3D] terrain.format assigned.")
 
 
 func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
