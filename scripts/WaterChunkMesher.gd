@@ -93,7 +93,16 @@ var _water_flow_manager: Node = null
 # bucket placements) where each cell may have a different surface
 # height.
 var _source_region_planes: Array[MeshInstance3D] = []
-var _follow_log_counter: int = 0
+
+# Cache for the follow-player position update early-out. _process runs
+# every frame but the plane positions are a deterministic function of
+# the player's XZ — when the player hasn't moved meaningfully, the
+# work is wasted. Re-running the update when player_pos == last is
+# noise that adds up every frame even when the player is far above
+# water. 0.05 m epsilon (squared = 0.0025) means we re-run on actual
+# movement but skip when standing still or doing micro-physics jitter.
+const FOLLOW_UPDATE_EPSILON_SQ: float = 0.0025
+var _last_follow_pos: Vector3 = Vector3(INF, INF, INF)
 
 # Subdivision target for source-region planes. Each quad is roughly
 # this many metres on a side. Smaller = more vertices for finer wave
@@ -156,24 +165,19 @@ func _process(_delta: float) -> void:
 		built += 1
 
 	# Reposition source-region planes to follow the player and clip
-	# against their AABBs. Cheap — one position write per region.
-	# Read player position from the parent WaterFlowManager which
-	# Player3D updates each physics frame via set_player_position.
+	# against their AABBs. Skip entirely when the player hasn't
+	# moved more than FOLLOW_UPDATE_EPSILON_M since the last call —
+	# the plane positions are deterministic from player_pos, so if
+	# player_pos didn't change there's nothing to update. Without
+	# this early-out the function ran every frame (its work was
+	# small but constant noise) AND the diagnostic print fired
+	# every 2 s even when the player was standing still or above
+	# water.
 	if _water_flow_manager != null and "_player_pos" in _water_flow_manager:
 		var pp: Vector3 = _water_flow_manager._player_pos
-		_update_source_region_plane_positions(pp)
-		# DIAGNOSTIC — fire occasionally so we can see whether the
-		# follow-player update is running at all + what positions
-		# the planes end up at. 1 print per ~2 s (every 120 frames
-		# at 60 fps).
-		_follow_log_counter += 1
-		if _follow_log_counter >= 120:
-			_follow_log_counter = 0
-			var poses: Array[String] = []
-			for inst in _source_region_planes:
-				if inst != null and is_instance_valid(inst):
-					poses.append("vis=%s pos=%s" % [inst.visible, inst.global_position])
-			print("[WaterChunkMesher] follow update: player=%s | planes: %s" % [pp, poses])
+		if pp.distance_squared_to(_last_follow_pos) > FOLLOW_UPDATE_EPSILON_SQ:
+			_update_source_region_plane_positions(pp)
+			_last_follow_pos = pp
 
 
 # ============================================================
