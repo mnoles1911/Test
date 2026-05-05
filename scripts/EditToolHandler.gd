@@ -134,10 +134,16 @@ var _swing_time_on_target: float = 0.0
 # (carve OR smooth).
 
 var _current_action: String = ""
-# "mine" while LMB is the active hold, "smooth" while RMB is.
-# Resets when the player switches buttons or releases — the swing
-# accumulator restarts so half-mining-then-smoothing doesn't get
-# free progress on the smooth.
+# "mine" or "smooth" depending on `smooth_mode`. Resets when the
+# player switches mode mid-swing or releases — the swing accumulator
+# restarts so half-mining-then-toggling doesn't get free progress.
+
+# --- Public state for the HUD mode-indicator label ---
+# When `smooth_mode` is true, a held LMB performs the smoothing verb
+# instead of the mining/carving verb. Tab (action `toggle_smooth_mode`)
+# flips this. The HUD reads `smooth_mode` to draw the bottom-left
+# "MINING" / "SMOOTHING" indicator.
+var smooth_mode: bool = false
 
 var _held_log_counter: int = 0
 # Throttle counter for held-swing diagnostic prints — only print
@@ -229,20 +235,28 @@ func _process(delta: float) -> void:
 			_handle_bucket_click(equipped)
 			return
 
+	# --- Mode toggle ---
+	# Tab (action `toggle_smooth_mode`) flips between mining and
+	# smoothing. LMB performs whichever is active. Reserved for
+	# manual tools (pickaxe / shovel / axe); the tool gating below
+	# still applies — wrong tool still fails to mine but smoothing
+	# accepts any manual tool.
+	if Input.is_action_just_pressed("toggle_smooth_mode"):
+		smooth_mode = not smooth_mode
+		# Cancel any in-progress swing so the player gets a clean
+		# new accumulator on the new mode (avoids "I was 90% through
+		# mining, toggled, and immediately smoothed").
+		_clear_target()
+
 	# --- Held-action dispatch ---
-	# LMB held → "mine" action (carve 3×3×3, drop pickup).
-	# RMB held → "smooth" action (5×5 column-average smoothing).
-	# LMB has priority if both are held simultaneously.
+	# LMB held → "mine" or "smooth" depending on `smooth_mode`.
 	# Both share the same accumulator + cooldown + HUD progress bar
 	# so a smoothing pass takes the same wall time as a mining
 	# pass — driven by the aim-point material's mining_time_seconds.
 	var lmb_held: bool = Input.is_action_pressed("attack")
-	var rmb_held: bool = Input.is_action_pressed("smooth_terrain")
 	var action: String = ""
 	if lmb_held:
-		action = "mine"
-	elif rmb_held:
-		action = "smooth"
+		action = "smooth" if smooth_mode else "mine"
 	if action == "":
 		_clear_target()
 		return

@@ -43,7 +43,8 @@ All input is routed through Godot's Input Map. Physical keys are defaults only �
 |---|---|---|---|
 | `attack` | LMB (tap = light, hold = charge) | R2 / RT (tap/hold) | Light attack or power attack charge |
 | `block` | RMB (hold = block, tap = parry) | L2 / LT (hold/tap) | Block stance or parry timing |
-| `lock_on` | Middle Mouse / Tab | R3 / Right stick click | Toggle lock-on to nearest enemy |
+| `lock_on` | Middle Mouse | R3 / Right stick click | Toggle lock-on to nearest enemy |
+| `toggle_smooth_mode` | Tab | (TBD — controller binding) | Toggle manual tool between MINING and SMOOTHING modes (LMB performs whichever is active) |
 | `next_target` | Mouse Scroll Up | Right stick right | Cycle lock-on target right |
 | `prev_target` | Mouse Scroll Down | Right stick left | Cycle lock-on target left |
 
@@ -73,7 +74,7 @@ Build Mode is the placement UI for player-built structures (schematics) and per-
 | `build_confirm` | LMB | A / Cross | Place the schematic / voxel block at the ghost position. Material cost deducted from inventory. Rejected silently inside NoEditZones (ghost turns red). |
 | `build_cancel` | RMB | B / Circle | Cancel placement (no material spent). |
 | `build_rotate` | R | Right stick click | Rotate the ghost 90° around its vertical axis (where applicable). |
-| `build_detail_toggle` | Tab | D-pad right | Toggle between Schematic submode (placing prefab building pieces) and Detail submode (placing single voxel blocks one at a time). |
+| `build_detail_toggle` | Tab (context: Build Mode only) | D-pad right | Toggle between Schematic submode (placing prefab building pieces) and Detail submode (placing single voxel blocks one at a time). NOTE: Tab is shared with `toggle_smooth_mode`. Context disambiguates: `build_detail_toggle` only fires while Build Mode is held (B); outside Build Mode, Tab fires `toggle_smooth_mode`. When Build Mode lands the input handler must check `build_mode_active` before consuming Tab. |
 | `build_select_next` | Mouse Scroll Up | Right stick up | Cycle to the next schematic / building voxel in the player's crafted inventory. |
 | `build_select_prev` | Mouse Scroll Down | Right stick down | Cycle to the previous schematic / building voxel. |
 
@@ -130,7 +131,8 @@ Confirmed KB+M layout. No key conflicts.
 | Space | `dodge` | Directional roll (costs endurance) |
 | Left Shift | `sprint` | Hold to sprint (drains endurance; exhaustion locks sprint until recovery) |
 | C | `crouch` | Toggle crouch; reduces speed to ~2 m/s; sprint blocked while crouching |
-| Middle Mouse | `lock_on` | Toggle lock-on to nearest enemy |
+| Middle Mouse | `lock_on` | Toggle lock-on to nearest enemy (Phase 7-3D) |
+| Tab | `toggle_smooth_mode` | Toggle equipped manual tool between MINING and SMOOTHING (LMB performs whichever is active). Visible mode indicator in HUD bottom-left while a manual tool is equipped. |
 | Mouse Scroll Up / Down (locked) | `next_target` / `prev_target` | Cycle lock-on target while locked on (scroll zoom takes priority; rebind if needed) |
 | J | `open_journal` | Open/close journal overlay |
 | I | `open_inventory` | Open/close inventory screen |

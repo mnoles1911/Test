@@ -67,6 +67,11 @@ var _frame_times_idx: int = 0
 # hasn't changed. Invalidated when the node becomes null.
 var _cached_player: Node = null
 
+# Bottom-left mode indicator. Shows "MINING" or "SMOOTHING" while a
+# manual tool (pickaxe / shovel / axe) is equipped. Hidden otherwise.
+# Player toggles between modes with Tab (toggle_smooth_mode action).
+var _edit_mode_label: Label
+
 
 # =============================================================
 # LIFECYCLE
@@ -79,6 +84,7 @@ func _ready() -> void:
 	_build_fps_label()
 	_build_mining_bar()
 	_build_quick_slot_bar()
+	_build_edit_mode_label()
 	# Pre-size the frame-time window so per-frame writes don't allocate.
 	_frame_times.resize(60)
 	for i in _frame_times.size():
@@ -311,6 +317,33 @@ func _build_fps_label() -> void:
 	add_child(_fps_label)
 
 
+func _build_edit_mode_label() -> void:
+	# Bottom-left "MINING" / "SMOOTHING" indicator. Same outlined-text
+	# style as the FPS readout so it's readable on any background.
+	# Visibility + text are driven each frame in _process based on
+	# whichever EditToolHandler the active player owns.
+	_edit_mode_label = Label.new()
+	_edit_mode_label.text = "MINING"
+	_edit_mode_label.add_theme_font_size_override("font_size", 20)
+	_edit_mode_label.add_theme_color_override("font_color", Color(1, 0.92, 0.55, 1))
+	_edit_mode_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_edit_mode_label.add_theme_constant_override("outline_size", 4)
+	# Anchored to bottom-left.
+	_edit_mode_label.anchor_left = 0.0
+	_edit_mode_label.anchor_right = 0.0
+	_edit_mode_label.anchor_top = 1.0
+	_edit_mode_label.anchor_bottom = 1.0
+	_edit_mode_label.offset_left = 16
+	_edit_mode_label.offset_right = 220
+	_edit_mode_label.offset_top = -44
+	_edit_mode_label.offset_bottom = -16
+	_edit_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_edit_mode_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_edit_mode_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_edit_mode_label.visible = false
+	add_child(_edit_mode_label)
+
+
 func _build_ui() -> void:
 	# --- Size / position constants ---
 	const PANEL_WIDTH: float    = 540.0   # Width of the HUD panel in pixels.
@@ -510,8 +543,8 @@ func _process(delta: float) -> void:
 	# active mining. EditToolHandler is a child of Player3D
 	# (scenes/Player3D.tscn) and exposes mining_active / mining_progress
 	# / mining_material_label as plain vars updated each tick.
+	var edit_tool: Node = player.get_node_or_null("EditToolHandler")
 	if _mining_root != null:
-		var edit_tool: Node = player.get_node_or_null("EditToolHandler")
 		if edit_tool != null and "mining_active" in edit_tool and edit_tool.mining_active:
 			_mining_root.visible = true
 			_mining_bar.value = edit_tool.mining_progress
@@ -525,6 +558,33 @@ func _process(delta: float) -> void:
 				_mining_label.text = "MINING " + mat_name.to_upper()
 		else:
 			_mining_root.visible = false
+
+	# Bottom-left mode indicator — only visible when a manual tool
+	# (pickaxe / shovel / axe) is equipped, since the toggle only
+	# matters then. Throwables, buckets, etc. don't use the mode.
+	if _edit_mode_label != null:
+		var show_mode: bool = false
+		var mode_smooth: bool = false
+		if edit_tool != null and "smooth_mode" in edit_tool \
+				and get_node_or_null("/root/InventoryManager"):
+			var equipped: String = InventoryManager.get_equipped("weapon")
+			# Manual-tool list mirrors EditToolHandler.TOOL_SUB_SKILLS keys.
+			# Keep in sync if new manual tools land.
+			if equipped in ["iron_pickaxe", "iron_shovel", "iron_axe"]:
+				show_mode = true
+				mode_smooth = edit_tool.smooth_mode
+		_edit_mode_label.visible = show_mode
+		if show_mode:
+			if mode_smooth:
+				_edit_mode_label.text = "SMOOTHING  [Tab]"
+				_edit_mode_label.add_theme_color_override(
+					"font_color", Color(0.6, 0.85, 1.0, 1.0)
+				)
+			else:
+				_edit_mode_label.text = "MINING  [Tab]"
+				_edit_mode_label.add_theme_color_override(
+					"font_color", Color(1, 0.92, 0.55, 1)
+				)
 
 	# Quick-slot bar visible only during gameplay (player in tree).
 	if _quick_root != null:
