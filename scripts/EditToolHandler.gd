@@ -337,9 +337,7 @@ func _bucket_place_at(world_pos: Vector3) -> void:
 			if get_node_or_null("/root/VoxelMaterialRegistry"):
 				mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
 			else:
-				# Fallback: decode the alpha byte (bits 24-31) directly.
-				# Mirrors VoxelMaterialRegistry.material_id_from_packed.
-				mat_id = (packed >> 24) & 0xFF
+				mat_id = packed & 0xFF
 			if mat_id != 0:
 				if get_node_or_null("/root/DebugOverlay"):
 					DebugOverlay.log_action("Bucket place rejected: voxel solid.")
@@ -537,27 +535,23 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	tool.channel = VoxelBuffer.CHANNEL_COLOR
 	var grid_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
 	var packed: int = tool.get_voxel(grid_pos)
-	# DIAGNOSTIC — print exactly what tool.get_voxel returned so we can
-	# see whether the read is finding the same data the mesher renders.
-	# Throttled via the existing should_log counter. Remove once mining
-	# is confirmed working.
+	# DIAGNOSTIC — confirm reads now return the full 32-bit packed
+	# value (with mat_id in low byte per Godot's to_rgba32 layout).
+	# Throttled via the existing should_log counter. Remove once
+	# mining is confirmed working.
 	if _held_log_counter == 0:
-		# Sample neighboring cells too so we can see if the aim point
-		# is just slightly off the solid voxel.
 		var p_above: int = tool.get_voxel(grid_pos + Vector3i(0, 1, 0))
 		var p_below: int = tool.get_voxel(grid_pos + Vector3i(0, -1, 0))
 		print("[ReadMat] world=%s grid=%s packed=0x%08X mat=%d (above=0x%08X below=0x%08X)" % [
-			world_pos, grid_pos, packed, (packed >> 24) & 0xFF,
+			world_pos, grid_pos, packed, packed & 0xFF,
 			p_above, p_below,
 		])
-	# Material id lives in bits 24-31 (the byte the mesher reads as
-	# alpha). 0 = air.
-	var material_id: int = (packed >> 24) & 0xFF
-	if material_id == 0:
+	if (packed & 0xFF) == 0:
 		# Air. Probably aimed at the wrong cell (sub-voxel margin).
 		return null
 	if not get_node_or_null("/root/VoxelMaterialRegistry"):
 		return null
+	var material_id: int = packed & 0xFF
 	return VoxelMaterialRegistry.get_by_id(material_id)
 
 
@@ -725,12 +719,10 @@ func _do_smooth(aim_pos: Vector3) -> void:
 
 	const VOXELS_PER_METER: float = 6.0
 	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
-	# Default RGB bytes for filled voxels — mid-grey (128, 128, 128) in
-	# Zylann's byte order: R=low byte, G, B, then mat_id in the high
-	# byte (= what the mesher reads as alpha). The fill OR's in the
-	# donor's mat_id at bits 24-31. 0x00808080 = R=0x80, G=0x80, B=0x80,
-	# A=0 (mat_id slot empty until OR'd).
-	const FILL_RGB: int = 0x00808080
+	# Default RGB byte for filled voxels. The terrain material reads
+	# only the alpha-byte material id, so mid-grey is a safe colour
+	# placeholder. The fill always carries the donor's mat_id.
+	const FILL_RGB: int = 0x80808000
 	const FACE_OFFSETS: Array = [
 		Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
 		Vector3i(0, 1, 0), Vector3i(0, -1, 0),
@@ -778,12 +770,6 @@ func _do_smooth(aim_pos: Vector3) -> void:
 					(action_columns[ck] as Array).append(dy)
 					action_offsets.append(off)
 
-	# Solid-vs-air check on a packed voxel: the alpha byte (bits 24-31)
-	# carries the material id. Non-zero alpha = solid. See
-	# VoxelMaterialRegistry.is_air for the canonical site.
-	# Hot loop runs ~thousands of times per click; inline the bit-op
-	# rather than calling the autoload (avoids GDScript call overhead).
-
 	# --- Compute target_dy = lower-median of probe column tops ---
 	var probe_tops: Array = []
 	for ck in probe_columns.keys():
@@ -791,7 +777,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 		var top_p: int = -1000000
 		for i in range(dys_p.size() - 1, -1, -1):
 			var off_p: Vector3i = Vector3i(ck.x, int(dys_p[i]), ck.y)
-			if ((int(cells[off_p]) >> 24) & 0xFF) != 0:
+			if (int(cells[off_p]) & 0xFF) != 0:
 				top_p = int(dys_p[i])
 				break
 		if top_p != -1000000:
@@ -811,9 +797,8 @@ func _do_smooth(aim_pos: Vector3) -> void:
 		for i in range(dys_a.size() - 1, -1, -1):
 			var off_a: Vector3i = Vector3i(ck.x, int(dys_a[i]), ck.y)
 			var p_a: int = int(cells[off_a])
-			var p_a_mat: int = (p_a >> 24) & 0xFF
-			if p_a_mat != 0:
-				action_tops[ck] = {"dy": int(dys_a[i]), "mat_id": p_a_mat}
+			if (p_a & 0xFF) != 0:
+				action_tops[ck] = {"dy": int(dys_a[i]), "mat_id": p_a & 0xFF}
 				break
 
 	# --- Helper: read a voxel that may be inside or outside the probe sphere ---
@@ -827,8 +812,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 	var receivers: Array = []
 	for off in action_offsets:
 		var packed: int = int(cells[off])
-		var packed_mat: int = (packed >> 24) & 0xFF
-		var is_solid: bool = packed_mat != 0
+		var is_solid: bool = (packed & 0xFF) != 0
 		# Count face-solid neighbors. Pull from cells dict if neighbor is
 		# inside probe; otherwise fetch from terrain (and cache).
 		var face_solid: int = 0
@@ -840,7 +824,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 			else:
 				n_packed = tool.get_voxel(centre_grid + n_off)
 				cells[n_off] = n_packed  # cache for future neighbor lookups
-			if ((n_packed >> 24) & 0xFF) != 0:
+			if (n_packed & 0xFF) != 0:
 				face_solid += 1
 		# Cell directly below.
 		var below_off: Vector3i = off + BELOW_OFFSET
@@ -850,7 +834,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 		else:
 			below_packed = tool.get_voxel(centre_grid + below_off)
 			cells[below_off] = below_packed
-		var supported: bool = ((below_packed >> 24) & 0xFF) != 0
+		var supported: bool = (below_packed & 0xFF) != 0
 
 		var ck: Vector2i = Vector2i(off.x, off.z)
 		var col_top_dy: int = -1000000
@@ -874,7 +858,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 			if d_tier > 0:
 				donors.append({
 					"off": off,
-					"mat_id": packed_mat,
+					"mat_id": packed & 0xFF,
 					"tier": d_tier,
 					"score": d_score,
 				})
@@ -925,12 +909,11 @@ func _do_smooth(aim_pos: Vector3) -> void:
 		# Cells we picked might have been mutated by an earlier move
 		# in this same click (e.g., a donor cell already became air
 		# because we filled it earlier as a receiver — unlikely but
-		# safe to guard). Validate before committing. Solid check
-		# reads the alpha byte (bits 24-31), where mat_id lives.
-		if ((int(cells[d_off]) >> 24) & 0xFF) == 0:
+		# safe to guard). Validate before committing.
+		if (int(cells[d_off]) & 0xFF) == 0:
 			di += 1
 			continue
-		if ((int(cells[r_off]) >> 24) & 0xFF) != 0:
+		if (int(cells[r_off]) & 0xFF) != 0:
 			ri += 1
 			continue
 		if d_off == r_off:
@@ -943,9 +926,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 			"mat_id": int(d["mat_id"]),
 		})
 		cells[d_off] = 0
-		# Pack mat_id into the alpha byte (bits 24-31) so the local
-		# `cells` view matches what the bulk write below emits.
-		cells[r_off] = FILL_RGB | (int(d["mat_id"]) << 24)
+		cells[r_off] = FILL_RGB | int(d["mat_id"])
 		di += 1
 		ri += 1
 
@@ -969,10 +950,7 @@ func _do_smooth(aim_pos: Vector3) -> void:
 			(float(centre_grid.y + fill_off.y) + 0.5) * VOXEL_SIZE_M,
 			(float(centre_grid.z + fill_off.z) + 0.5) * VOXEL_SIZE_M,
 		)
-		# Pack: low 24 bits = grey RGB from FILL_RGB, high byte = mat_id
-		# (= alpha as the mesher reads it). Mirrors the local cells[] mutation
-		# above and VoxelMaterialRegistry.pack_voxel encoding.
-		var packed_fill: int = FILL_RGB | ((int(m["mat_id"]) & 0xFF) << 24)
+		var packed_fill: int = FILL_RGB | (int(m["mat_id"]) & 0xFF)
 		writes.append({"pos": carve_world, "value": AIR_VOXEL})
 		writes.append({"pos": fill_world, "value": packed_fill})
 

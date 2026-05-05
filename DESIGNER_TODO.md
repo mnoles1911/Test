@@ -750,17 +750,8 @@ a short pitch; promote to a real section when scope is committed.
   material is null (Zylann first-load streaming gap). Falls back to 0.5 s hold time
   and "terrain" display label. `_do_smooth` reads its own cell data independently.
 
-- ~~**CRITICAL: Voxel-color byte-order encoding mismatch — terrain renders nearly
-  black instead of per-material colors (diagnosed 2026-05-05).**~~
-  **Fixed 2026-05-05.** Repacked all voxel encoding sites so RGB lives in the
-  low 24 bits and `material_id` lives in bits 24-31 (the byte the Zylann mesher
-  reads as alpha). Touched `VoxelMaterialRegistry.pack_voxel` /
-  `material_id_from_packed` / `is_air`, the inline pack +
-  `_pack_for_material` in `CubicHeightmapGenerator`, every consumer
-  `& 0xFF` mat-id read in `EditToolHandler`, `VoxelGravityManager`,
-  `WaterFlowManager`, the `FILL_RGB` constant + OR sites in
-  `_do_smooth`, and `VoxelClusterBuilder._unpack_rgba32`. Original
-  diagnosis preserved below for posterity.
+- **CRITICAL: Voxel-color byte-order encoding mismatch — terrain renders nearly
+  black instead of per-material colors (diagnosed 2026-05-05, NOT fixed).**
 
   **Symptom:** with `vertex_color_use_as_albedo = true` on `VoxelTerrainMat` in
   `World3D.tscn` (set this session so vertex colors actually reach the shader),

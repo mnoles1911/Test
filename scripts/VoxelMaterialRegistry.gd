@@ -120,50 +120,40 @@ func is_loaded() -> bool:
 # =============================================================
 
 func pack_voxel(material_id: int, color: Color) -> int:
-	# Build the packed uint32 voxel value for VoxelBuffer.CHANNEL_COLOR.
-	#
-	# Byte layout (matches what Zylann's VoxelMesherCubes reads):
-	#   bits  0-7  = R
-	#   bits  8-15 = G
-	#   bits 16-23 = B
-	#   bits 24-31 = A (we use this slot for the material_id; the mesher
-	#                   treats alpha != 0 as "render this cube" and
-	#                   doesn't interpret the value, so we're free to
-	#                   piggy-back the material lookup key here)
-	#
-	# DO NOT use Godot's Color.to_rgba32() — it packs in the OPPOSITE
-	# byte order (R high, A low). That mismatch caused the entire
-	# terrain to render nearly black when vertex colours were finally
-	# routed to the shader. See DESIGNER_TODO.md history of the
-	# "Voxel-color byte-order encoding mismatch" bug.
+	# Build the packed RGBA32 integer that goes into a voxel buffer.
+	# RGB carries the cube's display colour; the alpha byte carries
+	# the material id. The mesher (VoxelMesherCubes) treats alpha != 0
+	# as "render this cube"; it doesn't interpret the alpha value
+	# itself, so we're free to use it as a material lookup key.
 	#
 	# material_id MUST be in [1, 254]. Passing 0 (air) here is almost
-	# certainly a bug — the caller probably meant to write 0 directly.
-	# Clamp + warn so the high byte stays non-zero (= solid).
+	# certainly a bug — the caller probably meant to write 0 directly
+	# (no voxel). We clamp to keep the alpha non-zero and warn loudly.
 	if material_id <= 0 or material_id >= 255:
 		push_warning("[VoxelMaterialRegistry] pack_voxel called with material_id=%d (must be 1-254). Clamping." % material_id)
 		material_id = clampi(material_id, 1, 254)
 
-	var r: int = clampi(int(round(color.r * 255.0)), 0, 255)
-	var g: int = clampi(int(round(color.g * 255.0)), 0, 255)
-	var b: int = clampi(int(round(color.b * 255.0)), 0, 255)
-	return r | (g << 8) | (b << 16) | ((material_id & 0xFF) << 24)
+	# Pack RGB from the colour, then overwrite the alpha byte with the
+	# material id. We use Godot's Color.to_rgba32() and then mask away
+	# the alpha that came from `color` (which is whatever the colour
+	# specified — typically 1.0 = 255).
+	var packed: int = color.to_rgba32()
+	packed = (packed & 0xFFFFFF00) | (material_id & 0xFF)
+	return packed
 
 
 func material_id_from_packed(packed_rgba: int) -> int:
-	# Extract the material id from a packed voxel integer. The id lives
-	# in bits 24-31 (the byte the mesher reads as alpha). Returns 0 for
-	# air voxels.
-	return (packed_rgba >> 24) & 0xFF
+	# Extract the material id from a packed voxel integer. The id
+	# lives in the lowest byte (the alpha byte in RGBA layout).
+	# Returns 0 for air voxels.
+	return packed_rgba & 0xFF
 
 
 func is_air(packed_rgba: int) -> bool:
-	# True if this voxel is air. Air has alpha (bits 24-31) == 0;
-	# solid voxels carry the material_id there. Checking the alpha byte
-	# rather than `packed == 0` so a solid voxel that happens to have
-	# RGB=(0,0,0) (theoretical, no current material has it) still reads
-	# as solid.
-	return ((packed_rgba >> 24) & 0xFF) == 0
+	# True if this voxel is air (alpha byte == 0). Convenience wrapper
+	# so the alpha-byte-as-material-id encoding stays an implementation
+	# detail of the registry, not knowledge spread across the codebase.
+	return (packed_rgba & 0xFF) == 0
 
 
 # =============================================================
