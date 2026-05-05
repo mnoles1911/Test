@@ -645,6 +645,21 @@ func _tick_held_action(delta: float, action: String) -> void:
 	var mine_secs: float = material.mining_time_seconds if material != null else SMOOTH_FALLBACK_TIME_S
 	var disp_name: String = material.display_name if material != null else "terrain"
 
+	# Mining-volume time scaling. The .tres `mining_time_seconds` is
+	# the swing time for the 2×2×2 (= 8 voxels) baseline. Scale
+	# proportionally to the actual voxel count being carved:
+	#   N=1 (1 vox)  → multiplier 1/8  = 0.125× (fast precision dig)
+	#   N=2 (8 vox)  → multiplier 8/8  = 1.0×   (baseline, unchanged)
+	#   N=3 (27 vox) → multiplier 27/8 ≈ 3.375× (slow bulk dig)
+	# Smoothing does NOT scale — the smooth verb operates on a fixed
+	# action sphere whose size is independent of `carve_volume_size`,
+	# so the swing-time should match the per-material baseline without
+	# inflation.
+	if action == "mine":
+		var voxel_count: int = carve_volume_size * carve_volume_size * carve_volume_size
+		var volume_multiplier: float = float(voxel_count) / 8.0
+		mine_secs *= volume_multiplier
+
 	# --- Target stability + accumulate ---
 	# Compute the integer voxel grid coord and compare. If the
 	# player's looking at a different voxel than last frame, OR if
