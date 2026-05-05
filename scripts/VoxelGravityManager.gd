@@ -321,7 +321,10 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 			for y in range(side):
 				for z in range(side):
 					var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_COLOR)
-					if (packed & 0xFF) == 0:
+					# Material id (and the mesher's solid/air flag) lives
+					# in bits 24-31 — the alpha byte. Packed == 0 always
+					# means air; non-zero alpha = solid.
+					if ((packed >> 24) & 0xFF) == 0:
 						continue
 					solids[Vector3i(x, y, z)] = packed
 	else:
@@ -330,7 +333,7 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 				for z in range(side):
 					var v_world_grid: Vector3i = min_v + Vector3i(x, y, z)
 					var packed: int = tool.get_voxel(v_world_grid)
-					if (packed & 0xFF) == 0:
+					if ((packed >> 24) & 0xFF) == 0:
 						continue
 					solids[Vector3i(x, y, z)] = packed
 	if perf_log_enabled:
@@ -445,7 +448,8 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 		if anchored.has(v):
 			continue
 		var packed: int = solids[v]
-		var mat_id: int = packed & 0xFF
+		# Material id is in the alpha byte (bits 24-31).
+		var mat_id: int = (packed >> 24) & 0xFF
 		var fall: int = VoxelMaterial.FallBehavior.NEVER
 		if mat_registry != null:
 			var material: VoxelMaterial = mat_registry.get_by_id(mat_id)
@@ -725,7 +729,8 @@ func _handle_cluster(
 		var count: int = 0
 		for v_pos_v in absolute_voxels.keys():
 			var packed: int = absolute_voxels[v_pos_v]
-			var mat_id: int = packed & 0xFF
+			# Material id is in the alpha byte (bits 24-31).
+			var mat_id: int = (packed >> 24) & 0xFF
 			var material: VoxelMaterial = mat_registry.get_by_id(mat_id)
 			if material != null:
 				sum_g += material.gravity_scale

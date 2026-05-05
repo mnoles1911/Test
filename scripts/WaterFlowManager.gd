@@ -636,7 +636,9 @@ func _is_solid_at(tool: Object, voxel_pos: Vector3i) -> bool:
 	if get_node_or_null("/root/VoxelMaterialRegistry") != null:
 		mat_id = VoxelMaterialRegistry.material_id_from_packed(packed)
 	else:
-		mat_id = packed & 0xFF
+		# Fallback: alpha byte (bits 24-31) carries the material id.
+		# Mirrors VoxelMaterialRegistry.material_id_from_packed.
+		mat_id = (packed >> 24) & 0xFF
 	return mat_id != 0
 
 

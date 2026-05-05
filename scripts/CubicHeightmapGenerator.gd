@@ -591,9 +591,17 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 						t_band = clampf(1.0 - float(stone_depth) / STONE_BAND_REF_VOXELS, 0.0, 1.0)
 					c = lo.lerp(hi, t_band)
 
-				# Inline pack: RGB from c, alpha byte = mat_id.
-				# (Was _pack_for_material — now one bit-op.)
-				var packed: int = (c.to_rgba32() & 0xFFFFFF00) | (mat_id & 0xFF)
+				# Inline pack — byte order MUST match what
+				# VoxelMesherCubes reads:
+				#   bits 0-7=R, 8-15=G, 16-23=B, 24-31=A(=mat_id).
+				# Godot's Color.to_rgba32() uses the OPPOSITE order
+				# (R high, A low), which produced near-black terrain
+				# once vertex colours actually reached the shader.
+				# Mirror the encoding in VoxelMaterialRegistry.pack_voxel.
+				var r_b: int = clampi(int(round(c.r * 255.0)), 0, 255)
+				var g_b: int = clampi(int(round(c.g * 255.0)), 0, 255)
+				var b_b: int = clampi(int(round(c.b * 255.0)), 0, 255)
+				var packed: int = r_b | (g_b << 8) | (b_b << 16) | ((mat_id & 0xFF) << 24)
 				out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
 	_perf_record_block_done(t_start, lod, "full")
 
@@ -827,28 +835,22 @@ func _compute_voxel_color(
 
 
 func _pack_for_material(material: VoxelMaterial, color: Color) -> int:
-	# Build the packed RGBA32 voxel value with the material id in the
-	# alpha byte.
+	# Build the packed voxel value with R/G/B in the low 24 bits and
+	# the material_id in the high byte (where Zylann's mesher reads
+	# alpha). Mirrors VoxelMaterialRegistry.pack_voxel exactly — kept
+	# inline rather than calling the autoload because this function
+	# runs on Zylann worker threads, and touching the SceneTree
+	# (get_node_or_null) from a worker thread is forbidden in Godot 4
+	# and produces ~160k errors per minute during chunk streaming.
 	#
-	# THREADING NOTE — second instance of the same bug as
-	# _ensure_materials_cached. This function runs on a Zylann worker
-	# thread (called from _generate_block at line 384). Touching the
-	# SceneTree (`get_node_or_null("/root/...")`) from a worker thread
-	# is forbidden in Godot 4 and produces ~160k errors per minute of
-	# play during continuous chunk streaming.
-	#
-	# Fix: do the alpha-byte pack inline. The encoding is one bit-op
-	# (alpha byte = material_id) and lives canonically in
-	# VoxelMaterialRegistry.pack_voxel, but copying that math here
-	# (with a comment so it can be kept in sync if the encoding ever
-	# changes) is far cheaper than the threading hazard. The registry
-	# stays the source of truth for runtime queries from gameplay
-	# code; the generator just produces voxels matching the same
-	# encoding.
+	# DO NOT use Color.to_rgba32() — it packs in the OPPOSITE byte
+	# order (R high, A low) and produces near-black terrain when
+	# vertex colours reach the shader. See VoxelMaterialRegistry.gd
+	# pack_voxel docstring for the full byte-layout spec.
+	var r_b: int = clampi(int(round(color.r * 255.0)), 0, 255)
+	var g_b: int = clampi(int(round(color.g * 255.0)), 0, 255)
+	var b_b: int = clampi(int(round(color.b * 255.0)), 0, 255)
 	if material == null:
-		return color.to_rgba32()
-	# Encoding: high 24 bits = RGB888 from `color`, low 8 bits =
-	# material_id. Mirrors VoxelMaterialRegistry.pack_voxel(); if the
-	# alpha-byte-as-id encoding ever changes, update both sites.
-	var packed: int = color.to_rgba32()
-	return (packed & 0xFFFFFF00) | (material.material_id & 0xFF)
+		# Air-coloured fallback (alpha=0, mesher will skip emitting).
+		return r_b | (g_b << 8) | (b_b << 16)
+	return r_b | (g_b << 8) | (b_b << 16) | ((material.material_id & 0xFF) << 24)

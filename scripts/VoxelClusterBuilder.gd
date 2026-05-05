@@ -295,11 +295,17 @@ static func get_shared_material() -> StandardMaterial3D:
 # ---------------------------------------------------------------
 
 static func _unpack_rgba32(packed: int) -> Color:
-	# Inverse of Color.to_rgba32(). Voxel colours stored in
-	# CHANNEL_COLOR are packed as 0xRRGGBBAA (R in highest byte, A in
-	# lowest), per Godot's Color.to_rgba32 contract.
-	var r: int = (packed >> 24) & 0xFF
-	var g: int = (packed >> 16) & 0xFF
-	var b: int = (packed >>  8) & 0xFF
-	var a: int =  packed        & 0xFF
+	# Decode a voxel from CHANNEL_COLOR. Byte layout matches what
+	# VoxelMesherCubes reads (and what VoxelMaterialRegistry.pack_voxel
+	# writes):
+	#   bits  0-7  = R
+	#   bits  8-15 = G
+	#   bits 16-23 = B
+	#   bits 24-31 = alpha (= material_id; we surface it here as the
+	#                color's alpha for consistency with the mesher).
+	# DO NOT use Godot's Color.to_rgba32 byte order — it's the opposite.
+	var r: int =  packed        & 0xFF
+	var g: int = (packed >>  8) & 0xFF
+	var b: int = (packed >> 16) & 0xFF
+	var a: int = (packed >> 24) & 0xFF
 	return Color(r / 255.0, g / 255.0, b / 255.0, a / 255.0)
