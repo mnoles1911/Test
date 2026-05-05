@@ -185,6 +185,10 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if not enabled:
 		return
+	# Drain pending drop spawns regardless of scan-queue state — they
+	# pile up after a big carve and need to come out smoothly even on
+	# frames when no new scan runs.
+	_drain_pending_drops()
 	if _scan_queue.is_empty():
 		return
 	# Process at most max_scans_per_frame bubbles.
@@ -658,26 +662,41 @@ func _handle_loose_voxels(
 ## a stacking-into-fewer-drops grouping pass yet (could add later).
 @export var max_pickup_drops_per_scan: int = 32
 
+## Max VoxelDrop instantiations per physics frame. RigidBody3D + mesh
+## + collision-shape construction is expensive; spawning 32 in one
+## frame caused a visible freeze on explosive throws (each carve uncovers
+## many unsupported voxels at once). Drained from `_pending_drops` at
+## this rate so the spike from a big AOE carve smears across multiple
+## frames instead of hitching the main thread.
+@export var max_drop_spawns_per_frame: int = 4
+
+# Pending drop spawns queued by _handle_pickup_voxels, drained by
+# _physics_process at max_drop_spawns_per_frame per tick. Each entry
+# is a Dictionary: { "pos": Vector3, "item_id": String, "color": Color,
+# "count": int }. The carves themselves still happen synchronously
+# (in the bulk write batch) so the world state is consistent
+# immediately; only the cosmetic drop spawn is deferred.
+var _pending_drops: Array = []
+
 
 func _handle_pickup_voxels(
 	pickup_voxels: Dictionary,    # bubble-local Vector3i → packed RGBA
 	bubble_min_v: Vector3i,
 ) -> void:
-	# For each PICKUP_DROP voxel: queue a carve write + spawn a
-	# VoxelDrop at the voxel's world centre. The drop's setup() must
-	# be called BEFORE add_child (per VoxelDrop's contract — _ready
-	# builds the visual from the configured colour + count).
+	# For each PICKUP_DROP voxel: queue a carve write AND queue a
+	# pending drop spawn. The actual VoxelDrop instantiation happens
+	# in _physics_process at max_drop_spawns_per_frame per tick — this
+	# avoids the multi-RigidBody3D-construction freeze on big AOE
+	# carves (explosives, future spells).
 	#
 	# Drops are parented to the World3D scene root (via the player's
-	# parent) so they outlive the player's own lifetime and stay
-	# where they fell. If the world root can't be found we still
-	# carve but skip spawning — degraded but never crashing.
+	# parent in _drain_pending_drops) so they outlive the player's
+	# own lifetime and stay where they fell.
 	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
 	if mat_registry == null:
 		return
-	var world_root: Node = _find_world_root_for_drops()
 	var carve_writes: Array = []
-	var drops_spawned: int = 0
+	var drops_queued: int = 0
 	for v_pos_v in pickup_voxels.keys():
 		var v: Vector3i = v_pos_v
 		var packed: int = pickup_voxels[v]
@@ -692,21 +711,41 @@ func _handle_pickup_voxels(
 		carve_writes.append({"pos": world_centre, "value": 0})
 		# Skip the drop spawn when over the cap or when the material
 		# has no yield (rare placeholder materials).
-		if drops_spawned >= max_pickup_drops_per_scan:
+		if drops_queued >= max_pickup_drops_per_scan:
 			continue
 		if material == null or material.yield_item_id == "":
 			continue
-		if world_root == null:
-			continue
-		var drop: VoxelDrop = VoxelDrop.new()
-		drop.setup(material.yield_item_id, material.color_low, material.yield_quantity)
-		world_root.add_child(drop)
-		drop.global_position = world_centre
-		drops_spawned += 1
+		_pending_drops.append({
+			"pos": world_centre,
+			"item_id": material.yield_item_id,
+			"color": material.color_low,
+			"count": material.yield_quantity,
+		})
+		drops_queued += 1
 	if not carve_writes.is_empty():
 		VoxelEditManager.queue_set_voxels_bulk(
 			carve_writes, "pickup_carve_n%d" % carve_writes.size()
 		)
+
+
+func _drain_pending_drops() -> void:
+	# Spawn at most max_drop_spawns_per_frame VoxelDrops per physics
+	# frame from the pending queue. Each spawn = one new RigidBody3D
+	# + mesh + collision shape, which is moderately expensive; trickle
+	# the work out instead of doing 32 at once.
+	if _pending_drops.is_empty():
+		return
+	var world_root: Node = _find_world_root_for_drops()
+	if world_root == null:
+		return
+	var spawned: int = 0
+	while spawned < max_drop_spawns_per_frame and not _pending_drops.is_empty():
+		var d: Dictionary = _pending_drops.pop_front()
+		var drop: VoxelDrop = VoxelDrop.new()
+		drop.setup(d["item_id"], d["color"], int(d["count"]))
+		world_root.add_child(drop)
+		drop.global_position = d["pos"]
+		spawned += 1
 
 
 func _find_world_root_for_drops() -> Node:
