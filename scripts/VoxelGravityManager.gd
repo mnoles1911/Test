@@ -270,18 +270,17 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 		return
 	tool.channel = VoxelBuffer.CHANNEL_COLOR
 
-	# Perf-log phase timers. Initialised to 0; only used when
-	# perf_log_enabled. Captured at each phase boundary so we can see
-	# which phase dominates the wall time of an explosive scan.
-	var t_start: int = 0
+	# DIAGNOSTIC — always capture t_start so we can auto-print slow
+	# scans without needing perf_log_enabled. Phase timers below stay
+	# gated for the detailed [PERF VGM] line; the auto-print is a
+	# lightweight safety net specifically for hunting freeze sources.
+	var t_start: int = Time.get_ticks_usec()
 	var t_after_read: int = 0
 	var t_after_anchor_pre: int = 0
 	var t_after_floodfill: int = 0
 	var t_after_partition: int = 0
 	var t_after_loose: int = 0
 	var t_after_cluster: int = 0
-	if perf_log_enabled:
-		t_start = Time.get_ticks_usec()
 
 	# --- Define the analysis box in voxel-grid space ---
 	# Adaptive padding: the bubble extends a small buffer beyond the
@@ -561,6 +560,16 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 			t_after_floodfill, t_after_partition, t_after_loose,
 			t_after_cluster,
 		)
+
+	# DIAGNOSTIC — always print when a single bubble scan exceeds 30 ms.
+	# Helps trace where the explosive-throw freeze is going.
+	var t_end: int = Time.get_ticks_usec()
+	var total_us: int = t_end - t_start
+	if total_us > 30000:
+		print("[SPIKE _process_bubble] total=%d us  bubble_vol=%d  solids=%d  cluster_voxels=%d  clusters=%d" % [
+			total_us, bubble_volume, solids.size(),
+			unanchored_cluster.size(), clusters.size(),
+		])
 
 
 func _perf_log_bubble(

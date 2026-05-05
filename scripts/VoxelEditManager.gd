@@ -411,6 +411,16 @@ func _physics_process(_delta: float) -> void:
 # ============================================================
 
 func _apply_edit(cmd: Dictionary) -> void:
+	# DIAGNOSTIC — auto-print phase breakdown when this single edit
+	# takes >30 ms. Lets us see whether the spike comes from the
+	# carve (`tool.do_sphere`/etc.), `_mark_chunks_in_aabb`, the
+	# emit, or something invisible inside Zylann's post-carve path.
+	# Remove once the explosive-throw spike is traced.
+	var t_apply_start: int = Time.get_ticks_usec()
+	var t_phase_carve: int = 0
+	var t_phase_mark: int = 0
+	var t_phase_emit: int = 0
+
 	# Pull a fresh VoxelTool from the terrain. We do NOT cache the
 	# VoxelTool because it can become stale across frames — grab a
 	# new one each time per Zylann's recommended usage.
@@ -459,24 +469,21 @@ func _apply_edit(cmd: Dictionary) -> void:
 		"sphere":
 			var voxel_pos: Vector3    = _terrain.to_local(cmd["pos"])
 			var voxel_radius: float   = cmd["radius"] * inv_scale
-			var t_sphere_start: int = 0
-			if perf_log_enabled:
-				t_sphere_start = Time.get_ticks_usec()
+			var t_carve_start: int = Time.get_ticks_usec()
 			tool.do_sphere(voxel_pos, voxel_radius)
-			if perf_log_enabled:
-				var sphere_us: int = Time.get_ticks_usec() - t_sphere_start
-				var est_voxels: int = _estimate_voxel_cost(cmd)
-				print("[PERF VEM] sphere r=%.1fm est_vox=%d  do_sphere=%d us  (%.2f ms)" % [
-					cmd["radius"], est_voxels, sphere_us, sphere_us / 1000.0
-				])
+			t_phase_carve = Time.get_ticks_usec() - t_carve_start
 			var s_aabb_min: Vector3 = cmd["pos"] - Vector3.ONE * cmd["radius"]
 			var s_aabb_max: Vector3 = cmd["pos"] + Vector3.ONE * cmd["radius"]
+			var t_mark_start: int = Time.get_ticks_usec()
 			_mark_chunks_in_aabb(s_aabb_min, s_aabb_max)
+			t_phase_mark = Time.get_ticks_usec() - t_mark_start
+			var t_emit_start: int = Time.get_ticks_usec()
 			edit_applied.emit(
 				cmd["pos"],
 				_world_to_chunk(cmd["pos"]),
 				AABB(s_aabb_min, s_aabb_max - s_aabb_min),
 			)
+			t_phase_emit = Time.get_ticks_usec() - t_emit_start
 
 		"box":
 			var voxel_min: Vector3 = _terrain.to_local(cmd["min"])
@@ -608,6 +615,14 @@ func _apply_edit(cmd: Dictionary) -> void:
 				_world_to_chunk(bulk_center),
 				AABB(bulk_min, bulk_max - bulk_min),
 			)
+
+	# DIAGNOSTIC — auto-print phase breakdown for slow edits.
+	var t_apply_total: int = Time.get_ticks_usec() - t_apply_start
+	if t_apply_total > 30000:  # 30 ms
+		print("[SPIKE _apply_edit] type=%s total=%d us (carve=%d  mark=%d  emit=%d)" % [
+			cmd.get("type", "?"), t_apply_total,
+			t_phase_carve, t_phase_mark, t_phase_emit,
+		])
 
 
 func _check_edit_allowed(world_pos: Vector3) -> bool:
