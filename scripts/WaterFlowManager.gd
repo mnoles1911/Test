@@ -66,8 +66,9 @@ const _TICK_MASK: int = 0x1FE0  # bits 5–12, shifted up
 # Chunk dimensions — must match VoxelEditManager.CHUNK_SIZE_VOXELS and
 # VoxelEditManager.VOXELS_PER_METER. Replicated here so this file
 # doesn't need to call into private helpers on another autoload.
+const VOXELS_PER_METER: float = 6.0
 const CHUNK_SIZE_VOXELS: int = 16
-const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / 6.0  # ≈ 2.667 m
+const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER  # ≈ 2.667 m
 
 
 # ============================================================
