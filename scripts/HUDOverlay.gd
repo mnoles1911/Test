@@ -285,7 +285,7 @@ func _build_fps_label() -> void:
 	# it's readable against any scene background — sky, dark cave,
 	# water, etc. — without burning a panel rect into the corner.
 	_fps_label = Label.new()
-	_fps_label.text = "FPS: --"
+	_fps_label.text = "FPS: --\nworst: --"
 	_fps_label.add_theme_font_size_override("font_size", 18)
 	_fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 	# Outline keeps the text readable on bright (sky, snow) backgrounds.
@@ -299,11 +299,14 @@ func _build_fps_label() -> void:
 	_fps_label.anchor_right = 1.0
 	_fps_label.anchor_top = 0.0
 	_fps_label.anchor_bottom = 0.0
-	_fps_label.offset_left = -120  # slot width
-	_fps_label.offset_right = -12  # right-edge margin
+	# Slot wide enough for "worst: 999 ms" plus margin. Tall enough
+	# for two lines (FPS on top, worst-frame ms below) at font size 18.
+	_fps_label.offset_left = -180
+	_fps_label.offset_right = -12
 	_fps_label.offset_top = 8
-	_fps_label.offset_bottom = 32
+	_fps_label.offset_bottom = 64
 	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_fps_label)
 
@@ -452,7 +455,7 @@ func _process(delta: float) -> void:
 			if ft > worst:
 				worst = ft
 		var worst_ms: int = int(round(worst * 1000.0))
-		_fps_label.text = "FPS: %d  |  worst: %d ms" % [
+		_fps_label.text = "FPS: %d\nworst: %d ms" % [
 			Engine.get_frames_per_second(), worst_ms,
 		]
 		# Tint the label red when worst > 33 ms (= sub-30 fps spike).
