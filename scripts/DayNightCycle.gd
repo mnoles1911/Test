@@ -59,9 +59,19 @@ const MOON_DISTANCE: float = 500.0
 
 
 # Light energy ramps. Sun is bright at noon, moon is a fraction of that.
-const SUN_ENERGY_DAY: float    = 1.4
+const SUN_ENERGY_DAY: float    = 2.2
+# Bumped from 1.4 → 2.2 (mid-2026-05): daytime felt darker than
+# expected with the new terrain material, especially at LOD2+ where
+# vertex colour darkening compounds with mesh-edge shading. 2.2 is
+# a normal "bright outdoor scene" sun energy in Godot 4 — readable
+# without blowing out highlights.
 const SUN_ENERGY_NIGHT: float  = 0.0
-const MOON_ENERGY_NIGHT: float = 0.35
+const MOON_ENERGY_NIGHT: float = 0.6
+# Bumped from 0.35 → 0.6: night was almost pitch-black on screen.
+# 0.6 keeps night clearly distinguishable from day but lets the
+# player still see terrain and walk around without a torch.
+# Actual full darkness can come from the WeatherManager fog override
+# or specific story scripts when needed.
 const MOON_ENERGY_DAY: float   = 0.0
 
 # Color palettes (tuned by eye — iterate once art direction lands).
@@ -83,11 +93,25 @@ const FOG_COLOR_DAY: Color   = Color(0.55, 0.65, 0.78)
 const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 
 
+# Sun-rotation quantization. The sun moves ~0.0625°/s on a 96-minute day,
+# which is ~0.001° per frame at 60 fps — small enough that writing a fresh
+# basis every frame just nudges the shadow projection by sub-texel amounts
+# and makes shadow edges crawl/shimmer. Quantizing to 0.5° steps means the
+# basis only changes once every ~8 seconds of real time. Visually the sun
+# still moves smoothly (a 0.5° jump is invisible at this distance), but the
+# shadow map stays identical between updates so cascades don't reproject
+# and edges don't jitter.
+const SUN_ANGLE_QUANTIZE_RAD: float = 0.00873  # ≈ 0.5°
+
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
 var _env: WorldEnvironment
 var _sun_mesh: MeshInstance3D
 var _moon_mesh: MeshInstance3D
+
+# Last quantized sun-angle step we wrote to the basis. INT_MIN sentinel forces
+# the first _apply() call to do an unconditional write.
+var _last_sun_angle_step: int = -2147483648
 
 # Cached reference to the sky's ShaderMaterial so we don't re-fetch it
 # every frame. Resolved once in _ready(); null if the scene's Sky doesn't
@@ -176,12 +200,19 @@ func _apply() -> void:
 	# the sun is at the east horizon (angle 0), at hour 12 it's at
 	# zenith (angle 90°), at hour 18 it's at the west horizon (180°).
 	var sun_angle_rad: float = (h - 6.0) / 24.0 * TAU
-	# Tilt the orbit ~15° so the sun arcs through the south hemisphere
-	# rather than dead-overhead — gives more natural shadow direction.
-	var sun_basis: Basis = Basis().rotated(Vector3.LEFT, sun_angle_rad).rotated(Vector3.FORWARD, deg_to_rad(15.0))
-	_sun.transform.basis = sun_basis
-	# Moon is the anti-sun — same orbit, half a turn behind.
-	_moon.transform.basis = sun_basis.rotated(Vector3.LEFT, PI)
+	# Quantize to discrete steps so the basis only changes when the sun has
+	# actually moved a visible amount. See SUN_ANGLE_QUANTIZE_RAD comment for
+	# why — this is what stops shadow edges from crawling every frame.
+	var sun_angle_step: int = int(round(sun_angle_rad / SUN_ANGLE_QUANTIZE_RAD))
+	if sun_angle_step != _last_sun_angle_step:
+		_last_sun_angle_step = sun_angle_step
+		var quantized_angle: float = float(sun_angle_step) * SUN_ANGLE_QUANTIZE_RAD
+		# Tilt the orbit ~15° so the sun arcs through the south hemisphere
+		# rather than dead-overhead — gives more natural shadow direction.
+		var sun_basis: Basis = Basis().rotated(Vector3.LEFT, quantized_angle).rotated(Vector3.FORWARD, deg_to_rad(15.0))
+		_sun.transform.basis = sun_basis
+		# Moon is the anti-sun — same orbit, half a turn behind.
+		_moon.transform.basis = sun_basis.rotated(Vector3.LEFT, PI)
 
 	# --- Sun energy + color ---
 	var sun_energy: float

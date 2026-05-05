@@ -219,6 +219,35 @@ Below `1.5 m` fall height there is no damage (so digging out a small pebble does
 - **Re-deposits fire `edit_applied`**, which triggers a follow-up gravity scan. The scan exits cheaply (the just-landed voxels are anchored by construction), but it's wasted work for ~32 frames during a heavy collapse.
 - **Multiplayer determinism is not addressed.** Cluster spawn order depends on per-client edit timing; deferred until Netfox rollback work begins.
 
+### Voxel Pickups (`VoxelDrop`)
+
+When the player breaks voxels with a manual tool (pickaxe / shovel / axe), the carved chunk yields **one physical pickup** at the carve site — `scripts/VoxelDrop.gd`, a `RigidBody3D` that falls, settles, bobs, and auto-collects when the player walks within `pickup_radius_m` (default 2.5 m). Despawns after `despawn_seconds` (default 300 s = 5 min) if abandoned.
+
+**Yield rule:** one drop per swing carrying `material.yield_quantity` (= 1 by default) of the **majority** material at the carve point. Currently the "majority" is sampled at the single voxel under the aim point — a true vote across all 27 voxels would be more accurate at material boundaries but isn't visibly different to the player most of the time and adds 27× the read cost per swing.
+
+**Cluster vs Drop — different concerns, no conflict:**
+
+| | `FallingVoxelCluster` | `VoxelDrop` |
+|---|---|---|
+| **Trigger** | Gravity scan finds unsupported voxels after an edit | `EditToolHandler._carve` after a successful tool swing |
+| **Body contents** | The actual voxels that lost support, mesh-built per-voxel | One small uniform-colour cube |
+| **On settle** | Re-deposits as terrain (cluster_redeposit bulk write) | Bobs, spins, waits for pickup |
+| **Damage on impact** | Yes (`voxel_count × fall_height × 0.05`) | Never |
+| **Stack semantics** | Each voxel is a real terrain voxel | Stack of N (item_count) consumed on pickup |
+| **Lifetime end** | Re-deposit OR 10 s failsafe `queue_free` | Pickup proximity OR 5 min despawn |
+
+Concretely — when the player mines a 3×3×3 chunk halfway up a stone column:
+1. The carve removes 27 voxels via `VoxelEditManager.queue_edit_box`.
+2. `EditToolHandler._spawn_voxel_drop` spawns **one `VoxelDrop`** at the carve site carrying 1× raw_stone.
+3. `VoxelGravityManager` separately receives `edit_applied` and, if the column above lost support, spawns **one `FallingVoxelCluster`** that physically tumbles down and re-deposits as new terrain wherever it lands.
+4. If the player then mines the new fallen-and-re-deposited terrain → another `VoxelDrop` for that swing.
+
+The two systems share `VoxelEditManager` as the only terrain-write seam (carve creates air, redeposit writes voxels back) but otherwise have disjoint code, no flags, no shared state.
+
+**Files:**
+- `scripts/VoxelDrop.gd` — RigidBody3D pickup, single-file
+- Spawn entry point: `EditToolHandler._spawn_voxel_drop(world_pos, item_id, color, count)`
+
 ### Voxel Material System
 
 Every voxel in the world carries a material identity (stone, dirt, grass, sand, …). The material drives mining time, allowed tools, harvest yield, fall behavior, gravity weight, crush damage, and visual colour. The system is **flyweight** — one `VoxelMaterial` Resource per material, every voxel of that material shares the same Resource reference via a registry lookup.

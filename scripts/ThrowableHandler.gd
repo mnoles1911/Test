@@ -25,18 +25,19 @@ extends Node3D
 # CONFIGURATION
 # =============================================================
 
-@export var throwable_item_id: String = "powder_charge"
-# Inventory item the throw input consumes. Currently hardcoded;
-# real quick-slot UI will let the player rotate between throwables.
+@export var throw_input_action: String = "attack"
+# LMB. ThrowableHandler only fires when the EQUIPPED weapon is a
+# throwable (type == "throwable" in InventoryManager.ITEM_REGISTRY);
+# EditToolHandler short-circuits in that case, so the same key
+# does the right thing whether you have a tool or a bomb out.
 
-@export var throwable_scene: PackedScene = preload("res://scenes/throwables/powder_charge.tscn")
-# Scene to instance on throw. One throwable per scene file; map
-# from item_id → scene at the call site, or as a const dict here
-# once we have more than one type.
-
-@export var throw_input_action: String = "quick_slot_1"
-# Input action that triggers a throw. Bound to "1" by default in
-# project.godot (per design/INPUT_AND_CONTROLS.md → Quick Slots).
+# Mapping from item_id → scene file. Add new throwables here.
+const THROWABLE_SCENES: Dictionary = {
+	"powder_charge":  preload("res://scenes/throwables/powder_charge.tscn"),
+	# "sappers_bundle": preload("res://scenes/throwables/sappers_bundle.tscn"),
+	# Each new throwable item drops its scene here and the equip-driven
+	# routing picks it up automatically — no per-item code paths.
+}
 
 @export var throw_speed_meters_per_second: float = 12.0
 # How fast the charge leaves Roland's hand. Roughly grenade-toss
@@ -81,14 +82,26 @@ func _process(_delta: float) -> void:
 		return
 	if not Input.is_action_just_pressed(throw_input_action):
 		return
-	_try_throw()
+	# Only handle LMB when the equipped weapon is a throwable.
+	# Otherwise EditToolHandler owns the LMB action (mine / fill /
+	# place via bucket).
+	if not get_node_or_null("/root/InventoryManager"):
+		return
+	var equipped_id: String = InventoryManager.get_equipped("weapon")
+	if equipped_id == "":
+		return
+	if not InventoryManager.ITEM_REGISTRY.has(equipped_id):
+		return
+	if InventoryManager.ITEM_REGISTRY[equipped_id].get("type", "") != "throwable":
+		return
+	_try_throw(equipped_id)
 
 
-func _try_throw() -> void:
+func _try_throw(item_id: String) -> void:
 	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("Throw triggered (%s)" % throwable_item_id)
+		DebugOverlay.log_action("Throw triggered (%s)" % item_id)
 	else:
-		print("[ThrowableHandler] throw action triggered")
+		print("[ThrowableHandler] throw action triggered: %s" % item_id)
 	if _player == null:
 		return
 	if not get_node_or_null("/root/InventoryManager"):
@@ -98,15 +111,19 @@ func _try_throw() -> void:
 	# Debug mode: skip the inventory gating entirely so testing
 	# explosion behavior doesn't require farming materials.
 	if not infinite_inventory:
-		if not InventoryManager.has_item(throwable_item_id):
-			print("[ThrowableHandler] No %s available." % throwable_item_id)
+		if not InventoryManager.has_item(item_id):
+			print("[ThrowableHandler] No %s available." % item_id)
 			return
 		# Decrement first so a failed instance doesn't burn the item.
-		InventoryManager.remove_item(throwable_item_id, 1)
+		InventoryManager.remove_item(item_id, 1)
 
-	# --- Spawn the throwable ---
+	# --- Resolve the scene for this throwable ---
+	if not THROWABLE_SCENES.has(item_id):
+		push_error("[ThrowableHandler] No scene registered for throwable '%s'" % item_id)
+		return
+	var throwable_scene: PackedScene = THROWABLE_SCENES[item_id]
 	if throwable_scene == null:
-		push_error("[ThrowableHandler] No throwable_scene set")
+		push_error("[ThrowableHandler] THROWABLE_SCENES['%s'] is null" % item_id)
 		return
 	var charge: Node = throwable_scene.instantiate()
 	if not charge is RigidBody3D:
@@ -134,8 +151,8 @@ func _try_throw() -> void:
 	# Without this the PowderCharge.aoe_radius_meters export keeps its
 	# hardcoded default (2.0) and inventory-side tuning of
 	# voxel_aoe_radius is silently ignored.
-	if InventoryManager.ITEM_REGISTRY.has(throwable_item_id):
-		var data: Dictionary = InventoryManager.ITEM_REGISTRY[throwable_item_id]
+	if InventoryManager.ITEM_REGISTRY.has(item_id):
+		var data: Dictionary = InventoryManager.ITEM_REGISTRY[item_id]
 		if data.has("voxel_aoe_radius") and "aoe_radius_meters" in rigid_body:
 			rigid_body.aoe_radius_meters = float(data["voxel_aoe_radius"])
 		if data.has("combat_damage") and "combat_damage" in rigid_body:

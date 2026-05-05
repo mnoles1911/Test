@@ -54,6 +54,18 @@ var _scene_history: Array = []
 var _canvas_layer: CanvasLayer
 var _fade_rect: ColorRect
 
+# Loading screen — a labelled overlay shown WHILE the fade rect is
+# still opaque, AFTER the destination scene has been loaded but
+# BEFORE we fade back in. Gives Zylann's worker threads a window to
+# stream the player's nearby chunks so the world is partially
+# rendered the moment the fade clears. Only used for transitions
+# into the open world (NEW GAME, LOAD GAME); regular door-to-door
+# scene swaps skip the loading screen entirely.
+var _loading_root: Control
+var _loading_title_label: Label
+var _loading_dots_label: Label
+var _loading_dots_timer: float = 0.0
+
 
 # =============================================================
 # SETUP
@@ -70,18 +82,70 @@ func _ready() -> void:
 	_fade_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_canvas_layer.add_child(_fade_rect)
 
+	_build_loading_screen()
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
 	print("[TransitionManager] Initialized.")
+
+
+func _build_loading_screen() -> void:
+	# Stacked above the fade rect. Hidden by default; toggled by
+	# _show_loading_screen / _hide_loading_screen.
+	_loading_root = Control.new()
+	_loading_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_loading_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_loading_root.visible = false
+	_canvas_layer.add_child(_loading_root)
+
+	# Centre column: title + animated dots.
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	vbox.size = Vector2(600, 100)
+	vbox.position = Vector2(-300, -50)
+	vbox.add_theme_constant_override("separation", 12)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	_loading_root.add_child(vbox)
+
+	_loading_title_label = Label.new()
+	_loading_title_label.text = "Loading..."
+	_loading_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_title_label.add_theme_font_size_override("font_size", 36)
+	_loading_title_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.85, 1.0))
+	vbox.add_child(_loading_title_label)
+
+	_loading_dots_label = Label.new()
+	_loading_dots_label.text = "Streaming voxel chunks"
+	_loading_dots_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_dots_label.add_theme_font_size_override("font_size", 16)
+	_loading_dots_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1.0))
+	vbox.add_child(_loading_dots_label)
+
+
+func _process(delta: float) -> void:
+	# Animate the trailing dots on the loading-screen subtitle so
+	# the player sees a heartbeat while we wait. Cheap — one string
+	# write every ~0.5 s while the screen is visible, no-op otherwise.
+	if _loading_root != null and _loading_root.visible and _loading_dots_label != null:
+		_loading_dots_timer += delta
+		var dot_count: int = int(fmod(_loading_dots_timer * 2.0, 4.0))  # 0..3
+		var dots: String = ".".repeat(dot_count)
+		_loading_dots_label.text = "Streaming voxel chunks" + dots
 
 
 # =============================================================
 # PUBLIC API
 # =============================================================
 
-func change_scene(scene_path: String, spawn_id: String = "", type: Type = Type.FADE_BLACK) -> void:
+func change_scene(scene_path: String, spawn_id: String = "", type: Type = Type.FADE_BLACK, loading_seconds: float = 0.0) -> void:
 	# Call this from any trigger to change scenes.
-	# scene_path  — "res://scenes/zones/Aldenholt.tscn"
-	# spawn_id    — matches a SpawnPoint.spawn_id in the destination scene
-	# type        — FADE_BLACK (default), FADE_WHITE, or CUT
+	# scene_path       — "res://scenes/zones/Aldenholt.tscn"
+	# spawn_id         — matches a SpawnPoint.spawn_id in the destination scene
+	# type             — FADE_BLACK (default), FADE_WHITE, or CUT
+	# loading_seconds  — if > 0, hold the destination scene under a "Loading..."
+	#                    overlay for this many seconds AFTER the scene loads
+	#                    but BEFORE the fade-in. Use this for transitions into
+	#                    the open world where chunks need time to stream in
+	#                    (NEW GAME / LOAD GAME). Door-to-door swaps leave it 0.
 	if _is_transitioning:
 		return
 
@@ -110,7 +174,7 @@ func change_scene(scene_path: String, spawn_id: String = "", type: Type = Type.F
 	# action (SAVE button) and the on-exit/on-quit auto-save in
 	# PauseMenu, both of which produce one named/autosave file each.)
 
-	_do_transition(scene_path, type)
+	_do_transition(scene_path, type, loading_seconds)
 
 
 func go_back() -> void:
@@ -158,7 +222,7 @@ func _push_history(path: String, spawn_id: String) -> void:
 # TRANSITION SEQUENCE
 # =============================================================
 
-func _do_transition(scene_path: String, type: Type) -> void:
+func _do_transition(scene_path: String, type: Type, loading_seconds: float = 0.0) -> void:
 	if type == Type.CUT:
 		# No fade — swap immediately.
 		get_tree().change_scene_to_file(scene_path)
@@ -180,7 +244,26 @@ func _do_transition(scene_path: String, type: Type) -> void:
 	get_tree().change_scene_to_file(scene_path)
 	await get_tree().process_frame
 
+	# Optional loading-screen hold — fade rect stays opaque, loading
+	# overlay shows on top, the destination scene streams in
+	# behind the curtain. Skipped when loading_seconds <= 0.
+	if loading_seconds > 0.0:
+		_show_loading_screen()
+		await get_tree().create_timer(loading_seconds, true).timeout
+		_hide_loading_screen()
+
 	_fade_in(type)
+
+
+func _show_loading_screen() -> void:
+	if _loading_root != null:
+		_loading_root.visible = true
+		_loading_dots_timer = 0.0
+
+
+func _hide_loading_screen() -> void:
+	if _loading_root != null:
+		_loading_root.visible = false
 
 
 func _fade_in(type: Type = Type.FADE_BLACK) -> void:

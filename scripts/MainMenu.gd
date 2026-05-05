@@ -54,15 +54,24 @@ const MENU_MUSIC_DIR: String = "res://assets/audio/music/"
 
 # Main button column.
 var _main_panel: Control
+var _continue_btn: Button
 var _new_game_btn: Button
 var _load_btn: Button
 var _settings_btn: Button
+var _help_btn: Button
+var _credits_btn: Button
 var _quit_btn: Button
 
 # Load picker.
 var _load_panel: Panel
 var _load_list_container: VBoxContainer
 var _load_cancel_btn: Button
+
+# Help / Credits panels (placeholder content until authored).
+var _help_panel: Panel
+var _help_cancel_btn: Button
+var _credits_panel: Panel
+var _credits_cancel_btn: Button
 
 # Music player — created in _setup_music(), plays one random track
 # from MENU_MUSIC_DIR each time the main menu opens.
@@ -87,37 +96,11 @@ func _ready() -> void:
 	_setup_music()
 	_build_main_column()
 	_build_load_picker()
+	_build_help_panel()
+	_build_credits_panel()
 	_show_main_column()
-	_build_debug_click_test()
 
 	print("[MainMenu] Ready. mouse_mode=%d (0=VISIBLE, 2=CAPTURED)" % Input.mouse_mode)
-
-
-# Big red test rectangle to validate the basic click pipeline.
-# If clicking on this prints, but the actual menu buttons don't,
-# the issue is button-specific (focus, layout). If clicking on
-# this also doesn't print, an autoload is absorbing all clicks
-# before they reach MainMenu.
-func _build_debug_click_test() -> void:
-	var rect := ColorRect.new()
-	rect.color = Color(0.8, 0.1, 0.1, 0.85)
-	rect.position = Vector2(20, 200)
-	rect.size = Vector2(200, 80)
-	rect.gui_input.connect(_on_debug_rect_input)
-	add_child(rect)
-
-	var lbl := Label.new()
-	lbl.text = "CLICK ME (debug)"
-	lbl.position = Vector2(30, 230)
-	lbl.add_theme_font_size_override("font_size", 18)
-	lbl.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(lbl)
-
-
-func _on_debug_rect_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		print("[MainMenu] DEBUG RECT CLICKED — input pipeline works.")
 
 
 # Mouse handler — bypasses Godot's gui_input routing.
@@ -179,10 +162,23 @@ func _dispatch_click(pos: Vector2) -> void:
 	# load picker buttons when visible. Mirrors what the GUI
 	# system would do via _gui_input + Button.pressed.
 	if _main_panel != null and _main_panel.visible:
+		if _hits(_continue_btn, pos): _on_continue(); return
 		if _hits(_new_game_btn, pos): _on_new_game(); return
 		if _hits(_load_btn,     pos): _on_load();     return
 		if _hits(_settings_btn, pos): _on_settings(); return
+		if _hits(_help_btn,     pos): _on_help();     return
+		if _hits(_credits_btn,  pos): _on_credits();  return
 		if _hits(_quit_btn,     pos): _on_quit();     return
+	if _help_panel != null and _help_panel.visible:
+		if _hits(_help_cancel_btn, pos):
+			print("[MainMenu] dispatch: hit HELP CANCEL → returning to main")
+			_show_main_column()
+		return
+	if _credits_panel != null and _credits_panel.visible:
+		if _hits(_credits_cancel_btn, pos):
+			print("[MainMenu] dispatch: hit CREDITS CANCEL → returning to main")
+			_show_main_column()
+		return
 	if _load_panel != null and _load_panel.visible:
 		# Cancel button.
 		if _hits(_load_cancel_btn, pos):
@@ -299,10 +295,11 @@ func _build_main_column() -> void:
 	# have STOP filter (default) and consume their own clicks.
 	_main_panel = Control.new()
 	_main_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	# Taller box to fit seven buttons + a tabbed Quit at the bottom.
 	_main_panel.offset_left   = -260
-	_main_panel.offset_top    = -300
+	_main_panel.offset_top    = -400
 	_main_panel.offset_right  =  260
-	_main_panel.offset_bottom =  300
+	_main_panel.offset_bottom =  400
 	_main_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_main_panel)
 
@@ -334,7 +331,7 @@ func _build_main_column() -> void:
 	v.add_child(spacer)
 
 	# --- Buttons ---
-	# All four buttons share a layout: flat, 1080p-sized font,
+	# All buttons share a layout: flat, 1080p-sized font,
 	# fixed minimum height so they don't shrink.
 	var make_btn := func(label: String) -> Button:
 		var b := Button.new()
@@ -345,17 +342,37 @@ func _build_main_column() -> void:
 		b.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
 		return b
 
+	# Order from top to bottom: Continue, New Game, Load Game,
+	# Settings, Help, Credits, then a tall spacer, then Quit.
+	_continue_btn = make_btn.call("CONTINUE")
 	_new_game_btn = make_btn.call("NEW GAME")
-	_load_btn     = make_btn.call("LOAD EXISTING GAME")
-	_settings_btn = make_btn.call("EDIT SETTINGS")
-	_quit_btn     = make_btn.call("CLOSE GAME")
+	_load_btn     = make_btn.call("LOAD GAME")
+	_settings_btn = make_btn.call("SETTINGS")
+	_help_btn     = make_btn.call("HELP")
+	_credits_btn  = make_btn.call("CREDITS")
+	_quit_btn     = make_btn.call("QUIT")
 
-	for btn in [_new_game_btn, _load_btn, _settings_btn, _quit_btn]:
-		v.add_child(btn)
+	v.add_child(_continue_btn)
+	v.add_child(_new_game_btn)
+	v.add_child(_load_btn)
+	v.add_child(_settings_btn)
+	v.add_child(_help_btn)
+	v.add_child(_credits_btn)
 
+	# Tall gap so Quit sits visually separated several lines below.
+	var quit_spacer := Control.new()
+	quit_spacer.custom_minimum_size = Vector2(0, 80)
+	quit_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(quit_spacer)
+
+	v.add_child(_quit_btn)
+
+	_continue_btn.pressed.connect(_on_continue)
 	_new_game_btn.pressed.connect(_on_new_game)
 	_load_btn.pressed.connect(_on_load)
 	_settings_btn.pressed.connect(_on_settings)
+	_help_btn.pressed.connect(_on_help)
+	_credits_btn.pressed.connect(_on_credits)
 	_quit_btn.pressed.connect(_on_quit)
 
 	# --- Version stamp in the corner ---
@@ -479,13 +496,120 @@ func _make_save_row(meta: Dictionary) -> Control:
 
 
 # =============================================================
+# UI — help panel
+# =============================================================
+
+func _build_help_panel() -> void:
+	# Placeholder Help screen — same panel/cancel pattern as the
+	# load picker. Real content can be authored later by editing
+	# the body label below or pulling text from a .md file.
+	_help_panel = Panel.new()
+	_help_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_help_panel.offset_left   = -360
+	_help_panel.offset_top    = -280
+	_help_panel.offset_right  =  360
+	_help_panel.offset_bottom =  280
+	_help_panel.visible = false
+	add_child(_help_panel)
+
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left   = 16
+	v.offset_top    = 16
+	v.offset_right  = -16
+	v.offset_bottom = -16
+	v.add_theme_constant_override("separation", 12)
+	_help_panel.add_child(v)
+
+	var title := Label.new()
+	title.text = "— HELP —"
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.92, 0.86, 0.7, 1))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+
+	var body := Label.new()
+	body.text = "Help content coming soon."
+	body.add_theme_font_size_override("font_size", 18)
+	body.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(body)
+
+	_help_cancel_btn = Button.new()
+	_help_cancel_btn.text = "BACK"
+	_help_cancel_btn.add_theme_font_size_override("font_size", 20)
+	_help_cancel_btn.custom_minimum_size = Vector2(160, 44)
+	_help_cancel_btn.pressed.connect(_show_main_column)
+	v.add_child(_help_cancel_btn)
+
+
+# =============================================================
+# UI — credits panel
+# =============================================================
+
+func _build_credits_panel() -> void:
+	# Placeholder Credits screen.
+	_credits_panel = Panel.new()
+	_credits_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_credits_panel.offset_left   = -360
+	_credits_panel.offset_top    = -280
+	_credits_panel.offset_right  =  360
+	_credits_panel.offset_bottom =  280
+	_credits_panel.visible = false
+	add_child(_credits_panel)
+
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left   = 16
+	v.offset_top    = 16
+	v.offset_right  = -16
+	v.offset_bottom = -16
+	v.add_theme_constant_override("separation", 12)
+	_credits_panel.add_child(v)
+
+	var title := Label.new()
+	title.text = "— CREDITS —"
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.92, 0.86, 0.7, 1))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+
+	var body := Label.new()
+	body.text = "Credits coming soon."
+	body.add_theme_font_size_override("font_size", 18)
+	body.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(body)
+
+	_credits_cancel_btn = Button.new()
+	_credits_cancel_btn.text = "BACK"
+	_credits_cancel_btn.add_theme_font_size_override("font_size", 20)
+	_credits_cancel_btn.custom_minimum_size = Vector2(160, 44)
+	_credits_cancel_btn.pressed.connect(_show_main_column)
+	v.add_child(_credits_cancel_btn)
+
+
+# =============================================================
 # PANEL SWITCHING
 # =============================================================
 
 func _show_main_column() -> void:
 	_main_panel.visible = true
 	_load_panel.visible = false
-	_load_btn.disabled = GameState.list_save_files().is_empty()
+	if _help_panel != null:
+		_help_panel.visible = false
+	if _credits_panel != null:
+		_credits_panel.visible = false
+	# Continue and Load both depend on at least one save existing.
+	var no_saves: bool = GameState.list_save_files().is_empty()
+	_continue_btn.disabled = no_saves
+	_load_btn.disabled = no_saves
 
 
 func _show_load_picker() -> void:
@@ -498,6 +622,18 @@ func _show_load_picker() -> void:
 # BUTTON HANDLERS — main column
 # =============================================================
 
+func _on_continue() -> void:
+	# Loads the most recent save. list_save_files() returns saves
+	# sorted newest-first, so index 0 is the right pick.
+	print("[MainMenu] CONTINUE pressed")
+	var saves: Array = GameState.list_save_files()
+	if saves.is_empty():
+		print("[MainMenu]   ! no saves to continue from")
+		return
+	var newest: Dictionary = saves[0]
+	_on_load_select(newest.get("filename", ""))
+
+
 func _on_new_game() -> void:
 	# Fresh playthrough — wipe every piece of session state that
 	# persists across scene transitions in autoloads (voxel deltas
@@ -507,7 +643,11 @@ func _on_new_game() -> void:
 	# and flags from autoload memory.
 	print("[MainMenu] NEW GAME pressed")
 	GameState.reset_for_new_game()
-	TransitionManager.change_scene(WORLD_SCENE, "default")
+	# 10 s loading hold — gives Zylann's worker threads a window to
+	# stream the player's spawn-area chunks before the fade clears.
+	# Without this the player sees half-loaded blocky terrain for
+	# the first few seconds of every new game.
+	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 10.0)
 
 
 func _on_load() -> void:
@@ -522,6 +662,22 @@ func _on_settings() -> void:
 		settings.call("open", false)
 	else:
 		TransitionManager.change_scene(SETTINGS_SCENE, "", TransitionManager.Type.CUT)
+
+
+func _on_help() -> void:
+	print("[MainMenu] HELP pressed")
+	_main_panel.visible = false
+	_load_panel.visible = false
+	_credits_panel.visible = false
+	_help_panel.visible = true
+
+
+func _on_credits() -> void:
+	print("[MainMenu] CREDITS pressed")
+	_main_panel.visible = false
+	_load_panel.visible = false
+	_help_panel.visible = false
+	_credits_panel.visible = true
 
 
 func _on_quit() -> void:
@@ -547,7 +703,9 @@ func _on_load_select(filename: String) -> void:
 		print("[MainMenu]   scene unresolvable, falling back to WORLD_SCENE")
 		scene = WORLD_SCENE
 	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
-	TransitionManager.change_scene(scene, GameState.player_spawn_id)
+	# Same 10 s loading hold as NEW GAME — restored saves still need
+	# chunk streaming time, plus voxel deltas reading from SQLite.
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 10.0)
 
 
 func _on_load_delete(filename: String) -> void:

@@ -85,8 +85,34 @@ extends SpringArm3D
 @export var lock_on_horizontal_offset: float = 0.3
 # Radians to offset left so the target appears in the right frame half.
 
+@export var first_person_mesh_path: NodePath = NodePath("../../Visual")
+# Relative path from this SpringArm3D to Roland's visual mesh
+# (the green-box placeholder in Player3D.tscn). Hidden when in
+# first-person so the camera doesn't sit inside Roland's torso.
+# Default path resolves to: SpringArm3D → CameraTarget → Player3D → Visual.
+# If the scene is reorganized, retarget this in the inspector.
+
 
 # --- Internal state ---
+
+var _first_person: bool = false
+# True when the camera is in first-person mode (F3 toggle).
+# In first-person:
+#   * spring_length is forced to 0 (camera sits at SpringArm3D origin =
+#     CameraTarget = Y 1.5 m on the player body, ≈ chest/neck height)
+#   * Roland's visual mesh is hidden so we don't see his back through
+#     the camera
+#   * scroll-wheel zoom is suppressed (would make no sense at length 0)
+#
+# Pitch + yaw behaviour stays identical to standard third-person:
+# mouse-X rotates the player body, mouse-Y tilts the arm. That means
+# moving forward (W) in first-person walks you toward where you're
+# looking — the same camera-relative movement contract.
+
+var _arm_length_before_fp: float = 0.0
+# Spring length saved when entering first-person, restored on exit.
+# Captured separately from arm_length (the @export default) because
+# the player may have scrolled in/out before pressing F3.
 
 var _pitch: float = 0.0
 # Vertical tilt in radians. Applied to self.rotation.x each frame.
@@ -125,6 +151,12 @@ func _ready() -> void:
 	# Capture the mouse cursor so all motion feeds the camera during play.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+	# Default to first-person view on game start. The player can toggle
+	# back to standard third-person with F3 at any time. Deferred one
+	# frame so the player body's children (Visual mesh) are fully ready
+	# before _set_first_person tries to find and hide the mesh.
+	call_deferred("_set_first_person", true)
+
 
 func _input(event: InputEvent) -> void:
 	# _input fires for every input event regardless of whether another node
@@ -142,6 +174,12 @@ func _input(event: InputEvent) -> void:
 	# this block and zoom would silently do nothing.
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		# In first-person mode the spring length is forced to 0 — scroll
+		# would either be a no-op (clamped) or push us back to third-
+		# person behaviour while the flag still says first-person. Just
+		# ignore wheel input until the player toggles back out (F3).
+		if _first_person:
+			return
 		if mb.pressed:
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				arm_length = clamp(arm_length - zoom_speed, zoom_min, zoom_max)
@@ -177,6 +215,13 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	# --- First-person toggle (F3) ---
+	# is_action_just_pressed fires for exactly one frame on key-down, so
+	# tapping F3 flips the mode once instead of rapidly toggling for as
+	# long as the key is held.
+	if Input.is_action_just_pressed("toggle_first_person") and not _in_dialogue:
+		_set_first_person(not _first_person)
+
 	# --- Freelook toggle ---
 	var was_freelook := _freelook
 	_freelook = Input.is_action_pressed("freelook_camera")
@@ -254,6 +299,43 @@ func _update_lock_on_rotation(delta: float) -> void:
 	if _player:
 		_player.rotation.y = lerp_angle(_player.rotation.y, target_yaw, lock_on_lerp_speed * delta)
 	_yaw_offset = lerp_angle(_yaw_offset, -lock_on_horizontal_offset, lock_on_lerp_speed * delta)
+
+
+# --- First-person mode (F3 toggle) ---
+
+func _set_first_person(enabled: bool) -> void:
+	# Public-ish toggle for the first-person camera mode. Called from
+	# _process when F3 is just-pressed. Idempotent — calling with the
+	# same state we're already in is a no-op so we don't repeatedly
+	# reassign spring_length / mesh visibility every frame.
+	if _first_person == enabled:
+		return
+	_first_person = enabled
+
+	# Resolve the visual mesh once per toggle. Done lazily here rather
+	# than in _ready so a scene reorganisation that breaks
+	# first_person_mesh_path only fails when the player presses F3,
+	# not on every world load.
+	var mesh_node: Node = get_node_or_null(first_person_mesh_path)
+
+	if enabled:
+		# Save whatever the player had scrolled to so we can restore it
+		# on exit. arm_length is the @export default, but the player
+		# may have scroll-zoomed it; we want the post-scroll value.
+		_arm_length_before_fp = arm_length
+		spring_length = 0.0
+		# Hide Roland's visual mesh — without this, the camera (now at
+		# the SpringArm3D origin = chest/neck height) renders the
+		# inside of his torso. Collision is unaffected; the mesh hide
+		# only changes what's drawn.
+		if mesh_node is GeometryInstance3D:
+			(mesh_node as GeometryInstance3D).visible = false
+		print("[CameraRig] First-person ON")
+	else:
+		spring_length = _arm_length_before_fp
+		if mesh_node is GeometryInstance3D:
+			(mesh_node as GeometryInstance3D).visible = true
+		print("[CameraRig] First-person OFF")
 
 
 # --- Dialogue mode API (called by Dialogic signal connections) ---

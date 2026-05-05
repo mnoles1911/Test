@@ -82,8 +82,8 @@ const ITEM_REGISTRY: Dictionary = {
 	# in addition to combat damage. Routed through VoxelEditManager so
 	# they respect NoEditZones (still deal damage but leave masonry
 	# intact inside settlements).
-	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 3.0, "combat_damage": 40},
-	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 6.0, "combat_damage": 80},
+	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 0.75, "combat_damage": 40},
+	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 1.5,  "combat_damage": 80},
 }
 
 
@@ -93,6 +93,69 @@ const ITEM_REGISTRY: Dictionary = {
 
 var _inventory: Dictionary = {}
 # item_id → quantity (int)
+
+
+# =============================================================
+# QUICK SLOTS — number keys 1-4 bind to specific inventory items
+# =============================================================
+#
+# Designer model: each of the four slots holds an item_id (or "" for
+# empty). When the player presses the corresponding `quick_slot_N`
+# input action, we equip slot N's item into the "weapon" slot. Right-
+# click on a slot in the HUD will eventually open a rebind picker
+# (Phase 2 — stubbed for now via set_quick_slot, callable from any
+# UI we build later).
+#
+# Default bindings cover the starting kit (pickaxe / shovel / axe /
+# powder_charge). Saved to disk via to_dict / from_dict so the
+# player's chosen bindings survive across sessions.
+
+const QUICK_SLOT_COUNT: int = 4
+
+var _quick_slots: Array[String] = ["", "", "", ""]
+
+
+func set_quick_slot(idx: int, item_id: String) -> void:
+	# Bind slot `idx` (0-based; the HUD displays it as N+1) to the
+	# given item_id, or "" to clear. Doesn't validate that the player
+	# OWNS the item — empty slots and "ghost" bindings are fine,
+	# they just don't equip anything when pressed.
+	if idx < 0 or idx >= QUICK_SLOT_COUNT:
+		push_warning("[Inventory] set_quick_slot: idx %d out of range [0,%d)" % [idx, QUICK_SLOT_COUNT])
+		return
+	_quick_slots[idx] = item_id
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Quick slot %d bound to '%s'" % [idx + 1, item_id])
+
+
+func get_quick_slot(idx: int) -> String:
+	if idx < 0 or idx >= QUICK_SLOT_COUNT:
+		return ""
+	return _quick_slots[idx]
+
+
+func get_quick_slots() -> Array[String]:
+	# Returned by reference — callers MUST NOT mutate (use set_quick_slot
+	# to keep DebugOverlay logging consistent).
+	return _quick_slots
+
+
+func equip_quick_slot(idx: int) -> bool:
+	# Equip the item bound to slot `idx` into the "weapon" slot.
+	# Returns true on success, false if slot empty / item not in
+	# inventory (e.g. player threw their last powder charge).
+	var item_id: String = get_quick_slot(idx)
+	if item_id == "":
+		return false
+	if not has_item(item_id):
+		# Slot binding still exists but the player doesn't have any.
+		# Don't auto-clear the binding — they may pick the item up
+		# again and want the slot still wired.
+		if get_node_or_null("/root/DebugOverlay"):
+			DebugOverlay.log_action("Quick slot %d ('%s') empty — none in inventory" % [idx + 1, item_id])
+		return false
+	equip("weapon", item_id)
+	return true
 
 func add_item(item_id: String, quantity: int = 1) -> void:
 	if not ITEM_REGISTRY.has(item_id):
@@ -276,5 +339,20 @@ func reset_to_defaults() -> void:
 		"accessory": "",
 	}
 	add_item("iron_pickaxe", 1)
-	equip("weapon", "iron_pickaxe")
+	add_item("iron_shovel", 1)
+	add_item("iron_axe", 1)
+	equip("weapon", "iron_shovel")
+	# Equip shovel by default — surface terrain at spawn is grass/dirt
+	# which needs a shovel; pickaxe only breaks stone. Player can swap
+	# via number keys 1-4 (quick slots, see below) once equipped.
 	add_item("powder_charge", 5)
+
+	# Default quick-slot bindings — number keys 1-4 swap to these tools.
+	# Player can rebind via right-click in the HUD (Phase 2). Order
+	# matches the rough usage frequency: shovel (#1) for surface dirt
+	# is the most common use, pickaxe (#2) when you hit stone, axe (#3)
+	# rarely-but-needed for trees, powder_charge (#4) for blasting.
+	set_quick_slot(0, "iron_shovel")
+	set_quick_slot(1, "iron_pickaxe")
+	set_quick_slot(2, "iron_axe")
+	set_quick_slot(3, "powder_charge")

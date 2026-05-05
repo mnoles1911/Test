@@ -15,7 +15,13 @@
 // WeatherManager will write via WaterVolume.set_wind(dir, strength).
 
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+// cull_disabled (was cull_back): submerged players were seeing nothing
+// where the water surface should be, because the back face of the
+// surface plane (the "underside" you see when diving below it) was
+// culled. Disabling culling makes the surface visible from both sides
+// — looking up through the surface from below now reads as a tinted
+// ceiling, not blank space.
+render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 // --- WAVE PARAMS (designer-tunable in the inspector via the .tres) ---
 uniform float wave_amplitude_a : hint_range(0.0, 1.0) = 0.08;

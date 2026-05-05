@@ -95,6 +95,14 @@ const WORLD_GENERATOR_VERSION: int = 11
 # happens (e.g. a runaway spell effect). Commands beyond this are
 # rejected at queue time with a push_warning.
 
+@export var perf_log_enabled: bool = true
+# When true, log microsecond timings around each edit application.
+# Look for "[PERF VEM]" in the Output panel. Flip off once perf is
+# acceptable. Specifically helpful for diagnosing the explosive-lag
+# spike — see the matching `perf_log_enabled` on VoxelGravityManager
+# (the gravity scan after each edit is the more likely hot path,
+# but timing both gives the full picture).
+
 
 # ============================================================
 # Internal state
@@ -416,7 +424,16 @@ func _apply_edit(cmd: Dictionary) -> void:
 		"sphere":
 			var voxel_pos: Vector3    = _terrain.to_local(cmd["pos"])
 			var voxel_radius: float   = cmd["radius"] * inv_scale
+			var t_sphere_start: int = 0
+			if perf_log_enabled:
+				t_sphere_start = Time.get_ticks_usec()
 			tool.do_sphere(voxel_pos, voxel_radius)
+			if perf_log_enabled:
+				var sphere_us: int = Time.get_ticks_usec() - t_sphere_start
+				var est_voxels: int = _estimate_voxel_cost(cmd)
+				print("[PERF VEM] sphere r=%.1fm est_vox=%d  do_sphere=%d us  (%.2f ms)" % [
+					cmd["radius"], est_voxels, sphere_us, sphere_us / 1000.0
+				])
 			_mark_chunks_in_aabb(
 				cmd["pos"] - Vector3.ONE * cmd["radius"],
 				cmd["pos"] + Vector3.ONE * cmd["radius"],

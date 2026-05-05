@@ -79,7 +79,7 @@ Build Mode is the placement UI for player-built structures (schematics) and per-
 
 Edit-verb tools (axe, pickaxe, shovel) are NOT Build Mode actions — they're handled like weapons. Equip the tool in the Weapon slot, then `attack` swings it. If the swing connects with a matching voxel material (and no enemy is in front), `VoxelEditManager` removes voxels and yields material to inventory. Inside a NoEditZone, the swing still animates and damages enemies but does not remove voxels — Roland's bark *"This place doesn't yield to me."* fires once per session per zone.
 
-Explosives (Powder Charge, Sapper's Bundle) are quick-slot throwables — same `quick_slot_*` actions as other throwables.
+Explosives (Powder Charge, Sapper's Bundle) are **equipped to the Weapon slot** like tools and **thrown via `attack` (LMB)** when equipped. `ThrowableHandler` short-circuits unless `ITEM_REGISTRY[equipped_id].type == "throwable"`; `EditToolHandler` short-circuits in the inverse case. Result: same LMB key, action follows what's equipped (mine / fill / throw). Quick-slot number keys (`quick_slot_1` through `quick_slot_4`) are the swap shortcut — see `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md` → "Quick Slot Bar".
 
 ### Menu and UI Actions
 

@@ -1,31 +1,23 @@
-[gd_scene load_steps=2 format=3 uid="uid://dmnmenu1080"]
+[gd_scene format=3 uid="uid://dmnmenu1080"]
 
-; MainMenu — the homescreen / title screen.
-;
-; A standalone 2D scene that closes World3D fully when shown.
-; Built for 1920x1080. All UI is constructed programmatically by
-; MainMenu.gd in _ready(); this .tscn just provides the root
-; Control + a dark fallback background. The background is
-; overlaid with a randomly-picked concept-art image at runtime
-; (if any exist in assets/menu_backgrounds/).
+[ext_resource type="Script" uid="uid://kid7iq4vcp7c" path="res://scripts/MainMenu.gd" id="1_script"]
 
-[ext_resource type="Script" path="res://scripts/MainMenu.gd" id="1_script"]
-
-[node name="MainMenu" type="Control"]
+[node name="MainMenu" type="Control" unique_id=103484814]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 1
 script = ExtResource("1_script")
 
-[node name="Background" type="ColorRect" parent="."]
-; Dark fallback shown when no concept art images are present.
-; mouse_filter = 2 (IGNORE) so it can never absorb a click meant
-; for the buttons rendered above it.
+[node name="Background" type="ColorRect" parent="." unique_id=644007130]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 color = Color(0.04, 0.04, 0.06, 1)

@@ -346,6 +346,38 @@ These need both code and scene work. Listed here as designer-visible milestones.
   Show: active NPC name, current disposition, active schedule block, time of day.
   Useful for testing NPC schedules without guessing what WorldClock thinks it is.
 
+- [x] **Quick-slot bar — Phase 1 (visual + number-key equip)** *(complete 2026-05-05)*
+  4-slot HUD row bottom-centre, gold-bordered when equipped, number keys 1–4 swap
+  to bound items. State lives in `InventoryManager._quick_slots` (`set_quick_slot` /
+  `get_quick_slot` / `equip_quick_slot`). Default bindings seeded in
+  `reset_for_new_game`: shovel / pickaxe / axe / powder_charge.
+  LMB action is now equipment-aware via `ITEM_REGISTRY[item_id].type`:
+    - `tool` → mine (held) via `EditToolHandler`
+    - `throwable` → throw via `ThrowableHandler` (which short-circuits unless
+      a throwable is currently equipped)
+    - `bucket` / `bucket_filled` → fill / place via `EditToolHandler`
+
+- [ ] **Quick-slot bar — Phase 2 (right-click rebind picker)**
+  Right-click on any quick-slot panel → small modal lists every owned item with
+  a clickable row → calls `InventoryManager.set_quick_slot(slot_idx, item_id)`.
+  Stub already wired: `HUDOverlay._open_quick_slot_rebind_picker(slot_idx)` logs
+  `Quick-slot N right-click — rebind picker not built yet` and the gui_input
+  hookup on each slot panel routes RMB into it.
+  Estimated work: ~60 lines in `HUDOverlay.gd` (panel layout + item list +
+  click handler). Plus two-line addition to `InventoryManager.to_dict` /
+  `from_dict` so chosen bindings persist across saves.
+  Item-type filter to add at the same time: only show items with
+  `type == "tool"` or `type == "throwable"` in the picker — raw materials
+  (`raw_dirt`, `raw_stone`) shouldn't be slottable since they have no LMB
+  action.
+
+- [ ] **Quick-slot bar — Phase 3 (full inventory grid + drag-drop)**
+  Press a hotkey (likely **I** or **Tab**) → opens a grid of all owned items.
+  Drag-and-drop from the grid onto a quick-slot panel calls `set_quick_slot`.
+  This is the "real" inventory UI per `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md`
+  and obsoletes the Phase 2 right-click picker (or relegates it to a quick
+  shortcut). Bigger build — half a day.
+
 ---
 
 ## Section 7 — Code to Build (Design-Specified Systems)

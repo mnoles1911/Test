@@ -34,22 +34,36 @@ extends Node
 # CONFIGURATION (tunable in the Inspector)
 # =============================================================
 
-@export var analysis_padding_m: float = 8.0
+@export var analysis_padding_m: float = 4.0
 # Distance (meters) the analysis bubble extends past the edit centre
 # on each axis. Anything past this radius is treated as anchored — a
-# long arch whose support is removed > 8 m away will not fall. Bounded
+# long arch whose support is removed > 4 m away will not fall. Bounded
 # cost and matches the Minecraft model.
 #
-# Perf budget: 8 m * 2 = 16 m per side, * 6 vox/m = 96 voxels per side,
-# 96^3 ≈ 880K voxel reads worst case. With one scan per physics frame
-# (max_scans_per_frame=1) and most edits small, in practice scans
-# touch a small fraction of the bubble. If perf becomes a problem,
-# either reduce this further or implement multi-frame scanning.
+# History: started at 8.0 (16 m side) which produced 7.6-second freezes
+# on a 3 m explosive blast in dense bedrock — the 96^3 = 880k voxel
+# reads dominated wall time, and the work produced zero falling
+# clusters because everything was anchored to the bottom face. Cutting
+# to 4.0 (8 m side, ~13× smaller volume) drops the cost ~13× while
+# still covering any disconnection caused by edits up to ~3 m radius
+# (the largest player carve currently is the 3 m PowderCharge or 6 m
+# Sapper's Bundle — for the 6 m case, raise this in the inspector).
 
-@export var max_analysis_side_m: float = 16.0
+@export var max_analysis_side_m: float = 8.0
 # Hard cap on the bubble's side length. Even very large blasts won't
-# scan more than this. 16 m at 6 vox/m = 96 voxels per side. Larger
-# than this exceeds the per-frame budget noticeably.
+# scan more than this. 8 m at 6 vox/m = 48 voxels per side, ~110k
+# bubble volume.
+
+@export var use_bulk_read: bool = true
+# Use Zylann's VoxelTool.copy() to read the bubble in one C++ call
+# rather than calling tool.get_voxel() per voxel from GDScript. The
+# per-voxel path was the dominant cost in the 7.6 s explosive freeze
+# (6.07 s of 7.6 s). Bulk read trades a single C++ memcpy-class call
+# for ~880k native crossings.
+#
+# Falls back to per-voxel reads automatically if the active Zylann
+# build doesn't expose `copy` on VoxelTool — older / minimal builds
+# may not. Set to false to force the legacy path for A/B comparison.
 
 @export var max_cluster_voxels: int = 4096
 # Skip clusters larger than this (treat as anchored). One Zylann chunk
@@ -78,6 +92,30 @@ extends Node
 # Master kill-switch. Disable to debug whether a problem is gravity-
 # related or terrain-related.
 
+@export var perf_log_enabled: bool = true
+# When true, dump phase-by-phase microsecond timings for each
+# analysis bubble. Look for "[PERF VGM]" in the Output panel.
+#
+# Phases reported (in order):
+#   read       — copying every voxel in the bubble into the `solids`
+#                dictionary via tool.get_voxel(). 96^3 = ~880k reads
+#                worst case at default settings; suspected hot path.
+#   anchor_pre — NoEditZone AABB pre-flight + bottom-face anchor seed.
+#   floodfill  — BFS flood-fill propagating "anchored" through 6-conn.
+#   partition  — splitting unanchored set into LOOSE vs CLUSTER per
+#                material fall_behavior.
+#   loose      — sand-style instant column-fall pass.
+#   cluster    — connected-component grouping + rigid-body spawning.
+#   total      — sum from start to end of _process_bubble.
+#
+# Print only fires when total > perf_log_min_us (default 1 ms) so
+# tiny pickaxe-bite scans don't spam the console.
+
+@export var perf_log_min_us: int = 1000
+# Minimum total bubble time (microseconds) for a perf log line. 1 ms
+# default — anything below is noise. Raise to 10000 to filter to only
+# noticeably-expensive scans.
+
 
 # =============================================================
 # CONSTANTS
@@ -104,6 +142,11 @@ var _active_clusters: Array[Node] = []
 
 var _cluster_scene: PackedScene = null
 # Cached PackedScene reference — preloaded in _ready.
+
+var _last_read_used_bulk: bool = false
+# True if the most recent _process_bubble used VoxelTool.copy()
+# (vs. the per-voxel get_voxel() fallback). Used only by the perf
+# log to label which path was taken.
 
 
 # =============================================================
@@ -218,6 +261,19 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 		return
 	tool.channel = VoxelBuffer.CHANNEL_COLOR
 
+	# Perf-log phase timers. Initialised to 0; only used when
+	# perf_log_enabled. Captured at each phase boundary so we can see
+	# which phase dominates the wall time of an explosive scan.
+	var t_start: int = 0
+	var t_after_read: int = 0
+	var t_after_anchor_pre: int = 0
+	var t_after_floodfill: int = 0
+	var t_after_partition: int = 0
+	var t_after_loose: int = 0
+	var t_after_cluster: int = 0
+	if perf_log_enabled:
+		t_start = Time.get_ticks_usec()
+
 	# --- Define the analysis box in voxel-grid space ---
 	# Half-side capped at max_analysis_side_m / 2.
 	var half_side_m: float = minf(analysis_padding_m, max_analysis_side_m * 0.5)
@@ -227,25 +283,66 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 	var min_v: Vector3i = centre_v - Vector3i.ONE * half_side_vox
 	var max_v: Vector3i = centre_v + Vector3i.ONE * half_side_vox
 	var side: int = (max_v.x - min_v.x) + 1
+	var bubble_volume: int = side * side * side
 
 	# --- Read the bubble into a flat dictionary ---
 	# Keys: Vector3i (relative to min_v, so 0..side-1 on each axis).
 	# Values: int (packed RGBA). Air voxels (alpha=0) are NOT inserted;
 	# absence-from-dict means air. This keeps memory proportional to
 	# solid-voxel count, not bubble volume.
+	#
+	# Two read paths:
+	#   1. BULK (preferred) — VoxelTool.copy() pulls the full bubble
+	#      into a VoxelBuffer in one C++ call, then we iterate the
+	#      buffer (which is in-process memory) to build the dict.
+	#      Avoids the per-voxel GDScript→native cross, which was the
+	#      6.07 s hot path in the 7.6 s explosive freeze.
+	#   2. PER-VOXEL (fallback) — original tool.get_voxel() loop. Used
+	#      if the active Zylann build doesn't expose `copy` on
+	#      VoxelTool, OR if `use_bulk_read = false`.
 	var solids: Dictionary = {}
-	for x in range(side):
-		for y in range(side):
-			for z in range(side):
-				var v_world_grid: Vector3i = min_v + Vector3i(x, y, z)
-				var packed: int = tool.get_voxel(v_world_grid)
-				# Alpha=0 means air for VoxelMesherCubes (CHANNEL_COLOR
-				# encoding). Lowest byte = alpha.
-				if (packed & 0xFF) == 0:
-					continue
-				solids[Vector3i(x, y, z)] = packed
+	_last_read_used_bulk = use_bulk_read and tool.has_method("copy")
+	if _last_read_used_bulk:
+		# Zylann's VoxelTool.copy() signature in this build is
+		#   copy(src_origin: Vector3i, dst_buffer: VoxelBuffer, channels_mask: int)
+		# The destination buffer's pre-allocated size determines how much
+		# is copied — the source rectangle is implicitly
+		# [src_origin .. src_origin + buf.size). Older docs and other
+		# bindings used (AABB, VoxelBuffer, int); this one wants the
+		# raw integer corner. We size the buffer first, then pass the
+		# minimum-corner voxel coord directly.
+		var buf: VoxelBuffer = VoxelBuffer.new()
+		buf.create(side, side, side)
+		# Channels mask = bit for CHANNEL_COLOR. The mesher reads colour
+		# only; SDF/TYPE channels are unused by Cubes.
+		var color_mask: int = 1 << VoxelBuffer.CHANNEL_COLOR
+		tool.copy(min_v, buf, color_mask)
+		for x in range(side):
+			for y in range(side):
+				for z in range(side):
+					var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_COLOR)
+					if (packed & 0xFF) == 0:
+						continue
+					solids[Vector3i(x, y, z)] = packed
+	else:
+		for x in range(side):
+			for y in range(side):
+				for z in range(side):
+					var v_world_grid: Vector3i = min_v + Vector3i(x, y, z)
+					var packed: int = tool.get_voxel(v_world_grid)
+					if (packed & 0xFF) == 0:
+						continue
+					solids[Vector3i(x, y, z)] = packed
+	if perf_log_enabled:
+		t_after_read = Time.get_ticks_usec()
 
 	if solids.is_empty():
+		if perf_log_enabled:
+			var early_total: int = Time.get_ticks_usec() - t_start
+			if early_total >= perf_log_min_us:
+				print("[PERF VGM] empty bubble: vol=%d  read=%d us  total=%d us" % [
+					bubble_volume, t_after_read - t_start, early_total,
+				])
 		return
 
 	# --- Anchor identification ---
@@ -307,6 +404,8 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 			if registry.is_point_inside_no_edit_zone(v_world_centre_m):
 				anchored[v] = true
 				frontier.append(v)
+	if perf_log_enabled:
+		t_after_anchor_pre = Time.get_ticks_usec()
 
 	# Flood-fill anchors through the solid set. 6-connected.
 	const NEIGHBOURS_6: Array = [
@@ -324,6 +423,8 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 				continue
 			anchored[nbr] = true
 			frontier.append(nbr)
+	if perf_log_enabled:
+		t_after_floodfill = Time.get_ticks_usec()
 
 	# --- Collect unanchored voxels & partition by fall behavior ---
 	# LOOSE voxels (sand-style) bypass the rigid-body cluster path
@@ -354,6 +455,8 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 			unanchored_loose[v] = packed
 		else:
 			unanchored_cluster[v] = packed
+	if perf_log_enabled:
+		t_after_partition = Time.get_ticks_usec()
 
 	# --- LOOSE column-fall ---
 	# Sand model: each loose voxel falls straight down to the first
@@ -363,21 +466,32 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 	# both fall through the cluster path AND the loose path.
 	if not unanchored_loose.is_empty():
 		_handle_loose_voxels(unanchored_loose, anchored, min_v)
+	if perf_log_enabled:
+		t_after_loose = Time.get_ticks_usec()
 
 	if unanchored_cluster.is_empty():
+		if perf_log_enabled:
+			_perf_log_bubble(
+				bubble_volume, solids.size(), 0, 0,
+				t_start, t_after_read, t_after_anchor_pre,
+				t_after_floodfill, t_after_partition, t_after_loose,
+				Time.get_ticks_usec(),
+			)
 		return
 
 	# Group cluster-bound voxels into connected components.
 	var visited: Dictionary = {}
 	var clusters: Array[Dictionary] = []
 	for v_pos_v in unanchored_cluster.keys():
-		var seed: Vector3i = v_pos_v
-		if visited.has(seed):
+		# `seed_pos` not `seed` — `seed()` is a GDScript built-in
+		# (random-seed setter). Using `seed` as a variable shadows it.
+		var seed_pos: Vector3i = v_pos_v
+		if visited.has(seed_pos):
 			continue
 		# BFS one cluster.
 		var cluster_voxels: Dictionary = {}
-		var queue: Array[Vector3i] = [seed]
-		visited[seed] = true
+		var queue: Array[Vector3i] = [seed_pos]
+		visited[seed_pos] = true
 		while not queue.is_empty():
 			var cur2: Vector3i = queue.pop_back()
 			cluster_voxels[cur2] = unanchored_cluster[cur2]
@@ -394,6 +508,46 @@ func _process_bubble(edit_world_pos: Vector3) -> void:
 	# --- Spawn a falling cluster per group ---
 	for cluster_voxels in clusters:
 		_handle_cluster(cluster_voxels, min_v, edit_world_pos, terrain)
+
+	if perf_log_enabled:
+		t_after_cluster = Time.get_ticks_usec()
+		_perf_log_bubble(
+			bubble_volume, solids.size(),
+			unanchored_cluster.size(), clusters.size(),
+			t_start, t_after_read, t_after_anchor_pre,
+			t_after_floodfill, t_after_partition, t_after_loose,
+			t_after_cluster,
+		)
+
+
+func _perf_log_bubble(
+	bubble_vol: int, solid_count: int,
+	cluster_voxel_total: int, cluster_count: int,
+	t_start: int, t_read: int, t_anchor: int,
+	t_flood: int, t_part: int, t_loose: int, t_end: int,
+) -> void:
+	# Centralised single-line print so the phase columns stay aligned
+	# regardless of which return path we took. Filtered by
+	# perf_log_min_us — only logs scans worth investigating.
+	var total_us: int = t_end - t_start
+	if total_us < perf_log_min_us:
+		return
+	# `_used_bulk_read` is set during the read phase; this caches the
+	# decision so the log line can show which path was taken.
+	var read_label: String = "bulk" if _last_read_used_bulk else "per-vox"
+	print("[PERF VGM] vol=%d solids=%d cluster_vox=%d clusters=%d  " % [
+		bubble_vol, solid_count, cluster_voxel_total, cluster_count,
+	] + "read[%s]=%d  anchor_pre=%d  flood=%d  part=%d  loose=%d  cluster=%d  TOTAL=%d us (%.2f ms)" % [
+		read_label,
+		t_read - t_start,
+		t_anchor - t_read,
+		t_flood - t_anchor,
+		t_part - t_flood,
+		t_loose - t_part,
+		t_end - t_loose,
+		total_us,
+		total_us / 1000.0,
+	])
 
 
 # =============================================================

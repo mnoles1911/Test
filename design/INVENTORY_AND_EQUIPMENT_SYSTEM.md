@@ -145,6 +145,24 @@ Why four: enough to carry a healing option, an endurance option, and two tactica
 
 **Quick slot display:** Each slot shows the item icon and quantity remaining. When a slot empties it dims. When Roland activates a slot, a short radial fill animation plays on the slot icon as the use animation runs — a clear visual indicator of the vulnerability window.
 
+### Implementation status (2026-05-05)
+
+**Phase 1 complete.** Bar is live at the bottom-centre of the HUD, gameplay-only (hidden on main menu / settings / load picker). Number keys 1–4 equip the bound item via `InventoryManager.equip_quick_slot(idx)`, which writes through to `equip("weapon", item_id)`. State lives on `InventoryManager._quick_slots: Array[String]` with public API:
+
+```gdscript
+InventoryManager.set_quick_slot(idx: int, item_id: String)
+InventoryManager.get_quick_slot(idx: int) -> String
+InventoryManager.equip_quick_slot(idx: int) -> bool
+```
+
+Default bindings (seeded in `reset_for_new_game`): shovel / pickaxe / axe / powder_charge.
+
+LMB action is now equipped-item-aware — `tool` types route to `EditToolHandler` (held mining), `throwable` types route to `ThrowableHandler` (one-shot throw), `bucket` types route to bucket fill / place. Swapping slots changes the LMB action automatically.
+
+**Phase 2 outstanding (right-click rebind picker).** Right-click on a slot is wired to `_open_quick_slot_rebind_picker(slot_idx)` which currently logs a stub message. The picker UI itself is unbuilt — see `DESIGNER_TODO.md` Section 6 for the spec. ~60 lines of HUDOverlay layout + click handler. Filter to `type == "tool"` or `type == "throwable"` (raw materials shouldn't slot since they have no LMB action). Persistence requires two lines in `InventoryManager.to_dict` / `from_dict` so chosen bindings survive saves.
+
+**Phase 3 outstanding (full inventory grid).** Press I or Tab → grid → drag-drop into the bar. Per the rest of this doc. Half-day build. Obsoletes (or relegates to a quick shortcut) the Phase 2 picker.
+
 ---
 
 ## Carry Capacity — Weight

@@ -700,10 +700,17 @@ func _update_wet_terrain_visual(wetness: float) -> void:
 	if terrain == null:
 		return
 	if not (terrain is GeometryInstance3D):
-		# Some Zylann builds don't expose material_override; fall back
-		# silently — Layer A still works.
-		if not _wet_terrain_active and wetness <= 0.001:
-			return
+		# Zylann's VoxelLodTerrain extends VoxelNode → Node3D, NOT
+		# GeometryInstance3D, so `material_override` doesn't exist on
+		# it. Layer A (the RainOverlay screen tint) already ran above
+		# and gives us the wet-look feedback; just return.
+		#
+		# Earlier this branch only returned when wetness was already
+		# near zero, then fell through to the cast on line below. The
+		# `as` cast on a non-GeometryInstance3D returned null and the
+		# next assignment crashed with "assignment of property...
+		# 'material_override'... on a base object of type 'Nil'".
+		return
 	if wetness <= 0.001:
 		if _wet_terrain_active:
 			(terrain as GeometryInstance3D).material_override = null
@@ -867,13 +874,22 @@ func _spawn_lightning_flash(strike_pos: Vector3) -> void:
 	# Transient OmniLight3D. High energy, large range so the side of
 	# the world facing the strike brightens visibly more than the
 	# opposite side — that's what gives the directional cue.
+	#
+	# IMPORTANT: add_child() must come BEFORE assigning global_position.
+	# Node3D.global_position resolves the world transform by walking up
+	# the parent chain; outside the tree there's no parent, so the
+	# assignment errors with "is_inside_tree() is true. Returning:
+	# Transform3D()" and the light spawns at world origin. Light
+	# properties (color, energy, range) are local state and CAN be
+	# set before tree entry, so we keep those before add_child for
+	# clarity.
 	var light := OmniLight3D.new()
-	light.global_position = strike_pos
 	light.light_color = Color(1.0, 1.0, 1.0, 1.0)
 	light.light_energy = 0.0
 	light.omni_range = 300.0
 	light.omni_attenuation = 1.0
 	add_child(light)
+	light.global_position = strike_pos
 
 	# Energy curve: 0 → 30 over 40 ms (snap on), hold 80 ms, fade to 0
 	# over 250 ms. queue_free at the end of the tween.

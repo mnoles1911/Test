@@ -27,7 +27,12 @@ class_name WeatherZone
 # Higher priority overrides lower-priority active zones if multiple
 # overlap. Default 1; bump to 2/3 for cinematic zones that should
 # trump environmental ambiance.
-@export var priority: int = 1
+#
+# NOTE: named `zone_priority` (not `priority`) because Area3D already
+# has a built-in `priority` property for collision-resolution order.
+# Using the same name shadows the parent and Godot rejects the script
+# with a parse error.
+@export var zone_priority: int = 1
 
 
 func _ready() -> void:
@@ -63,7 +68,7 @@ func _on_body_entered(body: Node) -> void:
 	if state_id == -1:
 		push_warning("[WeatherZone %s] Unknown weather_state: %s" % [name, weather_state])
 		return
-	WeatherManager.push_proximity_zone(self, state_id, priority)
+	WeatherManager.push_proximity_zone(self, state_id, zone_priority)
 
 
 func _on_body_exited(body: Node) -> void:
