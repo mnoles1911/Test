@@ -67,12 +67,8 @@ var _frame_times_idx: int = 0
 # hasn't changed. Invalidated when the node becomes null.
 var _cached_player: Node = null
 
-# Bottom-left mode indicator + carve-volume readout. Both are
-# stacked at the bottom-left corner; the mode label is on top, the
-# volume readout is right below it. Both are hidden when no manual
-# tool is equipped. Volume readout is hidden in smoothing mode (the
-# scroll wheel doesn't change anything in smooth mode).
-var _edit_mode_label: Label
+# Bottom-left carve-volume readout. Hidden when no manual tool is
+# equipped (scroll-cycle only matters with pickaxe / shovel / axe).
 var _edit_volume_label: Label
 
 
@@ -321,36 +317,12 @@ func _build_fps_label() -> void:
 
 
 func _build_edit_mode_label() -> void:
-	# Bottom-left stack: mode label on top, volume readout below.
-	# Both share the same outlined-text style as the FPS readout so
-	# they're readable on any background. Driven by EditToolHandler
-	# state each frame.
-	# Mode label sits ~50 px from the bottom (room for the volume
-	# label below it).
-	_edit_mode_label = Label.new()
-	_edit_mode_label.text = "MINING"
-	_edit_mode_label.add_theme_font_size_override("font_size", 20)
-	_edit_mode_label.add_theme_color_override("font_color", Color(1, 0.92, 0.55, 1))
-	_edit_mode_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_edit_mode_label.add_theme_constant_override("outline_size", 4)
-	_edit_mode_label.anchor_left = 0.0
-	_edit_mode_label.anchor_right = 0.0
-	_edit_mode_label.anchor_top = 1.0
-	_edit_mode_label.anchor_bottom = 1.0
-	_edit_mode_label.offset_left = 16
-	_edit_mode_label.offset_right = 260
-	_edit_mode_label.offset_top = -76
-	_edit_mode_label.offset_bottom = -48
-	_edit_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_edit_mode_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_edit_mode_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_edit_mode_label.visible = false
-	add_child(_edit_mode_label)
-
-	# Volume label sits below the mode label, smaller font.
+	# Bottom-left "Volume: 1x1x1 [scroll]" readout. Visible when a
+	# manual tool is equipped. Outlined text matches the FPS readout
+	# style so it's readable on any background.
 	_edit_volume_label = Label.new()
-	_edit_volume_label.text = "Volume: 3×3×3  [scroll]"
-	_edit_volume_label.add_theme_font_size_override("font_size", 16)
+	_edit_volume_label.text = "Volume: 3x3x3  [scroll]"
+	_edit_volume_label.add_theme_font_size_override("font_size", 18)
 	_edit_volume_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0, 1.0))
 	_edit_volume_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_edit_volume_label.add_theme_constant_override("outline_size", 4)
@@ -584,44 +556,25 @@ func _process(delta: float) -> void:
 		else:
 			_mining_root.visible = false
 
-	# Bottom-left mode + volume indicators — only visible when a
-	# manual tool (pickaxe / shovel / axe) is equipped. The volume
-	# label is also hidden in smoothing mode (scroll-cycle is a
-	# mining-only feature).
-	if _edit_mode_label != null:
-		var show_mode: bool = false
-		var mode_smooth: bool = false
+	# Bottom-left volume indicator — only visible when a manual tool
+	# (pickaxe / shovel / axe) is equipped, since the scroll-cycle
+	# only matters then.
+	if _edit_volume_label != null:
+		var show_volume: bool = false
 		var volume_size: int = 3
-		if edit_tool != null and "smooth_mode" in edit_tool \
+		if edit_tool != null and "carve_volume_size" in edit_tool \
 				and get_node_or_null("/root/InventoryManager"):
 			var equipped: String = InventoryManager.get_equipped("weapon")
 			# Manual-tool list mirrors EditToolHandler.TOOL_SUB_SKILLS keys.
 			# Keep in sync if new manual tools land.
 			if equipped in ["iron_pickaxe", "iron_shovel", "iron_axe"]:
-				show_mode = true
-				mode_smooth = edit_tool.smooth_mode
-				if "carve_volume_size" in edit_tool:
-					volume_size = int(edit_tool.carve_volume_size)
-		_edit_mode_label.visible = show_mode
-		if show_mode:
-			if mode_smooth:
-				_edit_mode_label.text = "SMOOTHING  [Tab]"
-				_edit_mode_label.add_theme_color_override(
-					"font_color", Color(0.6, 0.85, 1.0, 1.0)
-				)
-			else:
-				_edit_mode_label.text = "MINING  [Tab]"
-				_edit_mode_label.add_theme_color_override(
-					"font_color", Color(1, 0.92, 0.55, 1)
-				)
-		if _edit_volume_label != null:
-			# Volume label hidden in smoothing mode and when no tool
-			# is equipped. Mining mode always shows it.
-			_edit_volume_label.visible = show_mode and not mode_smooth
-			if _edit_volume_label.visible:
-				_edit_volume_label.text = "Volume: %dx%dx%d  [scroll]" % [
-					volume_size, volume_size, volume_size,
-				]
+				show_volume = true
+				volume_size = int(edit_tool.carve_volume_size)
+		_edit_volume_label.visible = show_volume
+		if show_volume:
+			_edit_volume_label.text = "Volume: %dx%dx%d  [scroll]" % [
+				volume_size, volume_size, volume_size,
+			]
 
 	# Quick-slot bar visible only during gameplay (player in tree).
 	if _quick_root != null:

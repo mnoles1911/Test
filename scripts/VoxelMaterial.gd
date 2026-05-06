@@ -107,9 +107,6 @@ extends Resource
 #   1×1×1 (1 voxel)  → 1/8 of this value  (fast precision dig)
 #   2×2×2 (8 voxels) → exactly this value (baseline)
 #   3×3×3 (27 voxels) → 27/8 of this value (slow bulk dig)
-# Smoothing (Tab toggle) uses this value as-is — no volume scaling
-# because the smooth verb operates on a fixed action sphere whose
-# size is independent of the player's carve_volume_size choice.
 #
 # Suggested baseline values (for the 2×2×2 carve):
 #   0.2  - sand, snow, leaves (super fast)

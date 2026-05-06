@@ -6,8 +6,8 @@ How long it takes the player to break voxels with a manual tool
 1. **The voxel material** — each `VoxelMaterial.tres` carries a
    `mining_time_seconds` baseline.
 2. **The carve volume** — the player cycles 1×1×1 / 2×2×2 / 3×3×3 with
-   the scroll wheel while in mining mode (see
-   `design/INPUT_AND_CONTROLS.md` → `toggle_smooth_mode`).
+   the scroll wheel while a manual tool (pickaxe / shovel / axe) is
+   equipped.
 
 This document is the canonical reference for both. The formula and
 material tables below are what `EditToolHandler._tick_held_action`
@@ -37,10 +37,6 @@ The intent is **risk/reward**: 1×1×1 is fast for precision picking
 (carving stairs into a cliff, freeing a single ore vein), 3×3×3 is
 slow but high-throughput for bulk volume work (mining out a chamber).
 The 2×2×2 default is what feels "normal."
-
-**Smoothing does NOT scale.** The smooth verb (Tab toggle) operates on
-a fixed action sphere whose size is independent of `carve_volume_size`,
-so a smooth swing always uses `mining_time_seconds` directly.
 
 ---
 
@@ -145,12 +141,10 @@ it keeps the system simple and rewards the intent of the swing
 
 - `scripts/EditToolHandler.gd` → `_tick_held_action` — runtime
   implementation. Volume multiplier applied as
-  `mine_secs *= (N³) / 8.0` when `action == "mine"`.
+  `mine_secs = material.mining_time_seconds * (N³) / 8.0`.
 - `scripts/VoxelMaterial.gd` — `mining_time_seconds` field with the
   per-material baseline.
 - `design/3D_VOXEL_MIGRATION.md` → "Voxel Material System" — how
   materials are authored as `.tres` resources and registered.
 - `design/SKILLS_AND_PROGRESSION.md` → Crafting → Mining sub-skill —
   XP grants per swing.
-- `design/INPUT_AND_CONTROLS.md` → `toggle_smooth_mode` — Tab toggle
-  between mining and smoothing modes.
