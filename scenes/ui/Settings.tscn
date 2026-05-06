@@ -186,9 +186,9 @@ vertical_alignment = 1
 layout_mode = 2
 size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 48)
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(0.7, 0.95, 0.7, 1)
-text = "Depth-biased (into terrain)"
+text = "Depth-biased (into terrain)  ✓ DEFAULT"
 flat = true
 
 [node name="Spacer3b" type="Control" parent="Root/VBox"]

@@ -241,19 +241,51 @@ func _refresh_mining_anchor_button() -> void:
 	# Sync the button label + tint to match the current
 	# `mining_volume_anchor` value. Called after a click toggle and
 	# after _load_settings (so the button reflects persisted state on
-	# first show).
+	# first show). Both labels surface the fact that DEPTH_BIASED is
+	# the recommended default — when CENTERED is active, the label
+	# explicitly mentions "(default: Depth-biased)" so the player
+	# knows the click takes them back to the default.
 	if mining_anchor_btn == null:
 		return
 	if mining_volume_anchor == MINING_ANCHOR_CENTERED:
-		mining_anchor_btn.text = "Centered (aim in middle)"
+		mining_anchor_btn.text = "Centered (aim in middle)  —  default: Depth-biased"
 		mining_anchor_btn.add_theme_color_override(
 			"font_color", Color(0.95, 0.92, 0.55, 1)
 		)
 	else:
-		mining_anchor_btn.text = "Depth-biased (into terrain)"
+		mining_anchor_btn.text = "Depth-biased (into terrain)  ✓ DEFAULT"
 		mining_anchor_btn.add_theme_color_override(
 			"font_color", Color(0.7, 0.95, 0.7, 1)
 		)
+	# Tooltip is mode-independent (it explains both choices). Set it
+	# here so a fresh-loaded scene always has it without depending on
+	# _ready ordering. Multi-line via \n. Godot's default hover delay
+	# (~0.5 s) applies.
+	mining_anchor_btn.tooltip_text = (
+		"MINING ANCHOR\n"
+		+ "\n"
+		+ "How the carve volume is positioned around the voxel under your crosshair.\n"
+		+ "\n"
+		+ "• Depth-biased (DEFAULT — recommended)\n"
+		+ "    The carve box biases INTO the terrain along the surface\n"
+		+ "    you're aiming at. The voxel under the crosshair becomes\n"
+		+ "    the box's player-facing CORNER, not its centre.\n"
+		+ "    Example: a 3x3x3 swing on a cliff face removes 27 voxels\n"
+		+ "    of stone — none of the carve is wasted on air.\n"
+		+ "    Matches Minecraft / Vintage Story conventions.\n"
+		+ "\n"
+		+ "• Centered (aim in middle)\n"
+		+ "    The carve box CENTRES on the voxel under your crosshair.\n"
+		+ "    Example: a 3x3x3 swing on a cliff face only removes 18\n"
+		+ "    voxels of stone — the third 1x3x3 slab on the player-\n"
+		+ "    facing side falls in empty air and carves nothing. Useful\n"
+		+ "    for surgical work where you want the aim point exactly\n"
+		+ "    in the middle of the carve.\n"
+		+ "\n"
+		+ "The cyan aim outline always previews exactly what the next\n"
+		+ "swing will carve — toggle modes and watch it shift to feel\n"
+		+ "the difference."
+	)
 
 
 # =============================================================
