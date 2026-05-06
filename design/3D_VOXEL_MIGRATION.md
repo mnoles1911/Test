@@ -152,63 +152,17 @@ Voxel edits are intentionally slow and cumbersome — far below Minecraft's pace
 | **Shovel** | dirt, sand, clay, ash | Same swing pattern as pickaxe but for soft materials |
 | **Explosives** | stone walls, fortifications, dense rock | Crafted consumable; AOE 2–4m radius; significant voxel removal in one event. Loud, draws enemy attention. |
 | **Spells** | varies by school | Earth spells dig; Fire spells fell trees + ignite; (Game Two onward, when magic comes online for Roland's allies) |
-| **Smooth (RMB)** | any terrain voxel | Right-click with pickaxe/shovel/axe equipped. Relocates voxels within a small sphere to flatten terrain. Strictly conservative — no voxels are created or destroyed. See below. |
-
 Tool material gating: each voxel material has a hardness tier. A wooden pickaxe cannot mine adamant ore. Tool tier comes from smithing tier — Common / Quality / Masterwork — same as weapons. Speed scales with the relevant skill (see `design/SKILLS_AND_PROGRESSION.md` → Crafting → Mining/Felling/Excavation/Demolition sub-skills).
 
 All edit verbs share a per-swing voxel-budget cap to prevent stutter. Explosives queue their voxel writes across multiple frames via the `VoxelEditManager` async edit queue.
 
-#### Right-Click Smoothing — Neighbor-Aware Gravity-Biased Redistribution
+#### Variable Carve Volume + Aim Outline
 
-**Mental model:** a person smoothing a wall knocks off bumps, pushes crumbs into gaps, never conjures mass from nothing. Gravity holds: nothing rests on nothing. Each right-click relocates up to `smooth_move_budget` (default 20) voxels within a sphere around the aim point.
+The player cycles between **1×1×1**, **2×2×2**, and **3×3×3** carve volumes via the mouse scroll wheel while a manual tool is equipped. The HUD bottom-left shows `Volume: NxNxN [scroll]`. A translucent cyan emissive box rendered at the carve target visually previews exactly which voxels an LMB swing will remove.
 
-**Two spheres:**
+Swing time scales by `(N³)/8` so the 2×2×2 carve is the unchanged baseline (8 voxels = `mining_time_seconds` directly), 1×1×1 is 0.125× (fast precision), 3×3×3 is 3.375× (slow bulk). See `design/MINING_TIME_SCALING.md` for the full table.
 
-| Sphere | Radius | Role |
-|---|---|---|
-| **Action sphere** | `smooth_radius_voxels` (default 3, ~50 cm at 6 vox/m) | The only volume where voxels are moved. ~123 cells. |
-| **Probe sphere** | `ceili(action × smooth_probe_multiplier)` (default 1.5×, → radius 5, ~525 cells) | Read-only context. Provides surrounding column heights so the algorithm knows what "flat" looks like here. Without this, the action sphere builds vertically — it can't see the terrain beyond its own edge. |
-
-**Target height.** The probe column tops (the highest solid voxel in each (dx, dz) column of the probe sphere) are collected and sorted. `target_dy` = the lower-median value (index `(N-1)/2`). Fills are capped at this height — smoothing redistributes toward the median of surrounding terrain, never piles up beyond it.
-
-**Donor pool (solid cells the algorithm removes, in priority order):**
-
-| Tier | Condition | Score |
-|---|---|---|
-| 3 — Unsupported | No solid below the cell (floater or overhang). Must go. | `6 − face_solid_neighbors` |
-| 2 — Protrusion | Solid below, but ≤ 2 of 6 face neighbors are solid. Sticks out. | `3 − face_solid_neighbors` |
-| 1 — Excess height | Column top is above `target_dy`. Excess height to shed. | `min(top_y − target_dy, 6)` |
-
-**Receiver pool (air cells the algorithm fills, in priority order):**
-
-| Tier | Condition | Score |
-|---|---|---|
-| 2 — Enclosed pocket | ≥ 4 of 6 face neighbors solid AND solid below. 1×1×1 hole in a wall or floor. Fill it first. | `face_solid_neighbors − 3` |
-| 1 — Below-target fill | Air directly above a column whose top is below `target_dy` (supported by that top). | `min(target_dy − top_y, 6)` |
-
-**Gravity gate:** an air cell is only a valid receiver if a solid cell is directly below it. Floating fills are never emitted.
-
-**Greedy pairing:** donors sorted tier-DESC, score-DESC; receivers the same. Walk both lists in parallel, validate each cell's current state (a cell mutated by a prior move in the same click is skipped), emit the move, mutate the local `cells` dict so subsequent pairs see the updated state. Stop when budget exhausted or no valid pairs remain.
-
-**Conservation:** every move = 1 carve + 1 fill. `total_carves == total_fills` per click. Writes route through `VoxelEditManager.queue_set_voxels_bulk` — individual writes inside a NoEditZone are rejected silently; conservation may slip by a few voxels at zone boundaries.
-
-**Behaviors:**
-- 1×1×1 hole in a wall → tier-2 receiver matched with any tier-2 donor (a protrusion elsewhere). Wall fills in.
-- Floater mid-air → tier-3 donor. Moved to best receiver in sphere.
-- Pillar in flat ground → its top becomes a tier-1 donor. Moves toward a low-spot tier-1 receiver. Height capped at `target_dy` so the pillar doesn't migrate intact onto a neighbor column.
-- Flat terrain with no donors → no-op. Click is silent.
-
-**Tunables (`@export` in `EditToolHandler.gd`):**
-
-| Export | Default | Effect |
-|---|---|---|
-| `smooth_radius_voxels` | 3 | Action sphere radius in voxels (~50 cm). Smaller = more localized, deliberate smoothing. |
-| `smooth_probe_multiplier` | 1.5 | Probe radius = `ceili(action × this)`. Larger = wider context for target height, but slower read. |
-| `smooth_move_budget` | 20 | Max relocations per click. Raise for faster convergence; lower for subtler per-click effect. |
-
-**Fixed — mining carve 1×1×1 collapse.** `_carve` now calls `VoxelEditManager.queue_edit_box_voxels(min: Vector3i, max: Vector3i, value: int)`, which passes integer voxel-grid coords directly to `do_box`. No `to_local()` float conversion, no truncation error. Fixed 2026-05-05.
-
-**Fixed — smooth fails on untouched terrain at first load.** `_tick_held_action` now lets the smooth verb proceed when `_read_material_at` returns null (Zylann first-load streaming gap). Uses a 0.5 s fallback hold time. `_do_smooth` reads its own cell data and handles unloaded neighbors (treats them as air). Fixed 2026-05-05.
+**Earlier prototype (now removed).** A right-click "smoothing" verb that relocated voxels within a small sphere existed briefly but was redundant once variable carve volumes + the aim outline shipped. Players got the same flatness control by choosing 1×1×1 for surgical precision against bumps. Removed in PR #145.
 
 ### Player-Built Structures — Voxel and Schematic
 
