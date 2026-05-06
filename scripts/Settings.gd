@@ -53,8 +53,24 @@ const SETTINGS_PATH: String = "user://settings.json"
 @onready var music_slider: HSlider         = $Root/VBox/MusicRow/MusicSlider
 @onready var sfx_slider: HSlider           = $Root/VBox/SFXRow/SFXSlider
 @onready var fullscreen_check: CheckBox    = $Root/VBox/FullscreenCheck
+@onready var mining_anchor_btn: Button     = $Root/VBox/MiningAnchorRow/MiningAnchorBtn
 @onready var back_btn: Button              = $Root/VBox/ButtonRow/BackBtn
 @onready var apply_btn: Button             = $Root/VBox/ButtonRow/ApplyBtn
+
+
+# Mining-volume anchor preference. Read by EditToolHandler.
+# Mirror of EditToolHandler.MiningAnchor enum:
+#   0 = DEPTH_BIASED — bias the carve box INTO the terrain along the
+#       surface normal (default). 3×3×3 against a wall = 27 terrain
+#       voxels, no air slab. Matches Minecraft / Vintage Story
+#       conventions.
+#   1 = CENTERED — symmetric box centred on the aim voxel. The
+#       carve includes one slab of air on flat surfaces but the
+#       aim point sits in the middle of the box for predictable
+#       precision work.
+const MINING_ANCHOR_DEPTH_BIASED: int = 0
+const MINING_ANCHOR_CENTERED: int = 1
+var mining_volume_anchor: int = MINING_ANCHOR_DEPTH_BIASED
 
 
 # =============================================================
@@ -86,6 +102,7 @@ func _ready() -> void:
 	# volume before any scene plays audio.
 	_load_settings()
 	_apply_to_audio()
+	_refresh_mining_anchor_button()
 
 	print("[Settings] Initialized (overlay mode).")
 
@@ -178,6 +195,19 @@ func _on_lmb_press(pos: Vector2) -> void:
 		_on_fullscreen_toggled(fullscreen_check.button_pressed)
 		return
 
+	# Mining anchor button — cycle between the two anchor modes on
+	# each click. Updates the public `mining_volume_anchor` field that
+	# EditToolHandler reads on every carve, so the change applies the
+	# next swing without a save/reload.
+	if mining_anchor_btn.get_global_rect().has_point(pos):
+		mining_volume_anchor = (
+			MINING_ANCHOR_CENTERED
+			if mining_volume_anchor == MINING_ANCHOR_DEPTH_BIASED
+			else MINING_ANCHOR_DEPTH_BIASED
+		)
+		_refresh_mining_anchor_button()
+		return
+
 
 func _update_slider_drag(global_pos: Vector2) -> void:
 	if _drag_slider == null:
@@ -207,6 +237,25 @@ func _on_fullscreen_toggled(pressed: bool) -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 
 
+func _refresh_mining_anchor_button() -> void:
+	# Sync the button label + tint to match the current
+	# `mining_volume_anchor` value. Called after a click toggle and
+	# after _load_settings (so the button reflects persisted state on
+	# first show).
+	if mining_anchor_btn == null:
+		return
+	if mining_volume_anchor == MINING_ANCHOR_CENTERED:
+		mining_anchor_btn.text = "Centered (aim in middle)"
+		mining_anchor_btn.add_theme_color_override(
+			"font_color", Color(0.95, 0.92, 0.55, 1)
+		)
+	else:
+		mining_anchor_btn.text = "Depth-biased (into terrain)"
+		mining_anchor_btn.add_theme_color_override(
+			"font_color", Color(0.7, 0.95, 0.7, 1)
+		)
+
+
 # =============================================================
 # AUDIO APPLICATION
 # =============================================================
@@ -231,10 +280,11 @@ func _apply_to_audio() -> void:
 
 func _save_settings() -> void:
 	var data: Dictionary = {
-		"master_volume": master_slider.value,
-		"music_volume":  music_slider.value,
-		"sfx_volume":    sfx_slider.value,
-		"fullscreen":    fullscreen_check.button_pressed,
+		"master_volume":         master_slider.value,
+		"music_volume":          music_slider.value,
+		"sfx_volume":            sfx_slider.value,
+		"fullscreen":            fullscreen_check.button_pressed,
+		"mining_volume_anchor":  mining_volume_anchor,
 	}
 	var file = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file:
@@ -249,6 +299,7 @@ func _load_settings() -> void:
 		music_slider.value  = 0.7
 		sfx_slider.value    = 1.0
 		fullscreen_check.button_pressed = false
+		mining_volume_anchor = MINING_ANCHOR_DEPTH_BIASED
 		return
 
 	var file = FileAccess.open(SETTINGS_PATH, FileAccess.READ)
@@ -263,6 +314,11 @@ func _load_settings() -> void:
 	music_slider.value  = result.get("music_volume",  0.7)
 	sfx_slider.value    = result.get("sfx_volume",    1.0)
 	fullscreen_check.button_pressed = result.get("fullscreen", false)
+	mining_volume_anchor = clampi(
+		int(result.get("mining_volume_anchor", MINING_ANCHOR_DEPTH_BIASED)),
+		MINING_ANCHOR_DEPTH_BIASED,
+		MINING_ANCHOR_CENTERED,
+	)
 
 	if fullscreen_check.button_pressed:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)

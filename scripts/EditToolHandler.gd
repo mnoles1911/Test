@@ -60,6 +60,23 @@
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
 
+# Mining-volume anchor: how the carve box is positioned around the
+# voxel the player is aiming at. Player can flip between these in the
+# Settings overlay (which writes to Settings.mining_volume_anchor —
+# we read it lazily via _get_mining_anchor()).
+enum MiningAnchor {
+	# Bias the box INTO the terrain along the surface normal axis.
+	# 3×3×3 against a wall = 27 terrain voxels (no wasted air slab).
+	# DEFAULT — matches Minecraft / Vintage Story conventions: aim
+	# at a surface, the carve fills the terrain side.
+	DEPTH_BIASED,
+	# Symmetric box centred on the surface voxel. The aim point sits
+	# in the box's middle, but on a flat cliff face one slab of the
+	# carve is air (the side facing the player). Useful for precision
+	# work where you want predictable visual centering.
+	CENTERED,
+}
+
 # Map from equipped tool item_id to the Crafting sub-skill that gets
 # XP on a successful edit. Pickaxe â†’ mining, axe â†’ felling, etc.
 # Sub-skill names match the design doc XP_VALUES table in
@@ -243,11 +260,9 @@ func _update_aim_outline() -> void:
 		_aim_outline.visible = false
 		return
 
-	# Mirror the carve box computation from _carve so the outline
-	# exactly matches what an LMB press would remove. Uses the same
-	# asymmetric half_lo/half_hi split so even-N volumes (carve_volume_size
-	# = 2) anchor correctly to a 2-voxel-wide box, not a misaligned
-	# 3-voxel range. KEEP THIS IN SYNC WITH _carve.
+	# Mirror the carve box computation from _carve via the shared
+	# helper so the outline exactly matches what an LMB press will
+	# remove — including the depth-bias along the surface normal.
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
 	const VOXELS_PER_METER: float = 6.0
 	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
@@ -256,18 +271,15 @@ func _update_aim_outline() -> void:
 		floori(voxel_world_pos.y * VOXELS_PER_METER),
 		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
-	@warning_ignore("integer_division")
-	var half_lo: int = (carve_volume_size - 1) / 2
-	@warning_ignore("integer_division")
-	var half_hi: int = carve_volume_size / 2
-	var box_vmin: Vector3i = centre_voxel - Vector3i(half_lo, half_lo, half_lo)
-	var box_vmax: Vector3i = centre_voxel + Vector3i(half_hi, half_hi, half_hi)
-	# World-space size = N voxels Ã— VOXEL_SIZE_M. World-space centre
-	# is the midpoint of the inclusive voxel range â€” `(vmin + vmax + 1)
+	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
+	var box_vmin: Vector3i = box[0]
+	var box_vmax: Vector3i = box[1]
+	# World-space size = N voxels × VOXEL_SIZE_M. World-space centre
+	# is the midpoint of the inclusive voxel range — `(vmin + vmax + 1)
 	# * 0.5 / VPM` because vmin/vmax are voxel INDICES (each voxel
 	# occupies the span i .. i+1 in world units after the /VPM scale),
 	# so the "+1" pushes vmax to the FAR face of its voxel.
-	# Tiny scale fudge (Ã—1.02) so the outline sits just outside the
+	# Tiny scale fudge (×1.02) so the outline sits just outside the
 	# cube faces and z-fights less with the terrain mesh.
 	var size_m: float = float(carve_volume_size) * VOXEL_SIZE_M
 	_aim_outline_mesh.size = Vector3.ONE * size_m * 1.02
@@ -588,13 +600,65 @@ func _tick_held_action(delta: float) -> void:
 		return
 
 	# --- Swing complete: carve ---
-	_carve(voxel_world_pos, material, equipped_id)
+	_carve(voxel_world_pos, material, equipped_id, hit_normal)
 	_swing_time_on_target = 0.0
 	_swing_cooldown_remaining = swing_cooldown_seconds
 	# Snap the bar to "complete" briefly. _clear_target / next tick
 	# will reset it. Keeps the HUD honest â€” it shows 100% in the
 	# moment the action fires.
 	mining_progress = 1.0
+
+
+func _compute_carve_box(centre_voxel: Vector3i, hit_normal: Vector3, n: int) -> Array:
+	# Compute the [vmin, vmax] voxel-grid bounds for the carve box,
+	# applying the player's MiningAnchor preference.
+	#
+	# Asymmetric half_lo / half_hi split for even N. A 2×2×2 carve has
+	# no exact symmetric anchoring around a single voxel — biasing
+	# toward +X/+Y/+Z keeps the aimed voxel as the box's MIN corner
+	# so an even-N carve never accidentally extends "behind" the
+	# player's aim point.
+	#   half_lo = (N-1)/2, half_hi = N/2
+	#   N=1: lo=0, hi=0 → [c, c]       (1 voxel)
+	#   N=2: lo=0, hi=1 → [c, c+1]     (2 voxels)
+	#   N=3: lo=1, hi=1 → [c-1, c+1]   (3 voxels)
+	#   N=4: lo=1, hi=2 → [c-1, c+2]   (4 voxels)
+	@warning_ignore("integer_division")
+	var half_lo: int = (n - 1) / 2
+	@warning_ignore("integer_division")
+	var half_hi: int = n / 2
+	var vmin: Vector3i = centre_voxel - Vector3i(half_lo, half_lo, half_lo)
+	var vmax: Vector3i = centre_voxel + Vector3i(half_hi, half_hi, half_hi)
+
+	# DEPTH_BIASED (default): shift the box INTO the terrain along
+	# the dominant axis of the surface normal. The surface voxel
+	# becomes the box's corner closest to the player, so 3×3×3
+	# against a wall is 27 terrain voxels instead of 18 + 9 air.
+	# CENTERED: leave vmin/vmax symmetric around centre_voxel.
+	if _get_mining_anchor() == MiningAnchor.DEPTH_BIASED \
+			and hit_normal.length_squared() > 0.0001:
+		var n_abs: Vector3 = hit_normal.abs()
+		var bias: Vector3i = Vector3i.ZERO
+		if n_abs.x >= n_abs.y and n_abs.x >= n_abs.z:
+			bias.x = -int(sign(hit_normal.x)) * half_hi
+		elif n_abs.y >= n_abs.z:
+			bias.y = -int(sign(hit_normal.y)) * half_hi
+		else:
+			bias.z = -int(sign(hit_normal.z)) * half_hi
+		vmin += bias
+		vmax += bias
+
+	return [vmin, vmax]
+
+
+func _get_mining_anchor() -> int:
+	# Read the player's preference from the Settings autoload. Falls
+	# back to DEPTH_BIASED (the recommended default) if the autoload
+	# isn't registered or the field is missing.
+	var settings_node := get_node_or_null("/root/Settings")
+	if settings_node != null and "mining_volume_anchor" in settings_node:
+		return int(settings_node.mining_volume_anchor)
+	return MiningAnchor.DEPTH_BIASED
 
 
 func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
@@ -628,24 +692,23 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	return VoxelMaterialRegistry.get_by_id(material_id)
 
 
-func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: String) -> void:
+func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: String, hit_normal: Vector3) -> void:
 	# Apply the voxel edit, yield the material's item, and award
 	# crafting XP. Called once per successful held-swing completion.
 	#
-	# Carve shape: an NÃ—NÃ—N box of voxels centred on `voxel_world_pos`
-	# (where N = swing_carve_voxels_per_side, default 3). At 6 vox/m
-	# the half-side in world units is N / 12. We snap the box AABB
-	# to the voxel grid so the box edges align cleanly with cube
-	# faces â€” without snapping, a 0.5 m box drifting off the grid
-	# would carve an irregular 4-or-2 voxels on each axis depending
-	# on sub-voxel alignment.
+	# Carve shape: an N×N×N box of voxels positioned by
+	# `_compute_carve_box`. Position depends on the player's
+	# Settings.mining_volume_anchor preference (DEPTH_BIASED default
+	# vs CENTERED). `hit_normal` lets the helper bias the box INTO
+	# the terrain along the surface-normal axis so a cliff-face
+	# carve is fully terrain-filled, not 1/3 wasted on air.
 	if not get_node_or_null("/root/VoxelEditManager"):
 		push_warning("[EditToolHandler] VoxelEditManager autoload not registered")
 		return
 	# Compute the carve box in integer voxel-grid coordinates.
 	# Using queue_edit_box (world-space) caused _terrain.to_local() to
 	# return -0.999... instead of -1.0 due to FP rounding, collapsing
-	# the 3Ã—3Ã—3 carve to 1Ã—1Ã—1 after truncation. Integer arithmetic
+	# the 3×3×3 carve to 1×1×1 after truncation. Integer arithmetic
 	# avoids the conversion entirely.
 	const VOXELS_PER_METER: float = 6.0
 	var centre_voxel: Vector3i = Vector3i(
@@ -653,27 +716,9 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 		floori(voxel_world_pos.y * VOXELS_PER_METER),
 		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
-	# Asymmetric split for even N. A 2Ã—2Ã—2 carve has no exact symmetric
-	# anchoring around a single voxel â€” biasing toward +X/+Y/+Z keeps
-	# the aimed voxel as the box's MIN corner so an even-N carve
-	# never accidentally extends "behind" the player's aim point.
-	#
-	# half_lo = (N-1)/2, half_hi = N/2:
-	#   N=1: lo=0, hi=0 â†’ [c, c]       (1 voxel)
-	#   N=2: lo=0, hi=1 â†’ [c, c+1]     (2 voxels â€” was 3 with half=1!)
-	#   N=3: lo=1, hi=1 â†’ [c-1, c+1]   (3 voxels)
-	#   N=4: lo=1, hi=2 â†’ [c-1, c+2]   (4 voxels)
-	#
-	# The previous half=N/2 formula collapsed N=2 into the same
-	# 3-voxel range as N=3, which silently destroyed 27 voxels per
-	# swing instead of 8 â€” and the aim outline (sized to N) didn't
-	# line up with the larger carve.
-	@warning_ignore("integer_division")
-	var half_lo: int = (carve_volume_size - 1) / 2
-	@warning_ignore("integer_division")
-	var half_hi: int = carve_volume_size / 2
-	var box_vmin: Vector3i = centre_voxel - Vector3i(half_lo, half_lo, half_lo)
-	var box_vmax: Vector3i = centre_voxel + Vector3i(half_hi, half_hi, half_hi)
+	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
+	var box_vmin: Vector3i = box[0]
+	var box_vmax: Vector3i = box[1]
 	var accepted: bool = VoxelEditManager.queue_edit_box_voxels(
 		box_vmin, box_vmax, AIR_VOXEL
 	)
