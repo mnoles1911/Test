@@ -6,6 +6,9 @@ IsometricRPGMono/publish/
 # Godot 4 editor cache (regenerated on open; machine-specific)
 .godot/
 
+# Claude Code session state (per-machine; logs, transcripts, agent caches)
+.claude/
+
 # Godot 4.4+ script UID sidecars (regenerated on open; commit noise for a
 # solo project — Godot recreates them on file rename if missing)
 *.uid
