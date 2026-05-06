@@ -560,7 +560,11 @@ func _tick_held_action(delta: float) -> void:
 	var hit_normal: Vector3 = hit.get("normal", Vector3.UP)
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
 
-	# --- Read the voxel material ---
+	# --- Read the aimed voxel's material (for the per-swing yield) ---
+	# The aimed-voxel material drives the inventory yield from
+	# _spawn_voxel_drop in _carve. Mining time uses the SLOWEST
+	# material in the carve box (see below) so a 1-grass + 26-stone
+	# 3×3×3 carve doesn't get a fast grass swing time.
 	var material: VoxelMaterial = _read_material_at(voxel_world_pos)
 	if material == null:
 		# Voxel is air, registry isn't loaded, or the read failed.
@@ -568,32 +572,50 @@ func _tick_held_action(delta: float) -> void:
 		_clear_target()
 		return
 
-	# --- Tool gating + mismatch penalty ---
-	# Empty allowed_tools means "no tool can break this" (bedrock).
-	# That's the only hard gate now. For any non-empty list, the
-	# entries are the PREFERRED tools — equipping one of them mines
-	# at 1.0× speed; equipping any other manual tool still works but
-	# is slowed by WRONG_TOOL_SPEED_MULTIPLIER. So a shovel can chip
-	# through stone, just slowly; a pickaxe can break grass, just
-	# slowly.
-	if material.allowed_tools.size() == 0:
+	# --- Mixed-volume mining time (slowest-wins) ---
+	# The carve box may span multiple materials. Sample EVERY voxel
+	# in the box, compute its per-voxel time (mining_time_seconds ×
+	# tool_multiplier for that voxel's material), take the max, then
+	# apply the carve-volume multiplier. This means the swing speed
+	# is set by the hardest material in the box — exactly like real
+	# digging where stone in your dirt is the limiter.
+	#
+	# Aiming reticle position no longer games the swing time: a
+	# stone voxel anywhere in the 3×3×3 box makes the swing as slow
+	# as a pure-stone carve, regardless of where the crosshair lies.
+	var centre_voxel: Vector3i = Vector3i(
+		floori(voxel_world_pos.x * 6.0),
+		floori(voxel_world_pos.y * 6.0),
+		floori(voxel_world_pos.z * 6.0),
+	)
+	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
+	var box_vmin: Vector3i = box[0]
+	var box_vmax: Vector3i = box[1]
+	var mix: Dictionary = _compute_mixed_volume_mine_secs(box_vmin, box_vmax, equipped_id)
+	if mix["blocked"]:
+		# At least one voxel in the box is unmineable (bedrock).
+		# VoxelEditManager will reject the carve anyway, so don't
+		# even start the swing.
 		if should_log:
-			print("[EditTool] UNMINEABLE: %s rejects all tools (e.g. bedrock)" % material.id_string)
+			print("[EditTool] UNMINEABLE voxel in box (e.g. bedrock); swing blocked")
 		_clear_target()
 		return
-	var tool_multiplier: float = 1.0
-	if not (equipped_id in material.allowed_tools):
-		tool_multiplier = WRONG_TOOL_SPEED_MULTIPLIER
+	var slowest_per_voxel: float = float(mix["secs"])
+	var slowest_mat: VoxelMaterial = mix["material"]
+	if slowest_per_voxel <= 0.0 or slowest_mat == null:
+		# Whole box is air. Aim is off the surface.
+		_clear_target()
+		return
 
-	# Mining-volume time scaling. The .tres `mining_time_seconds` is
-	# the swing time for the 2×2×2 (= 8 voxels) baseline. Scale
+	# Mining-volume time scaling. The slowest per-voxel time is the
+	# swing time for the 2×2×2 (= 8 voxels) baseline. Scale
 	# proportionally to the actual voxel count being carved:
 	#   N=1 (1 vox)  → multiplier 1/8  = 0.125× (fast precision dig)
 	#   N=2 (8 vox)  → multiplier 8/8  = 1.0×   (baseline, unchanged)
 	#   N=3 (27 vox) → multiplier 27/8 ≈ 3.375× (slow bulk dig)
 	var voxel_count: int = carve_volume_size * carve_volume_size * carve_volume_size
 	var volume_multiplier: float = float(voxel_count) / 8.0
-	var mine_secs: float = material.mining_time_seconds * volume_multiplier * tool_multiplier
+	var mine_secs: float = slowest_per_voxel * volume_multiplier
 
 	# --- Target stability + accumulate ---
 	# Compute the integer voxel grid coord and compare. If the
@@ -606,14 +628,16 @@ func _tick_held_action(delta: float) -> void:
 
 	_swing_time_on_target += delta
 
-	# Public state for the HUD progress bar.
+	# Public state for the HUD progress bar. Label shows the SLOWEST
+	# material so the player sees what's gating the swing time
+	# (e.g. "STONE" for a mostly-grass carve that contains stone).
 	mining_active = true
 	mining_progress = clampf(
 		_swing_time_on_target / maxf(mine_secs, 0.0001),
 		0.0,
 		1.0,
 	)
-	mining_material_label = material.display_name
+	mining_material_label = slowest_mat.display_name
 
 	if _swing_time_on_target < mine_secs:
 		# Still swinging.
@@ -669,6 +693,75 @@ func _compute_carve_box(centre_voxel: Vector3i, hit_normal: Vector3, n: int) -> 
 		vmax += bias
 
 	return [vmin, vmax]
+
+
+func _compute_mixed_volume_mine_secs(
+	box_vmin: Vector3i, box_vmax: Vector3i, equipped_id: String,
+) -> Dictionary:
+	# Sample every voxel in the [box_vmin, box_vmax] inclusive range
+	# and compute the SLOWEST per-voxel mining time across all
+	# non-air voxels.
+	#
+	# Per-voxel time = material.mining_time_seconds × tool_multiplier
+	# where tool_multiplier is 1.0 if `equipped_id` is in
+	# `material.allowed_tools` (the preferred-tools list) or
+	# WRONG_TOOL_SPEED_MULTIPLIER otherwise.
+	#
+	# Returns:
+	#   {
+	#     "secs":     float,           # slowest per-voxel time
+	#     "material": VoxelMaterial,   # the material that won the max
+	#     "blocked":  bool,            # true if any voxel is unmineable
+	#                                  # (allowed_tools empty, e.g. bedrock)
+	#   }
+	# `blocked = true` overrides everything — the caller should bail
+	# because VoxelEditManager will reject the carve. If the box is
+	# entirely air, secs = 0 and material = null (caller should bail).
+	#
+	# Cost: up to 27 tool.get_voxel calls per held tick (3×3×3 box).
+	# Cheap enough to run every frame the swing is held — comparable
+	# to what _update_aim_outline already does.
+	var result: Dictionary = {
+		"secs": 0.0,
+		"material": null,
+		"blocked": false,
+	}
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return result
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return result
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return result
+	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	var registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if registry == null:
+		return result
+
+	for x in range(box_vmin.x, box_vmax.x + 1):
+		for y in range(box_vmin.y, box_vmax.y + 1):
+			for z in range(box_vmin.z, box_vmax.z + 1):
+				var packed: int = tool.get_voxel(Vector3i(x, y, z))
+				var mat_id: int = packed & 0xFF
+				if mat_id == 0:
+					continue  # air contributes nothing
+				var mat: VoxelMaterial = registry.get_by_id(mat_id)
+				if mat == null:
+					continue  # unknown material — defensive skip
+				if mat.allowed_tools.size() == 0:
+					# Unmineable (bedrock). Whole swing blocked.
+					result["blocked"] = true
+					result["material"] = mat
+					return result
+				var tool_mult: float = 1.0
+				if not (equipped_id in mat.allowed_tools):
+					tool_mult = WRONG_TOOL_SPEED_MULTIPLIER
+				var per_voxel_secs: float = mat.mining_time_seconds * tool_mult
+				if per_voxel_secs > float(result["secs"]):
+					result["secs"] = per_voxel_secs
+					result["material"] = mat
+	return result
 
 
 func _get_mining_anchor() -> int:
