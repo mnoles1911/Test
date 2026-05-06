@@ -18,17 +18,35 @@ implements at runtime.
 ## The formula
 
 ```
-swing_seconds = material.mining_time_seconds × (N³ / 8) × tool_multiplier
+per_voxel_seconds[v] = v.material.mining_time_seconds × tool_multiplier(v)
+swing_seconds = max(per_voxel_seconds across all voxels in carve box) × (N³ / 8)
 ```
 
 where `N` is the carve volume side length (1, 2, or 3) and
-`tool_multiplier` is **1.0** when the equipped manual tool is in the
-material's `allowed_tools` list (the "preferred tools"), or
-**`WRONG_TOOL_SPEED_MULTIPLIER` = 3.0** otherwise.
+`tool_multiplier(v)` is **1.0** when the equipped manual tool is in
+that voxel's material's `allowed_tools` list (the "preferred tools"),
+or **`WRONG_TOOL_SPEED_MULTIPLIER` = 3.0** otherwise.
 
-Empty `allowed_tools` (bedrock) means **no tool can mine the
-material** — the swing is blocked entirely, the multiplier doesn't
-apply.
+The swing time is set by the **slowest material in the carve box**,
+not by whichever material happens to be under the aim crosshair.
+This means:
+
+- A 3×3×3 box with even one stone voxel takes as long as a pure-stone
+  3×3×3 (assuming the equipped tool is preferred for stone).
+- The shovel-on-stone or pickaxe-on-grass penalty applies when ANY
+  voxel in the box is the wrong-tool material — even if 26 of 27
+  voxels are the preferred type.
+- The HUD `mining_material_label` shows the slowest material's
+  display name (e.g. "STONE" for a grass + stone carve), so the
+  player sees what's gating the swing.
+
+Empty `allowed_tools` on any voxel in the box (bedrock) **blocks the
+entire swing** — the multiplier doesn't apply, the swing accumulator
+stays at zero. Same effect as VoxelEditManager rejecting the carve
+for crossing the bedrock floor.
+
+Air voxels (mat_id = 0) contribute nothing to the max — they're skipped.
+A box that's entirely air bails immediately (no swing, no progress).
 
 The 2×2×2 carve is calibrated as the **baseline** (multiplier = 1.0)
 because it's the most common volume — fast enough to feel responsive,
@@ -181,8 +199,15 @@ it keeps the system simple and rewards the intent of the swing
 ## Cross-references
 
 - `scripts/EditToolHandler.gd` → `_tick_held_action` — runtime
-  implementation. Volume multiplier applied as
-  `mine_secs = material.mining_time_seconds * (N³) / 8.0`.
+  implementation. Calls `_compute_mixed_volume_mine_secs` to find the
+  slowest per-voxel time across the carve box, then multiplies by
+  `(N³) / 8.0` to get the final swing time.
+- `scripts/EditToolHandler.gd` → `_compute_mixed_volume_mine_secs`
+  — slowest-wins scan over the carve box. Reads up to 27 voxels per
+  held tick (3×3×3 worst case), per-voxel computes `mining_time_seconds
+  × tool_multiplier`, returns the max plus the slowest voxel's
+  material (for the HUD label) plus a `blocked` flag if any voxel
+  is unmineable.
 - `scripts/EditToolHandler.gd` → `_compute_carve_box` and
   `MiningAnchor` enum — the carve-box positioning helper that
   handles both DEPTH_BIASED (default — bias the box into the
