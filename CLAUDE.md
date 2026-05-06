@@ -50,6 +50,7 @@ Completed milestones (see git log for full PR detail; the autoload section below
 - **Milestone 5-3D (2026-05-03):** destructible-voxel slice — VoxelLodTerrain + SQLite deltas, CubicHeightmapGenerator, edit/gravity/water managers, NoEditZones, pickaxe + explosives, swimming, day/night.
 - **Milestone 6-3D Weather (2026-05-04):** WeatherManager — six-state machine, 30 s transitions, fog/wind/particles/lightning, location profiles, proximity zones.
 - **Voxel water refactor (2026-05-05):** Area3D water replaced with voxel-cell flow sim (`WaterFlowManager` 4 Hz tick, `WaterChunkMesher` transparent surfaces, `WORLD_GENERATOR_VERSION = 11`).
+- **Copper Isles demo (2026-05-06):** Heightmap-driven generator (`CopperIslesHeightmapGenerator.gd`) for the 5 km × 5 km Copper Isles archipelago; per-voxel water bytes written into `CHANNEL_DATA5` at gen time (no AABB flood heuristic); `WORLD_GENERATOR_VERSION = 13`; bake pipeline (`scenes/_dev/BakeWorld.tscn` + `WorldBakeController.gd` + `SkirtBaker.gd`) for streaming the full map into a baseline SQLite; `HorizonSkirt.gd` draws distant peaks beyond the 250 m view distance. Test scene: `scenes/CopperIslesTest.tscn`.
 
 Outstanding pickups: low-poly Blender Roland model (still placeholder green box), MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio OGGs, region-boundary profile auto-swap. See `DESIGNER_TODO.md` and `design/LESSONS_LEARNED.md`.
 
@@ -95,6 +96,8 @@ These files go stale as lore and game design evolve. Review and update them when
 | dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
 | dialogue/PRONUNCIATION.md | Any new lore proper noun is introduced (place names, gods, titles) |
 | DESIGNER_TODO.md | New design doc lands that requires editor or asset work; tasks completed |
+| design/COPPER_ISLES_BAKE_NOTES.md | Zylann GDExtension probe results change, or new bake-pipeline decisions are made |
+| design/COPPER_ISLES_DEMO_HEIGHTMAP.md | Copper Isles island layout, heightmap spec, or import notes change |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -170,6 +173,8 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/TTS_PIPELINE.md — AI-assisted draft → ElevenLabs render → Dialogic handoff (bulk vs craft pipelines, filename + manifest contract)
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
+- design/COPPER_ISLES_DEMO_HEIGHTMAP.md — AI prompt + per-island terrain spec for the 5 km × 5 km Copper Isles archipelago heightmap; Godot import notes
+- design/COPPER_ISLES_BAKE_NOTES.md — Zylann GDExtension probe results (API behaviors verified at runtime), bake-pipeline design decisions and gotchas
 
 ## Current project state
 Godot 4.6.2. 3D pivot complete. Open world plan confirmed: VoxelLodTerrain streaming, **editable / destructible terrain by default** (LOD0-clamped + LOD-baked at distance, edits stored as deltas in `VoxelStreamSQLite`, NoEditZones protect settlements and lore landmarks, no world healing), 12km × 10km playable Mira, third-person over-shoulder camera, low-poly Blender character models from Act I.
@@ -187,6 +192,11 @@ The system design corpus is complete (combat, AI, companions, factions, quests, 
 - `CampfireFlicker3D.gd` — OmniLight3D flicker
 - `SpawnPoint3D.gd`, `RoomTrigger3D.gd`, `DialogueTrigger3D.gd` — Vector3 / Area3D ports of the Zone framework triggers
 - `World3D.tscn` — placeholder cave: WorldEnvironment (SSAO + fog), DirectionalLight3D, ground StaticBody3D, OmniLight3D campfire, Player3D instance
+- `World3DBootstrap.gd` — attached to World3D.tscn root; hands the `VoxelLodTerrain` to autoloads on `_ready`, configures `CHANNEL_COLOR` to 32-bit depth on `terrain.format`, and enables `threaded_update_enabled` + `collision_update_delay`. **All world-load wiring goes here.**
+- `VoxelDrop.gd` — RigidBody3D pickup spawned by `EditToolHandler` when a voxel is mined. Falls under gravity, auto-collects when Roland walks within `PICKUP_RADIUS_M`, despawns after `DESPAWN_SECONDS`. Not saved across sessions (v1 scope).
+- `CopperIslesHeightmapGenerator.gd` — `@tool` `VoxelGeneratorScript` for the Copper Isles demo. Reads a Gaea EXR heightmap; emits terrain into `CHANNEL_COLOR` (32-bit) and water source bytes into `CHANNEL_DATA5`. Attached to the `VoxelLodTerrain` in `CopperIslesTest.tscn`.
+- `CopperIslesTestBootstrap.gd` — slimmed sibling of `World3DBootstrap.gd` for `CopperIslesTest.tscn`; seeds the working SQLite from a baked baseline if present; snaps the player above peak elevation on spawn and after F7 scale changes.
+- `HorizonSkirt.gd` — `MeshInstance3D` child of `VoxelLodTerrain`. Loads the baked low-LOD skirt mesh from `assets/voxel/copper_isles_skirt.res` so distant peaks are visible beyond the 250 m stream radius. Hides silently if mesh isn't baked yet. Bake via `scenes/_dev/BakeWorld.tscn`.
 
 **NPC system (in place):**
 - `NPC.gd` — CharacterBody3D base script for Tier 1–3 NPCs; bark firing, E-press dialogue, disposition, schedule dispatch
@@ -223,10 +233,14 @@ For deep mechanics, read the script header in each `.gd` file. This is a quick r
 - `WeatherLocationProfile.gd` + `assets/profiles/*.tres` — Resource. Fields: `profile_id`, `authored_sequence`, `random_distribution`, `transition_hours`. v1: `mira_temperate.tres`. Region auto-swap deferred — call `set_location_profile` manually.
 - `WeatherZone.gd` — Area3D. `@export weather_state: String`, `@export priority: int`. Pushes to WeatherManager stack on entry/exit.
 
+**Dev tools (not shipped, live in `scripts/_dev/` and `scenes/_dev/`):**
+- `WorldBakeController.gd` + `scenes/_dev/BakeWorld.tscn` — UI-driven bake that walks a `VoxelViewer` across the whole Copper Isles grid, streams + persists every chunk into a baseline SQLite at `user://baked_baseline.sqlite`, then copies it to `assets/voxel/`. Run in-game (F5 on BakeWorld.tscn) — the bake requires live terrain streaming and does nothing in the editor.
+- `SkirtBaker.gd` — builds the horizon-skirt ArrayMesh from the EXR at 64 m × 64 m quad resolution (~12 800 tris for a 5 km map). Called by `WorldBakeController` and saves `assets/voxel/copper_isles_skirt.res`.
+
 **Specified in design docs but not yet implemented** (build in dependency order):
 - `SchematicLibrary.gd` — autoload. Registry of placeable building schematics (`.glb` props with placement metadata in `assets/voxel/schematics/`). Player crafts schematics at the Carpentry Bench; placements saved to `user://saves/slot_{N}/placed_schematics.json`.
 - `EntityRegistry.gd` — spatial dictionary of every world entity keyed by chunk; lightweight `EntityRecord` data objects; does not instantiate nodes itself.
-- `EntityStreamer.gd` — node in `World3D.tscn`; instantiates / saves / `queue_free()`s entities by player range.
+- `EntityStreamer.gd` — **stub on disk** (`scripts/EntityStreamer.gd`). Currently only prints chunk-enter events in Output. Full load/unload logic deferred to Phase 6-3D.
 - `FactionManager.gd` — wraps GameState faction disposition flags (design/FACTION_SYSTEM.md).
 - `QuestManager.gd` — quest flag management (design/QUEST_SYSTEM.md).
 - `CompanionManager.gd` — companion active state, HP, save serialization (design/COMPANION_SYSTEM.md).
@@ -243,7 +257,11 @@ Manual setup still required: see `DESIGNER_TODO.md` → Section 1 (Zylann Voxel 
 
 There is no CLI build, lint, or test command for this project. To verify changes work:
 1. Open the project in Godot 4.6.2
-2. Run the relevant scene (World3D.tscn for 3D movement/lighting, Combat.tscn for legacy 2D combat)
+2. Run the relevant scene:
+   - `World3D.tscn` — 3D movement, lighting, weather, voxel editing on Mira
+   - `CopperIslesTest.tscn` — Copper Isles heightmap terrain; press F7 to cycle terrain scale
+   - `scenes/_dev/BakeWorld.tscn` — world-bake tool (must run in-game, not editor)
+   - `Combat.tscn` — legacy 2D combat prototype
 3. Check the Output panel for errors and print statements
 4. Test the specific feature manually
 
@@ -346,6 +364,57 @@ This is non-negotiable. A direct `VoxelTool.do_*` call inside a NoEditZone or
 during heavy edit traffic will desync the EditedChunkRegistry, corrupt the LOD
 cache, violate the per-frame voxel budget, OR (with gravity now wired) leave
 unsupported voxels floating in midair. Always route through the manager.
+
+**User-defined voxel data channel is CHANNEL_DATA5, not CHANNEL_DATA:**
+```gdscript
+# WRONG — CHANNEL_DATA doesn't exist in Zylann's enum.
+buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA)
+
+# RIGHT — Zylann reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS.
+# DATA5 is the first user-defined channel. WaterByteCodec and
+# WaterFlowManager both use CHANNEL_DATA5 for water bytes.
+buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA5)
+```
+
+**VoxelBuffer CHANNEL_COLOR must be 32-bit before any chunks stream:**
+```gdscript
+# WRONG — default 8-bit storage truncates the packed RGBA+mat_id value
+# to just the R byte (~0.01 on screen → terrain renders black).
+# Nothing to do here — this is the silent default, which is the bug.
+
+# RIGHT — configure the VoxelFormat resource on the terrain BEFORE
+# the first chunk streams. Done once in World3DBootstrap._ready():
+if "format" in terrain:
+    var fmt := VoxelFormat.new()
+    fmt.set_channel_depth(VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
+    terrain.format = fmt
+# NEVER call set_channel_depth() inside _generate_block — that
+# invalidates the buffer's channel storage even on fresh buffers and
+# causes chunks to disappear entirely.
+```
+
+**VoxelGeneratorScript._generate_block runs on a worker thread — no SceneTree access:**
+```gdscript
+# WRONG inside _generate_block — crashes or silently returns null on
+# Zylann's worker threads.
+var registry = get_node_or_null("/root/NoEditZoneRegistry")
+
+# RIGHT — cache a plain data snapshot on the main thread, push it into
+# the generator resource, read from local Array inside _generate_block.
+# See NoEditZoneRegistry.get_water_blocking_aabbs_snapshot() pattern.
+```
+
+**Dictionary[int, PackedByteArray] mutation requires explicit read-modify-write:**
+```gdscript
+# WRONG — indexes into a Dictionary return a copy in Godot 4.
+# This writes to the copy and discards it.
+(my_dict[key] as PackedByteArray)[index] = value
+
+# RIGHT — pull, mutate, store back.
+var bmp: PackedByteArray = my_dict.get(key, PackedByteArray())
+bmp[index] = value
+my_dict[key] = bmp
+```
 
 ---
 
