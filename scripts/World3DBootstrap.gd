@@ -138,53 +138,49 @@ func _ready() -> void:
 	else:
 		push_warning("[World3D] VoxelEditManager autoload not registered; voxel edits will not work.")
 
-	# --- Seed water source regions ---
-	# Replace the old WaterVolume_Test and OceanVolume Area3D scenes
-	# (deleted in the voxel-water refactor) with WaterFlowManager source
-	# regions. Source regions are AABBs — O(1) memory regardless of size,
-	# so a 200×200 m ocean costs nothing extra.
+	# --- Hand the NoEditZone water-blocking snapshot to the generator ---
+	# The generator's _generate_block runs on Zylann worker threads,
+	# which cannot touch the SceneTree (no get_node_or_null, no physics
+	# queries). Build the snapshot here on the main thread and push it
+	# into the generator resource via set_no_edit_water_aabbs(). Worker
+	# threads then read from the resource's local Array — pure data,
+	# safe across threads.
 	#
-	# Test pond: 10×3×10 m centered at world (-18, 0, 4), surface at
-	# Y=1.5. Visible animated surface arrives in Phase 2 with the
-	# WaterChunkMesher. Phase 1 only registers the region for swim/
-	# breath physics queries.
+	# Runtime-streamed NoEditZones are NOT picked up here. Generator
+	# output is final once written, so a settlement spawned mid-game
+	# below sea level can't retroactively dry already-generated chunks.
+	# Documented as a v1 constraint in NoEditZone.gd.
+	if "generator" in terrain:
+		var gen: Resource = terrain.get("generator")
+		if gen != null and gen.has_method("set_no_edit_water_aabbs") \
+				and get_node_or_null("/root/NoEditZoneRegistry"):
+			var snapshot: Array[AABB] = NoEditZoneRegistry.get_water_blocking_aabbs_snapshot()
+			gen.set_no_edit_water_aabbs(snapshot)
+			print("[World3D] Pushed %d NoEditZone water-blocking AABB(s) to generator." % snapshot.size())
+
+	# --- Configure water surface + seed test pond ---
+	# Phase 5: the AABB-source-region model is gone. Ocean water lives
+	# in CHANNEL_DATA, written at gen time by CubicHeightmapGenerator
+	# for every below-sea-level column. World3DBootstrap's job here is
+	# just to (a) tell WaterFlowManager what world Y the horizon plane
+	# should sit at, and (b) seed any author-time water bodies (the
+	# legacy test pond) via the new water-edit API.
 	#
-	# Ocean: massive XZ footprint so the surface continuously fills
-	# every basin within the playable area. Was 200×200 m centred on
-	# origin → terrain past X=±100 / Z=±100 had no water even when
-	# the ground dipped below sea level, producing a sharp vertical
-	# "world edge" cutoff (looked like the lake just stopped). New
-	# footprint is 20000×20000 m centred on origin — covers the
-	# whole 12×10 km playable Mira and still costs O(1) memory
-	# (source regions are AABBs, not voxel cells).
-	#
-	# Surface at Y=10. Generator caps terrain at ~Y=29 (max_ground_y)
-	# and bottoms at ~Y=-9 (min_ground_y) given height_range_voxels=200
-	# + height_offset=60 at terrain scale 1/6. So Y=10 floods low
-	# basins, leaves highlands dry.
-	#
-	# OCEAN_DEPTH_M was 200 m, which was nonsense — the AABB extended
-	# almost to the bedrock floor. WaterFlowManager.is_position_in_water
-	# now uses a clear-vertical-path check that prevents tunnel
-	# flooding even with a deep AABB, but a tighter AABB is still good
-	# defence-in-depth (and a bit faster: no clear-path call needed
-	# for queries below the AABB bottom). 18 m extends from Y=-8 to
-	# Y=10, fully covering all natural sub-sea-level terrain
-	# (min_ground_y ≈ -7) plus a small buffer.
-	const OCEAN_SURFACE_Y: float = 10.0
-	const OCEAN_DEPTH_M: float   = 18.0
-	const OCEAN_HALF_SIZE_M: float = 10000.0  # ±10 km
+	# OCEAN_SURFACE_Y at 12 m — matches the generator's
+	# SEA_LEVEL_VOXELS=72 / 6 vox/m. Keep them aligned or the chunked
+	# water mesh and any future horizon plane will sit at different Ys.
+	const OCEAN_SURFACE_Y: float = 12.0
 	if get_node_or_null("/root/WaterFlowManager"):
-		var pond_aabb := AABB(Vector3(-23.0, -1.5, -1.0), Vector3(10.0, 3.0, 10.0))
-		WaterFlowManager.add_source_region(pond_aabb)
-		var ocean_aabb := AABB(
-			Vector3(-OCEAN_HALF_SIZE_M, OCEAN_SURFACE_Y - OCEAN_DEPTH_M, -OCEAN_HALF_SIZE_M),
-			Vector3(OCEAN_HALF_SIZE_M * 2.0, OCEAN_DEPTH_M, OCEAN_HALF_SIZE_M * 2.0),
-		)
-		WaterFlowManager.add_source_region(ocean_aabb)
-		print("[World3D] Seeded WaterFlowManager with %d source regions (ocean surface Y=%.1f, footprint ±%.0f m)." % [
-			2, OCEAN_SURFACE_Y, OCEAN_HALF_SIZE_M,
-		])
+		WaterFlowManager.set_horizon_plane_y(OCEAN_SURFACE_Y)
+		# Test pond at world (-23..-13, -1.5..1.5, -1..9). The 10×3×10 m
+		# footprint matches the legacy pond AABB. Convert to voxel units
+		# (×6) for queue_set_water_box and write source bytes into
+		# CHANNEL_DATA. Deferred one frame so VoxelEditManager has the
+		# terrain bound (set_terrain runs above; the queue drain is in
+		# _physics_process so even an immediate enqueue is fine, but
+		# call_deferred keeps load-order forgiving).
+		call_deferred("_seed_test_pond")
+		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
 
@@ -273,6 +269,37 @@ func _configure_voxel_format(terrain: Object) -> void:
 
 	if not configured:
 		push_warning("[World3D] VoxelFormat exists but no known API path worked; CHANNEL_COLOR will stay at 8-bit.")
+
+	# CHANNEL_DATA depth — same three-path probe.
+	#
+	# Phase 0 of the Minecraft-style water rewrite: the generator now
+	# writes water bytes into CHANNEL_DATA. One byte per voxel is plenty
+	# (level 0-8 + source bit + 3-bit tick = 8 bits exactly), so
+	# DEPTH_8_BIT is what we ask for. Default is also 8-bit on most
+	# Zylann builds, so this is usually a no-op confirmation, but make
+	# it explicit so the storage size can never silently widen and
+	# double save-file size.
+	#
+	# Per the LESSONS_LEARNED.md note: never call set_channel_depth in
+	# _generate_block — only on the global VoxelFormat resource here.
+	var data_configured: bool = false
+	if fmt.has_method("set_channel_depth"):
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_DATA5, VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_DATA depth via fmt.set_channel_depth(...)")
+		data_configured = true
+	if not data_configured and "data_depth" in fmt:
+		fmt.set("data_depth", VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_DATA depth via fmt.data_depth")
+		data_configured = true
+	if not data_configured and "channel_depths" in fmt:
+		var depths_d = fmt.get("channel_depths")
+		if depths_d is Array:
+			depths_d[VoxelBuffer.CHANNEL_DATA5] = VoxelBuffer.DEPTH_8_BIT
+			fmt.set("channel_depths", depths_d)
+			print("[World3D] Set CHANNEL_DATA depth via fmt.channel_depths[CHANNEL_DATA]")
+			data_configured = true
+	if not data_configured:
+		push_warning("[World3D] VoxelFormat exists but no known API path worked for CHANNEL_DATA; water encoding may break if engine default differs from 8-bit.")
 
 	# Assign the format BEFORE terrain begins generating blocks. The
 	# property in our diagnostic dump showed up as `format`, so just
@@ -416,3 +443,24 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 	if "_spawn_freeze" in player:
 		player.set("_spawn_freeze", false)
 	print("[World3D] Saved-position ground confirmed at Y=%.2f; unfreezing player." % hit["position"].y)
+
+
+func _seed_test_pond() -> void:
+	# Replaces the legacy WaterFlowManager.add_source_region pond seed.
+	# Writes water source bytes into CHANNEL_DATA over the pond's voxel
+	# footprint via VoxelEditManager so the bytes go through the queue,
+	# get the modified-chunk mark for save persistence, and emit
+	# water_changed_at so the mesher rebuilds the affected chunks.
+	#
+	# Pond footprint: world (-23, -1.5, -1) to (-13, 1.5, 9). At 6 vox/m
+	# that's voxel (-138, -9, -6) to (-78, 9, 54), with the surface at
+	# voxel Y=9 (= world 1.5). queue_set_water_box uses inclusive-min /
+	# exclusive-max convention so we use one-past on the max side.
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return
+	var voxel_min := Vector3i(-138, -9, -6)
+	var voxel_max := Vector3i(-78, 9, 54)
+	if VoxelEditManager.queue_set_water_box(voxel_min, voxel_max, WaterByteCodec.SOURCE_BYTE):
+		print("[World3D] Test pond water-box queued (%s..%s)." % [voxel_min, voxel_max])
+	else:
+		push_warning("[World3D] Test pond seed failed (queue full or NoEditZone reject).")
