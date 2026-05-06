@@ -1,5 +1,5 @@
-extends Node3D
-# EditToolHandler — handles "swing tool, edit voxel" input.
+﻿extends Node3D
+# EditToolHandler â€” handles "swing tool, edit voxel" input.
 #
 # What this does in plain English:
 #
@@ -14,13 +14,13 @@ extends Node3D
 #   5. Yields the matching raw-material item into Roland's inventory.
 #
 # A short cooldown gates swing rate. NoEditZone rejection is handled
-# silently by VoxelEditManager — if it returns false, we print a
+# silently by VoxelEditManager â€” if it returns false, we print a
 # placeholder rejection message until the bark system is wired up.
 #
 # Attached as a child of Player3D in scenes/Player3D.tscn so it
 # inherits the player's transform and lives in the player scene.
 #
-# Reference: design/3D_VOXEL_MIGRATION.md → "Player Edit Verbs"
+# Reference: design/3D_VOXEL_MIGRATION.md â†’ "Player Edit Verbs"
 
 
 # =============================================================
@@ -30,64 +30,69 @@ extends Node3D
 @export var max_reach_meters: float = 3.5
 # How far forward the ray casts when looking for a voxel surface.
 # 3.5m is the design-locked manual-tool reach (2026-05-05): mid-
-# range of the 3-4m design window — about arm-length plus a
+# range of the 3-4m design window â€” about arm-length plus a
 # comfortable forward stride. Prevents mining voxels that aren't
 # credibly within striking distance. Raise for longer-haft tools
 # (e.g. dwarven war-pickaxe) in a future per-tool config.
 
 @export var swing_cooldown_seconds: float = 0.4
 # Animation-pacing cooldown that runs AFTER a successful carve. The
-# cycle is: player holds LMB → swing time accumulates against the
-# target voxel's mining_time_seconds → when full, voxel breaks AND
+# cycle is: player holds LMB â†’ swing time accumulates against the
+# target voxel's mining_time_seconds â†’ when full, voxel breaks AND
 # swing_cooldown_seconds locks input briefly so the swing animation
 # has room to reset between voxels. Without this cooldown, breaking
 # soft materials (sand, dirt) would spam multiple voxels per
 # frame the moment mining_time hit zero.
 
 @export var swing_carve_voxels_per_side: int = 3
-# Manual tools (pickaxe / shovel / axe) carve a CUBE this many voxels
-# on a side per swing. 3 → 3×3×3 = 27 voxels per swing — each tool
-# strike opens up a chunky bite that's clearly visible from third-
-# person distance and reads as a "good hit" without feeling like a
-# bucket-scale carve. Tunable per tool tier later (iron pickaxe = 3,
-# dwarven pickaxe = 4, drill = 5+).
+# Default carve volume on world load. Manual tools (pickaxe / shovel /
+# axe) carve a CUBE this many voxels on a side per swing â€” runtime
+# value lives in `carve_volume_size` (which the player adjusts via
+# scroll wheel between 1 and `swing_carve_voxels_per_side`). 3Ã—3Ã—3
+# = 27 voxels feels like a "good hit" at third-person distance.
 #
 # Implementation note: we used to use a sphere radius for this, but
 # spheres carve roughly half their voxel volume due to the spherical
-# packing — a 0.15 m sphere clears ~3-5 voxels, hard to predict and
-# inconsistent across orientations. A box is exactly N×N×N voxels
+# packing â€” a 0.15 m sphere clears ~3-5 voxels, hard to predict and
+# inconsistent across orientations. A box is exactly NÃ—NÃ—N voxels
 # regardless of camera angle, easier to tune.
-
-@export var smooth_radius_voxels: int = 3
-# ACTION radius (in voxel units) — the sphere inside which voxels
-# can actually be moved. Centred on the aim voxel. At 6 vox/m
-# this is a ~50 cm radius / ~1 m diameter / ~123-cell sphere
-# (diameter 6–7 voxels). Strictly conservative inside this sphere:
-# voxels are RELOCATED, never created or destroyed. Smaller radius
-# = more deliberate, localized smoothing per click.
-
-@export var smooth_probe_multiplier: float = 1.5
-# PROBE radius = action radius × this multiplier. The probe sphere
-# is read but NEVER modified — it provides context for the "what
-# does smooth look like here" target-height calculation. Without
-# this larger context, smoothing inside the action sphere builds
-# vertically (it can't see surrounding terrain heights, so its
-# flatten pass piles voxels onto receiver columns until they
-# become new pillars). With it, target = median of probe column
-# tops, and the action sphere flattens TOWARD that target instead
-# of toward its own internal mean.
-
-@export var smooth_move_budget: int = 20
-# Max voxel relocations per click. Each "move" is one carve + one
-# fill in different cells inside the action sphere. 20 is enough
-# to make obvious progress on small irregularities in one click;
-# raise for faster convergence at the cost of bigger visual jolts.
 
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
 
+const WRONG_TOOL_SPEED_MULTIPLIER: float = 3.0
+# Mining a material with a non-preferred tool takes 3× the baseline
+# swing time. The material's `allowed_tools` list now acts as the
+# PREFERRED-tools list — equipping a tool from the list mines at
+# 1.0× speed, equipping any other manual tool mines at this
+# multiplier instead. Empty `allowed_tools` (bedrock) still rejects
+# every tool — the multiplier doesn't apply, the swing is blocked
+# entirely. So in practice:
+#   pickaxe on stone     = 1.0× (preferred)
+#   shovel on stone      = 3.0× (mismatch — chip through slowly)
+#   shovel on dirt/grass = 1.0× (preferred)
+#   pickaxe on dirt/grass= 3.0× (mismatch — pickaxe is bad at soil)
+#   any tool on bedrock  = blocked (allowed_tools is empty)
+
+# Mining-volume anchor: how the carve box is positioned around the
+# voxel the player is aiming at. Player can flip between these in the
+# Settings overlay (which writes to Settings.mining_volume_anchor —
+# we read it lazily via _get_mining_anchor()).
+enum MiningAnchor {
+	# Bias the box INTO the terrain along the surface normal axis.
+	# 3×3×3 against a wall = 27 terrain voxels (no wasted air slab).
+	# DEFAULT — matches Minecraft / Vintage Story conventions: aim
+	# at a surface, the carve fills the terrain side.
+	DEPTH_BIASED,
+	# Symmetric box centred on the surface voxel. The aim point sits
+	# in the box's middle, but on a flat cliff face one slab of the
+	# carve is air (the side facing the player). Useful for precision
+	# work where you want predictable visual centering.
+	CENTERED,
+}
+
 # Map from equipped tool item_id to the Crafting sub-skill that gets
-# XP on a successful edit. Pickaxe → mining, axe → felling, etc.
+# XP on a successful edit. Pickaxe â†’ mining, axe â†’ felling, etc.
 # Sub-skill names match the design doc XP_VALUES table in
 # design/SKILLS_AND_PROGRESSION.md.
 const TOOL_SUB_SKILLS: Dictionary = {
@@ -98,7 +103,7 @@ const TOOL_SUB_SKILLS: Dictionary = {
 
 # XP awarded per successful single-voxel edit. Matches the design
 # doc's XP_VALUES entries (ore_mined=5, tree_felled=8, earth_dug=2).
-# A bigger edit (sphere via explosives) awards more — per-edit value
+# A bigger edit (sphere via explosives) awards more â€” per-edit value
 # is a coarse proxy for "voxels touched."
 const TOOL_XP_PER_EDIT: Dictionary = {
 	"iron_pickaxe": 5,
@@ -119,7 +124,7 @@ var _swing_cooldown_remaining: float = 0.0
 var _current_target_voxel: Vector3i = Vector3i.ZERO
 # The voxel-grid coordinate the player is currently swinging at.
 # Reset (along with _swing_time_on_target) the moment the player
-# looks at a different voxel — partial mining doesn't carry across
+# looks at a different voxel â€” partial mining doesn't carry across
 # voxels.
 
 var _has_target: bool = false
@@ -128,19 +133,27 @@ var _has_target: bool = false
 # (0,0,0) is a valid voxel position.
 
 var _swing_time_on_target: float = 0.0
-# Accumulated seconds the player has been holding the active action
-# against `_current_target_voxel`. When it reaches the target
-# voxel's material's `mining_time_seconds`, the action fires
-# (carve OR smooth).
+# Accumulated seconds the player has been holding LMB against
+# `_current_target_voxel`. When it reaches the target voxel
+# material's `mining_time_seconds * (N³ / 8)` (volume-scaled), the
+# carve fires.
 
-var _current_action: String = ""
-# "mine" while LMB is the active hold, "smooth" while RMB is.
-# Resets when the player switches buttons or releases — the swing
-# accumulator restarts so half-mining-then-smoothing doesn't get
-# free progress on the smooth.
+# Runtime carve volume â€” 1, 2, or 3 voxels per side. Player cycles
+# this with the mouse scroll wheel while a manual tool is equipped.
+# HUD reads this to show the "Volume: 1Ã—1Ã—1" line in the bottom-left.
+var carve_volume_size: int = 3
+
+# Aim-outline visualisation â€” a translucent emissive box drawn at
+# the voxel volume the player is currently aiming at. Only visible
+# in mining mode with a manual tool equipped, so the player can see
+# what their next swing will remove. Built in _ready, repositioned
+# every physics frame from the camera raycast.
+var _aim_outline: MeshInstance3D
+var _aim_outline_mesh: BoxMesh
+var _aim_outline_material: StandardMaterial3D
 
 var _held_log_counter: int = 0
-# Throttle counter for held-swing diagnostic prints — only print
+# Throttle counter for held-swing diagnostic prints â€” only print
 # every Nth frame so we can see where _tick_held_swing bails
 # without flooding Output (it runs every frame the LMB is held).
 
@@ -172,10 +185,10 @@ func _ready() -> void:
 	# holds CameraRig.gd. Hierarchy in scenes/Player3D.tscn:
 	#
 	#   Player3D
-	#   ├── EditToolHandler (this node)
-	#   ├── CameraTarget
-	#   │   └── SpringArm3D (CameraRig.gd)  ← target
-	#   └── ...
+	#   â”œâ”€â”€ EditToolHandler (this node)
+	#   â”œâ”€â”€ CameraTarget
+	#   â”‚   â””â”€â”€ SpringArm3D (CameraRig.gd)  â† target
+	#   â””â”€â”€ ...
 	var player := get_parent() as CharacterBody3D
 	if player == null:
 		push_error("[EditToolHandler] Parent must be Player3D (CharacterBody3D)")
@@ -184,15 +197,154 @@ func _ready() -> void:
 	if _camera_rig == null:
 		push_error("[EditToolHandler] CameraTarget/SpringArm3D not found under Player3D")
 
+	# Initial carve volume from the @export default. Player can change
+	# at runtime via scroll wheel; clamp to [1, swing_carve_voxels_per_side].
+	carve_volume_size = clampi(swing_carve_voxels_per_side, 1, swing_carve_voxels_per_side)
+
+	# Build the aim-outline mesh. top_level = true so global_position
+	# is world-space, not relative to the player's transform â€” the
+	# outline is anchored to where the player is aiming, not to
+	# Roland himself.
+	_build_aim_outline()
+
+
+func _build_aim_outline() -> void:
+	# Translucent emissive box rendered at the voxel volume currently
+	# under the aim ray. Bright cyan + emission so it pops against
+	# any terrain colour (grass green, dirt brown, stone grey, sand
+	# tan all have low cyan content). Drawn double-sided so the
+	# player sees the box even from inside (e.g. if they're looking
+	# at the voxel they're standing on).
+	_aim_outline_material = StandardMaterial3D.new()
+	_aim_outline_material.albedo_color = Color(0.25, 0.95, 1.0, 0.30)
+	_aim_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_aim_outline_material.emission_enabled = true
+	_aim_outline_material.emission = Color(0.30, 1.0, 1.0, 1.0)
+	_aim_outline_material.emission_energy_multiplier = 1.6
+	_aim_outline_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Avoid z-fighting with terrain: render slightly in front via the
+	# render priority + a tiny disable_depth_write so the outline
+	# blends rather than punches through.
+	_aim_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_aim_outline_material.disable_receive_shadows = true
+
+	_aim_outline_mesh = BoxMesh.new()
+	# Default size â€” overwritten each frame in _update_aim_outline().
+	_aim_outline_mesh.size = Vector3.ONE * 0.5
+
+	_aim_outline = MeshInstance3D.new()
+	_aim_outline.mesh = _aim_outline_mesh
+	_aim_outline.material_override = _aim_outline_material
+	_aim_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_aim_outline.top_level = true
+	_aim_outline.visible = false
+	add_child(_aim_outline)
+
+
+func _update_aim_outline() -> void:
+	# Show the outline whenever a manual tool is equipped and the
+	# player is actually aiming at a voxel within reach. All other
+	# states hide.
+	if _aim_outline == null:
+		return
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_aim_outline.visible = false
+		return
+	if get_node_or_null("/root/InventoryManager") == null:
+		_aim_outline.visible = false
+		return
+	var equipped: String = InventoryManager.get_equipped("weapon")
+	if not (equipped in TOOL_SUB_SKILLS):
+		_aim_outline.visible = false
+		return
+	if _camera_rig == null:
+		_aim_outline.visible = false
+		return
+	var hit: Dictionary = _camera_rig.get_camera_forward_hit(max_reach_meters)
+	if hit.is_empty():
+		_aim_outline.visible = false
+		return
+	# Verify the hit is within reach of the PLAYER body, not just the
+	# camera arm â€” same gate as _tick_held_action so the outline
+	# only shows where the swing would actually land.
+	var hit_pos: Vector3 = hit.get("position", Vector3.ZERO)
+	var hit_normal: Vector3 = hit.get("normal", Vector3.UP)
+	var player := get_parent() as CharacterBody3D
+	if player != null and player.global_position.distance_to(hit_pos) > max_reach_meters:
+		_aim_outline.visible = false
+		return
+
+	# Mirror the carve box computation from _carve via the shared
+	# helper so the outline exactly matches what an LMB press will
+	# remove — including the depth-bias along the surface normal.
+	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
+	const VOXELS_PER_METER: float = 6.0
+	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
+	var centre_voxel: Vector3i = Vector3i(
+		floori(voxel_world_pos.x * VOXELS_PER_METER),
+		floori(voxel_world_pos.y * VOXELS_PER_METER),
+		floori(voxel_world_pos.z * VOXELS_PER_METER),
+	)
+	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
+	var box_vmin: Vector3i = box[0]
+	var box_vmax: Vector3i = box[1]
+	# World-space size = N voxels × VOXEL_SIZE_M. World-space centre
+	# is the midpoint of the inclusive voxel range — `(vmin + vmax + 1)
+	# * 0.5 / VPM` because vmin/vmax are voxel INDICES (each voxel
+	# occupies the span i .. i+1 in world units after the /VPM scale),
+	# so the "+1" pushes vmax to the FAR face of its voxel.
+	# Tiny scale fudge (×1.02) so the outline sits just outside the
+	# cube faces and z-fights less with the terrain mesh.
+	var size_m: float = float(carve_volume_size) * VOXEL_SIZE_M
+	_aim_outline_mesh.size = Vector3.ONE * size_m * 1.02
+	var centre_world: Vector3 = (
+		(Vector3(box_vmin) + Vector3(box_vmax) + Vector3.ONE) * 0.5 / VOXELS_PER_METER
+	)
+	_aim_outline.global_position = centre_world
+	_aim_outline.visible = true
+
+
+func _input(event: InputEvent) -> void:
+	# Scroll wheel cycles the carve volume size when a manual tool is
+	# equipped and the mouse is captured. accept_event() (via
+	# set_input_as_handled) prevents CameraRig from also seeing the
+	# scroll for camera-arm zoom.
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
+	if not (event is InputEventMouseButton):
+		return
+	var mb: InputEventMouseButton = event as InputEventMouseButton
+	if not mb.pressed:
+		return
+	# Only cycle when a manual tool is equipped â€” otherwise scroll
+	# stays as zoom for buckets / throwables / unequipped.
+	if get_node_or_null("/root/InventoryManager") == null:
+		return
+	var equipped: String = InventoryManager.get_equipped("weapon")
+	if not (equipped in TOOL_SUB_SKILLS):
+		return
+	var max_size: int = max(1, swing_carve_voxels_per_side)
+	if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+		carve_volume_size = clampi(carve_volume_size + 1, 1, max_size)
+		get_viewport().set_input_as_handled()
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		carve_volume_size = clampi(carve_volume_size - 1, 1, max_size)
+		get_viewport().set_input_as_handled()
+
 
 func _process(delta: float) -> void:
+	# Aim-outline visibility + position update. Runs every frame
+	# (cheap — one raycast already done elsewhere, plus a
+	# global_position write). Hidden when no manual tool is equipped.
+	_update_aim_outline()
+
 	# Tick the post-carve cooldown.
 	if _swing_cooldown_remaining > 0.0:
 		_swing_cooldown_remaining -= delta
 
 	# Diagnostic: log the moment the LMB is JUST pressed, regardless
 	# of any other gate. Tells us "is the input even reaching this
-	# script?" — the answer to the user's "left click does nothing".
+	# script?" â€” the answer to the user's "left click does nothing".
 	if Input.is_action_just_pressed("attack"):
 		var mm: int = Input.mouse_mode
 		var equipped_dbg: String = "(no InventoryManager)"
@@ -203,7 +355,7 @@ func _process(delta: float) -> void:
 		])
 
 	# Mouse must be captured (no menu open) and attack action must be
-	# HELD (not just-pressed) — held-swing accumulator gates progress
+	# HELD (not just-pressed) â€” held-swing accumulator gates progress
 	# rather than per-press carve.
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_clear_target()
@@ -230,36 +382,22 @@ func _process(delta: float) -> void:
 			return
 
 	# --- Held-action dispatch ---
-	# LMB held → "mine" action (carve 3×3×3, drop pickup).
-	# RMB held → "smooth" action (5×5 column-average smoothing).
-	# LMB has priority if both are held simultaneously.
-	# Both share the same accumulator + cooldown + HUD progress bar
-	# so a smoothing pass takes the same wall time as a mining
-	# pass — driven by the aim-point material's mining_time_seconds.
-	var lmb_held: bool = Input.is_action_pressed("attack")
-	var rmb_held: bool = Input.is_action_pressed("smooth_terrain")
-	var action: String = ""
-	if lmb_held:
-		action = "mine"
-	elif rmb_held:
-		action = "smooth"
-	if action == "":
+	# LMB held â†’ mine. Cooldown gates between successful swings so
+	# the player feels a beat between strikes.
+	if not Input.is_action_pressed("attack"):
 		_clear_target()
 		return
 	if _swing_cooldown_remaining > 0.0:
-		# Animation reset window after a successful carve / smooth.
-		# Don't accumulate during this — the player should feel a
-		# beat between strikes.
 		return
 
-	_tick_held_action(delta, action)
+	_tick_held_action(delta)
 
 
 func _handle_bucket_click(equipped: String) -> void:
 	# Bucket use is one-shot per click. Two states:
 	#   "bucket"        : swing at water (any source region or flow
-	#                     cell within reach) → fill the bucket.
-	#   "bucket_filled" : swing at empty space → place a permanent
+	#                     cell within reach) â†’ fill the bucket.
+	#   "bucket_filled" : swing at empty space â†’ place a permanent
 	#                     source cell at the targeted voxel and
 	#                     empty the bucket.
 	#
@@ -298,9 +436,9 @@ func _handle_bucket_click(equipped: String) -> void:
 
 func _bucket_fill_at(world_pos: Vector3) -> void:
 	# If the target world position is inside any water cell or source
-	# region, swap the bucket → bucket_filled. Otherwise no-op.
+	# region, swap the bucket â†’ bucket_filled. Otherwise no-op.
 	if not WaterFlowManager.is_position_in_water(world_pos):
-		# Also try the player's feet — Roland is standing in water.
+		# Also try the player's feet â€” Roland is standing in water.
 		var player := get_parent() as CharacterBody3D
 		if player != null and WaterFlowManager.is_position_in_water(player.global_position):
 			pass  # fall through to fill
@@ -325,7 +463,7 @@ func _bucket_place_at(world_pos: Vector3) -> void:
 	var voxel_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
 	# Reject solid terrain at this cell (can't place water inside rock).
 	# Material-id decoding goes through VoxelMaterialRegistry per the
-	# CLAUDE.md "Critical patterns" rule — never decode the alpha byte
+	# CLAUDE.md "Critical patterns" rule â€” never decode the alpha byte
 	# by hand.
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
 	if terrain != null:
@@ -363,24 +501,16 @@ func _bucket_place_at(world_pos: Vector3) -> void:
 func _clear_target() -> void:
 	_has_target = false
 	_swing_time_on_target = 0.0
-	_current_action = ""
 	mining_active = false
 	mining_progress = 0.0
 	mining_material_label = ""
 
 
-func _tick_held_action(delta: float, action: String) -> void:
-	# One frame of held-action progress. Drives both LMB mine and
-	# RMB smooth — the only differences are (a) tool-gate is skipped
-	# for smooth (any manual tool can smooth any material), and (b)
-	# at completion we call _carve vs _do_smooth.
-	#
-	# Both share the same accumulator (_swing_time_on_target),
-	# cooldown (_swing_cooldown_remaining), HUD progress bar, and
-	# target-stability reset behaviour. Switching mid-press from
-	# mine to smooth (or vice versa) on the same voxel doesn't
-	# preserve progress — the action label changes and we restart
-	# the swing.
+func _tick_held_action(delta: float) -> void:
+	# One frame of LMB-held mining progress. Drives the swing
+	# accumulator (_swing_time_on_target) toward the per-material
+	# `mining_time_seconds` (volume-scaled), then fires `_carve` and
+	# starts the post-swing cooldown.
 	_held_log_counter += 1
 	var should_log: bool = _held_log_counter >= 30
 	if should_log:
@@ -430,81 +560,218 @@ func _tick_held_action(delta: float, action: String) -> void:
 	var hit_normal: Vector3 = hit.get("normal", Vector3.UP)
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
 
-	# --- Read the voxel material ---
+	# --- Read the aimed voxel's material (for the per-swing yield) ---
+	# The aimed-voxel material drives the inventory yield from
+	# _spawn_voxel_drop in _carve. Mining time uses the SLOWEST
+	# material in the carve box (see below) so a 1-grass + 26-stone
+	# 3×3×3 carve doesn't get a fast grass swing time.
 	var material: VoxelMaterial = _read_material_at(voxel_world_pos)
 	if material == null:
-		if action != "smooth":
-			# Mine / other verbs: voxel is air or the read failed.
-			# No swing progress.
-			_clear_target()
-			return
-		# Smooth can proceed without a material read. On first load,
-		# Zylann streams mesh chunks before CHANNEL_COLOR data is
-		# fully populated, so get_voxel() returns 0 (air) and the
-		# material lookup fails even for solid terrain. _do_smooth
-		# reads its own cells independently and handles unloaded
-		# neighbors (reads as 0 = air) without crashing.
+		# Voxel is air, registry isn't loaded, or the read failed.
+		# No swing progress.
+		_clear_target()
+		return
 
-	# --- Tool gating ---
-	# Only apply for "mine" — for "smooth", any manual tool works on
-	# any material (the smoothing pass averages column heights;
-	# matching tool-to-material doesn't make sense for that verb).
-	if action == "mine" and material != null:
-		if material.allowed_tools.size() > 0 and not (equipped_id in material.allowed_tools):
-			# Wrong tool — don't accumulate. Print a throttled
-			# diagnostic so the silent failure isn't mysterious.
-			if should_log:
-				print("[EditTool] WRONG TOOL: %s cannot break %s (allowed: %s)" % [
-					equipped_id, material.id_string, material.allowed_tools,
-				])
-			_clear_target()
-			return
+	# --- Mixed-volume mining time (slowest-wins) ---
+	# The carve box may span multiple materials. Sample EVERY voxel
+	# in the box, compute its per-voxel time (mining_time_seconds ×
+	# tool_multiplier for that voxel's material), take the max, then
+	# apply the carve-volume multiplier. This means the swing speed
+	# is set by the hardest material in the box — exactly like real
+	# digging where stone in your dirt is the limiter.
+	#
+	# Aiming reticle position no longer games the swing time: a
+	# stone voxel anywhere in the 3×3×3 box makes the swing as slow
+	# as a pure-stone carve, regardless of where the crosshair lies.
+	var centre_voxel: Vector3i = Vector3i(
+		floori(voxel_world_pos.x * 6.0),
+		floori(voxel_world_pos.y * 6.0),
+		floori(voxel_world_pos.z * 6.0),
+	)
+	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
+	var box_vmin: Vector3i = box[0]
+	var box_vmax: Vector3i = box[1]
+	var mix: Dictionary = _compute_mixed_volume_mine_secs(box_vmin, box_vmax, equipped_id)
+	if mix["blocked"]:
+		# At least one voxel in the box is unmineable (bedrock).
+		# VoxelEditManager will reject the carve anyway, so don't
+		# even start the swing.
+		if should_log:
+			print("[EditTool] UNMINEABLE voxel in box (e.g. bedrock); swing blocked")
+		_clear_target()
+		return
+	var slowest_per_voxel: float = float(mix["secs"])
+	var slowest_mat: VoxelMaterial = mix["material"]
+	if slowest_per_voxel <= 0.0 or slowest_mat == null:
+		# Whole box is air. Aim is off the surface.
+		_clear_target()
+		return
 
-	# Fallback timing when material is null (smooth on unloaded terrain).
-	# 0.5 s matches a medium-softness material (dirt) so right-clicking
-	# unloaded terrain doesn't feel broken or instantaneous.
-	const SMOOTH_FALLBACK_TIME_S: float = 0.5
-	var mine_secs: float = material.mining_time_seconds if material != null else SMOOTH_FALLBACK_TIME_S
-	var disp_name: String = material.display_name if material != null else "terrain"
+	# Mining-volume time scaling. The slowest per-voxel time is the
+	# swing time for the 2×2×2 (= 8 voxels) baseline. Scale
+	# proportionally to the actual voxel count being carved:
+	#   N=1 (1 vox)  → multiplier 1/8  = 0.125× (fast precision dig)
+	#   N=2 (8 vox)  → multiplier 8/8  = 1.0×   (baseline, unchanged)
+	#   N=3 (27 vox) → multiplier 27/8 ≈ 3.375× (slow bulk dig)
+	var voxel_count: int = carve_volume_size * carve_volume_size * carve_volume_size
+	var volume_multiplier: float = float(voxel_count) / 8.0
+	var mine_secs: float = slowest_per_voxel * volume_multiplier
 
 	# --- Target stability + accumulate ---
 	# Compute the integer voxel grid coord and compare. If the
-	# player's looking at a different voxel than last frame, OR if
-	# they switched action (mine → smooth or vice versa), reset.
+	# player's looking at a different voxel than last frame, reset.
 	var target_grid: Vector3i = VoxelEditManager.world_to_voxel(voxel_world_pos)
-	if not _has_target or _current_target_voxel != target_grid or _current_action != action:
+	if not _has_target or _current_target_voxel != target_grid:
 		_current_target_voxel = target_grid
-		_current_action = action
 		_swing_time_on_target = 0.0
 		_has_target = true
 
 	_swing_time_on_target += delta
 
-	# Public state for the HUD progress bar. Same bar drives both
-	# mine and smooth — label distinguishes which.
+	# Public state for the HUD progress bar. Label shows the SLOWEST
+	# material so the player sees what's gating the swing time
+	# (e.g. "STONE" for a mostly-grass carve that contains stone).
 	mining_active = true
 	mining_progress = clampf(
 		_swing_time_on_target / maxf(mine_secs, 0.0001),
 		0.0,
 		1.0,
 	)
-	mining_material_label = ("SMOOTHING " + disp_name) if action == "smooth" else disp_name
+	mining_material_label = slowest_mat.display_name
 
 	if _swing_time_on_target < mine_secs:
 		# Still swinging.
 		return
 
-	# --- Action complete: carve OR smooth ---
-	if action == "smooth":
-		_do_smooth(voxel_world_pos)
-	else:
-		_carve(voxel_world_pos, material, equipped_id)
+	# --- Swing complete: carve ---
+	_carve(voxel_world_pos, material, equipped_id, hit_normal)
 	_swing_time_on_target = 0.0
 	_swing_cooldown_remaining = swing_cooldown_seconds
 	# Snap the bar to "complete" briefly. _clear_target / next tick
-	# will reset it. Keeps the HUD honest — it shows 100% in the
+	# will reset it. Keeps the HUD honest â€” it shows 100% in the
 	# moment the action fires.
 	mining_progress = 1.0
+
+
+func _compute_carve_box(centre_voxel: Vector3i, hit_normal: Vector3, n: int) -> Array:
+	# Compute the [vmin, vmax] voxel-grid bounds for the carve box,
+	# applying the player's MiningAnchor preference.
+	#
+	# Asymmetric half_lo / half_hi split for even N. A 2×2×2 carve has
+	# no exact symmetric anchoring around a single voxel — biasing
+	# toward +X/+Y/+Z keeps the aimed voxel as the box's MIN corner
+	# so an even-N carve never accidentally extends "behind" the
+	# player's aim point.
+	#   half_lo = (N-1)/2, half_hi = N/2
+	#   N=1: lo=0, hi=0 → [c, c]       (1 voxel)
+	#   N=2: lo=0, hi=1 → [c, c+1]     (2 voxels)
+	#   N=3: lo=1, hi=1 → [c-1, c+1]   (3 voxels)
+	#   N=4: lo=1, hi=2 → [c-1, c+2]   (4 voxels)
+	@warning_ignore("integer_division")
+	var half_lo: int = (n - 1) / 2
+	@warning_ignore("integer_division")
+	var half_hi: int = n / 2
+	var vmin: Vector3i = centre_voxel - Vector3i(half_lo, half_lo, half_lo)
+	var vmax: Vector3i = centre_voxel + Vector3i(half_hi, half_hi, half_hi)
+
+	# DEPTH_BIASED (default): shift the box INTO the terrain along
+	# the dominant axis of the surface normal. The surface voxel
+	# becomes the box's corner closest to the player, so 3×3×3
+	# against a wall is 27 terrain voxels instead of 18 + 9 air.
+	# CENTERED: leave vmin/vmax symmetric around centre_voxel.
+	if _get_mining_anchor() == MiningAnchor.DEPTH_BIASED \
+			and hit_normal.length_squared() > 0.0001:
+		var n_abs: Vector3 = hit_normal.abs()
+		var bias: Vector3i = Vector3i.ZERO
+		if n_abs.x >= n_abs.y and n_abs.x >= n_abs.z:
+			bias.x = -int(sign(hit_normal.x)) * half_hi
+		elif n_abs.y >= n_abs.z:
+			bias.y = -int(sign(hit_normal.y)) * half_hi
+		else:
+			bias.z = -int(sign(hit_normal.z)) * half_hi
+		vmin += bias
+		vmax += bias
+
+	return [vmin, vmax]
+
+
+func _compute_mixed_volume_mine_secs(
+	box_vmin: Vector3i, box_vmax: Vector3i, equipped_id: String,
+) -> Dictionary:
+	# Sample every voxel in the [box_vmin, box_vmax] inclusive range
+	# and compute the SLOWEST per-voxel mining time across all
+	# non-air voxels.
+	#
+	# Per-voxel time = material.mining_time_seconds × tool_multiplier
+	# where tool_multiplier is 1.0 if `equipped_id` is in
+	# `material.allowed_tools` (the preferred-tools list) or
+	# WRONG_TOOL_SPEED_MULTIPLIER otherwise.
+	#
+	# Returns:
+	#   {
+	#     "secs":     float,           # slowest per-voxel time
+	#     "material": VoxelMaterial,   # the material that won the max
+	#     "blocked":  bool,            # true if any voxel is unmineable
+	#                                  # (allowed_tools empty, e.g. bedrock)
+	#   }
+	# `blocked = true` overrides everything — the caller should bail
+	# because VoxelEditManager will reject the carve. If the box is
+	# entirely air, secs = 0 and material = null (caller should bail).
+	#
+	# Cost: up to 27 tool.get_voxel calls per held tick (3×3×3 box).
+	# Cheap enough to run every frame the swing is held — comparable
+	# to what _update_aim_outline already does.
+	var result: Dictionary = {
+		"secs": 0.0,
+		"material": null,
+		"blocked": false,
+	}
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return result
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return result
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return result
+	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	var registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if registry == null:
+		return result
+
+	for x in range(box_vmin.x, box_vmax.x + 1):
+		for y in range(box_vmin.y, box_vmax.y + 1):
+			for z in range(box_vmin.z, box_vmax.z + 1):
+				var packed: int = tool.get_voxel(Vector3i(x, y, z))
+				var mat_id: int = packed & 0xFF
+				if mat_id == 0:
+					continue  # air contributes nothing
+				var mat: VoxelMaterial = registry.get_by_id(mat_id)
+				if mat == null:
+					continue  # unknown material — defensive skip
+				if mat.allowed_tools.size() == 0:
+					# Unmineable (bedrock). Whole swing blocked.
+					result["blocked"] = true
+					result["material"] = mat
+					return result
+				var tool_mult: float = 1.0
+				if not (equipped_id in mat.allowed_tools):
+					tool_mult = WRONG_TOOL_SPEED_MULTIPLIER
+				var per_voxel_secs: float = mat.mining_time_seconds * tool_mult
+				if per_voxel_secs > float(result["secs"]):
+					result["secs"] = per_voxel_secs
+					result["material"] = mat
+	return result
+
+
+func _get_mining_anchor() -> int:
+	# Read the player's preference from the Settings autoload. Falls
+	# back to DEPTH_BIASED (the recommended default) if the autoload
+	# isn't registered or the field is missing.
+	var settings_node := get_node_or_null("/root/Settings")
+	if settings_node != null and "mining_volume_anchor" in settings_node:
+		return int(settings_node.mining_volume_anchor)
+	return MiningAnchor.DEPTH_BIASED
 
 
 func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
@@ -538,17 +805,16 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	return VoxelMaterialRegistry.get_by_id(material_id)
 
 
-func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: String) -> void:
+func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: String, hit_normal: Vector3) -> void:
 	# Apply the voxel edit, yield the material's item, and award
 	# crafting XP. Called once per successful held-swing completion.
 	#
-	# Carve shape: an N×N×N box of voxels centred on `voxel_world_pos`
-	# (where N = swing_carve_voxels_per_side, default 3). At 6 vox/m
-	# the half-side in world units is N / 12. We snap the box AABB
-	# to the voxel grid so the box edges align cleanly with cube
-	# faces — without snapping, a 0.5 m box drifting off the grid
-	# would carve an irregular 4-or-2 voxels on each axis depending
-	# on sub-voxel alignment.
+	# Carve shape: an N×N×N box of voxels positioned by
+	# `_compute_carve_box`. Position depends on the player's
+	# Settings.mining_volume_anchor preference (DEPTH_BIASED default
+	# vs CENTERED). `hit_normal` lets the helper bias the box INTO
+	# the terrain along the surface-normal axis so a cliff-face
+	# carve is fully terrain-filled, not 1/3 wasted on air.
 	if not get_node_or_null("/root/VoxelEditManager"):
 		push_warning("[EditToolHandler] VoxelEditManager autoload not registered")
 		return
@@ -563,20 +829,15 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 		floori(voxel_world_pos.y * VOXELS_PER_METER),
 		floori(voxel_world_pos.z * VOXELS_PER_METER),
 	)
-	# half = (N-1)/2 so that N=3 gives ±1 → 3 voxels inclusive.
-	# Integer division is intentional — even N values floor toward the
-	# centre voxel (N=4 → half=2 → 5-voxel box, slightly larger than
-	# requested; only odd N gives exact symmetric carves).
-	@warning_ignore("integer_division")
-	var half: int = swing_carve_voxels_per_side / 2
-	var box_vmin: Vector3i = centre_voxel - Vector3i(half, half, half)
-	var box_vmax: Vector3i = centre_voxel + Vector3i(half, half, half)
+	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
+	var box_vmin: Vector3i = box[0]
+	var box_vmax: Vector3i = box[1]
 	var accepted: bool = VoxelEditManager.queue_edit_box_voxels(
 		box_vmin, box_vmax, AIR_VOXEL
 	)
 	if not accepted:
 		# Rejected by NoEditZone. Bark trigger lives on
-		# VoxelEditManager.edit_rejected_no_edit_zone — no per-call
+		# VoxelEditManager.edit_rejected_no_edit_zone â€” no per-call
 		# action needed here.
 		if get_node_or_null("/root/DebugOverlay"):
 			DebugOverlay.log_action("Edit rejected: NoEditZone at %s" % voxel_world_pos)
@@ -601,12 +862,12 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 	# is accurate for homogenous columns and slightly approximate at
 	# material boundaries (e.g. an aim landing on a grass voxel
 	# yields raw_dirt even if 14 of the 27 voxels were stone).
-	# Acceptable for first-pass — a real majority sample would mean
+	# Acceptable for first-pass â€” a real majority sample would mean
 	# reading all 27 voxels before each carve, which is expensive
 	# and not visibly different to the player most of the time.
 	#
 	# Color from material.color_low so the drop visually matches
-	# what was just broken (green grass → green cube, etc.). When
+	# what was just broken (green grass â†’ green cube, etc.). When
 	# yield_item_id is empty, no drop spawns (rare placeholder
 	# materials with no harvest).
 	if material.yield_item_id != "":
@@ -627,326 +888,6 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 			GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, sub_skill, xp_amount)
 
 
-func _do_smooth(aim_pos: Vector3) -> void:
-	# Right-click smoothing — NEIGHBOR-AWARE GRAVITY-BIASED SMOOTHING.
-	#
-	# Mental model: think about how a person actually smooths a wall
-	# or floor. They knock off the bumps that stick out, push the
-	# crumbs into the gaps that are missing voxels, never magic mass
-	# from thin air. Gravity holds: nothing rests on nothing.
-	#
-	# Two spheres around the aim voxel:
-	#   - PROBE  sphere (smooth_radius_voxels × smooth_probe_multiplier,
-	#     default 1.5×) is READ-ONLY context. Used to compute target_dy
-	#     for column-top redistribution so the action sphere doesn't
-	#     build vertically.
-	#   - ACTION sphere (smooth_radius_voxels) is the editable volume.
-	#     Voxels are RELOCATED inside it; never created, never destroyed.
-	#
-	# Each click classifies every action-sphere cell by its 6-face
-	# solid-neighbor count and whether the cell directly below it is
-	# solid. From that we build two priority pools:
-	#
-	#   DONORS (solid cells the algorithm wants to remove):
-	#     Tier 3 — UNSUPPORTED (floater or overhang). Gravity says
-	#       these have to go. Score = 6 - face_solid_count
-	#       (more isolated → higher).
-	#     Tier 2 — PROTRUSION (≤2 face-solid neighbors, but supported).
-	#       Sticks out from the surface. Score = 3 - face_solid_count.
-	#     Tier 1 — ABOVE-TARGET COLUMN TOP (top of column whose top_y >
-	#       target_dy). Excess height. Score = top_y - target_dy.
-	#
-	#   RECEIVERS (air cells the algorithm wants to fill):
-	#     Tier 2 — ENCLOSED POCKET (≥4 face-solid neighbors AND solid
-	#       below). 1×1×1 holes in walls and floors. Highest priority
-	#       fill. Score = face_solid_count - 3.
-	#     Tier 1 — BELOW-TARGET COLUMN-TOP FILL (cell directly above a
-	#       column whose top_y < target_dy; top_y is solid so this cell
-	#       is supported). Score = target_dy - top_y.
-	#
-	#   GRAVITY GATE on receivers: a receiver MUST have a solid cell
-	#   directly below it (or be at the bottom of the action sphere
-	#   where the cell-below check reads from terrain — same gate).
-	#   Cells with no support are never filled, period.
-	#
-	# Pair greedily: highest-tier donor with highest-tier receiver,
-	# walking down both lists. Ties broken by score. Cap at
-	# smooth_move_budget moves per click. Each move = one carve +
-	# one fill carrying the donor's material id.
-	#
-	# Behaviors that fall out:
-	#   - 1×1×1 hole in a wall → tier-2 donor (a protrusion sticking
-	#     off the wall) gets paired with the hole's tier-2 receiver.
-	#     Wall fills in.
-	#   - Floater mid-air → tier-3 donor. Pairs with whatever the best
-	#     receiver in the sphere is. Gone.
-	#   - Overhang ledge → tier-3 donor. Same.
-	#   - Pillar in flat ground → its top is a tier-1 donor. Pairs
-	#     with low-spot tier-1 receivers. Capped at target so the
-	#     pillar doesn't migrate intact onto neighbouring columns.
-	#   - Pit on flat ground → tier-1 receiver. Filled when there's
-	#     a donor anywhere in the sphere. If no donors exist (the
-	#     surrounding terrain is already at target), pit stays.
-	#
-	# Conservation: every move = 1 carve + 1 fill. Net cell change = 0
-	# at the click level, modulo NoEditZone-rejected boundary writes.
-	if not get_node_or_null("/root/VoxelEditManager"):
-		return
-	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
-	if terrain == null:
-		return
-	var tool: VoxelTool = terrain.get_voxel_tool()
-	if tool == null:
-		return
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
-
-	const VOXELS_PER_METER: float = 6.0
-	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
-	# Default RGB byte for filled voxels. The terrain material reads
-	# only the alpha-byte material id, so mid-grey is a safe colour
-	# placeholder. The fill always carries the donor's mat_id.
-	const FILL_RGB: int = 0x80808000
-	const FACE_OFFSETS: Array = [
-		Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
-		Vector3i(0, 1, 0), Vector3i(0, -1, 0),
-		Vector3i(0, 0, 1), Vector3i(0, 0, -1),
-	]
-	const BELOW_OFFSET: Vector3i = Vector3i(0, -1, 0)
-
-	var action_radius: int = smooth_radius_voxels
-	var action_radius_sq: int = action_radius * action_radius
-	var probe_radius: int = int(ceili(float(action_radius) * smooth_probe_multiplier))
-	if probe_radius < action_radius:
-		probe_radius = action_radius
-	var probe_radius_sq: int = probe_radius * probe_radius
-	var budget: int = smooth_move_budget
-
-	var centre_grid: Vector3i = Vector3i(
-		floori(aim_pos.x * VOXELS_PER_METER),
-		floori(aim_pos.y * VOXELS_PER_METER),
-		floori(aim_pos.z * VOXELS_PER_METER),
-	)
-
-	# --- Read PROBE sphere cells once; bucket per column ---
-	# cells[off] = packed RGBA (0 = air). Includes both probe-only
-	# and action cells. action_offsets is the subset inside the
-	# action sphere.
-	var cells: Dictionary = {}
-	var probe_columns: Dictionary = {}
-	var action_columns: Dictionary = {}
-	var action_offsets: Array = []
-	for dy in range(-probe_radius, probe_radius + 1):
-		for dz in range(-probe_radius, probe_radius + 1):
-			for dx in range(-probe_radius, probe_radius + 1):
-				var d2: int = dx * dx + dy * dy + dz * dz
-				if d2 > probe_radius_sq:
-					continue
-				var off: Vector3i = Vector3i(dx, dy, dz)
-				cells[off] = tool.get_voxel(centre_grid + off)
-				var ck: Vector2i = Vector2i(dx, dz)
-				if not probe_columns.has(ck):
-					probe_columns[ck] = []
-				(probe_columns[ck] as Array).append(dy)
-				if d2 <= action_radius_sq:
-					if not action_columns.has(ck):
-						action_columns[ck] = []
-					(action_columns[ck] as Array).append(dy)
-					action_offsets.append(off)
-
-	# --- Compute target_dy = lower-median of probe column tops ---
-	var probe_tops: Array = []
-	for ck in probe_columns.keys():
-		var dys_p: Array = probe_columns[ck]
-		var top_p: int = -1000000
-		for i in range(dys_p.size() - 1, -1, -1):
-			var off_p: Vector3i = Vector3i(ck.x, int(dys_p[i]), ck.y)
-			if (int(cells[off_p]) & 0xFF) != 0:
-				top_p = int(dys_p[i])
-				break
-		if top_p != -1000000:
-			probe_tops.append(top_p)
-
-	if probe_tops.is_empty():
-		return  # whole probe sphere is air — nothing to smooth toward
-
-	probe_tops.sort()
-	@warning_ignore("integer_division")
-	var target_dy: int = int(probe_tops[(probe_tops.size() - 1) / 2])
-
-	# --- Compute action-column tops (post-current state, before any moves) ---
-	var action_tops: Dictionary = {}  # Vector2i ck → {"dy": int, "mat_id": int}
-	for ck in action_columns.keys():
-		var dys_a: Array = action_columns[ck]
-		for i in range(dys_a.size() - 1, -1, -1):
-			var off_a: Vector3i = Vector3i(ck.x, int(dys_a[i]), ck.y)
-			var p_a: int = int(cells[off_a])
-			if (p_a & 0xFF) != 0:
-				action_tops[ck] = {"dy": int(dys_a[i]), "mat_id": p_a & 0xFF}
-				break
-
-	# --- Helper: read a voxel that may be inside or outside the probe sphere ---
-	# We cache outside-probe reads in `cells` too so the same neighbor
-	# isn't re-fetched if multiple action cells share it as a neighbor.
-	# Uses a typed local lambda — captures `tool`, `centre_grid`, `cells` by ref.
-	# (GDScript lambdas can capture by reference for Dictionary.)
-
-	# --- Build donor and receiver pools ---
-	var donors: Array = []
-	var receivers: Array = []
-	for off in action_offsets:
-		var packed: int = int(cells[off])
-		var is_solid: bool = (packed & 0xFF) != 0
-		# Count face-solid neighbors. Pull from cells dict if neighbor is
-		# inside probe; otherwise fetch from terrain (and cache).
-		var face_solid: int = 0
-		for fn in FACE_OFFSETS:
-			var n_off: Vector3i = off + fn
-			var n_packed: int = 0
-			if cells.has(n_off):
-				n_packed = int(cells[n_off])
-			else:
-				n_packed = tool.get_voxel(centre_grid + n_off)
-				cells[n_off] = n_packed  # cache for future neighbor lookups
-			if (n_packed & 0xFF) != 0:
-				face_solid += 1
-		# Cell directly below.
-		var below_off: Vector3i = off + BELOW_OFFSET
-		var below_packed: int = 0
-		if cells.has(below_off):
-			below_packed = int(cells[below_off])
-		else:
-			below_packed = tool.get_voxel(centre_grid + below_off)
-			cells[below_off] = below_packed
-		var supported: bool = (below_packed & 0xFF) != 0
-
-		var ck: Vector2i = Vector2i(off.x, off.z)
-		var col_top_dy: int = -1000000
-		if action_tops.has(ck):
-			col_top_dy = int(action_tops[ck]["dy"])
-		var is_col_top: bool = is_solid and (off.y == col_top_dy)
-
-		if is_solid:
-			# Donor classification, highest-tier wins.
-			var d_tier: int = 0
-			var d_score: int = 0
-			if not supported:
-				d_tier = 3
-				d_score = 6 - face_solid
-			elif face_solid <= 2:
-				d_tier = 2
-				d_score = 3 - face_solid
-			elif is_col_top and col_top_dy > target_dy:
-				d_tier = 1
-				d_score = mini(col_top_dy - target_dy, 6)
-			if d_tier > 0:
-				donors.append({
-					"off": off,
-					"mat_id": packed & 0xFF,
-					"tier": d_tier,
-					"score": d_score,
-				})
-		else:
-			# Receiver classification — gravity gate first.
-			if not supported:
-				continue
-			var r_tier: int = 0
-			var r_score: int = 0
-			# Is this cell directly above the column's current top?
-			var above_top: bool = (col_top_dy != -1000000) and (off.y == col_top_dy + 1)
-			if face_solid >= 4:
-				r_tier = 2
-				r_score = face_solid - 3
-			elif above_top and col_top_dy < target_dy:
-				r_tier = 1
-				r_score = mini(target_dy - col_top_dy, 6)
-			if r_tier > 0:
-				receivers.append({
-					"off": off,
-					"tier": r_tier,
-					"score": r_score,
-				})
-
-	# Sort: tier DESC, then score DESC.
-	var by_priority: Callable = func(a: Dictionary, b: Dictionary) -> bool:
-		var at: int = int(a["tier"])
-		var bt: int = int(b["tier"])
-		if at != bt:
-			return at > bt
-		return int(a["score"]) > int(b["score"])
-	donors.sort_custom(by_priority)
-	receivers.sort_custom(by_priority)
-
-	# --- Greedy pair within budget ---
-	# Each move = one carve + one fill. We mutate `cells` locally so
-	# subsequent moves see the post-state — this means a fill that
-	# closes a 1×1×1 hole won't be re-considered as a receiver later
-	# in the same click.
-	var moves: Array = []
-	var di: int = 0
-	var ri: int = 0
-	while moves.size() < budget and di < donors.size() and ri < receivers.size():
-		var d: Dictionary = donors[di]
-		var r: Dictionary = receivers[ri]
-		var d_off: Vector3i = d["off"]
-		var r_off: Vector3i = r["off"]
-		# Cells we picked might have been mutated by an earlier move
-		# in this same click (e.g., a donor cell already became air
-		# because we filled it earlier as a receiver — unlikely but
-		# safe to guard). Validate before committing.
-		if (int(cells[d_off]) & 0xFF) == 0:
-			di += 1
-			continue
-		if (int(cells[r_off]) & 0xFF) != 0:
-			ri += 1
-			continue
-		if d_off == r_off:
-			# Defensive — donor solid + receiver air rules out this case.
-			ri += 1
-			continue
-		moves.append({
-			"carve": d_off,
-			"fill": r_off,
-			"mat_id": int(d["mat_id"]),
-		})
-		cells[d_off] = 0
-		cells[r_off] = FILL_RGB | int(d["mat_id"])
-		di += 1
-		ri += 1
-
-	if moves.is_empty():
-		# No work to do this click — already smooth, or no valid
-		# donor↔receiver pairs given current pool.
-		return
-
-	# --- Emit bulk writes (each move = one carve + one fill) ---
-	var writes: Array = []
-	for m in moves:
-		var carve_off: Vector3i = m["carve"]
-		var fill_off: Vector3i = m["fill"]
-		var carve_world: Vector3 = Vector3(
-			(float(centre_grid.x + carve_off.x) + 0.5) * VOXEL_SIZE_M,
-			(float(centre_grid.y + carve_off.y) + 0.5) * VOXEL_SIZE_M,
-			(float(centre_grid.z + carve_off.z) + 0.5) * VOXEL_SIZE_M,
-		)
-		var fill_world: Vector3 = Vector3(
-			(float(centre_grid.x + fill_off.x) + 0.5) * VOXEL_SIZE_M,
-			(float(centre_grid.y + fill_off.y) + 0.5) * VOXEL_SIZE_M,
-			(float(centre_grid.z + fill_off.z) + 0.5) * VOXEL_SIZE_M,
-		)
-		var packed_fill: int = FILL_RGB | (int(m["mat_id"]) & 0xFF)
-		writes.append({"pos": carve_world, "value": AIR_VOXEL})
-		writes.append({"pos": fill_world, "value": packed_fill})
-
-	VoxelEditManager.queue_set_voxels_bulk(writes, "smooth_3d_n%d" % writes.size())
-	_swing_cooldown_remaining = swing_cooldown_seconds
-
-	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("Smooth: %d moves (action r=%d, probe r=%d, target_dy=%d, donors=%d, receivers=%d)" % [
-			moves.size(), action_radius, probe_radius, target_dy,
-			donors.size(), receivers.size(),
-		])
-
-
 func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, count: int) -> void:
 	# Spawn a single VoxelDrop pickup at the carve site. Parented to
 	# the World3D root (not the player) so the drop stays where it
@@ -956,7 +897,7 @@ func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, c
 	# We pick the parent by walking up to the player's parent (the
 	# World3D scene root). If that's null for any reason, we fall
 	# back to current_scene; if even that's null, the drop just
-	# doesn't spawn — degraded but not crashing.
+	# doesn't spawn â€” degraded but not crashing.
 	var player := get_parent() as CharacterBody3D
 	var world_root: Node = null
 	if player != null:

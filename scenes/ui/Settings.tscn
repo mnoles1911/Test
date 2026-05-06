@@ -166,6 +166,35 @@ text = "  Fullscreen"
 layout_mode = 2
 custom_minimum_size = Vector2(0, 12)
 
+; MINING ANCHOR row — how the carve box is positioned around the
+; voxel under the aim crosshair. See EditToolHandler.MiningAnchor +
+; design/MINING_TIME_SCALING.md for the design.
+[node name="MiningAnchorRow" type="HBoxContainer" parent="Root/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 56)
+theme_override_constants/separation = 24
+
+[node name="MiningAnchorLabel" type="Label" parent="Root/VBox/MiningAnchorRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(280, 0)
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
+text = "MINING ANCHOR"
+vertical_alignment = 1
+
+[node name="MiningAnchorBtn" type="Button" parent="Root/VBox/MiningAnchorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 48)
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.7, 0.95, 0.7, 1)
+text = "Depth-biased (into terrain)  ✓ DEFAULT"
+flat = true
+
+[node name="Spacer3b" type="Control" parent="Root/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 12)
+
 ; Keybindings placeholder.
 [node name="KeybindingsLabel" type="Label" parent="Root/VBox"]
 layout_mode = 2

@@ -66,8 +66,9 @@ const _TICK_MASK: int = 0x1FE0  # bits 5–12, shifted up
 # Chunk dimensions — must match VoxelEditManager.CHUNK_SIZE_VOXELS and
 # VoxelEditManager.VOXELS_PER_METER. Replicated here so this file
 # doesn't need to call into private helpers on another autoload.
+const VOXELS_PER_METER: float = 6.0
 const CHUNK_SIZE_VOXELS: int = 16
-const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / 6.0  # ≈ 2.667 m
+const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER  # ≈ 2.667 m
 
 
 # ============================================================
@@ -85,14 +86,20 @@ signal water_changed(chunk_coord: Vector3i)
 # ============================================================
 
 var _cells: Dictionary = {}
-# Vector3i (voxel coord) → int (packed). One entry per active water
-# cell. Source regions are NOT materialized into _cells — they live
-# in _source_regions only.
+# Vector3i (voxel coord) → int (packed). Transient store for in-flight
+# flow cells produced by the legacy 4 Hz tick. Sources and ocean live
+# in CHANNEL_DATA via the generator + VoxelEditManager — `_cells` is
+# kept around solely so the simulator's gravity/spread/decay rules can
+# still iterate active flow cells without a full chunk scan. To be
+# retired in a future flow-tick rewrite.
 
-var _source_regions: Array = []
-# List of dicts: {"aabb": AABB, "level": int}. Designer-placed water
-# bodies (oceans, lakes). is_position_in_water tests against these
-# AFTER checking _cells. Tested in insertion order; first match wins.
+var _horizon_plane_y: float = 10.0
+# World-space Y of the distant-water horizon plane the WaterChunkMesher
+# draws past its 64 m chunked-mesh radius. Settable at world load via
+# set_horizon_plane_y so the active scene can match its generator's
+# SEA_LEVEL_VOXELS. Kept on the manager (not the mesher) because the
+# mesher reads it on every frame's follow-player update and the manager
+# is the natural single owner of "what is the configured water level."
 
 var _dirty_chunks: Dictionary = {}
 # Vector3i (chunk coord) → true. Chunks that need their flow
@@ -194,31 +201,57 @@ func set_player_position(world_pos: Vector3) -> void:
 
 
 func is_position_in_water(world_pos: Vector3) -> bool:
-	# True if the world-space point is inside any water cell or any
-	# source region. Used by Player3D to drive swim physics and by
-	# UnderwaterFilter for the submersion tint.
-	var voxel_pos := _world_to_voxel(world_pos)
-	if _cells.has(voxel_pos):
-		# Cell exists in active dictionary.
-		var packed: int = _cells[voxel_pos]
-		return (packed & _LEVEL_MASK) > 0
-	for region in _source_regions:
-		if (region["aabb"] as AABB).has_point(world_pos):
-			return true
-	return false
+	# True if the world-space point is inside a water voxel.
+	#
+	# Phase 4 (CHANNEL_DATA-first model): the answer comes from a single
+	# CHANNEL_DATA byte read at the voxel containing world_pos. The
+	# generator writes water bytes only for above-terrain voxels in
+	# below-sea-level columns — so a tunnel carved into a hill above
+	# sea level reads as DRY (the column never had water at that XZ),
+	# and a hole carved into the seabed reads as wet because the
+	# generator wrote water at every voxel from ground_y+1 up to sea
+	# level for that column.
+	#
+	# This delete the entire AABB-source-region path AND the
+	# clear-vertical-path workaround that used to compensate for it.
+	# The bug the workaround fixed (tunnels under sea level reading as
+	# water just because they sat inside the ocean AABB) is now
+	# impossible by construction: there's no AABB to be inside.
+	#
+	# Per-cell sources (player-placed buckets via add_source) ALSO go
+	# through CHANNEL_DATA (Phase 3 redirected add_source via
+	# VoxelEditManager). _cells is still maintained as a transient
+	# in-memory cache for the legacy flow tick, but it's not consulted
+	# here — a cell in _cells without a CHANNEL_DATA byte would be a
+	# bug, and adding _cells fallback would mask such bugs.
+	var byte: int = _read_water_byte_at(world_pos)
+	return WaterByteCodec.is_water(byte)
 
 
 func get_water_level_at(world_pos: Vector3) -> int:
-	# Returns 0 (no water) or 1–8 (water level at this point). Source
-	# regions report MAX_LEVEL. Used by Phase 2 mesher for partial-
-	# height side faces and by Phase 6 currents for gradient.
-	var voxel_pos := _world_to_voxel(world_pos)
-	if _cells.has(voxel_pos):
-		return (_cells[voxel_pos] as int) & _LEVEL_MASK
-	for region in _source_regions:
-		if (region["aabb"] as AABB).has_point(world_pos):
-			return int(region["level"])
-	return 0
+	# Returns 0 (no water) or 1–8 (water level at this point). Used by
+	# the water mesher for partial-height side faces and by current
+	# computations for the velocity gradient.
+	var byte: int = _read_water_byte_at(world_pos)
+	return WaterByteCodec.level_of(byte)
+
+
+func _read_water_byte_at(world_pos: Vector3) -> int:
+	# One-voxel CHANNEL_DATA read at the voxel containing world_pos.
+	# Returns 0 if the terrain isn't bound or the tool isn't available
+	# (defensive — those conditions shouldn't happen during normal
+	# play but might briefly during world load).
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return 0
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return 0
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return 0
+	tool.channel = VoxelBuffer.CHANNEL_DATA5
+	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
+	return tool.get_voxel(voxel_pos)
 
 
 func get_flow_velocity_at(world_pos: Vector3) -> Vector3:
@@ -266,21 +299,36 @@ const FLOW_MAX_SPEED: float = 3.0
 func _level_at_voxel(voxel_pos: Vector3i) -> int:
 	# Voxel-space variant of get_water_level_at, for use inside the
 	# flow loop where world↔voxel conversions would be wasteful.
+	# Reads CHANNEL_DATA first (the new authoritative store), then
+	# falls back to _cells for transient flow cells.
+	if get_node_or_null("/root/VoxelEditManager") != null:
+		var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+		if terrain != null:
+			var tool: VoxelTool = terrain.get_voxel_tool()
+			if tool != null:
+				tool.channel = VoxelBuffer.CHANNEL_DATA5
+				var byte: int = tool.get_voxel(voxel_pos)
+				var lvl: int = WaterByteCodec.level_of(byte)
+				if lvl > 0:
+					return lvl
 	if _cells.has(voxel_pos):
 		return (_cells[voxel_pos] as int) & _LEVEL_MASK
-	var world_pos: Vector3 = _voxel_center_world(voxel_pos)
-	for region in _source_regions:
-		if (region["aabb"] as AABB).has_point(world_pos):
-			return int(region["level"])
 	return 0
 
 
-func get_source_regions() -> Array:
-	# Read-only accessor for the source-region list. WaterChunkMesher
-	# uses this to find the AABBs that intersect a chunk for surface-
-	# mesh emission. Returning the live list (not a copy) is fine
-	# because the mesher only iterates and does AABB tests.
-	return _source_regions
+func set_horizon_plane_y(world_y: float) -> void:
+	# Configure the world-space Y for the distant-water horizon plane.
+	# Called by World3DBootstrap (or any scene-specific bootstrap) so
+	# the value can match that scene's generator SEA_LEVEL_VOXELS.
+	# WaterChunkMesher consults the new value on its next follow-player
+	# update — no explicit rebuild is needed for a tiny Y shift, but
+	# call _rebuild_horizon_plane() if the mesher needs to re-spawn
+	# (e.g. plane size change).
+	_horizon_plane_y = world_y
+
+
+func get_horizon_plane_y() -> float:
+	return _horizon_plane_y
 
 
 func get_cells() -> Dictionary:
@@ -328,11 +376,12 @@ func load_save_data(data: Array) -> void:
 
 
 func clear_persistent_state() -> void:
-	# Wipes all cells and source regions. Called by GameState before
-	# loading a new save so no stale water carries over from the
-	# previous session.
+	# Wipes transient flow cells. Called by GameState before loading a
+	# new save so no stale flow cells carry over from the previous
+	# session. CHANNEL_DATA (the source of truth for ocean & sources)
+	# is not touched here — it persists via SQLite chunk deltas and
+	# reloads with the rest of the terrain.
 	_cells.clear()
-	_source_regions.clear()
 	_dirty_chunks.clear()
 
 
@@ -343,6 +392,15 @@ func clear_persistent_state() -> void:
 func add_source(voxel_pos: Vector3i) -> void:
 	# Mark a single voxel as a permanent water source. Used by Phase 7
 	# bucket placement and by river-headwater authoring scripts.
+	#
+	# Phase 3: writes go through VoxelEditManager.queue_set_water_voxel
+	# so the byte ends up in CHANNEL_DATA (the new source of truth)
+	# rather than the legacy _cells dict. We still tag _cells and
+	# _dirty_chunks for the brief Phase 3 transition window — the flow
+	# tick continues to scan _cells until Phase 4 rewrites it around
+	# the buffer-copy path. After that, _cells goes away entirely.
+	if get_node_or_null("/root/VoxelEditManager") != null:
+		VoxelEditManager.queue_set_water_voxel(voxel_pos, WaterByteCodec.SOURCE_BYTE)
 	var packed: int = MAX_LEVEL | _SOURCE_BIT
 	_cells[voxel_pos] = packed
 	var chunk: Vector3i = _voxel_to_chunk(voxel_pos)
@@ -360,39 +418,6 @@ func remove_source(voxel_pos: Vector3i) -> void:
 	var chunk: Vector3i = _voxel_to_chunk(voxel_pos)
 	_dirty_chunks[chunk] = true
 	water_changed.emit(chunk)
-
-
-func add_source_region(aabb: AABB, level: int = MAX_LEVEL) -> void:
-	# Register a large body of water (ocean, lake, large pool) as a
-	# source region. The region is stored as an AABB; no per-cell
-	# materialization. is_position_in_water tests against the AABB
-	# directly, so a 200×200 m ocean costs O(1) memory.
-	#
-	# Designer authoring pattern: drop a Node3D in World3D.tscn with
-	# attached metadata, and the World3DBootstrap script calls this
-	# method on _ready with the metadata's AABB.
-	#
-	# We deliberately do NOT iterate chunks inside the AABB here. A
-	# 200×200 m ocean spans ~69k chunks; dirty-marking each on world
-	# load would emit 69k signals and permanently bloat _dirty_chunks
-	# (cells outside the player's active radius would re-queue every
-	# tick forever). WaterChunkMesher.set_player_chunk lazily dirty-
-	# marks chunks within its render radius on every player chunk
-	# transition, which already covers the visible-water case. The
-	# flow tick doesn't need pre-marking either: source regions exist
-	# implicitly and only spread INTO neighbors when an edit dirties
-	# the boundary chunk.
-	_source_regions.append({"aabb": aabb, "level": clampi(level, MIN_LEVEL, MAX_LEVEL)})
-	# Tell the chunk mesher to rebuild its giant source-region planes
-	# now that we have a new region. Without this trigger, the mesher's
-	# initial deferred call from _ready fires BEFORE World3DBootstrap
-	# adds regions (the autoload's deferred queue runs on the next
-	# idle, but the scene's _ready chain hasn't finished). Result: 0
-	# planes built. Calling here is idempotent — the mesher clears
-	# old planes and rebuilds from the current region list.
-	if _chunk_mesher != null \
-			and _chunk_mesher.has_method("_rebuild_source_region_planes"):
-		_chunk_mesher._rebuild_source_region_planes()
 
 
 # ============================================================
@@ -450,6 +475,18 @@ func _run_flow_tick() -> void:
 	var snapshot: Dictionary = _dirty_chunks.duplicate()
 	_dirty_chunks.clear()
 
+	# Cache terrain + tool ONCE per tick. Previous code re-fetched
+	# both per chunk per voxel — a 100× perf regression vs caching.
+	# If the autoload/terrain isn't ready yet, drop the tick.
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+
 	var budget: int = _MAX_FLOW_BUDGET_PER_TICK
 	for chunk in snapshot.keys():
 		# Outside active radius? Drop. Cells in those chunks freeze in
@@ -460,7 +497,7 @@ func _run_flow_tick() -> void:
 		# away.
 		if not _chunk_in_active_radius(chunk):
 			continue
-		budget -= _simulate_chunk_gravity(chunk, budget)
+		budget -= _simulate_chunk_gravity(chunk, budget, terrain, tool)
 		if budget <= 0:
 			# Spilled the budget. Re-queue ONLY in-radius unprocessed
 			# chunks for the next tick.
@@ -475,43 +512,68 @@ func _run_flow_tick() -> void:
 			break
 
 
-func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
-	# Phase 4: full per-chunk simulation step.
-	#   1. Decay: non-source cells in this chunk that weren't fed in
-	#      the previous tick decrement their level. Level 0 → removed.
-	#   2. Gravity: air voxels with water directly above become flow
-	#      cells at MAX_LEVEL.
-	#   3. Lateral spread: cells (and source-region boundaries) push
-	#      water horizontally into neighbors with solid below, at
-	#      level = self.level - 1.
+func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTerrain, tool: VoxelTool) -> int:
+	# Phase 4 (perf rewrite): full per-chunk simulation step using
+	# pre-copied VoxelBuffers instead of per-voxel tool.get_voxel.
 	#
-	# Returns the number of cells modified (caller subtracts from
-	# budget). Pre-screen: skip the chunk if neither it nor the chunk
-	# above has any water.
-	var chunk_above: Vector3i = chunk + Vector3i(0, 1, 0)
-	if not _chunk_has_any_water(chunk) and not _chunk_has_any_water(chunk_above):
-		return 0
-
-	var terrain: VoxelLodTerrain = null
-	if get_node_or_null("/root/VoxelEditManager") != null and VoxelEditManager.has_method("get_terrain"):
-		terrain = VoxelEditManager.get_terrain()
-	if terrain == null:
-		return 0
-	var tool = terrain.get_voxel_tool()
-	if tool == null:
-		return 0
-	tool.channel = 2  # CHANNEL_COLOR
+	# The previous version called _is_water_at_voxel and _is_solid_at
+	# inside the gravity-drop and lateral-spread inner loops. Each call
+	# did get_node_or_null + get_voxel_tool + tool.get_voxel — a SceneTree
+	# walk and tool reacquisition per voxel. At 4096 voxels per chunk,
+	# 27 chunks per edit, 4 Hz, that's ~324 k tool calls/sec → 200-300
+	# ms/sec just on flow reads. Same pattern that previously caused the
+	# 6 s freeze in VoxelGravityManager (LESSONS_LEARNED 2026-05-05).
+	#
+	# Now: copy the chunk's CHANNEL_DATA5 + CHANNEL_COLOR into local
+	# 16³ buffers ONCE per call, plus the chunk-above's CHANNEL_DATA5
+	# for cross-chunk "above" reads at the y=15 boundary. Then walk the
+	# buffers with cheap byte reads. Cross-chunk lateral neighbours fall
+	# back to _is_water_at_voxel (rare — only voxels at chunk edges).
+	#
+	# Returns the number of cells modified (caller subtracts from budget).
 
 	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
 	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
 
+	# Default the shared tool to COLOR so any slow-path _is_solid_at
+	# fallback reads the right channel. tool.copy() takes an explicit
+	# channel_mask so the buffer copies below are unaffected by this
+	# setting.
+	tool.channel = VoxelBuffer.CHANNEL_COLOR
+
+	# ---- Pre-copy chunk buffers ----
+	var data_buf := VoxelBuffer.new()
+	data_buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(voxel_min, data_buf, 1 << VoxelBuffer.CHANNEL_DATA5)
+
+	var color_buf := VoxelBuffer.new()
+	color_buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(voxel_min, color_buf, 1 << VoxelBuffer.CHANNEL_COLOR)
+
+	# Chunk above's CHANNEL_DATA5 — needed for the gravity-drop check
+	# "is the voxel above water?" when the candidate voxel sits at
+	# y=15 (top of chunk) and "above" crosses into the next chunk Y.
+	var data_above_buf := VoxelBuffer.new()
+	data_above_buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	var voxel_min_above: Vector3i = voxel_min + Vector3i(0, CHUNK_SIZE_VOXELS, 0)
+	tool.copy(voxel_min_above, data_above_buf, 1 << VoxelBuffer.CHANNEL_DATA5)
+
+	# ---- Pre-screen ----
+	# Replaces the old _chunk_has_any_water double-call (one for chunk,
+	# one for chunk above). Walk the two buffers we already copied —
+	# zero extra C++ calls.
+	var any_water_here: bool = _buf_has_any_water(data_buf)
+	var any_water_above: bool = _buf_has_any_water(data_above_buf)
+	if not any_water_here and not any_water_above:
+		return 0
+
 	var modified: int = 0
 	var dirty_neighbors: Dictionary = {}
+	# Batch of CHANNEL_DATA5 writes accumulated during this chunk's
+	# simulation. Applied at the end via tool.do_box once per write.
+	var data5_writes: Array = []
 
-	# ---- 1. Decay pass ----
-	# Iterate cells whose voxel positions fall inside this chunk.
-	# Non-source cells with last_fed_tick != current_tick - 1 (or older)
-	# decrement; level 0 means removed.
+	# ---- 1. Decay pass (unchanged) ----
 	var prev_tick: int = (_tick_count - 1) & 0xFF
 	var to_remove: Array = []
 	var to_decrement: Array = []
@@ -527,7 +589,7 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
 			continue
 		var fed_tick: int = _last_fed_tick(packed_cell)
 		if fed_tick == prev_tick or fed_tick == _tick_count:
-			continue  # was fed this tick or last — stays alive
+			continue
 		var current_level: int = _level_of(packed_cell)
 		if current_level <= MIN_LEVEL:
 			to_remove.append(cell_pos)
@@ -535,33 +597,52 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
 			to_decrement.append(cell_pos)
 	for r in to_remove:
 		_cells.erase(r)
+		data5_writes.append({"pos": r, "byte": 0})
 		modified += 1
 		dirty_neighbors[_voxel_to_chunk(r)] = true
 	for d in to_decrement:
 		var p: int = _cells[d]
 		var lvl: int = _level_of(p)
-		_cells[d] = _pack(lvl - 1, false, _last_fed_tick(p))
+		var new_pack: int = _pack(lvl - 1, false, _last_fed_tick(p))
+		_cells[d] = new_pack
+		data5_writes.append({"pos": d, "byte": new_pack & 0xFF})
 		modified += 1
 		dirty_neighbors[_voxel_to_chunk(d)] = true
 
-	# ---- 2. Gravity drop pass ----
-	# Air voxel directly below water → place flow cell at MAX_LEVEL.
-	for x in range(voxel_min.x, voxel_max.x):
-		for z in range(voxel_min.z, voxel_max.z):
-			for y in range(voxel_max.y - 1, voxel_min.y - 1, -1):
+	# ---- 2. Gravity drop pass (buffer reads) ----
+	# Walk every voxel in the chunk. For each air voxel, check if water
+	# sits directly above. All checks use the pre-copied buffers; only
+	# the NoEditZone gate falls back to the slow path (and that gate is
+	# rare in practice).
+	for lx in range(CHUNK_SIZE_VOXELS):
+		for lz in range(CHUNK_SIZE_VOXELS):
+			for ly in range(CHUNK_SIZE_VOXELS - 1, -1, -1):
 				if modified >= budget:
 					break
-				var pos := Vector3i(x, y, z)
-				if _cells.has(pos):
+				# Buffer reads — no SceneTree, no tool acquisition.
+				var here_byte: int = data_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_DATA5)
+				if WaterByteCodec.is_water(here_byte):
+					continue  # already water (source or flow); don't overwrite
+				var here_color: int = color_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_COLOR)
+				if (here_color & 0xFF) != 0:
+					continue  # solid terrain
+
+				# Check the voxel directly above. If at the top of the
+				# chunk, read from the chunk-above buffer at local y=0.
+				var above_byte: int
+				if ly < CHUNK_SIZE_VOXELS - 1:
+					above_byte = data_buf.get_voxel(lx, ly + 1, lz, VoxelBuffer.CHANNEL_DATA5)
+				else:
+					above_byte = data_above_buf.get_voxel(lx, 0, lz, VoxelBuffer.CHANNEL_DATA5)
+				if not WaterByteCodec.is_water(above_byte):
 					continue
-				if _is_solid_at(tool, pos):
-					continue
-				var above := pos + Vector3i(0, 1, 0)
-				if not _is_water_at_voxel(above):
-					continue
+
+				var pos: Vector3i = voxel_min + Vector3i(lx, ly, lz)
 				if _is_water_blocked_at_voxel(pos):
 					continue
-				_cells[pos] = _pack(MAX_LEVEL, false, _tick_count)
+				var grav_pack: int = _pack(MAX_LEVEL, false, _tick_count)
+				_cells[pos] = grav_pack
+				data5_writes.append({"pos": pos, "byte": grav_pack & 0xFF})
 				modified += 1
 				dirty_neighbors[_voxel_to_chunk(pos)] = true
 				dirty_neighbors[_voxel_to_chunk(pos + Vector3i(0, -1, 0))] = true
@@ -570,56 +651,207 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
 		if modified >= budget:
 			break
 
-	# ---- 3. Lateral spread pass ----
-	# For each cell or source-region boundary in this chunk, attempt
-	# to spread to 4 horizontal neighbors. Source regions push at
-	# level=MAX_LEVEL; cells push at level-1.
-	var spread_sources: Array = _gather_lateral_sources(chunk, voxel_min, voxel_max)
+	# ---- 3. Lateral spread pass (buffer-based source gather) ----
+	# Build the source list from the pre-copied data buffer rather than
+	# re-copying it inside _gather_lateral_sources. Then spread, using
+	# buffer reads for in-chunk neighbours and the slow path for
+	# cross-chunk edge neighbours.
+	var spread_sources: Array = _gather_lateral_sources_buffered(
+		voxel_min, voxel_max, data_buf,
+	)
 	for src in spread_sources:
 		if modified >= budget:
 			break
 		var src_pos: Vector3i = src["pos"]
 		var src_level: int = src["level"]
 		if src_level <= MIN_LEVEL:
-			continue  # nothing to share — level 1 cells don't propagate
+			continue
 		var target_level: int = src_level - 1
 		for dir in _LATERAL_DIRS:
 			if modified >= budget:
 				break
 			var neighbor: Vector3i = src_pos + dir
-			# Already water at neighbor with sufficient level — refresh
-			# its last_fed_tick so it doesn't decay this tick.
+			# Read neighbour state via buffer if in-chunk, else fallback.
+			var n_in_chunk: bool = (
+				neighbor.x >= voxel_min.x and neighbor.x < voxel_max.x
+				and neighbor.y >= voxel_min.y and neighbor.y < voxel_max.y
+				and neighbor.z >= voxel_min.z and neighbor.z < voxel_max.z
+			)
+			# Already in _cells — refresh tick if applicable.
 			if _cells.has(neighbor):
 				var n_packed: int = _cells[neighbor]
 				if _is_source_packed(n_packed):
 					continue
 				var n_lvl: int = _level_of(n_packed)
 				if n_lvl >= target_level:
-					_cells[neighbor] = _pack(n_lvl, false, _tick_count)
+					var refreshed_pack: int = _pack(n_lvl, false, _tick_count)
+					_cells[neighbor] = refreshed_pack
+					data5_writes.append({"pos": neighbor, "byte": refreshed_pack & 0xFF})
 				continue
-			# Source region overlap? Skip — water already here logically.
-			if _is_water_at_voxel(neighbor):
+			# Already water in CHANNEL_DATA5? Skip.
+			var n_water_byte: int
+			var n_color_packed: int
+			if n_in_chunk:
+				var nlx: int = neighbor.x - voxel_min.x
+				var nly: int = neighbor.y - voxel_min.y
+				var nlz: int = neighbor.z - voxel_min.z
+				n_water_byte = data_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_DATA5)
+				n_color_packed = color_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_COLOR)
+			else:
+				# Cross-chunk fallback (rare — only at chunk edges).
+				if _is_water_at_voxel(neighbor):
+					continue
+				if _is_solid_at(tool, neighbor):
+					continue
+				n_water_byte = 0
+				n_color_packed = 0
+			if WaterByteCodec.is_water(n_water_byte):
 				continue
-			if _is_solid_at(tool, neighbor):
+			if (n_color_packed & 0xFF) != 0:
 				continue
 			if _is_water_blocked_at_voxel(neighbor):
 				continue
-			# Lateral spread requires solid (or water) directly below
-			# OR water below (water can't sit on air laterally; gravity
-			# wins). If the cell-below is air, the gravity pass will
-			# handle the drop on the next tick — don't double-place.
-			var below := neighbor + Vector3i(0, -1, 0)
-			if not (_is_solid_at(tool, below) or _is_water_at_voxel(below)):
+			# Below check: solid OR water below.
+			var below: Vector3i = neighbor + Vector3i(0, -1, 0)
+			var below_in_chunk: bool = (
+				below.x >= voxel_min.x and below.x < voxel_max.x
+				and below.y >= voxel_min.y and below.y < voxel_max.y
+				and below.z >= voxel_min.z and below.z < voxel_max.z
+			)
+			var below_solid: bool = false
+			var below_water: bool = false
+			if below_in_chunk:
+				var blx: int = below.x - voxel_min.x
+				var bly: int = below.y - voxel_min.y
+				var blz: int = below.z - voxel_min.z
+				below_solid = (color_buf.get_voxel(blx, bly, blz, VoxelBuffer.CHANNEL_COLOR) & 0xFF) != 0
+				if not below_solid:
+					below_water = WaterByteCodec.is_water(
+						data_buf.get_voxel(blx, bly, blz, VoxelBuffer.CHANNEL_DATA5)
+					)
+			else:
+				below_solid = _is_solid_at(tool, below)
+				if not below_solid:
+					below_water = _is_water_at_voxel(below)
+			if not (below_solid or below_water):
 				continue
-			_cells[neighbor] = _pack(target_level, false, _tick_count)
+			var spread_pack: int = _pack(target_level, false, _tick_count)
+			_cells[neighbor] = spread_pack
+			data5_writes.append({"pos": neighbor, "byte": spread_pack & 0xFF})
 			modified += 1
 			dirty_neighbors[_voxel_to_chunk(neighbor)] = true
+
+	# ---- Apply CHANNEL_DATA5 writes in one batched pass ----
+	if not data5_writes.is_empty():
+		tool.channel = VoxelBuffer.CHANNEL_DATA5
+		for w in data5_writes:
+			var wp: Vector3i = w["pos"]
+			tool.value = w["byte"]
+			tool.do_box(Vector3(wp), Vector3(wp) + Vector3.ONE)
+		# Restore tool to COLOR — the caller may reuse the same tool
+		# for the next chunk's color reads, and the remaining decay /
+		# gravity reads we just did all assumed COLOR was the active
+		# channel. Defensive: future code reusing this tool won't
+		# silently read the wrong channel.
+		tool.channel = VoxelBuffer.CHANNEL_COLOR
 
 	for c in dirty_neighbors.keys():
 		_dirty_chunks[c] = true
 		water_changed.emit(c)
 
 	return modified
+
+
+func _buf_has_any_water(buf: VoxelBuffer) -> bool:
+	# Linear scan for any nonzero water byte in the chunk buffer.
+	# Replaces the per-chunk terrain.copy in the old _chunk_has_any_water
+	# — caller passes in the already-copied buffer, so this is a pure
+	# in-memory walk.
+	#
+	# Optimisation: VoxelBuffer.is_uniform tells us in O(1) whether the
+	# whole channel holds a single value. Almost all chunks are uniform
+	# (fully air → uniform 0; fully ocean → uniform SOURCE_BYTE), so
+	# this short-circuits the 4096-read walk for the common case. Only
+	# heterogeneous chunks (coastline, edits in progress) walk the full
+	# 16³ — and those are rare.
+	if buf.has_method("is_uniform"):
+		var uniform_val: int = buf.call("get_voxel", 0, 0, 0, VoxelBuffer.CHANNEL_DATA5)
+		if buf.call("is_uniform", VoxelBuffer.CHANNEL_DATA5):
+			return uniform_val > 0
+	for x in range(CHUNK_SIZE_VOXELS):
+		for y in range(CHUNK_SIZE_VOXELS):
+			for z in range(CHUNK_SIZE_VOXELS):
+				if buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA5) > 0:
+					return true
+	return false
+
+
+func _gather_lateral_sources_buffered(
+	voxel_min: Vector3i, voxel_max: Vector3i, data_buf: VoxelBuffer,
+) -> Array:
+	# Buffer-based variant of _gather_lateral_sources. Walks the
+	# pre-copied data buffer for water voxels with level > MIN_LEVEL and
+	# at least one horizontal neighbour that is air. Includes _cells-
+	# only flow cells (transient) by adding them as a separate scan
+	# step so the simulator catches both source bytes and in-flight
+	# flow cells.
+	var sources: Array = []
+	# Pass 1: water voxels in the chunk's data buffer.
+	for lx in range(CHUNK_SIZE_VOXELS):
+		for ly in range(CHUNK_SIZE_VOXELS):
+			for lz in range(CHUNK_SIZE_VOXELS):
+				var byte: int = data_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_DATA5)
+				var lvl: int = WaterByteCodec.level_of(byte)
+				if lvl <= MIN_LEVEL:
+					continue
+				# Edge test: at least one horizontal neighbour is dry
+				# (no water byte in CHANNEL_DATA5). For neighbours
+				# outside the chunk, conservatively assume "dry" so the
+				# spread fires at chunk edges (the spread loop itself
+				# does the actual cross-chunk check).
+				var pos := Vector3i(voxel_min.x + lx, voxel_min.y + ly, voxel_min.z + lz)
+				var is_edge: bool = false
+				for dir in _LATERAL_DIRS:
+					var nlx: int = lx + dir.x
+					var nly: int = ly + dir.y
+					var nlz: int = lz + dir.z
+					if nlx < 0 or nlx >= CHUNK_SIZE_VOXELS \
+							or nly < 0 or nly >= CHUNK_SIZE_VOXELS \
+							or nlz < 0 or nlz >= CHUNK_SIZE_VOXELS:
+						# Cross-chunk edge — treat as candidate; the
+						# spread loop will check the actual neighbour.
+						is_edge = true
+						break
+					var n_byte: int = data_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_DATA5)
+					if not WaterByteCodec.is_water(n_byte):
+						is_edge = true
+						break
+				if is_edge:
+					sources.append({"pos": pos, "level": lvl})
+	# Pass 2: _cells flow entries inside the chunk that aren't already
+	# covered by the buffer scan above (some flow cells may not have
+	# been written back to CHANNEL_DATA5 yet on the current tick).
+	for cell_pos in _cells.keys():
+		if cell_pos.x < voxel_min.x or cell_pos.x >= voxel_max.x:
+			continue
+		if cell_pos.y < voxel_min.y or cell_pos.y >= voxel_max.y:
+			continue
+		if cell_pos.z < voxel_min.z or cell_pos.z >= voxel_max.z:
+			continue
+		var packed: int = _cells[cell_pos]
+		var lvl_cell: int = _level_of(packed)
+		if lvl_cell <= MIN_LEVEL:
+			continue
+		# Already in sources from Pass 1? Skip dedupe by checking the
+		# buffer byte — if the buffer already has this cell as water,
+		# Pass 1 covered it.
+		var lx: int = cell_pos.x - voxel_min.x
+		var ly: int = cell_pos.y - voxel_min.y
+		var lz: int = cell_pos.z - voxel_min.z
+		if WaterByteCodec.is_water(data_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_DATA5)):
+			continue
+		sources.append({"pos": cell_pos, "level": lvl_cell})
+	return sources
 
 
 # ---- Helpers used by the simulation pass ----
@@ -678,74 +910,79 @@ func _gather_lateral_sources(_chunk: Vector3i, voxel_min: Vector3i, voxel_max: V
 		var lvl: int = _level_of(packed)
 		if lvl > MIN_LEVEL:
 			sources.append({"pos": cell_pos, "level": lvl})
-	# Source-region edge cells. For each region whose AABB intersects
-	# the chunk, identify the edge voxels along the AABB's XZ
-	# perimeter at the AABB's top Y, intersected with the chunk.
-	# Simpler approach: for every voxel in the chunk, test "is it
-	# inside the region AND has at least one horizontal neighbor that
-	# isn't?" — only edge voxels propagate.
-	for region in _source_regions:
-		var aabb: AABB = region["aabb"] as AABB
-		var lvl_region: int = int(region["level"])
-		# Quick chunk-vs-AABB overlap test in voxel space.
-		var aabb_voxel_min := Vector3i(
-			floori(aabb.position.x * 6.0),
-			floori(aabb.position.y * 6.0),
-			floori(aabb.position.z * 6.0),
-		)
-		var aabb_voxel_max := Vector3i(
-			ceili((aabb.position.x + aabb.size.x) * 6.0),
-			ceili((aabb.position.y + aabb.size.y) * 6.0),
-			ceili((aabb.position.z + aabb.size.z) * 6.0),
-		)
-		var ix_min: int = maxi(voxel_min.x, aabb_voxel_min.x)
-		var ix_max: int = mini(voxel_max.x, aabb_voxel_max.x)
-		var iy_min: int = maxi(voxel_min.y, aabb_voxel_min.y)
-		var iy_max: int = mini(voxel_max.y, aabb_voxel_max.y)
-		var iz_min: int = maxi(voxel_min.z, aabb_voxel_min.z)
-		var iz_max: int = mini(voxel_max.z, aabb_voxel_max.z)
-		if ix_min >= ix_max or iy_min >= iy_max or iz_min >= iz_max:
-			continue
-		for x in range(ix_min, ix_max):
-			for z in range(iz_min, iz_max):
-				# Only the topmost source-region voxel per column
-				# matters for surface-edge spread. Below the surface
-				# we're inside the region — no edge.
-				var top_y: int = iy_max - 1
-				var pos := Vector3i(x, top_y, z)
-				# Edge test: at least one horizontal neighbor NOT in
-				# any source region.
-				var is_edge: bool = false
-				for dir in _LATERAL_DIRS:
-					var n: Vector3i = pos + dir
-					if not _is_water_at_voxel(n):
-						is_edge = true
-						break
-				if is_edge:
-					sources.append({"pos": pos, "level": lvl_region})
+	# CHANNEL_DATA source-edge detection: walk every voxel in the chunk
+	# whose CHANNEL_DATA byte has water set, and emit it as a lateral-
+	# spread source if at least one horizontal neighbour is dry. This
+	# replaces the previous AABB source-region scan — the ocean is now
+	# stored as real water bytes per voxel, so the edge of the ocean is
+	# defined by water-byte voxels with dry neighbours.
+	#
+	# Bulk-read the chunk's CHANNEL_DATA once via terrain.copy() so we
+	# don't pay tool.get_voxel cost per voxel. Same pattern used by
+	# WaterChunkMesher and the Phase 4 _chunk_has_any_water scan.
+	if get_node_or_null("/root/VoxelEditManager") != null:
+		var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+		if terrain != null:
+			var tool: VoxelTool = terrain.get_voxel_tool()
+			if tool != null:
+				var buf := VoxelBuffer.new()
+				buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+				tool.copy(voxel_min, buf, 1 << VoxelBuffer.CHANNEL_DATA5)
+				for lx in range(CHUNK_SIZE_VOXELS):
+					for ly in range(CHUNK_SIZE_VOXELS):
+						for lz in range(CHUNK_SIZE_VOXELS):
+							var byte: int = buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_DATA5)
+							var lvl_byte: int = WaterByteCodec.level_of(byte)
+							if lvl_byte <= MIN_LEVEL:
+								continue
+							var pos := Vector3i(
+								voxel_min.x + lx,
+								voxel_min.y + ly,
+								voxel_min.z + lz,
+							)
+							# Edge test: at least one horizontal neighbour is dry.
+							var is_edge: bool = false
+							for dir in _LATERAL_DIRS:
+								var n: Vector3i = pos + dir
+								if not _is_water_at_voxel(n):
+									is_edge = true
+									break
+							if is_edge:
+								sources.append({"pos": pos, "level": lvl_byte})
 	return sources
 
 
 func _is_water_at_voxel(voxel_pos: Vector3i) -> bool:
-	# True if this voxel position is occupied by water — either an
-	# active cell or inside a source region.
+	# True if this voxel position is occupied by water. Two sources:
+	#   1. CHANNEL_DATA byte (the new authoritative store — ocean from
+	#      generator, buckets via VoxelEditManager edits).
+	#   2. Legacy _cells dict (transient flow cells produced by the
+	#      4 Hz flow tick; not yet migrated to CHANNEL_DATA writes).
+	#
+	# Either gives "water" → return true. Source-region AABB lookup is
+	# GONE — Phase 4 migrated to CHANNEL_DATA, which fixes the tunnel-
+	# under-mountain flooding bug at the source: there's no AABB to
+	# wrongly claim every air voxel below sea level.
+	if get_node_or_null("/root/VoxelEditManager") != null:
+		var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+		if terrain != null:
+			var tool: VoxelTool = terrain.get_voxel_tool()
+			if tool != null:
+				tool.channel = VoxelBuffer.CHANNEL_DATA5
+				var byte: int = tool.get_voxel(voxel_pos)
+				if WaterByteCodec.is_water(byte):
+					return true
 	if _cells.has(voxel_pos):
 		return ((_cells[voxel_pos] as int) & _LEVEL_MASK) > 0
-	# Source-region check: AABB.has_point on the voxel's center
-	# (in world space).
-	var world_pos: Vector3 = _voxel_center_world(voxel_pos)
-	for region in _source_regions:
-		if (region["aabb"] as AABB).has_point(world_pos):
-			return true
 	return false
 
 
 func _chunk_has_any_water(chunk: Vector3i) -> bool:
-	# Cheap pre-screen for the gravity scan. True if any cell in
-	# this chunk is in _cells, OR any source region overlaps the
-	# chunk's world-AABB.
-	# O(cells_in_chunk + source_regions). For the common case of
-	# a sparse cell map and a few source regions, this is fast.
+	# Pre-screen for the gravity scan. True if (a) any in-flight flow
+	# cell sits in this chunk, or (b) any CHANNEL_DATA voxel in this
+	# chunk has the water bit set. The legacy AABB check is gone — the
+	# ocean now lives in CHANNEL_DATA so AABB lookups would be both
+	# wrong and redundant.
 	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
 	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
 	for cell_pos in _cells.keys():
@@ -753,15 +990,27 @@ func _chunk_has_any_water(chunk: Vector3i) -> bool:
 			and cell_pos.y >= voxel_min.y and cell_pos.y < voxel_max.y \
 			and cell_pos.z >= voxel_min.z and cell_pos.z < voxel_max.z:
 			return true
-	var chunk_aabb_min := Vector3(
-		float(chunk.x) * CHUNK_SIZE_M,
-		float(chunk.y) * CHUNK_SIZE_M,
-		float(chunk.z) * CHUNK_SIZE_M,
-	)
-	var chunk_aabb := AABB(chunk_aabb_min, Vector3.ONE * CHUNK_SIZE_M)
-	for region in _source_regions:
-		if chunk_aabb.intersects(region["aabb"] as AABB):
-			return true
+	# CHANNEL_DATA bulk scan via terrain.copy(). Mirrors the pattern
+	# in WaterChunkMesher._gather_surface_quads — one C++ copy + a
+	# linear byte walk. Only called on dirty chunks within the active
+	# 20 m flow radius, so the overhead is bounded (a few dozen chunks
+	# per tick at 4 Hz worst-case).
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return false
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return false
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return false
+	var buf := VoxelBuffer.new()
+	buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(voxel_min, buf, 1 << VoxelBuffer.CHANNEL_DATA5)
+	for x in range(CHUNK_SIZE_VOXELS):
+		for y in range(CHUNK_SIZE_VOXELS):
+			for z in range(CHUNK_SIZE_VOXELS):
+				if buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA5) > 0:
+					return true
 	return false
 
 

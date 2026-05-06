@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "bedrock"
+material_id = 6
+display_name = "Bedrock"
+color_low = Color(0.12, 0.12, 0.14, 1)
+color_high = Color(0.18, 0.18, 0.20, 1)
+color_jitter = 0.05
+mining_time_seconds = 999.0
+allowed_tools = Array[String]([])
+yield_item_id = ""
+yield_quantity = 0
+fall_behavior = 0
+gravity_scale = 1.0
+damage_multiplier = 1.0

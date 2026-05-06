@@ -137,7 +137,22 @@ var _ps_played_label: Label
 var _coords_label: Label
 var _aim_label: Label
 var _world_time_label: Label
+var _terrain_scale_label: Label
 var _crosshair_root: Control
+
+# F7 cycles through these voxels-per-metre values for the Copper Isles
+# scale-test scene. Stored as (vox_per_metre, terrain_scale) pairs;
+# terrain_scale = 1 / vox_per_metre — keeping both pre-computed avoids
+# float-division noise in the comparison and read-back path.
+const F7_CYCLE: Array = [
+	{"vox_per_m": 6, "scale": 1.0 / 6.0},
+	{"vox_per_m": 8, "scale": 1.0 / 8.0},
+	{"vox_per_m": 10, "scale": 1.0 / 10.0},
+]
+# Index of the entry F7 will apply on its NEXT press. Advances after
+# every press so the cycle reads 6 → 8 → 10 → 6 → ... regardless of
+# whether F5 / F6 / F8 / F9 also fired in between.
+var _f7_next_index: int = 0
 
 enum DebugTab { COMMANDS, CONSOLE, PLAYER_STATE }
 const TAB_NAMES: Array[String] = ["COMMANDS", "CONSOLE", "PLAYER STATE"]
@@ -156,6 +171,7 @@ func _ready() -> void:
 	_build_coords_hud()
 	_build_aim_hud()
 	_build_world_time_hud()
+	_build_terrain_scale_hud()
 	_build_crosshair()
 	_root.visible = false
 
@@ -183,6 +199,11 @@ func _process(delta: float) -> void:
 		_world_time_label.visible = has_player
 		if has_player:
 			_update_world_time_label()
+	# Terrain-scale readout — visible only when the active scene owns
+	# a VoxelLodTerrain (the Copper Isles test scene + main world).
+	# `_update_terrain_scale_label` does its own present/absent check.
+	if _terrain_scale_label != null:
+		_update_terrain_scale_label()
 	_update_crosshair_visibility()
 
 	# DELETE ALL SAVES auto-disarm timer.
@@ -1159,6 +1180,69 @@ func _update_world_time_label() -> void:
 	_world_time_label.text = "%s   |   Played: %s" % [time_part, played_part]
 
 
+func _build_terrain_scale_hud() -> void:
+	# Top-centre readout of the live VoxelLodTerrain scale, shown only
+	# when a terrain exists in the active scene. Designed for the
+	# Copper Isles scale-test workflow — F7 cycles 6 → 8 → 10 vox/m
+	# and this label confirms which value is currently rendering.
+	#
+	# Anchored to the top-centre via a top-anchored Control wrapper
+	# so the label stays centred across viewport resizes. We can't
+	# anchor a Label directly because Label sizes itself to its text;
+	# we want the text centred regardless of length.
+	var wrapper := Control.new()
+	wrapper.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	wrapper.offset_top = 12
+	wrapper.offset_bottom = 50
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(wrapper)
+
+	_terrain_scale_label = Label.new()
+	_terrain_scale_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_terrain_scale_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_terrain_scale_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_terrain_scale_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_terrain_scale_label.add_theme_font_size_override("font_size", 22)
+	_terrain_scale_label.add_theme_color_override("font_color", Color(1.0, 0.93, 0.55, 0.95))
+	_terrain_scale_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	_terrain_scale_label.add_theme_constant_override("shadow_offset_x", 2)
+	_terrain_scale_label.add_theme_constant_override("shadow_offset_y", 2)
+	_terrain_scale_label.add_theme_constant_override("shadow_outline_size", 4)
+	_terrain_scale_label.text = ""
+	wrapper.add_child(_terrain_scale_label)
+
+
+func _update_terrain_scale_label() -> void:
+	# Walks the active scene for a VoxelLodTerrain, reads its uniform
+	# scale, converts to voxels-per-metre, and renders both. Hidden
+	# when no terrain is present (title screen, dialog scenes).
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		_terrain_scale_label.visible = false
+		return
+	var terrains: Array[Node] = []
+	_collect_voxel_terrains(scene_root, terrains)
+	if terrains.is_empty():
+		_terrain_scale_label.visible = false
+		return
+	var n3d := terrains[0] as Node3D
+	if n3d == null:
+		_terrain_scale_label.visible = false
+		return
+	_terrain_scale_label.visible = true
+	# Local var renamed from `scale` to dodge the CanvasLayer.scale
+	# property shadow warning. CanvasLayer (this autoload's base class)
+	# exposes a 2D scale Vector2 — different concept from the 3D voxel
+	# terrain's uniform basis scale, but Godot's lint catches the name
+	# collision and warns.
+	var terrain_scale: float = n3d.transform.basis.get_scale().x
+	# vox/m = 1 / scale. Tiny scale → many vox/m. Guard div-by-zero.
+	var vox_per_m: float = 0.0
+	if absf(terrain_scale) > 0.00001:
+		vox_per_m = 1.0 / terrain_scale
+	_terrain_scale_label.text = "TERRAIN SCALE — %.2f voxels/m   (transform.scale %.4f)" % [vox_per_m, terrain_scale]
+
+
 func _build_crosshair() -> void:
 	# Two thin ColorRects forming a + at exact screen center.
 	# Visibility is toggled per-frame in _process based on whether
@@ -1252,6 +1336,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					var next := (int(_current_tab) + 1) % 3
 					_show_tab(next as DebugTab)
 					get_viewport().set_input_as_handled()
+				# F7 cycles the Copper Isles scale-test through 6 → 8
+				# → 10 voxels/m. Routed through the active scene's
+				# apply_terrain_scale method when present (e.g.
+				# CopperIslesTestBootstrap) so the player gets
+				# re-snapped above the terrain after each change;
+				# falls back to direct transform mutation otherwise.
+				# Bound to F7 to avoid clashing with F1 (debug
+				# overlay) and F2 (freelook camera).
+			KEY_F7:
+				_cycle_f7_vox_per_m()
+				get_viewport().set_input_as_handled()
 
 
 # Manual click dispatch — same pattern as MainMenu / PauseMenu.
@@ -1448,3 +1543,60 @@ func _disarm_delete_saves() -> void:
 	_delete_saves_arm_remaining = 0.0
 	if _btn_delete_all != null:
 		_btn_delete_all.text = "  DELETE ALL SAVES"
+
+
+# =============================================================
+# TERRAIN SCALE HOTKEYS — Copper Isles iteration
+# =============================================================
+
+func _apply_terrain_scale_hotkey(new_scale: float, key_label: String) -> void:
+	# Sets a uniform scale on every VoxelLodTerrain in the current
+	# scene. Routes through the scene root's apply_terrain_scale
+	# method when present (CopperIslesTestBootstrap exposes it and
+	# also re-seeds water + re-snaps the player above the new highest
+	# peak). Falls back to raw transform mutation if the scene root
+	# doesn't have the helper — useful for testing the hotkeys in any
+	# scene that owns a VoxelLodTerrain, including the main World3D.
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		log_action("DEV: %s scale=%.3f ignored (no current scene)" % [key_label, new_scale])
+		return
+	if scene_root.has_method("apply_terrain_scale"):
+		scene_root.call("apply_terrain_scale", new_scale)
+		log_action("DEV: %s terrain scale → %.3f (via bootstrap)" % [key_label, new_scale])
+		return
+	# Fallback: walk the tree, scale every VoxelLodTerrain we find.
+	var terrains: Array[Node] = []
+	_collect_voxel_terrains(scene_root, terrains)
+	if terrains.is_empty():
+		log_action("DEV: %s scale=%.3f ignored (no VoxelLodTerrain in scene)" % [key_label, new_scale])
+		return
+	for t in terrains:
+		var n3d := t as Node3D
+		if n3d == null:
+			continue
+		var origin: Vector3 = n3d.transform.origin
+		n3d.transform = Transform3D(Basis().scaled(Vector3.ONE * new_scale), origin)
+	log_action("DEV: %s terrain scale → %.3f (%d terrain(s), no bootstrap)" % [
+		key_label, new_scale, terrains.size(),
+	])
+
+
+func _collect_voxel_terrains(node: Node, out: Array[Node]) -> void:
+	if node.get_class() == "VoxelLodTerrain" or node.get_class() == "VoxelTerrain":
+		out.append(node)
+	for child in node.get_children():
+		_collect_voxel_terrains(child, out)
+
+
+func _cycle_f7_vox_per_m() -> void:
+	# Advances through F7_CYCLE on each F7 press: 6 → 8 → 10 → 6 → ...
+	# The label at top-centre updates from the live terrain scale on
+	# the next _process tick, so the reading always matches what's
+	# rendered (no risk of label drift if the bootstrap clamps the
+	# scale or some other path mutates it).
+	var entry: Dictionary = F7_CYCLE[_f7_next_index]
+	var vox_per_m: int = int(entry.get("vox_per_m", 6))
+	var new_scale: float = float(entry.get("scale", 1.0 / 6.0))
+	_f7_next_index = (_f7_next_index + 1) % F7_CYCLE.size()
+	_apply_terrain_scale_hotkey(new_scale, "F7  (%d vox/m)" % vox_per_m)

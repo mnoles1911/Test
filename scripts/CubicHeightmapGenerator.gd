@@ -191,11 +191,17 @@ var _applying_preset: bool = false
 ## to 0.05 for uniform colour per height.
 @export_range(0.0, 0.5, 0.01) var color_jitter: float = 0.10
 
-## Reference voxel-Y for "ocean surface". Currently informational only
-## — actual water elevation lives on `OceanVolume.surface_y` in
-## `World3D.tscn` (default Y=8). Kept here for future generator-side
-## logic (e.g. forced sand colour at coastline).
-@export var sea_level_voxels: int = 0
+## Reference voxel-Y for "ocean surface" — also used as the upper bound
+## for generator water emission. Every column whose ground_y is below
+## this value gets water voxels written into CHANNEL_DATA from
+## ground_y+1 up through SEA_LEVEL_VOXELS. Columns above it stay dry.
+##
+## 72 voxels = world Y 12 m at 6 vox/m. The terrain noise centerline
+## sits at height_offset_voxels=60 (world Y=10), so a sea level of 72
+## puts ~60% of columns underwater and 40% above — clearly visible
+## ocean basins between landmasses, instead of the 50/50 split that
+## sea level=60 produced.
+const SEA_LEVEL_VOXELS: int = 72
 
 ## Colour of the LOWEST ground voxels (deep valleys, beach floor).
 ## LEGACY — used only as a fallback when the VoxelMaterialRegistry
@@ -240,11 +246,16 @@ var _applying_preset: bool = false
 @export_range(0, 12, 1) var dirt_layer_thickness_voxels: int = 3
 
 ## At or below this voxel-Y, the top layer of the column is sand
-## instead of grass. Roughly the OceanVolume.surface_y plus a
-## small margin to give beaches their characteristic strip above
-## the waterline. Default 7 ≈ 1 voxel above the test ocean's
-## surface_y of 8 (-1 below it for the tide line).
-@export var beach_y_threshold: int = 7
+## instead of grass. Sits just above SEA_LEVEL_VOXELS so a thin sand
+## strip forms at the natural coastline (where columns whose ground_y
+## is between sea level and this threshold show as exposed beach
+## above the waterline).
+##
+## 74 voxels = world Y 12.33 m, two voxels above SEA_LEVEL_VOXELS=72.
+## Earlier value of 7 was stale (carried over from the pre-refactor
+## OceanVolume at Y=8 in legacy voxel coords) and put sand entirely
+## below the new waterline — beaches were never visible.
+@export var beach_y_threshold: int = 74
 
 
 # =============================================================
@@ -262,8 +273,85 @@ var _cached_stone: VoxelMaterial = null
 var _cached_dirt: VoxelMaterial = null
 var _cached_grass: VoxelMaterial = null
 var _cached_sand: VoxelMaterial = null
+var _cached_bedrock: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 var _depth_logged: bool = false
+var _first_water_byte_logged: bool = false
+# Diagnostic — set true the first time the generator successfully
+# writes a water byte to CHANNEL_DATA5 in any chunk. The print fires
+# once and tells you (a) the generator IS being called for at least
+# one below-sea-level column, and (b) the column's water bytes are
+# in the buffer. If you never see this print, generation is the
+# bottleneck — investigate the channel-depth log line above and the
+# generator's emit_water_here gate.
+
+
+# =============================================================
+# NO-EDIT-ZONE WATER-GENERATION SUPPRESSION
+# =============================================================
+#
+# A snapshot of world-space AABBs of every NoEditZone whose
+# blocks_water_generation flag is true. Populated ONCE on the main
+# thread by World3DBootstrap (via set_no_edit_water_aabbs) before
+# the terrain begins streaming chunks.
+#
+# Worker threads then read this Array directly during _generate_block
+# — pure data, no SceneTree access, race-safe across threads. The
+# Array reference itself is set once on the main thread; readers see
+# either the empty default or the populated snapshot, never a
+# half-built state.
+#
+# Runtime-streamed NoEditZones are intentionally NOT picked up here.
+# See NoEditZoneRegistry.get_water_blocking_aabbs_snapshot for the
+# constraint and rationale.
+var _no_edit_water_aabbs: Array[AABB] = []
+
+
+func set_no_edit_water_aabbs(aabbs: Array[AABB]) -> void:
+	# Called by World3DBootstrap on the main thread after the snapshot
+	# is captured. Safe to call again at world reload.
+	_no_edit_water_aabbs = aabbs
+
+
+func _column_blocks_water_generation(world_x: float, world_z: float) -> bool:
+	# Worker-thread-safe AABB membership test. Walks the cached
+	# snapshot — pure math, no physics, no SceneTree.
+	# The Y axis is intentionally ignored: a NoEditZone defined as a
+	# Box around a settlement at sea level should suppress water for
+	# the whole column underneath it (otherwise water below the zone's
+	# Y would still flood). Use a Y range later if a use case appears.
+	if _no_edit_water_aabbs.is_empty():
+		return false
+	for aabb in _no_edit_water_aabbs:
+		var min_x: float = aabb.position.x
+		var min_z: float = aabb.position.z
+		var max_x: float = min_x + aabb.size.x
+		var max_z: float = min_z + aabb.size.z
+		if world_x >= min_x and world_x <= max_x \
+				and world_z >= min_z and world_z <= max_z:
+			return true
+	return false
+
+
+# =============================================================
+# WORLD FLOOR — bedrock layer at the bottom of the world
+# =============================================================
+
+## Y coordinate (in voxel units, 6 vox/m) of the bedrock floor. The
+## generator writes one solid layer of bedrock material at this Y.
+## VoxelEditManager rejects any player edit that would touch or
+## go below this Y, so the bedrock is unbreakable.
+##
+## Default -300 voxels = -50 m. With min natural terrain bottom at
+## ~-7 m (height_offset_voxels=60, half_range=100, so min_ground_y =
+## -100 + 60 = -40 vox = -6.67 m), the player has ~43 m of underground
+## exploration before hitting bedrock. Below the bedrock layer is
+## empty space (no voxels), so digging straight down stops cleanly.
+##
+## CRITICAL: keep this in sync with `VoxelEditManager.WORLD_FLOOR_VOXEL_Y`
+## — they must be the same value or the player will hit invisible
+## edit-rejection above the visible bedrock layer (or vice versa).
+const WORLD_FLOOR_VOXEL_Y: int = -300
 
 
 # =============================================================
@@ -341,7 +429,13 @@ func _get_used_channels_mask() -> int:
 	#
 	# Returning a bitmask of channels we write tells the engine which
 	# channels to set up before calling _generate_block.
-	return 1 << VoxelBuffer.CHANNEL_COLOR
+	#
+	# CHANNEL_DATA is declared because Phase 1+ of the Minecraft-style
+	# water rewrite stores per-voxel water bytes there. VoxelMesherCubes
+	# ignores any channel other than COLOR, so terrain rendering is
+	# unaffected — water voxels are invisible to the cube mesher and
+	# get their own transparent surfaces from WaterChunkMesher.
+	return (1 << VoxelBuffer.CHANNEL_COLOR) | (1 << VoxelBuffer.CHANNEL_DATA5)
 
 
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
@@ -366,8 +460,10 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if not _depth_logged:
 		_depth_logged = true
 		var dep_now: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_COLOR)
-		print("[Generator] CHANNEL_COLOR depth: %d (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
+		var dep_data: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_DATA5)
+		print("[Generator] CHANNEL_COLOR depth: %d  CHANNEL_DATA depth: %d  (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
 			dep_now,
+			dep_data,
 			VoxelBuffer.DEPTH_8_BIT,
 			VoxelBuffer.DEPTH_16_BIT,
 			VoxelBuffer.DEPTH_32_BIT,
@@ -387,8 +483,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var block_min_y: int = origin_in_voxels.y
 	var block_max_y: int = origin_in_voxels.y + (size.y * stride) - 1
 
-	if block_min_y > max_ground_y:
-		# Entire block is above terrain — leave as air (default 0).
+	if block_min_y > max_ground_y and block_min_y > SEA_LEVEL_VOXELS:
+		# Entire block is above terrain AND above sea level — leave as
+		# air (default 0). The sea-level check matters for blocks that
+		# float above terrain in a deep ocean basin: terrain ground_y
+		# may be below the block, but water (which exists from ground_y+1
+		# up to SEA_LEVEL_VOXELS) might still occupy the block. Skip the
+		# early-out unless BOTH terrain and water are absent.
 		_perf_record_block_done(t_start, lod, "above")
 		return
 
@@ -397,12 +498,40 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# VoxelMaterial references.)
 	_ensure_materials_cached()
 
+	# Below-the-world floor: the entire block is below the bedrock layer.
+	# Leave as default (air). The player can never dig down here because
+	# bedrock blocks them above.
+	if block_max_y < WORLD_FLOOR_VOXEL_Y:
+		_perf_record_block_done(t_start, lod, "below_floor")
+		return
+
 	if block_max_y < min_ground_y:
-		# Entire block is buried deep below terrain — fill solid with
-		# stone. Player only sees these voxels if they dig deep enough
-		# to expose them.
+		# Entire block is buried deep below terrain. Three sub-cases
+		# based on where the block sits relative to the world floor:
+		#   - fully above floor → all stone (existing fast path)
+		#   - straddles the floor → bedrock at the floor row, stone above,
+		#     air below (per-voxel write)
+		#   - fully below floor → already returned above
 		var stone_packed: int = _pack_for_material(_cached_stone, _cached_stone.color_low if _cached_stone != null else color_low)
-		out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
+		if block_min_y > WORLD_FLOOR_VOXEL_Y:
+			out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
+		else:
+			# Straddles the floor — per-voxel fill.
+			var bedrock_packed: int = stone_packed
+			if _cached_bedrock != null:
+				bedrock_packed = _pack_for_material(_cached_bedrock, _cached_bedrock.color_high)
+			for y_s in size.y:
+				var world_y_s: int = origin_in_voxels.y + y_s * stride
+				var fill_packed: int = 0
+				if world_y_s == WORLD_FLOOR_VOXEL_Y:
+					fill_packed = bedrock_packed
+				elif world_y_s > WORLD_FLOOR_VOXEL_Y:
+					fill_packed = stone_packed
+				else:
+					continue  # air below floor
+				for x_s in size.x:
+					for z_s in size.z:
+						out_buffer.set_voxel(fill_packed, x_s, y_s, z_s, VoxelBuffer.CHANNEL_COLOR)
 		_perf_record_block_done(t_start, lod, "deep")
 		return
 
@@ -461,6 +590,18 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		sand_hi = _cached_sand.color_high
 		sand_id = _cached_sand.material_id
 
+	# Bedrock is written at exactly world_y == WORLD_FLOOR_VOXEL_Y.
+	# Pre-pack the bedrock voxel value once per block so the floor row
+	# is a single bit-op + set_voxel call, not a full pack each time.
+	var bedrock_packed_v: int = 0
+	if _cached_bedrock != null:
+		var br_c: Color = _cached_bedrock.color_high
+		var br_r: int = clampi(int(round(br_c.r * 255.0)), 0, 255)
+		var br_g: int = clampi(int(round(br_c.g * 255.0)), 0, 255)
+		var br_b: int = clampi(int(round(br_c.b * 255.0)), 0, 255)
+		bedrock_packed_v = br_r | (br_g << 8) | (br_b << 16) \
+			| ((_cached_bedrock.material_id & 0xFF) << 24)
+
 	# Per-column thickness boundaries (read property once per block).
 	var grass_thick: int = grass_layer_thickness_voxels
 	var dirt_band_end: int = grass_thick + dirt_layer_thickness_voxels
@@ -488,6 +629,16 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# Cliff faces will read as flat per material band — slightly more
 	# uniform than before, but the LOD silhouette and material colour
 	# bands carry the visual.
+
+	# Water emission is LOD0-only. At LOD>0 the cube mesher renders
+	# coarser terrain but water doesn't have a coarse equivalent —
+	# averaging "ocean voxel" with stride 4 produces nothing useful.
+	# Distant water is covered by the horizon plane (Phase 5) instead.
+	var write_water: bool = (lod == 0)
+	# Pre-pack the canonical water source byte once per block so the
+	# inner loop is a single set_voxel call. SOURCE_BYTE = level 8 |
+	# source bit | tick 0 — see WaterByteCodec.gd for the layout.
+	var water_byte: int = WaterByteCodec.SOURCE_BYTE
 
 	# Per-column heightmap pass.
 	var half_range: float = height_range_voxels * 0.5
@@ -537,9 +688,39 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				top_hi = sand_hi
 				top_id = sand_id
 
+			# Decide once per column whether this column emits water.
+			# Three gates: LOD must be 0 (water is LOD0-only), the
+			# column's ground must dip below sea level (above-water
+			# columns are dry), and no NoEditZone with
+			# blocks_water_generation must cover this XZ.
+			var emit_water_here: bool = write_water \
+					and ground_y < SEA_LEVEL_VOXELS \
+					and not _column_blocks_water_generation(float(world_x), float(world_z))
+
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
 				if world_y > ground_y:
+					# Air above terrain. If this air voxel sits at or
+					# below sea level and the column emits water, write
+					# a water source byte into CHANNEL_DATA5. The cube
+					# mesher ignores DATA5, so this voxel still renders
+					# as air — the water mesher (Phase 2) emits the
+					# transparent surface from this byte.
+					if emit_water_here and world_y <= SEA_LEVEL_VOXELS:
+						out_buffer.set_voxel(water_byte, x, y, z, VoxelBuffer.CHANNEL_DATA5)
+						if not _first_water_byte_logged:
+							_first_water_byte_logged = true
+							print("[Generator] FIRST water byte written: world_voxel=(%d, %d, %d) ground_y=%d byte=0x%02X" % [
+								world_x, world_y, world_z, ground_y, water_byte,
+							])
+					continue
+				# World floor enforcement: anything below the bedrock
+				# layer is air (no voxels). The bedrock row itself
+				# writes a special unmineable voxel.
+				if world_y < WORLD_FLOOR_VOXEL_Y:
+					continue
+				if world_y == WORLD_FLOOR_VOXEL_Y and bedrock_packed_v != 0:
+					out_buffer.set_voxel(bedrock_packed_v, x, y, z, VoxelBuffer.CHANNEL_COLOR)
 					continue
 
 				# Pick band based on depth from this column's ground_y.
@@ -764,6 +945,7 @@ func _ensure_materials_cached() -> void:
 	_cached_dirt = ResourceLoader.load("res://assets/voxels/materials/dirt.tres") as VoxelMaterial
 	_cached_grass = ResourceLoader.load("res://assets/voxels/materials/grass.tres") as VoxelMaterial
 	_cached_sand = ResourceLoader.load("res://assets/voxels/materials/sand.tres") as VoxelMaterial
+	_cached_bedrock = ResourceLoader.load("res://assets/voxels/materials/bedrock.tres") as VoxelMaterial
 	# If any of the four .tres files is missing, the corresponding
 	# `_cached_*` will be null. _select_material_for_depth() already
 	# falls through to the next-best material, so missing files

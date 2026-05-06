@@ -101,11 +101,14 @@ extends Resource
 # =============================================================
 
 @export_range(0.0, 30.0, 0.1) var mining_time_seconds: float = 0.4
-# How long the player must hold attack to break ONE voxel of this
-# material with a tool that can affect it. Below this you've got the
-# tool but you haven't been swinging long enough.
+# Baseline swing time for the 2×2×2 (8-voxel) mining volume. The
+# actual swing time scales with the volume the player has selected
+# via the scroll wheel:
+#   1×1×1 (1 voxel)  → 1/8 of this value  (fast precision dig)
+#   2×2×2 (8 voxels) → exactly this value (baseline)
+#   3×3×3 (27 voxels) → 27/8 of this value (slow bulk dig)
 #
-# Suggested values:
+# Suggested baseline values (for the 2×2×2 carve):
 #   0.2  - sand, snow, leaves (super fast)
 #   0.3  - dirt, grass, clay
 #   0.6  - soft wood, soft stone
@@ -114,23 +117,27 @@ extends Resource
 #   3.0  - steel ore
 #   5.0  - adamant ore (lore says it's the hardest material)
 #
-# This is a per-voxel time, not a per-swing animation. Tool animation
-# pacing is separate (see swing_cooldown_seconds in EditToolHandler).
+# Tool animation pacing is separate (see swing_cooldown_seconds in
+# EditToolHandler — runs after each successful swing regardless of
+# carve volume).
 
 @export var allowed_tools: Array[String] = []
-# InventoryManager item_ids that can mine this material. If the
-# equipped tool isn't in this list, swinging at this material has no
-# effect (voxel doesn't break).
+# InventoryManager item_ids of the PREFERRED tools for this material.
+# Tools in the list mine at 1.0× the per-material baseline; tools NOT
+# in the list mine at `EditToolHandler.WRONG_TOOL_SPEED_MULTIPLIER`
+# (currently 3×). The list is no longer a hard gate — any manual tool
+# can mine any material, but mismatched tool/material pairs are slow.
 #
-# Empty array means "any tool works" — useful for soft materials that
-# can be dug with bare hands or for the placeholder slice where we
-# don't want to gate everything.
+# Empty array means "no tool can mine this." Bedrock uses this to
+# stay unbreakable. Don't use empty for soft / any-tool-works materials
+# any more — list the preferred tools explicitly so the speed
+# multiplier behaves predictably.
 #
 # Examples:
-#   ["iron_pickaxe", "stone_pickaxe"]  - rocks need a pick
-#   ["iron_shovel", "stone_shovel"]    - dirt/sand need a shovel
-#   ["iron_axe", "stone_axe"]          - wood needs an axe
-#   []                                  - no gating
+#   ["iron_pickaxe", "stone_pickaxe"]  - stone / ore — pick is best
+#   ["iron_shovel", "stone_shovel"]    - dirt / sand / clay — shovel
+#   ["iron_axe", "stone_axe"]          - wood / log — axe
+#   []                                  - unbreakable (bedrock)
 #
 # Tool tier gating (Common/Quality/Masterwork) is documented in
 # design/3D_VOXEL_MIGRATION.md lines 148-156. Adamant ore would
