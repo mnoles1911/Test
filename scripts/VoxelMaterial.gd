@@ -122,19 +122,22 @@ extends Resource
 # carve volume).
 
 @export var allowed_tools: Array[String] = []
-# InventoryManager item_ids that can mine this material. If the
-# equipped tool isn't in this list, swinging at this material has no
-# effect (voxel doesn't break).
+# InventoryManager item_ids of the PREFERRED tools for this material.
+# Tools in the list mine at 1.0× the per-material baseline; tools NOT
+# in the list mine at `EditToolHandler.WRONG_TOOL_SPEED_MULTIPLIER`
+# (currently 3×). The list is no longer a hard gate — any manual tool
+# can mine any material, but mismatched tool/material pairs are slow.
 #
-# Empty array means "any tool works" — useful for soft materials that
-# can be dug with bare hands or for the placeholder slice where we
-# don't want to gate everything.
+# Empty array means "no tool can mine this." Bedrock uses this to
+# stay unbreakable. Don't use empty for soft / any-tool-works materials
+# any more — list the preferred tools explicitly so the speed
+# multiplier behaves predictably.
 #
 # Examples:
-#   ["iron_pickaxe", "stone_pickaxe"]  - rocks need a pick
-#   ["iron_shovel", "stone_shovel"]    - dirt/sand need a shovel
-#   ["iron_axe", "stone_axe"]          - wood needs an axe
-#   []                                  - no gating
+#   ["iron_pickaxe", "stone_pickaxe"]  - stone / ore — pick is best
+#   ["iron_shovel", "stone_shovel"]    - dirt / sand / clay — shovel
+#   ["iron_axe", "stone_axe"]          - wood / log — axe
+#   []                                  - unbreakable (bedrock)
 #
 # Tool tier gating (Common/Quality/Masterwork) is documented in
 # design/3D_VOXEL_MIGRATION.md lines 148-156. Adamant ore would
