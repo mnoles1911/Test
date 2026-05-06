@@ -142,6 +142,15 @@ it keeps the system simple and rewards the intent of the swing
 - `scripts/EditToolHandler.gd` → `_tick_held_action` — runtime
   implementation. Volume multiplier applied as
   `mine_secs = material.mining_time_seconds * (N³) / 8.0`.
+- `scripts/EditToolHandler.gd` → `_compute_carve_box` and
+  `MiningAnchor` enum — the carve-box positioning helper that
+  handles both DEPTH_BIASED (default — bias the box into the
+  terrain along the surface normal so a 3×3×3 against a wall is 27
+  terrain voxels, no air slab) and CENTERED (symmetric box, aim
+  point in the middle).
+- `scripts/Settings.gd` → `mining_volume_anchor` field — player's
+  chosen anchor mode, set via the SETTINGS overlay's MINING ANCHOR
+  cycling button. Persisted in `user://settings.json`.
 - `scripts/VoxelMaterial.gd` — `mining_time_seconds` field with the
   per-material baseline.
 - `design/3D_VOXEL_MIGRATION.md` → "Voxel Material System" — how
