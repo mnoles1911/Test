@@ -39,6 +39,26 @@ extends Area3D
 # scene, etc. Default true means "settlements stay dry."
 
 
+@export var blocks_water_generation: bool = false
+# When true, the world generator skips writing ocean water voxels into
+# any column whose XZ falls inside this zone — even if the column's
+# ground_y is below sea level. Use for settlements that exist below
+# sea level by design (a sunken crypt, a Dwarven undersea hall) so
+# they generate dry instead of flooded.
+#
+# DEFAULT FALSE because the common case is "this NoEditZone is a
+# surface settlement above sea level; the water-gen check would be a
+# no-op anyway." Designers explicitly opt in for below-sea-level
+# protection.
+#
+# CONSTRAINT: zones with this flag must be present in the scene tree
+# at world load. Runtime-streamed zones (added after a chunk has
+# already generated) cannot retroactively un-flood that chunk —
+# generator output is final once written. See
+# design/3D_VOXEL_MIGRATION.md → "NoEditZones — The Opt-Out Model"
+# for the v1 authoring rule.
+
+
 func _ready() -> void:
 	# Auto-add to the group if the designer attached this script but
 	# forgot the group. Eliminates the most common authoring mistake.

@@ -163,6 +163,90 @@ func is_water_flow_blocked_at(world_pos: Vector3) -> bool:
 	return false
 
 
+func get_water_blocking_aabbs_snapshot() -> Array[AABB]:
+	# Walks the "no_edit_zone" group ON THE MAIN THREAD and returns
+	# the world-space AABBs of every zone that has
+	# blocks_water_generation=true. Bare Area3Ds without the
+	# NoEditZone.gd script default to FALSE (water generation is the
+	# opt-in case — see NoEditZone.gd for rationale).
+	#
+	# WHY THIS EXISTS: the world generator runs on Zylann's worker
+	# threads. Worker threads cannot touch the SceneTree (no
+	# get_node_or_null, no physics queries). They also cannot call this
+	# method directly — it walks the tree. World3DBootstrap calls this
+	# once at load on the main thread and pushes the result into the
+	# generator resource via set_no_edit_water_aabbs(). The generator
+	# then reads the snapshot from a plain var on its own resource,
+	# which IS safe across worker threads (idempotent reads).
+	#
+	# CONSEQUENCE: zones added to the scene at runtime (e.g. via
+	# EntityStreamer) are NOT in the snapshot and will not retroactively
+	# affect chunks that already generated. This is documented as a v1
+	# limitation — settlements that need to be dry below sea level must
+	# be in the scene tree at world load.
+	var snapshot: Array[AABB] = []
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return snapshot
+	for zone_node in tree.get_nodes_in_group("no_edit_zone"):
+		# Honour the opt-in flag — bare Area3Ds and zones with the flag
+		# off are skipped (water-generation default is "let the water in").
+		if not ("blocks_water_generation" in zone_node):
+			continue
+		if not (zone_node as Object).blocks_water_generation:
+			continue
+		var aabb := _world_aabb_of_area(zone_node as Area3D)
+		if aabb.size == Vector3.ZERO:
+			continue
+		snapshot.append(aabb)
+	return snapshot
+
+
+func _world_aabb_of_area(area: Area3D) -> AABB:
+	# Compute the world-space AABB of an Area3D by unioning the AABBs
+	# of every CollisionShape3D child whose shape exposes a get_debug_mesh
+	# (covers BoxShape3D, SphereShape3D, ConvexPolygonShape3D, etc.).
+	# Falls back to a zero AABB if no usable child is found — the
+	# caller drops zero-size AABBs.
+	if area == null:
+		return AABB()
+	var combined := AABB()
+	var first: bool = true
+	for child in area.get_children():
+		var shape_node := child as CollisionShape3D
+		if shape_node == null or shape_node.shape == null:
+			continue
+		# Each shape's debug mesh is in shape-local space. Apply the
+		# CollisionShape3D's global transform to get world-space verts,
+		# then take their min/max.
+		var debug_mesh: Mesh = shape_node.shape.get_debug_mesh()
+		if debug_mesh == null:
+			continue
+		var local_aabb: AABB = debug_mesh.get_aabb()
+		var xform: Transform3D = shape_node.global_transform
+		# Transform the 8 corners of the local AABB into world space and
+		# take the resulting AABB. AABB.transform isn't quite right for
+		# non-axis-aligned rotations — corner-by-corner is robust.
+		var corners: Array[Vector3] = [
+			local_aabb.position,
+			local_aabb.position + Vector3(local_aabb.size.x, 0, 0),
+			local_aabb.position + Vector3(0, local_aabb.size.y, 0),
+			local_aabb.position + Vector3(0, 0, local_aabb.size.z),
+			local_aabb.position + Vector3(local_aabb.size.x, local_aabb.size.y, 0),
+			local_aabb.position + Vector3(local_aabb.size.x, 0, local_aabb.size.z),
+			local_aabb.position + Vector3(0, local_aabb.size.y, local_aabb.size.z),
+			local_aabb.position + local_aabb.size,
+		]
+		for c in corners:
+			var w: Vector3 = xform * c
+			if first:
+				combined = AABB(w, Vector3.ZERO)
+				first = false
+			else:
+				combined = combined.expand(w)
+	return combined
+
+
 func _get_space_state() -> PhysicsDirectSpaceState3D:
 	# Grab the 3D physics space from the current scene's world.
 	# Returns null if no 3D viewport / world is active yet.

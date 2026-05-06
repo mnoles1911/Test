@@ -8,31 +8,37 @@ Water is a traversable terrain type in the open world. Rivers, lakes, coastal in
 
 ---
 
-## Voxel Water Architecture (canonical, 2026-05-05)
+## Voxel Water Architecture (canonical, 2026-05-06 — v14)
 
-Water lives in a `Dictionary<Vector3i, int>` of cells managed by the `WaterFlowManager` autoload, NOT in the voxel terrain's `CHANNEL_COLOR`. VoxelMesherCubes treats alpha-byte as binary opacity AND material-ID; per-voxel transparency is impossible without forking Zylann. The decoupled architecture sidesteps that constraint and adds dynamic flow.
+Water lives **per-voxel in `VoxelBuffer.CHANNEL_DATA5`**, one byte per voxel. (DATA0–4 are reserved by Zylann for TYPE/SDF/COLOR/INDICES/WEIGHTS; DATA5 is the first user-defined channel.) The encoding is canonicalised in `scripts/WaterByteCodec.gd`: `level (4 bits) | source_bit (1) | tick (3 bits)`. Air-water = byte 0. `VoxelMesherCubes` reads only `CHANNEL_COLOR` and ignores DATA5, so terrain rendering is unaffected — water voxels are invisible to the cube mesher and get their own transparent surface from `WaterChunkMesher`.
 
-**Two kinds of water source:**
-1. **Source REGIONS** — designer-placed AABBs (oceans, lakes). Stored as a small list, never materialized as cells. `is_position_in_water` AABB-tests against them. A 200×200 m ocean costs O(1) memory.
-2. **Per-cell sources** — single voxel marked is_source=true. Used for buckets, river headwaters, designer-placed pour points.
+This replaces the pre-v13 model that stored ocean as an AABB "source region" in `WaterFlowManager._source_regions`. The old model produced two bugs the new model removes by construction:
+- **Tunnel flooding:** a tunnel carved into a hill above sea level used to read as water (the AABB said yes; the workaround `_has_clear_vertical_path_to_surface` patched queries but not the flow tick). Now: the tunnel column was solid at gen time, no water bytes were written, no flooding possible.
+- **Wave plane through hills:** a single follow-player plane drew water across the visibility horizon ignoring terrain. Now: per-chunk greedy-rectangle meshing emits water surfaces only for columns that actually have water bytes; a single follow-player horizon plane covers the distant horizon at sea level Y.
 
-Both kinds count as `level=8` for the flow rules.
+**Generator emission rule** (`CubicHeightmapGenerator._generate_block`): for each column where `ground_y < SEA_LEVEL_VOXELS=72`, write `WaterByteCodec.SOURCE_BYTE` into `CHANNEL_DATA5` from `ground_y+1` up through `SEA_LEVEL_VOXELS`. Skip columns covered by a `NoEditZone` with `blocks_water_generation=true` (snapshot pushed to the generator on the main thread by `World3DBootstrap`; worker threads read from a thread-safe local Array). Water emission is LOD0-only — distant ocean is covered by the horizon plane, not by per-LOD water voxels.
+
+**Per-cell sources** — buckets, river headwaters, story-event flood boxes — go through `VoxelEditManager.queue_set_water_voxel(voxel_pos, byte)` or `queue_set_water_box(min, max, byte)`. Same async queue + NoEditZone gate as terrain edits, but writes DATA5 and emits `water_changed_at` (distinct from the COLOR-channel `edit_applied` signal so subscribers don't double-fire). The edit manager guards each `do_box` with `tool.is_area_editable(box)` and re-queues failed writes (up to 60 retries) so writes don't silently drop while the streamer catches up.
 
 **Flow tick** (every 15 physics frames, ~4 Hz, only inside ACTIVE_RADIUS_M=20m of the player):
-1. **Decay**: non-source cells whose `last_fed_tick` is older than the previous tick decrement their level. Level 0 → cell removed.
-2. **Gravity drop**: every air voxel with water directly above becomes a flow cell at MAX_LEVEL=8.
-3. **Lateral spread**: cells with level>1 push to 4 horizontal neighbors at level-1, gated on (a) neighbor's voxel-below is solid or water (gravity wins), (b) neighbor isn't blocked by a `NoEditZone.blocks_water_flow=true` zone.
+1. **Decay**: non-source flow cells whose `last_fed_tick` is older than the previous tick decrement their level. Level 0 → cell removed.
+2. **Gravity drop**: every air voxel with water (DATA5 byte > 0) directly above becomes a flow cell at MAX_LEVEL=8.
+3. **Lateral spread**: cells with level>1 push to 4 horizontal neighbours at level-1, gated on (a) neighbour's voxel-below is solid or water, (b) neighbour isn't blocked by a `NoEditZone.blocks_water_flow=true` zone.
 
-**Visuals:** `WaterChunkMesher` (child Node3D under WaterFlowManager autoload) walks the dictionary + source regions per chunk and emits a transparent surface mesh. Reuses the existing sine-sum vertex-displacement shader (`assets/shaders/water.gdshader`). Render-radius cull at 64m around the player; FIFO dirty queue drains 2 chunks/frame. v1 emits source-region top-planes only; per-cell partial-height surfaces deferred.
+The simulator pre-copies each chunk's DATA5 + COLOR + chunk-above-DATA5 buffers ONCE per chunk per tick, then walks the in-memory bytes for all decay/drop/spread checks. Replaces an earlier per-voxel `tool.get_voxel` pattern that cost ~324k tool calls/sec at 4 Hz × 27 chunks/edit. The simulator keeps an in-memory `_cells` dict for transient flow cells (level<8 cells produced by spread); sources and ocean live in DATA5.
+
+**Visuals:** `WaterChunkMesher` (child Node3D under `WaterFlowManager` autoload) reads DATA5 per chunk via `terrain.copy()`, finds the topmost-water voxel per (X, Z) column, groups columns by top-Y, and runs greedy 2D run-merge to produce as few quads as possible. Uniform-channel fast path: `VoxelBuffer.is_uniform` short-circuits the per-voxel scan for all-air or all-source chunks (the dominant case at sea level row). A fully-ocean chunk collapses to a single 16×16 quad. Coastline chunks split into a few rectangles. Render-radius cull at `MESH_RENDER_RADIUS_M=96 m` around the player; the per-frame build budget adapts to last frame's delta (16/frame at <18 ms, 1/frame at >50 ms) so the mesher yields to the terrain LOD streamer during initial load. Past the radius, a single follow-player horizon plane (CULL_BACK so it's invisible from below) at the configured sea level Y fills the visible distance — `render_priority=-1` on the horizon material so the chunked mesh wins z-fight wherever they overlap.
 
 **Player query API** (used by `Player3D._update_water_state` each physics frame):
-- `is_position_in_water(world_pos: Vector3) -> bool`
-- `get_water_level_at(world_pos: Vector3) -> int` (0–8)
-- `get_flow_velocity_at(world_pos: Vector3) -> Vector3` — derived from the level gradient in 4 horizontal neighbors. Capped at FLOW_MAX_SPEED=3 m/s. Inside source-region interiors the gradient is zero (every neighbor is also level 8) so oceans don't push; rivers feeding oceans naturally produce a downstream pulse at the level transition.
+- `is_position_in_water(world_pos: Vector3) -> bool` — single DATA5 byte read; `WaterByteCodec.is_water(byte)`.
+- `get_water_level_at(world_pos: Vector3) -> int` (0–8) — single DATA5 byte read; `WaterByteCodec.level_of(byte)`.
+- `get_flow_velocity_at(world_pos: Vector3) -> Vector3` — derived from the level gradient in 4 horizontal neighbours. Capped at FLOW_MAX_SPEED=3 m/s. Inside ocean interiors the gradient is zero (every neighbour is also level 8) so oceans don't push; rivers feeding oceans naturally produce a downstream pulse at the level transition.
 
-**Edit integration:** `WaterFlowManager._on_edit_applied` listens to `VoxelEditManager.edit_applied` and dirty-marks the edited chunk + 1-chunk neighborhood. Carving voxels under or beside water → those chunks' next flow tick discovers new air-below-water voxels and propagates flow into them. This is what makes "dig a hole near a river → river fills it" work.
+**Edit integration:** `WaterFlowManager._on_edit_applied` listens to `VoxelEditManager.edit_applied` (terrain COLOR edits) and dirty-marks the edited chunk + 1-chunk neighbourhood for the flow tick. `WaterChunkMesher` listens to `water_changed_at` (DATA5 edits) and rebuilds affected chunks' surface meshes. Together: carving voxels under or beside water → next flow tick discovers new air-below-water voxels and propagates flow into them; pouring a bucket → mesher rebuild shows the water immediately.
 
-**Save format:** per-cell sources persist in the GameState save under `water_sources` (Array of `{x, y, z}` dicts). Source regions are scene data and re-added by `World3DBootstrap` on each load. Flowing cells aren't persisted — they regenerate from sources within a few flow ticks of load. `WORLD_GENERATOR_VERSION=11` after this refactor; pre-v11 saves invalidate.
+**Save format:** water lives in the chunk SQLite stream alongside terrain edits via `VoxelStreamSQLite`. Nothing additional in the JSON save. `WORLD_GENERATOR_VERSION=14` after this refactor; pre-v14 saves are hard-rejected at load (the AABB-based ocean has no DATA5 equivalent and would read as fully dry).
+
+**NoEditZone constraint:** zones with `blocks_water_generation=true` must be present in the scene tree at world load. Runtime-streamed zones (added later by `EntityStreamer`) cannot retroactively dry already-generated chunks — generator output is final once written. Settlements that need to be dry below sea level must be in-scene at load.
 
 **Boujie Water Shader** (Godot Asset Library #2070) remains an optional future upgrade for reflections, shoreline foam, and single-draw LOD ring mesh.
 
