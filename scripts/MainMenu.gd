@@ -643,6 +643,7 @@ func _on_new_game() -> void:
 	# and flags from autoload memory.
 	print("[MainMenu] NEW GAME pressed")
 	GameState.reset_for_new_game()
+	_handoff_music_to_loading_screen()
 	# 10 s loading hold — gives Zylann's worker threads a window to
 	# stream the player's spawn-area chunks before the fade clears.
 	# Without this the player sees half-loaded blocky terrain for
@@ -703,6 +704,7 @@ func _on_load_select(filename: String) -> void:
 		print("[MainMenu]   scene unresolvable, falling back to WORLD_SCENE")
 		scene = WORLD_SCENE
 	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
+	_handoff_music_to_loading_screen()
 	# Same 10 s loading hold as NEW GAME — restored saves still need
 	# chunk streaming time, plus voxel deltas reading from SQLite.
 	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 10.0)
@@ -771,3 +773,21 @@ func _load_random_music() -> AudioStream:
 	var path: String = MENU_MUSIC_DIR + pick
 	print("[MainMenu] Loaded music track: %s" % pick)
 	return load(path) as AudioStream
+
+
+# Handoff: reparent our AudioStreamPlayer onto TransitionManager so it
+# survives change_scene_to_file (which frees this entire MainMenu
+# scene). TransitionManager fades and frees the player when the
+# loading screen ends. Safe to call when no music is playing.
+func _handoff_music_to_loading_screen() -> void:
+	if _music_player == null:
+		return
+	if not is_instance_valid(_music_player):
+		_music_player = null
+		return
+	var tm := get_node_or_null("/root/TransitionManager")
+	if tm == null or not tm.has_method("adopt_music"):
+		# No autoload available — let the scene change free the player normally.
+		return
+	tm.call("adopt_music", _music_player)
+	_music_player = null
