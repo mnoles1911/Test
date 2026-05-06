@@ -1,0 +1,35 @@
+[gd_resource type="VoxelGeneratorScript" load_steps=2 format=3]
+
+; Copper Isles heightmap-driven generator. Loads
+; assets/heightmaps/copper_isles_heightmap.exr at first chunk
+; generation, samples ground heights per voxel column, and writes
+; CHANNEL_COLOR (terrain) + CHANNEL_DATA5 (water source bytes).
+;
+; Defaults match the new 8K EXR spec:
+;   - 5000 m × 5000 m world (30000 × 30000 voxel extent at scale 1/6)
+;   - 2500 m peak elevation when gray = 1.0 (15000 voxels)
+;   - Sea level at gray = 0.0, voxel-Y = 0 (heightmap is land-only)
+;   - Out-of-bounds → deep ocean (40 m below sea level)
+;
+; Tune any field in the Inspector while the test scene runs.
+
+[ext_resource type="Script" path="res://scripts/CopperIslesHeightmapGenerator.gd" id="1_copper_gen"]
+
+[resource]
+script = ExtResource("1_copper_gen")
+heightmap_path = "res://assets/heightmaps/copper_isles_heightmap.exr"
+extent_x_voxels = 30000
+extent_z_voxels = 30000
+origin_x_voxels = -15000
+origin_z_voxels = -15000
+sea_level_voxels = 0
+sea_level_gray = 0.0
+elevation_above_at_white_voxels = 15000
+elevation_below_at_black_voxels = 240
+emit_water = true
+bilinear_sampling = true
+require_heightmap_in_editor_only = false
+grass_layer_thickness_voxels = 1
+dirt_layer_thickness_voxels = 3
+beach_y_threshold = 12
+early_out_margin_voxels = 4
