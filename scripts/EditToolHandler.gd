@@ -60,6 +60,20 @@
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
 
+const WRONG_TOOL_SPEED_MULTIPLIER: float = 3.0
+# Mining a material with a non-preferred tool takes 3× the baseline
+# swing time. The material's `allowed_tools` list now acts as the
+# PREFERRED-tools list — equipping a tool from the list mines at
+# 1.0× speed, equipping any other manual tool mines at this
+# multiplier instead. Empty `allowed_tools` (bedrock) still rejects
+# every tool — the multiplier doesn't apply, the swing is blocked
+# entirely. So in practice:
+#   pickaxe on stone     = 1.0× (preferred)
+#   shovel on stone      = 3.0× (mismatch — chip through slowly)
+#   shovel on dirt/grass = 1.0× (preferred)
+#   pickaxe on dirt/grass= 3.0× (mismatch — pickaxe is bad at soil)
+#   any tool on bedrock  = blocked (allowed_tools is empty)
+
 # Mining-volume anchor: how the carve box is positioned around the
 # voxel the player is aiming at. Player can flip between these in the
 # Settings overlay (which writes to Settings.mining_volume_anchor —
@@ -554,26 +568,32 @@ func _tick_held_action(delta: float) -> void:
 		_clear_target()
 		return
 
-	# --- Tool gating ---
-	if material.allowed_tools.size() > 0 and not (equipped_id in material.allowed_tools):
-		# Wrong tool â€” don't accumulate. Print a throttled
-		# diagnostic so the silent failure isn't mysterious.
+	# --- Tool gating + mismatch penalty ---
+	# Empty allowed_tools means "no tool can break this" (bedrock).
+	# That's the only hard gate now. For any non-empty list, the
+	# entries are the PREFERRED tools — equipping one of them mines
+	# at 1.0× speed; equipping any other manual tool still works but
+	# is slowed by WRONG_TOOL_SPEED_MULTIPLIER. So a shovel can chip
+	# through stone, just slowly; a pickaxe can break grass, just
+	# slowly.
+	if material.allowed_tools.size() == 0:
 		if should_log:
-			print("[EditTool] WRONG TOOL: %s cannot break %s (allowed: %s)" % [
-				equipped_id, material.id_string, material.allowed_tools,
-			])
+			print("[EditTool] UNMINEABLE: %s rejects all tools (e.g. bedrock)" % material.id_string)
 		_clear_target()
 		return
+	var tool_multiplier: float = 1.0
+	if not (equipped_id in material.allowed_tools):
+		tool_multiplier = WRONG_TOOL_SPEED_MULTIPLIER
 
 	# Mining-volume time scaling. The .tres `mining_time_seconds` is
-	# the swing time for the 2Ã—2Ã—2 (= 8 voxels) baseline. Scale
+	# the swing time for the 2×2×2 (= 8 voxels) baseline. Scale
 	# proportionally to the actual voxel count being carved:
-	#   N=1 (1 vox)  â†’ multiplier 1/8  = 0.125Ã— (fast precision dig)
-	#   N=2 (8 vox)  â†’ multiplier 8/8  = 1.0Ã—   (baseline, unchanged)
-	#   N=3 (27 vox) â†’ multiplier 27/8 â‰ˆ 3.375Ã— (slow bulk dig)
+	#   N=1 (1 vox)  → multiplier 1/8  = 0.125× (fast precision dig)
+	#   N=2 (8 vox)  → multiplier 8/8  = 1.0×   (baseline, unchanged)
+	#   N=3 (27 vox) → multiplier 27/8 ≈ 3.375× (slow bulk dig)
 	var voxel_count: int = carve_volume_size * carve_volume_size * carve_volume_size
 	var volume_multiplier: float = float(voxel_count) / 8.0
-	var mine_secs: float = material.mining_time_seconds * volume_multiplier
+	var mine_secs: float = material.mining_time_seconds * volume_multiplier * tool_multiplier
 
 	# --- Target stability + accumulate ---
 	# Compute the integer voxel grid coord and compare. If the

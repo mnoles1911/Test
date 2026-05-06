@@ -18,10 +18,17 @@ implements at runtime.
 ## The formula
 
 ```
-swing_seconds = material.mining_time_seconds × (N³ / 8)
+swing_seconds = material.mining_time_seconds × (N³ / 8) × tool_multiplier
 ```
 
-where `N` is the carve volume side length (1, 2, or 3).
+where `N` is the carve volume side length (1, 2, or 3) and
+`tool_multiplier` is **1.0** when the equipped manual tool is in the
+material's `allowed_tools` list (the "preferred tools"), or
+**`WRONG_TOOL_SPEED_MULTIPLIER` = 3.0** otherwise.
+
+Empty `allowed_tools` (bedrock) means **no tool can mine the
+material** — the swing is blocked entirely, the multiplier doesn't
+apply.
 
 The 2×2×2 carve is calibrated as the **baseline** (multiplier = 1.0)
 because it's the most common volume — fast enough to feel responsive,
@@ -42,19 +49,53 @@ The 2×2×2 default is what feels "normal."
 
 ## Current materials
 
-The pilot four (plus bedrock and water for completeness):
+The pilot four with their preferred-tool baselines (assumes the
+right tool is equipped — multiply each cell by 3 if the player
+swings with the wrong manual tool, see "Tool mismatch" below):
 
-| Material | `mining_time_seconds` | 1×1×1 | 2×2×2 | 3×3×3 | Tool gate |
+| Material | `mining_time_seconds` | 1×1×1 | 2×2×2 | 3×3×3 | Preferred tool |
 |---|---|---|---|---|---|
 | **sand** | 0.2 s | 0.025 s | 0.20 s | 0.675 s | iron_shovel |
 | **dirt** | 0.3 s | 0.038 s | 0.30 s | 1.013 s | iron_shovel |
 | **grass** | 0.3 s | 0.038 s | 0.30 s | 1.013 s | iron_shovel |
 | **stone** | 0.8 s | 0.100 s | 0.80 s | 2.700 s | iron_pickaxe |
-| **bedrock** | 999 s — | — | — | unbreakable (no `allowed_tools`) |
+| **bedrock** | — | — | — | — | unbreakable (`allowed_tools` empty) |
 | **water** | — | — | — | — | not minable (LIQUID; flow only) |
 
 `mining_time_seconds` lives in each `assets/voxels/materials/*.tres`
 file — designers tune values directly in the inspector.
+
+## Tool mismatch (3× penalty)
+
+`allowed_tools` is the list of PREFERRED manual tools for the
+material. Equipping a tool from the list mines at the per-material
+baseline (1.0× — table above). Equipping any other manual tool
+still works but mines at **3× the baseline**, simulating that the
+tool is wrong for the job:
+
+| Tool ↓ \ Material → | sand / dirt / grass | stone | bedrock |
+|---|---|---|---|
+| **iron_shovel** | 1.0× ✓ preferred | **3.0× slow** | blocked |
+| **iron_pickaxe** | **3.0× slow** | 1.0× ✓ preferred | blocked |
+| **iron_axe** | 3.0× slow | 3.0× slow | blocked |
+
+So a shovel on a stone wall takes ~2.4 s for a 2×2×2 swing
+(0.8 × 1.0 × 3 = 2.4) instead of the pickaxe's 0.8 s. A pickaxe
+on a grass tile takes ~0.9 s instead of the shovel's 0.3 s. The
+player can always make progress with whatever they have, just
+slowly when the match is wrong.
+
+Bedrock's `allowed_tools` is empty (`[]`), which is the canonical
+"no tool can mine" signal — the swing is blocked entirely, the
+multiplier doesn't apply.
+
+When wood materials (logs, planks) land, their preferred tool will
+be `iron_axe`. Until then, the axe is always wrong-tool against
+existing materials and incurs the 3× penalty in every direction.
+
+The penalty multiplier is `EditToolHandler.WRONG_TOOL_SPEED_MULTIPLIER`
+(currently 3.0). Tune there if the gradient feels too punishing or
+too generous.
 
 ---
 
