@@ -470,13 +470,13 @@ func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
 	if get_node_or_null("/root/InventoryManager"):
 		data["inventory"] = InventoryManager.get_save_data()
 
-	# Persist water source cells (player-placed buckets, river headwaters).
-	# Source REGIONS (oceans, lakes) are scene data and re-added by the
-	# world bootstrap on load — they don't go in the save. Flowing
-	# cells aren't saved either; they regenerate from sources within a
-	# few flow ticks after load.
-	if get_node_or_null("/root/WaterFlowManager"):
-		data["water_sources"] = WaterFlowManager.get_save_data()
+	# Phase 5+ (Minecraft-style ocean): water lives in CHANNEL_DATA and
+	# persists via the chunk SQLite stream alongside terrain edits, so
+	# nothing extra needs to go in the JSON save. Old saves (pre-v13)
+	# wrote a "water_sources" array; new saves omit it. Loaders ignore
+	# missing keys, so this is forward-compatible — and the v13
+	# WORLD_GENERATOR_VERSION rejection at load already guarantees no
+	# pre-v13 save can reach this code path.
 
 	# Weather state — current/target state, override timer. Compact dict;
 	# missing keys read as defaults on load so older saves stay valid.
@@ -591,14 +591,13 @@ func load_save_file(filename: String) -> bool:
 	if data.has("inventory") and get_node_or_null("/root/InventoryManager"):
 		InventoryManager.load_save_data(data["inventory"])
 
-	# Reset and reload water state. clear_persistent_state wipes any
-	# carry-over cells/regions from the previous session. The world
-	# scene's bootstrap re-adds source regions when it loads;
-	# WaterFlowManager.load_save_data here re-adds per-cell sources.
+	# Phase 5+: water lives in CHANNEL_DATA and reloads with the chunk
+	# SQLite. The only thing to clear here is the transient flow-cell
+	# dict so stale in-memory state from the previous session doesn't
+	# leak. The legacy "water_sources" load path is gone — pre-v13 saves
+	# can't reach this code (rejected by the version check above).
 	if get_node_or_null("/root/WaterFlowManager"):
 		WaterFlowManager.clear_persistent_state()
-		if data.has("water_sources"):
-			WaterFlowManager.load_save_data(data["water_sources"])
 
 	# Reset and reload weather state. clear_persistent_state hands the
 	# fresh world to the schedule-driven path; load_save_data restores
