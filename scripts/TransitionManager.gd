@@ -39,6 +39,45 @@ const FADE_DURATION: float = 0.4
 const HISTORY_MAX: int = 10
 # How many scenes to remember for go_back().
 
+# Loading-screen tuning. The hourglass progresses linearly across
+# `loading_seconds`. Background art rotates on its own timer, and the
+# dark-humor quip line rotates on yet another (faster) timer.
+const LOADING_BG_DIR: String = "res://assets/menu_backgrounds/"
+const LOADING_BG_ROTATE_S: float = 20.0   # swap to a new background every N seconds
+const LOADING_BG_FADE_S: float = 1.0      # crossfade duration when swapping
+const LOADING_QUIP_ROTATE_S: float = 2.5  # swap to a new quip every N seconds
+const LOADING_MUSIC_FADEOUT_S: float = 1.5
+
+# Thematic dark-humor loading lines. Add or rewrite freely — pulled at
+# random and shuffled so the player rarely sees the same opener twice
+# in a row.
+const LOADING_QUIPS: Array[String] = [
+	"Pillaging villages...",
+	"Organizing goblin bands...",
+	"Conjuring sorcerer spells...",
+	"Inviting pirates to the royal feast...",
+	"Sharpening dwarven axes...",
+	"Lighting the ash-throne's braziers...",
+	"Forging cursed blades...",
+	"Plucking arrows from corpses...",
+	"Counting the king's gold (twice)...",
+	"Polishing the executioner's block...",
+	"Whispering rumours in tavern corners...",
+	"Teaching wolves to read maps...",
+	"Reminding the Aelorin who they were...",
+	"Bargaining with the dwindling dead...",
+	"Stoking the volcano under Drûn-Khazad...",
+	"Rehearsing Roland's funeral oration...",
+	"Apologizing to the goats...",
+	"Bribing the night watch...",
+	"Translating goblin curses...",
+	"Salting the fields after harvest...",
+	"Drafting unfair trade agreements...",
+	"Misremembering the prophecy...",
+	"Pouring mead for the long-dead...",
+	"Stealing songs from minstrels...",
+]
+
 
 # =============================================================
 # STATE
@@ -62,9 +101,29 @@ var _fade_rect: ColorRect
 # into the open world (NEW GAME, LOAD GAME); regular door-to-door
 # scene swaps skip the loading screen entirely.
 var _loading_root: Control
+var _loading_bg_a: TextureRect           # crossfade pair A
+var _loading_bg_b: TextureRect           # crossfade pair B
+var _loading_bg_using_a: bool = true     # which of A/B currently shows
+var _loading_bg_textures: Array = []     # Texture2D list, shuffled
+var _loading_bg_index: int = 0
+var _loading_bg_timer: float = 0.0
+var _loading_tint: ColorRect             # darkening overlay above the bg
+
+var _loading_hourglass: LoadingHourglass
 var _loading_title_label: Label
-var _loading_dots_label: Label
-var _loading_dots_timer: float = 0.0
+var _loading_quip_label: Label
+var _loading_quip_timer: float = 0.0
+var _loading_quip_index: int = 0
+var _loading_quip_order: Array = []      # shuffled indices into LOADING_QUIPS
+
+var _loading_active: bool = false
+var _loading_total_seconds: float = 0.0
+var _loading_elapsed: float = 0.0
+
+# Music adopted from the previous scene (typically MainMenu) so it
+# keeps playing through the loading screen. Faded out and freed when
+# the loading screen ends.
+var _adopted_music: AudioStreamPlayer = null
 
 
 # =============================================================
@@ -89,47 +148,109 @@ func _ready() -> void:
 
 
 func _build_loading_screen() -> void:
-	# Stacked above the fade rect. Hidden by default; toggled by
-	# _show_loading_screen / _hide_loading_screen.
+	# All loading-screen UI is built once, here, then toggled visible
+	# by _show_loading_screen / _hide_loading_screen. Layered bottom-up:
+	#   1. _loading_root (fills viewport, ignores mouse)
+	#   2. _loading_bg_a / _loading_bg_b (rotating background art, crossfade pair)
+	#   3. _loading_tint (50% black tint for legibility — same as MainMenu)
+	#   4. Centred column: title, hourglass, quip label
 	_loading_root = Control.new()
 	_loading_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_loading_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_loading_root.visible = false
 	_canvas_layer.add_child(_loading_root)
 
-	# Centre column: title + animated dots.
+	# Background pair. Both fill the screen; we crossfade modulate.a
+	# between them when rotating. B starts transparent.
+	_loading_bg_a = _make_loading_bg()
+	_loading_root.add_child(_loading_bg_a)
+	_loading_bg_b = _make_loading_bg()
+	_loading_bg_b.modulate.a = 0.0
+	_loading_root.add_child(_loading_bg_b)
+
+	_loading_tint = ColorRect.new()
+	_loading_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_loading_tint.color = Color(0.0, 0.0, 0.0, 0.5)
+	_loading_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_loading_root.add_child(_loading_tint)
+
+	# Centre column.
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	vbox.size = Vector2(600, 100)
-	vbox.position = Vector2(-300, -50)
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.size = Vector2(600, 520)
+	vbox.position = Vector2(-300, -260)
+	vbox.add_theme_constant_override("separation", 24)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_loading_root.add_child(vbox)
 
 	_loading_title_label = Label.new()
-	_loading_title_label.text = "Loading..."
+	_loading_title_label.text = "Loading"
 	_loading_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_loading_title_label.add_theme_font_size_override("font_size", 36)
+	_loading_title_label.add_theme_font_size_override("font_size", 48)
 	_loading_title_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.85, 1.0))
 	vbox.add_child(_loading_title_label)
 
-	_loading_dots_label = Label.new()
-	_loading_dots_label.text = "Streaming voxel chunks"
-	_loading_dots_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_loading_dots_label.add_theme_font_size_override("font_size", 16)
-	_loading_dots_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1.0))
-	vbox.add_child(_loading_dots_label)
+	# Hourglass — fixed 240×320 area, centred horizontally inside its
+	# row by an HBoxContainer with two flexible spacers around it.
+	var hg_row := HBoxContainer.new()
+	hg_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	hg_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(hg_row)
+
+	_loading_hourglass = LoadingHourglass.new()
+	_loading_hourglass.custom_minimum_size = Vector2(240, 320)
+	hg_row.add_child(_loading_hourglass)
+
+	_loading_quip_label = Label.new()
+	_loading_quip_label.text = ""
+	_loading_quip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_quip_label.add_theme_font_size_override("font_size", 22)
+	_loading_quip_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72, 1.0))
+	_loading_quip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(_loading_quip_label)
+
+
+func _make_loading_bg() -> TextureRect:
+	# Helper for the crossfade pair — both children are identical
+	# except for their modulate alpha, which we tween at swap time.
+	# (Variable name avoids `tr`, which shadows Object.tr() — Godot
+	# emits a SHADOWED_VARIABLE_BASE_CLASS warning for that.)
+	var bg_rect := TextureRect.new()
+	bg_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return bg_rect
 
 
 func _process(delta: float) -> void:
-	# Animate the trailing dots on the loading-screen subtitle so
-	# the player sees a heartbeat while we wait. Cheap — one string
-	# write every ~0.5 s while the screen is visible, no-op otherwise.
-	if _loading_root != null and _loading_root.visible and _loading_dots_label != null:
-		_loading_dots_timer += delta
-		var dot_count: int = int(fmod(_loading_dots_timer * 2.0, 4.0))  # 0..3
-		var dots: String = ".".repeat(dot_count)
-		_loading_dots_label.text = "Streaming voxel chunks" + dots
+	# Loading-screen animation tick. No-op when the screen is hidden.
+	if not _loading_active:
+		return
+
+	_loading_elapsed += delta
+
+	# Hourglass progress maps elapsed → [0, 1]. Past 1.0 we just clamp
+	# (the screen will be hidden by the awaited timer in _do_transition).
+	var p: float = 0.0
+	if _loading_total_seconds > 0.0:
+		p = clamp(_loading_elapsed / _loading_total_seconds, 0.0, 1.0)
+	if _loading_hourglass != null:
+		_loading_hourglass.set_progress(p)
+
+	# Background rotation. First swap fires after LOADING_BG_ROTATE_S.
+	if _loading_bg_textures.size() > 1:
+		_loading_bg_timer += delta
+		if _loading_bg_timer >= LOADING_BG_ROTATE_S:
+			_loading_bg_timer = 0.0
+			_advance_loading_background()
+
+	# Quip rotation.
+	_loading_quip_timer += delta
+	if _loading_quip_timer >= LOADING_QUIP_ROTATE_S:
+		_loading_quip_timer = 0.0
+		_advance_loading_quip()
 
 
 # =============================================================
@@ -248,22 +369,175 @@ func _do_transition(scene_path: String, type: Type, loading_seconds: float = 0.0
 	# overlay shows on top, the destination scene streams in
 	# behind the curtain. Skipped when loading_seconds <= 0.
 	if loading_seconds > 0.0:
-		_show_loading_screen()
+		_show_loading_screen(loading_seconds)
 		await get_tree().create_timer(loading_seconds, true).timeout
 		_hide_loading_screen()
 
 	_fade_in(type)
 
 
-func _show_loading_screen() -> void:
-	if _loading_root != null:
-		_loading_root.visible = true
-		_loading_dots_timer = 0.0
+func _show_loading_screen(total_seconds: float) -> void:
+	if _loading_root == null:
+		return
+	# Reset all the rotating timers and pick fresh shuffles so the
+	# player isn't starting from the same image / quip every load.
+	_loading_total_seconds = max(total_seconds, 0.001)
+	_loading_elapsed = 0.0
+	_loading_bg_timer = 0.0
+	_loading_quip_timer = 0.0
+
+	_refresh_loading_backgrounds()
+	_refresh_loading_quips()
+	if _loading_hourglass != null:
+		_loading_hourglass.set_progress(0.0)
+
+	_loading_root.visible = true
+	_loading_active = true
 
 
 func _hide_loading_screen() -> void:
+	_loading_active = false
 	if _loading_root != null:
 		_loading_root.visible = false
+	# Whatever music we adopted from the previous scene fades out and
+	# is freed here. World scenes start their own ambient audio after
+	# the fade-in clears.
+	_stop_adopted_music()
+
+
+# Background rotation -----------------------------------------------
+
+func _refresh_loading_backgrounds() -> void:
+	# Re-scan the menu_backgrounds folder each time the screen opens
+	# so newly-dropped art shows up without a restart. Shuffles the
+	# list and picks index 0 as the starting image.
+	_loading_bg_textures = _scan_loading_background_textures()
+	_loading_bg_textures.shuffle()
+	_loading_bg_index = 0
+	_loading_bg_using_a = true
+
+	if _loading_bg_textures.is_empty():
+		# No art in the folder — show the dark fallback only.
+		_loading_bg_a.texture = null
+		_loading_bg_b.texture = null
+		_loading_bg_a.modulate.a = 0.0
+		_loading_bg_b.modulate.a = 0.0
+		return
+
+	_loading_bg_a.texture = _loading_bg_textures[0]
+	_loading_bg_a.modulate.a = 1.0
+	_loading_bg_b.texture = null
+	_loading_bg_b.modulate.a = 0.0
+
+
+func _advance_loading_background() -> void:
+	if _loading_bg_textures.size() <= 1:
+		return
+	_loading_bg_index = (_loading_bg_index + 1) % _loading_bg_textures.size()
+	var next_tex: Texture2D = _loading_bg_textures[_loading_bg_index]
+
+	# Crossfade: load `next_tex` into the inactive slot, then fade A↔B.
+	var fading_in: TextureRect = _loading_bg_b if _loading_bg_using_a else _loading_bg_a
+	var fading_out: TextureRect = _loading_bg_a if _loading_bg_using_a else _loading_bg_b
+	fading_in.texture = next_tex
+	fading_in.modulate.a = 0.0
+
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(fading_in, "modulate:a", 1.0, LOADING_BG_FADE_S)
+	tween.tween_property(fading_out, "modulate:a", 0.0, LOADING_BG_FADE_S)
+	_loading_bg_using_a = not _loading_bg_using_a
+
+
+func _scan_loading_background_textures() -> Array:
+	# Returns Array[Texture2D] from LOADING_BG_DIR. Same scanner shape
+	# as MainMenu._load_random_background, kept inline so this module
+	# has no hard dependency on MainMenu being loaded.
+	var out: Array = []
+	var dir := DirAccess.open(LOADING_BG_DIR)
+	if dir == null:
+		return out
+	dir.list_dir_begin()
+	var fname: String = dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir():
+			var lower: String = fname.to_lower()
+			if lower.ends_with(".png") \
+				or lower.ends_with(".jpg") \
+				or lower.ends_with(".jpeg") \
+				or lower.ends_with(".webp"):
+				var tex: Texture2D = load(LOADING_BG_DIR + fname) as Texture2D
+				if tex != null:
+					out.append(tex)
+		fname = dir.get_next()
+	dir.list_dir_end()
+	return out
+
+
+# Quip rotation ------------------------------------------------------
+
+func _refresh_loading_quips() -> void:
+	# Build a freshly-shuffled order so the player rarely sees the same
+	# opener twice. Index 0 is the first line shown.
+	_loading_quip_order.clear()
+	for i in range(LOADING_QUIPS.size()):
+		_loading_quip_order.append(i)
+	_loading_quip_order.shuffle()
+	_loading_quip_index = 0
+	if _loading_quip_label != null and not _loading_quip_order.is_empty():
+		_loading_quip_label.text = LOADING_QUIPS[_loading_quip_order[0]]
+
+
+func _advance_loading_quip() -> void:
+	if _loading_quip_order.is_empty() or _loading_quip_label == null:
+		return
+	_loading_quip_index = (_loading_quip_index + 1) % _loading_quip_order.size()
+	_loading_quip_label.text = LOADING_QUIPS[_loading_quip_order[_loading_quip_index]]
+
+
+# Music adoption -----------------------------------------------------
+
+func adopt_music(player: AudioStreamPlayer) -> void:
+	# Called by MainMenu just before it triggers a loading-screen
+	# transition. We reparent the AudioStreamPlayer onto this autoload
+	# so it survives the change_scene_to_file() that frees MainMenu.
+	# When the loading screen ends, _stop_adopted_music fades it out
+	# and frees it.
+	#
+	# AudioStreamPlayer stops when it leaves the scene tree, so we
+	# capture the current playback position and resume from it after
+	# reparenting — the audible result is one almost-imperceptible blip.
+	if player == null:
+		return
+	# If we somehow still hold one from a previous run, drop it cleanly
+	# before adopting the new one.
+	if _adopted_music != null and is_instance_valid(_adopted_music):
+		_adopted_music.queue_free()
+		_adopted_music = null
+
+	var was_playing: bool = player.playing
+	var pos: float = player.get_playback_position() if was_playing else 0.0
+
+	var parent: Node = player.get_parent()
+	if parent != null:
+		parent.remove_child(player)
+	add_child(player)
+
+	if was_playing:
+		player.play(pos)
+
+	_adopted_music = player
+
+
+func _stop_adopted_music() -> void:
+	if _adopted_music == null or not is_instance_valid(_adopted_music):
+		_adopted_music = null
+		return
+	# Capture into a local so the closure doesn't see a null-by-then var.
+	var player: AudioStreamPlayer = _adopted_music
+	_adopted_music = null
+	var tween := create_tween()
+	tween.tween_property(player, "volume_db", -40.0, LOADING_MUSIC_FADEOUT_S)
+	tween.tween_callback(player.queue_free)
 
 
 func _fade_in(type: Type = Type.FADE_BLACK) -> void:

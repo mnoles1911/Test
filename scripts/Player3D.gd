@@ -203,6 +203,15 @@ var is_flying: bool = false
 # times normal walk speed. Toggled via the F1 debug overlay's
 # TOGGLE FLY MODE command (see DebugOverlay.gd).
 
+var _spawn_freeze: bool = false
+# When true, _physics_process skips ALL motion (gravity, input, water).
+# Set briefly during scene load while we wait for VoxelLodTerrain
+# chunks to stream in below the player — without this, a saved Y
+# position is immediately pulled into the void by gravity because
+# the voxel floor under the saved location may not have generated
+# its collision mesh yet. World3DBootstrap.gd flips this off once a
+# downward raycast confirms ground exists.
+
 const FLY_SPEED_MULT: float = 10.0
 # Multiplier on walk speed while flying. 10x means ~50 m/s — fast
 # enough to cross the test world in seconds, slow enough that the
@@ -285,6 +294,16 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
+	# --- Spawn freeze short-circuit ---
+	# While the world is still streaming chunks under the player's
+	# saved/spawn position, do nothing — no gravity, no input. This
+	# prevents the player falling through unloaded voxels during the
+	# loading screen. World3DBootstrap clears the flag once it's
+	# confirmed terrain exists below us.
+	if _spawn_freeze:
+		velocity = Vector3.ZERO
+		return
+
 	# --- Fly mode short-circuit ---
 	# Debug-only flight that ignores gravity, water, and the
 	# voxel-terrain collision floor. Movement direction comes from

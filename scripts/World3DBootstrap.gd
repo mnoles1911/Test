@@ -354,6 +354,65 @@ func _apply_saved_player_position() -> void:
 	# player body's rotation.y in standard mode, so this also gets
 	# the camera looking the same way Roland was looking at save.
 	player.rotation.y = GameState.player_rotation_y
+	if "velocity" in player:
+		player.velocity = Vector3.ZERO
 	print("[World3D] Restored player position to %s, rotation_y=%.2f rad" % [
 		GameState.player_position, GameState.player_rotation_y
 	])
+
+	# Freeze physics until terrain has streamed in below the saved
+	# position. Without this freeze, gravity pulls Roland straight
+	# through unloaded chunks — by the time voxel collision arrives,
+	# he's hundreds of metres below the world. _wait_for_ground_under_player
+	# raycasts every 0.2 s; once it finds floor, it unfreezes the player
+	# (who then settles onto the actual surface in a frame or two).
+	if "_spawn_freeze" in player:
+		player.set("_spawn_freeze", true)
+	_wait_for_ground_under_player()
+
+
+func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
+	# Casts a short ray downward from the player to confirm a voxel
+	# collider exists below. While terrain is still streaming, the ray
+	# misses and we retry every 0.2 s (× 25 = 5 s budget). Once it
+	# hits, we clear the spawn-freeze flag and let normal physics run.
+	#
+	# We don't snap the player to the hit — the saved position is the
+	# ground truth (the player WAS standing somewhere when they saved).
+	# The natural settle from "saved Y" to "actual collider Y" is
+	# usually a fraction of a metre and physics handles it cleanly.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+
+	# Ray spans from 1 m above the player down 100 m. 1 m up gives the
+	# capsule centre clearance so we don't start inside the player's
+	# own collider; 100 m down covers any plausible drop including
+	# tall caves and surface-to-ocean-floor distances.
+	var origin: Vector3 = player.global_position + Vector3(0, 1.0, 0)
+	var dest: Vector3 = player.global_position + Vector3(0, -100.0, 0)
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(origin, dest)
+	params.exclude = [player.get_rid()]
+	var hit: Dictionary = space.intersect_ray(params)
+
+	if hit.is_empty():
+		if retries_remaining <= 0:
+			# Out of retries — unfreeze anyway so the player isn't
+			# permanently stuck. Better to fall through the void with
+			# gravity than to be locked in place forever.
+			print("[World3D] Saved-position ground check timed out; unfreezing player.")
+			if "_spawn_freeze" in player:
+				player.set("_spawn_freeze", false)
+			return
+		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
+		timer.timeout.connect(_wait_for_ground_under_player.bind(retries_remaining - 1))
+		return
+
+	# Ground confirmed. Unfreeze and let physics take it from here.
+	if "_spawn_freeze" in player:
+		player.set("_spawn_freeze", false)
+	print("[World3D] Saved-position ground confirmed at Y=%.2f; unfreezing player." % hit["position"].y)
