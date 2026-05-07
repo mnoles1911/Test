@@ -31,6 +31,9 @@ Epic fantasy with grounded emotional stakes — LOTR scale, single-protagonist i
 - Game state: Autoload singleton (GameState.gd) tracks all persistent data (unchanged)
 - Scene transitions: TransitionManager autoload, fade-to-black/white/cut (unchanged)
 
+## Active work tracker
+`DESIGNER_TODO.md` (repo root) is the running TODO list — read it first when picking up work. It tracks outstanding manual editor setup, asset pickups, and per-milestone follow-ups. Update it as tasks complete or new ones land.
+
 ## Folder structure
 - /scenes — all .tscn files
 - /scripts — all .gd files
