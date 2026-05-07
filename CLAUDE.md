@@ -90,6 +90,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock for a new character, manifest schema changes |
 | design/FACTION_SYSTEM.md | Factions added/removed, disposition triggers tuned, lockout thresholds change |
 | design/QUEST_SYSTEM.md | New quest patterns, resolution outcomes, or timed-event rules added |
+| design/MINI_GAMES.md | New mini-game added, or mechanics / stakes / skill integration revised |
 | design/INPUT_AND_CONTROLS.md | New Input Map action added (must also update DESIGNER_TODO.md Section 1) |
 | design/NPC_SYSTEM.md | NPC tier rules, schedule mechanics, or WorldClock integration changes |
 | design/LOCKPICKING.md | Lock tiers, pick types, or skill-tier hold-timer values change |
@@ -159,6 +160,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/FACTION_SYSTEM.md — six Game One factions, disposition scale, rival effects, lockouts, Game Three seeding
 - design/QUEST_SYSTEM.md — situation-based quests, multi-resolution outcomes, timed events, authoring guidelines
 - design/ECONOMY_AND_VENDORS.md — lean economy, vendor types with named vendors, faction price modifiers, haggling
+- design/MINI_GAMES.md — all skill-based activities: smithing forge phase, fishing, Bones (dice), The Fold (cards), axe throwing, archery, herbalism, arm wrestling, sculpture contest; each covers visuals, loop, skill integration, and stakes
 
 **Art and pipeline:**
 - design/ART_DIRECTION.md — palette, location visual identity, architecture by region, shaders
