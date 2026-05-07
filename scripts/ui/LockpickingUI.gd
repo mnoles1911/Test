@@ -126,6 +126,15 @@ var _pin_flash_anim: AnimatedSprite2D  # pin-set confirmation flash (optional ar
 var _unlock_anim:    AnimatedSprite2D  # lock-open animation (optional art)
 var _false_stall_anim: AnimatedSprite2D # false-pin stall loop (optional art)
 
+# Audio players. Streams are loaded from res://assets/audio/lockpicking/*.ogg
+# in _build_audio(). Missing files fail silently — overlay still works mute.
+var _sfx_sweep:     AudioStreamPlayer  # looping; modulated by sweep velocity
+var _sfx_resonance: AudioStreamPlayer  # looping; pitch+vol track real-pin intensity
+var _sfx_false:     AudioStreamPlayer  # looping; plays on false-pin resonance
+var _sfx_pin_set:   AudioStreamPlayer  # one-shot
+var _sfx_snap:      AudioStreamPlayer  # one-shot
+var _sfx_open:      AudioStreamPlayer  # one-shot
+
 # Reference to the pin icon labels so we can colour them as pins set.
 var _pin_icons: Array[Label] = []
 
@@ -198,6 +207,7 @@ func open(lock_data: LockData) -> void:
 func close() -> void:
 	# Clean up: remove from scene tree after emitting the signal.
 	_is_open = false
+	_stop_all_loops()
 	hide()
 	lock_closed.emit()
 	# Give one frame for signal receivers before freeing.
@@ -331,6 +341,49 @@ func _process(delta: float) -> void:
 	if bar_fill_sb:
 		bar_fill_sb.bg_color = Color("#b8302a") if stall_color else Color("#f0c14b")
 
+	# ── Update audio loops ────────────────────────────────────────────────
+	_update_audio_loops()
+
+
+func _update_audio_loops() -> void:
+	# Sweep scrape: gain rides sweep velocity. Plays only while moving.
+	var sweep_norm: float = clampf(absf(_sweep_vel_deg) / ROTATE_SPEED_DEG, 0.0, 1.0)
+	if _sfx_sweep.stream:
+		if sweep_norm > 0.05:
+			if not _sfx_sweep.playing:
+				_sfx_sweep.play()
+			_sfx_sweep.volume_db = lerpf(-30.0, -6.0, sweep_norm)
+		elif _sfx_sweep.playing:
+			_sfx_sweep.stop()
+
+	# Real-pin resonance tone: pitch + volume scale with intensity.
+	# Only plays when intensity > 0 AND we're on a real pin (not false).
+	var on_real_pin: bool = _resonance_intensity > 0.0 and not _on_false_pin
+	if _sfx_resonance.stream:
+		if on_real_pin:
+			if not _sfx_resonance.playing:
+				_sfx_resonance.play()
+			_sfx_resonance.volume_db   = lerpf(-24.0, -4.0, _resonance_intensity)
+			_sfx_resonance.pitch_scale = lerpf(0.85, 1.25, _resonance_intensity)
+		elif _sfx_resonance.playing:
+			_sfx_resonance.stop()
+
+	# False-pin hum: hollow rattle while detecting a false resonance.
+	var on_false: bool = _resonance_intensity > 0.0 and _on_false_pin
+	if _sfx_false.stream:
+		if on_false:
+			if not _sfx_false.playing:
+				_sfx_false.play()
+			_sfx_false.volume_db = lerpf(-22.0, -8.0, _resonance_intensity)
+		elif _sfx_false.playing:
+			_sfx_false.stop()
+
+
+func _stop_all_loops() -> void:
+	if _sfx_sweep and _sfx_sweep.playing:     _sfx_sweep.stop()
+	if _sfx_resonance and _sfx_resonance.playing: _sfx_resonance.stop()
+	if _sfx_false and _sfx_false.playing:     _sfx_false.stop()
+
 
 # ─── RESONANCE ─────────────────────────────────────────────────────────────
 
@@ -377,6 +430,9 @@ func _set_pin() -> void:
 	_hint_label.text = "Pin set!" if _pins_set < _lock_data.pin_count \
 	                   else ""
 
+	if _sfx_pin_set and _sfx_pin_set.stream:
+		_sfx_pin_set.play()
+
 	if _pins_set >= _lock_data.pin_count:
 		_on_unlocked()
 
@@ -401,6 +457,10 @@ func _on_unlocked() -> void:
 	_status_label.text = "✓ Lock opened"
 	_status_label.modulate = TIER_COLORS[_lock_data.tier]
 
+	_stop_all_loops()
+	if _sfx_open and _sfx_open.stream:
+		_sfx_open.play()
+
 	lock_opened.emit(lock_id)
 
 	# Short delay so the player can see the success feedback.
@@ -416,6 +476,10 @@ var _snap_count: int = 0
 func _snap_pick() -> void:
 	InventoryManager.remove_item(_pick_type, 1)
 	_snap_count += 1
+
+	_stop_all_loops()
+	if _sfx_snap and _sfx_snap.stream:
+		_sfx_snap.play()
 
 	DebugOverlay.log_action(
 		"Lockpick — SNAP at %.0f° (%s, %s pick)" % [
@@ -685,6 +749,47 @@ func _build_ui() -> void:
 	_pin_flash_anim  = _make_anim_sprite("pin_flash_anim")
 	_unlock_anim     = _make_anim_sprite("unlock_anim")
 	_false_stall_anim = _make_anim_sprite("false_stall_anim")
+
+	_build_audio()
+
+
+func _build_audio() -> void:
+	# Loads the six lockpicking SFX from res://assets/audio/lockpicking/.
+	# If a file is missing, that one player just stays silent — no crash.
+	const BASE_PATH: String = "res://assets/audio/lockpicking/"
+
+	_sfx_sweep     = _make_audio_player("sfx_sweep",     BASE_PATH + "lock_sweep_loop.ogg",     "SFX", -8.0)
+	_sfx_resonance = _make_audio_player("sfx_resonance", BASE_PATH + "lock_resonance_tone.ogg", "SFX", -6.0)
+	_sfx_false     = _make_audio_player("sfx_false",     BASE_PATH + "lock_false_hum.ogg",      "SFX", -8.0)
+	_sfx_pin_set   = _make_audio_player("sfx_pin_set",   BASE_PATH + "lock_pin_set.ogg",        "SFX",  0.0)
+	_sfx_snap      = _make_audio_player("sfx_snap",      BASE_PATH + "lock_pick_snap.ogg",      "SFX",  0.0)
+	_sfx_open      = _make_audio_player("sfx_open",      BASE_PATH + "lock_open.ogg",           "SFX",  0.0)
+
+	# Mark streams as looping where the .ogg import didn't already.
+	_force_loop(_sfx_sweep)
+	_force_loop(_sfx_resonance)
+	_force_loop(_sfx_false)
+
+
+func _make_audio_player(node_name: String, stream_path: String,
+                        bus: String, volume_db: float) -> AudioStreamPlayer:
+	var p := AudioStreamPlayer.new()
+	p.name = node_name
+	p.bus  = bus if AudioServer.get_bus_index(bus) >= 0 else "Master"
+	p.volume_db = volume_db
+	if ResourceLoader.exists(stream_path):
+		p.stream = load(stream_path) as AudioStream
+	add_child(p)
+	return p
+
+
+func _force_loop(p: AudioStreamPlayer) -> void:
+	# OggVorbis streams expose a `loop` property; set it true so the
+	# sweep / resonance / false hum loop without per-finished-callback chaining.
+	if p == null or p.stream == null:
+		return
+	if "loop" in p.stream:
+		p.stream.loop = true
 
 
 func _make_anim_sprite(node_name: String) -> AnimatedSprite2D:
