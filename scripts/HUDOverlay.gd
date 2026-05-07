@@ -21,6 +21,35 @@ extends CanvasLayer
 
 
 # =============================================================
+# PERFORMANCE DIAGNOSTIC (frame-spike aggregator + engine stats)
+# =============================================================
+
+const PERF_DIAG: bool = true
+# Master toggle for the per-second diag print added 2026-05-07. When
+# true, _perf_diag_tick aggregates frame spikes and engine-wide stats
+# into one summary line per second instead of the old per-frame
+# [FRAME SPIKE] flood. Flip false once the streaming/collision
+# investigation lands.
+
+const PERF_DIAG_SPIKE_MS: float = 50.0
+# Frame-time threshold (ms) above which a frame counts as a "spike"
+# in the per-second tally.
+
+var _perf_spike_count: int = 0
+var _perf_spike_max_ms: float = 0.0
+var _perf_window_start_msec: int = 0
+
+# Per-autoload work attribution. Each autoload wraps its _process /
+# _physics_process with Time.get_ticks_usec() and calls profile_record(
+# label, usec). _perf_diag_tick dumps the top 3 buckets every second
+# and resets, so the PERF line shows which scripts ate the spike.
+# Replaces the proc=/phys= TIME_PROCESS columns, which turned out to
+# track per-frame snapshot timings — useful as a sanity check but not
+# attributable to specific scripts.
+var _profile_buckets: Dictionary = {}
+
+
+# =============================================================
 # NODE REFERENCES (set in _build_ui, read in _process every frame)
 # =============================================================
 
@@ -983,20 +1012,27 @@ func _process(delta: float) -> void:
 		_hide_all_chrome()
 		return
 
-	# DIAGNOSTIC — log when a single frame exceeds 50 ms so we have a
-	# timeline anchor for correlating with the [SPIKE _apply_edit] /
-	# [SPIKE _process_bubble] / [SPIKE drain] prints in Output. If
-	# this fires WITHOUT any subsystem-spike line, the time is going
-	# somewhere we haven't instrumented (Zylann mesh upload, GPU
-	# compile, scene-tree work, etc.).
-	if delta > 0.050:
-		print("[FRAME SPIKE] delta=%d ms" % int(round(delta * 1000.0)))
-
-	# (FPS / worst-ms readout moved to DebugOverlay's top-right HUD
-	# on 2026-05-06 — see DebugOverlay._build_fps_hud / _update_fps_label.
-	# The FRAME SPIKE print above remains here because it's a generic
-	# diagnostic that benefits from being attached to the player-facing
-	# overlay's tick rather than the dev-only one.)
+	# DIAGNOSTIC — aggregate frame spikes over a 1-second window and
+	# emit ONE summary line per second along with engine-wide stats.
+	# Previous impl printed per-frame whenever delta > 50 ms; at sub-10
+	# FPS that fired hundreds of times/sec and each print to Godot's
+	# Output panel costs 0.5–2 ms, contributing to the very stutter it
+	# was trying to measure. Aggregating gives us per-second visibility
+	# without the feedback loop.
+	#
+	# Stats included in the summary:
+	#   spikes  — count of frames with delta > 50 ms in the last second
+	#   worst   — peak frame time (ms) in the last second
+	#   draws   — Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME (last frame)
+	#   prims   — Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME (last frame)
+	#   bodies  — Performance.PHYSICS_3D_ACTIVE_OBJECTS
+	#   nodes   — Performance.OBJECT_NODE_COUNT
+	# Read these to triangulate the dominant cost: high `draws` means
+	# rendering, high `bodies` means physics/collision rebuild, high
+	# `nodes` means scene-tree churn. Flip PERF_DIAG to false once the
+	# investigation lands.
+	if PERF_DIAG:
+		_perf_diag_tick(delta)
 
 	# Quick-slot number-key dispatch. Polls the four input actions
 	# directly each frame; on just_pressed we equip that slot's bound
@@ -1212,3 +1248,73 @@ func _find_player() -> Node:
 	var players := get_tree().get_nodes_in_group("player")
 	_cached_player = players[0] if not players.is_empty() else null
 	return _cached_player
+
+
+# =============================================================
+# PERFORMANCE DIAGNOSTIC IMPLEMENTATION
+# =============================================================
+
+func profile_record(label: String, usec: int) -> void:
+	# Called by other autoloads to report time spent in their _process /
+	# _physics_process. Accumulates per second; _perf_diag_tick clears.
+	_profile_buckets[label] = _profile_buckets.get(label, 0) + usec
+
+
+func _perf_diag_tick(delta: float) -> void:
+	# Per-frame: tally spikes. Per-second: emit one summary line with
+	# spike count, worst frame, and engine-wide load indicators so the
+	# user can correlate the cost with rendering / physics / scene-tree
+	# pressure WITHOUT spamming Output every spike (see PERF_DIAG block
+	# at top of file for rationale).
+	var ms: float = delta * 1000.0
+	if ms > PERF_DIAG_SPIKE_MS:
+		_perf_spike_count += 1
+		if ms > _perf_spike_max_ms:
+			_perf_spike_max_ms = ms
+
+	var now_msec: int = Time.get_ticks_msec()
+	if _perf_window_start_msec == 0:
+		_perf_window_start_msec = now_msec
+		return
+	if now_msec - _perf_window_start_msec < 1000:
+		return
+
+	# Window closed — emit summary and reset. Skip the print if nothing
+	# eventful happened (zero spikes AND steady FPS) so an idle main
+	# menu doesn't flood the log.
+	var fps: int = Engine.get_frames_per_second()
+	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var orphans: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var vram_mb: int = int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / (1024 * 1024))
+
+	# Build the per-autoload "top contributors" string. Sort buckets
+	# by accumulated usec descending and emit the top 3 in ms. Anything
+	# below 1 ms is dropped — too noisy to print every second.
+	var top_str: String = ""
+	if not _profile_buckets.is_empty():
+		var entries: Array = []
+		for k in _profile_buckets.keys():
+			entries.append([k, _profile_buckets[k]])
+		entries.sort_custom(func(a, b): return a[1] > b[1])
+		var parts: Array = []
+		for i in range(mini(3, entries.size())):
+			var bucket_ms: int = int(entries[i][1] / 1000)
+			if bucket_ms < 1:
+				continue
+			parts.append("%s=%d" % [entries[i][0], bucket_ms])
+		if not parts.is_empty():
+			top_str = " | top: " + " ".join(parts)
+		_profile_buckets.clear()
+
+	if _perf_spike_count > 0 or fps < 50:
+		print("[PERF] fps=%d spikes=%d worst=%d ms%s | draws=%d prims=%d nodes=%d orphans=%d vram=%d MB" % [
+			fps, _perf_spike_count, int(round(_perf_spike_max_ms)),
+			top_str,
+			draws, prims, nodes, orphans, vram_mb,
+		])
+
+	_perf_spike_count = 0
+	_perf_spike_max_ms = 0.0
+	_perf_window_start_msec = now_msec

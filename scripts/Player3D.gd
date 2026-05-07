@@ -220,15 +220,20 @@ const FLY_SPEED_MULT: float = 10.0
 # enough to cross the test world in seconds, slow enough that the
 # camera can keep up.
 
-const SPAWN_POSITION: Vector3 = Vector3(1100.0, 545.0, -4.0)
+const SPAWN_POSITION: Vector3 = Vector3(0.0, 300.0, 0.0)
 # Single hardcoded spawn point used in two places:
 #   1. CopperIslesTestBootstrap reads this when placing the player on
 #      scene load (no more separate spawn_override_pos export).
 #   2. toggle_fly_mode() teleports here on BOTH on and off so toggling
 #      fly mode while underground / mid-air pops the player back to a
 #      safe vista point instead of falling through terrain.
-# Currently set for the Copper Isles mountain-vista test. Change in
-# one place, both call sites pick it up.
+#
+# (0, 300, 0) places the player at the dead centre of the Copper Isles
+# heightmap (which is centred on world origin), 300 m above sea level
+# (sea is at Y=120, peaks reach ~910 m). Centred so the player is
+# always inside the baked area regardless of which preset bake ran
+# (1 km / 2 km / 5 km — all centred on origin).
+# Change in one place, both call sites pick it up.
 
 # Precomputed from mass — calculated once in _ready().
 # Call _recalculate_movement_stats() if mass changes at runtime.
@@ -303,6 +308,16 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	# get_node_or_null guard for the case Player3D runs outside the main
+	# game (e.g. test harness without the autoload registered).
+	var _t0_prof: int = Time.get_ticks_usec()
+	_physics_process_inner(delta)
+	if get_node_or_null("/root/HUDOverlay"):
+		HUDOverlay.profile_record("Player3D_phys", Time.get_ticks_usec() - _t0_prof)
+
+
+func _physics_process_inner(delta: float) -> void:
 	# --- Spawn freeze short-circuit ---
 	# While the world is still streaming chunks under the player's
 	# saved/spawn position, do nothing — no gravity, no input. This

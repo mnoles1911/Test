@@ -172,6 +172,13 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	var _t0_prof: int = Time.get_ticks_usec()
+	_physics_process_inner()
+	HUDOverlay.profile_record("WaterFlowManager", Time.get_ticks_usec() - _t0_prof)
+
+
+func _physics_process_inner() -> void:
 	# Flow tick at TICK_INTERVAL_FRAMES (~4 Hz). Cheap when no chunks
 	# are dirty — drains _dirty_chunks dictionary and ticks the counter.
 	_frames_since_tick += 1
@@ -201,13 +208,17 @@ func set_player_position(world_pos: Vector3) -> void:
 		# active radius. Cells that froze when the player walked away
 		# get re-dirtied so monotone decay + propagation resume. O(cells)
 		# scan per chunk transition — acceptable for sparse cell maps,
-		# revisit if _cells routinely holds 10k+ entries.
-		for cell_pos in _cells.keys():
-			var c: Vector3i = _voxel_to_chunk(cell_pos)
-			if _dirty_chunks.has(c):
-				continue
-			if _chunk_in_active_radius(c):
-				_dirty_chunks[c] = true
+		# revisit if _cells routinely holds 10k+ entries. Guarded by
+		# is_empty() so the common no-flow-cells case (Copper Isles, Mira
+		# pre-edit) doesn't pay the dictionary iteration setup cost on
+		# every chunk crossing.
+		if not _cells.is_empty():
+			for cell_pos in _cells.keys():
+				var c: Vector3i = _voxel_to_chunk(cell_pos)
+				if _dirty_chunks.has(c):
+					continue
+				if _chunk_in_active_radius(c):
+					_dirty_chunks[c] = true
 
 
 func is_position_in_water(world_pos: Vector3) -> bool:
@@ -330,11 +341,18 @@ func set_horizon_plane_y(world_y: float) -> void:
 	# Configure the world-space Y for the distant-water horizon plane.
 	# Called by World3DBootstrap (or any scene-specific bootstrap) so
 	# the value can match that scene's generator SEA_LEVEL_VOXELS.
-	# WaterChunkMesher consults the new value on its next follow-player
-	# update — no explicit rebuild is needed for a tiny Y shift, but
-	# call _rebuild_horizon_plane() if the mesher needs to re-spawn
-	# (e.g. plane size change).
+	#
+	# Triggers a rebuild on the chunk mesher rather than waiting for
+	# the per-frame follow-player update. Earlier we relied on the
+	# follow-player path to reposition the plane, but that only fires
+	# after the player actually moves more than FOLLOW_UPDATE_EPSILON_M
+	# — in fly mode with no input the plane stayed at the build-time
+	# default (Y=10) and ended up buried below the seabed in scenes
+	# whose sea level is much higher (e.g. Copper Isles at Y=120).
+	# Explicit rebuild closes the gap.
 	_horizon_plane_y = world_y
+	if _chunk_mesher != null and _chunk_mesher.has_method("_rebuild_horizon_plane"):
+		_chunk_mesher.call("_rebuild_horizon_plane")
 
 
 func get_horizon_plane_y() -> float:

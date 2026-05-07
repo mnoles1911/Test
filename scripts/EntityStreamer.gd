@@ -30,9 +30,12 @@ extends Node3D
 # matches what VoxelLodTerrain uses by default. Don't change this without
 # also updating the terrain node — they need to agree.
 
-@export var print_chunk_changes: bool = true
-# Toggle off if Output panel spam gets annoying. Useful while debugging
-# streaming behaviour, less useful once you trust the system.
+@export var print_chunk_changes: bool = false
+# Toggle on if you want to see chunk-transition events in the Output
+# panel while debugging streaming. Defaults OFF (changed 2026-05-07)
+# because at fly speed the player crosses ~19 chunks/second and each
+# print() to Godot's Output panel can cost 0.5–2 ms — visible as
+# steady frame-time noise during movement.
 
 @export var player_node_path: NodePath
 # Drag the player (or any Node3D you want to track) into this slot in the

@@ -336,6 +336,13 @@ func _snapshot_blend_origins() -> void:
 
 
 func _process(delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	var _t0_prof: int = Time.get_ticks_usec()
+	_process_inner(delta)
+	HUDOverlay.profile_record("WeatherManager", Time.get_ticks_usec() - _t0_prof)
+
+
+func _process_inner(delta: float) -> void:
 	# Advance the transition tween. _transition_progress tracks how far
 	# we've moved from the previous state's profile values toward the
 	# target state's profile values.

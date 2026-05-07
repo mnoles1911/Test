@@ -418,6 +418,48 @@ bmp[index] = value
 my_dict[key] = bmp
 ```
 
+**Some Zylann `VoxelLodTerrain` properties are INT — verify with read-back:**
+```gdscript
+# WRONG — collision_update_delay is INT in this Zylann build. set()
+# silently truncates 0.1 to 0; every chunk stream-in/out then fires
+# an immediate main-thread collision rebuild → 100+ ms frame spikes.
+terrain.set("collision_update_delay", 0.1)
+
+# RIGHT — pass integer milliseconds. Always read back to confirm
+# Zylann actually stored the value (some properties also clamp
+# silently — `mesh_block_size = 32` was clamped to 16 in some scenes
+# until verified via the dump).
+terrain.set("collision_update_delay", 100)
+print("actual=%s" % terrain.get("collision_update_delay"))
+```
+This is a generic gotcha: when configuring `VoxelLodTerrain` properties
+programmatically, always read the value back. The bootstrap scripts
+(`World3DBootstrap.gd`, `CopperIslesTestBootstrap.gd`, `WorldBakeController.gd`)
+print readback values as a matter of policy.
+
+**Per-autoload performance attribution via `HUDOverlay.profile_record`:**
+```gdscript
+# When you need to know which script is eating frame time, wrap the
+# autoload's _process / _physics_process body in a renamed _inner
+# function and time around it. HUDOverlay accumulates per-second and
+# the [PERF] line dumps the top 3 contributors. Pattern handles early
+# returns naturally (the inner can `return` anywhere; the outer wrapper
+# always records the elapsed time).
+func _process(delta: float) -> void:
+    var _t0 := Time.get_ticks_usec()
+    _process_inner(delta)
+    HUDOverlay.profile_record("AutoloadName", Time.get_ticks_usec() - _t0)
+
+func _process_inner(delta: float) -> void:
+    # original body, unchanged
+    ...
+```
+Wrappers add ~1 µs per call. Flip `HUDOverlay.PERF_DIAG` to `false` to
+silence the per-second print without removing the wrappers. Note:
+`Performance.TIME_PROCESS` / `TIME_PHYSICS_PROCESS` are per-frame
+snapshots, NOT script attribution — they correlate with `worst_ms` but
+don't tell you which autoload is slow.
+
 ---
 
 ## Critical scene hierarchies

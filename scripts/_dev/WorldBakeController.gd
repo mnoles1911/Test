@@ -33,28 +33,26 @@ extends Node3D
 ## wants the ocean to be ocean.
 @export var scan_land_only_for_speed: bool = false
 
-# Walker tile size in WORLD METRES. The critical constraint is LOD0
-# coverage at the runtime's chosen `lod_distance`:
+# Walker tile size in WORLD METRES. Sized for LOD0 coverage at the
+# runtime's lod_distance:
 #
 #   LOD0 radius (m world) = lod_distance / 6     (terrain.scale = 1/6)
 #   For full corner-to-corner coverage on an axis-aligned grid:
 #     S × √2 / 2 ≤ R   →   S ≤ R × √2
 #
-#   lod_distance = 128  →  R = 21 m  →  S ≤ 30 m
-#   lod_distance = 384  →  R = 64 m  →  S ≤ 90 m
-#   lod_distance = 768  →  R = 128 m →  S ≤ 180 m   (CURRENT)
+#   lod_distance = 128  →  R = 21 m  →  S ≤ 30 m   (CURRENT)
 #
-# We're tuned for runtime lod_distance=768 (matches CopperIslesTest
-# .tscn). 180 m walker step gives full LOD0 cache coverage with
-# corner safety margin.
+# Zylann caps lod_distance at 128 (verified via the probe button),
+# so this is the only working value pair. Earlier we set
+# TILE_SIZE_M=180 sized for an imaginary lod_distance=768 — caused
+# 95% LOD0 cache misses because the real LOD0 was only 21 m.
 #
 # Bake time scales as (1/S)²:
-#   1 km² @ 180 m → 6² ≈ 40 tiles → ~3 min @ 4 s/tile
-#   5 km² @ 180 m → 28² ≈ 800 tiles → ~50 min
-# Roughly 36× fewer tiles than the old 30 m walker. If you ever
-# tighten lod_distance back down to 128 for whatever reason, drop
-# this back to 30 to maintain LOD0 coverage.
-const TILE_SIZE_M: float = 180.0
+#   1 km² @ 30 m → 33² ≈ 1089 tiles → ~75 min @ 4 s/tile
+#   5 km² @ 30 m → 167² ≈ 28000 tiles → ~31 hours overnight
+# To shorten bakes, drop voxel resolution (3 vox/m would give R=43m
+# and let TILE_SIZE_M go to ~60 → 9× fewer tiles).
+const TILE_SIZE_M: float = 30.0
 
 # Wait time at each viewer position (seconds) for Zylann to stream
 # everything within view_distance and persist it via
@@ -112,6 +110,7 @@ var _current_tile_xz: Vector2 = Vector2.ZERO
 var _ui_root: CanvasLayer
 var _btn_diagnostics: Button
 var _btn_bake_1km: Button
+var _btn_bake_2km: Button
 var _btn_bake_5km: Button
 var _btn_pause: Button
 var _btn_cancel: Button
@@ -148,13 +147,18 @@ func _ready() -> void:
 # has been observed silently reverting .tscn properties to "defaults"
 # on save, producing baked DBs the runtime can't read. Set once here
 # at startup; takes effect before the first viewer placement.
-const REQUIRED_LOD_COUNT: int = 8
-# 768 vox = 128 m world LOD0 radius at 6 vox/m. MUST match the
-# runtime scene's lod_distance — chunks are keyed by absolute LOD
-# level in SQLite, so a mismatch produces a fully cached cache the
-# runtime can't read.
-const REQUIRED_LOD_DISTANCE: float = 768.0
-const REQUIRED_LOD_FADE_DURATION: float = 0.5
+const REQUIRED_LOD_COUNT: int = 9
+const REQUIRED_LOD_DISTANCE: float = 128.0
+const REQUIRED_SECONDARY_LOD_DISTANCE: float = 128.0
+const REQUIRED_LOD_FADE_DURATION: float = 1.0
+const REQUIRED_STREAMING_SYSTEM: int = 1   # 1 = CLIPBOX, 0 = LEGACY_OCTREE
+# All MUST match CopperIslesTestBootstrap.REQUIRED_*. lod_distance
+# capped at 128 by Zylann (probe-verified). lod_count=9 covers LODs
+# out to LOD8 (~5.5 km world at lod_distance=128). Trimmed 2026-05-07
+# from 14 — the upper shells sat outside view_distance permanently
+# and only added bookkeeping cost. Zylann MAX_LOD is 24, well within.
+# Lowering only affects future bakes; existing baselines remain
+# readable (Zylann ignores LOD slots above the active lod_count).
 
 
 func _configure_terrain() -> void:
@@ -172,7 +176,9 @@ func _configure_terrain() -> void:
 	if "threaded_update_enabled" in terrain:
 		terrain.set("threaded_update_enabled", true)
 	if "collision_update_delay" in terrain:
-		terrain.set("collision_update_delay", 0.1)
+		# Property is INT in this Zylann build; 0.1 truncates to 0.
+		# 100 = ~100 ms batching window for collision-shape rebuilds.
+		terrain.set("collision_update_delay", 100)
 
 	# Belt-and-suspenders LOD enforcement. Override the .tscn values in
 	# case Godot editor's normalisation stripped them. Print the before/
@@ -184,9 +190,13 @@ func _enforce_lod_config(terrain: Object) -> void:
 	var fields: Array = [
 		["lod_count", REQUIRED_LOD_COUNT],
 		["lod_distance", REQUIRED_LOD_DISTANCE],
+		["secondary_lod_distance", REQUIRED_SECONDARY_LOD_DISTANCE],
 		["lod_fade_duration", REQUIRED_LOD_FADE_DURATION],
+		["streaming_system", REQUIRED_STREAMING_SYSTEM],
 		["cache_generated_blocks", true],
 	]
+	var changes_made: int = 0
+	var clamps_detected: int = 0
 	for f in fields:
 		var key: String = f[0]
 		var want = f[1]
@@ -195,9 +205,31 @@ func _enforce_lod_config(terrain: Object) -> void:
 			continue
 		var before = terrain.get(key)
 		if before == want:
+			# Already correct — silent success.
 			continue
 		terrain.set(key, want)
-		print("[Bake] enforced terrain.%s: %s → %s" % [key, before, want])
+		# Verify the set actually took. Zylann silently CLAMPS some
+		# properties (e.g., lod_distance has a hard max at 128). If
+		# the after-value differs from `want`, the cache-contract is
+		# effectively whatever Zylann allowed.
+		var after = terrain.get(key)
+		changes_made += 1
+		if after != want:
+			clamps_detected += 1
+			push_error("[Bake] CLAMP DETECTED on terrain.%s: asked %s, got %s (Zylann silently capped)" % [
+				key, want, after,
+			])
+		print("[Bake] enforced terrain.%s: %s → %s (actual after set: %s)" % [
+			key, before, want, after,
+		])
+	# Always emit a one-line summary so the developer gets visible
+	# confirmation the enforcement ran, even when no drift was found.
+	if changes_made == 0:
+		print("[Bake] LOD config already aligned — all %d required properties match. No enforcement needed." % fields.size())
+	elif clamps_detected > 0:
+		print("[Bake] LOD config enforcement: %d changes, %d CLAMPS — see [CLAMP DETECTED] lines above." % [changes_made, clamps_detected])
+	else:
+		print("[Bake] LOD config enforcement: %d changes applied successfully, no clamps." % changes_made)
 
 
 func _configure_voxel_format(terrain: Object) -> void:
@@ -254,11 +286,15 @@ func _build_ui() -> void:
 	_btn_diagnostics.pressed.connect(_on_run_diagnostics)
 	vbox.add_child(_btn_diagnostics)
 
-	_btn_bake_1km = _make_button("2a. Bake 1 km central  (validation; ~2-5 min)")
+	_btn_bake_1km = _make_button("2a. Bake 1 km central  (validation; ~75 min)")
 	_btn_bake_1km.pressed.connect(_on_bake_1km)
 	vbox.add_child(_btn_bake_1km)
 
-	_btn_bake_5km = _make_button("2b. Bake full 5 km  (~30-90 min)")
+	_btn_bake_2km = _make_button("2b. Bake 2 km central  (working dev bake; ~5 hr)")
+	_btn_bake_2km.pressed.connect(_on_bake_2km)
+	vbox.add_child(_btn_bake_2km)
+
+	_btn_bake_5km = _make_button("2c. Bake full 5 km  (overnight; ~31 hr / ~9 hr land-only+2s)")
 	_btn_bake_5km.pressed.connect(_on_bake_5km)
 	vbox.add_child(_btn_bake_5km)
 
@@ -324,6 +360,13 @@ func _build_ui() -> void:
 	_diag_text.scroll_fit_content_height = false
 	_diag_text.placeholder_text = "(Click Run Diagnostics)"
 	vbox.add_child(_diag_text)
+
+	# Lod-distance probe — sweeps a range of values and reports what
+	# Zylann actually accepts. Diagnoses the silent-clamp problem
+	# without re-baking. Result tells us what TILE_SIZE_M to use.
+	var btn_probe_lod: Button = _make_button("Probe lod_distance accepted range")
+	btn_probe_lod.pressed.connect(_on_probe_lod_distance)
+	vbox.add_child(btn_probe_lod)
 
 	# Refresh timer for live counters during a bake.
 	var refresh := Timer.new()
@@ -486,14 +529,26 @@ func _on_run_diagnostics() -> void:
 # =============================================================
 
 func _on_bake_1km() -> void:
-	# 1 km × 1 km centred on world (0, 0). With the heightmap centred
-	# on origin, this catches the central island ("Caer Aelynd" per
-	# the spec) plus immediate neighbours.
+	# Quick validation pass — 1 km × 1 km centred on world (0, 0).
+	# Useful for sanity-checking config changes before committing to
+	# longer bakes.
 	_start_bake(Vector2(-500, -500), Vector2(500, 500))
 
 
+func _on_bake_2km() -> void:
+	# 2 km × 2 km centred on world (0, 0). The "real" working bake
+	# for active dev — covers the central archipelago islands the
+	# player spawns in (Player3D.SPAWN_POSITION = (0, 300, 0)) plus
+	# enough surroundings to fly a few hundred metres in any
+	# direction without hitting uncached territory.
+	# At 30 m walker + 4 s/tile + ~4400 tiles ≈ ~5 hours.
+	_start_bake(Vector2(-1000, -1000), Vector2(1000, 1000))
+
+
 func _on_bake_5km() -> void:
-	# Full 5 km × 5 km. Matches the heightmap's exact extent.
+	# Full 5 km × 5 km. Matches the heightmap's exact extent. Long
+	# bake (~31 hours at default settings; ~9 hours with land-only
+	# + 2 s wait). Run overnight or over a weekend.
 	_start_bake(Vector2(-2500, -2500), Vector2(2500, 2500))
 
 
@@ -718,6 +773,41 @@ func _on_cancel_pressed() -> void:
 	_set_status("Cancel requested — finishing current tile...")
 
 
+func _on_probe_lod_distance() -> void:
+	# Try a sweep of lod_distance values and report what each one
+	# actually settles at after the property setter runs. Zylann
+	# silently clamps lod_distance — this tells us the real ceiling
+	# so we can pick an appropriate value (and matching walker tile
+	# spacing) rather than guessing.
+	#
+	# Reads back via terrain.get(key) immediately after the set so
+	# we capture any setter-clamping the engine does. If a value
+	# matches the asked-for value, that's accepted; otherwise it's
+	# clamped (and the actual cap is revealed).
+	var terrain := get_node_or_null(voxel_terrain_path)
+	if terrain == null or not "lod_distance" in terrain:
+		_diag_print("[Probe] No terrain or no lod_distance property; aborting.")
+		return
+	var saved_original = terrain.get("lod_distance")
+	_diag_print("=== lod_distance acceptance probe ===")
+	_diag_print("  saved original value: %s" % saved_original)
+	var test_values: Array = [16, 32, 64, 96, 128, 160, 192, 256, 384, 512, 768, 1024]
+	for v in test_values:
+		terrain.set("lod_distance", float(v))
+		var actual = terrain.get("lod_distance")
+		var verdict: String
+		if absf(float(actual) - float(v)) < 0.01:
+			verdict = "ACCEPTED"
+		else:
+			verdict = "CLAMPED → %s" % actual
+		_diag_print("  asked %4d  →  %s" % [v, verdict])
+	# Restore the original so the bake state isn't disturbed.
+	terrain.set("lod_distance", saved_original)
+	var restored = terrain.get("lod_distance")
+	_diag_print("  restored to: %s" % restored)
+	_diag_print("=== End probe ===")
+
+
 func _on_force_save() -> void:
 	# Manual save trigger. Calls save_modified_blocks on the live
 	# terrain. Reports DB size before/after so the developer can see
@@ -756,10 +846,15 @@ func _on_bake_skirt() -> void:
 		generator.call("_ensure_image")
 	_set_status("Baking horizon skirt...")
 	await get_tree().process_frame
+	# Bake area extends 1.5 km past the heightmap edge so the player
+	# standing on a peak doesn't see the skirt cut off short. The
+	# generator returns deep-ocean ground for out-of-bounds samples,
+	# so the extension reads as flat sea-floor — fine since the water
+	# horizon plane covers it visually.
 	var mesh: ArrayMesh = SkirtBaker.bake_mesh(
 		generator,
-		Vector2(-2500.0, -2500.0),
-		Vector2(2500.0, 2500.0),
+		Vector2(-4000.0, -4000.0),
+		Vector2(4000.0, 4000.0),
 		VOXELS_PER_METRE,
 	)
 	if mesh == null:

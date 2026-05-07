@@ -82,6 +82,17 @@ current = true
 ;     for tighter performance. The static HorizonSkirt covers the
 ;     2-5 km band as a single static mesh + atmospheric fog hides
 ;     the seam between voxel terrain and skirt.
+;   16000 voxels (2.67 km): pairs with lod_count=10 + CLIPBOX
+;     streaming. CLIPBOX is more efficient than the legacy octree at
+;     scale, and 10 LOD levels cover the whole pyramid out to
+;     ~10.9 km — most of which falls outside view_distance and
+;     never streams, but the bands within view (LOD0-7) provide
+;     graceful detail-fall to the horizon.
+;   8000 voxels (1.33 km): cut 2026-05-07 to reduce main-thread
+;     mesh-upload + collision-rebuild churn during fast movement.
+;     The HorizonSkirt + horizon plane cover everything past this
+;     radius. Bump up if a vista needs more voxel-rendered terrain
+;     at the cost of movement framerate.
 ;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
 ; more visible distance (at the cost of streaming load).
