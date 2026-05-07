@@ -21,18 +21,28 @@ extends RefCounted
 # Used by `WorldBakeController` (button in the BakeWorld UI) and at
 # runtime via `scripts/HorizonSkirt.gd` which loads the saved mesh.
 
-const QUAD_SIZE_M: float = 16.0
-# Smaller quads give the skirt a much finer silhouette — at 64 m the
-# distant peaks read as chunky polygonal nubs against the sky; at
-# 16 m mountain ridges look like real mountain ridges. 5 km × 5 km
-# at 16 m → 312² = ~97k quads, ~195k tris. Modern GPUs eat that for
-# breakfast and it's a one-time bake.
+const QUAD_SIZE_M: float = 12.0
+# 12 m quads give finer silhouettes than 16 m without exploding tri
+# count. At 8 km × 8 km = 666² = ~444k quads = ~890k tris — heavier
+# than before but a one-time bake and a static draw, so the GPU
+# laughs. If perf hurts later we can mix-resolution (8 m inner,
+# 24 m outer ring).
 
 const Y_OFFSET_DOWN_M: float = 0.1
-# Was 0.5 m, but the offset was visibly sinking the skirt below
-# nearby streamed LOD chunks at the boundary. 0.1 m keeps the
-# skirt just-barely-below to break z-fighting without the noticeable
-# vertical seam.
+# Tiny offset below true ground to break z-fighting against the live
+# LOD0 voxel mesh. 0.1 m is enough; bigger creates a visible seam.
+
+const SLOPE_TO_ROCK_THRESHOLD: float = 0.35
+# Rise/run threshold above which we shift the vertex colour toward
+# rock. ~0.35 ≈ 19° slope. Plays nicely against the elevation
+# gradient: low elevation + steep = rocky cliff (gets rock-brown
+# even though the elevation lerp would have placed forest there).
+
+const SLOPE_TO_ROCK_BLEND_RANGE: float = 0.30
+# Soft-shoulder beyond the threshold. Slopes from threshold to
+# threshold + this value lerp from "elevation colour" to "full rock";
+# steeper than that pegs at full rock. Avoids hard transitions on
+# slopes that grade smoothly.
 
 
 # Bake the skirt from the given generator + region. Returns an
@@ -86,46 +96,59 @@ static func bake_mesh(
 			var beach_y: int = 12
 			if "beach_y_threshold" in generator:
 				beach_y = generator.beach_y_threshold
-			# Vertex colours — explicit alpha = 1.0 everywhere so the
-			# material's vertex_color_use_as_albedo can't inherit a
-			# partial-alpha (the "world bottom" colour was bleeding
-			# through in earlier tests).
+			# Vertex colours — alpha=1 always (defeats stray-alpha
+			# rendering bugs). Per-biome palette + slope-aware shift +
+			# multi-octave noise jitter. Three layered effects:
 			#
-			# Per-biome palette + per-vertex noise jitter. The jitter
-			# breaks up the flat-grey look of mile-wide same-colour
-			# slopes — you read the surface as actual terrain with
-			# variation rather than a uniformly-painted plane.
-			# Hash-based jitter is deterministic so re-baking from the
-			# same heightmap produces the same skirt.
-			var hash_val: int = ((voxel_x * 73856093) ^ (voxel_z * 83492791)) & 0xFFFF
-			var jitter: float = (float(hash_val) / 65535.0 - 0.5) * 0.10  # ±5 % brightness
-			var c: Color
+			#   1. Elevation gradient (4 stops): water → sand →
+			#      forest → rock → snow as you climb.
+			#   2. Slope shift: steep faces (>~19°) lean toward rock,
+			#      regardless of elevation. Cliffs read as cliffs even
+			#      where the elevation says "should be forest".
+			#   3. Two-octave noise: a coarse low-frequency band gives
+			#      visual patches (different parts of a slope tinted
+			#      slightly differently), plus a high-frequency band
+			#      breaks up uniform colour at fine resolution.
+			#      Hash-based so re-bakes from the same heightmap are
+			#      bit-identical.
+			var hash_lo: int = ((voxel_x * 374761393) ^ (voxel_z * 668265263)) & 0xFFFF
+			var hash_hi: int = ((voxel_x * 73856093) ^ (voxel_z * 83492791)) & 0xFFFF
+			var jitter_coarse: float = (float(hash_lo) / 65535.0 - 0.5) * 0.10  # ±5 % brightness
+			var jitter_fine: float   = (float(hash_hi) / 65535.0 - 0.5) * 0.06  # ±3 % brightness
+			var jitter: float = jitter_coarse + jitter_fine
+
+			# Pick the elevation-band colour first (no slope adjust yet).
+			var c_elev: Color
 			if ground_voxels <= sea_level_voxels:
-				# Below sea level — deep stone tone (mostly hidden by
-				# the dynamic water horizon plane; included for the
-				# rare angles where it peeks through).
-				c = Color(0.20, 0.25, 0.30, 1.0)
+				# Below sea — deep stone tone, mostly hidden by water.
+				c_elev = Color(0.18, 0.22, 0.28, 1.0)
 			elif ground_voxels <= beach_y:
-				c = Color(0.82, 0.74, 0.52, 1.0)  # sand — warmer + brighter
+				c_elev = Color(0.82, 0.74, 0.52, 1.0)  # sand
 			else:
-				# Three-stop elevation gradient: forest → rock → snow.
-				# Lerp range = 4500 voxels (= 750 m world at 6 vox/m),
-				# spanning Copper Isles' actual elevation envelope so:
-				#   sea level (0 vox)            → full forest green
-				#   mid-mountain (~2250 vox)     → full rock brown
-				#   high peak (~4500 vox / 750m) → full snowcap
-				# Previously the lerp range was 600 vox so EVERYTHING
-				# above 100 m world hit full snowcap → mountains read
-				# as uniform off-white.
+				# Forest → rock → snowcap over 4500 vox (750 m world).
 				var elev_above_beach: int = ground_voxels - beach_y
 				var t1: float = clampf(float(elev_above_beach) / 4500.0, 0.0, 1.0)
-				var c_lo: Color = Color(0.34, 0.50, 0.24, 1.0)   # forest
-				var c_mid: Color = Color(0.55, 0.50, 0.42, 1.0)  # rock
-				var c_hi: Color = Color(0.85, 0.86, 0.88, 1.0)   # snowcap
+				var c_lo: Color = Color(0.32, 0.48, 0.22, 1.0)   # deeper forest green
+				var c_mid: Color = Color(0.55, 0.50, 0.42, 1.0)  # rock brown
+				var c_hi: Color = Color(0.88, 0.90, 0.93, 1.0)   # snowcap, slightly cooler
 				if t1 < 0.5:
-					c = c_lo.lerp(c_mid, t1 * 2.0)
+					c_elev = c_lo.lerp(c_mid, t1 * 2.0)
 				else:
-					c = c_mid.lerp(c_hi, (t1 - 0.5) * 2.0)
+					c_elev = c_mid.lerp(c_hi, (t1 - 0.5) * 2.0)
+
+			# Slope-based shift toward rock. Need to peek at four
+			# neighbours to compute height gradient. Out-of-bounds
+			# neighbours return the centre value (zero gradient).
+			var slope: float = _compute_slope_at(
+				generator, voxel_x, voxel_z, voxels_per_metre,
+			)
+			var rock_color: Color = Color(0.50, 0.46, 0.40, 1.0)
+			var slope_t: float = clampf(
+				(slope - SLOPE_TO_ROCK_THRESHOLD) / SLOPE_TO_ROCK_BLEND_RANGE,
+				0.0, 1.0,
+			)
+			var c: Color = c_elev.lerp(rock_color, slope_t)
+
 			# Apply jitter, clamp, force alpha=1.
 			c.r = clampf(c.r + jitter, 0.0, 1.0)
 			c.g = clampf(c.g + jitter, 0.0, 1.0)
@@ -212,3 +235,33 @@ static func bake_mesh(
 		quads_x, quads_z, tri_count, width, depth,
 	])
 	return mesh
+
+
+# Compute the local slope (rise / run, dimensionless) at a voxel
+# coordinate by sampling 4 neighbours from the generator. Used by
+# the colour pipeline to shift steep faces toward rock regardless of
+# elevation.
+#
+# Sample distance = 1 voxel. Slope = max-rise-over-run across the
+# four cardinal neighbours. World-Y rises map to height differences
+# of `vox_diff / voxels_per_metre`, run is one voxel = `1 /
+# voxels_per_metre`. The two cancel — slope is just absolute
+# vox_diff.
+static func _compute_slope_at(
+	generator: Resource,
+	voxel_x: int,
+	voxel_z: int,
+	_voxels_per_metre: float,
+) -> float:
+	var h: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
+	var hx_p: int = generator.get_ground_voxel_y_at(voxel_x + 1, voxel_z)
+	var hx_m: int = generator.get_ground_voxel_y_at(voxel_x - 1, voxel_z)
+	var hz_p: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z + 1)
+	var hz_m: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z - 1)
+	# Max absolute neighbour difference in voxels = max rise per
+	# 1-voxel run = slope.
+	var max_diff: int = 0
+	for d in [absi(hx_p - h), absi(hx_m - h), absi(hz_p - h), absi(hz_m - h)]:
+		if d > max_diff:
+			max_diff = d
+	return float(max_diff)

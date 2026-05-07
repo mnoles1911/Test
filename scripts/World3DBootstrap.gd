@@ -53,14 +53,33 @@ func _ready() -> void:
 		terrain.set("threaded_update_enabled", true)
 		print("[World3D] terrain.threaded_update_enabled = true")
 	# Defer collision-shape rebuilds so they batch instead of firing
-	# on every single edit. 0.1 s is imperceptible to the player
-	# (they're not pressed flush against the carved face within 100
-	# ms of breaking it), and it lets Zylann coalesce multiple
-	# edits' collision updates. Default 0 means rebuild-immediately,
-	# which is the worst case for stutter.
+	# on every single edit / stream. CRITICAL: in this Zylann build the
+	# property is INT (likely milliseconds), so the previous set(..., 0.1)
+	# silently truncated to 0 — every chunk streaming in/out fired an
+	# immediate main-thread collision rebuild. The dump in the Output
+	# panel confirms whatever value lands here: look for
+	# "terrain.collision_update_delay = N".
 	if "collision_update_delay" in terrain:
-		terrain.set("collision_update_delay", 0.1)
-		print("[World3D] terrain.collision_update_delay = 0.1")
+		terrain.set("collision_update_delay", 100)
+		var actual_delay = terrain.get("collision_update_delay")
+		print("[World3D] terrain.collision_update_delay set to 100 (actual=%s)" % actual_delay)
+	# Belt-and-suspenders for the .tscn values that the editor has been
+	# stripping on save. Setting them programmatically AND in the .tscn
+	# means at least one path lands. The readback prints make it obvious
+	# in the Output panel whether Zylann accepted the value or clamped:
+	#   - mesh_block_size: 32 makes each mesh chunk cover 8x more voxels
+	#     than the default 16, cutting per-LOD-transition mesh-upload
+	#     count by ~8x. If readback shows 16 instead of 32, this Zylann
+	#     build doesn't allow 32 and we'll need a different angle.
+	#   - lod_distance: 128 (Zylann hard cap) widens each LOD shell by
+	#     33% vs the previous 96, so the player has to walk further
+	#     before chunks transition LOD level. Reduces backtracking spikes.
+	if "mesh_block_size" in terrain:
+		terrain.set("mesh_block_size", 32)
+		print("[World3D] terrain.mesh_block_size set to 32 (actual=%s)" % terrain.get("mesh_block_size"))
+	if "lod_distance" in terrain:
+		terrain.set("lod_distance", 128.0)
+		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar

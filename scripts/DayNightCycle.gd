@@ -176,7 +176,10 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record.
+	var _t0_prof: int = Time.get_ticks_usec()
 	_apply()
+	HUDOverlay.profile_record("DayNightCycle", Time.get_ticks_usec() - _t0_prof)
 
 
 func _apply() -> void:

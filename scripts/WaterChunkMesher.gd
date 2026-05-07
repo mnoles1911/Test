@@ -31,13 +31,17 @@ extends Node3D
 # follow-player horizon plane (CULL_BACK so it's invisible from
 # below) paints featureless distant water at sea level Y.
 #
-# 96 m gives a ~36×36 = ~1300 chunk fill at the sea-level row (vs
-# ~35k at 250 m), keeping both initial-fill cost AND sustained
-# render cost (mesh instance count) bounded. Going wider was the
-# 2026-05-06 perf regression — 35k MeshInstance3Ds drew tens of
-# millions of triangles per frame. Going narrower would expose the
-# per-voxel detail cutoff to the player.
-const MESH_RENDER_RADIUS_M: float = 96.0
+# 2026-05-07 perf cut: was 96 m (~1300 chunks per fill, ~36-chunk
+# radius). Profiling showed the mesher consumed 700–1200 ms/sec of
+# main-thread time at 96 m during walking — ~80% of the frame budget.
+# Each newly-entered chunk did tool.copy + 256-column scan + ArrayMesh
+# build + scene-tree insert. Cutting to 32 m drops chunk count ~9×;
+# the horizon plane (3 km radius, follows player) papers over the gap.
+# Visible difference: per-voxel detail of the waterline only conforms
+# within ~5 player-strides of the player. Beyond that, it's the flat
+# horizon sheet (still tinted, still wave-shaded once the shader is
+# re-enabled).
+const MESH_RENDER_RADIUS_M: float = 32.0
 
 # Per-frame mesh rebuild budget — adaptive. _adaptive_build_budget()
 # scales between MIN and MAX based on the previous frame's delta:
@@ -46,10 +50,12 @@ const MESH_RENDER_RADIUS_M: float = 96.0
 #   under load (typically the terrain LOD streamer during initial fill).
 # - Linear lerp between.
 #
-# Constants tuned for the 96 m radius (~1300 chunks at sea-level row,
-# fills in ~1.4 s at MAX, ~22 s at MIN — but only stays at MIN while
-# the system is heavily loaded, so the actual fill blends).
-const MESH_BUILDS_PER_FRAME_MAX: int = 16
+# 2026-05-07 perf cut: MAX from 16 → 6. With the smaller 32 m radius
+# above, fewer chunks need rebuilding per crossing (~24 vs ~73), so
+# we don't need a high per-frame ceiling to keep up. Capping at 6
+# means the mesher uses at most ~6 ms/frame even during burst loads,
+# leaving headroom for Zylann's terrain LOD streamer.
+const MESH_BUILDS_PER_FRAME_MAX: int = 6
 const MESH_BUILDS_PER_FRAME_MIN: int = 1
 const MESH_THROTTLE_FRAME_MS_FAST: float = 18.0
 const MESH_THROTTLE_FRAME_MS_SLOW: float = 50.0
@@ -270,6 +276,13 @@ func _build_debug_water_material(is_horizon: bool) -> StandardMaterial3D:
 
 
 func _process(delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	var _t0_prof: int = Time.get_ticks_usec()
+	_process_inner(delta)
+	HUDOverlay.profile_record("WaterChunkMesher", Time.get_ticks_usec() - _t0_prof)
+
+
+func _process_inner(delta: float) -> void:
 	# Drain up to _adaptive_build_budget(delta) chunks from the queue.
 	# Builds are throttled when frame time is high — during the initial
 	# load window the terrain streamer competes for CPU and any cycles
@@ -310,12 +323,29 @@ func set_player_chunk(chunk: Vector3i) -> void:
 	# Called by WaterFlowManager when the player's chunk changes. Frees
 	# meshes outside MESH_RENDER_RADIUS_M and dirty-marks chunks newly
 	# inside the radius.
+	#
+	# 2026-05-07 perf rewrite: was iterating the full (2*rad+1)² square
+	# every call (~5,300 dict ops at the 96 m / 2.67 m chunk size). At
+	# fly speed (~19 chunk crossings/sec) that pegged ~100 k dict ops/sec
+	# synchronously inside _physics_process — visible as sub-10 FPS the
+	# moment the player started moving. Now iterates only the strips of
+	# chunks that newly entered the radius — typically ~73 chunks for an
+	# axis-aligned 1-chunk move, ~145 for a diagonal. The mesh-free loop
+	# still walks _meshes.keys() but that's bounded by the active mesh
+	# count, not the radius².
+	#
+	# Water surfaces live in one chunk-Y row (sea level), so the dirty
+	# scan is 2D in (dx, dz). Per-cell water above sea level (player
+	# buckets) is surfaced via the water_changed_at edit path — those
+	# chunks dirty themselves on the edit, no scan needed here.
 	if chunk == _player_chunk and not _meshes.is_empty():
 		return
+	var prev_chunk: Vector3i = _player_chunk
 	_player_chunk = chunk
 
-	# Free meshes outside the radius.
 	var radius_chunks: int = ceili(MESH_RENDER_RADIUS_M / CHUNK_SIZE_M)
+
+	# Free meshes outside the new radius.
 	for existing_chunk in _meshes.keys():
 		var d: Vector3i = existing_chunk - _player_chunk
 		if absi(d.x) > radius_chunks or absi(d.y) > radius_chunks or absi(d.z) > radius_chunks:
@@ -324,56 +354,71 @@ func set_player_chunk(chunk: Vector3i) -> void:
 				mesh_inst.queue_free()
 			_meshes.erase(existing_chunk)
 
-	# Dirty-mark chunks newly inside the radius. Water surfaces are 2D
-	# planes at fixed Y values (one per source region — ocean at Y=10,
-	# pond at Y=1.5, etc.), so we only need to check chunks at those
-	# specific Y-chunks rather than every Y in the radius cube.
-	#
-	# Earlier impl iterated the full (2*radius+1)^3 cube — at radius
-	# 24 chunks that's 117,649 iterations every time the player walked
-	# 2.7 m (one chunk width). Each iteration did dictionary lookups
-	# and an AABB test against every source region; total cost ran ~50-
-	# 150 ms per chunk transition, producing the "moves OK rotating but
-	# stutters when walking" hitch that's been present since the water
-	# voxel refactor landed.
-	#
-	# New impl: collect the set of unique surface Y-chunks from
-	# WaterFlowManager (typically 1-3 values), then iterate only the
-	# 2D (dx,dz) ring at each of those Ys. With 2 source regions
-	# (ocean + pond at different Ys) this is 49×49×2 = ~4800 iterations
-	# instead of 117,649 — ~24× faster, fits comfortably under 1 ms.
 	if _water_flow_manager == null:
 		return
-	# Ocean lives in CHANNEL_DATA at SEA_LEVEL_VOXELS, which falls inside
-	# _SEA_LEVEL_CHUNK_Y. Iterate that one chunk-Y row in the active
-	# 2D radius. Per-cell water above sea level (player buckets) is
-	# surfaced via the water_changed_at edit path (Phase 3) — those
-	# chunks dirty themselves on the edit, no scan needed here.
-	var surface_chunk_ys: Dictionary = {}
-	surface_chunk_ys[_current_sea_level_chunk_y()] = true
-	for y_chunk in surface_chunk_ys.keys():
-		# Concentric-ring iteration: enqueue chunks closest to the player
-		# first, then progressively farther ones. The previous row-major
-		# `for dx in -radius..radius: for dz in -radius..radius` filled
-		# the queue starting at the (-radius, -radius) corner — water
-		# materialised at the horizon and crept inward over ~10 s.
-		# Ring-by-ring queues the player's own chunk first, then the
-		# 8-neighbourhood, then the 24-neighbourhood, etc. Visible water
-		# appears around the player on the first frame and the load
-		# expands outward.
+
+	var y_chunk: int = _current_sea_level_chunk_y()
+	var dx: int = chunk.x - prev_chunk.x
+	var dz: int = chunk.z - prev_chunk.z
+	var no_overlap: bool = absi(dx) > 2 * radius_chunks or absi(dz) > 2 * radius_chunks
+
+	# Full ring-ordered fill on first call (no meshes yet) or jumps where
+	# old and new radii don't overlap. Ring order makes water visibly
+	# materialise around the player first on initial load. Steady-state
+	# 1-chunk crossings take the delta path below.
+	if _meshes.is_empty() or no_overlap:
 		for r in range(radius_chunks + 1):
 			for offset in _ring_offsets(r):
-				var c := Vector3i(
-					_player_chunk.x + offset.x,
-					y_chunk,
-					_player_chunk.z + offset.y,
-				)
-				if _meshes.has(c) or _dirty_set.has(c):
-					continue
-				if not _chunk_could_have_water(c):
-					continue
-				_dirty_queue.append(c)
-				_dirty_set[c] = true
+				_try_dirty_water_chunk(Vector3i(chunk.x + offset.x, y_chunk, chunk.z + offset.y))
+		return
+
+	# ---- Delta path ----
+	# X-strip: chunks at the X-leading edge of the new radius that
+	# weren't in the old radius. Full Z range for this strip.
+	if dx > 0:
+		for x in range(prev_chunk.x + radius_chunks + 1, chunk.x + radius_chunks + 1):
+			for z in range(chunk.z - radius_chunks, chunk.z + radius_chunks + 1):
+				_try_dirty_water_chunk(Vector3i(x, y_chunk, z))
+	elif dx < 0:
+		for x in range(chunk.x - radius_chunks, prev_chunk.x - radius_chunks):
+			for z in range(chunk.z - radius_chunks, chunk.z + radius_chunks + 1):
+				_try_dirty_water_chunk(Vector3i(x, y_chunk, z))
+
+	# Z-strip: chunks at the Z-leading edge, EXCLUDING the corner column
+	# already covered by the X-strip above (avoids double-checking it).
+	if dz > 0:
+		var x_lo: int = chunk.x - radius_chunks
+		var x_hi_excl: int = chunk.x + radius_chunks + 1
+		if dx > 0:
+			x_hi_excl = prev_chunk.x + radius_chunks + 1
+		elif dx < 0:
+			x_lo = prev_chunk.x - radius_chunks
+		for z in range(prev_chunk.z + radius_chunks + 1, chunk.z + radius_chunks + 1):
+			for x in range(x_lo, x_hi_excl):
+				_try_dirty_water_chunk(Vector3i(x, y_chunk, z))
+	elif dz < 0:
+		var x_lo: int = chunk.x - radius_chunks
+		var x_hi_excl: int = chunk.x + radius_chunks + 1
+		if dx > 0:
+			x_hi_excl = prev_chunk.x + radius_chunks + 1
+		elif dx < 0:
+			x_lo = prev_chunk.x - radius_chunks
+		for z in range(chunk.z - radius_chunks, prev_chunk.z - radius_chunks):
+			for x in range(x_lo, x_hi_excl):
+				_try_dirty_water_chunk(Vector3i(x, y_chunk, z))
+
+
+func _try_dirty_water_chunk(c: Vector3i) -> void:
+	# Single chunk-coord candidate for the water dirty queue. Skips
+	# chunks that already have a mesh, are already queued, or fall
+	# outside the configured surface Y-row. Keeps the dirty-marking
+	# loops in set_player_chunk readable.
+	if _meshes.has(c) or _dirty_set.has(c):
+		return
+	if not _chunk_could_have_water(c):
+		return
+	_dirty_queue.append(c)
+	_dirty_set[c] = true
 
 
 func _ring_offsets(r: int) -> Array:
@@ -490,6 +535,14 @@ func _rebuild_chunk(chunk: Vector3i) -> void:
 	existing.mesh = mesh
 
 
+const DIAG_PERIODIC: bool = false
+# When true, log a chunk-scan progress summary every 200 chunks so we
+# can verify the meshing pipeline end-to-end (scanned advancing →
+# with_water advancing → with_quads advancing → meshed advancing).
+# OFF by default — at fly speed the chunk-scan counter advances by
+# hundreds per second, so the print fires constantly during movement
+# and contributes to Output-panel stutter. Flip on for diagnostics.
+
 var _diag_chunks_scanned: int = 0
 var _diag_chunks_with_water: int = 0
 var _diag_chunks_meshed: int = 0
@@ -523,6 +576,26 @@ func _gather_surface_quads(chunk: Vector3i) -> Array:
 	if tool == null:
 		return []
 
+	# 2026-05-07 perf: bail fast on chunks Zylann hasn't loaded yet.
+	# tool.copy on an unloaded chunk blocks waiting for Zylann's worker
+	# thread to generate the data — measured at 5+ ms per call during
+	# initial fill, monopolizing the mesher's per-frame budget AND
+	# starving Zylann's main-thread mesh-apply queue (which is why
+	# terrain failed to render while the mesher was working an unloaded
+	# region). is_area_editable is a cheap property check that returns
+	# false until the chunk is actually streamed in. Skipping unloaded
+	# chunks now, the chunk gets re-dirtied on the next player-chunk
+	# crossing — by which time it's likely loaded.
+	var voxel_origin := Vector3i(
+		chunk.x * CHUNK_SIZE_VOXELS,
+		chunk.y * CHUNK_SIZE_VOXELS,
+		chunk.z * CHUNK_SIZE_VOXELS,
+	)
+	if tool.has_method("is_area_editable"):
+		var probe_aabb := AABB(Vector3(voxel_origin), Vector3.ONE * float(CHUNK_SIZE_VOXELS))
+		if not tool.call("is_area_editable", probe_aabb):
+			return []
+
 	# ---- Read CHANNEL_DATA for the whole chunk in one bulk copy ----
 	# tool.copy(src_origin: Vector3i, dst_buffer: VoxelBuffer, channels_mask: int)
 	# Mirrors the bulk-read pattern from VoxelGravityManager (which
@@ -531,11 +604,6 @@ func _gather_surface_quads(chunk: Vector3i) -> Array:
 	# in-process buffer.
 	var buf := VoxelBuffer.new()
 	buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
-	var voxel_origin := Vector3i(
-		chunk.x * CHUNK_SIZE_VOXELS,
-		chunk.y * CHUNK_SIZE_VOXELS,
-		chunk.z * CHUNK_SIZE_VOXELS,
-	)
 	var data_mask: int = 1 << VoxelBuffer.CHANNEL_DATA5
 	tool.copy(voxel_origin, buf, data_mask)
 
@@ -608,7 +676,7 @@ func _gather_surface_quads(chunk: Vector3i) -> Array:
 	# is broken. If with_quads grows but meshed stays at 0, the
 	# rebuild path itself isn't running. Every counter advancing means
 	# the path works end-to-end.
-	if _diag_chunks_scanned % 200 == 0:
+	if DIAG_PERIODIC and _diag_chunks_scanned % 200 == 0:
 		print("[WaterChunkMesher] diag: scanned=%d with_water=%d with_quads=%d meshed=%d (player_chunk=%s)" % [
 			_diag_chunks_scanned, _diag_chunks_with_water, _diag_chunks_with_quads,
 			_diag_chunks_meshed, _player_chunk,

@@ -113,11 +113,15 @@ func _ready() -> void:
 
 	# Move per-edit voxel-block updates off the main thread; defer
 	# collision-shape rebuilds so they batch instead of firing on every
-	# edit. Same settings World3DBootstrap applies to Mira.
+	# edit. Same settings World3DBootstrap applies to Mira. NOTE: the
+	# collision_update_delay property is INT in this Zylann build —
+	# previous code passed 0.1 which truncated to 0 (no batching). 100
+	# is the working value; readback below confirms what landed.
 	if "threaded_update_enabled" in terrain:
 		terrain.set("threaded_update_enabled", true)
 	if "collision_update_delay" in terrain:
-		terrain.set("collision_update_delay", 0.1)
+		terrain.set("collision_update_delay", 100)
+		print("[CopperIslesTest] terrain.collision_update_delay set to 100 (actual=%s)" % terrain.get("collision_update_delay"))
 
 	# Belt-and-suspenders LOD enforcement (mirror of WorldBakeController).
 	# These MUST match the bake scene or cached chunks are at the wrong
@@ -198,24 +202,45 @@ func _seed_from_baseline_if_needed() -> void:
 # Terrain config the runtime MUST run with. MUST stay in lockstep
 # with REQUIRED_* constants in scripts/_dev/WorldBakeController.gd —
 # changing one without the other corrupts the cache contract.
-const REQUIRED_LOD_COUNT: int = 8
-# 768 vox = 128 m world LOD0 radius at 6 vox/m. Sized for
-# mountaintop-vista feel + fast walker bakes (180 m tile spacing).
-# MUST match BakeWorld terrain config and the .tscn explicit values.
-const REQUIRED_LOD_DISTANCE: float = 768.0
-const REQUIRED_LOD_FADE_DURATION: float = 0.5
+const REQUIRED_LOD_COUNT: int = 9
+# 9 LOD levels — at lod_distance=128 vox each level doubles its
+# outer radius, so LOD8 reaches 128 × 2^8 = 32 768 vox = 5.5 km
+# world. With view_distance at 8000 vox (≈ 1.33 km), in-use LODs
+# cap around LOD6; LOD7-8 are headroom. Trimmed 2026-05-07 from 14
+# because the upper shells sat permanently outside view_distance and
+# only added bookkeeping cost. Zylann's MAX_LOD is 24, well within.
+# Lowering only affects future bakes; existing baselines baked at the
+# old count remain readable (Zylann ignores LOD slots above lod_count).
+const REQUIRED_LOD_DISTANCE: float = 128.0
+# Zylann hard-caps lod_distance at 128.0 (probed empirically — see
+# `scripts/_dev/WorldBakeController._on_probe_lod_distance`).
+# secondary_lod_distance controls LOD chunk SIZE for LODs above 0
+# in CLIPBOX streaming mode. Cranked to 128 to make distant LODs
+# look as crisp as Zylann allows.
+const REQUIRED_SECONDARY_LOD_DISTANCE: float = 128.0
+const REQUIRED_LOD_FADE_DURATION: float = 1.0
+# CLIPBOX = 1, LEGACY_OCTREE = 0. CLIPBOX is the newer streaming
+# system, supports multiple viewers, and uses secondary_lod_distance
+# (above) for finer LOD>0 control.
+const REQUIRED_STREAMING_SYSTEM: int = 1
 
 
 func _enforce_lod_config(terrain: Object) -> void:
 	# Belt-and-suspenders LOD enforcement. Override the .tscn values so
 	# Godot editor's silent property normalisation can't break the
-	# bake/runtime cache contract. Prints any drift to Output.
+	# bake/runtime cache contract. Verifies the set actually took
+	# (Zylann silently clamps some properties, e.g. lod_distance) and
+	# loudly flags any clamp because that breaks the cache contract.
 	var fields: Array = [
 		["lod_count", REQUIRED_LOD_COUNT],
 		["lod_distance", REQUIRED_LOD_DISTANCE],
+		["secondary_lod_distance", REQUIRED_SECONDARY_LOD_DISTANCE],
 		["lod_fade_duration", REQUIRED_LOD_FADE_DURATION],
+		["streaming_system", REQUIRED_STREAMING_SYSTEM],
 		["cache_generated_blocks", true],
 	]
+	var changes_made: int = 0
+	var clamps_detected: int = 0
 	for f in fields:
 		var key: String = f[0]
 		var want = f[1]
@@ -226,7 +251,22 @@ func _enforce_lod_config(terrain: Object) -> void:
 		if before == want:
 			continue
 		terrain.set(key, want)
-		print("[CopperIslesTest] enforced terrain.%s: %s → %s" % [key, before, want])
+		var after = terrain.get(key)
+		changes_made += 1
+		if after != want:
+			clamps_detected += 1
+			push_error("[CopperIslesTest] CLAMP DETECTED on terrain.%s: asked %s, got %s (Zylann silently capped)" % [
+				key, want, after,
+			])
+		print("[CopperIslesTest] enforced terrain.%s: %s → %s (actual after set: %s)" % [
+			key, before, want, after,
+		])
+	if changes_made == 0:
+		print("[CopperIslesTest] LOD config already aligned — all %d required properties match. No enforcement needed." % fields.size())
+	elif clamps_detected > 0:
+		print("[CopperIslesTest] LOD config enforcement: %d changes, %d CLAMPS — see [CLAMP DETECTED] lines above." % [changes_made, clamps_detected])
+	else:
+		print("[CopperIslesTest] LOD config enforcement: %d changes applied successfully, no clamps." % changes_made)
 
 
 func _configure_voxel_format(terrain: Object) -> void:
@@ -270,6 +310,17 @@ func _terrain_scale(terrain: Node3D) -> float:
 const GEN_SEA_LEVEL_VOXELS: float = 720.0
 const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
 
+# Override world-Y for the *visual* horizon plane only. The voxel
+# water in CHANNEL_DATA5 still lives at GEN_SEA_LEVEL_VOXELS (= world
+# Y 120 m at scale 1/6) — the chunked water mesh near the player
+# draws at that Y. Setting this constant higher than the voxel sea
+# raises ONLY the distant follow-player horizon plane. Trade-off:
+# there will be a vertical seam at the chunked-mesh boundary where
+# Y=120 close water meets Y=N far water. For full consistency,
+# instead bump sea_level_voxels in the generator .tres + matching
+# bootstrap constants and re-bake.
+const HORIZON_PLANE_OVERRIDE_Y: float = 155.0
+
 
 func _reseed_water_for_scale(terrain_scale: float) -> void:
 	# Phase 5: AABB source regions are gone — water is per-voxel in
@@ -283,11 +334,20 @@ func _reseed_water_for_scale(terrain_scale: float) -> void:
 	# extends Node3D).
 	if not get_node_or_null("/root/WaterFlowManager"):
 		return
+	# Visual horizon plane Y: uses HORIZON_PLANE_OVERRIDE_Y if set
+	# above the generator's sea level (decoupled), else tracks the
+	# generator's sea level scaled by terrain.transform.scale. This
+	# lets us push the visual ocean higher without invalidating the
+	# voxel cache. Trade-off: 35 m vertical seam where chunked water
+	# (drawn at voxel Y=720 / world Y=120) meets the override
+	# horizon — visible at the chunked-mesh radius (~64 m).
 	var sea_level_world_y: float = GEN_SEA_LEVEL_VOXELS * terrain_scale
-	WaterFlowManager.set_horizon_plane_y(sea_level_world_y)
+	var horizon_y: float = maxf(sea_level_world_y, HORIZON_PLANE_OVERRIDE_Y)
+	WaterFlowManager.set_horizon_plane_y(horizon_y)
 	# Tell WaterChunkMesher (via the manager) which voxel-Y row to
-	# scan for the ocean surface mesh. Default is Mira's 72; Copper
-	# Isles needs 720 or the mesher misses every water chunk.
+	# scan for the ocean surface mesh. Always tracks the generator's
+	# sea level (where water bytes actually live in CHANNEL_DATA5);
+	# the visual horizon override above does NOT affect this.
 	if WaterFlowManager.has_method("set_sea_level_voxel_y"):
 		WaterFlowManager.set_sea_level_voxel_y(int(GEN_SEA_LEVEL_VOXELS))
 
