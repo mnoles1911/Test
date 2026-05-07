@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="menus_shared.css" />
+<style>
+  .map-wrap{
+    flex:1; min-height:0; display:flex;
+  }
+  .parchment-frame{
+    background:
+      linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+    border:2px solid #000;
+    box-shadow:
+      inset 0 0 0 2px var(--parchment-edge),
+      inset 0 0 60px rgba(120,80,30,0.45);
+    position:relative; overflow:hidden;
+  }
+  .parchment-frame::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse at 18% 22%, rgba(80,40,10,0.18), transparent 40%),
+      radial-gradient(ellipse at 82% 78%, rgba(80,40,10,0.18), transparent 40%);
+  }
+  .map-svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .you{
+    position:absolute; left:42%; top:54%;
+    width:14px; height:14px;
+    background:var(--hp-bright);
+    border:2px solid #000;
+    box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(232,74,58,0.7);
+    animation: youPulse 1.4s ease-in-out infinite;
+    transform: translate(-50%,-50%);
+  }
+  @keyframes youPulse{
+    0%,100%{ box-shadow: 0 0 0 2px var(--gold), 0 0 8px rgba(232,74,58,0.5); }
+    50%    { box-shadow: 0 0 0 2px var(--gold), 0 0 22px rgba(232,74,58,0.9); }
+  }
+  .map-label{
+    position:absolute;
+    font-family:var(--serif); font-weight:700;
+    color: var(--parchment-ink); letter-spacing:3px;
+    text-shadow: 0 0 4px rgba(232,217,176,0.5);
+    pointer-events:none;
+  }
+  .compass-rose{
+    position:absolute; right:18px; top:18px;
+    width:64px; height:64px;
+  }
+  .parchment-frame{ flex:1; }
+</style>
+</head>
+<body>
+  <div class="bg-scene"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-grain"></div>
+
+  <div class="menu-shell">
+    <nav class="menu-tabs">
+      <a href="Voxelmark Inventory.html" class="menu-tab">INVENTORY</a>
+      <a href="Voxelmark Map.html"       class="menu-tab active">MAP</a>
+      <a href="Voxelmark Journal.html"   class="menu-tab">JOURNAL</a>
+      <a href="Voxelmark Codex.html"     class="menu-tab">CODEX</a>
+      <a href="Voxelmark Skills.html"    class="menu-tab">SKILLS</a>
+      <div class="menu-spacer"></div>
+      <div class="menu-close">[ESC] CLOSE</div>
+    </nav>
+
+    <div class="menu-body">
+      <div class="map-wrap">
+        <div class="parchment-frame">
+          <svg class="map-svg" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid slice">
+            <!-- coastline -->
+            <path d="M -20 600 C 80 540, 180 580, 280 540 S 460 480, 600 510 S 820 530, 1020 460 L 1020 720 L -20 720 Z"
+              fill="#7a9aa8" opacity="0.55" stroke="#3a4a58" stroke-width="2" />
+            <!-- river -->
+            <path d="M 200 80 C 240 200, 380 260, 420 380 S 560 540, 700 600"
+              fill="none" stroke="#3a6fb8" stroke-width="6" opacity="0.7" />
+            <!-- forest blobs -->
+            <g fill="#3a5a2a" opacity="0.55" stroke="#1a2e10" stroke-width="2">
+              <ellipse cx="160" cy="200" rx="80" ry="50" />
+              <ellipse cx="220" cy="180" rx="70" ry="40" />
+              <ellipse cx="780" cy="220" rx="100" ry="60" />
+              <ellipse cx="850" cy="280" rx="80" ry="45" />
+              <ellipse cx="380" cy="540" rx="70" ry="35" />
+            </g>
+            <!-- mountains -->
+            <g fill="#6a5a4a" stroke="#2a1e10" stroke-width="2">
+              <polygon points="500,80 540,30 580,80" />
+              <polygon points="560,90 620,20 680,90" />
+              <polygon points="640,90 680,40 720,90" />
+              <polygon points="80,360 130,300 180,360" />
+              <polygon points="150,370 200,310 250,370" />
+            </g>
+            <!-- ink paths -->
+            <path d="M 420 380 Q 360 420, 300 480 T 180 580" fill="none" stroke="#5a3a18" stroke-width="2" stroke-dasharray="6 4" />
+            <path d="M 420 380 Q 480 320, 560 290 T 720 240" fill="none" stroke="#5a3a18" stroke-width="2" stroke-dasharray="6 4" />
+            <path d="M 420 380 Q 400 280, 380 200" fill="none" stroke="#5a3a18" stroke-width="2" stroke-dasharray="6 4" />
+
+            <!-- POI dots -->
+            <!-- towns -->
+            <g stroke="#000" stroke-width="2">
+              <circle cx="420" cy="380" r="9" fill="#f0c14b" />
+              <circle cx="720" cy="240" r="8" fill="#f0c14b" />
+              <circle cx="180" cy="580" r="7" fill="#f0c14b" />
+              <!-- ruin -->
+              <rect x="356" y="195" width="16" height="16" fill="#a04ac8" transform="rotate(45 364 203)" />
+              <!-- caves -->
+              <polygon points="120,340 132,360 108,360" fill="#0d0a07" />
+              <polygon points="900,300 912,320 888,320" fill="#0d0a07" />
+              <!-- active quest marker -->
+              <polygon points="380,200 388,212 380,224 372,212" fill="#5fa84a" />
+            </g>
+          </svg>
+          <!-- map labels -->
+          <div class="map-label" style="left:38%; top:58%; font-size:18px;">ALDENHOLT</div>
+          <div class="map-label" style="left:69%; top:36%; font-size:14px;">HOLLOWFORD</div>
+          <div class="map-label" style="left:14%; top:84%; font-size:13px;">BROTHERS' END</div>
+          <div class="map-label" style="left:32%; top:25%; font-size:12px; color:#5a2a6a;">SUNDERED CROWN</div>
+          <div class="map-label" style="left:52%; top:8%; font-size:13px; letter-spacing:2px; color:#5a4a3a;">SPIRES</div>
+          <div class="map-label" style="left:8%; top:88%; font-size:12px; color:#3a4a58; letter-spacing:4px; font-style:italic;">— THE COLD SEA —</div>
+          <div class="map-label" style="left:18%; top:25%; font-size:12px; color:#1a2e10; letter-spacing:2px;">ASHWOOD</div>
+          <div class="map-label" style="left:78%; top:30%; font-size:12px; color:#1a2e10; letter-spacing:2px;">THORNWAYS</div>
+
+          <!-- you-are-here -->
+          <div class="you" style="left:42%; top:54%;"></div>
+
+          <!-- compass rose -->
+          <svg class="compass-rose" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="28" fill="rgba(232,217,176,0.6)" stroke="#3a2a14" stroke-width="2" />
+            <polygon points="32,8 36,32 32,28 28,32" fill="#3a2a14" />
+            <polygon points="32,56 28,32 32,36 36,32" fill="#7a5a32" />
+            <polygon points="56,32 32,28 36,32 32,36" fill="#7a5a32" />
+            <polygon points="8,32 32,36 28,32 32,28" fill="#7a5a32" />
+            <text x="32" y="6" text-anchor="middle" font-family="serif" font-size="8" fill="#3a2a14" font-weight="700">N</text>
+          </svg>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

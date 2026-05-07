@@ -1,0 +1,1258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — HUD</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  @font-face{
+    font-family: "Macondo Swash Caps";
+    src: url("fonts/MacondoSwashCaps-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  /* ============================================================
+     VOXELMARK — voxel medieval survival HUD
+     Aesthetic: nearest-neighbor pixel art, parchment + iron + bronze,
+     warm torchlight golds, blood-red highlights, oak-wood panels,
+     hard 2px borders, no soft shadows, 1px crisp seams.
+     Brand display font: Macondo Swash Caps. Pixel UI: VT323 / Press Start 2P.
+     ============================================================ */
+  :root{
+    /* core palette — earthy, warm, gritty */
+    --bg-night:        #0d0a07;
+    --bg-stone:        #1a1410;
+    --panel-oak-1:     #4a2f1a;
+    --panel-oak-2:     #2e1b0d;
+    --panel-oak-edge:  #6b4422;
+    --panel-iron:      #2a241f;
+    --panel-iron-edge: #4a4038;
+    --parchment:       #e8d9b0;
+    --parchment-2:     #d4c08c;
+    --parchment-ink:   #3a2a14;
+
+    /* metals & tones */
+    --bronze:          #b07a3a;
+    --bronze-deep:     #6b4520;
+    --gold:            #f0c14b;
+    --gold-deep:       #a87320;
+    --iron:            #6e6358;
+    --iron-deep:       #3a342d;
+
+    /* status / semantic */
+    --hp:              #b8302a;
+    --hp-deep:         #5a1410;
+    --hp-bright:       #e84a3a;
+    --stam:            #c8a04a;
+    --stam-deep:       #6b4f1c;
+    --hunger:          #8a5a28;
+    --hunger-deep:     #3f2810;
+    --mana:            #3a6fb8;
+    --mana-deep:       #173258;
+
+    /* rarity tints (item borders) */
+    --rare-common:     #8a8378;
+    --rare-uncommon:   #5fa84a;
+    --rare-rare:       #4a86d8;
+    --rare-epic:       #a04ac8;
+    --rare-legendary:  #f0a02a;
+
+    /* text */
+    --ink:             #f3e6c4;
+    --ink-dim:         #b4a07a;
+    --ink-mute:        #7a6a4e;
+
+    --tile: 56px;     /* hotbar / inventory tile size */
+    --gap:  4px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family: "VT323", ui-monospace, monospace;
+    color: var(--ink);
+    background:#000;
+    overflow:hidden;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
+    font-smooth: never;
+    user-select:none;
+  }
+
+  /* ---------- world / scene placeholder ---------- */
+  .scene{
+    position:fixed; inset:0;
+    background:
+      /* horizon haze */
+      radial-gradient(120% 60% at 50% 78%, rgba(120,70,30,0.35), transparent 60%),
+      /* sky to ground */
+      linear-gradient(180deg,
+        #1a1208 0%,
+        #2a1a0c 18%,
+        #4a2a14 38%,
+        #7a4820 52%,
+        #5a3a1c 60%,
+        #2a1e10 72%,
+        #14100a 100%);
+    overflow:hidden;
+  }
+  /* fake voxel "ground" via repeating squares */
+  .voxel-ground{
+    position:absolute; left:0; right:0; bottom:0; height:55%;
+    background:
+      linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.55) 100%),
+      conic-gradient(from 0deg at 50% 50%,
+        #2a1c10 0deg, #1a1208 90deg, #2a1c10 180deg, #1a1208 270deg);
+    background-size: auto, 48px 48px;
+    image-rendering: pixelated;
+    transform: perspective(700px) rotateX(58deg);
+    transform-origin: 50% 100%;
+  }
+  /* distant blocky "mountains" silhouette */
+  .skyline{
+    position:absolute; left:0; right:0; bottom:42%;
+    height:120px;
+    background:
+      linear-gradient(90deg,
+        #1a1208 0 4%, #2a1a0c 4% 7%, #1a1208 7% 12%, #2a1a0c 12% 18%,
+        #1a1208 18% 22%, #2a1a0c 22% 28%, #1a1208 28% 35%,
+        #2a1a0c 35% 42%, #1a1208 42% 48%, #2a1a0c 48% 56%,
+        #1a1208 56% 62%, #2a1a0c 62% 70%, #1a1208 70% 78%,
+        #2a1a0c 78% 86%, #1a1208 86% 94%, #2a1a0c 94% 100%);
+    mask: linear-gradient(180deg, #000 60%, transparent 100%);
+    opacity:0.6;
+  }
+  /* moon / sun */
+  .sun{
+    position:absolute; right:14%; top:18%;
+    width:48px; height:48px;
+    background:#f0c14b;
+    box-shadow:
+      0 0 0 4px rgba(240,193,75,0.18),
+      0 0 0 12px rgba(240,193,75,0.08),
+      0 0 64px 20px rgba(240,140,40,0.35);
+    image-rendering: pixelated;
+  }
+  /* torchlight grain vignette */
+  .grain{
+    position:fixed; inset:0; pointer-events:none;
+    background:
+      radial-gradient(120% 80% at 50% 60%, transparent 50%, rgba(0,0,0,0.55) 100%),
+      repeating-linear-gradient(0deg, rgba(255,180,80,0.02) 0 1px, transparent 1px 3px);
+    mix-blend-mode: multiply;
+    z-index: 5;
+  }
+
+  /* ---------- layout shell ---------- */
+  .hud{
+    position:fixed; inset:0; z-index:10;
+    pointer-events:none;
+  }
+  .hud > *{ pointer-events:auto; }
+
+  /* ---------- crosshair ---------- */
+  .crosshair{
+    position:absolute; left:50%; top:50%;
+    width:18px; height:18px;
+    transform: translate(-50%,-50%);
+    pointer-events:none;
+  }
+  .crosshair::before, .crosshair::after{
+    content:""; position:absolute; background:var(--ink);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.9);
+  }
+  .crosshair::before{ left:50%; top:0; bottom:0; width:2px; transform:translateX(-50%); }
+  .crosshair::after{ top:50%; left:0; right:0; height:2px; transform:translateY(-50%); }
+
+  /* ---------- top-center: compass ---------- */
+  .compass{
+    position:absolute; top:18px; left:50%;
+    transform: translateX(-50%);
+    display:flex; flex-direction:column; gap:6px; align-items:center;
+    z-index: 5;
+  }
+  .compass-strip{
+    width:340px; height:28px;
+    background: linear-gradient(180deg, var(--panel-iron) 0%, #1a1410 100%);
+    border: 2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-iron-edge),
+      inset 0 0 0 2px #0a0805,
+      0 0 0 1px #000;
+    position:relative; overflow:hidden;
+    font-family:"Press Start 2P", monospace;
+    font-size:9px; letter-spacing:1px;
+    color:var(--ink-dim);
+  }
+  .compass-ticks{
+    position:absolute; inset:0;
+    display:flex; align-items:center; gap:24px;
+    padding-left:50%;
+    transform: translateX(var(--cx, -120px));
+    transition: transform .2s linear;
+    white-space:nowrap;
+  }
+  .compass-ticks span{
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .compass-ticks .tick{ display:inline-block; width:1px; height:8px; background:var(--ink-mute); }
+  .compass-ticks .card{ color:var(--gold); font-weight:700; }
+  .compass-needle{
+    position:absolute; left:50%; top:0; bottom:0; width:2px;
+    background:var(--hp); transform:translateX(-50%);
+    box-shadow: 0 0 6px rgba(232,74,58,0.6);
+  }
+  .coord{
+    font-family:"Press Start 2P", monospace;
+    font-size:9px; color:var(--ink-mute);
+    text-shadow: 1px 1px 0 #000;
+    padding:2px 4px;
+  }
+
+  /* ---------- top-right: clock + day ---------- */
+  .clock{
+    position:absolute; top:18px; right:18px;
+    display:flex; flex-direction:column; align-items:flex-end; gap:6px;
+  }
+  .day-strip{
+    background: var(--panel-iron);
+    border: 2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-iron-edge),
+      inset 0 0 0 2px #0a0805;
+    padding:6px 10px;
+    display:flex; align-items:center; gap:10px;
+    font-family:"Macondo Swash Caps", serif; font-weight:700;
+    font-size:13px; letter-spacing:2px; color:var(--gold);
+    text-shadow: 1px 1px 0 #000;
+  }
+  .day-strip .sep{ width:1px; height:14px; background:var(--iron); }
+  .day-strip .time{ color:var(--ink); font-family:"Press Start 2P"; font-size:10px; letter-spacing:1px;}
+  .biome{
+    font-family:"Press Start 2P"; font-size:9px;
+    color:var(--ink-dim); text-shadow:1px 1px 0 #000;
+    padding:2px 4px;
+  }
+
+  /* ---------- bottom-left: vitals stack ---------- */
+  .vitals{
+    position:absolute; left:24px; bottom:24px;
+    display:flex; flex-direction:column; gap:6px;
+    width:280px;
+  }
+  .vital-row{
+    display:flex; align-items:center; gap:8px;
+  }
+  .vital-icon{
+    width:24px; height:24px; flex:0 0 24px;
+    display:grid; place-items:center;
+    background:#000;
+    border: 2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    image-rendering:pixelated;
+  }
+  .vital-bar{
+    flex:1; height:18px;
+    background:#0a0805;
+    border:2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-iron-edge),
+      inset 0 0 0 2px #0a0805;
+    position:relative;
+    overflow:hidden;
+  }
+  .vital-fill{
+    height:100%;
+    background-image: linear-gradient(180deg,
+      var(--c-bright, #fff) 0 25%,
+      var(--c-mid, #aaa) 25% 70%,
+      var(--c-deep, #555) 70% 100%);
+    box-shadow: inset -2px 0 0 rgba(0,0,0,0.4), inset 0 -2px 0 rgba(0,0,0,0.35);
+    position:relative;
+    transition: width .25s steps(20);
+  }
+  .vital-fill::after{
+    content:""; position:absolute; inset:0;
+    background: repeating-linear-gradient(90deg,
+      rgba(0,0,0,0) 0 11px, rgba(0,0,0,0.35) 11px 12px);
+    pointer-events:none;
+  }
+  .vital-num{
+    position:absolute; right:6px; top:50%;
+    transform: translateY(-50%);
+    font-family:"Press Start 2P"; font-size:9px;
+    color:var(--ink); text-shadow:1px 1px 0 #000;
+    letter-spacing:1px;
+  }
+  .v-hp     { --c-bright:#ff6b5a; --c-mid:var(--hp);     --c-deep:var(--hp-deep);     }
+  .v-stam   { --c-bright:#f0d878; --c-mid:var(--stam);   --c-deep:var(--stam-deep);   }
+  .v-hunger { --c-bright:#c88848; --c-mid:var(--hunger); --c-deep:var(--hunger-deep); }
+  .v-mana   { --c-bright:#6aa0e8; --c-mid:var(--mana);   --c-deep:var(--mana-deep);   }
+
+  /* heart / drumstick / etc — built from CSS */
+  .ico-heart, .ico-stam, .ico-hunger, .ico-mana{
+    width:14px; height:14px;
+    image-rendering: pixelated;
+  }
+  .ico-heart{
+    background:
+      conic-gradient(from 0deg at 50% 60%,
+        var(--hp-bright) 0 25%, var(--hp) 25% 50%, var(--hp-bright) 50% 75%, var(--hp) 75% 100%);
+    clip-path: polygon(
+      20% 0%, 50% 18%, 80% 0%, 100% 30%, 100% 50%, 50% 100%, 0% 50%, 0% 30%);
+  }
+  .ico-stam{
+    background: var(--stam);
+    clip-path: polygon(50% 0, 70% 40%, 100% 50%, 70% 60%, 50% 100%, 30% 60%, 0% 50%, 30% 40%);
+  }
+  .ico-hunger{
+    background: var(--hunger);
+    clip-path: polygon(20% 30%, 80% 30%, 100% 50%, 80% 70%, 50% 100%, 20% 70%, 0% 50%);
+  }
+  .ico-mana{
+    background: linear-gradient(180deg, #6aa0e8 0%, var(--mana) 50%, var(--mana-deep) 100%);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0% 50%);
+  }
+
+  /* ---------- bottom-center: hotbar ---------- */
+  .hotbar-wrap{
+    position:absolute; left:50%; bottom:24px;
+    transform: translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+  }
+  .item-tooltip{
+    background: var(--panel-oak-2);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 0 0 2px #0a0805;
+    padding:6px 12px;
+    font-family:"Macondo Swash Caps", serif; font-weight:700; letter-spacing:1px;
+    color:var(--gold); font-size:14px;
+    text-shadow:1px 1px 0 #000;
+    min-width:160px; text-align:center;
+    opacity:0; transform:translateY(6px);
+    transition: opacity .18s, transform .18s;
+  }
+  .item-tooltip.show{ opacity:1; transform:translateY(0); }
+  .item-tooltip .meta{
+    display:block;
+    font-family:"VT323", monospace; font-weight:400; font-size:14px;
+    color:var(--ink-dim); letter-spacing:0; margin-top:2px;
+  }
+
+  .hotbar{
+    display:flex; gap: var(--gap);
+    background: var(--panel-oak-2);
+    padding:6px;
+    border: 2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-oak-edge),
+      inset 0 0 0 2px #0a0805,
+      0 0 0 1px #000,
+      0 6px 0 -2px rgba(0,0,0,0.6);
+  }
+
+  .slot{
+    position:relative;
+    width:var(--tile); height:var(--tile);
+    background:
+      linear-gradient(180deg, #1a1410 0%, #0a0805 100%);
+    border:2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--iron),
+      inset 0 0 0 2px var(--iron-deep);
+    cursor:pointer;
+    image-rendering:pixelated;
+  }
+  .slot:hover{
+    box-shadow:
+      inset 0 0 0 1px var(--gold),
+      inset 0 0 0 2px var(--gold-deep);
+  }
+  .slot.active{
+    box-shadow:
+      inset 0 0 0 1px var(--gold),
+      inset 0 0 0 2px var(--gold-deep),
+      0 0 0 2px var(--gold),
+      0 0 12px rgba(240,193,75,0.45);
+    transform: translateY(-2px);
+  }
+  .slot.empty{ }
+  .slot .key{
+    position:absolute; top:2px; left:3px;
+    font-family:"Press Start 2P"; font-size:8px;
+    color:var(--ink-mute); text-shadow:1px 1px 0 #000;
+  }
+  .slot .qty{
+    position:absolute; right:3px; bottom:2px;
+    font-family:"Press Start 2P"; font-size:9px;
+    color:var(--ink); text-shadow:1px 1px 0 #000;
+  }
+  .slot.rare-uncommon  { box-shadow: inset 0 0 0 1px var(--rare-uncommon),  inset 0 0 0 2px var(--iron-deep); }
+  .slot.rare-rare      { box-shadow: inset 0 0 0 1px var(--rare-rare),      inset 0 0 0 2px var(--iron-deep); }
+  .slot.rare-epic      { box-shadow: inset 0 0 0 1px var(--rare-epic),      inset 0 0 0 2px var(--iron-deep); }
+  .slot.rare-legendary { box-shadow: inset 0 0 0 1px var(--rare-legendary), inset 0 0 0 2px var(--iron-deep); }
+
+  /* durability sliver */
+  .dura{
+    position:absolute; left:3px; right:3px; bottom:3px; height:3px;
+    background:#000;
+    border:1px solid rgba(0,0,0,0.9);
+  }
+  .dura > i{
+    display:block; height:100%;
+    background: linear-gradient(180deg, #6fbb47 0 50%, #2f7c1a 50% 100%);
+  }
+  .dura.warn > i{ background: linear-gradient(180deg, #f0a02a 0 50%, #a86c14 50% 100%); }
+  .dura.crit > i{ background: linear-gradient(180deg, #e84a3a 0 50%, #5a1410 50% 100%); }
+
+  /* ---------- minimap (REMOVED — kept selectors as no-op for safety) ---------- */
+  .minimap{ display:none !important; }
+  /* legacy ---------- bottom-right: minimap ---------- */
+  .minimap{
+    position:absolute; right:24px; bottom:24px;
+    width:200px; height:200px;
+    background: var(--panel-oak-2);
+    border: 2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-oak-edge),
+      inset 0 0 0 2px #0a0805;
+    padding:6px;
+  }
+  .minimap-inner{
+    width:100%; height:100%;
+    background:
+      /* "voxel" tiles */
+      conic-gradient(from 0deg at 30% 30%, #2c4a1c 0 90deg, #1f3a14 90deg 180deg, #2c4a1c 180deg 270deg, #1f3a14 270deg 360deg),
+      #1a2810;
+    background-size: 24px 24px;
+    image-rendering:pixelated;
+    position:relative; overflow:hidden;
+    border:1px solid #000;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.6);
+  }
+  /* river */
+  .minimap-inner::before{
+    content:""; position:absolute; left:-10%; top:30%;
+    width:140%; height:14px;
+    background: #2a5a8a;
+    box-shadow: inset 0 -2px 0 #173258;
+    transform: rotate(-8deg);
+  }
+  /* roads */
+  .minimap-inner::after{
+    content:""; position:absolute; left:20%; top:0; bottom:0;
+    width:6px; background:#7a5a32;
+    box-shadow: 1px 0 0 #4a3418, -1px 0 0 #4a3418;
+  }
+  .mm-marker{
+    position:absolute; width:6px; height:6px;
+    transform: translate(-50%,-50%);
+    image-rendering:pixelated;
+  }
+  .mm-marker.player{
+    background:var(--gold);
+    box-shadow:0 0 0 1px #000, 0 0 0 3px rgba(240,193,75,0.4);
+    width:8px; height:8px;
+    left:50%; top:55%;
+    clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0% 100%);
+  }
+  .mm-marker.poi{ background: var(--hp); box-shadow:0 0 0 1px #000; }
+  .mm-marker.poi.friend{ background: var(--rare-uncommon); }
+  .mm-marker.poi.quest{ background: var(--gold); width:5px; height:5px; rotate:45deg; }
+  .minimap-label{
+    position:absolute; top:-2px; left:50%; transform: translate(-50%,-50%);
+    background: var(--panel-oak-2);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge);
+    padding:2px 8px;
+    font-family:"Macondo Swash Caps", serif; font-weight:700;
+    font-size:11px; letter-spacing:2px; color:var(--gold);
+    text-shadow:1px 1px 0 #000;
+  }
+
+  /* ---------- right side: quest tracker ---------- */
+  .quest{
+    position:absolute; right:24px; top:84px;
+    width:240px;
+    background: linear-gradient(180deg, rgba(46,27,13,0.92), rgba(26,15,7,0.92));
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 0 0 2px #0a0805;
+    padding:10px 12px;
+  }
+  .quest h3{
+    font-family:"Macondo Swash Caps", serif; font-weight:700;
+    font-size:12px; letter-spacing:3px; color:var(--gold);
+    text-shadow:1px 1px 0 #000;
+    margin-bottom:6px;
+  }
+  .quest .q-title{
+    font-family:"Macondo Swash Caps", serif; font-size:14px; color:var(--ink);
+    text-shadow:1px 1px 0 #000;
+    margin-bottom:4px;
+  }
+  .quest ul{ list-style:none; }
+  .quest li{
+    font-family:"VT323", monospace; font-size:16px;
+    color:var(--ink-dim); display:flex; gap:8px; align-items:flex-start;
+    line-height:1.1; padding:1px 0;
+  }
+  .quest li::before{
+    content:""; flex:0 0 8px; width:8px; height:8px; margin-top:4px;
+    background:var(--ink-mute); box-shadow:0 0 0 1px #000;
+  }
+  .quest li.done{ color:var(--ink-mute); text-decoration:line-through; }
+  .quest li.done::before{ background: var(--rare-uncommon); }
+  .quest li.active::before{ background: var(--gold); box-shadow: 0 0 0 1px #000, 0 0 6px var(--gold); }
+
+  /* ---------- buff/debuff tray ---------- */
+  .buffs{
+    position:absolute; left:24px; top:60px;
+    display:flex; gap:6px;
+  }
+  .buff{
+    width:36px; height:36px;
+    background: var(--panel-oak-2);
+    border:2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-oak-edge);
+    display:grid; place-items:center;
+    position:relative;
+    image-rendering:pixelated;
+  }
+  .buff .glyph{ width:18px; height:18px; image-rendering:pixelated; }
+  .buff .timer{
+    position:absolute; bottom:1px; right:2px;
+    font-family:"Press Start 2P"; font-size:7px;
+    color:var(--ink); text-shadow:1px 1px 0 #000;
+  }
+  .buff.debuff{ box-shadow: inset 0 0 0 1px var(--hp); }
+
+  /* ---------- chat / log feed (REMOVED) ---------- */
+  .feed{ display:none !important; }
+  .feed-legacy{
+    position:absolute; left:24px; bottom: 250px;
+    width: 360px; max-height: 160px;
+    overflow:hidden;
+    pointer-events:none;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    gap:1px;
+  }
+  .feed .line{
+    font-family:"VT323", monospace;
+    font-size:18px; line-height:1.1;
+    color:var(--ink); text-shadow: 2px 2px 0 #000;
+    opacity:.92;
+  }
+  .feed .line.sys{ color:var(--gold); }
+  .feed .line.dmg{ color:var(--hp-bright); }
+  .feed .line.gain{ color:var(--rare-uncommon); }
+  .feed .line.lore{ color:var(--ink-dim); font-style:italic; }
+  .feed .line .who{ color:var(--gold); }
+
+  /* ---------- xp bar ---------- */
+  .xp{
+    position:absolute; left:50%; bottom: 110px;
+    transform: translateX(-50%);
+    width: 480px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .xp-level{
+    font-family:"Macondo Swash Caps", serif; font-weight:700; font-size:13px;
+    letter-spacing:2px; color:var(--gold);
+    text-shadow:1px 1px 0 #000; min-width:42px; text-align:right;
+  }
+  .xp-track{
+    flex:1; height:8px; background:#0a0805;
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    position:relative; overflow:hidden;
+  }
+  .xp-fill{
+    height:100%;
+    background: linear-gradient(180deg, #f0c14b 0 40%, #a87320 40% 100%);
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.4);
+  }
+  .xp-num{
+    font-family:"Press Start 2P"; font-size:8px; color:var(--ink-dim);
+    text-shadow:1px 1px 0 #000; min-width:80px;
+  }
+
+  /* ============================================================
+     INVENTORY OVERLAY
+     ============================================================ */
+  .overlay{
+    position:fixed; inset:0; z-index:50;
+    background:
+      radial-gradient(80% 60% at 50% 50%, rgba(20,12,6,0.7), rgba(0,0,0,0.92));
+    backdrop-filter: blur(2px);
+    display:none;
+    align-items:center; justify-content:center;
+    animation: fadein .18s steps(4) both;
+  }
+  .overlay.open{ display:flex; }
+  @keyframes fadein{ from{ opacity:0 } to{ opacity:1 } }
+
+  .inv{
+    width:880px; max-width:96vw;
+    display:grid;
+    grid-template-columns: 280px 1fr;
+    gap:14px;
+    image-rendering:pixelated;
+  }
+  .panel{
+    background:
+      linear-gradient(180deg, var(--panel-oak-1) 0%, var(--panel-oak-2) 100%);
+    border:2px solid #000;
+    box-shadow:
+      inset 0 0 0 1px var(--panel-oak-edge),
+      inset 0 0 0 2px #0a0805,
+      inset 0 0 0 4px var(--panel-oak-edge),
+      0 0 0 1px #000,
+      0 8px 0 -2px rgba(0,0,0,0.55);
+    padding:14px;
+    position:relative;
+  }
+  .panel::before{
+    /* corner rivets */
+    content:""; position:absolute; inset:6px;
+    pointer-events:none;
+    background:
+      radial-gradient(circle at 0 0, var(--bronze) 2px, transparent 3px),
+      radial-gradient(circle at 100% 0, var(--bronze) 2px, transparent 3px),
+      radial-gradient(circle at 0 100%, var(--bronze) 2px, transparent 3px),
+      radial-gradient(circle at 100% 100%, var(--bronze) 2px, transparent 3px);
+    background-repeat:no-repeat;
+  }
+  .panel-title{
+    font-family:"Macondo Swash Caps", serif; font-weight:700;
+    font-size:14px; letter-spacing:4px; color:var(--gold);
+    text-transform:uppercase; text-shadow:1px 1px 0 #000;
+    border-bottom: 2px solid #000;
+    box-shadow: 0 1px 0 var(--panel-oak-edge);
+    padding-bottom:6px; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .panel-title .x{
+    font-family:"Press Start 2P"; font-size:10px; color:var(--ink-dim);
+    cursor:pointer;
+  }
+  .panel-title .x:hover{ color:var(--hp-bright); }
+
+  /* ---------- equipment doll ---------- */
+  .doll{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(5, auto);
+    gap:6px;
+    margin-bottom:10px;
+  }
+  .eq{
+    --tile: 50px;
+    width:var(--tile); height:var(--tile);
+    background:
+      linear-gradient(180deg, #1a1410 0%, #0a0805 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--iron), inset 0 0 0 2px var(--iron-deep);
+    position:relative; image-rendering:pixelated;
+  }
+  .eq.empty::after{
+    content: attr(data-empty);
+    position:absolute; inset:0;
+    display:grid; place-items:center;
+    font-family:"Press Start 2P"; font-size:8px;
+    color: var(--ink-mute); text-align:center;
+    line-height:1.2;
+  }
+  .eq.head    { grid-column: 2; grid-row: 1; }
+  .eq.amulet  { grid-column: 3; grid-row: 1; }
+  .eq.cloak   { grid-column: 1; grid-row: 1; }
+  .eq.chest   { grid-column: 2; grid-row: 2; }
+  .eq.weapon  { grid-column: 1; grid-row: 2; }
+  .eq.shield  { grid-column: 3; grid-row: 2; }
+  .eq.gloves  { grid-column: 1; grid-row: 3; }
+  .eq.belt    { grid-column: 2; grid-row: 3; }
+  .eq.ring    { grid-column: 3; grid-row: 3; }
+  .eq.legs    { grid-column: 2; grid-row: 4; }
+  .eq.boots   { grid-column: 2; grid-row: 5; }
+
+  /* ---------- character stats ---------- */
+  .stats{
+    border-top:2px solid #000;
+    box-shadow: 0 -1px 0 var(--panel-oak-edge);
+    padding-top:10px;
+    display:grid; grid-template-columns: 1fr 1fr; gap:4px 10px;
+    font-family:"VT323", monospace;
+    font-size:16px;
+  }
+  .stats .k{ color:var(--ink-dim); }
+  .stats .v{ color:var(--gold); text-align:right;
+    font-family:"Press Start 2P"; font-size:9px;
+    text-shadow:1px 1px 0 #000;
+  }
+  .char-name{
+    font-family:"Macondo Swash Caps", serif; font-weight:700;
+    font-size:18px; letter-spacing:2px; color:var(--ink);
+    text-shadow:1px 1px 0 #000; margin-bottom:2px;
+  }
+  .char-class{
+    font-family:"VT323", monospace; color:var(--ink-dim);
+    font-size:14px; margin-bottom:8px;
+  }
+
+  /* ---------- inventory grid ---------- */
+  .inv-head{
+    display:flex; align-items:center; gap:10px; margin-bottom:10px;
+  }
+  .tabs{ display:flex; gap:0; }
+  .tab{
+    font-family:"Macondo Swash Caps", serif; font-weight:700; font-size:11px;
+    letter-spacing:2px; color:var(--ink-mute);
+    padding:6px 12px; cursor:pointer;
+    border:2px solid #000;
+    background: var(--panel-iron);
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    margin-right:-2px;
+  }
+  .tab:hover{ color:var(--ink); }
+  .tab.active{
+    color:var(--gold); background: var(--panel-oak-2);
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 -3px 0 var(--gold);
+  }
+  .weight{
+    margin-left:auto;
+    font-family:"Press Start 2P"; font-size:9px; color:var(--ink-dim);
+    text-shadow:1px 1px 0 #000;
+    display:flex; align-items:center; gap:6px;
+  }
+  .weight i{ width:12px; height:12px; background:var(--bronze);
+    clip-path: polygon(20% 0,80% 0,100% 30%,90% 100%,10% 100%,0% 30%);
+    display:inline-block;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: var(--gap);
+  }
+  .grid .slot{ width:auto; aspect-ratio:1; }
+
+  /* ---------- item glyphs (CSS-drawn, voxel-style placeholders) ---------- */
+  .it{
+    position:absolute; inset:6px;
+    image-rendering:pixelated;
+  }
+  /* sword */
+  .it.sword{
+    background:
+      linear-gradient(180deg, transparent 0 8%, #d8d4c8 8% 60%, #8a8378 60% 64%, transparent 64%),
+      linear-gradient(180deg, transparent 0 60%, #6b4520 60% 78%, #b07a3a 78% 84%, #6b4520 84% 100%);
+    clip-path: polygon(45% 0, 55% 0, 60% 60%, 75% 60%, 75% 68%, 60% 68%, 60% 100%, 40% 100%, 40% 68%, 25% 68%, 25% 60%, 40% 60%);
+  }
+  /* pickaxe */
+  .it.pick{
+    background:
+      linear-gradient(180deg, #6b4520 0 60%, #b07a3a 60% 100%);
+    clip-path: polygon(0 20%, 100% 20%, 100% 36%, 60% 36%, 60% 100%, 40% 100%, 40% 36%, 0 36%);
+  }
+  /* axe */
+  .it.axe{
+    background:
+      linear-gradient(180deg, #c8c0b0 0 50%, #8a8378 50% 60%, #6b4520 60% 100%);
+    clip-path: polygon(20% 0, 80% 0, 100% 20%, 100% 50%, 60% 50%, 60% 100%, 40% 100%, 40% 50%, 0 50%, 0 20%);
+  }
+  /* bow */
+  .it.bow{
+    background:
+      radial-gradient(ellipse at 50% 50%, transparent 50%, #6b4520 50% 60%, transparent 60%),
+      linear-gradient(90deg, transparent 48%, #d8d4c8 48% 52%, transparent 52%);
+  }
+  /* shield */
+  .it.shield-i{
+    background:
+      radial-gradient(circle at 50% 30%, var(--bronze) 0 18%, transparent 18%),
+      linear-gradient(180deg, #6b4520 0 12%, #4a2f1a 12% 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  }
+  /* potion red */
+  .it.potion-hp{
+    background:
+      linear-gradient(180deg, #6b4520 0 14%, #b07a3a 14% 22%, #d8d4c8 22% 30%, #b8302a 30% 86%, #5a1410 86% 100%);
+    clip-path: polygon(38% 0, 62% 0, 62% 22%, 80% 36%, 80% 100%, 20% 100%, 20% 36%, 38% 22%);
+  }
+  /* potion blue */
+  .it.potion-mn{
+    background:
+      linear-gradient(180deg, #6b4520 0 14%, #b07a3a 14% 22%, #d8d4c8 22% 30%, #3a6fb8 30% 86%, #173258 86% 100%);
+    clip-path: polygon(38% 0, 62% 0, 62% 22%, 80% 36%, 80% 100%, 20% 100%, 20% 36%, 38% 22%);
+  }
+  /* meat */
+  .it.meat{
+    background: radial-gradient(ellipse at 50% 50%, #c88848 0 50%, #8a5a28 50% 100%);
+    clip-path: polygon(20% 30%, 80% 30%, 100% 50%, 80% 70%, 50% 100%, 20% 70%, 0 50%);
+  }
+  /* bread */
+  .it.bread{
+    background:
+      linear-gradient(180deg, #d8a868 0 40%, #a87320 40% 100%);
+    clip-path: polygon(10% 30%, 90% 30%, 100% 70%, 80% 100%, 20% 100%, 0 70%);
+  }
+  /* log */
+  .it.log{
+    background:
+      repeating-linear-gradient(90deg, #6b4520 0 6px, #4a2f1a 6px 8px),
+      #6b4520;
+    border-radius:0;
+    clip-path: polygon(0 30%, 100% 30%, 100% 70%, 0 70%);
+  }
+  /* stone */
+  .it.stone{
+    background:
+      radial-gradient(circle at 30% 30%, #8a8378 0 20%, #4a4038 20% 70%, #2a241f 70% 100%);
+    clip-path: polygon(20% 0, 80% 0, 100% 30%, 90% 80%, 70% 100%, 30% 100%, 10% 80%, 0 30%);
+  }
+  /* iron ingot */
+  .it.iron{
+    background: linear-gradient(180deg, #c8c0b0 0 30%, #8a8378 30% 100%);
+    clip-path: polygon(20% 30%, 80% 30%, 95% 70%, 5% 70%);
+  }
+  /* gold ingot */
+  .it.goldb{
+    background: linear-gradient(180deg, #f0d878 0 30%, #a87320 30% 100%);
+    clip-path: polygon(20% 30%, 80% 30%, 95% 70%, 5% 70%);
+  }
+  /* gem */
+  .it.gem{
+    background:
+      linear-gradient(135deg, #ffffff 0 10%, #e84a3a 10% 50%, #8a1410 50% 100%);
+    clip-path: polygon(50% 0, 100% 30%, 80% 100%, 20% 100%, 0 30%);
+  }
+  /* arrow */
+  .it.arrow{
+    background:
+      linear-gradient(90deg, #d8d4c8 0 12%, #6b4520 12% 80%, #f0e0a8 80% 100%);
+    clip-path: polygon(0 40%, 80% 40%, 80% 30%, 100% 50%, 80% 70%, 80% 60%, 0 60%);
+  }
+  /* helmet */
+  .it.helm{
+    background:
+      linear-gradient(180deg, #c8c0b0 0 10%, #8a8378 10% 60%, #4a4038 60% 100%);
+    clip-path: polygon(15% 30%, 85% 30%, 100% 50%, 100% 80%, 80% 100%, 20% 100%, 0 80%, 0 50%);
+  }
+  /* armor */
+  .it.armor{
+    background:
+      linear-gradient(180deg, #8a8378 0 30%, #4a4038 30% 100%);
+    clip-path: polygon(10% 0, 90% 0, 100% 20%, 80% 30%, 100% 100%, 0 100%, 20% 30%, 0 20%);
+  }
+  /* ring */
+  .it.ring{
+    background:
+      radial-gradient(circle at 50% 50%, transparent 30%, var(--gold) 30% 50%, transparent 50%),
+      radial-gradient(circle at 50% 30%, var(--rare-rare) 0 8%, transparent 8%);
+  }
+  /* coin pile */
+  .it.coin{
+    background:
+      radial-gradient(circle at 35% 60%, var(--gold) 0 18%, transparent 18%),
+      radial-gradient(circle at 60% 50%, var(--gold) 0 18%, transparent 18%),
+      radial-gradient(circle at 50% 75%, var(--gold) 0 22%, transparent 22%);
+  }
+  /* torch */
+  .it.torch{
+    background:
+      radial-gradient(circle at 50% 22%, #f0c14b 0 14%, #e84a3a 14% 22%, transparent 22%),
+      linear-gradient(180deg, transparent 0 30%, #6b4520 30% 100%);
+  }
+  /* boots */
+  .it.boots{
+    background: linear-gradient(180deg, #6b4520 0 50%, #4a2f1a 50% 100%);
+    clip-path: polygon(20% 20%, 60% 20%, 60% 70%, 90% 70%, 90% 90%, 10% 90%, 10% 30%);
+  }
+
+  /* ---------- key hints / footer ---------- */
+  .keyhints{
+    position:absolute; bottom:18px; right:24px;
+    display:flex; gap:14px;
+    font-family:"VT323", monospace; font-size:14px;
+    color:var(--ink-dim);
+  }
+  .keyhints kbd{
+    display:inline-block;
+    font-family:"Press Start 2P"; font-size:9px;
+    padding:3px 6px;
+    background:var(--panel-iron);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge), 0 2px 0 #000;
+    color:var(--gold);
+    margin-right:6px;
+  }
+
+  /* ---------- damage indicator (vignette pulse) ---------- */
+  .dmg-pulse{
+    position:fixed; inset:0; z-index:6; pointer-events:none;
+    box-shadow: inset 0 0 240px rgba(184,48,42,0);
+    transition: box-shadow .2s;
+  }
+  .dmg-pulse.hit{ box-shadow: inset 0 0 240px rgba(184,48,42,0.7); }
+
+  /* ---------- floating damage numbers ---------- */
+  .float-num{
+    position:absolute;
+    font-family:"Press Start 2P"; font-size:14px;
+    color:var(--hp-bright);
+    text-shadow: 2px 2px 0 #000;
+    pointer-events:none;
+    animation: floatUp .9s steps(8) both;
+  }
+  .float-num.gain{ color: var(--gold); }
+  @keyframes floatUp{
+    from{ transform: translateY(0); opacity:1; }
+    to{ transform: translateY(-40px); opacity:0; }
+  }
+
+  /* ---------- low-health blood pulse ---------- */
+  .low-hp{
+    position:fixed; inset:0; z-index:4; pointer-events:none;
+    box-shadow: inset 0 0 200px rgba(184,48,42,0.55);
+    animation: pulseBlood 1.4s ease-in-out infinite;
+    display:none;
+  }
+  .low-hp.on{ display:block; }
+  @keyframes pulseBlood{
+    0%,100%{ box-shadow: inset 0 0 160px rgba(184,48,42,0.4); }
+    50%    { box-shadow: inset 0 0 240px rgba(184,48,42,0.75); }
+  }
+
+  /* responsive */
+  @media (max-width: 900px){
+    .quest, .compass-strip{ display:none; }
+    .vitals{ width:220px; }
+    .hotbar .slot{ width:44px; height:44px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ============ WORLD SCENE ============ -->
+  <div class="scene" aria-hidden="true">
+    <div class="sun"></div>
+    <div class="skyline"></div>
+    <div class="voxel-ground"></div>
+  </div>
+  <div class="grain"></div>
+  <div class="dmg-pulse" id="dmgPulse"></div>
+  <div class="low-hp" id="lowHp"></div>
+
+  <!-- ============ HUD ============ -->
+  <div class="hud" id="hud">
+
+    <div class="crosshair"></div>
+
+    <!-- compass + coords -->
+    <div class="compass">
+      <div class="compass-strip">
+        <div class="compass-ticks" id="compassTicks">
+          <span class="card">N</span><span class="tick"></span><span>30</span><span class="tick"></span><span>60</span><span class="tick"></span>
+          <span class="card">E</span><span class="tick"></span><span>120</span><span class="tick"></span><span>150</span><span class="tick"></span>
+          <span class="card">S</span><span class="tick"></span><span>210</span><span class="tick"></span><span>240</span><span class="tick"></span>
+          <span class="card">W</span><span class="tick"></span><span>300</span><span class="tick"></span><span>330</span><span class="tick"></span>
+        </div>
+        <div class="compass-needle"></div>
+      </div>
+      <div class="coord">X -1248  Y 64  Z  872</div>
+    </div>
+
+    <!-- buffs -->
+    <div class="buffs" id="buffs">
+      <div class="buff" title="Well Rested"><div class="glyph ico-stam"></div><div class="timer">12m</div></div>
+      <div class="buff" title="Warm"><div class="glyph" style="background:var(--bronze);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);"></div><div class="timer">04m</div></div>
+      <div class="buff debuff" title="Bleeding"><div class="glyph ico-heart"></div><div class="timer">22s</div></div>
+    </div>
+
+    <!-- clock + biome -->
+    <div class="clock">
+      <div class="day-strip">
+        <span>DAY 47</span><span class="sep"></span><span class="time">19:42</span>
+      </div>
+      <div class="biome">★ ASHWOOD HOLLOW &nbsp; · &nbsp; DUSK</div>
+    </div>
+
+    <!-- quest tracker -->
+    <div class="quest">
+      <h3>◆ ACTIVE QUEST</h3>
+      <div class="q-title">The Sundered Keep</div>
+      <ul>
+        <li class="done">Speak with Elder Bram</li>
+        <li class="done">Recover the iron key</li>
+        <li class="active">Enter the keep's undercroft (0/1)</li>
+        <li>Defeat the Hollow Knight</li>
+        <li>Return before nightfall</li>
+      </ul>
+    </div>
+
+    <!-- vitals -->
+    <div class="vitals">
+      <div class="vital-row">
+        <div class="vital-icon"><div class="ico-heart"></div></div>
+        <div class="vital-bar v-hp">
+          <div class="vital-fill" id="hpFill" style="width:78%"></div>
+          <div class="vital-num" id="hpNum">78 / 100</div>
+        </div>
+      </div>
+      <div class="vital-row">
+        <div class="vital-icon"><div class="ico-stam"></div></div>
+        <div class="vital-bar v-stam">
+          <div class="vital-fill" id="stFill" style="width:62%"></div>
+          <div class="vital-num" id="stNum">62 / 100</div>
+        </div>
+      </div>
+      <div class="vital-row">
+        <div class="vital-icon"><div class="ico-hunger"></div></div>
+        <div class="vital-bar v-hunger">
+          <div class="vital-fill" id="hgFill" style="width:45%"></div>
+          <div class="vital-num" id="hgNum">45 / 100</div>
+        </div>
+      </div>
+      <div class="vital-row">
+        <div class="vital-icon"><div class="ico-mana"></div></div>
+        <div class="vital-bar v-mana">
+          <div class="vital-fill" id="mnFill" style="width:90%"></div>
+          <div class="vital-num" id="mnNum">90 / 100</div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- xp -->
+    <div class="xp">
+      <div class="xp-level">LV 23</div>
+      <div class="xp-track"><div class="xp-fill" id="xpFill" style="width:64%"></div></div>
+      <div class="xp-num">12,840 / 20,000</div>
+    </div>
+
+    <!-- hotbar -->
+    <div class="hotbar-wrap">
+      <div class="item-tooltip" id="tooltip"></div>
+      <div class="hotbar" id="hotbar"></div>
+    </div>
+
+
+  </div>
+
+<script>
+/* ============================================================
+   Hotbar + inventory data
+   ============================================================ */
+const HOTBAR = [
+  { glyph:'sword',     name:'Iron Longsword',   meta:'Weapon · 12-18 dmg', rarity:'rare-uncommon', dura:0.62, qty:null, key:'1' },
+  { glyph:'pick',      name:"Miner's Pickaxe",  meta:'Tool · Tier II',     rarity:'rare-common',   dura:0.34, qty:null, key:'2' },
+  { glyph:'axe',       name:'Woodaxe',          meta:'Tool · Tier I',      rarity:'rare-common',   dura:0.78, qty:null, key:'3' },
+  { glyph:'bow',       name:'Hunter\'s Bow',    meta:'Ranged · 8-14 dmg',  rarity:'rare-uncommon', dura:0.52, qty:null, key:'4' },
+  { glyph:'arrow',     name:'Iron Arrow',       meta:'Ammo',               rarity:'rare-common',   dura:null, qty:128,  key:'5' },
+  { glyph:'torch',     name:'Pine Torch',       meta:'Light · 4 minutes',  rarity:'rare-common',   dura:null, qty:6,    key:'6' },
+  { glyph:'potion-hp', name:'Lesser Healing',   meta:'Restore 40 HP',      rarity:'rare-uncommon', dura:null, qty:3,    key:'7' },
+  { glyph:'potion-mn', name:'Lesser Mana',      meta:'Restore 30 MP',      rarity:'rare-rare',     dura:null, qty:2,    key:'8' },
+  { glyph:'meat',      name:'Roast Boar',       meta:'+30 Hunger',         rarity:'rare-common',   dura:null, qty:5,    key:'9' },
+  { glyph:null,        name:null,               meta:null,                 rarity:'',              dura:null, qty:null, key:'0' }
+];
+
+const PACK = [
+  { glyph:'sword', name:'Old Iron Sword', meta:'8-12 dmg', rarity:'rare-common',  dura:0.20 },
+  { glyph:'axe',   name:'Battle Axe',     meta:'14-22 dmg', rarity:'rare-uncommon',dura:0.55 },
+  { glyph:'helm',  name:'Iron Helm',      meta:'+8 armor', rarity:'rare-uncommon', dura:0.70 },
+  { glyph:'armor', name:'Chain Hauberk',  meta:'+18 armor', rarity:'rare-rare',    dura:0.65 },
+  { glyph:'shield-i', name:'Oaken Shield',meta:'+12 block', rarity:'rare-uncommon',dura:0.42 },
+  { glyph:'boots', name:'Leather Boots',  meta:'+3 armor', rarity:'rare-common',   dura:0.88 },
+  { glyph:'ring',  name:'Ring of Vigor',  meta:'+15 stam', rarity:'rare-rare',     dura:null },
+  { glyph:'gem',   name:'Bloodstone',     meta:'Reagent',  rarity:'rare-epic',     dura:null, qty:2 },
+  { glyph:'iron',  name:'Iron Ingot',     meta:'Material', rarity:'rare-common',   dura:null, qty:14 },
+  { glyph:'goldb', name:'Gold Ingot',     meta:'Material', rarity:'rare-uncommon', dura:null, qty:3 },
+  { glyph:'log',   name:'Oak Log',        meta:'Material', rarity:'rare-common',   dura:null, qty:48 },
+  { glyph:'stone', name:'Cobblestone',    meta:'Material', rarity:'rare-common',   dura:null, qty:96 },
+  { glyph:'bread', name:'Honey Loaf',     meta:'+22 Hunger',rarity:'rare-common',  dura:null, qty:4 },
+  { glyph:'meat',  name:'Smoked Venison', meta:'+45 Hunger',rarity:'rare-uncommon',dura:null, qty:2 },
+  { glyph:'potion-hp', name:'Greater Healing', meta:'+90 HP', rarity:'rare-rare',  dura:null, qty:1 },
+  { glyph:'potion-mn', name:'Mana Draught',meta:'+60 MP',  rarity:'rare-rare',     dura:null, qty:2 },
+  { glyph:'arrow', name:'Steel Arrow',    meta:'Ammo',     rarity:'rare-uncommon', dura:null, qty:64 },
+  { glyph:'torch', name:'Long Torch',     meta:'+8 min',   rarity:'rare-common',   dura:null, qty:11 },
+  { glyph:'coin',  name:'Silver Mark',    meta:'Currency', rarity:'rare-uncommon', dura:null, qty:284 },
+  { glyph:'coin',  name:'Gold Crown',     meta:'Currency', rarity:'rare-legendary',dura:null, qty:7 },
+  null, null, null, null, null, null, null, null, null, null, null, null
+];
+
+/* fill 32 slots */
+while(PACK.length < 32) PACK.push(null);
+
+/* ============================================================
+   Render hotbar + grid
+   ============================================================ */
+function renderSlot(item, isHotbar=false){
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  if(!item || !item.glyph){ slot.classList.add('empty'); }
+  else{
+    slot.classList.add(item.rarity || '');
+    const it = document.createElement('div');
+    it.className = 'it ' + item.glyph;
+    slot.appendChild(it);
+    if(item.qty){
+      const q = document.createElement('div'); q.className='qty'; q.textContent='×'+item.qty;
+      slot.appendChild(q);
+    }
+    if(item.dura != null){
+      const d = document.createElement('div'); d.className='dura';
+      if(item.dura < 0.4) d.classList.add('warn');
+      if(item.dura < 0.2) d.classList.add('crit');
+      const i = document.createElement('i'); i.style.width = (item.dura*100)+'%';
+      d.appendChild(i); slot.appendChild(d);
+    }
+  }
+  if(isHotbar && item){
+    const k = document.createElement('div'); k.className='key'; k.textContent=item.key;
+    slot.appendChild(k);
+  }
+  slot.dataset.name = item?.name || '';
+  slot.dataset.meta = item?.meta || '';
+  return slot;
+}
+
+const hotbarEl = document.getElementById('hotbar');
+HOTBAR.forEach((it, idx)=>{
+  const s = renderSlot(it, true);
+  if(idx === 0) s.classList.add('active');
+  s.dataset.idx = idx;
+  hotbarEl.appendChild(s);
+});
+
+const gridEl = document.getElementById('invGrid');
+PACK.forEach((it)=>{
+  gridEl.appendChild(renderSlot(it, false));
+});
+
+/* ============================================================
+   Tooltip + active slot
+   ============================================================ */
+const tooltip = document.getElementById('tooltip');
+function showTooltip(name, meta){
+  if(!name){ tooltip.classList.remove('show'); return; }
+  tooltip.innerHTML = name + (meta ? '<span class="meta">'+meta+'</span>' : '');
+  tooltip.classList.add('show');
+}
+hotbarEl.addEventListener('mouseover', e=>{
+  const s = e.target.closest('.slot');
+  if(!s) return;
+  showTooltip(s.dataset.name, s.dataset.meta);
+});
+hotbarEl.addEventListener('mouseout', ()=> showTooltip(null));
+hotbarEl.addEventListener('click', e=>{
+  const s = e.target.closest('.slot');
+  if(!s) return;
+  hotbarEl.querySelectorAll('.slot').forEach(x=>x.classList.remove('active'));
+  s.classList.add('active');
+});
+
+/* ============================================================
+   Keyboard
+   ============================================================ */
+let activeSlot = 0;
+function setActive(i){
+  activeSlot = (i + HOTBAR.length) % HOTBAR.length;
+  const slots = hotbarEl.querySelectorAll('.slot');
+  slots.forEach((s, idx)=> s.classList.toggle('active', idx === activeSlot));
+}
+document.addEventListener('keydown', e=>{
+  if(/^[1-9]$/.test(e.key)){
+    setActive(parseInt(e.key,10) - 1);
+  } else if(e.key === '0'){
+    setActive(9);
+  }
+});
+
+/* mouse wheel cycles hotbar */
+window.addEventListener('wheel', e=>{
+  setActive(activeSlot + (e.deltaY > 0 ? 1 : -1));
+}, {passive:true});
+
+/* ============================================================
+   Live vitals + feed simulation
+   ============================================================ */
+const state = { hp:78, maxHp:100, st:62, hg:45, mn:90, xp:64 };
+
+function setBar(id, num, val, max=100){
+  document.getElementById(id).style.width = (val/max*100)+'%';
+  document.getElementById(num).textContent = Math.max(0,Math.round(val)) + ' / ' + max;
+}
+function refreshHud(){
+  setBar('hpFill','hpNum', state.hp);
+  setBar('stFill','stNum', state.st);
+  setBar('hgFill','hgNum', state.hg);
+  setBar('mnFill','mnNum', state.mn);
+  document.getElementById('xpFill').style.width = state.xp+'%';
+  document.getElementById('lowHp').classList.toggle('on', state.hp < 25);
+}
+function takeDamage(n){
+  state.hp = Math.max(0, state.hp - n);
+  const pulse = document.getElementById('dmgPulse');
+  pulse.classList.add('hit');
+  setTimeout(()=>pulse.classList.remove('hit'), 220);
+  spawnFloat('-'+n, false);
+  addFeed('dmg', 'Wolf strikes you for ' + n + ' damage.');
+  refreshHud();
+}
+function spawnFloat(text, gain=false){
+  const el = document.createElement('div');
+  el.className = 'float-num' + (gain ? ' gain' : '');
+  el.textContent = text;
+  el.style.left = (50 + (Math.random()*8 - 4)) + '%';
+  el.style.top  = (45 + (Math.random()*6 - 3)) + '%';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 900);
+}
+function addFeed(kind, text){
+  const f = document.getElementById('feed');
+  const line = document.createElement('div');
+  line.className = 'line ' + kind;
+  line.innerHTML = text;
+  f.appendChild(line);
+  while(f.children.length > 6) f.firstChild.remove();
+  setTimeout(()=>{ line.style.transition='opacity 1s'; line.style.opacity='0'; }, 8000);
+  setTimeout(()=>line.remove(), 9200);
+}
+
+/* slow regen + hunger drain */
+setInterval(()=>{
+  state.st = Math.min(100, state.st + 0.6);
+  state.hg = Math.max(0,   state.hg - 0.2);
+  if(state.hg > 30) state.hp = Math.min(state.maxHp, state.hp + 0.3);
+  refreshHud();
+}, 800);
+
+/* ambient feed lines */
+const ambient = [
+  ['lore','A raven calls from the high pines.'],
+  ['lore','Distant thunder rolls across the moor.'],
+  ['gain','+ Wild Berries ×2'],
+  ['sys','Discovered: <span class="who">Old Hunter\'s Camp</span>'],
+];
+let i = 0;
+setInterval(()=>{
+  const [k,t] = ambient[i % ambient.length];
+  addFeed(k,t);
+  i++;
+}, 9000);
+
+/* compass auto-pan */
+let cx = 0;
+setInterval(()=>{
+  cx = (cx + 6) % 720;
+  document.getElementById('compassTicks').style.transform = 'translateX(' + (-cx) + 'px)';
+}, 120);
+
+refreshHud();
+</script>
+</body>
+</html>

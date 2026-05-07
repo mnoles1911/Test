@@ -21,32 +21,78 @@ extends Node3D
 
 @export var voxel_terrain_path: NodePath = "VoxelLodTerrain"
 
-# Vertical drop height for the player on first spawn and after every
-# scale change. Calculated lazily from the generator's max peak so it
-# stays valid no matter what scale the player is testing.
+## When true, the player is teleported to Player3D.SPAWN_POSITION on
+## _ready (and after every F7 scale change). The actual coords live as
+## a constant in scripts/Player3D.gd — that's the single source of
+## truth for both this initial-spawn path AND the toggle_fly_mode
+## reset path. Change there, both behaviours follow.
+##
+## When false, the bootstrap reverts to the dynamic spawn that samples
+## the heightmap centre and drops the player above the actual ground.
+@export var spawn_override_enabled: bool = true
+
+## When true, immediately enable Player3D's fly mode after spawn so
+## the camera doesn't fall off the peak. Player3D.gd exposes
+## toggle_fly_mode(); we call it once at startup if requested.
+@export var start_in_fly_mode: bool = true
+
+# Vertical drop height for the player on first spawn (dynamic mode
+# only — overridden when spawn_override_enabled is true).
 const SPAWN_HEIGHT_MARGIN_M: float = 30.0
 
 
-func _ready() -> void:
-	# Bake-as-seed: if a baked baseline exists in res://assets/voxel/
-	# AND the player's working SQLite isn't on disk yet (fresh install
-	# or after a manual delete), copy the baseline into place. The
-	# stream then reads from the populated DB instead of regenerating
-	# every chunk on first visit. Player edits accumulate in the same
-	# file from that point on (save_generator_output=true).
-	#
-	# Why a copy instead of two-tier chaining: VoxelStreamSQLite's
-	# load methods aren't exposed to GDScript (verified via probe in
-	# scenes/_dev/BakeWorld.tscn → Run Diagnostics). A custom
-	# VoxelStreamScript subclass would need to read Zylann's SQLite
-	# schema directly, which isn't documented. Copy is simple and
-	# robust; revisit if Zylann ever adds a public chain API.
+func _enter_tree() -> void:
+	# CRITICAL ordering: this seed copy MUST happen before the
+	# VoxelLodTerrain child opens its SQLite stream. Godot's _enter_tree
+	# fires top-down (parent before children), whereas _ready fires
+	# bottom-up (children before parent). If we did the copy in _ready,
+	# Zylann would already have opened the empty/missing user:// file
+	# and our copy would land too late — exactly the "39.7 MB on disk
+	# but generator runs anyway" symptom we hit on first attempt.
 	_seed_from_baseline_if_needed()
 
+
+func _ready() -> void:
+	# Mark this scene as a developer test scene so the gameplay UI
+	# autoloads (HUDOverlay, PauseMenu, JournalUI, SaveNotification)
+	# stay dormant. See GameState.is_dev_scene() for the contract.
+	add_to_group("dev_scene")
+
+	# Defensive belt-and-suspenders: even with the _enter_tree seed,
+	# reassign the terrain.stream to a fresh VoxelStreamSQLite pointing
+	# at the same path. Forces Zylann to re-open the file from a known
+	# clean state. Costs nothing if the seed already worked; saves us
+	# if the .tscn's stream resource was constructed before _enter_tree
+	# fired (which can happen when scene resources cache aggressively).
 	var terrain := get_node_or_null(voxel_terrain_path)
 	if terrain == null:
 		push_error("[CopperIslesTest] VoxelLodTerrain not found at: %s" % voxel_terrain_path)
 		return
+
+	# Force-reopen the stream against the (possibly newly-seeded) file.
+	# We rebuild the resource rather than mutating the existing one so
+	# Zylann's internal SQLite handle is fully torn down + reopened.
+	# Carries forward the .tscn-defined settings so the .tscn stays the
+	# source of truth for stream config.
+	if "stream" in terrain:
+		var old_stream: Resource = terrain.get("stream")
+		if old_stream != null and old_stream is VoxelStreamSQLite:
+			var fresh := VoxelStreamSQLite.new()
+			fresh.database_path = old_stream.database_path
+			fresh.save_generator_output = old_stream.save_generator_output
+			if "preferred_coordinate_format" in old_stream:
+				fresh.preferred_coordinate_format = old_stream.preferred_coordinate_format
+			if "compression_mode" in old_stream:
+				fresh.compression_mode = old_stream.compression_mode
+			terrain.set("stream", fresh)
+			# One-shot diagnostic — confirms the reopen happened with
+			# the populated file. Compare bytes printed here with the
+			# size of user://copper_isles_test.sqlite on disk.
+			var f: FileAccess = FileAccess.open(fresh.database_path, FileAccess.READ)
+			var sz: int = f.get_length() if f != null else 0
+			if f != null:
+				f.close()
+			print("[CopperIslesTest] Reopened stream: %s (%d bytes on disk)" % [fresh.database_path, sz])
 
 	# Configure CHANNEL_COLOR depth to 32-bit so packed RGBA + mat_id
 	# values survive storage. Default 8-bit truncates to just the red
@@ -72,6 +118,12 @@ func _ready() -> void:
 		terrain.set("threaded_update_enabled", true)
 	if "collision_update_delay" in terrain:
 		terrain.set("collision_update_delay", 0.1)
+
+	# Belt-and-suspenders LOD enforcement (mirror of WorldBakeController).
+	# These MUST match the bake scene or cached chunks are at the wrong
+	# LOD coords. Set in script so Godot editor's silent .tscn property
+	# normalisation can't break the cache contract.
+	_enforce_lod_config(terrain)
 
 	# Hand the terrain to VoxelEditManager so the pickaxe / shovel in
 	# the player loadout can carve it.
@@ -143,6 +195,37 @@ func _seed_from_baseline_if_needed() -> void:
 		push_warning("[CopperIslesTest] Failed to copy baseline (err=%d)." % err)
 
 
+# Terrain config the runtime MUST run with. MUST stay in lockstep
+# with REQUIRED_* constants in scripts/_dev/WorldBakeController.gd —
+# changing one without the other corrupts the cache contract.
+const REQUIRED_LOD_COUNT: int = 8
+const REQUIRED_LOD_DISTANCE: float = 128.0
+const REQUIRED_LOD_FADE_DURATION: float = 0.5
+
+
+func _enforce_lod_config(terrain: Object) -> void:
+	# Belt-and-suspenders LOD enforcement. Override the .tscn values so
+	# Godot editor's silent property normalisation can't break the
+	# bake/runtime cache contract. Prints any drift to Output.
+	var fields: Array = [
+		["lod_count", REQUIRED_LOD_COUNT],
+		["lod_distance", REQUIRED_LOD_DISTANCE],
+		["lod_fade_duration", REQUIRED_LOD_FADE_DURATION],
+		["cache_generated_blocks", true],
+	]
+	for f in fields:
+		var key: String = f[0]
+		var want = f[1]
+		if not key in terrain:
+			push_warning("[CopperIslesTest] terrain has no property '%s' — Zylann version mismatch?" % key)
+			continue
+		var before = terrain.get(key)
+		if before == want:
+			continue
+		terrain.set(key, want)
+		print("[CopperIslesTest] enforced terrain.%s: %s → %s" % [key, before, want])
+
+
 func _configure_voxel_format(terrain: Object) -> void:
 	# Lifted from World3DBootstrap. See that file for the long-form
 	# explanation — short version: we instantiate VoxelFormat, force
@@ -179,43 +262,75 @@ func _terrain_scale(terrain: Node3D) -> float:
 # names are versioned and a stale read would silently put the player
 # inside the islands; hardcoding here is the safer option for a dev
 # scene.)
-const GEN_SEA_LEVEL_VOXELS: float = 0.0
+# Sea level moved to voxel-Y 720 (= world Y 120 m at scale 1/6). MUST
+# match `sea_level_voxels` in assets/voxel/copper_isles_generator.tres.
+const GEN_SEA_LEVEL_VOXELS: float = 720.0
 const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
 
 
-func _reseed_water_for_scale(scale: float) -> void:
+func _reseed_water_for_scale(terrain_scale: float) -> void:
 	# Phase 5: AABB source regions are gone — water is per-voxel in
 	# CHANNEL_DATA5, written by the generator. The only thing this
 	# function still controls is the horizon plane Y, which scales
 	# with terrain.transform.scale so a 1:1000 demo still shows water
 	# at the right elevation.
+	#
+	# Parameter renamed from `scale` → `terrain_scale` to dodge the
+	# Node3D.scale property shadow warning (this script's class
+	# extends Node3D).
 	if not get_node_or_null("/root/WaterFlowManager"):
 		return
-	var sea_level_world_y: float = GEN_SEA_LEVEL_VOXELS * scale
+	var sea_level_world_y: float = GEN_SEA_LEVEL_VOXELS * terrain_scale
 	WaterFlowManager.set_horizon_plane_y(sea_level_world_y)
+	# Tell WaterChunkMesher (via the manager) which voxel-Y row to
+	# scan for the ocean surface mesh. Default is Mira's 72; Copper
+	# Isles needs 720 or the mesher misses every water chunk.
+	if WaterFlowManager.has_method("set_sea_level_voxel_y"):
+		WaterFlowManager.set_sea_level_voxel_y(int(GEN_SEA_LEVEL_VOXELS))
 
 
 func _snap_player_above_terrain() -> void:
-	# Drops the player just above the central island's actual peak,
-	# sampled live from the generator. Falling from the
-	# theoretically-highest-possible peak (~2500 m at scale 1/6, ~7500 m
-	# at scale 0.5) wastes 5–10 s per scale change while the player
-	# falls through unloaded chunks; sampling avoids that.
+	# Two modes — see the @export comments at the top of the script:
+	#   spawn_override_enabled = true:  hard-coded position, fly mode
+	#                                   on, no terrain sampling.
+	#   spawn_override_enabled = false: dynamic spawn above the
+	#                                   heightmap centre (legacy).
 	var players: Array = get_tree().get_nodes_in_group("player")
 	if players.is_empty():
 		return
 	var player: Node3D = players[0] as Node3D
+
+	if spawn_override_enabled:
+		# Engage fly mode first — toggle_fly_mode() now ALSO teleports
+		# to Player3D.SPAWN_POSITION as part of its reset behaviour
+		# (shared single source of truth, see Player3D.SPAWN_POSITION
+		# const). So engaging fly here puts the player exactly where
+		# we want them. The explicit assignment below is redundant
+		# when fly mode runs but kept as defence for the
+		# start_in_fly_mode = false case.
+		if start_in_fly_mode and player.has_method("toggle_fly_mode"):
+			var already_flying: bool = "is_flying" in player and bool(player.get("is_flying"))
+			if not already_flying:
+				player.call("toggle_fly_mode")
+		player.global_position = Player3D.SPAWN_POSITION
+		if player is CharacterBody3D:
+			(player as CharacterBody3D).velocity = Vector3.ZERO
+		return
+
+	# --- Dynamic spawn (no override) ---
 	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
 	if terrain == null:
 		return
-	var scale: float = _terrain_scale(terrain)
+	# Local renamed `scale` → `terrain_scale` to dodge the Node3D.scale
+	# property shadow warning.
+	var terrain_scale: float = _terrain_scale(terrain)
 	var ground_voxels: float = (GEN_SEA_LEVEL_VOXELS + GEN_PEAK_ABOVE_SEA_VOXELS)
 	var generator = terrain.get("generator") if "generator" in terrain else null
 	if generator != null and generator.has_method("get_ground_voxel_y_at"):
 		# Sample the column directly under spawn (world X=0, Z=0 maps
 		# to the centre of the heightmap → middle island per the spec).
 		ground_voxels = float(generator.call("get_ground_voxel_y_at", 0, 0))
-	var spawn_y: float = ground_voxels * scale + SPAWN_HEIGHT_MARGIN_M
+	var spawn_y: float = ground_voxels * terrain_scale + SPAWN_HEIGHT_MARGIN_M
 	player.global_position = Vector3(0.0, spawn_y, 0.0)
 	if player is CharacterBody3D:
 		(player as CharacterBody3D).velocity = Vector3.ZERO

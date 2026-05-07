@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — Main Menu</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  @font-face{
+    font-family: "Macondo Swash Caps";
+    src: url("fonts/MacondoSwashCaps-Regular.ttf") format("truetype");
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  :root{
+    --warm-primary:#E8873A; --warm-secondary:#8B3A1A; --warm-highlight:#F5D06E;
+    --parchment:#e6d5a8;
+    --leather-1:#3a2412; --leather-2:#2a180a; --leather-edge:#5a3818;
+    --serif:"Macondo Swash Caps", serif;
+    --hand:"IM Fell English","Cormorant Garamond",serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--hand);color:var(--parchment);background:#000;overflow:hidden;user-select:none}
+
+  .bg{
+    position:absolute;inset:0;
+    background:url("assets/menu_backgrounds/cave_background1.jpg") center/cover no-repeat;
+  }
+  .bg::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(120% 80% at 50% 55%, transparent 30%, rgba(0,0,0,0.65) 100%);
+    pointer-events:none;
+  }
+  .tint{position:absolute;inset:0;background:rgba(0,0,0,0.5)}
+  .grain{
+    position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,180,80,0.015) 0 1px, transparent 1px 3px);
+    mix-blend-mode:overlay;
+  }
+
+  .col{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:560px;display:flex;flex-direction:column;align-items:center;gap:14px;
+  }
+  .title{
+    font-family:var(--serif);font-size:108px;letter-spacing:10px;
+    color:var(--warm-highlight);
+    text-shadow:3px 3px 0 #000, 0 0 24px rgba(0,0,0,0.9);
+    line-height:1;
+  }
+  .sub{
+    font-family:var(--hand);font-style:italic;font-size:22px;
+    color:rgba(230,213,168,0.7);
+    text-shadow:2px 2px 0 #000;letter-spacing:3px;margin-bottom:24px;
+  }
+  .btn{
+    font-family:var(--serif);font-size:28px;letter-spacing:5px;
+    color:rgba(230,213,168,0.85);background:transparent;border:none;cursor:pointer;
+    padding:8px 0;text-shadow:2px 2px 0 #000;
+    transition:color .15s, transform .15s;
+  }
+  .btn:hover{color:var(--warm-highlight);transform:translateX(4px)}
+  .btn.disabled{color:rgba(230,213,168,0.25);cursor:not-allowed}
+  .btn.disabled:hover{color:rgba(230,213,168,0.25);transform:none}
+  .quit{margin-top:60px;font-size:20px;color:rgba(230,213,168,0.5)}
+  .version{
+    position:absolute;bottom:14px;left:18px;
+    font-family:var(--serif);font-size:11px;letter-spacing:2px;
+    color:rgba(230,213,168,0.35);text-shadow:1px 1px 0 #000;
+  }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="tint"></div>
+  <div class="grain"></div>
+  <div class="col">
+    <div class="title">VOXELMARK</div>
+    <div class="sub">— Mira-Thal Trilogy · Game One —</div>
+    <button class="btn">CONTINUE</button>
+    <button class="btn">NEW GAME</button>
+    <button class="btn">LOAD GAME</button>
+    <button class="btn">SETTINGS</button>
+    <button class="btn">HELP</button>
+    <button class="btn">CREDITS</button>
+    <button class="btn quit">QUIT</button>
+  </div>
+  <div class="version">MILESTONE 5-3D · DEV BUILD</div>
+</body>
+</html>

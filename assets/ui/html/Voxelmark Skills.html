@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — Skills</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="menus_shared.css" />
+<style>
+  .sk-grid{
+    flex:1; min-height:0;
+    display:grid;
+    grid-template-columns: 200px 1fr 280px;
+    gap:14px;
+  }
+  .sk-tree-wrap{
+    border:2px solid #000;
+    background: linear-gradient(180deg, #1a1410 0%, #0a0805 100%);
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    position:relative; overflow:hidden;
+  }
+  .sk-tree-wrap::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(110,99,88,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(110,99,88,0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .sk-svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .sk-node{
+    position:absolute; width:64px; height:64px;
+    transform:translate(-50%,-50%);
+    cursor:pointer;
+  }
+  .sk-node .hex{
+    width:100%; height:100%;
+    background: linear-gradient(180deg, #2a241f 0%, #14100a 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--iron), inset 0 0 0 2px var(--iron-deep);
+    clip-path: polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+    display:grid; place-items:center;
+    position:relative;
+  }
+  .sk-node.unlocked .hex{
+    background: linear-gradient(180deg, var(--bronze) 0%, var(--bronze-deep) 100%);
+    box-shadow: inset 0 0 0 1px var(--gold), inset 0 0 0 2px var(--gold-deep);
+  }
+  .sk-node.available .hex{
+    background: linear-gradient(180deg, #2a241f 0%, #14100a 100%);
+    box-shadow: inset 0 0 0 1px var(--gold), inset 0 0 0 2px var(--gold-deep), 0 0 14px rgba(240,193,75,0.5);
+  }
+  .sk-node.selected .hex{
+    box-shadow: inset 0 0 0 1px var(--hp-bright), inset 0 0 0 2px var(--hp-deep), 0 0 18px rgba(232,74,58,0.7);
+  }
+  .sk-node.locked{ opacity:0.5; }
+  .sk-node .ico{
+    width:28px; height:28px; image-rendering:pixelated;
+  }
+  .sk-node .lvl{
+    position:absolute; right:-2px; bottom:-2px;
+    font-family:var(--pixel); font-size:8px;
+    color:var(--ink); text-shadow:1px 1px 0 #000;
+    background:#000; padding:2px 4px;
+    border:1px solid var(--gold-deep);
+  }
+  .sk-node .lbl{
+    position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    font-family:var(--serif); font-weight:700; font-size:11px;
+    letter-spacing:2px; color:var(--ink-dim);
+    text-shadow:1px 1px 0 #000;
+    white-space:nowrap; padding-top:4px;
+  }
+  .sk-node.unlocked .lbl{ color:var(--gold); }
+
+  /* skill icon glyphs */
+  .ico-blade { background: linear-gradient(180deg,#d8d4c8 0 70%, #6b4520 70% 100%); clip-path: polygon(50% 0,55% 65%,75% 65%,75% 75%,55% 75%,55% 100%,45% 100%,45% 75%,25% 75%,25% 65%,45% 65%); }
+  .ico-shieldsk{ background: linear-gradient(180deg,#6b4520 0 12%, var(--bronze) 12% 100%); clip-path: polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
+  .ico-bow   { background: radial-gradient(ellipse at 50% 50%, transparent 50%, #6b4520 50% 60%, transparent 60%), linear-gradient(90deg, transparent 48%, #d8d4c8 48% 52%, transparent 52%); }
+  .ico-pickax{ background: linear-gradient(180deg,#6b4520 0 60%,#b07a3a 60% 100%); clip-path: polygon(0 20%,100% 20%,100% 36%,60% 36%,60% 100%,40% 100%,40% 36%,0 36%); }
+  .ico-flame { background: radial-gradient(ellipse at 50% 70%, #f0c14b 0 30%, #e84a3a 30% 60%, transparent 60%); }
+  .ico-leaf  { background: var(--rare-uncommon); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+  .ico-eye   { background: radial-gradient(circle at 50% 50%, var(--rare-rare) 0 20%, transparent 20%, transparent 30%, var(--ink) 30% 50%, transparent 50%); }
+  .ico-heartsk{ background: var(--hp); clip-path: polygon(20% 0,50% 18%,80% 0,100% 30%,100% 50%,50% 100%,0 50%,0 30%); }
+
+  .sk-class{
+    display:flex; flex-direction:column; gap:0;
+  }
+  .sk-class-item{
+    font-family:var(--serif); font-weight:700; font-size:14px;
+    letter-spacing:2px; color:var(--ink-mute);
+    padding:10px 12px; cursor:pointer; text-shadow:1px 1px 0 #000;
+    border-bottom: 1px solid rgba(107,68,34,0.35);
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .sk-class-item:hover{ color:var(--ink); }
+  .sk-class-item.active{ color:var(--gold); background:var(--panel-oak-2);
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  .sk-class-item .n{ font-family:var(--pixel); font-size:8px; color:var(--ink-mute); }
+  .sk-class-item.active .n{ color:var(--gold); }
+
+  .pts-banner{
+    background: linear-gradient(180deg, var(--panel-iron) 0%, #14100a 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    padding:12px 14px; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .pts-banner .lab{
+    font-family:var(--serif); font-weight:700; font-size:12px;
+    letter-spacing:3px; color:var(--ink-dim);
+    text-shadow:1px 1px 0 #000;
+  }
+  .pts-banner .val{
+    font-family:var(--pixel); font-size:18px;
+    color:var(--gold); text-shadow:1px 1px 0 #000;
+  }
+
+  .sk-detail{
+    border:2px solid #000;
+    background: linear-gradient(180deg, var(--panel-oak-1) 0%, var(--panel-oak-2) 100%);
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 0 0 2px #0a0805;
+    padding:16px;
+    display:flex; flex-direction:column; gap:10px;
+    overflow-y:auto;
+  }
+  .sd-name{
+    font-family:var(--serif); font-weight:700;
+    font-size:20px; letter-spacing:2px; color:var(--gold);
+    text-shadow:1px 1px 0 #000;
+    border-bottom:2px solid #000;
+    box-shadow: 0 1px 0 var(--panel-oak-edge);
+    padding-bottom:6px;
+  }
+  .sd-tier{
+    font-family:var(--pixel); font-size:9px; color:var(--ink-dim);
+    letter-spacing:2px;
+  }
+  .sd-flavor{
+    font-family:var(--mono); font-size:16px; font-style:italic;
+    color:var(--ink-dim); line-height:1.35;
+  }
+  .sd-rank{
+    font-family:var(--mono); font-size:15px; color:var(--ink);
+    background: rgba(0,0,0,0.3);
+    border:1px solid var(--panel-oak-edge);
+    padding:8px 10px;
+  }
+  .sd-rank b{ color:var(--gold); font-family:var(--serif); letter-spacing:2px; }
+  .sd-rank .delta{ color:var(--rare-uncommon); }
+
+  .sd-req{ font-family:var(--mono); font-size:14px; color:var(--ink-dim); }
+  .sd-req b{ color:var(--ink); }
+
+  .sd-cta{
+    margin-top:auto;
+    font-family:var(--serif); font-weight:700; font-size:14px;
+    letter-spacing:3px; color:#fff8e0;
+    background: linear-gradient(180deg, var(--bronze) 0%, var(--bronze-deep) 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--gold), 0 4px 0 #000;
+    padding:12px 0; cursor:pointer;
+    text-shadow:1px 1px 0 #000;
+  }
+  .sd-cta:hover{
+    background: linear-gradient(180deg, var(--gold) 0%, var(--bronze) 100%);
+    color:var(--parchment-ink); text-shadow:none;
+  }
+  .sd-cta.disabled{
+    background: var(--panel-iron);
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge), 0 4px 0 #000;
+    color:var(--ink-mute); cursor:not-allowed;
+  }
+</style>
+</head>
+<body>
+  <div class="bg-scene"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-grain"></div>
+
+  <div class="menu-shell">
+    <nav class="menu-tabs">
+      <a href="Voxelmark Inventory.html" class="menu-tab">INVENTORY</a>
+      <a href="Voxelmark Map.html"       class="menu-tab">MAP</a>
+      <a href="Voxelmark Journal.html"   class="menu-tab">JOURNAL</a>
+      <a href="Voxelmark Codex.html"     class="menu-tab">CODEX</a>
+      <a href="Voxelmark Skills.html"    class="menu-tab active">SKILLS</a>
+      <div class="menu-spacer"></div>
+      <div class="menu-close">[ESC] CLOSE</div>
+    </nav>
+
+    <div class="menu-body">
+      <div class="sk-grid">
+        <!-- LEFT: discipline list -->
+        <div class="col">
+          <div class="sub-title"><span>◆ Disciplines</span></div>
+          <div class="sk-class">
+            <div class="sk-class-item active">Blade <span class="n">3/8</span></div>
+            <div class="sk-class-item">Bulwark <span class="n">1/6</span></div>
+            <div class="sk-class-item">Hunt <span class="n">2/7</span></div>
+            <div class="sk-class-item">Wayfaring <span class="n">4/9</span></div>
+            <div class="sk-class-item">Stonecraft <span class="n">2/8</span></div>
+            <div class="sk-class-item">Pyromancy <span class="n">0/6</span></div>
+          </div>
+        </div>
+
+        <!-- CENTER: tree -->
+        <div class="col" style="display:flex;flex-direction:column;min-height:0;">
+          <div class="pts-banner">
+            <span class="lab">SKILL POINTS</span>
+            <span class="val">3</span>
+          </div>
+          <div class="sk-tree-wrap">
+            <svg class="sk-svg" viewBox="0 0 600 480" preserveAspectRatio="xMidYMid meet">
+              <!-- connections -->
+              <g stroke="#6b4520" stroke-width="3" fill="none">
+                <path d="M 300 60 L 300 160" />
+                <path d="M 300 160 L 180 240" />
+                <path d="M 300 160 L 420 240" />
+                <path d="M 180 240 L 120 360" />
+                <path d="M 180 240 L 240 360" />
+                <path d="M 420 240 L 360 360" />
+                <path d="M 420 240 L 480 360" />
+              </g>
+              <!-- glowing connections to unlocked -->
+              <g stroke="#f0c14b" stroke-width="2" fill="none" filter="url(#glow)">
+                <path d="M 300 60 L 300 160" />
+                <path d="M 300 160 L 180 240" />
+              </g>
+              <defs>
+                <filter id="glow"><feGaussianBlur stdDeviation="3" /></filter>
+              </defs>
+            </svg>
+
+            <div class="sk-node unlocked"   style="left:50%; top:12.5%;"><div class="hex"><div class="ico ico-blade"></div><div class="lvl">3/3</div></div><div class="lbl">SWORDPLAY</div></div>
+            <div class="sk-node unlocked"   style="left:50%; top:33%;"><div class="hex"><div class="ico ico-blade"></div><div class="lvl">2/3</div></div><div class="lbl">RIPOSTE</div></div>
+            <div class="sk-node available selected" style="left:30%; top:50%;"><div class="hex"><div class="ico ico-shieldsk"></div><div class="lvl">0/3</div></div><div class="lbl">PARRY</div></div>
+            <div class="sk-node available" style="left:70%; top:50%;"><div class="hex"><div class="ico ico-blade"></div><div class="lvl">0/3</div></div><div class="lbl">EXECUTE</div></div>
+            <div class="sk-node locked"    style="left:20%; top:75%;"><div class="hex"><div class="ico ico-shieldsk"></div></div><div class="lbl">UNYIELDING</div></div>
+            <div class="sk-node locked"    style="left:40%; top:75%;"><div class="hex"><div class="ico ico-blade"></div></div><div class="lbl">WHIRLWIND</div></div>
+            <div class="sk-node locked"    style="left:60%; top:75%;"><div class="hex"><div class="ico ico-blade"></div></div><div class="lbl">DUELIST</div></div>
+            <div class="sk-node locked"    style="left:80%; top:75%;"><div class="hex"><div class="ico ico-flame"></div></div><div class="lbl">SUNDERSTRIKE</div></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: detail panel -->
+        <div class="sk-detail">
+          <div class="sd-tier">◆ TIER II · BLADE</div>
+          <div class="sd-name">Parry</div>
+          <div class="sd-flavor">A blade in the right hand turns aside a blade in the wrong one — and Roland's grip has lately grown right-handed.</div>
+
+          <div class="sd-rank">
+            <b>Rank 0 → Rank 1</b><br>
+            Parry window <span class="delta">+0.10s</span><br>
+            Stagger on parry <span class="delta">+8</span>
+          </div>
+
+          <div class="sd-req">
+            <b>Requires:</b> Riposte II<br>
+            <b>Cost:</b> 1 Skill Point
+          </div>
+
+          <button class="sd-cta">UNLOCK · 1 PT</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  document.querySelectorAll('.sk-class-item').forEach(c=>{
+    c.addEventListener('click',()=>{
+      document.querySelectorAll('.sk-class-item').forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.sk-node').forEach(n=>{
+    n.addEventListener('click',()=>{
+      if(n.classList.contains('locked')) return;
+      document.querySelectorAll('.sk-node').forEach(x=>x.classList.remove('selected'));
+      n.classList.add('selected');
+    });
+  });
+</script>
+</body>
+</html>
