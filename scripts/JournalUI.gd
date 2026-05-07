@@ -70,20 +70,22 @@ func _build_ui() -> void:
 	_root.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_root)
 
-	# Dark semi-transparent backdrop covering the whole screen.
+	# Voxelmark-night backdrop covering the whole screen.
 	var backdrop := ColorRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	backdrop.color = Color(0.0, 0.0, 0.0, 0.78)
+	backdrop.color = Color(Colors.BG_NIGHT.r, Colors.BG_NIGHT.g, Colors.BG_NIGHT.b, 0.78)
 	_root.add_child(backdrop)
 
 	# Main frame — anchored full-rect with 80px inset on each side.
 	# At 1920×1080 this gives a ~1760×960 content area.
+	# Oak-gradient menu chrome from UIStyles, matching the pause menu.
 	var frame := Panel.new()
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame.offset_left   =  80
 	frame.offset_top    =  60
 	frame.offset_right  = -80
 	frame.offset_bottom = -60
+	frame.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	_root.add_child(frame)
 
 	# Vertical layout for everything inside the frame.
@@ -101,23 +103,21 @@ func _build_ui() -> void:
 	vbox.add_child(header)
 
 	var title := Label.new()
-	title.text = "— ROLAND'S JOURNAL —"
+	title.text = "ROLAND'S JOURNAL"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	UIStyles.apply_title_label(title, 32)
 	header.add_child(title)
 
 	var hint := Label.new()
 	hint.text = "[ J / I / ESC ] close     [ TAB ] next section"
-	hint.add_theme_font_size_override("font_size", 16)
-	hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 1))
+	UIStyles.apply_muted_label(hint, 14)
 	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	header.add_child(hint)
 
 	# --- Divider ---
 	var div1 := ColorRect.new()
 	div1.custom_minimum_size = Vector2(0, 2)
-	div1.color = Color(0.4, 0.35, 0.25, 1)
+	div1.color = Colors.PANEL_OAK_EDGE
 	vbox.add_child(div1)
 
 	# --- Tab row ---
@@ -130,11 +130,12 @@ func _build_ui() -> void:
 	for i in range(TAB_COUNT):
 		var btn := Button.new()
 		btn.text = TAB_NAMES[i]
-		btn.flat = true
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size = Vector2(0, 46)
-		btn.add_theme_font_size_override("font_size", 20)
 		btn.process_mode = Node.PROCESS_MODE_ALWAYS
+		btn.focus_mode = Control.FOCUS_NONE
+		# Active styling is applied each refresh; start as inactive.
+		UIStyles.apply_tab_button(btn, false)
 		btn.pressed.connect(_on_tab_pressed.bind(i))
 		tab_row.add_child(btn)
 		_tab_buttons.append(btn)
@@ -142,7 +143,7 @@ func _build_ui() -> void:
 	# --- Divider 2 ---
 	var div2 := ColorRect.new()
 	div2.custom_minimum_size = Vector2(0, 2)
-	div2.color = Color(0.4, 0.35, 0.25, 1)
+	div2.color = Colors.PANEL_OAK_EDGE
 	vbox.add_child(div2)
 
 	# --- Scrollable content area (fills remaining vertical space) ---
@@ -152,8 +153,7 @@ func _build_ui() -> void:
 
 	_content_label = Label.new()
 	_content_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_content_label.add_theme_font_size_override("font_size", 18)
-	_content_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	UIStyles.apply_body_label(_content_label, 18)
 	_content_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	scroll.add_child(_content_label)
 
@@ -164,6 +164,14 @@ func _build_ui() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+
+	# Dev-scene guard — BakeWorld / CopperIslesTest / any scene in the
+	# "dev_scene" group keeps the journal overlay dormant. Close it if
+	# it's somehow open already.
+	if get_node_or_null("/root/GameState") and GameState.is_dev_scene():
+		if _root.visible:
+			_close()
 		return
 
 	if _root.visible:
@@ -228,10 +236,12 @@ func _on_tab_pressed(tab_index: int) -> void:
 # =============================================================
 
 func _refresh() -> void:
-	# Active tab = bright white. Inactive tabs = dimmed gray.
+	# Active tab gets the gold-seam oak panel; inactive tabs sit flat
+	# with a dimmed ink colour. Both via UIStyles.apply_tab_button so
+	# the chrome stays in lockstep with PauseMenu / MainMenu palette
+	# changes.
 	for i in range(_tab_buttons.size()):
-		var color := Color(1.0, 1.0, 1.0) if i == _current_tab else Color(0.45, 0.45, 0.45)
-		_tab_buttons[i].modulate = color
+		UIStyles.apply_tab_button(_tab_buttons[i], i == _current_tab)
 
 	match _current_tab:
 		Tab.QUESTS:   _content_label.text = _build_quests_text()

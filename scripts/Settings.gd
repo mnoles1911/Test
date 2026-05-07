@@ -103,8 +103,77 @@ func _ready() -> void:
 	_load_settings()
 	_apply_to_audio()
 	_refresh_mining_anchor_button()
+	_apply_voxelmark_styles()
 
 	print("[Settings] Initialized (overlay mode).")
+
+
+# Apply the Voxelmark UI palette + fonts to nodes built from Settings.tscn.
+# Runs once at _ready() — overrides whatever theme_override_* the scene file
+# carries. Centralised here so style tweaks land in one place rather than
+# being scattered across the .tscn nodes.
+func _apply_voxelmark_styles() -> void:
+	# Modal backdrop — switch the placeholder dark grey to the canonical
+	# BG_NIGHT so the overlay matches the Pause / Main menu chrome.
+	var background: ColorRect = get_node_or_null("Root/Background")
+	if background != null:
+		background.color = Color(Colors.BG_NIGHT.r, Colors.BG_NIGHT.g, Colors.BG_NIGHT.b, 0.85)
+	# Header.
+	var header: Label = get_node_or_null("Root/VBox/Header")
+	if header != null:
+		UIStyles.apply_title_label(header, 56)
+	# Divider in oak edge to match panel chrome.
+	var divider: ColorRect = get_node_or_null("Root/VBox/Divider")
+	if divider != null:
+		divider.color = Colors.PANEL_OAK_EDGE
+	# Section labels (left-column row labels).
+	for path in ["Root/VBox/MasterRow/MasterLabel",
+				"Root/VBox/MusicRow/MusicLabel",
+				"Root/VBox/SFXRow/SFXLabel",
+				"Root/VBox/MiningAnchorRow/MiningAnchorLabel"]:
+		var lbl: Label = get_node_or_null(path)
+		if lbl != null:
+			UIStyles.apply_subtitle_label(lbl)
+			# These row labels are bigger than UIStyles' default 14.
+			lbl.add_theme_font_size_override("font_size", 26)
+			lbl.uppercase = true
+	# Sliders.
+	for path in ["Root/VBox/MasterRow/MasterSlider",
+				"Root/VBox/MusicRow/MusicSlider",
+				"Root/VBox/SFXRow/SFXSlider"]:
+		var s: HSlider = get_node_or_null(path)
+		if s != null:
+			UIStyles.apply_slider(s)
+	# Fullscreen check — body label colour.
+	var fc: CheckBox = get_node_or_null("Root/VBox/FullscreenCheck")
+	if fc != null:
+		fc.add_theme_color_override("font_color", Colors.INK)
+		var serif := UIStyles.font_serif()
+		if serif:
+			fc.add_theme_font_override("font", serif)
+	# Mining-anchor button — keep _refresh_mining_anchor_button's
+	# meaning-coloured font, but apply menu-button chrome around it.
+	var mab: Button = get_node_or_null("Root/VBox/MiningAnchorRow/MiningAnchorBtn")
+	if mab != null:
+		var styles := UIStyles.menu_button_styles()
+		mab.add_theme_stylebox_override("normal", styles["normal"])
+		mab.add_theme_stylebox_override("hover", styles["hover"])
+		mab.add_theme_stylebox_override("pressed", styles["pressed"])
+		mab.add_theme_stylebox_override("disabled", styles["disabled"])
+	# Keybindings placeholder.
+	var kb: Label = get_node_or_null("Root/VBox/KeybindingsLabel")
+	if kb != null:
+		UIStyles.apply_muted_label(kb, 18)
+		kb.uppercase = true
+	# Apply / Back buttons.
+	var apply: Button = get_node_or_null("Root/VBox/ButtonRow/ApplyBtn")
+	if apply != null:
+		UIStyles.apply_menu_button(apply)
+		apply.add_theme_font_size_override("font_size", 28)
+	var back: Button = get_node_or_null("Root/VBox/ButtonRow/BackBtn")
+	if back != null:
+		UIStyles.apply_menu_button(back)
+		back.add_theme_font_size_override("font_size", 28)
 
 
 # =============================================================
@@ -247,16 +316,18 @@ func _refresh_mining_anchor_button() -> void:
 	# knows the click takes them back to the default.
 	if mining_anchor_btn == null:
 		return
+	# Use the Voxelmark palette: STAM (warm yellow) for the non-default
+	# choice, RARE_UNCOMMON (green) for the recommended default. Set
+	# hover/pressed font colours to the same value so the menu_button
+	# stylebox's gold-seam hover doesn't repaint the meaningful colour.
+	var c: Color = Colors.STAM if mining_volume_anchor == MINING_ANCHOR_CENTERED else Colors.RARE_UNCOMMON
 	if mining_volume_anchor == MINING_ANCHOR_CENTERED:
 		mining_anchor_btn.text = "Centered (aim in middle)  —  default: Depth-biased"
-		mining_anchor_btn.add_theme_color_override(
-			"font_color", Color(0.95, 0.92, 0.55, 1)
-		)
 	else:
 		mining_anchor_btn.text = "Depth-biased (into terrain)  ✓ DEFAULT"
-		mining_anchor_btn.add_theme_color_override(
-			"font_color", Color(0.7, 0.95, 0.7, 1)
-		)
+	mining_anchor_btn.add_theme_color_override("font_color", c)
+	mining_anchor_btn.add_theme_color_override("font_hover_color", c)
+	mining_anchor_btn.add_theme_color_override("font_pressed_color", c)
 	# Tooltip is mode-independent (it explains both choices). Set it
 	# here so a fresh-loaded scene always has it without depending on
 	# _ready ordering. Multi-line via \n. Godot's default hover delay

@@ -333,10 +333,18 @@ Conversations and bark lines that still need to be written.
 
 These need both code and scene work. Listed here as designer-visible milestones.
 
-- [ ] **`BarkOverlay` UI node — bark text display**
-  Small portrait + text line, appears in a screen corner, auto-hides after ~3.5s.
-  Must be added to the `bark_overlay` group so `BarkManager` can find it.
-  Without this, barks only print to the Output panel (which is fine during testing).
+- [x] **`BarkOverlay` UI node — bark text display** *(2026-05-06)*
+  Lives at `scripts/ui/BarkOverlay.gd`. Top-centre oak panel below the
+  compass strip — 64×64 portrait placeholder (NPC's first initial in
+  serif gold) + name (subtitle) + line (body). Joins the
+  `bark_overlay` group in its own `_ready`; `BarkManager.fire` finds
+  it via `get_first_node_in_group`. Built once at
+  `HUDOverlay._build_bark_overlay()` so it's always present without a
+  scene-tree edit; hidden by `_hide_all_chrome` in dev scenes.
+  Followups: real portraits (`assets/portraits/{npc_id}.png`) once
+  art lands; per-NPC display name (`NPCData.display_name` resource
+  lookup is wired but the `.tres` files don't exist yet — falls back
+  to `npc_id.capitalize()`).
 
 - [ ] **"Press E to talk" world-space prompt**
   Appears above an NPC when the player is within interact range.
@@ -377,6 +385,160 @@ These need both code and scene work. Listed here as designer-visible milestones.
   This is the "real" inventory UI per `design/INVENTORY_AND_EQUIPMENT_SYSTEM.md`
   and obsoletes the Phase 2 right-click picker (or relegates it to a quick
   shortcut). Bigger build — half a day.
+  Components ready to consume: `scripts/ui/Slot.gd` (UISlot,
+  56×56 with drag-drop, rarity borders, durability bar, hotkey label),
+  `scripts/ui/MenuTabBar.gd` (UIMenuTabBar with Inventory/Map/Journal/
+  Codex/Skills tabs + close button). HTML mock at
+  `assets/ui/html/Voxelmark Inventory.html` is the visual target.
+
+---
+
+### UI rework follow-ups (post 2026-05-06 retrofit)
+
+The 2026-05-06 pass introduced `Colors` autoload + `UIStyles` helper +
+`Slot` / `MenuTabBar` / `LoadingScreen` components, and retrofitted
+`HUDOverlay`, `PauseMenu`, `MainMenu`, `Settings`, `SaveSlotPicker`, and
+`TransitionManager`'s inline loading screen onto the Voxelmark palette.
+The items below are what was deferred — visual targets all live in
+`assets/ui/html/Voxelmark *.html`, the spec lives in
+`assets/ui/css/menus_shared.css`.
+
+- [ ] **Drop the missing fonts into `assets/fonts/`**
+  Currently only `MacondoSwashCaps-Regular.ttf` is on disk. `UIStyles`
+  silently falls back when these are missing — body text uses Godot's
+  default font instead of VT323, and kbd chips use the default instead
+  of Press Start 2P.
+    - `VT323-Regular.ttf` (body / mono — wired at `UIStyles.FONT_MONO_PATH`)
+    - `PressStart2P-Regular.ttf` (kbd chips — wired at `UIStyles.FONT_PIXEL_PATH`)
+  Drop them in `assets/fonts/` and Godot's `_try_load_font` picks them up
+  on next launch. No code change required.
+
+- [x] **Loading screen rebuilt to match `Voxelmark Loading Screen.html`** *(2026-05-06)*
+  Plus a perf fix landed the same day — see `design/LESSONS_LEARNED.md`
+  entry for "Loading screen ran at <10 FPS". `TransitionManager._show_loading_screen`
+  hides the `HUDOverlay` and `JournalUI` CanvasLayers (their compass /
+  chrome `_draw` calls were the real cost on the single-threaded
+  `gl_compatibility` renderer) and sets `viewport.disable_3d = true`.
+  Restored in `_hide_loading_screen`. **Critically the destination
+  scene + voxel autoloads are NOT paused** — Zylann's chunk loading
+  is exactly what the 20 s – 1.5 min hold exists for, so we leave it
+  ticking.
+  `TransitionManager`'s inline loader is a faithful port of the mock:
+    - **Hourglass** (`scripts/LoadingHourglass.gd`, rewritten): brass
+      caps + 4 brass pillars (front bright, back dimmed) + asymmetric
+      glass diamond outline + top sand triangle (drains as p→1) +
+      bottom mound (grows as p→1) + 38-grain particle simulation with
+      gravity + mound collision. Computes in mock-space (40×60) and
+      scales to the Control's actual size. Driven from
+      `TransitionManager._process` via `set_progress`.
+    - **Bobbing animation**: sin-driven ±2 px Y translate on the
+      hourglass over a 5.2 s cycle, runs every frame regardless of
+      progress so the screen stays alive during chunk-stream pauses.
+    - **Vignette + tint**: full-screen tint at 0.62 black + a radial
+      darken vignette via inline canvas_item shader (matches the mock's
+      `inset 0 0 240px rgba(0,0,0,0.7)` box-shadow).
+    - **Title**: "L O A D I N G" in serif gold, 44 px with hard 3 px
+      black shadow. Letter-spacing faked via spaces between letters.
+    - **Centred message**: rotates every 2.5 s through the 24 quips
+      (LOADING_QUIPS), 0.4 s fade-out → swap → fade-in transition.
+    - **Progress bar**: 520×8 dark-leather track with a sand-gradient
+      fill (deep → bright) drawn via a tiny canvas_item shader; trailing
+      24 px white-fade highlight in the same shader. Percentage label
+      below in serif gold.
+    - **Bottom TIP footer**: gold "TIP" prefix (BBCode-coloured) +
+      italic body, rotates through TIPS_GAMEPLAY (13 short useful
+      tips, separate cadence — 8 s). Distinct from the centred quip.
+  Followups for full mock parity (low priority polish):
+    - Warm grain overlay (CSS `repeating-linear-gradient` + overlay
+      blend) — could be a small canvas_item shader.
+    - Hourglass elliptical drop-shadow below the diamond.
+    - 3D-style rotateX/rotateY tilt on the hourglass — needs a Sprite2D
+      with skew or a SubViewport, not viable on a flat Control.
+    - 6 px letter-spacing on the percentage label — Godot Label has no
+      native letter-spacing.
+
+- [ ] **Swap `scripts/ui/LoadingScreen.gd` into `TransitionManager`
+  (consolidate the loader)**
+  `scripts/ui/LoadingScreen.gd` still exists as a parked alternative
+  loader, but TransitionManager's inline implementation is now the
+  authoritative one — and richer (background-art rotation, music
+  adoption, quip + tip rotation). The standalone scene can either be
+  retired (delete it) or fleshed out to match the inline loader so it
+  becomes a clean drop-in. Lowest priority since the inline loader
+  already does the job.
+
+- [x] **Retrofit `JournalUI` / `Journal.tscn` onto `UIStyles`** *(2026-05-06)*
+  The 6-tab journal overlay (Quests / Map / Items / Crafting / Codex /
+  Skills) is now on the Voxelmark palette. `Journal.tscn` was already a
+  bare CanvasLayer wrapper — all chrome is built in `JournalUI._build_ui`,
+  so the retrofit was script-only:
+    - Backdrop tinted with `Colors.BG_NIGHT`.
+    - Frame uses `UIStyles.menu_body_panel()` (oak gradient + black border).
+    - Title → `UIStyles.apply_title_label("ROLAND'S JOURNAL", 32)`.
+    - Hint line → `UIStyles.apply_muted_label`.
+    - Dividers → `Colors.PANEL_OAK_EDGE`.
+    - Tab buttons → `UIStyles.apply_tab_button(active)` — gold-seam oak
+      panel for the active tab, dim oak for inactive. Replaces the old
+      modulate-tint approach.
+    - Content → `UIStyles.apply_body_label`.
+  Followups: the content area is still a single scrolling Label.
+  When richer per-tab layouts are wanted (multi-column quest list,
+  inventory grid via `UISlot`, parchment-styled codex pages), the
+  Label-only fallback can be replaced tab-by-tab while keeping the
+  shell.
+
+- [ ] **Build the five tabbed panels** (Inventory grid, Map page, Journal
+  page, Codex entries, Skills tree) using `UIMenuTabBar` + `UISlot`
+  Each panel is its own scene that hosts a `UIMenuTabBar` instance at the
+  top, listens for `tab_changed`, and swaps which content `Control` is
+  visible below. Inventory consumes a grid of `UISlot` instances with
+  drag-drop; Map renders Roland's hand-drawn world map; Codex is
+  parchment text entries; Skills draws the perk tree per
+  `design/SKILLS_AND_PROGRESSION.md`. Visual targets:
+  `assets/ui/html/Voxelmark Inventory.html`, `Map.html`, `Journal.html`,
+  `Codex.html`, `Skills.html`.
+
+- [x] **HUD overhaul — chrome pass to match `Voxelmark HUD v1.html`** *(2026-05-06)*
+  Added: crosshair, compass strip (rotating cardinal markers + degree
+  ticks + red needle, driven by player heading), top-right clock strip
+  (DAY / time / period band, driven by `WorldClock`), vital icons
+  (♥ heart, ⚡ lightning) next to each bar, hotbar item tooltip that
+  surfaces on equip-change, full-screen damage pulse on health drop,
+  low-HP heartbeat pulse below 25 % HP. Vitals stack moved bottom-left
+  to match the mock; FPS readout moved bottom-right to free the top-
+  right corner for the clock.
+
+- [ ] **HUD overhaul — followups not yet implemented**
+  Mock elements that need underlying gameplay systems before they can be
+  wired:
+    - Hunger + Mana vital bars (no Hunger system; Mana arrives with the
+      magic kit later in Game One)
+    - Buff / debuff tray top-left (no buff system yet — see
+      `design/SYSTEMS_DESIGN.md` for the planned shape)
+    - Quest tracker right-side panel (waits for `QuestManager`)
+    - XP bar above the hotbar (waits for the skills system to expose a
+      currently-leveling sub-skill)
+    - Floating damage numbers (needs an enemy-damage event signal)
+    - Bark overlay portrait + text framing (the `BarkManager` autoload
+      writes spatial audio today; the on-screen overlay belongs in
+      `BarkOverlay` per Section 6 above)
+    - Biome name in the clock strip (currently shows "★ MIRA-THAL ·
+      <PERIOD>" as a placeholder — wire to the active region/zone
+      tag once `WorldNavigation` ships region detection)
+
+- [ ] **Visit the existing `assets/ui/css/menus_shared.css` against
+      `Colors.gd` for drift**
+  The CSS is the source of truth; the GDScript palette is a hand
+  port. If the CSS gets edited (especially the `:root` custom-property
+  block), re-port the changed lines into `assets/ui/Colors.gd`. There's
+  no automated check — eyeball it whenever the CSS changes.
+
+- [ ] **Theme.tres pass once the design stabilises**
+  Right now every UI scene calls `UIStyles.apply_*` at runtime. Once
+  the look is locked, bake the same StyleBox / FontVariation resources
+  into a `Theme` resource that the project sets at
+  `Project Settings → GUI → Theme → Custom`. Cuts the runtime overhead
+  and lets the editor preview the actual chrome on `.tscn` nodes.
 
 ---
 
@@ -739,6 +901,49 @@ a short pitch; promote to a real section when scope is committed.
     All callbacks check `is_instance_valid` so this is safe today, but
     shutdown ordering quirks could surface a write to a freed Tween.
     Low-risk; address if it ever shows up in the log.
+
+- **HorizonSkirt — triplanar texturing for distant terrain (Copper Isles + future regions).**
+  Today the baked skirt mesh (`assets/voxel/copper_isles_skirt.res`,
+  `scripts/_dev/SkirtBaker.gd` + `scripts/HorizonSkirt.gd`) reads as
+  vertex-colour bands with per-vertex noise. Lit by Cascaded Shadow
+  Maps and shaded as 3-stop elevation gradient (forest → rock →
+  snowcap), it's a clear upgrade over the original flat-grey, but it
+  still reads as "low-LOD distant terrain" up close — uniformly tinted
+  slopes without surface texture detail.
+  
+  Production open-worlds (Skyrim, BotW, Horizon, Witcher 3) push
+  past this with **triplanar texturing**: project a small set of
+  tileable rock / grass / snow / sand textures onto the mesh from
+  three world axes simultaneously and blend by surface normal. Steep
+  faces get rock; flat tops get grass/snow; slopes get a blend.
+  Looks great at any distance and works for ANY mesh (no per-vertex
+  UV unwrap needed — exactly what we want for a baked-from-heightmap
+  skirt).
+  
+  Implementation surface:
+  - Author or source 4 seamless tileable PBR textures: rock, grass,
+    snow, sand. ~512×512 each, RGB albedo + R-channel roughness +
+    optional normal map. Royalty-free options: ambientCG, Polyhaven.
+  - Custom shader (`assets/shaders/horizon_skirt.gdshader`) doing
+    three triplanar projections per texture, blended by normal.
+    Texture selection per-pixel by world-Y (elevation) + slope
+    angle (dot of normal with up).
+  - Replace the StandardMaterial3D currently set up programmatically
+    in `HorizonSkirt._ready()` with the shader material. Vertex
+    colour can stay as a tint multiplier for biome variation.
+  - Same shader will be useful when a "voxel terrain LOD2+" custom
+    material lands — voxel mesher's vertex-colour-only output looks
+    chunky at distance for the same reason. Triplanar over the
+    LOD pyramid would close the visual gap to industry-standard.
+  
+  Effort estimate: ~1 day for the shader + texture sourcing + first
+  tune; 1-2 more days to author per-region texture variants (Mira
+  swamp, Thal coast, etc.) once Copper Isles is dialled in.
+  Affects: `scripts/HorizonSkirt.gd`, `scripts/_dev/SkirtBaker.gd`
+  (vertex-color tint role), new `assets/shaders/horizon_skirt.gdshader`,
+  new `assets/textures/terrain/{rock,grass,snow,sand}_*` directories.
+  Reference for technique: search "Godot 4 triplanar shader" or
+  Catlike Coding's "Triplanar Mapping" tutorial.
 
 - ~~**EditToolHandler: mining carve collapses to 1×1×1 on some voxels (FP bug, 2026-05-05).**~~
   **Fixed 2026-05-05.** Added `VoxelEditManager.queue_edit_box_voxels(min: Vector3i,

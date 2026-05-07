@@ -56,6 +56,27 @@ var _flags: Dictionary = {}
 const FLAG_HISTORY_MAX: int = 100
 var _flag_history: Array = []
 
+# =============================================================
+# DEV-SCENE GUARD
+# =============================================================
+
+# Returns true when the currently-running scene is a developer test
+# scene (e.g. scenes/_dev/BakeWorld.tscn, scenes/CopperIslesTest.tscn).
+# Dev scenes opt in by adding their root to the "dev_scene" group in
+# their _ready() — see CopperIslesTestBootstrap.gd / WorldBakeController.gd
+# for the canonical pattern. UI autoloads (HUDOverlay, PauseMenu,
+# JournalUI, SaveNotification) check this and skip rendering / input
+# so the dev scene is uncluttered by gameplay chrome.
+func is_dev_scene() -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+	var scene := tree.current_scene
+	if scene == null:
+		return false
+	return scene.is_in_group("dev_scene")
+
+
 func set_flag(flag_name: String, value) -> void:
 	var old_value = _flags.get(flag_name, null)
 	_flags[flag_name] = value

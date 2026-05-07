@@ -485,13 +485,24 @@ bark *"This place doesn't yield to me."*
 ## Autoload registration status
 
 Registered in `project.godot` (active now), in load order:
-`GameState`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
+`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
 `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `VoxelMaterialRegistry`,
 `JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
 `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `BarkManager`, `WorldClock`,
 `WeatherManager`
 
+`Colors` (`assets/ui/Colors.gd`) is the single source of truth for the Voxelmark
+UI palette (oak / parchment / iron / gold / HP / STAM, plus 5 rarity tiers).
+The companion `UIStyles` helper class (`assets/ui/UIStyles.gd`, `RefCounted`,
+not autoloaded — accessed as `UIStyles.foo()`) builds StyleBox / FontVariation
+resources from those palette constants and is the canonical way to apply
+chrome to Buttons, Panels, Labels, Sliders, and LineEdits in this project.
+Every programmatic UI scene (`HUDOverlay`, `PauseMenu`, `MainMenu`,
+`Settings`, `SaveSlotPicker`, `TransitionManager`'s loading screen) consumes
+both. CSS source-of-truth: `assets/ui/css/menus_shared.css`.
+
 Load-order rules to preserve:
+- `Colors` MUST load before any UI autoload (`PauseMenu`, `HUDOverlay`, `JournalUI`) — those scripts reference `Colors.PANEL_OAK_1` / `Colors.HP` / etc. directly in `_ready()`.
 - `InventoryManager` MUST load before `VoxelMaterialRegistry` (the registry validates `yield_item_id` against `ITEM_REGISTRY` at startup).
 - `VoxelMaterialRegistry` MUST load before `VoxelEditManager` (`EditToolHandler` queries the registry on every swing for material lookup).
 - `NoEditZoneRegistry` MUST load before `VoxelEditManager` (the manager queries the registry on every edit).
@@ -507,5 +518,26 @@ Note: the `JournalUI` autoload entry points at the **scene** `res://scenes/ui/Jo
 
 Scripts that reference these autoloads must guard with `get_node_or_null`
 until they are registered, or they will crash on startup.
+
+### Dev-scene group convention
+
+Developer test scenes (`scenes/_dev/BakeWorld.tscn`,
+`scenes/CopperIslesTest.tscn`, future siblings) opt out of the gameplay
+UI by joining the `dev_scene` group in their bootstrap script's
+`_ready()`:
+
+```gdscript
+add_to_group("dev_scene")
+```
+
+The autoloads that render gameplay chrome — **HUDOverlay, PauseMenu,
+JournalUI, SaveNotification** — check `GameState.is_dev_scene()` and
+skip rendering / input / animation when the current scene is in that
+group. Other autoloads (TransitionManager, Settings, DebugOverlay,
+voxel/water/weather systems) keep working normally — they're either
+infrastructure or actively useful during development. To add a new
+dev scene, attach a script that calls `add_to_group("dev_scene")` in
+its `_ready()` and the gameplay UI will stay dormant for the duration
+of that scene.
 
 ---

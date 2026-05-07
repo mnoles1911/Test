@@ -25,11 +25,36 @@ extends Node3D
 
 @export var voxel_terrain_path: NodePath = "VoxelLodTerrain"
 
-# Walker tile size in WORLD METRES. Each tile gets one or more viewer
-# placements. With the canonical view_distance of 1500 voxels (250 m
-# world), a 200 m tile gives ~50 m of streaming overlap with neighbours
-# so no chunk is missed at boundaries.
-const TILE_SIZE_M: float = 200.0
+## When true, the walker's pre-pass scans the EXR for tiles with land
+## and skips pure-ocean tiles (faster bake, but the runtime cache
+## won't contain water voxels — player will see only grey skirt over
+## the sea). Use for fast iteration bakes when you're tuning land
+## materials. Leave OFF for production bakes — the user actually
+## wants the ocean to be ocean.
+@export var scan_land_only_for_speed: bool = false
+
+# Walker tile size in WORLD METRES. The critical constraint is LOD0
+# coverage at the runtime's chosen `lod_distance`:
+#
+#   LOD0 radius (m world) = lod_distance / 6     (terrain.scale = 1/6)
+#   For full corner-to-corner coverage on an axis-aligned grid:
+#     S × √2 / 2 ≤ R   →   S ≤ R × √2
+#
+#   lod_distance = 128  →  R = 21 m  →  S ≤ 30 m   (current)
+#   lod_distance = 384  →  R = 64 m  →  S ≤ 90 m
+#   lod_distance = 768  →  R = 128 m →  S ≤ 180 m
+#
+# We're tuned for runtime lod_distance=128 (smallest LOD0 area, lowest
+# render cost; matches scenes/CopperIslesTest.tscn). 30 m walker step
+# gives full LOD0 cache coverage.
+#
+# Bake time scales as (1/S)²:
+#   1 km² @ 30 m → 33² ≈ 1089 tiles → ~90 min @ 5 s/tile
+#   5 km² @ 30 m → 167² ≈ 28000 candidate tiles, ~16800 land tiles
+#                  after the EXR pre-pass → ~23 hours overnight
+# If the bake budget is too long, raise lod_distance + re-bake at the
+# wider tile size matching that radius.
+const TILE_SIZE_M: float = 30.0
 
 # Wait time at each viewer position (seconds) for Zylann to stream
 # everything within view_distance and persist it via
@@ -98,9 +123,25 @@ var _diag_text: TextEdit
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return  # don't run anything in the editor's tool context
+	# Mark as a developer test scene — keeps gameplay UI autoloads
+	# (HUDOverlay, PauseMenu, JournalUI, SaveNotification) dormant.
+	# See GameState.is_dev_scene() for the contract.
+	add_to_group("dev_scene")
 	_build_ui()
 	_configure_terrain()
 	_set_status("Ready. Run Diagnostics first to verify Zylann APIs, then Bake 1 km central.")
+
+
+# Terrain config the bake MUST run with. These are the same values
+# scenes/CopperIslesTest.tscn uses at runtime — chunks cached at
+# different LOD addressing won't be served. We enforce them in
+# script (rather than trusting only the .tscn) because Godot's editor
+# has been observed silently reverting .tscn properties to "defaults"
+# on save, producing baked DBs the runtime can't read. Set once here
+# at startup; takes effect before the first viewer placement.
+const REQUIRED_LOD_COUNT: int = 8
+const REQUIRED_LOD_DISTANCE: float = 128.0
+const REQUIRED_LOD_FADE_DURATION: float = 0.5
 
 
 func _configure_terrain() -> void:
@@ -119,6 +160,31 @@ func _configure_terrain() -> void:
 		terrain.set("threaded_update_enabled", true)
 	if "collision_update_delay" in terrain:
 		terrain.set("collision_update_delay", 0.1)
+
+	# Belt-and-suspenders LOD enforcement. Override the .tscn values in
+	# case Godot editor's normalisation stripped them. Print the before/
+	# after so any silent revert is visible in the Output panel.
+	_enforce_lod_config(terrain)
+
+
+func _enforce_lod_config(terrain: Object) -> void:
+	var fields: Array = [
+		["lod_count", REQUIRED_LOD_COUNT],
+		["lod_distance", REQUIRED_LOD_DISTANCE],
+		["lod_fade_duration", REQUIRED_LOD_FADE_DURATION],
+		["cache_generated_blocks", true],
+	]
+	for f in fields:
+		var key: String = f[0]
+		var want = f[1]
+		if not key in terrain:
+			push_warning("[Bake] terrain has no property '%s' — Zylann version mismatch?" % key)
+			continue
+		var before = terrain.get(key)
+		if before == want:
+			continue
+		terrain.set(key, want)
+		print("[Bake] enforced terrain.%s: %s → %s" % [key, before, want])
 
 
 func _configure_voxel_format(terrain: Object) -> void:
@@ -223,6 +289,13 @@ func _build_ui() -> void:
 	var btn_bake_skirt: Button = _make_button("4. Bake horizon skirt → assets/voxel/copper_isles_skirt.res")
 	btn_bake_skirt.pressed.connect(_on_bake_skirt)
 	vbox.add_child(btn_bake_skirt)
+
+	# Manual flush — useful when debugging persistence issues. Calls
+	# save_modified_blocks on the terrain immediately so you can
+	# verify the SQLite file size grows.
+	var btn_force_save: Button = _make_button("Force Save (manual SQLite flush)")
+	btn_force_save.pressed.connect(_on_force_save)
+	vbox.add_child(btn_force_save)
 
 	vbox.add_child(_make_divider())
 
@@ -492,7 +565,15 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		if _tiles_done % SAVE_EVERY_N_TILES == 0:
 			await _flush_save(terrain)
 
-	# Final flush.
+	# Park the phantom viewer 100 km away so Zylann unloads every chunk
+	# in the bake region. With cache_generated_blocks=true on the
+	# terrain, unloading triggers a save-before-evict for each block
+	# — that's how generator output reaches SQLite.
+	_set_status("Bake walk done. Parking viewer + flushing chunks to disk...")
+	await _park_viewer_far_and_drain(terrain)
+
+	# Final flush — ensures any in-flight save tasks settle before we
+	# tell the user the bake is done.
 	await _flush_save(terrain)
 
 	# Tear down phantom viewer.
@@ -530,26 +611,36 @@ func _vertical_positions_for_tile(max_ground_world_m: float) -> Array[float]:
 
 
 func _scan_land_tiles(generator: Resource, min_xz: Vector2, max_xz: Vector2) -> Array[Vector2]:
-	# Sample the EXR at each tile centre. Tiles whose centre is land
-	# (ground above sea level) get baked; tiles whose centre is ocean
-	# get skipped to save time.
+	# Returns every tile in the bake region. Earlier this filtered out
+	# pure-ocean tiles to save bake time, but that left the runtime
+	# without any cached water voxels — the user saw grey skirt mesh
+	# everywhere instead of an actual sea around the islands. Now we
+	# include all tiles so the generator's CHANNEL_DATA5 water bytes
+	# (LOD0-only, emitted for every column where ground < sea_level)
+	# get persisted into the cache during the bake.
 	#
-	# Subtle: a tile could be 95 % ocean with one bright pixel near a
-	# corner that the centre sample misses. We tolerate that — those
-	# edge cases will get baked when the player walks into them at
-	# runtime. The pre-pass is a fast filter, not exhaustive coverage.
+	# Bake-time cost: ~10× more tiles than land-only at full 5 km, but
+	# ocean tiles process faster (the generator early-outs on most
+	# vertical bands since there's no ground above sea level). Net
+	# wall-clock cost is ~3× the old land-only bake.
+	#
+	# If you need a fast iteration bake (e.g. validating a change to
+	# the LAND material bands), set scan_land_only_for_speed = true on
+	# the controller node — the heightmap pre-pass returns only the
+	# land tiles like before.
 	var tiles: Array[Vector2] = []
-	var sea_level_voxels: int = generator.get("sea_level_voxels") if "sea_level_voxels" in generator else 0
 	var x: float = min_xz.x + TILE_SIZE_M * 0.5
 	while x < max_xz.x:
 		var z: float = min_xz.y + TILE_SIZE_M * 0.5
 		while z < max_xz.y:
-			var voxel_x: int = int(x * VOXELS_PER_METRE)
-			var voxel_z: int = int(z * VOXELS_PER_METRE)
-			var ground_y: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
-			# Land = ground at or above sea level. Tiny margin so the
-			# coastline still gets baked from the ocean side too.
-			if ground_y >= sea_level_voxels - 4:
+			if scan_land_only_for_speed:
+				var voxel_x: int = int(x * VOXELS_PER_METRE)
+				var voxel_z: int = int(z * VOXELS_PER_METRE)
+				var ground_y: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
+				var sea_level_voxels: int = generator.get("sea_level_voxels") if "sea_level_voxels" in generator else 0
+				if ground_y >= sea_level_voxels - 4:
+					tiles.append(Vector2(x, z))
+			else:
 				tiles.append(Vector2(x, z))
 			z += TILE_SIZE_M
 		x += TILE_SIZE_M
@@ -557,15 +648,36 @@ func _scan_land_tiles(generator: Resource, min_xz: Vector2, max_xz: Vector2) -> 
 
 
 func _flush_save(terrain: Object) -> void:
-	# Force Zylann to flush any in-memory blocks to SQLite. The real
-	# behaviour of save_modified_blocks (sync vs async, awaitable vs
-	# fire-and-forget) is unverified — see Phase 0. Awaiting it is
-	# safe even if it returns nothing; Godot resolves immediately.
+	# Ask Zylann to flush in-memory blocks to SQLite. Fire-and-forget
+	# — earlier we awaited the return value, but the empirical 96 %
+	# hang showed that awaiting can stall indefinitely (the returned
+	# Signal apparently never fires in some cases, possibly because
+	# there's nothing to save). The save proceeds on a worker thread
+	# anyway; we just give it a couple of frames to drain.
 	if terrain == null or not terrain.has_method("save_modified_blocks"):
 		return
-	var result = terrain.call("save_modified_blocks")
-	if result is Signal:
-		await result
+	terrain.call("save_modified_blocks")
+	# Yield three frames so the worker pool gets CPU time before the
+	# next walker step crowds it again.
+	for _i in 3:
+		await get_tree().process_frame
+
+
+func _park_viewer_far_and_drain(terrain: Object) -> void:
+	# After the walker finishes, move the phantom viewer far outside
+	# the bake region so Zylann unloads every chunk. With
+	# cache_generated_blocks=true on the terrain, unloading triggers
+	# the per-block "save before evict" pathway — exactly what makes
+	# generator output land in SQLite. Without this step, the last
+	# tile's chunks may stay in memory and never persist.
+	if _viewer == null:
+		return
+	(_viewer as Node3D).global_position = Vector3(100_000.0, 0.0, 100_000.0)
+	# Generous wait — chunks have to unload, which fires save events
+	# that drain through the worker pool to SQLite.
+	await _wait_seconds(8.0)
+	await _flush_save(terrain)
+	await _wait_seconds(2.0)
 
 
 func _wait_seconds(seconds: float) -> void:
@@ -591,6 +703,25 @@ func _on_cancel_pressed() -> void:
 		return
 	_cancel_requested = true
 	_set_status("Cancel requested — finishing current tile...")
+
+
+func _on_force_save() -> void:
+	# Manual save trigger. Calls save_modified_blocks on the live
+	# terrain. Reports DB size before/after so the developer can see
+	# whether the flush actually wrote anything.
+	var terrain := get_node_or_null(voxel_terrain_path)
+	if terrain == null:
+		_set_status("Force Save: terrain not found.")
+		return
+	var size_before: int = _db_filesize_bytes()
+	_set_status("Force Save: flushing... (was %s)" % _format_filesize(size_before))
+	await _flush_save(terrain)
+	var size_after: int = _db_filesize_bytes()
+	_set_status("Force Save done: %s → %s (delta %s)" % [
+		_format_filesize(size_before),
+		_format_filesize(size_after),
+		_format_filesize(size_after - size_before),
+	])
 
 
 func _on_bake_skirt() -> void:
