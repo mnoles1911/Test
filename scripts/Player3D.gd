@@ -1,4 +1,7 @@
+class_name Player3D
 extends CharacterBody3D
+# Class name added so external scripts (e.g. CopperIslesTestBootstrap)
+# can read the SPAWN_POSITION const as a single source of truth.
 # Player3D — Roland's movement controller.
 #
 # PHYSICS MODEL
@@ -217,9 +220,15 @@ const FLY_SPEED_MULT: float = 10.0
 # enough to cross the test world in seconds, slow enough that the
 # camera can keep up.
 
-const FLY_TELEPORT_HEIGHT: float = 100.0
-# Y coordinate Roland is teleported to when fly mode is first
-# engaged (per the design ask "teleport up to Y=100").
+const SPAWN_POSITION: Vector3 = Vector3(1100.0, 545.0, -4.0)
+# Single hardcoded spawn point used in two places:
+#   1. CopperIslesTestBootstrap reads this when placing the player on
+#      scene load (no more separate spawn_override_pos export).
+#   2. toggle_fly_mode() teleports here on BOTH on and off so toggling
+#      fly mode while underground / mid-air pops the player back to a
+#      safe vista point instead of falling through terrain.
+# Currently set for the Copper Isles mountain-vista test. Change in
+# one place, both call sites pick it up.
 
 # Precomputed from mass — calculated once in _ready().
 # Call _recalculate_movement_stats() if mass changes at runtime.
@@ -638,19 +647,19 @@ func toggle_fly_mode() -> bool:
 	# Public toggle for the F1 debug overlay. Returns the new state
 	# (true = flying, false = grounded).
 	#
-	# On engagement: teleport up to FLY_TELEPORT_HEIGHT so the player
-	# pops above any terrain peaks and can see the world from above.
-	# On disengagement: zero velocity so we don't suddenly fall at
-	# whatever fly-speed Roland was moving at.
+	# On BOTH on and off: teleport to SPAWN_POSITION (full Vector3,
+	# not just Y) so toggling never leaves Roland stuck underground or
+	# falling out of the world. Treats fly toggle as a "reset to
+	# vista" action — what testers actually want when poking at the
+	# scene. Velocity is zeroed so Roland doesn't keep moving from
+	# whatever speed he had pre-toggle.
 	is_flying = not is_flying
+	global_position = SPAWN_POSITION
+	velocity = Vector3.ZERO
 	if is_flying:
-		global_position.y = FLY_TELEPORT_HEIGHT
-		velocity = Vector3.ZERO
 		# Clear water state so the swim HUD doesn't linger.
 		_in_water = false
 		_is_submerged = false
 		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 			_underwater_filter.set_active(false)
-	else:
-		velocity = Vector3.ZERO
 	return is_flying

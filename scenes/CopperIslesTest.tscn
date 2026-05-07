@@ -3,16 +3,16 @@
 [ext_resource type="PackedScene" uid="uid://dp3l1roland3d" path="res://scenes/Player3D.tscn" id="1_player"]
 [ext_resource type="Script" uid="uid://xx43nl5o4ses" path="res://scripts/CopperIslesTestBootstrap.gd" id="2_bootstrap"]
 [ext_resource type="VoxelGeneratorScript" path="res://assets/voxel/copper_isles_generator.tres" id="3_copper_gen"]
-[ext_resource type="Script" path="res://scripts/HorizonSkirt.gd" id="4_skirt"]
-
-[sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
-sky_top_color = Color(0.38, 0.55, 0.78, 1)
-sky_horizon_color = Color(0.78, 0.85, 0.92, 1)
-ground_bottom_color = Color(0.12, 0.16, 0.2, 1)
-ground_horizon_color = Color(0.55, 0.55, 0.55, 1)
+[ext_resource type="Script" uid="uid://bnx7qorxd03dt" path="res://scripts/HorizonSkirt.gd" id="4_skirt"]
+[ext_resource type="Material" uid="uid://b8skybl3nd0a1" path="res://assets/shaders/sky_blend_material.tres" id="5_skyblend"]
+[ext_resource type="Texture2D" uid="uid://cybrgfr0wjji3" path="res://assets/sky/dawn.jpg" id="6_skydawn"]
+[ext_resource type="Texture2D" uid="uid://bbtoku1kj7nen" path="res://assets/sky/noon.jpg" id="7_skynoon"]
+[ext_resource type="Texture2D" uid="uid://jpmo8712egdx" path="res://assets/sky/dusk.jpg" id="8_skydusk"]
+[ext_resource type="Texture2D" uid="uid://cjdhv5s5h43i6" path="res://assets/sky/night.jpg" id="9_skynight"]
+[ext_resource type="Script" uid="uid://ekwqr2h0r6tf" path="res://scripts/DayNightCycle.gd" id="10_daynight"]
 
 [sub_resource type="Sky" id="Sky_1"]
-sky_material = SubResource("SkyMat_1")
+sky_material = ExtResource("5_skyblend")
 
 [sub_resource type="Environment" id="Env_1"]
 background_mode = 2
@@ -24,9 +24,9 @@ ssao_enabled = true
 ssao_radius = 1.5
 ssao_intensity = 1.2
 fog_enabled = true
-fog_light_color = Color(0.66, 0.74, 0.82, 1)
-fog_density = 0.0035
-fog_aerial_perspective = 0.5
+fog_light_color = Color(0.7, 0.78, 0.85, 1)
+fog_density = 0.0012
+fog_aerial_perspective = 0.35
 
 [sub_resource type="StandardMaterial3D" id="VoxelTerrainMat_1"]
 vertex_color_use_as_albedo = true
@@ -52,31 +52,58 @@ light_energy = 1.4
 shadow_enabled = true
 shadow_bias = 0.18
 shadow_blur = 3.0
-directional_shadow_mode = 0
+directional_shadow_mode = 2
+directional_shadow_split_1 = 0.05
+directional_shadow_split_2 = 0.15
+directional_shadow_split_3 = 0.4
 directional_shadow_fade_start = 0.85
-directional_shadow_max_distance = 200.0
+directional_shadow_max_distance = 4000.0
+
+[node name="Moon" type="DirectionalLight3D" parent="." unique_id=2000000020]
+; DayNightCycle drives the Moon's rotation, energy, and color each
+; frame from WorldClock — it's "off" during the day, ramps up cool
+; blue-white light at night. The starting transform here is a
+; placeholder; DayNightCycle overwrites it on first tick.
+light_color = Color(0.55, 0.65, 0.85, 1)
+light_energy = 0.0
+shadow_enabled = true
+shadow_bias = 0.18
+shadow_blur = 3.0
+directional_shadow_mode = 2
+directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 4000.0
+sky_mode = 1
+
+[node name="DayNightCycle" type="Node" parent="." unique_id=2000000021]
+; Reads WorldClock.current_hour each frame, rotates Sun + Moon on a
+; shared 24-hour orbit, and cross-fades the four sky panoramas
+; through the sky_blend shader. Same pattern World3D uses.
+script = ExtResource("10_daynight")
+dawn_panorama = ExtResource("6_skydawn")
+noon_panorama = ExtResource("7_skynoon")
+dusk_panorama = ExtResource("8_skydusk")
+night_panorama = ExtResource("9_skynight")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=1648811141]
-lod_count = 6
-lod_distance = 96.0
+; lod_distance = 768 vox = 128 m world LOD0 radius at 6 vox/m. Two
+; reasons: visually 128 m feels like a real open-world horizon (vs
+; the previous 21 m which popped LOD transitions within a few
+; steps), and bake walker tile spacing scales with lod_distance —
+; 128 → 768 lets the walker step every 180 m instead of 30 m
+; (~36× fewer tiles → ~36× faster bake; 1 km goes from ~90 min to
+; ~3 min). MUST match BakeWorld.tscn.
+lod_count = 8
+lod_distance = 768.0
+lod_fade_duration = 0.5
 material = SubResource("VoxelTerrainMat_1")
 run_stream_in_editor = false
+cache_generated_blocks = true
 stream = SubResource("VoxelStream_1")
 generator = ExtResource("3_copper_gen")
 mesher = SubResource("VoxelMesher_1")
 transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
 
-[node name="HorizonSkirt" type="MeshInstance3D" parent="."]
-; Low-LOD baked mesh of the whole archipelago. Always visible past
-; Zylann's view_distance so distant peaks read at any distance.
-; Loads res://assets/voxel/copper_isles_skirt.res produced by the
-; SkirtBaker (button in scenes/_dev/BakeWorld.tscn). Hides itself
-; if the file isn't on disk yet.
-;
-; Parented to the scene root (NOT to VoxelLodTerrain) because the
-; skirt was baked in WORLD metres and shouldn't inherit the
-; terrain's 1/6 scale. The scene root sits at unit scale, so the
-; skirt's vertex coordinates land at the right world position.
+[node name="HorizonSkirt" type="MeshInstance3D" parent="." unique_id=1514165914]
 script = ExtResource("4_skirt")
 
 [node name="Player3D" parent="." unique_id=1849933617 instance=ExtResource("1_player")]

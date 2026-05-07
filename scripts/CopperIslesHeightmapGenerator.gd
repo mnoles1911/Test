@@ -156,6 +156,18 @@ var _max_ground_y_computed: bool = false
 var _diag_blocks_total: int = 0
 var _diag_blocks_early_out: int = 0
 var _diag_printed: bool = false
+# Periodic rate-report state (every ~5 s). Lets us SEE in real time
+# whether the generator is busy (cache miss heavy) or idle (cache
+# serving). A populated cache should show ~0 blocks/s after the
+# initial spawn-stream window.
+var _diag_last_rate_print_ms: int = 0
+var _diag_blocks_at_last_print: int = 0
+# Per-LOD counters. Tells us whether cache misses are concentrated
+# at a specific LOD (usually LOD0 if the bake's walker spacing was
+# wider than the runtime's LOD0 radius). 8 slots covers Zylann's
+# typical lod_count cap.
+var _diag_blocks_by_lod: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
+var _diag_blocks_by_lod_at_last_print: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
 
 var _cached_stone: VoxelMaterial = null
 var _cached_dirt: VoxelMaterial = null
@@ -191,20 +203,58 @@ func get_ground_voxel_y_at(world_x: int, world_z: int) -> int:
 
 # Diagnostic counter — tracks how often _generate_block early-outs
 # vs runs the per-voxel loop. Worker-thread safe in the relaxed sense
-# (raw int increments may race; the count is approximate). Prints
-# once after the first 1000 blocks so we can confirm the vertical-
-# extent cap actually paid off (target: >70% early-out hit-rate after
-# the EXR has been scanned).
-func _diag_record(was_early_out: bool) -> void:
+# (raw int increments may race; the count is approximate).
+#
+# Two-stage output:
+#   - One-shot summary after the first 1000 blocks (early-out %).
+#   - Periodic rate prints every ~5 seconds reporting blocks/sec,
+#     so we can SEE whether the generator is constantly busy
+#     (cache miss rate is high) or quiet (cache is serving).
+#     A healthy populated cache should show ~0 blocks/s after the
+#     initial spawn-stream completes.
+func _diag_record(was_early_out: bool, lod: int) -> void:
 	_diag_blocks_total += 1
 	if was_early_out:
 		_diag_blocks_early_out += 1
+	# Per-LOD count. Clamp to array bounds in case Zylann ever passes
+	# a higher LOD than we expect.
+	var lod_idx: int = clampi(lod, 0, _diag_blocks_by_lod.size() - 1)
+	_diag_blocks_by_lod[lod_idx] += 1
+
 	if not _diag_printed and _diag_blocks_total >= 1000:
 		_diag_printed = true
 		var pct: float = 100.0 * float(_diag_blocks_early_out) / float(maxi(1, _diag_blocks_total))
 		print("[CopperIsles] DIAG after %d blocks: %d early-outs (%.1f%%) — max_ground_y=%d vox" % [
 			_diag_blocks_total, _diag_blocks_early_out, pct, _max_ground_y_voxels,
 		])
+	# Periodic rate report. Time.get_ticks_msec is thread-safe.
+	var now_ms: int = Time.get_ticks_msec()
+	if _diag_last_rate_print_ms == 0:
+		_diag_last_rate_print_ms = now_ms
+		_diag_blocks_at_last_print = _diag_blocks_total
+		for i in _diag_blocks_by_lod.size():
+			_diag_blocks_by_lod_at_last_print[i] = _diag_blocks_by_lod[i]
+		return
+	var elapsed_ms: int = now_ms - _diag_last_rate_print_ms
+	if elapsed_ms < 5000:
+		return
+	var blocks_in_window: int = _diag_blocks_total - _diag_blocks_at_last_print
+	var rate: float = float(blocks_in_window) * 1000.0 / float(maxi(elapsed_ms, 1))
+	# Build per-LOD rate breakdown for the window — empty LOD slots
+	# are omitted so the line stays readable. Tells us where misses
+	# live: "L0=600/s" → bake walker LOD0 spacing too sparse.
+	var per_lod_parts: Array[String] = []
+	for i in _diag_blocks_by_lod.size():
+		var delta: int = _diag_blocks_by_lod[i] - _diag_blocks_by_lod_at_last_print[i]
+		if delta > 0:
+			var lod_rate: float = float(delta) * 1000.0 / float(maxi(elapsed_ms, 1))
+			per_lod_parts.append("L%d=%d/s" % [i, int(lod_rate)])
+		_diag_blocks_by_lod_at_last_print[i] = _diag_blocks_by_lod[i]
+	print("[CopperIsles] DIAG rate: %d blocks/s  [%s]  (total %d, early-out %d)" % [
+		int(rate), " ".join(per_lod_parts), _diag_blocks_total, _diag_blocks_early_out,
+	])
+	_diag_last_rate_print_ms = now_ms
+	_diag_blocks_at_last_print = _diag_blocks_total
 
 
 # =============================================================
@@ -367,13 +417,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var block_max_y: int = origin_in_voxels.y + (size.y * stride) - 1
 
 	if block_min_y > max_ground_y and block_min_y > sea_level_voxels:
-		_diag_record(true)
+		_diag_record(true, lod)
 		return
 	if block_max_y < WORLD_FLOOR_VOXEL_Y:
-		_diag_record(true)
+		_diag_record(true, lod)
 		return
 
-	_diag_record(false)
+	_diag_record(false, lod)
 	_ensure_materials_cached()
 
 	# Pre-extract per-material tuples (same hot-loop optimisation as
