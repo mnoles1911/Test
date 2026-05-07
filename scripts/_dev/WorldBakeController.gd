@@ -40,38 +40,47 @@ extends Node3D
 #   For full corner-to-corner coverage on an axis-aligned grid:
 #     S × √2 / 2 ≤ R   →   S ≤ R × √2
 #
-#   lod_distance = 128  →  R = 21 m  →  S ≤ 30 m   (current)
+#   lod_distance = 128  →  R = 21 m  →  S ≤ 30 m
 #   lod_distance = 384  →  R = 64 m  →  S ≤ 90 m
-#   lod_distance = 768  →  R = 128 m →  S ≤ 180 m
+#   lod_distance = 768  →  R = 128 m →  S ≤ 180 m   (CURRENT)
 #
-# We're tuned for runtime lod_distance=128 (smallest LOD0 area, lowest
-# render cost; matches scenes/CopperIslesTest.tscn). 30 m walker step
-# gives full LOD0 cache coverage.
+# We're tuned for runtime lod_distance=768 (matches CopperIslesTest
+# .tscn). 180 m walker step gives full LOD0 cache coverage with
+# corner safety margin.
 #
 # Bake time scales as (1/S)²:
-#   1 km² @ 30 m → 33² ≈ 1089 tiles → ~90 min @ 5 s/tile
-#   5 km² @ 30 m → 167² ≈ 28000 candidate tiles, ~16800 land tiles
-#                  after the EXR pre-pass → ~23 hours overnight
-# If the bake budget is too long, raise lod_distance + re-bake at the
-# wider tile size matching that radius.
-const TILE_SIZE_M: float = 30.0
+#   1 km² @ 180 m → 6² ≈ 40 tiles → ~3 min @ 4 s/tile
+#   5 km² @ 180 m → 28² ≈ 800 tiles → ~50 min
+# Roughly 36× fewer tiles than the old 30 m walker. If you ever
+# tighten lod_distance back down to 128 for whatever reason, drop
+# this back to 30 to maintain LOD0 coverage.
+const TILE_SIZE_M: float = 180.0
 
 # Wait time at each viewer position (seconds) for Zylann to stream
 # everything within view_distance and persist it via
-# save_generator_output. Conservative — chunks are precious; better to
-# wait too long than miss any.
-const WAIT_PER_POSITION_S: float = 5.0
+# save_generator_output. With 8 worker threads (project.godot
+# voxel/threads/count/minimum=8) and the LOD pyramid extending out
+# to 8000 vox, Zylann typically resolves a tile's full LOD set in
+# 2-3 s. 4 s leaves margin without being wasteful. If chunks come
+# out missing in the cache (DIAG rate spikes during runtime
+# exploration), bump back to 5-6 s.
+const WAIT_PER_POSITION_S: float = 4.0
 
 # Force a SQLite flush every N tiles. Crash safety + UI file-size
 # update cadence.
 const SAVE_EVERY_N_TILES: int = 8
 
 # When a column's max_ground_y is taller than this many world metres,
-# the walker uses multiple vertical viewer positions to cover the
-# whole column. Single-position fallback is correct for low islands
-# but misses tall spires.
-const MULTI_VERTICAL_THRESHOLD_M: float = 200.0
-const VERTICAL_STEP_M: float = 200.0  # spacing between vertical positions on tall columns
+# the walker adds extra vertical viewer placements to cover the
+# whole column. Originally 200 m, sized for the old 250 m
+# view_distance. With view_distance now = 8000 vox = 1333 m, a
+# single viewer position covers the entire vertical column of even
+# the tallest peak (~910 m at the new sea level) in one shot —
+# extra placements are pure overhead. Set effectively-infinite to
+# disable multi-vertical sweeps. Drop back to 200 if a future change
+# shrinks view_distance or pushes peaks past ~1000 m.
+const MULTI_VERTICAL_THRESHOLD_M: float = 99999.0
+const VERTICAL_STEP_M: float = 200.0  # only used if MULTI_VERTICAL_THRESHOLD trips
 
 # Bake DB path. user:// because res:// is read-only at runtime; a
 # separate "Copy to assets/voxel" UI button shifts the finished DB
@@ -140,7 +149,11 @@ func _ready() -> void:
 # on save, producing baked DBs the runtime can't read. Set once here
 # at startup; takes effect before the first viewer placement.
 const REQUIRED_LOD_COUNT: int = 8
-const REQUIRED_LOD_DISTANCE: float = 128.0
+# 768 vox = 128 m world LOD0 radius at 6 vox/m. MUST match the
+# runtime scene's lod_distance — chunks are keyed by absolute LOD
+# level in SQLite, so a mismatch produces a fully cached cache the
+# runtime can't read.
+const REQUIRED_LOD_DISTANCE: float = 768.0
 const REQUIRED_LOD_FADE_DURATION: float = 0.5
 
 

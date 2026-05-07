@@ -262,5 +262,5 @@ rendering/2d/snap/snap_2d_vertices_to_pixel=true
 
 [voxel]
 
-threads/count/minimum=8
+threads/count/minimum=12
 threads/count/margin_below_max=2

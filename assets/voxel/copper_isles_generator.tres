@@ -22,7 +22,12 @@ extent_x_voxels = 30000
 extent_z_voxels = 30000
 origin_x_voxels = -15000
 origin_z_voxels = -15000
-sea_level_voxels = 0
+; Sea level moved from voxel-Y 0 → 720 = world Y 120 m at scale 1/6.
+; Per design: islands of Copper Isles rise out of a real sea, not from a
+; flat plane at world origin. sea_level_voxels and beach_y_threshold
+; both shift up together so the sand band stays the same thickness
+; (~2 m world) just above the new waterline.
+sea_level_voxels = 720
 sea_level_gray = 0.0
 elevation_above_at_white_voxels = 15000
 elevation_below_at_black_voxels = 240
@@ -31,5 +36,5 @@ bilinear_sampling = true
 require_heightmap_in_editor_only = false
 grass_layer_thickness_voxels = 1
 dirt_layer_thickness_voxels = 3
-beach_y_threshold = 12
+beach_y_threshold = 732
 early_out_margin_voxels = 4

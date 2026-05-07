@@ -199,7 +199,10 @@ func _seed_from_baseline_if_needed() -> void:
 # with REQUIRED_* constants in scripts/_dev/WorldBakeController.gd —
 # changing one without the other corrupts the cache contract.
 const REQUIRED_LOD_COUNT: int = 8
-const REQUIRED_LOD_DISTANCE: float = 128.0
+# 768 vox = 128 m world LOD0 radius at 6 vox/m. Sized for
+# mountaintop-vista feel + fast walker bakes (180 m tile spacing).
+# MUST match BakeWorld terrain config and the .tscn explicit values.
+const REQUIRED_LOD_DISTANCE: float = 768.0
 const REQUIRED_LOD_FADE_DURATION: float = 0.5
 
 

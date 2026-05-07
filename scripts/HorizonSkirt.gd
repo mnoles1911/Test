@@ -47,15 +47,76 @@ func _ready() -> void:
 		push_warning("[HorizonSkirt] %s loaded but is not a Mesh; skirt disabled." % mesh_path)
 		return
 	mesh = loaded as Mesh
-	# Material setup — vertex colours from the baker, no texture, low
-	# roughness so the directional light still picks out shape.
+	# DIAGNOSTIC dump — surfaces vital stats to Output so we can see
+	# whether the loaded skirt has the expected shape (vertex count,
+	# AABB extent, surface count) and confirm the new bake was
+	# actually loaded (not a cached stale .res).
+	var aabb: AABB = (loaded as Mesh).get_aabb()
+	var surface_count: int = (loaded as Mesh).get_surface_count()
+	var total_verts: int = 0
+	var total_indices: int = 0
+	for s in surface_count:
+		var arrays: Array = (loaded as Mesh).surface_get_arrays(s)
+		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		total_verts += v.size()
+		if idx != null:
+			total_indices += (idx as PackedInt32Array).size()
+	print("[HorizonSkirt] loaded %s" % mesh_path)
+	print("[HorizonSkirt]   surfaces=%d verts=%d tris=%d" % [
+		surface_count, total_verts, total_indices / 3,
+	])
+	print("[HorizonSkirt]   aabb pos=(%.0f, %.0f, %.0f) size=(%.0f, %.0f, %.0f)" % [
+		aabb.position.x, aabb.position.y, aabb.position.z,
+		aabb.size.x, aabb.size.y, aabb.size.z,
+	])
+	# Spot-check a centre vertex's colour so we can tell whether the
+	# new gradient/jitter palette landed (vs a stale flat-grey bake).
+	if surface_count > 0:
+		var arrays0: Array = (loaded as Mesh).surface_get_arrays(0)
+		var colors_arr = arrays0[Mesh.ARRAY_COLOR]
+		if colors_arr != null and (colors_arr as PackedColorArray).size() > 0:
+			var pca: PackedColorArray = colors_arr
+			var sample_idx: int = pca.size() / 2  # roughly mesh centre
+			var sc: Color = pca[sample_idx]
+			print("[HorizonSkirt]   sample vertex colour idx=%d → r=%.2f g=%.2f b=%.2f a=%.2f" % [
+				sample_idx, sc.r, sc.g, sc.b, sc.a,
+			])
+		else:
+			print("[HorizonSkirt]   ⚠ NO vertex colours on surface 0 — material will fall back to white")
+	# Material setup — opaque, double-sided, lit. Tuned so distant
+	# terrain reads as actual terrain instead of a flat grey wall:
+	#   - roughness 0.7 (was 0.95) lets the directional sun produce
+	#     subtle highlights on slopes facing the light. 0.95 is
+	#     near-perfectly-matte — visually dead.
+	#   - cull_mode DISABLED renders both sides — defeats winding bugs.
+	#   - shadows on (cast + receive) so the CSM splits we just enabled
+	#     in the scene actually project onto the skirt.
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.95
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
+	mat.roughness = 0.7
+	mat.metallic = 0.0
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Reverted to CULL_DISABLED. With CULL_BACK + the fixed winding
+	# the player saw the far-side faces but the near-side faces were
+	# transparent — winding-from-above and winding-from-camera don't
+	# agree for steep-sloped terrain seen from arbitrary angles. A
+	# horizon skirt is fundamentally a viewed-from-anywhere mesh, so
+	# double-sided rendering is the right call. Slight loss of
+	# diffuse shading nuance is the price.
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	mat.render_priority = render_priority_offset
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	mat.albedo_color = Color(1, 1, 1, 1)  # full alpha guard
+	mat.no_depth_test = false
+	mat.disable_receive_shadows = false
 	material_override = mat
+	# Mesh receives directional sun shadow + casts its own shadow onto
+	# closer terrain. Cast is cheap because the skirt has wide flat
+	# slopes and no fine detail.
+	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# Explicitly leave render_priority at 0 — the export at the top
+	# of this file is now unused but kept to avoid breaking any
+	# .tscn that already serialised it.
 
 	if follow_terrain_scale:
 		var terrain := get_parent() as Node3D

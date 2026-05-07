@@ -12,6 +12,49 @@ here so future passes don't re-litigate the same questions.
 
 ---
 
+## Voxel-resolution constants — change all together or none
+
+If you ever want to bump the world from 6 vox/m to 8 or 10 (finer detail per
+metre, larger SQLite cache, longer bake), every constant in this table has to
+move proportionally. Updating only some of them produces inconsistent state:
+the player's spawn coords sit on different terrain than expected, the skirt
+floats above or below the live LOD0 voxels, the cache contains chunks the
+runtime won't read, and so on.
+
+| Constant | Where | At 6 vox/m | At 8 vox/m | At 10 vox/m |
+|---|---|---|---|---|
+| `terrain.transform.scale` | `scenes/CopperIslesTest.tscn` and `scenes/_dev/BakeWorld.tscn` (uniform 3-axis scale on the VoxelLodTerrain node) | 0.1667 | 0.125 | 0.1 |
+| `extent_x_voxels` / `extent_z_voxels` | `assets/voxel/copper_isles_generator.tres` | 30 000 | 40 000 | 50 000 |
+| `origin_x_voxels` / `origin_z_voxels` | `assets/voxel/copper_isles_generator.tres` | -15 000 | -20 000 | -25 000 |
+| `elevation_above_at_white_voxels` | `assets/voxel/copper_isles_generator.tres` | 15 000 | 20 000 | 25 000 |
+| `elevation_below_at_black_voxels` | `assets/voxel/copper_isles_generator.tres` | 240 | 320 | 400 |
+| `sea_level_voxels` | `assets/voxel/copper_isles_generator.tres` | 720 | 960 | 1200 |
+| `beach_y_threshold` | `assets/voxel/copper_isles_generator.tres` | 732 | 976 | 1220 |
+| `GEN_SEA_LEVEL_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 720.0 | 960.0 | 1200.0 |
+| `GEN_PEAK_ABOVE_SEA_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 15000.0 | 20000.0 | 25000.0 |
+| `VOXELS_PER_METRE` | `scripts/_dev/WorldBakeController.gd` | 6.0 | 8.0 | 10.0 |
+| `WORLD_FLOOR_VOXEL_Y` | three places: `CubicHeightmapGenerator.gd`, `CopperIslesHeightmapGenerator.gd`, `VoxelEditManager.gd` | -300 | -400 | -500 |
+| Walker `TILE_SIZE_M` | `scripts/_dev/WorldBakeController.gd` (depends on `lod_distance` — at the current lod_distance=768 vox, LOD0 radius = 768/vox_per_m, walker spacing ≤ radius × √2) | 180 m | ~135 m | ~108 m |
+
+### What re-bakes are needed after a vox/m change
+
+- **Voxel SQLite cache** — INVALID. Chunks are keyed by absolute voxel-grid
+  coords. Different `extent_*_voxels` and `sea_level_voxels` mean the same
+  world XZ resolves to a DIFFERENT chunk-coord, and the old entries become
+  unreferenceable. Delete and re-bake from BakeWorld.
+- **Horizon skirt mesh** — INVALID. `SkirtBaker.bake_mesh` writes vertex Y
+  values via `voxel_Y / voxels_per_metre`. If runtime vox/m differs from the
+  bake-time value the skirt floats above (or sinks below) the live LOD0
+  terrain. Re-bake the skirt with the matching `VOXELS_PER_METRE`.
+- **Player spawn (`Player3D.SPAWN_POSITION`)** — re-pick after each resolution
+  change. The world-meter coords land on different heightmap pixels (and so
+  different terrain) at different vox/m settings.
+- **Cache size grows nonlinearly.** 8 vox/m typically lands at 1.5-2.5× the
+  6 vox/m cache size; 10 vox/m at 3-5×. Bake walltime grows similarly because
+  `TILE_SIZE_M` shrinks (the LOD0 radius is the binding constraint).
+
+---
+
 ## Probe results
 
 > Last updated 2026-05-06 from the BakeWorld diagnostics panel run.
@@ -97,6 +140,66 @@ What the probe **disproved** (and the design has to adapt to):
 - **No stream-idle signal** on `VoxelLodTerrain`. The probe listed only the
   base Node signals — no stream-specific events. The walker's "no new SQLite
   rows for N frames" heuristic is the only path; keep it.
+
+### 2026-05-06 — Bake LOD coverage was the real perf problem
+
+After fixing `cache_generated_blocks` (below), the 1 km bake produced a
+healthy 38.8 MB SQLite that the runtime correctly seeded into user://.
+Bootstrap log + reopen log confirmed the file was being read. But perf
+in the test scene was unchanged from before any baking — DIAG rate
+prints showed sustained ~400 blocks/s of generator activity (essentially
+100 % cache miss rate).
+
+Root cause: **`lod_distance = 96` voxels gave LOD0 a radius of only 16 m
+world**. The bake walker stepped at 200 m tiles, so each tile centre
+cached LOD0 chunks within a 16 m radius — covering only ~5 % of the
+LOD0 chunk surface area in the bake region. The runtime player asks for
+LOD0 chunks within 16 m of their position, which mostly fell in the 95 %
+the bake never touched → near-total cache miss.
+
+Fix landed in this commit:
+
+- `lod_distance` bumped to **384 voxels (64 m world)** in both
+  `scenes/CopperIslesTest.tscn` and `scenes/_dev/BakeWorld.tscn`.
+- `WorldBakeController.TILE_SIZE_M` shrunk from 200 → **80 m** so the
+  walker's tile centres fall within 64 m of every point in the bake
+  region (S × √2 ≤ R).
+- Re-bake required: existing `assets/voxel/copper_isles_baseline.sqlite`
+  is incompatible with the new lod_distance. Delete + re-run "Bake
+  1 km central" → new size estimate 100-300 MB (more LOD0 chunks
+  stored). Full 5 km is now ~3-4 hours; bring a book.
+
+Diagnostic upgrade also landed: `_diag_record` now prints a generator
+rate every 5 s (`DIAG rate: NN blocks/s ...`) so cache effectiveness
+is visible in real time. Healthy populated cache should show ~0 blocks/s
+once initial spawn-stream completes.
+
+Trade-off: 16× more LOD0 triangles in view at runtime. Acceptable for
+the test scene; revisit per-scene if frame time hurts.
+
+### 2026-05-06 — `cache_generated_blocks` is the missing flag
+
+The first 1 km bake hung at 96 % with the SQLite file stuck at 20 KB
+(SQLite header + schema only — no voxel rows). Root cause:
+**`VoxelLodTerrain.cache_generated_blocks` defaults to false.**
+
+`save_generator_output = true` on the **stream** tells the stream "if you
+receive a generator-output block, write it to disk." But the **terrain**
+only forwards generator output to the stream when `cache_generated_blocks`
+is true. Both flags must be set or generator output stays in memory and
+gets thrown away when the chunk unloads.
+
+Fix:
+- `scenes/_dev/BakeWorld.tscn` and `scenes/CopperIslesTest.tscn` both set
+  `cache_generated_blocks = true` on the VoxelLodTerrain.
+- The bake walker now ends with `_park_viewer_far_and_drain()` which
+  moves the phantom viewer 100 km away to force every loaded chunk to
+  unload (and thereby trigger save-before-evict).
+- `_flush_save()` is fire-and-forget instead of awaiting the return Signal
+  — empirically, the Signal sometimes never fires when there's nothing
+  to save, causing the previous "stuck at 96 %" hang.
+- Added a "Force Save" button to the bake UI for debugging persistence
+  issues without re-running a full bake.
 
 ### 2026-05-06 — Phase C lands as bake-as-seed (NOT two-tier wrapper)
 

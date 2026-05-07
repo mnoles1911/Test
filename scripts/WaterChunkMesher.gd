@@ -125,9 +125,22 @@ var _water_flow_manager: Node = null
 # their TOP face isn't visible — only the chunk row at sea-level Y
 # emits a top-face mesh. This optimisation keeps the dirty queue from
 # walking the whole vertical column.
-const _SEA_LEVEL_VOXELS: int = 72  # Mirrors CubicHeightmapGenerator.SEA_LEVEL_VOXELS
+const _SEA_LEVEL_VOXELS_DEFAULT: int = 72  # Mira's CubicHeightmapGenerator default
 @warning_ignore("integer_division")
-const _SEA_LEVEL_CHUNK_Y: int = _SEA_LEVEL_VOXELS / CHUNK_SIZE_VOXELS  # 72/16 = 4
+const _SEA_LEVEL_CHUNK_Y_DEFAULT: int = _SEA_LEVEL_VOXELS_DEFAULT / CHUNK_SIZE_VOXELS  # 72/16 = 4
+
+func _current_sea_level_chunk_y() -> int:
+	# Read the live sea level from WaterFlowManager so each scene can
+	# override (Mira keeps the 72-vox default, Copper Isles overrides
+	# to 720). Without this dispatch the mesher would scan the wrong
+	# chunk-Y row in any scene whose sea level differs from Mira's,
+	# producing an empty ocean surface even when water voxels are
+	# correctly cached.
+	if _water_flow_manager == null or not _water_flow_manager.has_method("get_sea_level_voxel_y"):
+		return _SEA_LEVEL_CHUNK_Y_DEFAULT
+	@warning_ignore("integer_division")
+	var chunk_y: int = (_water_flow_manager.get_sea_level_voxel_y() as int) / CHUNK_SIZE_VOXELS
+	return chunk_y
 
 # ONE giant flat plane per source region (ocean, lake) — see
 # _rebuild_source_region_planes(). Replaces the per-chunk source-region
@@ -170,7 +183,13 @@ const SOURCE_REGION_MAX_SUBDIV: int = 256
 # coastline at the horizon doesn't appear to float over void. The
 # chunked mesh overdraws the inner 96 m so the player only "sees"
 # the horizon plane in the 96 m–300 m ring.
-const SOURCE_REGION_VISIBLE_HORIZON_M: float = 300.0
+const SOURCE_REGION_VISIBLE_HORIZON_M: float = 3000.0
+# Was 300 m. Bumped for the Copper Isles mountaintop vista — from a
+# 500 m peak the player needs to see the ocean stretching kilometres
+# in every direction, not a tiny 600 m × 600 m puddle around them.
+# 3000 m gives a 6 km × 6 km plane, large enough to cover the full
+# 5 km Copper Isles map regardless of player position. Cost is
+# nothing — the plane is two triangles regardless of size.
 
 
 # ============================================================
@@ -331,7 +350,7 @@ func set_player_chunk(chunk: Vector3i) -> void:
 	# surfaced via the water_changed_at edit path (Phase 3) — those
 	# chunks dirty themselves on the edit, no scan needed here.
 	var surface_chunk_ys: Dictionary = {}
-	surface_chunk_ys[_SEA_LEVEL_CHUNK_Y] = true
+	surface_chunk_ys[_current_sea_level_chunk_y()] = true
 	for y_chunk in surface_chunk_ys.keys():
 		# Concentric-ring iteration: enqueue chunks closest to the player
 		# first, then progressively farther ones. The previous row-major
@@ -379,11 +398,11 @@ func _ring_offsets(r: int) -> Array:
 
 func _chunk_could_have_water(chunk: Vector3i) -> bool:
 	# Cheap pre-filter before the per-chunk terrain.copy() in
-	# _rebuild_chunk. The ocean surface lives at _SEA_LEVEL_CHUNK_Y;
-	# that's the only row that needs proactive meshing. Edits via
+	# _rebuild_chunk. The ocean surface lives at the active scene's
+	# sea-level chunk-Y row (Mira: 4, Copper Isles: 45). Edits via
 	# water_changed_at dirty their own chunks, so per-cell buckets
 	# above sea level still get rebuilt without a special check here.
-	return chunk.y == _SEA_LEVEL_CHUNK_Y
+	return chunk.y == _current_sea_level_chunk_y()
 
 
 # ============================================================
