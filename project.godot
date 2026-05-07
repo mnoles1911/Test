@@ -41,6 +41,7 @@ Dialogic="*uid://ds2q0uclmolvu"
 BarkManager="*res://scripts/BarkManager.gd"
 WorldClock="*res://scripts/WorldClock.gd"
 WeatherManager="*res://scripts/WeatherManager.gd"
+VoxelStreamProfiler="*res://scripts/_dev/VoxelStreamProfiler.gd"
 
 [dialogic]
 

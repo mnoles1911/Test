@@ -149,6 +149,16 @@ const DEFAULT_RANDOM_DISTRIBUTION: Dictionary = {
 # weather changes feel paced (~3 changes per day).
 const SCHEDULE_TRANSITION_HOURS: Array[int] = [6, 12, 18]
 
+# Master switch: when false, all automatic weather sources stop firing.
+# That includes the [6, 12, 18] scheduled rolls, the initial-state seed,
+# proximity-zone pushes from WeatherZone Area3Ds, and location-profile
+# swaps. The world stays CLEAR until something explicitly calls
+# set_weather_override() — which is exactly what the F1 DebugOverlay
+# Weather panel does. Default false for the Copper Isles crisp-Minecraft
+# look; flip to true (or set in Inspector on a scene-level instance)
+# once the world is ready for ambient weather again.
+@export var auto_weather_enabled: bool = false
+
 # Active location profile. When null, _roll_random_state falls back to
 # DEFAULT_RANDOM_DISTRIBUTION and SCHEDULE_TRANSITION_HOURS.
 var _location_profile: WeatherLocationProfile = null
@@ -302,9 +312,18 @@ func _ready() -> void:
 # state without playing the 30 s transition tween. Used on world load
 # so the initial frame already has correct atmosphere.
 func _seed_initial_state() -> void:
-	_scheduled_state = _roll_state_for_today()
-	current_state = _scheduled_state
-	_target_state = _scheduled_state
+	# When auto-weather is gated, force CLEAR on world load and skip the
+	# random/authored roll entirely. F1 DebugOverlay can still kick the
+	# state via set_weather_override() — that path is intentionally
+	# NOT gated.
+	if not auto_weather_enabled:
+		_scheduled_state = State.CLEAR
+		current_state = State.CLEAR
+		_target_state = State.CLEAR
+	else:
+		_scheduled_state = _roll_state_for_today()
+		current_state = _scheduled_state
+		_target_state = _scheduled_state
 	_transition_progress = 1.0
 	# Initialise live + blend-origin values to the seeded state's
 	# profile so the first _process tick reads consistent values
@@ -470,6 +489,9 @@ func get_wind_velocity() -> Vector3:
 # Phase 11 hooks — WeatherZone calls these on entry/exit. Stack-based
 # so multiple overlapping zones resolve by priority rather than fighting.
 func push_proximity_zone(zone: Object, state_id: int, priority: int) -> void:
+	# Gate: zones can't override weather while auto-weather is off.
+	if not auto_weather_enabled:
+		return
 	# Replace any existing entry for this zone (re-entry, edge cases).
 	for i in range(_proximity_stack.size() - 1, -1, -1):
 		if _proximity_stack[i].zone == zone:
@@ -479,6 +501,8 @@ func push_proximity_zone(zone: Object, state_id: int, priority: int) -> void:
 
 
 func pop_proximity_zone(zone: Object) -> void:
+	if not auto_weather_enabled:
+		return
 	for i in range(_proximity_stack.size() - 1, -1, -1):
 		if _proximity_stack[i].zone == zone:
 			_proximity_stack.remove_at(i)
@@ -591,6 +615,9 @@ func _resolve_active_state() -> void:
 
 
 func _on_hour_changed(new_hour: int) -> void:
+	# Gate: no scheduled rolls while auto-weather is off.
+	if not auto_weather_enabled:
+		return
 	# Roll a new scheduled state on the configured transition hours.
 	# The profile (if set) overrides the default hour list.
 	var hours: Array = SCHEDULE_TRANSITION_HOURS
@@ -633,7 +660,11 @@ func _roll_random_state() -> int:
 # scheduled state immediately so the new profile takes visible effect
 # without waiting for the next transition_hour.
 func set_location_profile(profile: WeatherLocationProfile) -> void:
+	# Gate: profile swaps are an auto-weather mechanism. The profile is
+	# still recorded so re-enabling auto-weather later picks it up.
 	_location_profile = profile
+	if not auto_weather_enabled:
+		return
 	_scheduled_state = _roll_state_for_today()
 	_resolve_active_state()
 

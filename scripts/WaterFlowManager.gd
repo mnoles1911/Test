@@ -135,6 +135,15 @@ var _frames_since_tick: int = 0
 # Counts physics frames since the last flow tick. Tick fires when
 # this hits TICK_INTERVAL_FRAMES.
 
+# Read by VoxelStreamProfiler once per second. last_tick_ms is wall-clock
+# time spent inside _run_flow_tick(); last_tick_chunks_active is the size
+# of the dirty-chunk snapshot for that tick; ticks_run increments each
+# time the flow tick body actually runs. Plain int reads on the main
+# thread, no Mutex needed.
+var last_tick_ms: float = 0.0
+var last_tick_chunks_active: int = 0
+var ticks_run: int = 0
+
 var _tick_count: int = 0
 # Monotonically increasing tick counter (modulo 256 for the
 # last_fed_tick byte). Phase 4 uses this; Phase 3 just keeps it
@@ -494,8 +503,12 @@ func _run_flow_tick() -> void:
 	# Iterating the snapshot lets _on_edit_applied keep populating
 	# _dirty_chunks during the tick (e.g. a cascade chain dirties
 	# new chunks; those get processed next tick).
+	var _t0_us: int = Time.get_ticks_usec()
+	last_tick_ms = 0.0
 	var snapshot: Dictionary = _dirty_chunks.duplicate()
 	_dirty_chunks.clear()
+	last_tick_chunks_active = snapshot.size()
+	ticks_run += 1
 
 	# Cache terrain + tool ONCE per tick. Previous code re-fetched
 	# both per chunk per voxel — a 100× perf regression vs caching.
@@ -532,6 +545,7 @@ func _run_flow_tick() -> void:
 					continue
 				_dirty_chunks[remaining] = true
 			break
+	last_tick_ms = (Time.get_ticks_usec() - _t0_us) / 1000.0
 
 
 func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTerrain, tool: VoxelTool) -> int:

@@ -169,6 +169,13 @@ var _diag_blocks_at_last_print: int = 0
 var _diag_blocks_by_lod: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
 var _diag_blocks_by_lod_at_last_print: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
 
+# Read by VoxelStreamProfiler (scripts/_dev/VoxelStreamProfiler.gd) once
+# per second to compute generator misses/sec. Every call to _generate_block
+# is by definition a cache miss — Zylann only calls the generator when the
+# stream has nothing for that block. Worker threads write, main thread
+# reads; lock-free, ±1 race is acceptable for a coarse diagnostic.
+var miss_count: int = 0
+
 var _cached_stone: VoxelMaterial = null
 var _cached_dirt: VoxelMaterial = null
 var _cached_grass: VoxelMaterial = null
@@ -395,6 +402,7 @@ func _ensure_materials_cached() -> void:
 # =============================================================
 
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
+	miss_count += 1
 	var size: Vector3i = out_buffer.get_size()
 	var stride: int = 1 << lod
 

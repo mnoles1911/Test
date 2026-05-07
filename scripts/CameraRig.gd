@@ -358,6 +358,17 @@ func exit_dialogue_mode() -> void:
 
 # --- Forward raycast helper (used by EditToolHandler for voxel targeting) ---
 
+# Plain unit vector along the camera's forward axis. Used by
+# ForwardLookaheadViewer.gd to bias chunk streaming ahead of the player
+# along where they're looking. Cheaper than get_camera_forward_hit() —
+# no raycast, no viewport math, just the camera's basis Z negated.
+func get_camera_forward_unit() -> Vector3:
+	var c: Camera3D = get_node_or_null("Camera3D")
+	if c == null:
+		return Vector3.FORWARD
+	return -c.global_transform.basis.z
+
+
 func get_camera_forward_hit(max_distance_from_player: float = 5.0) -> Dictionary:
 	# Casts a ray forward from the center of the screen (where the
 	# crosshair sits). max_distance_from_player is measured from the

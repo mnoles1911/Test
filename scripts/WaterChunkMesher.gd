@@ -276,12 +276,15 @@ func _process(delta: float) -> void:
 	# we steal here directly delay terrain LOD streaming. The throttle
 	# yields gracefully back to terrain when frames get heavy.
 	var budget: int = _adaptive_build_budget(delta)
+	current_budget = budget
 	var built: int = 0
 	while built < budget and not _dirty_queue.is_empty():
 		var chunk: Vector3i = _dirty_queue.pop_front()
 		_dirty_set.erase(chunk)
 		_rebuild_chunk(chunk)
 		built += 1
+	meshed_this_second += built
+	dirty_queue_len = _dirty_queue.size()
 
 	# Horizon plane removed — the per-frame follow-player update is
 	# a no-op now (no _source_region_planes to position). Kept the
@@ -496,6 +499,14 @@ var _diag_chunks_meshed: int = 0
 var _diag_chunks_with_quads: int = 0
 var _diag_first_water_chunk_logged: bool = false
 var _diag_first_quads_logged: bool = false
+
+# Read by VoxelStreamProfiler once per second. meshed_this_second is a
+# rolling counter the profiler resets each tick. dirty_queue_len and
+# current_budget are written every _process frame. All single-int reads
+# from the main thread, no Mutex needed.
+var meshed_this_second: int = 0
+var dirty_queue_len: int = 0
+var current_budget: int = 0
 
 
 func _gather_surface_quads(chunk: Vector3i) -> Array:

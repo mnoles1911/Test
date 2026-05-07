@@ -145,9 +145,32 @@ func _ready() -> void:
 	if get_node_or_null("/root/WaterFlowManager"):
 		_reseed_water_for_scale(_terrain_scale(terrain))
 
+	# Spawn the velocity / camera-aware lookahead VoxelViewer as a child
+	# of the player. The base viewer in Player3D.tscn keeps its
+	# omnidirectional 8000-vox bubble; this one adds a smaller, biased
+	# bubble ahead of where the player is looking and moving, so chunks
+	# along the heading load earlier when sprinting or riding. See
+	# scripts/ForwardLookaheadViewer.gd for the per-frame blend rule.
+	call_deferred("_spawn_lookahead_viewer")
+
 	# Snap the player above the terrain so they fall into the world
 	# rather than spawning inside an island peak.
 	call_deferred("_snap_player_above_terrain")
+
+
+func _spawn_lookahead_viewer() -> void:
+	var player: Node3D = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	# Don't double-spawn on hot reload or scale-change re-runs.
+	if player.get_node_or_null("ForwardLookaheadViewer") != null:
+		return
+	var script: Script = load("res://scripts/ForwardLookaheadViewer.gd")
+	if script == null:
+		return
+	var viewer: Node = script.new()
+	viewer.name = "ForwardLookaheadViewer"
+	player.add_child(viewer)
 
 
 # Path of the player's working SQLite (matches the .tscn's
