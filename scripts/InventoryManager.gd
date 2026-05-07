@@ -84,6 +84,13 @@ const ITEM_REGISTRY: Dictionary = {
 	# intact inside settlements).
 	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 0.75, "combat_damage": 40},
 	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 1.5,  "combat_damage": 80},
+
+	# Lockpicks — consumable tools for the lockpicking minigame.
+	# One pick is consumed per failed attempt (snap). Successful picks and
+	# player-cancelled attempts (Esc) do NOT consume a pick.
+	# Fine picks add +1.5 s to the hold timer at any skill tier.
+	"lockpick_standard": {"name": "Lockpick",       "type": "misc", "description": "A simple steel pick. Snaps under careless hands, but a steady Roland can open most locks."},
+	"lockpick_fine":     {"name": "Fine Lockpick",  "type": "misc", "description": "Master-filed tolerances. Adds 1.5 seconds to the hold window — the difference between a snap and a set on Hard locks."},
 }
 
 
