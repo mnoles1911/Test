@@ -125,6 +125,7 @@ var _snap_anim:      AnimatedSprite2D  # pick-snap particle (optional art)
 var _pin_flash_anim: AnimatedSprite2D  # pin-set confirmation flash (optional art)
 var _unlock_anim:    AnimatedSprite2D  # lock-open animation (optional art)
 var _false_stall_anim: AnimatedSprite2D # false-pin stall loop (optional art)
+var _resonance_pulse_anim: AnimatedSprite2D # ambient pulse while on real-pin resonance
 
 # Audio players. Streams are loaded from res://assets/audio/lockpicking/*.ogg
 # in _build_audio(). Missing files fail silently — overlay still works mute.
@@ -208,6 +209,7 @@ func close() -> void:
 	# Clean up: remove from scene tree after emitting the signal.
 	_is_open = false
 	_stop_all_loops()
+	_stop_all_anims()
 	hide()
 	lock_closed.emit()
 	# Give one frame for signal receivers before freeing.
@@ -344,6 +346,31 @@ func _process(delta: float) -> void:
 	# ── Update audio loops ────────────────────────────────────────────────
 	_update_audio_loops()
 
+	# ── Update resonance pulse animation (looping, intensity-driven alpha) ─
+	_update_resonance_pulse_anim()
+
+
+func _update_resonance_pulse_anim() -> void:
+	# Plays the looping resonance glow only while we're on a real pin.
+	# Alpha rides resonance_intensity so it fades in/out smoothly.
+	var on_real: bool = _resonance_intensity > 0.0 and not _on_false_pin
+	var sf: SpriteFrames = _resonance_pulse_anim.sprite_frames
+	if sf == null or sf.get_frame_count("default") == 0:
+		return
+
+	if on_real:
+		if not _resonance_pulse_anim.visible:
+			var center: Vector2 = _lock_face.get_global_rect().get_center()
+			_resonance_pulse_anim.global_position = center
+			_resonance_pulse_anim.scale           = Vector2(1.0, 1.0)
+			_resonance_pulse_anim.visible         = true
+			_resonance_pulse_anim.play("default")
+		_resonance_pulse_anim.modulate.a = clampf(_resonance_intensity, 0.0, 1.0)
+	else:
+		if _resonance_pulse_anim.visible:
+			_resonance_pulse_anim.visible = false
+			_resonance_pulse_anim.stop()
+
 
 func _update_audio_loops() -> void:
 	# Sweep scrape: gain rides sweep velocity. Plays only while moving.
@@ -383,6 +410,14 @@ func _stop_all_loops() -> void:
 	if _sfx_sweep and _sfx_sweep.playing:     _sfx_sweep.stop()
 	if _sfx_resonance and _sfx_resonance.playing: _sfx_resonance.stop()
 	if _sfx_false and _sfx_false.playing:     _sfx_false.stop()
+
+
+func _stop_all_anims() -> void:
+	for anim in [_snap_anim, _pin_flash_anim, _unlock_anim,
+	             _false_stall_anim, _resonance_pulse_anim]:
+		if anim and anim.visible:
+			anim.visible = false
+			anim.stop()
 
 
 # ─── RESONANCE ─────────────────────────────────────────────────────────────
@@ -433,6 +468,9 @@ func _set_pin() -> void:
 	if _sfx_pin_set and _sfx_pin_set.stream:
 		_sfx_pin_set.play()
 
+	# Pin-set flash animation — small confirmation burst.
+	_play_anim_at_lock_center(_pin_flash_anim, 1.4)
+
 	if _pins_set >= _lock_data.pin_count:
 		_on_unlocked()
 
@@ -461,6 +499,13 @@ func _on_unlocked() -> void:
 	if _sfx_open and _sfx_open.stream:
 		_sfx_open.play()
 
+	# Lock-open reveal animation across the full dial.
+	_play_anim_at_lock_center(_unlock_anim, 1.4)
+	# Stop the resonance pulse if it was running.
+	if _resonance_pulse_anim.visible:
+		_resonance_pulse_anim.visible = false
+		_resonance_pulse_anim.stop()
+
 	lock_opened.emit(lock_id)
 
 	# Short delay so the player can see the success feedback.
@@ -480,6 +525,13 @@ func _snap_pick() -> void:
 	_stop_all_loops()
 	if _sfx_snap and _sfx_snap.stream:
 		_sfx_snap.play()
+
+	# Pick-snap animation — particle burst at the lock centre.
+	_play_anim_at_lock_center(_snap_anim, 1.4)
+	# Hide the looping resonance pulse if it was visible.
+	if _resonance_pulse_anim.visible:
+		_resonance_pulse_anim.visible = false
+		_resonance_pulse_anim.stop()
 
 	DebugOverlay.log_action(
 		"Lockpick — SNAP at %.0f° (%s, %s pick)" % [
@@ -745,12 +797,115 @@ func _build_ui() -> void:
 	vbox.add_child(footer)
 
 	# ── Animated sprite nodes (optional art — hidden until frames assigned) ─
-	_snap_anim       = _make_anim_sprite("snap_anim")
-	_pin_flash_anim  = _make_anim_sprite("pin_flash_anim")
-	_unlock_anim     = _make_anim_sprite("unlock_anim")
-	_false_stall_anim = _make_anim_sprite("false_stall_anim")
+	_snap_anim             = _make_anim_sprite("snap_anim")
+	_pin_flash_anim        = _make_anim_sprite("pin_flash_anim")
+	_unlock_anim           = _make_anim_sprite("unlock_anim")
+	_false_stall_anim      = _make_anim_sprite("false_stall_anim")
+	_resonance_pulse_anim  = _make_anim_sprite("resonance_pulse_anim")
+
+	# Hide one-shot anims when finished; loops are managed by _process.
+	_snap_anim.animation_finished.connect(func(): _snap_anim.visible = false)
+	_pin_flash_anim.animation_finished.connect(func(): _pin_flash_anim.visible = false)
+	_unlock_anim.animation_finished.connect(func(): _unlock_anim.visible = false)
 
 	_build_audio()
+	_load_static_art()
+	_load_animations()
+
+
+# ─── ART LOADING ───────────────────────────────────────────────────────────
+
+const ART_DIR: String  = "res://assets/lockpick/"
+const ANIM_DIR: String = "res://assets/lockpick/anim/"
+
+
+func _load_static_art() -> void:
+	# Auto-load the three textures LockFaceControl knows how to render.
+	# JPGs work for the lock_face background (fully opaque), but pick + glow
+	# need PNG for transparency. If you only have JPGs the pick will appear
+	# as a small textured rectangle — re-render as PNG for the proper look.
+	_lock_face.lock_face_texture = _load_tex_or_null(ART_DIR + "lock_face.jpg")
+	_lock_face.pick_texture      = _load_tex_or_null(ART_DIR + "lockpick.jpg")
+	_lock_face.glow_texture      = _load_tex_or_null(ART_DIR + "resonance_glow.jpg")
+
+
+func _load_tex_or_null(path: String) -> Texture2D:
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+
+# ─── ANIMATION LOADING ─────────────────────────────────────────────────────
+
+func _load_animations() -> void:
+	# Each animation lives in /assets/lockpick/anim/<folder>/frame_NNN.png.
+	# We build a SpriteFrames resource from whatever's there. If the folder
+	# is missing or empty, the AnimatedSprite2D stays empty and is never shown.
+	#
+	# Playback fps is tuned per clip so the in-game duration matches design:
+	#   resonance_pulse — 1.5 s loop  (12 fps × 18 frames worth of motion)
+	#   pick_snap       — ~1.5 s burst (24 fps)
+	#   pin_set_flash   — ~0.8 s burst (24 fps)
+	#   lock_open       — 4 s reveal  (12 fps)
+	_resonance_pulse_anim.sprite_frames = _build_sprite_frames(
+		ANIM_DIR + "resonance_pulse", 12.0, true)
+	_snap_anim.sprite_frames = _build_sprite_frames(
+		ANIM_DIR + "pick_snap", 24.0, false)
+	_pin_flash_anim.sprite_frames = _build_sprite_frames(
+		ANIM_DIR + "pin_set_flash", 24.0, false)
+	_unlock_anim.sprite_frames = _build_sprite_frames(
+		ANIM_DIR + "lock_open", 12.0, false)
+	# false_pin_stall (ANIM 5) is intentionally not loaded — designer flagged
+	# this as missing. The set bar turning red at 50% is the in-code substitute.
+
+
+func _build_sprite_frames(folder: String, fps: float, loop_anim: bool) -> SpriteFrames:
+	var sf := SpriteFrames.new()
+	sf.add_animation("default")
+	sf.set_animation_speed("default", fps)
+	sf.set_animation_loop("default", loop_anim)
+	# Remove the auto-added empty default frame so our additions start at 0.
+	while sf.get_frame_count("default") > 0:
+		sf.remove_frame("default", 0)
+
+	if not DirAccess.dir_exists_absolute(folder):
+		return sf
+
+	var dir := DirAccess.open(folder)
+	if dir == null:
+		return sf
+
+	var names: Array[String] = []
+	dir.list_dir_begin()
+	while true:
+		var fname := dir.get_next()
+		if fname == "":
+			break
+		if fname.ends_with(".png") and fname.begins_with("frame_"):
+			names.append(fname)
+	dir.list_dir_end()
+	names.sort()
+
+	for n in names:
+		var path: String = folder.path_join(n)
+		var tex: Texture2D = _load_tex_or_null(path)
+		if tex:
+			sf.add_frame("default", tex)
+	return sf
+
+
+func _play_anim_at_lock_center(anim: AnimatedSprite2D, sprite_scale: float) -> void:
+	# Centers the AnimatedSprite2D on the lock face dial and plays "default".
+	# SAFE if the SpriteFrames is empty (just no-ops).
+	if anim.sprite_frames == null or anim.sprite_frames.get_frame_count("default") == 0:
+		return
+	var center: Vector2 = _lock_face.get_global_rect().get_center()
+	anim.global_position = center
+	anim.scale           = Vector2(sprite_scale, sprite_scale)
+	anim.modulate.a      = 1.0
+	anim.visible         = true
+	anim.frame           = 0
+	anim.play("default")
 
 
 func _build_audio() -> void:
