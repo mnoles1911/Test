@@ -121,6 +121,12 @@ var _pin_row:        HBoxContainer     # row of pin icons
 var _hint_label:     Label             # "Hold steady…" / "Pick snapped!" / etc.
 var _status_label:   Label             # brief status shown on open/snap/unlock
 
+# Input feedback row — sits directly above the dial.
+var _input_row:      HBoxContainer
+var _key_a_label:    Label             # "◀ A" — lights gold when A is held
+var _angle_label:    Label             # "247°" — live pick angle readout
+var _key_d_label:    Label             # "D ▶" — lights gold when D is held
+
 var _snap_anim:      AnimatedSprite2D  # pick-snap particle (optional art)
 var _pin_flash_anim: AnimatedSprite2D  # pin-set confirmation flash (optional art)
 var _unlock_anim:    AnimatedSprite2D  # lock-open animation (optional art)
@@ -236,6 +242,8 @@ func _process(delta: float) -> void:
 
 	# ── Snap animation hold ──────────────────────────────────────────────
 	if _snapping:
+		# Hold the A/D chips at idle while the snap delay plays.
+		_update_input_feedback(0.0)
 		_snap_timer -= delta
 		if _snap_timer <= 0.0:
 			_snapping = false
@@ -261,6 +269,9 @@ func _process(delta: float) -> void:
 	# Sweep velocity in degrees per second (used for back-pressure check).
 	# Divide by delta with a tiny epsilon to avoid division-by-zero.
 	_sweep_vel_deg = delta_angle / maxf(delta, 0.0001)
+
+	# Push input state to the A/D chips and live degree readout.
+	_update_input_feedback(axis)
 
 	# ── Resonance check ───────────────────────────────────────────────────
 	_update_resonance()
@@ -348,6 +359,21 @@ func _process(delta: float) -> void:
 
 	# ── Update resonance pulse animation (looping, intensity-driven alpha) ─
 	_update_resonance_pulse_anim()
+
+
+func _update_input_feedback(axis: float) -> void:
+	# Light the A/D chip gold when the matching key is held; dim grey when not.
+	# The label text never moves so the pressed chip is always in the same spot.
+	var col_active: Color = Colors.GOLD
+	var col_idle:   Color = Colors.INK_MUTE
+	_key_a_label.add_theme_color_override(
+		"font_color", col_active if axis < -0.05 else col_idle
+	)
+	_key_d_label.add_theme_color_override(
+		"font_color", col_active if axis >  0.05 else col_idle
+	)
+	# Live degree readout — round to whole degrees so it doesn't flicker.
+	_angle_label.text = "%d°" % int(round(_current_angle_deg))
 
 
 func _update_resonance_pulse_anim() -> void:
@@ -730,6 +756,34 @@ func _build_ui() -> void:
 	sep_style.content_margin_bottom = 1.0
 	sep1.add_theme_stylebox_override("separator", sep_style)
 	vbox.add_child(sep1)
+
+	# ── Input feedback row (◀ A / 247° / D ▶) ────────────────────────────
+	# Sits above the dial so the player can see at a glance which key is
+	# held and exactly where the pick currently sits.
+	_input_row = HBoxContainer.new()
+	_input_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_input_row.add_theme_constant_override("separation", 24)
+	vbox.add_child(_input_row)
+
+	_key_a_label = Label.new()
+	_key_a_label.text = "◀ A"
+	_key_a_label.add_theme_color_override("font_color", Colors.INK_MUTE)
+	_key_a_label.add_theme_font_size_override("font_size", 18)
+	_input_row.add_child(_key_a_label)
+
+	_angle_label = Label.new()
+	_angle_label.text = "0°"
+	_angle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_angle_label.add_theme_color_override("font_color", Colors.GOLD)
+	_angle_label.add_theme_font_size_override("font_size", 20)
+	_angle_label.custom_minimum_size = Vector2(72.0, 0.0)
+	_input_row.add_child(_angle_label)
+
+	_key_d_label = Label.new()
+	_key_d_label.text = "D ▶"
+	_key_d_label.add_theme_color_override("font_color", Colors.INK_MUTE)
+	_key_d_label.add_theme_font_size_override("font_size", 18)
+	_input_row.add_child(_key_d_label)
 
 	# ── Lock face dial (custom drawn) ─────────────────────────────────────
 	_lock_face = LockFaceControl.new()

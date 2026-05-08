@@ -219,6 +219,31 @@ func _draw() -> void:
 			dot_col.a   = minf(resonance_intensity * 1.4, 1.0)
 			draw_circle(tip_pos, face_r * 0.04, dot_col)
 
+	# ── Rim arrow indicator ───────────────────────────────────────────────
+	# Chunky triangle on the outer rim pointing inward at the current pick
+	# angle. Far more visible than the central pick line at a glance — players
+	# can read their position by glancing at the rim, not the centre.
+	var arrow_tip:    Vector2 = center + pick_dir * (face_r + 6.0)
+	var arrow_base_c: Vector2 = center + pick_dir * (face_r + 24.0)
+	var perp:         Vector2 = Vector2(-pick_dir.y, pick_dir.x)
+	var arrow_left:   Vector2 = arrow_base_c + perp * 9.0
+	var arrow_right:  Vector2 = arrow_base_c - perp * 9.0
+	var arrow_pts := PackedVector2Array([arrow_tip, arrow_left, arrow_right])
+	# Outline (thin black) for legibility on both dark and light backgrounds.
+	draw_colored_polygon(arrow_pts, Color(0, 0, 0, 0.7))
+	# Inset filled triangle in the pick colour (so it shifts amber/red with
+	# resonance state — same colour the pick line uses).
+	var inset := 2.0
+	var arrow_tip_in:    Vector2 = arrow_tip    + (arrow_base_c - arrow_tip).normalized()    * inset
+	var arrow_left_in:   Vector2 = arrow_left   + (arrow_tip    - arrow_left).normalized()   * inset \
+	                              + (arrow_base_c - arrow_left).normalized() * inset
+	var arrow_right_in:  Vector2 = arrow_right  + (arrow_tip    - arrow_right).normalized()  * inset \
+	                              + (arrow_base_c - arrow_right).normalized() * inset
+	draw_colored_polygon(
+		PackedVector2Array([arrow_tip_in, arrow_left_in, arrow_right_in]),
+		pick_col
+	)
+
 	# ── Set-progress arc ──────────────────────────────────────────────────
 	# Draws clockwise from 12 o'clock around the outer rim.
 	if set_progress > 0.002:
