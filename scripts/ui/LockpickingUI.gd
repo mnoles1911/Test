@@ -821,12 +821,13 @@ const ANIM_DIR: String = "res://assets/lockpick/anim/"
 
 func _load_static_art() -> void:
 	# Auto-load the three textures LockFaceControl knows how to render.
-	# JPGs work for the lock_face background (fully opaque), but pick + glow
-	# need PNG for transparency. If you only have JPGs the pick will appear
-	# as a small textured rectangle — re-render as PNG for the proper look.
+	# lock_face.jpg is fine fully opaque (it's the dial background).
+	# lockpick.png and resonance_glow.png are alpha-extracted from their
+	# original JPGs (the AI image-gen baked a faux-checkerboard "transparency"
+	# into the JPG output; tools/strip_lockpick_checker.js recovers true alpha).
 	_lock_face.lock_face_texture = _load_tex_or_null(ART_DIR + "lock_face.jpg")
-	_lock_face.pick_texture      = _load_tex_or_null(ART_DIR + "lockpick.jpg")
-	_lock_face.glow_texture      = _load_tex_or_null(ART_DIR + "resonance_glow.jpg")
+	_lock_face.pick_texture      = _load_tex_or_null(ART_DIR + "lockpick.png")
+	_lock_face.glow_texture      = _load_tex_or_null(ART_DIR + "resonance_glow.png")
 
 
 func _load_tex_or_null(path: String) -> Texture2D:
