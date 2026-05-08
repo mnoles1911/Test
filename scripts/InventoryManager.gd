@@ -1,5 +1,7 @@
 extends Node
 # InventoryManager — Autoload. Tracks items, equipment, and crafting recipes.
+
+signal coin_changed(new_balance: int)
 #
 # What this does in plain English:
 #   A central record of everything Roland is carrying and wearing.
@@ -100,6 +102,50 @@ const ITEM_REGISTRY: Dictionary = {
 
 var _inventory: Dictionary = {}
 # item_id → quantity (int)
+
+
+# =============================================================
+# COIN — wager currency for tavern games and (eventually) shops
+# =============================================================
+# Coin is its own field, not an entry in ITEM_REGISTRY. Kept separate so
+# vendor / mini-game / quest reward sites don't have to special-case
+# `add_item("coin", N)` against every other inventory operation.
+
+var _coin_balance: int = 0
+
+
+func add_coin(amount: int) -> void:
+	if amount <= 0:
+		return
+	_coin_balance += amount
+	coin_changed.emit(_coin_balance)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Coin: +%d (total %d)" % [amount, _coin_balance])
+
+
+func spend_coin(amount: int) -> bool:
+	# Returns true if the spend went through; false if the player can't afford it.
+	# Callers should check the return value before assuming the transaction landed.
+	if amount <= 0:
+		return true
+	if _coin_balance < amount:
+		return false
+	_coin_balance -= amount
+	coin_changed.emit(_coin_balance)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Coin: -%d (left %d)" % [amount, _coin_balance])
+	return true
+
+
+func get_coin_balance() -> int:
+	return _coin_balance
+
+
+func set_coin_balance(amount: int) -> void:
+	# Direct setter for debug / dev-scene seeding. Avoid in gameplay code —
+	# use add_coin / spend_coin so DebugOverlay logs the delta.
+	_coin_balance = max(0, amount)
+	coin_changed.emit(_coin_balance)
 
 
 # =============================================================
@@ -306,6 +352,7 @@ func get_save_data() -> Dictionary:
 	return {
 		"inventory": _inventory.duplicate(),
 		"equipped": _equipped.duplicate(),
+		"coin_balance": _coin_balance,
 	}
 
 func load_save_data(data: Dictionary) -> void:
@@ -314,6 +361,9 @@ func load_save_data(data: Dictionary) -> void:
 	if data.has("equipped"):
 		for slot in data["equipped"]:
 			_equipped[slot] = data["equipped"][slot]
+	if data.has("coin_balance"):
+		_coin_balance = int(data["coin_balance"])
+		coin_changed.emit(_coin_balance)
 
 
 # =============================================================
@@ -345,6 +395,8 @@ func reset_to_defaults() -> void:
 		"armor":  "",
 		"accessory": "",
 	}
+	_coin_balance = 0
+	coin_changed.emit(0)
 	add_item("iron_pickaxe", 1)
 	add_item("iron_shovel", 1)
 	add_item("iron_axe", 1)
