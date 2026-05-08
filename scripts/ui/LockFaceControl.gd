@@ -107,7 +107,7 @@ const _COL_DEBUG_TIMER := Color(1.0, 1.0, 1.0, 0.55)   # hold-timer arc
 func _draw() -> void:
 	# ── Geometry ──────────────────────────────────────────────────────────
 	var center := size / 2.0
-	var face_r := min(size.x, size.y) * 0.44   # dial radius, slightly inset
+	var face_r: float = minf(size.x, size.y) * 0.44   # dial radius, slightly inset
 
 	# ── Lock face background ──────────────────────────────────────────────
 	if lock_face_texture:

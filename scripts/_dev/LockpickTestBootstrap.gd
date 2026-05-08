@@ -228,7 +228,10 @@ func _build_debug_menu() -> void:
 	var ps    := StyleBoxFlat.new()
 	ps.bg_color     = Color(0.08, 0.06, 0.04, 0.92)
 	ps.border_color = Color("#4a4038")
-	ps.border_width_left = ps.border_width_right = ps.border_width_top = ps.border_width_bottom = 2
+	ps.border_width_left   = 2
+	ps.border_width_right  = 2
+	ps.border_width_top    = 2
+	ps.border_width_bottom = 2
 	panel.add_theme_stylebox_override("panel", ps)
 	panel.custom_minimum_size = Vector2(380.0, 680.0)
 	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
