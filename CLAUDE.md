@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What I'm building
 A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere and open-world scale.
 Real-time action combat (Witcher 3 / Dark Souls style), 1-vs-many, first person and third camera cameras, cooperative multiplayer with 1-4 friends.
-Voxel world built in Godot 4.6.2 with Zylann's Voxel Tools plugin. GDScript only.
+Voxel world built in Godot 4.6.2 with Zylann's Voxel Tools plugin. GDScript by default; C++ GDExtension is allowed for hot voxel paths when measured GDScript cost is the bottleneck (e.g. the per-block voxel generator).
 This is game one of a planned trilogy adapted from a 200-page source manuscript.
 
 **Engine pivot confirmed (2026-04-30):** Switched from 2D pixel art to 3D voxel.
@@ -56,6 +56,8 @@ Completed milestones (see git log for full PR detail; the autoload section below
 
 Outstanding pickups: low-poly Blender Roland model (still placeholder green box), MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio OGGs, region-boundary profile auto-swap. See `DESIGNER_TODO.md` and `design/LESSONS_LEARNED.md`.
 
+**Next production step: bake World3D.** The LOD-load probe (`World3DBootstrap._mark_world_ready_when_settled`) confirmed cold-start is bounded by the GDScript `CubicHeightmapGenerator` at ~60–90 s for a fully meshed LOD0 sphere. The fix is the same bake pipeline already proven on Copper Isles — run `scenes/_dev/BakeWorld.tscn` against World3D, write a baseline SQLite, ship it. After bake: cold-start drops to <10 s, walk/sprint stops outpacing the streamer, and World3D becomes the canonical testbed for downstream gameplay (combat, NPCs, quests, lockpicking, smithing) without per-test cold-start tax. C++ GDExtension porting of the generator stays in reserve for future games that need infinite procedural terrain — bake covers Game One.
+
 ## Art specification (3D VOXEL)
 - **Voxel scale**: 6 voxels/m (locked 2026-05-03; ~16.7 cm/block, player ~11 voxels tall).
 - **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes`. Procedural baseline from `CubicHeightmapGenerator`. **Destructible by default** — `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`, persist forever.
@@ -69,7 +71,7 @@ Outstanding pickups: low-poly Blender Roland model (still placeholder green box)
 
 ## What I never want
 - Systems built before I need them
-- C# — GDScript only
+- C# — never. GDScript is the default language; C++ GDExtension is the only other allowed escape hatch, and only for measured hot paths (the voxel generator is the canonical example). Don't reach for it speculatively.
 
 ## Files requiring regular maintenance
 

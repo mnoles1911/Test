@@ -181,6 +181,31 @@ var _hidden_canvases: Array = []
 # the loading screen ends.
 var _adopted_music: AudioStreamPlayer = null
 
+# =============================================================
+# VOXEL WORLD READY — adaptive loading-screen close trigger
+# =============================================================
+# Set to true by World3DBootstrap.mark_voxel_world_ready() once the
+# spawn area is streamed in (ground confirmed under the player AND
+# the chunk backlog has settled). The loading screen polls this flag
+# every frame and closes early when set, AS LONG AS the minimum
+# loading time has elapsed (so the hourglass animation isn't a flash).
+#
+# Defaults to false on every transition into a voxel scene; the world
+# scene's bootstrap is responsible for flipping it true once chunks
+# are in. If the bootstrap never flips it (e.g. a non-voxel destination),
+# the loading screen falls back to the timer-based hold.
+var _voxel_world_ready: bool = false
+
+
+func mark_voxel_world_ready() -> void:
+	# Public API. World3DBootstrap.gd calls this once the spawn area
+	# is streamed in. Idempotent — safe to call multiple times. The
+	# next process_frame in the loading-screen await loop will see the
+	# flag and close the screen (if the min-hold has elapsed).
+	if not _voxel_world_ready:
+		print("[TransitionManager] mark_voxel_world_ready() — loading screen will close early.")
+	_voxel_world_ready = true
+
 
 # =============================================================
 # SETUP
@@ -635,11 +660,34 @@ func _do_transition(scene_path: String, type: Type, loading_seconds: float = 0.0
 	await get_tree().process_frame
 
 	# Optional loading-screen hold — fade rect stays opaque, loading
-	# overlay shows on top, the destination scene streams in
-	# behind the curtain. Skipped when loading_seconds <= 0.
+	# overlay shows on top, the destination scene streams in behind
+	# the curtain. Skipped when loading_seconds <= 0.
+	#
+	# Adaptive close: instead of always waiting the full loading_seconds,
+	# we poll _voxel_world_ready (set by World3DBootstrap once the spawn
+	# area is streamed in) every frame. If the world reports ready
+	# AFTER the min-hold has elapsed, we close early — fast machines
+	# don't sit on the loading screen unnecessarily. If the world
+	# never reports ready (slow machine, or non-voxel destination),
+	# we fall back to the full loading_seconds cap.
+	#
+	# Min-hold is the larger of 15 % of loading_seconds or 2 s, so the
+	# hourglass + tip rotation always has time to be perceived rather
+	# than flashing for a frame.
 	if loading_seconds > 0.0:
+		_voxel_world_ready = false
 		_show_loading_screen(loading_seconds)
-		await get_tree().create_timer(loading_seconds, true).timeout
+		var min_hold: float = maxf(loading_seconds * 0.25, 5.0)
+		var max_hold: float = loading_seconds
+		var elapsed: float = 0.0
+		while elapsed < max_hold:
+			await get_tree().process_frame
+			elapsed += get_process_delta_time()
+			if elapsed >= min_hold and _voxel_world_ready:
+				print("[TransitionManager] World ready after %.2fs — closing loading screen early (max was %.1fs)." % [elapsed, max_hold])
+				break
+		if elapsed >= max_hold:
+			push_warning("[TransitionManager] World did not report ready within %.1fs — closing loading screen on timeout." % max_hold)
 		_hide_loading_screen()
 
 	_fade_in(type)

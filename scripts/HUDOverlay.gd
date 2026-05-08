@@ -374,8 +374,8 @@ func _build_ui() -> void:
 	const PANEL_HEIGHT: float   = 100.0   # Height — fits status + 2 vital rows.
 	const LEFT_MARGIN: float    = 24.0    # Pixels from the left edge of the screen.
 	const BOTTOM_MARGIN: float  = 24.0    # Pixels from the bottom edge of the screen.
-	const LABEL_FONT: int       = 18      # "HP" / "END" label font size (kept for legacy).
-	const VALUE_FONT: int       = 16      # "80/100" value font size.
+	const _LABEL_FONT: int      = 18      # "HP" / "END" label font size (kept for legacy).
+	const _VALUE_FONT: int      = 16      # "80/100" value font size.
 	const STATUS_FONT: int      = 16      # CROUCHING / EXHAUSTED font size.
 	const BAR_HP_HEIGHT: float  = 22.0    # Height of the health bar (mock: 18, +4 for value label headroom).
 	const BAR_END_HEIGHT: float = 22.0    # Height of the endurance bar.
@@ -1282,7 +1282,7 @@ func _perf_diag_tick(delta: float) -> void:
 	# Window closed — emit summary and reset. Skip the print if nothing
 	# eventful happened (zero spikes AND steady FPS) so an idle main
 	# menu doesn't flood the log.
-	var fps: int = Engine.get_frames_per_second()
+	var fps: int = int(Engine.get_frames_per_second())
 	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
 	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))

@@ -24,6 +24,10 @@ ambient_light_energy = 0.8
 ssao_enabled = true
 ssao_radius = 1.5
 ssao_intensity = 1.5
+fog_enabled = true
+fog_light_color = Color(0.7, 0.78, 0.85, 1)
+fog_density = 0.0006
+fog_aerial_perspective = 0.35
 
 [sub_resource type="SphereMesh" id="SunSphereMesh"]
 radius = 25.0
@@ -69,6 +73,7 @@ fractal_lacunarity = 2.1
 script = ExtResource("8_cubic_gen")
 noise = SubResource("TerrainNoise")
 height_range_voxels = 200.0
+perf_log_enabled = true
 
 [sub_resource type="VoxelMesherCubes" id="VoxelMesher_Cubes"]
 opaque_material = SubResource("VoxelTerrainMat")
@@ -137,6 +142,8 @@ surface_material_override/0 = SubResource("MoonMat")
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 6
 lod_distance = 128.0
+secondary_lod_distance = 128.0
+lod_fade_duration = 1.0
 material = SubResource("VoxelTerrainMat")
 collision_update_delay = 100
 run_stream_in_editor = false

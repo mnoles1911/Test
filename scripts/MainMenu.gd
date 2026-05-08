@@ -648,7 +648,7 @@ func _on_new_game() -> void:
 	# chunk uploads run serial with everything else, and 10 s wasn't
 	# enough to get nearby terrain into a presentable state on
 	# slower hardware.
-	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 45.0)
+	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 120.0)
 
 
 func _on_load() -> void:
@@ -705,9 +705,9 @@ func _on_load_select(filename: String) -> void:
 		scene = WORLD_SCENE
 	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
 	_handoff_music_to_loading_screen()
-	# Same 45 s loading hold as NEW GAME — restored saves still need
+	# Same 120 s loading hold as NEW GAME — restored saves still need
 	# chunk streaming time, plus voxel deltas reading from SQLite.
-	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 45.0)
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 120.0)
 
 
 func _on_load_delete(filename: String) -> void:

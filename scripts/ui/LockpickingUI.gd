@@ -226,7 +226,7 @@ func close() -> void:
 
 
 func set_art(face_tex: Texture2D, keyhole_tex: Texture2D,
-             pick_tex: Texture2D, glow_tex: Texture2D) -> void:
+			 pick_tex: Texture2D, glow_tex: Texture2D) -> void:
 	# Assign optional art textures BEFORE calling open().
 	_lock_face.lock_face_texture = face_tex
 	_lock_face.keyhole_texture   = keyhole_tex
@@ -317,7 +317,7 @@ func _process(delta: float) -> void:
 
 		if still and _resonance_intensity <= 0.0:
 			_hint_label.text = "Sweep to find the pins." if _pins_set == 0 \
-			                   else "Find the next pin."
+							   else "Find the next pin."
 
 		# Back-pressure snap (Hard / Very Hard only, after first pin sets).
 		if _pins_set > 0 and _lock_data.tier >= 2:
@@ -440,7 +440,7 @@ func _stop_all_loops() -> void:
 
 func _stop_all_anims() -> void:
 	for anim in [_snap_anim, _pin_flash_anim, _unlock_anim,
-	             _false_stall_anim, _resonance_pulse_anim]:
+				 _false_stall_anim, _resonance_pulse_anim]:
 		if anim and anim.visible:
 			anim.visible = false
 			anim.stop()
@@ -489,7 +489,7 @@ func _set_pin() -> void:
 
 	_refresh_pin_icons()
 	_hint_label.text = "Pin set!" if _pins_set < _lock_data.pin_count \
-	                   else ""
+					   else ""
 
 	if _sfx_pin_set and _sfx_pin_set.stream:
 		_sfx_pin_set.play()
@@ -674,7 +674,7 @@ func _get_hold_timer() -> float:
 
 func _check_has_picks() -> bool:
 	return InventoryManager.has_item("lockpick_standard") \
-	    or InventoryManager.has_item("lockpick_fine")
+		or InventoryManager.has_item("lockpick_fine")
 
 
 # ─── INPUT ─────────────────────────────────────────────────────────────────
@@ -982,7 +982,7 @@ func _build_audio() -> void:
 
 
 func _make_audio_player(node_name: String, stream_path: String,
-                        bus: String, volume_db: float) -> AudioStreamPlayer:
+						bus: String, volume_db: float) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
 	p.name = node_name
 	p.bus  = bus if AudioServer.get_bus_index(bus) >= 0 else "Master"
