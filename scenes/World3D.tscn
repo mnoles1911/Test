@@ -136,9 +136,12 @@ surface_material_override/0 = SubResource("MoonMat")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 6
-lod_distance = 96.0
+lod_distance = 128.0
 material = SubResource("VoxelTerrainMat")
+collision_update_delay = 100
 run_stream_in_editor = false
+mesh_block_size = 32
+cache_generated_blocks = true
 stream = SubResource("VoxelStream_SQLite")
 generator = SubResource("VoxelGen_Cubic")
 mesher = SubResource("VoxelMesher_Cubes")

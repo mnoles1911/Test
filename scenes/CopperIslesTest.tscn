@@ -52,32 +52,23 @@ light_energy = 1.4
 shadow_enabled = true
 shadow_bias = 0.18
 shadow_blur = 3.0
-directional_shadow_mode = 2
 directional_shadow_split_1 = 0.05
 directional_shadow_split_2 = 0.15
 directional_shadow_split_3 = 0.4
 directional_shadow_fade_start = 0.85
-directional_shadow_max_distance = 4000.0
+directional_shadow_max_distance = 1500.0
 
 [node name="Moon" type="DirectionalLight3D" parent="." unique_id=2000000020]
-; DayNightCycle drives the Moon's rotation, energy, and color each
-; frame from WorldClock — it's "off" during the day, ramps up cool
-; blue-white light at night. The starting transform here is a
-; placeholder; DayNightCycle overwrites it on first tick.
 light_color = Color(0.55, 0.65, 0.85, 1)
 light_energy = 0.0
 shadow_enabled = true
 shadow_bias = 0.18
 shadow_blur = 3.0
-directional_shadow_mode = 2
 directional_shadow_fade_start = 0.85
-directional_shadow_max_distance = 4000.0
+directional_shadow_max_distance = 1500.0
 sky_mode = 1
 
 [node name="DayNightCycle" type="Node" parent="." unique_id=2000000021]
-; Reads WorldClock.current_hour each frame, rotates Sun + Moon on a
-; shared 24-hour orbit, and cross-fades the four sky panoramas
-; through the sky_blend shader. Same pattern World3D uses.
 script = ExtResource("10_daynight")
 dawn_panorama = ExtResource("6_skydawn")
 noon_panorama = ExtResource("7_skynoon")
@@ -85,16 +76,15 @@ dusk_panorama = ExtResource("8_skydusk")
 night_panorama = ExtResource("9_skynight")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=1648811141]
-; lod_distance = 768 vox = 128 m world LOD0 radius at 6 vox/m. Two
-; reasons: visually 128 m feels like a real open-world horizon (vs
-; the previous 21 m which popped LOD transitions within a few
-; steps), and bake walker tile spacing scales with lod_distance —
-; 128 → 768 lets the walker step every 180 m instead of 30 m
-; (~36× fewer tiles → ~36× faster bake; 1 km goes from ~90 min to
-; ~3 min). MUST match BakeWorld.tscn.
-lod_count = 8
-lod_distance = 768.0
-lod_fade_duration = 0.5
+; All LOD config values must match REQUIRED_* constants in
+; CopperIslesTestBootstrap.gd — script-side _enforce_lod_config
+; will override anything Godot's editor strips, and now also
+; verifies via read-back to flag any silent clamp.
+lod_count = 9
+lod_distance = 128.0
+secondary_lod_distance = 128.0
+lod_fade_duration = 1.0
+streaming_system = 1
 material = SubResource("VoxelTerrainMat_1")
 run_stream_in_editor = false
 cache_generated_blocks = true

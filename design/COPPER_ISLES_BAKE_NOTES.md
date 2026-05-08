@@ -34,7 +34,18 @@ runtime won't read, and so on.
 | `GEN_PEAK_ABOVE_SEA_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 15000.0 | 20000.0 | 25000.0 |
 | `VOXELS_PER_METRE` | `scripts/_dev/WorldBakeController.gd` | 6.0 | 8.0 | 10.0 |
 | `WORLD_FLOOR_VOXEL_Y` | three places: `CubicHeightmapGenerator.gd`, `CopperIslesHeightmapGenerator.gd`, `VoxelEditManager.gd` | -300 | -400 | -500 |
-| Walker `TILE_SIZE_M` | `scripts/_dev/WorldBakeController.gd` (depends on `lod_distance` — at the current lod_distance=768 vox, LOD0 radius = 768/vox_per_m, walker spacing ≤ radius × √2) | 180 m | ~135 m | ~108 m |
+| Walker `TILE_SIZE_M` | `scripts/_dev/WorldBakeController.gd` (depends on `lod_distance` — at the **Zylann-capped lod_distance=128 vox**, LOD0 radius = 128/vox_per_m, walker spacing ≤ radius × √2) | 30 m | ~22 m | ~18 m |
+
+> **Zylann lod_distance ceiling:** Empirically verified via the
+> "Probe lod_distance accepted range" button in BakeWorld.tscn —
+> Zylann silently clamps `lod_distance` to a max of **128 voxels**.
+> Asking for 256 / 384 / 768 / 1024 all result in 128. To increase
+> the visible LOD0 area, the only lever is dropping voxel resolution
+> (vox/m table above): at 3 vox/m the same 128 cap gives 42 m LOD0
+> radius. The bake controller's `_enforce_lod_config` now reads back
+> the actual property value and prints `CLAMP DETECTED` whenever the
+> setter doesn't take — catches this class of bug for any future
+> Zylann property change.
 
 ### What re-bakes are needed after a vox/m change
 
@@ -279,6 +290,96 @@ costs ~baseline-size disk per slot.
 - `save_modified_blocks` every 8 tiles for crash-safety + UI file-size update.
 - Stream-idle heuristic: no new SQLite rows for 6 consecutive frames OR
   30-second timeout.
+
+---
+
+## 2026-05-07 — Movement-perf debugging session (World3D + CopperIslesTest)
+
+Long-standing "FPS tanks the moment the player moves" symptom in both scenes
+was finally traced after wiring a per-autoload profiler into `HUDOverlay`
+(see CLAUDE.md → "Per-autoload performance attribution"). Root causes and
+fixes, in order of impact:
+
+**`WaterChunkMesher` was eating 700–1200 ms/sec of main-thread time.** The
+profiler attributed almost the entire frame budget to it. Two compounding
+causes: (1) `MESH_RENDER_RADIUS_M = 96` meant ~5,300 candidate chunks at the
+sea-level row, with ~73 newly entered per chunk crossing; (2)
+`_gather_surface_quads` called `tool.copy()` on every dirtied chunk —
+which **blocks for 5+ ms** when Zylann hasn't streamed the chunk yet.
+The mesher also competed with Zylann's main-thread mesh-apply queue, which
+is why terrain failed to render while the mesher was working. Three-part
+fix in `scripts/WaterChunkMesher.gd`:
+- `MESH_RENDER_RADIUS_M` 96 → 32 (~9× fewer candidates).
+- `MESH_BUILDS_PER_FRAME_MAX` 16 → 6 (per-frame ceiling).
+- `tool.is_area_editable` (~1 µs) probe before `tool.copy` — skips
+  unloaded chunks fast; they get re-dirtied on the next chunk crossing,
+  by which time Zylann has had a chance to load them.
+
+Result: mesher dropped from ~900 ms/sec to ~14 ms/sec; walking FPS went
+from 38 (frame-budget-locked) to 200+.
+
+**`set_player_chunk` rewritten as delta-only.** Was iterating the full
+~5,300-chunk square on every chunk crossing. Replaced with leading-edge
+strips only (~73 chunks per axis-aligned move, ~145 per diagonal). First
+call and large jumps still take the ring-ordered full-fill so visible
+water materialises around the player on initial load. Same optimisation
+pattern as the 2026-05-05 fix (LESSONS_LEARNED #43) at a different scope.
+
+**`collision_update_delay` is INT in this Zylann build.**
+`terrain.set("collision_update_delay", 0.1)` silently truncated to 0,
+firing immediate main-thread collision rebuilds on every streaming chunk.
+Set to integer `100` (ms) in `World3DBootstrap.gd`,
+`CopperIslesTestBootstrap.gd`, `WorldBakeController.gd`, with read-back
+prints (`actual=N`) so the next regression catches itself.
+
+**`cache_generated_blocks = true` was missing from World3D.tscn.** Already
+documented for the bake pipeline (2026-05-06 section above) but the World3D
+scene was authored before that finding. Generator was re-running on every
+chunk eviction. Now added to the VoxelLodTerrain block in
+`scenes/World3D.tscn`.
+
+**`mesh_block_size = 32` cuts chunk count by ~8× on World3D.** Each mesh
+chunk covers 32³ voxels instead of 16³. Set in both the .tscn AND
+programmatically in `World3DBootstrap.gd` with read-back, because the
+Godot editor has stripped the .tscn line on save more than once. Verify
+via the `actual=32` readback — Zylann clamps to 16 in some configurations.
+This is the only chunk-count lever available when `view_distance` and
+`lod_count` are off-limits (e.g. shared with a baked scene).
+
+**`lod_distance` bumped 96 → 128 (Zylann's hard cap).** Wider LOD shells
+mean chunks transition LOD level less often as the player moves =
+fewer mesh-uploads-during-backtracking. Bootstrap also sets this
+programmatically with read-back.
+
+**`streaming_system = 1` (CLIPBOX) broke World3D.** CLIPBOX treats
+`terrain.view_distance` as a strict cap. World3D has the default 512-vox
+view_distance (~85 m world at 1/6 scale); player spawns at Y=120 while
+heightmap peaks at Y=33 — that's ~87 m below, JUST outside the cap. Result:
+zero terrain streamed, player free-fell, worker threads burned CPU on
+out-of-bounds chunks. Reverted to `streaming_system = 0` (octree, more
+lenient). CopperIslesTest can use CLIPBOX because the SQLite is pre-baked
+AND the player spawns inside the bake area. Re-evaluate CLIPBOX for
+World3D when (a) `terrain.view_distance` is bumped, or (b) the spawn
+moves closer to ground.
+
+**`lod_count` for the bake/runtime trio trimmed 14 → 9.** With
+`view_distance = 8000` and `lod_distance = 128`, only LODs 0–6 actually
+stream. LODs 7–13 sat permanently outside view_distance. Both
+`CopperIslesTestBootstrap.REQUIRED_LOD_COUNT` and
+`WorldBakeController.REQUIRED_LOD_COUNT` updated. Existing baselines
+baked at 14 remain readable (Zylann ignores LOD slots above the active
+lod_count). `BakeWorld.tscn` lod_count is 14 in the working tree (the
+Godot editor wrote it during a manual bake-control session); the
+controller overrides to 9 at runtime regardless, so the .tscn value is
+not load-bearing.
+
+**Diagnostic infrastructure landed in `HUDOverlay.gd`.** A `[PERF]` line
+emits once per second with FPS, spike count, top-3 autoload time buckets
+(via `profile_record`), and engine-wide stats (draws, prims, nodes,
+orphans, vram). Replaces the previous per-frame `[FRAME SPIKE]` flood that
+was itself contributing to the spikes (each Output-panel print costs
+0.5–2 ms at sub-10 FPS). Toggle off via `HUDOverlay.PERF_DIAG = false`
+when not actively investigating perf.
 
 ---
 
