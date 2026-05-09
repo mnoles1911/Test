@@ -14,6 +14,7 @@ const STARTING_COIN: int = 100
 const DICE_GAME_UI_SCRIPT: GDScript = preload("res://scripts/ui/DiceGameUI.gd")
 
 var _active_ui: Control = null
+var _active_ui_layer: CanvasLayer = null
 var _coin_label: Label = null
 
 
@@ -63,8 +64,15 @@ func _open_match() -> void:
 		push_error("[DiceTest] Resource at %s did not load as DiceOpponentData" % OPPONENT_PATH)
 		return
 
+	# Wrap the modal in a CanvasLayer so it floats above the test scene,
+	# and put the modal Control inside it. The CanvasLayer handles render
+	# ordering; the Control inside handles the UI tree and GUI input.
+	_active_ui_layer = CanvasLayer.new()
+	_active_ui_layer.layer = 10
+	add_child(_active_ui_layer)
+
 	_active_ui = DICE_GAME_UI_SCRIPT.new()
-	get_tree().root.add_child(_active_ui)
+	_active_ui_layer.add_child(_active_ui)
 	_active_ui.match_ended.connect(_on_match_ended)
 	_active_ui.match_cancelled.connect(_on_match_cancelled)
 	_active_ui.tree_exited.connect(_on_ui_freed)
@@ -86,6 +94,9 @@ func _on_match_cancelled() -> void:
 
 func _on_ui_freed() -> void:
 	_active_ui = null
+	if _active_ui_layer != null:
+		_active_ui_layer.queue_free()
+		_active_ui_layer = null
 
 
 # =============================================================
