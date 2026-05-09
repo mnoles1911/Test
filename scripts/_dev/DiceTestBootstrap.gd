@@ -41,6 +41,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				print("[DiceTest] +50 coin (total %d)" % InventoryManager.get_coin_balance())
 
 
+# DEBUG: every mouse click that enters the input system. Helps diagnose
+# whether clicks are reaching the UI at all vs. being eaten by a control.
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed:
+			print("[DiceTest] mouse_down at %s button=%d" % [mb.position, mb.button_index])
+
+
 func _open_match() -> void:
 	if _active_ui != null:
 		return
