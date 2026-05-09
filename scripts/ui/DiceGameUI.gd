@@ -116,7 +116,6 @@ var _ambient_player: AudioStreamPlayer
 
 func _init() -> void:
 	layer = HUD_LAYER
-	visible = false   # stay hidden until open() is called
 
 
 func _ready() -> void:
@@ -298,12 +297,17 @@ func _build_viewport(parent: VBoxContainer) -> void:
 	_viewport_container.stretch = true
 	# Don't expand into space the buttons below need.
 	_viewport_container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# IGNORE mouse — SubViewportContainer otherwise forwards clicks
+	# to the 3D viewport, which we don't need for this prototype and
+	# which can interfere with sibling buttons in some layouts.
+	_viewport_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(_viewport_container)
 
 	_viewport = SubViewport.new()
 	_viewport.size = Vector2i(960, 320)
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.transparent_bg = false
+	_viewport.handle_input_locally = false
 	_viewport_container.add_child(_viewport)
 
 
@@ -587,12 +591,16 @@ func _update_state_label() -> void:
 # =============================================================
 
 func _on_wager_slider_changed(value: float) -> void:
+	print("[DiceGameUI] slider value_changed → %d" % int(value))
 	_wager = int(value)
 	_wager_value_label.text = "%d" % _wager
 	_update_state_visibility()
 
 
 func _on_confirm_wager_pressed() -> void:
+	print("[DiceGameUI] Ante Up pressed (state=%s, wager=%d, balance=%d)" % [
+		State.keys()[_state], _wager, _coin_balance()
+	])
 	if _state != State.ANTE:
 		return
 	var balance: int = _coin_balance()
@@ -662,6 +670,7 @@ func _apply_face_values_to_hand(hand: DiceHand, face_values: PackedInt32Array) -
 # =============================================================
 
 func _on_die_card_pressed(idx: int) -> void:
+	print("[DiceGameUI] Die card %d pressed (state=%s)" % [idx, State.keys()[_state]])
 	if _state != State.PLAYER_LOCK:
 		return
 	_player_hand.toggle_lock(idx)

@@ -178,8 +178,11 @@ func _build_camera_and_lights() -> void:
 func _build_dice() -> void:
 	# Build each of the 5 dice. They start sleeping in a row above the
 	# felt; roll() drops them with random impulses.
-	var spacing: float = 0.10
-	var row_y: float = SPAWN_HEIGHT
+	# Initial display position — dice rest in a row just above the felt
+	# so the player sees five distinct cubes before the first roll.
+	# SPAWN_HEIGHT is reserved for drops triggered by roll().
+	var spacing: float = 0.11
+	var row_y: float = DIE_SIZE * 0.5 + 0.005
 	var start_x: float = -spacing * 2.0
 	for i in DIE_COUNT:
 		var die: RigidBody3D = _make_die(i)
@@ -297,8 +300,8 @@ func _build_die_atlas_mesh_unused() -> ArrayMesh:
 
 
 func _attach_face_labels(die: RigidBody3D) -> void:
-	# Six big-pip-style digits, one per face, painted just outside the
-	# cube surface so they read clearly at the camera's framing distance.
+	# Six digits, one per face. Sized so each digit is ~3 cm tall on
+	# a 7 cm die (font_size × pixel_size = world height).
 	# Convention: opposite faces sum to 7. Matches _read_die_face.
 	var half: float = DIE_SIZE * 0.5 + 0.0015
 	var face_data: Array = [
@@ -314,11 +317,12 @@ func _attach_face_labels(die: RigidBody3D) -> void:
 		label.text = entry.text
 		label.position = entry.pos
 		label.rotation = entry.rot
-		label.pixel_size = 0.0040          # readable at table distance
-		label.modulate = Color(0.10, 0.06, 0.03)
-		label.outline_modulate = Color(0.95, 0.85, 0.55, 0.85)
-		label.outline_size = 12
-		label.font_size = 64
+		# 36 × 0.0008 = 0.029 m → about 3 cm tall on a 7 cm cube face.
+		label.pixel_size = 0.0008
+		label.font_size = 36
+		label.modulate = Color(0.10, 0.06, 0.03)   # dark brown digit
+		label.outline_modulate = Color(0.95, 0.88, 0.70, 0.85)
+		label.outline_size = 2
 		label.no_depth_test = false
 		label.fixed_size = false
 		die.add_child(label)
