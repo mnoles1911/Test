@@ -23,10 +23,10 @@ extends Node3D
 signal roll_settled(face_values: PackedInt32Array)
 
 const DIE_COUNT: int = 5
-const DIE_SIZE: float = 0.04                # 4 cm cube
+const DIE_SIZE: float = 0.07                # 7 cm cube — readable in viewport
 const TABLE_RADIUS: float = 0.30            # 30 cm felt circle
 const RIM_HEIGHT: float = 0.025
-const SPAWN_HEIGHT: float = 0.20            # drop dice from 20 cm
+const SPAWN_HEIGHT: float = 0.22            # drop dice from above the rim
 const SETTLE_VELOCITY_EPSILON: float = 0.05  # below = "stopped"
 const SETTLE_DELAY_SEC: float = 0.35         # must stay stopped this long
 
@@ -94,8 +94,11 @@ func _build_table() -> void:
 	var rim_mesh: TorusMesh = TorusMesh.new()
 	rim_mesh.inner_radius = TABLE_RADIUS - 0.01
 	rim_mesh.outer_radius = TABLE_RADIUS + 0.02
-	rim_mesh.rings = 6
-	rim_mesh.ring_segments = 48
+	# rings = slices around the central axis (smoothness of the circle)
+	# ring_segments = subdivisions across the donut cross-section
+	# Previously had these flipped, which made the rim look hexagonal.
+	rim_mesh.rings = 48
+	rim_mesh.ring_segments = 8
 	rim.mesh = rim_mesh
 	var rim_mat: StandardMaterial3D = StandardMaterial3D.new()
 	rim_mat.albedo_color = Color(0.27, 0.18, 0.12)   # dark oak fallback
@@ -129,40 +132,50 @@ func _build_table() -> void:
 func _build_camera_and_lights() -> void:
 	var cam: Camera3D = Camera3D.new()
 	cam.name = "Camera3D"
-	# Position the camera above and slightly forward of the table,
-	# tilted ~30° downward. Frames the entire felt circle with a small
-	# margin around the rim.
-	cam.position = Vector3(0.0, 0.55, 0.55)
-	cam.fov = 50.0
+	# Tighter framing — the dice should fill ~half the viewport height.
+	# Camera sits ~40 cm above the felt and ~35 cm in front, tilted down.
+	cam.position = Vector3(0.0, 0.42, 0.40)
+	cam.fov = 55.0
 	add_child(cam)
 	# look_at must run after add_child so the global transform exists.
 	cam.look_at(Vector3.ZERO, Vector3.UP)
 	cam.current = true
 
-	# Warm candle key light (OmniLight3D) above the table.
+	# Warm candle key light — bright enough to read pip pattern on the dice.
 	var candle: OmniLight3D = OmniLight3D.new()
 	candle.name = "Candle"
-	candle.position = Vector3(0.0, 0.50, 0.0)
-	candle.light_color = Color(1.0, 0.78, 0.50)
-	candle.light_energy = 1.4
-	candle.omni_range = 1.8
+	candle.position = Vector3(0.0, 0.45, 0.10)
+	candle.light_color = Color(1.0, 0.85, 0.55)
+	candle.light_energy = 3.5
+	candle.omni_range = 2.5
 	add_child(candle)
 
 	# Cool fill light from the player side — lifts shadows on the dice
 	# nearest the camera.
 	var fill: OmniLight3D = OmniLight3D.new()
 	fill.name = "Fill"
-	fill.position = Vector3(0.0, 0.30, 0.55)
-	fill.light_color = Color(0.65, 0.70, 0.85)
-	fill.light_energy = 0.4
-	fill.omni_range = 1.2
+	fill.position = Vector3(0.0, 0.25, 0.55)
+	fill.light_color = Color(0.70, 0.75, 0.90)
+	fill.light_energy = 1.2
+	fill.omni_range = 1.5
 	add_child(fill)
+
+	# Ambient backfill so the underside of dice never goes pitch black.
+	var env_holder: WorldEnvironment = WorldEnvironment.new()
+	var env: Environment = Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.04, 0.03, 0.02)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.55, 0.45, 0.35)
+	env.ambient_light_energy = 0.6
+	env_holder.environment = env
+	add_child(env_holder)
 
 
 func _build_dice() -> void:
 	# Build each of the 5 dice. They start sleeping in a row above the
 	# felt; roll() drops them with random impulses.
-	var spacing: float = 0.07
+	var spacing: float = 0.10
 	var row_y: float = SPAWN_HEIGHT
 	var start_x: float = -spacing * 2.0
 	for i in DIE_COUNT:
@@ -320,10 +333,10 @@ func _make_lock_marker() -> MeshInstance3D:
 	var marker: MeshInstance3D = MeshInstance3D.new()
 	marker.name = "LockMarker"
 	var torus: TorusMesh = TorusMesh.new()
-	torus.inner_radius = 0.012
-	torus.outer_radius = 0.020
-	torus.rings = 4
-	torus.ring_segments = 24
+	torus.inner_radius = 0.022
+	torus.outer_radius = 0.034
+	torus.rings = 24
+	torus.ring_segments = 6
 	marker.mesh = torus
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.65, 0.18, 0.18)
@@ -440,7 +453,7 @@ func _update_lock_marker_positions() -> void:
 		if not _lock_markers[i].visible:
 			continue
 		var die: RigidBody3D = _dice[i]
-		_lock_markers[i].global_position = die.global_position + Vector3(0.0, 0.035, 0.0)
+		_lock_markers[i].global_position = die.global_position + Vector3(0.0, 0.055, 0.0)
 		_lock_markers[i].rotation = Vector3(PI * 0.5, 0.0, 0.0)
 
 

@@ -274,6 +274,26 @@ func _build_header(parent: VBoxContainer) -> void:
 	_state_label.add_theme_color_override("font_color", Colors.INK_DIM)
 	parent.add_child(_state_label)
 
+	# Rules summary — small parchment strip so the player isn't guessing.
+	var rules_panel: PanelContainer = PanelContainer.new()
+	rules_panel.add_theme_stylebox_override("panel", UIStyles.parchment_panel())
+	parent.add_child(rules_panel)
+
+	var rules_label: Label = Label.new()
+	rules_label.text = (
+		"  Rules:  Roll 5 dice. Best hand wins the pot."
+		+ "    Click a die to lock it.    Reroll up to twice."
+		+ "    Pair < Two Pair < Three of a Kind < Straight (1-5 or 2-6)"
+		+ " < Full House < Four of a Kind < Five of a Kind."
+	)
+	rules_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules_label.add_theme_color_override("font_color", Colors.PARCHMENT_INK)
+	rules_label.add_theme_font_size_override("font_size", 13)
+	var serif := UIStyles.font_serif()
+	if serif:
+		rules_label.add_theme_font_override("font", serif)
+	rules_panel.add_child(rules_label)
+
 
 func _build_viewport(parent: VBoxContainer) -> void:
 	_viewport_container = SubViewportContainer.new()
@@ -382,7 +402,22 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_wager_slider.min_value = 5
 	_wager_slider.max_value = 50
 	_wager_slider.step = 1
-	UIStyles.apply_slider(_wager_slider)
+	# Inline slider styling — UIStyles.apply_slider doesn't force a min
+	# height on the track stylebox, so the track was rendering at 0 px
+	# and only the grabber dot showed. Build explicit boxes here.
+	var track_box: StyleBoxFlat = StyleBoxFlat.new()
+	track_box.bg_color = Colors.IRON_DEEP
+	track_box.set_corner_radius_all(4)
+	track_box.content_margin_top = 4
+	track_box.content_margin_bottom = 4
+	var fill_box: StyleBoxFlat = StyleBoxFlat.new()
+	fill_box.bg_color = Colors.BRONZE
+	fill_box.set_corner_radius_all(4)
+	fill_box.content_margin_top = 4
+	fill_box.content_margin_bottom = 4
+	_wager_slider.add_theme_stylebox_override("slider", track_box)
+	_wager_slider.add_theme_stylebox_override("grabber_area", fill_box)
+	_wager_slider.add_theme_stylebox_override("grabber_area_highlight", fill_box)
 	_wager_slider.value_changed.connect(_on_wager_slider_changed)
 	_ante_hbox.add_child(_wager_slider)
 
@@ -390,6 +425,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	# TextureRect anchored behind the label inside a fixed-size Control.
 	var wager_card_holder: Control = Control.new()
 	wager_card_holder.custom_minimum_size = Vector2(140, 50)
+	wager_card_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ante_hbox.add_child(wager_card_holder)
 
 	_wager_card_bg_rect = TextureRect.new()
@@ -443,6 +479,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	var banner_holder: Control = Control.new()
 	banner_holder.custom_minimum_size = Vector2(640, 96)
 	banner_holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	banner_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_reveal_vbox.add_child(banner_holder)
 
 	_reveal_banner_bg_rect = TextureRect.new()
@@ -771,6 +808,9 @@ func _on_continue_pressed() -> void:
 
 
 func _on_leave_pressed() -> void:
+	print("[DiceGameUI] Leave Table pressed (state=%s, hands=%d, net=%d)" % [
+		State.keys()[_state], _hands_played, _net_delta
+	])
 	if _state == State.PLAYER_ROLL or _state == State.OPPONENT_ROLL:
 		return  # mid-roll: ignore
 	# Fire a parting bark if the opponent has one.
