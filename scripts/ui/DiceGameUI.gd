@@ -125,11 +125,22 @@ func _ready() -> void:
 	# PASS lets unhandled clicks bubble up but doesn't block children.
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	# When a Control is a direct child of a Window (/root) rather than
+	# another Control, anchors don't auto-resize to the parent. Pin our
+	# size to the viewport explicitly and re-pin on window resize.
+	_resize_to_viewport()
+	get_viewport().size_changed.connect(_resize_to_viewport)
 	_rng.randomize()
 	_build_ui()
 	_build_audio()
 	_apply_optional_art()
 	_set_state(State.IDLE)
+
+
+func _resize_to_viewport() -> void:
+	var vp_size: Vector2 = get_viewport_rect().size
+	position = Vector2.ZERO
+	size = vp_size
 
 
 # =============================================================
