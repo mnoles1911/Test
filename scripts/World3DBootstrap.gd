@@ -24,6 +24,31 @@ extends Node3D
 # touching this script.
 
 
+# =============================================================
+# DIAGNOSTIC STATE — LOD / streaming investigation 2026-05-07
+# =============================================================
+# When the user reports "I outwalked the terrain loader," we need
+# concrete numbers: player speed, viewer position vs player, generator
+# throughput per LOD. The generator already prints [PERF GEN] every
+# 100 blocks (perf_log_enabled = true on the .tres). This script adds:
+#   • a 1 Hz [DIAG] line: player pos, speed, VoxelViewer pos, lag.
+#   • F8 toggles Zylann's built-in debug draws (clipboxes + active
+#     mesh blocks) so the user can SEE which chunks are loaded and
+#     which are starving ahead of the player.
+# All of this is gated behind diag_enabled so it can be flipped off
+# from the inspector without re-editing the script.
+
+@export var diag_enabled: bool = true
+
+var _diag_terrain: Object = null
+var _diag_player: Node3D = null
+var _diag_viewer: Node3D = null
+var _diag_acc_time: float = 0.0
+var _diag_last_player_pos: Vector3 = Vector3.ZERO
+var _diag_last_player_pos_valid: bool = false
+var _diag_debug_draw_on: bool = false
+
+
 func _ready() -> void:
 	# --- Hand the voxel terrain to the edit manager ---
 	# Without this call, VoxelEditManager has no terrain to write to
@@ -229,6 +254,102 @@ func _ready() -> void:
 			call_deferred("_snap_spawn_to_ground")
 
 
+func _process(delta: float) -> void:
+	# 1 Hz diagnostic line for the LOD-streaming investigation.
+	# Prints player position, instantaneous speed (m/s), VoxelViewer
+	# position, and the XZ distance between them ("viewer lag"). If
+	# the viewer lag stays at ~0 while chunks visibly fail to keep
+	# up, the bottleneck is throughput, not viewer placement.
+	if not diag_enabled:
+		return
+	_diag_acc_time += delta
+	if _diag_acc_time < 1.0:
+		return
+	var dt: float = _diag_acc_time
+	_diag_acc_time = 0.0
+	_diag_resolve_refs()
+	if _diag_player == null:
+		return
+	var p_pos: Vector3 = _diag_player.global_position
+	var speed: float = 0.0
+	if _diag_last_player_pos_valid:
+		var d: Vector3 = p_pos - _diag_last_player_pos
+		# Horizontal speed only — vertical drift from gravity / spawn-snap
+		# would otherwise skew the number on idle frames.
+		var d_xz: Vector2 = Vector2(d.x, d.z)
+		speed = d_xz.length() / dt
+	_diag_last_player_pos = p_pos
+	_diag_last_player_pos_valid = true
+	var v_pos: Vector3 = Vector3.INF
+	var lag_xz: float = -1.0
+	if _diag_viewer != null:
+		v_pos = _diag_viewer.global_position
+		var lag_v: Vector2 = Vector2(p_pos.x - v_pos.x, p_pos.z - v_pos.z)
+		lag_xz = lag_v.length()
+	# Pull a couple of relevant counters off VoxelEditManager / generator
+	# without crashing if they're not present.
+	var stats: String = ""
+	if _diag_terrain != null and "get_statistics" in _diag_terrain:
+		var s = _diag_terrain.call("get_statistics")
+		if s is Dictionary:
+			# Print only the fields we care about (keeps the line readable).
+			# Names vary between Zylann builds — we probe and print
+			# whatever the dict contains.
+			for k in s.keys():
+				stats += " %s=%s" % [k, s[k]]
+	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m%s" % [
+		p_pos.x, p_pos.y, p_pos.z, speed,
+		v_pos.x, v_pos.y, v_pos.z, lag_xz,
+		stats,
+	])
+
+
+func _input(event: InputEvent) -> void:
+	# F12 toggles Zylann's terrain debug draws. Visible:
+	#   • debug_draw_active_mesh_blocks → coloured wireframes around
+	#     the chunks Zylann is actively meshing.
+	#   • debug_draw_viewer_clipboxes → the streaming sphere(s).
+	#   • debug_draw_octree_nodes → octree subdivision (LOD shells).
+	# All three together let us SEE where the streamer is spending
+	# effort vs where the player actually is.
+	#
+	# Why F12 and not F8: F8 is the Godot editor's "Stop Scene"
+	# shortcut. When the project is run from the editor (the normal
+	# case during development), F8 is intercepted by the editor
+	# before the running game ever sees it — pressing F8 closes the
+	# scene instead of toggling debug draws. F12 is unbound in the
+	# editor so the running game receives it.
+	if not diag_enabled:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F12:
+			_diag_resolve_refs()
+			if _diag_terrain == null:
+				return
+			_diag_debug_draw_on = not _diag_debug_draw_on
+			_diag_terrain.set("debug_draw_enabled", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_active_mesh_blocks", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_viewer_clipboxes", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_octree_nodes", _diag_debug_draw_on)
+			var _state_str: String = "ON" if _diag_debug_draw_on else "OFF"
+			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes)" % _state_str)
+
+
+func _diag_resolve_refs() -> void:
+	# Lazy lookup — Player3D is added to the "player" group in its
+	# own _ready; the bootstrap's _ready may race ahead of it on slow
+	# loads. Cache once everything is alive.
+	if _diag_terrain == null:
+		_diag_terrain = get_node_or_null(voxel_terrain_path)
+	if _diag_player == null:
+		var players: Array = get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			_diag_player = players[0] as Node3D
+	if _diag_viewer == null and _diag_player != null:
+		# VoxelViewer lives as a direct child of Player3D (see Player3D.tscn).
+		_diag_viewer = _diag_player.get_node_or_null("VoxelViewer") as Node3D
+
+
 func _configure_voxel_format(terrain: Object) -> void:
 	# Set CHANNEL_COLOR depth to 32-bit so our packed RGBA + mat_id
 	# values survive storage. Default is 8-bit (1 byte per voxel),
@@ -385,6 +506,154 @@ func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
 		player.global_position.y, ground_y,
 	])
 
+	# Spawn ground confirmed — kick off the loading-screen close
+	# negotiation. The helper polls Zylann's blocked_lods until the
+	# backlog around the player settles (or a max wait elapses), then
+	# tells TransitionManager we're ready. TransitionManager has its
+	# own min-hold so the loading screen never closes instantly.
+	_mark_world_ready_when_settled()
+
+
+# State tracker for the world-ready signal. Set true once we've called
+# TransitionManager.mark_voxel_world_ready, so a re-entrant call from
+# _wait_for_ground_under_player (load-from-save path) doesn't double-fire.
+var _world_ready_signaled: bool = false
+
+
+func _mark_world_ready_when_settled() -> void:
+	# Combined readiness gate: a DENSE LOD0 spatial probe AND
+	# a near-idle Zylann streaming queue. Both must hold for
+	# REQUIRED_GOOD_SAMPLES consecutive 0.4 s polls before the
+	# loading screen advances.
+	#
+	# Why this is stricter than the previous 48-probe gate:
+	# 48 probes at 4 radii could pass while many LOD0 chunks
+	# in the ring were still pending — the rays just happened to
+	# hit chunks that were already loaded. The fix is two-fold:
+	#
+	#   (1) Denser probe: 6 radii × 16 directions = 96 probes.
+	#       Tighter angular and radial sampling makes it harder
+	#       for missing-LOD0 holes to slip between rays. Probe
+	#       still doesn't sample every chunk — that's covered by:
+	#
+	#   (2) blocked_lods settle gate: Zylann's get_statistics()
+	#       reports the LOD-pipeline queue depth as `blocked_lods`.
+	#       When it drops to ≤ STREAM_QUEUE_NEAR_IDLE the streamer
+	#       has very little left to do globally — any LOD0 chunks
+	#       not caught by the spatial probe are also done.
+	#
+	# Both gates close each other's blind spots: the probe handles
+	# "is the local area visually presentable" and the queue gate
+	# handles "is the streamer globally finished."
+	#
+	# Why raycasts ≡ LOD0: in this terrain config
+	# (`collision_lod_count = 0`), only LOD0 chunks have collision
+	# bodies. A raycast hit is therefore a direct confirmation that
+	# the chunk at that location is meshed at full LOD0 resolution.
+	# Higher-LOD chunks (LOD1+) are visible but uncollidable, and
+	# the raycast passes through them.
+	#
+	# REQUIRED_GOOD_SAMPLES of 3 × POLL_INTERVAL 0.4 s = 1.2 s of
+	# sustained "both gates pass" before signaling. Three samples
+	# filter out single-frame races and transient queue dips
+	# between request waves.
+	#
+	# MAX_EXTRA_WAIT 60 s — fully meshing the LOD0 sphere AND
+	# letting the queue drain takes longer than just the spatial
+	# probe. 60 s matches TransitionManager's loading_seconds cap.
+	if _world_ready_signaled:
+		return
+	const PROBE_RADII_M: Array = [20.0, 40.0, 60.0, 80.0, 100.0, 120.0]
+	const PROBE_DIRECTION_COUNT: int = 16
+	const STREAM_QUEUE_NEAR_IDLE: int = 15
+	const REQUIRED_GOOD_SAMPLES: int = 3
+	# 120 s — generator throughput is ~600 LOD0 blocks/s and the LOD0
+	# sphere has ~58k blocks at this scale. 60 s wasn't enough cold-start
+	# time for the queue to actually drain. Real fix is the bake (Tier 4),
+	# which makes this irrelevant.
+	const MAX_EXTRA_WAIT: float = 120.0
+	const POLL_INTERVAL: float = 0.4
+
+	# Build the ring of unit directions once. 16 directions = every
+	# 22.5° around the compass; tight enough that LOD0 chunks
+	# (~5–6 m wide at this scale) at the inner radius are nearly
+	# always covered by at least one ray nearby.
+	var probe_dirs: Array[Vector2] = []
+	for i in range(PROBE_DIRECTION_COUNT):
+		var theta: float = TAU * float(i) / float(PROBE_DIRECTION_COUNT)
+		probe_dirs.append(Vector2(cos(theta), sin(theta)))
+
+	var terrain := get_node_or_null(voxel_terrain_path)
+	var total_probes: int = probe_dirs.size() * PROBE_RADII_M.size()
+	var elapsed: float = 0.0
+	var consecutive_good: int = 0
+	var last_hits: int = 0
+	var last_blocked: int = -1
+	while elapsed < MAX_EXTRA_WAIT:
+		await get_tree().create_timer(POLL_INTERVAL).timeout
+		elapsed += POLL_INTERVAL
+		last_hits = _count_probe_hits(probe_dirs, PROBE_RADII_M)
+		# Read Zylann's queue depth. If get_statistics is missing or
+		# the field isn't there, fall back to "queue gate is
+		# permissive" so the probe alone can still close the screen.
+		last_blocked = -1
+		if terrain != null and terrain.has_method("get_statistics"):
+			var s = terrain.call("get_statistics")
+			if s is Dictionary and s.has("blocked_lods"):
+				last_blocked = int(s["blocked_lods"])
+		var probe_ok: bool = last_hits == total_probes
+		var queue_ok: bool = last_blocked < 0 or last_blocked <= STREAM_QUEUE_NEAR_IDLE
+		if probe_ok and queue_ok:
+			consecutive_good += 1
+			if consecutive_good >= REQUIRED_GOOD_SAMPLES:
+				_signal_world_ready("probes %d/%d hit AND queue=%d ≤ %d × %d samples after %.1fs" \
+					% [last_hits, total_probes, last_blocked,
+						STREAM_QUEUE_NEAR_IDLE, REQUIRED_GOOD_SAMPLES, elapsed])
+				return
+		else:
+			consecutive_good = 0
+	# Timed out — partial coverage is better than a stuck loading screen.
+	_signal_world_ready("timed out at %.1fs (probes %d/%d, queue=%d)" \
+		% [MAX_EXTRA_WAIT, last_hits, total_probes, last_blocked])
+
+
+func _count_probe_hits(probe_dirs: Array[Vector2], probe_radii: Array) -> int:
+	# Returns how many of the (direction × radius) probes hit voxel
+	# collision. For each direction × radius combination, casts from
+	# 200 m above the probe point straight down 400 m so we cover
+	# any plausible terrain Y at that XZ — peaks above the player's
+	# spawn elevation, deep valleys far below. Player's own collider
+	# is excluded so we don't self-hit.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return 0
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return 0
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var p_pos: Vector3 = player.global_position
+	var hits: int = 0
+	for radius in probe_radii:
+		for dir in probe_dirs:
+			var probe_x: float = p_pos.x + dir.x * float(radius)
+			var probe_z: float = p_pos.z + dir.y * float(radius)
+			var origin: Vector3 = Vector3(probe_x, p_pos.y + 200.0, probe_z)
+			var dest: Vector3 = Vector3(probe_x, p_pos.y - 200.0, probe_z)
+			var params := PhysicsRayQueryParameters3D.create(origin, dest)
+			params.exclude = [player.get_rid()]
+			if not space.intersect_ray(params).is_empty():
+				hits += 1
+	return hits
+
+
+func _signal_world_ready(reason: String) -> void:
+	if _world_ready_signaled:
+		return
+	_world_ready_signaled = true
+	print("[World3D] Signaling voxel world ready (%s)." % reason)
+	if get_node_or_null("/root/TransitionManager"):
+		TransitionManager.mark_voxel_world_ready()
+
 
 func _apply_saved_player_position() -> void:
 	var players: Array = get_tree().get_nodes_in_group("player")
@@ -453,6 +722,9 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 			print("[World3D] Saved-position ground check timed out; unfreezing player.")
 			if "_spawn_freeze" in player:
 				player.set("_spawn_freeze", false)
+			# Tell the loading screen to close — partial world is
+			# better than a stuck loading screen.
+			_signal_world_ready("saved-position ground timeout")
 			return
 		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
 		timer.timeout.connect(_wait_for_ground_under_player.bind(retries_remaining - 1))
@@ -462,6 +734,11 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 	if "_spawn_freeze" in player:
 		player.set("_spawn_freeze", false)
 	print("[World3D] Saved-position ground confirmed at Y=%.2f; unfreezing player." % hit["position"].y)
+
+	# Same world-ready negotiation as the new-game path. blocked_lods
+	# polling lets the loading screen close as soon as the saved-area
+	# chunks settle, instead of always running the full 45 s timer.
+	_mark_world_ready_when_settled()
 
 
 func _seed_test_pond() -> void:
