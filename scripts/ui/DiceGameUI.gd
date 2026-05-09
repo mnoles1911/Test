@@ -171,6 +171,9 @@ func open(opponent: DiceOpponentData) -> void:
 	visible = true
 	_play_ambient()
 	_set_state(State.ANTE)
+	# Print actual layout rects after one frame so we can verify
+	# the controls are where we think they are.
+	get_tree().process_frame.connect(_debug_print_layout, CONNECT_ONE_SHOT)
 
 
 func close() -> void:
@@ -202,6 +205,8 @@ func _build_ui() -> void:
 	_root_panel.custom_minimum_size = Vector2(1080, 880)
 	_root_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_root_panel.position = Vector2(-540, -440)
+	# Debug: log any event that reaches the panel itself.
+	_root_panel.gui_input.connect(_debug_log_gui.bind("ROOT_PANEL"))
 	add_child(_root_panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()
@@ -927,19 +932,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_on_leave_pressed()
 
 
-# Debug: catches every input event at the modal's CanvasLayer level so we
-# can confirm the modal is alive and receiving events. Should fire BEFORE
-# any control's _gui_input.
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mb: InputEventMouseButton = event
-		if mb.pressed:
-			var rect: Rect2 = Rect2(Vector2.ZERO, Vector2.ZERO)
-			if _root_panel:
-				rect = _root_panel.get_global_rect()
-			print("[DiceGameUI._input] mouse_down at %s state=%s visible=%s panel_rect=%s" % [
-				mb.position, State.keys()[_state], visible, rect
-			])
+# (removed _input on DiceGameUI — testing whether it was suppressing
+# GUI input by being on the CanvasLayer.)
 
 
 # =============================================================
@@ -1035,6 +1029,17 @@ func _play_ambient() -> void:
 func _stop_ambient() -> void:
 	if _ambient_player:
 		_ambient_player.stop()
+
+
+func _debug_print_layout() -> void:
+	print("[layout] panel:        %s" % _root_panel.get_global_rect())
+	print("[layout] viewport:     %s" % _viewport_container.get_global_rect())
+	print("[layout] ante_hbox:    %s visible=%s" % [_ante_hbox.get_global_rect(), _ante_hbox.visible])
+	print("[layout] slider:       %s" % _wager_slider.get_global_rect())
+	print("[layout] ante_up_btn:  %s disabled=%s" % [_confirm_wager_btn.get_global_rect(), _confirm_wager_btn.disabled])
+	print("[layout] leave_btn:    %s disabled=%s" % [_leave_btn.get_global_rect(), _leave_btn.disabled])
+	for i in _die_card_buttons.size():
+		print("[layout] die_card[%d]:  %s" % [i, _die_card_buttons[i].get_global_rect()])
 
 
 func _debug_log_gui(event: InputEvent, label: String) -> void:
