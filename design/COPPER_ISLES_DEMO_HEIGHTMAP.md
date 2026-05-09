@@ -4,6 +4,8 @@
 > Rewritten 2026-05-05 for the 5 km × 5 km / five-large-island layout.
 > Companion lore: `lore/copper_isles/GEOGRAPHY.md`
 >
+> **STATUS NOTE (2026-05-09):** The currently-shipped `assets/heightmaps/copper_isles_heightmap.exr` does NOT match this spec. It delivers a single irregular continent with ocean confined to the map perimeter (~24% ocean, concentrated west/east edges). Sea level world Y=200 m; central spawn lands on hill terrain (gray ~0.1–0.2, world Y≈414–668 m) about 2 km from the nearest coast. This was confirmed by an in-engine 32×32 ASCII dump of the heightmap on 2026-05-09. The current EXR is fit for tech validation (cache, water rendering, bake pipeline) but must be re-sourced before the demo matches the lore canon's archipelago. The prompt below is the *target* re-source, not the current state.
+>
 > **How to use this file:**
 > 1. Paste the **AI Prompt** section directly into your image generator of choice.
 > 2. Use the **Full Terrain Description** section as reference if the first result misses something specific — break it up and iterate island by island.

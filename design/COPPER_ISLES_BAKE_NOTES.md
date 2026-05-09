@@ -12,6 +12,137 @@ here so future passes don't re-litigate the same questions.
 
 ---
 
+## World-scale refactor (2026-05-09)
+
+The generator's gray-to-ground-Y formula was conflating two
+separate concepts: "sea level" as the absolute Y of the water
+surface, and "sea level" as the anchor point for terrain elevation
+calculations. Every adjustment of `sea_level_voxels` was shifting
+the entire terrain Y range by the same amount, which made it
+impossible to tune water level visually without moving all the
+ground with it.
+
+The fix: a fixed linear gray-to-Y mapping that doesn't reference
+sea level at all.
+
+```
+ground_y_voxels = clampf(gray, 0, 1) * elevation_above_at_white_voxels
+```
+
+With the canonical config of `elevation_above_at_white_voxels =
+15000` and `terrain.transform.scale = 1/6`:
+
+| gray | ground (vox) | world Y |
+|---|---|---|
+| 0.0 | 0 | 0 m (lowest ocean floor) |
+| 0.05 | 750 | 125 m (current sea level) |
+| 0.12 | 1800 | 300 m |
+| 0.3159 | 4738 | 790 m (current actual peak) |
+| 1.0 | 15000 | 2500 m (theoretical max) |
+
+Sea level is now a pure visual / physics knob. `sea_level_voxels`
+sets where the water plane sits and which voxels are considered
+submerged; it does not enter the ground-Y calculation. Move it
+freely.
+
+The legacy `sea_level_gray` and `elevation_below_at_black_voxels`
+fields are kept on the resource for backward compatibility with
+existing .tres files but are now ignored by the generator. Setting
+them does nothing.
+
+**Cache invalidation:** any bake produced under the old formula
+has terrain Y values that don't match the new formula. Delete the
+user-side `copper_isles_test.sqlite` and re-bake. Fresh runtime
+generation works fine without a re-bake.
+
+---
+
+## Actual world layout (verified 2026-05-09)
+
+The shipped `copper_isles_heightmap.exr` does NOT deliver the five-island
+archipelago described in `lore/copper_isles/GEOGRAPHY.md` and the prompt in
+`design/COPPER_ISLES_DEMO_HEIGHTMAP.md`. An in-engine 32×32 ASCII heatmap of
+the heightmap on 2026-05-09 confirmed the actual layout:
+
+- **One large irregular continent** filling roughly the central 70 % of the
+  5 km × 5 km map, surrounded by ocean on all four sides
+- **~24 % of pixels are below the ocean threshold** (gray < 0.0157)
+- Ocean is concentrated on the **west and east** perimeters; thinner ocean
+  bands on north and south
+- **Central spawn (0, 0)** sits on the `+` (hill) band — gray 0.1–0.2 →
+  ground at world Y=414–668 m, ~2 km from the nearest coastline
+- **A mountain spine** runs roughly north–south, just east of map centre,
+  with peaks up to gray=0.3159 (world Y≈990 m)
+
+This is a fit-for-purpose validation world for the bake / cache / water
+pipeline, but the demo's narrative geography (five distinct islands with
+sailable straits between them) does not exist on disk. A re-source of the
+EXR is required before the lore matches the playable space. Until then,
+all bake-walker reasoning in this file assumes the single-continent layout
+above.
+
+### Tile-class distribution (single-continent)
+
+For walker stop-count math:
+
+| Class | Heightmap match | % of 5 km map | Notes |
+|---|---|---|---|
+| Land (lowland / hill / mountain) | gray ≥ 0.03 | ~76 % | Full ±30 m surface band |
+| Coast (beach band) | 0.016–0.03 | ~3 % | Treat like land |
+| Shallow ocean (within 156 m of land) | gray < 0.016, near land | ~6 % | Single Y stop |
+| Deep ocean | gray < 0.016, isolated | ~15 % | Skip — horizon plane covers visuals |
+
+---
+
+## Walker plan — surface-band, ±30 m editing window (2026-05-09)
+
+The player edits voxels almost exclusively within ±30 m of the local ground
+surface (mining a tunnel, building a tower, carving a trench). The bake walker
+covers exactly this band per land tile, plus a small upward margin where
+schematic placements (towers, scaffolds) extend higher. Anything outside the
+band falls through to runtime generation + `cache_generated_blocks` — the
+first visit pays a one-time generator cost, then it persists per-save-slot.
+
+| Class | Stops/tile | Walker Y positions | LOD0 coverage |
+|---|---|---|---|
+| Land | **2** | `local_ground − 9`, `local_ground + 33` | ground−30 to ground+54 |
+| Coast | 2 | `sea+5`, `sea+35` | sea−16 to sea+56 (catches surf + shallow bottom) |
+| Shallow ocean | 1 | `sea+5` | sea−16 to sea+26 |
+| Deep ocean | 0 | — | runtime gen on first dive only |
+
+LOD0 sphere radius is ≈21 m world (lod_distance=128 voxels at 1/6 scale).
+Two stops 42 m apart produce two overlapping spheres covering 84 m vertically,
+which cleanly bounds the ±30 m editing band plus generous margins.
+
+### Bake-time projections (single-continent distribution)
+
+| Region | Total tiles | Avg stops/tile | Wall-clock @ 6 s/stop |
+|---|---|---|---|
+| 1 km central (validation) | 1,100 | 1.85 | **~3.4 hr** |
+| 2 km | 4,400 | 1.85 | ~14 hr |
+| 5 km full | 27,800 | 1.85 | **~86 hr** (3.6 days) |
+
+The 1 km bake is an after-dinner job; the 5 km bake is a long weekend. Skipping
+deep-ocean tiles (~15 % of the map) saves roughly the same fraction of bake
+time vs visiting every tile uniformly.
+
+### Risks of skipping deep ocean
+
+- **First dive at any deep-ocean column** triggers runtime generation — brief
+  stutter (30–80 ms per chunk) the first time a player visits. After that
+  visit, `cache_generated_blocks` persists the chunks per save slot, so
+  subsequent visits are silent. Verified working in this build (SQLite grew
+  by 89 MB after a flying tour on 2026-05-08).
+- **The horizon plane** (a flat 10 km × 10 km mesh at sea level Y=125, follows
+  player) covers the visual ocean across the entire map. Players never see
+  voids over deep water.
+- **Voxel water flow simulation** doesn't run for chunks that don't exist.
+  Acceptable: deep-ocean columns are static seafloor 40 m below sea level
+  with no rivers, springs, or edits to simulate. Coastal water (where the
+  ocean meets land) IS baked, so wave / shore animation works there.
+
+---
+
 ## Voxel-resolution constants — change all together or none
 
 If you ever want to bump the world from 6 vox/m to 8 or 10 (finer detail per
@@ -28,9 +159,9 @@ runtime won't read, and so on.
 | `origin_x_voxels` / `origin_z_voxels` | `assets/voxel/copper_isles_generator.tres` | -15 000 | -20 000 | -25 000 |
 | `elevation_above_at_white_voxels` | `assets/voxel/copper_isles_generator.tres` | 15 000 | 20 000 | 25 000 |
 | `elevation_below_at_black_voxels` | `assets/voxel/copper_isles_generator.tres` | 240 | 320 | 400 |
-| `sea_level_voxels` | `assets/voxel/copper_isles_generator.tres` | 720 | 960 | 1200 |
-| `beach_y_threshold` | `assets/voxel/copper_isles_generator.tres` | 732 | 976 | 1220 |
-| `GEN_SEA_LEVEL_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 720.0 | 960.0 | 1200.0 |
+| `sea_level_voxels` | `assets/voxel/copper_isles_generator.tres` | 750 | 1000 | 1250 |
+| `beach_y_threshold` | `assets/voxel/copper_isles_generator.tres` | 762 | 1016 | 1270 |
+| `GEN_SEA_LEVEL_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 750.0 | 1000.0 | 1250.0 |
 | `GEN_PEAK_ABOVE_SEA_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 15000.0 | 20000.0 | 25000.0 |
 | `VOXELS_PER_METRE` | `scripts/_dev/WorldBakeController.gd` | 6.0 | 8.0 | 10.0 |
 | `WORLD_FLOOR_VOXEL_Y` | three places: `CubicHeightmapGenerator.gd`, `CopperIslesHeightmapGenerator.gd`, `VoxelEditManager.gd` | -300 | -400 | -500 |
@@ -380,6 +511,62 @@ orphans, vram). Replaces the previous per-frame `[FRAME SPIKE]` flood that
 was itself contributing to the spikes (each Output-panel print costs
 0.5–2 ms at sub-10 FPS). Toggle off via `HUDOverlay.PERF_DIAG = false`
 when not actively investigating perf.
+
+---
+
+## Skirt design (current defaults)
+
+The horizon skirt covers the 8 km × 8 km region around spawn (-4000 m to
++4000 m on both axes — extended 1.5 km past the heightmap edge so peaks at
+the map border don't clip). Baked once via button "4. Bake horizon skirt"
+in `scenes/_dev/BakeWorld.tscn`. Output:
+`assets/voxel/copper_isles_skirt.res`. Loaded at runtime by
+`scripts/HorizonSkirt.gd`.
+
+All defaults below are constants at the top of `scripts/_dev/SkirtBaker.gd`
+— change there, re-bake to apply.
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `QUAD_SIZE_M` | 8.0 m | Grid spacing. 1000² = ~2M tris over the 8 km region. Drop to 6 m if silhouettes still look blocky; bump to 12 m if bake walltime hurts. |
+| `Y_OFFSET_DOWN_M` | 1.5 m | Drop applied to every skirt vertex so the flat-triangulated skirt sits below the stair-stepped LOD0 voxel cubes (no pokethrough on slopes). |
+| `SKIRT_SAMPLE_MIN_NEIGHBOURHOOD` | true | Each vertex takes the MIN of its centre + 4 cardinal neighbours' ground-Y. Belt-and-braces against pokethrough that the Y_OFFSET alone can miss. |
+| `SLOPE_TO_ROCK_THRESHOLD` | 0.35 | ~19° — slopes steeper than this start lerping toward `rock_color` regardless of elevation. Cliffs read as cliffs at distance. |
+| `SLOPE_TO_ROCK_BLEND_RANGE` | 0.30 | Soft-shoulder beyond the slope threshold; full rock at threshold + this. |
+| `SNOW_LINE_LATITUDE_OFFSET_M` | 200.0 m | How far the snow band slides between the south edge of the bake region and the north edge. North-south asymmetry: north reads as colder (Solgrade is the polar reference). 0 disables. Bump to 400 for a more dramatic gradient. |
+| `CLIFF_THRESHOLD_M` | 20.0 m | Grid edges with a height delta over this get a vertical wall (4 verts / 2 tris) spliced in. At 8 m quad spacing that's a 2.5:1 slope — coastlines mostly trip it. |
+| `CLIFF_COLOR` | (0.55, 0.52, 0.48) | Mineral-stained wave-eroded stone tone for the cliff faces. Distinct from the marble-grey summit `rock_color` so cliff faces stand out from the summit caps in the silhouette. |
+
+### Palette stops (elevation-band lerp)
+
+Keyed to `lore/copper_isles/GEOGRAPHY.md` — wave-eroded marble massifs,
+weathered coastal woodland (dwarf-oak / salt-pine / sea-laurel) below the
+~350 m treeline, white-marble summit outcroppings above. Tweak with the
+lore in mind.
+
+| Band | RGB | Notes |
+|---|---|---|
+| Below sea | (0.14, 0.18, 0.22) | Submerged stone — darker than ice-blue under the water shader. |
+| Beach | (0.78, 0.72, 0.58) | Salt-bleached coastal sand, paler/cooler than tropical sand. |
+| Forest (low) | (0.26, 0.36, 0.20) | Weathered coastal woodland under salt-spray — desaturated. |
+| Rock (mid) | (0.62, 0.60, 0.56) | Marble-grey base. |
+| Snow (high) | (0.93, 0.94, 0.95) | Bare marble peaks (slightly brighter than literal snow). |
+| Slope-shift target (`rock_color`) | (0.60, 0.58, 0.54) | Marble-grey, in line with the mid band. |
+
+### Per-vertex normals
+
+Computed via central differences across the height grid in the same loop
+that generates indices (`SkirtBaker.gd` ~line 286). Stored in
+`Mesh.ARRAY_NORMAL`. The runtime material (`HorizonSkirt.gd:107` —
+`SHADING_MODE_PER_PIXEL`, `vertex_color_use_as_albedo = true`,
+`CULL_DISABLED`) honours those normals — distant slopes facing the sun
+read brighter than slopes in shadow, and the directional sun's CSM
+shadows project onto the skirt.
+
+Cliff faces get a horizontal outward-pointing normal in the XZ plane
+(perpendicular to the cliff edge), set inside `_maybe_add_cliff_edge`.
+With `CULL_DISABLED` both sides of each wall render — normal direction
+matters only for which side gets the warmer lighting bias.
 
 ---
 

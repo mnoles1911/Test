@@ -220,20 +220,11 @@ const FLY_SPEED_MULT: float = 10.0
 # enough to cross the test world in seconds, slow enough that the
 # camera can keep up.
 
-const SPAWN_POSITION: Vector3 = Vector3(0.0, 300.0, 0.0)
-# Single hardcoded spawn point used in two places:
-#   1. CopperIslesTestBootstrap reads this when placing the player on
-#      scene load (no more separate spawn_override_pos export).
-#   2. toggle_fly_mode() teleports here on BOTH on and off so toggling
-#      fly mode while underground / mid-air pops the player back to a
-#      safe vista point instead of falling through terrain.
-#
-# (0, 300, 0) places the player at the dead centre of the Copper Isles
-# heightmap (which is centred on world origin), 300 m above sea level
-# (sea is at Y=120, peaks reach ~910 m). Centred so the player is
-# always inside the baked area regardless of which preset bake ran
-# (1 km / 2 km / 5 km — all centred on origin).
-# Change in one place, both call sites pick it up.
+const SPAWN_POSITION: Vector3 = Vector3(-61.0, 185.0, 732.0)
+# Single hardcoded spawn point used by CopperIslesTestBootstrap when
+# placing the player on scene load. toggle_fly_mode() does NOT teleport
+# here — it preserves the player's current position so testers can
+# enter/exit fly mode without losing their place.
 
 # Precomputed from mass — calculated once in _ready().
 # Call _recalculate_movement_stats() if mass changes at runtime.
@@ -660,16 +651,10 @@ func _physics_process_flying(_delta: float) -> void:
 
 func toggle_fly_mode() -> bool:
 	# Public toggle for the F1 debug overlay. Returns the new state
-	# (true = flying, false = grounded).
-	#
-	# On BOTH on and off: teleport to SPAWN_POSITION (full Vector3,
-	# not just Y) so toggling never leaves Roland stuck underground or
-	# falling out of the world. Treats fly toggle as a "reset to
-	# vista" action — what testers actually want when poking at the
-	# scene. Velocity is zeroed so Roland doesn't keep moving from
-	# whatever speed he had pre-toggle.
+	# (true = flying, false = grounded). Preserves position — testers
+	# can pop in/out of fly mode mid-flight without losing their place.
+	# Velocity is zeroed so Roland doesn't drift off after the toggle.
 	is_flying = not is_flying
-	global_position = SPAWN_POSITION
 	velocity = Vector3.ZERO
 	if is_flying:
 		# Clear water state so the swim HUD doesn't linger.

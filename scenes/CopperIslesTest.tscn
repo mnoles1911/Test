@@ -76,18 +76,15 @@ dusk_panorama = ExtResource("8_skydusk")
 night_panorama = ExtResource("9_skynight")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=1648811141]
-; All LOD config values must match REQUIRED_* constants in
-; CopperIslesTestBootstrap.gd — script-side _enforce_lod_config
-; will override anything Godot's editor strips, and now also
-; verifies via read-back to flag any silent clamp.
 lod_count = 9
 lod_distance = 128.0
 secondary_lod_distance = 128.0
 lod_fade_duration = 1.0
-streaming_system = 1
 material = SubResource("VoxelTerrainMat_1")
 run_stream_in_editor = false
+mesh_block_size = 32
 cache_generated_blocks = true
+streaming_system = 1
 stream = SubResource("VoxelStream_1")
 generator = ExtResource("3_copper_gen")
 mesher = SubResource("VoxelMesher_1")
@@ -97,4 +94,4 @@ transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
 script = ExtResource("4_skirt")
 
 [node name="Player3D" parent="." unique_id=1849933617 instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 200, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -61, 185, 732)

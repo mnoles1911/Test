@@ -21,16 +21,31 @@ extends RefCounted
 # Used by `WorldBakeController` (button in the BakeWorld UI) and at
 # runtime via `scripts/HorizonSkirt.gd` which loads the saved mesh.
 
-const QUAD_SIZE_M: float = 12.0
-# 12 m quads give finer silhouettes than 16 m without exploding tri
-# count. At 8 km × 8 km = 666² = ~444k quads = ~890k tris — heavier
-# than before but a one-time bake and a static draw, so the GPU
-# laughs. If perf hurts later we can mix-resolution (8 m inner,
-# 24 m outer ring).
+const QUAD_SIZE_M: float = 8.0
+# 8 m quads give noticeably crisper distant silhouettes than the
+# previous 12 m. At 8 km × 8 km = 1000² = 1M quads = ~2M tris — a
+# one-time bake and a static draw, so the GPU laughs. If perf hurts
+# later we can mix-resolution (8 m inner, 24 m outer ring) or drop
+# back to 12 m.
 
-const Y_OFFSET_DOWN_M: float = 0.1
-# Tiny offset below true ground to break z-fighting against the live
-# LOD0 voxel mesh. 0.1 m is enough; bigger creates a visible seam.
+const Y_OFFSET_DOWN_M: float = 1.5
+# Larger offset 2026-05-08 because the previous 0.1 m was insufficient.
+# The voxel terrain is stair-stepped (cube voxels), and the skirt's
+# flat triangulated surface interpolates BETWEEN voxel ledges. With a
+# 0.1 m drop the skirt poked up through some LOD0 cubes on slopes
+# (visible as smooth light bands cutting through chunky terrain).
+# 1.5 m drop puts the skirt safely below voxel cube tops at the ~16.7 cm
+# voxel size — never visible inside the streamed area but still close
+# enough to read as "ground" past view_distance where there's no
+# voxel mesh to compare to.
+
+const SKIRT_SAMPLE_MIN_NEIGHBOURHOOD: bool = true
+# When true, each skirt vertex is positioned at the MIN ground-Y of a
+# small neighbourhood around its sample coord, not the centre value.
+# Eliminates the stair-step pokethrough on slopes — the flat skirt
+# triangle ends up at or below every voxel top in that area, never
+# above. Costs four extra heightmap samples per vertex (cheap; only
+# hurts the bake-time scan, not runtime).
 
 const SLOPE_TO_ROCK_THRESHOLD: float = 0.35
 # Rise/run threshold above which we shift the vertex colour toward
@@ -43,6 +58,28 @@ const SLOPE_TO_ROCK_BLEND_RANGE: float = 0.30
 # threshold + this value lerp from "elevation colour" to "full rock";
 # steeper than that pegs at full rock. Avoids hard transitions on
 # slopes that grade smoothly.
+
+const SNOW_LINE_LATITUDE_OFFSET_M: float = 200.0
+# How far the snow line slides between the south edge of the bake
+# region (Z = -2500 m, snow line raised by this amount → less snow)
+# and the north edge (Z = +2500 m, snow line lowered by this amount
+# → more snow). 200 m gives a subtle but readable N/S asymmetry
+# from the spawn vantage. Bump to 400 m for a more dramatic
+# Skyrim-style "northern peaks are colder" gradient. Set to 0 to
+# disable latitude shifting entirely.
+
+const CLIFF_THRESHOLD_M: float = 20.0
+# When two neighbouring grid vertices differ in height by more than
+# this, we splice a vertical wall of geometry into the gap so the
+# coastline reads as a sheer drop instead of a smoothly-ramped
+# slope. 20 m at 8 m quad spacing is a 2.5:1 slope — anything
+# steeper than that is rendered as a cliff face.
+
+const CLIFF_COLOR: Color = Color(0.55, 0.52, 0.48, 1.0)
+# Exposed-rock tone for cliff faces, regardless of what the
+# elevation band on top says. Slightly warmer than the marble-grey
+# `rock_color` because cliff faces in this region are mineral-stained
+# wave-eroded stone, not the bare marble of the summit caps.
 
 
 # Bake the skirt from the given generator + region. Returns an
@@ -83,6 +120,19 @@ static func bake_mesh(
 			var voxel_x: int = int(world_x * voxels_per_metre)
 			var voxel_z: int = int(world_z * voxels_per_metre)
 			var ground_voxels: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
+			# When SKIRT_SAMPLE_MIN_NEIGHBOURHOOD is true, sample 4
+			# additional points around the vertex (one quad-size
+			# step in each cardinal direction) and take the MIN.
+			# Result: the flat skirt triangle that connects this
+			# vertex to its neighbours sits at or below every voxel
+			# cube-top in the area — no pokethrough through LOD0.
+			if SKIRT_SAMPLE_MIN_NEIGHBOURHOOD:
+				var step: int = int(QUAD_SIZE_M * voxels_per_metre)
+				var n0: int = generator.get_ground_voxel_y_at(voxel_x + step, voxel_z)
+				var n1: int = generator.get_ground_voxel_y_at(voxel_x - step, voxel_z)
+				var n2: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z + step)
+				var n3: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z - step)
+				ground_voxels = mini(ground_voxels, mini(mini(n0, n1), mini(n2, n3)))
 			var ground_world_y: float = float(ground_voxels) / voxels_per_metre
 			heights[xi + zi * verts_x] = ground_world_y - Y_OFFSET_DOWN_M
 			# Vertex colour mirrors the generator's material bands,
@@ -117,20 +167,44 @@ static func bake_mesh(
 			var jitter_fine: float   = (float(hash_hi) / 65535.0 - 0.5) * 0.06  # ±3 % brightness
 			var jitter: float = jitter_coarse + jitter_fine
 
+			# Palette is keyed to Copper Isles lore — see
+			# `lore/copper_isles/GEOGRAPHY.md`: wave-eroded marble massifs,
+			# white-marble summit outcroppings above ~350 m treeline,
+			# weathered coastal woodland (dwarf-oak / salt-pine / sea-laurel)
+			# below it, salt-bleached coastal sand at the shore. The
+			# elevation-band stops below match those notes — anything
+			# tweaked here should round-trip back to that doc.
 			# Pick the elevation-band colour first (no slope adjust yet).
 			var c_elev: Color
 			if ground_voxels <= sea_level_voxels:
-				# Below sea — deep stone tone, mostly hidden by water.
-				c_elev = Color(0.18, 0.22, 0.28, 1.0)
+				# Below sea — submerged stone, slightly cooler/darker
+				# than the old grey-blue so it doesn't read as ice
+				# under the water shader.
+				c_elev = Color(0.14, 0.18, 0.22, 1.0)
 			elif ground_voxels <= beach_y:
-				c_elev = Color(0.82, 0.74, 0.52, 1.0)  # sand
+				# Salt-bleached coastal sand — paler and cooler than
+				# warm tropical sand, matches the windswept-island read.
+				c_elev = Color(0.78, 0.72, 0.58, 1.0)
 			else:
-				# Forest → rock → snowcap over 4500 vox (750 m world).
+				# Forest → rock → snowcap. Snow band offset is applied
+				# inside snow_line_offset_voxels (latitude-dependent —
+				# see Task 5 below); base range still 4500 vox (750 m).
 				var elev_above_beach: int = ground_voxels - beach_y
-				var t1: float = clampf(float(elev_above_beach) / 4500.0, 0.0, 1.0)
-				var c_lo: Color = Color(0.32, 0.48, 0.22, 1.0)   # deeper forest green
-				var c_mid: Color = Color(0.55, 0.50, 0.42, 1.0)  # rock brown
-				var c_hi: Color = Color(0.88, 0.90, 0.93, 1.0)   # snowcap, slightly cooler
+				# Slide the snow band based on world Z so northern
+				# (high-Z) peaks ice over before southern peaks of
+				# the same elevation. Solgrade sits north of the
+				# Copper Isles → north reads as colder.
+				var latitude_factor: float = clampf(world_z / 2500.0, -1.0, 1.0)
+				var snow_line_offset_voxels: int = int(round(
+					-latitude_factor * SNOW_LINE_LATITUDE_OFFSET_M * voxels_per_metre,
+				))
+				var t1: float = clampf(
+					float(elev_above_beach + snow_line_offset_voxels) / 4500.0,
+					0.0, 1.0,
+				)
+				var c_lo: Color = Color(0.26, 0.36, 0.20, 1.0)   # weathered coastal woodland (desaturated, salt-spray)
+				var c_mid: Color = Color(0.62, 0.60, 0.56, 1.0)  # marble-grey base rock
+				var c_hi: Color = Color(0.93, 0.94, 0.95, 1.0)   # bare marble peaks (slightly brighter than snow)
 				if t1 < 0.5:
 					c_elev = c_lo.lerp(c_mid, t1 * 2.0)
 				else:
@@ -142,7 +216,10 @@ static func bake_mesh(
 			var slope: float = _compute_slope_at(
 				generator, voxel_x, voxel_z, voxels_per_metre,
 			)
-			var rock_color: Color = Color(0.50, 0.46, 0.40, 1.0)
+			# Marble-grey to match the new `c_mid` band — a steep
+			# forested slope shifts toward the same exposed-marble tone
+			# as a mid-elevation cliff would naturally show.
+			var rock_color: Color = Color(0.60, 0.58, 0.54, 1.0)
 			var slope_t: float = clampf(
 				(slope - SLOPE_TO_ROCK_THRESHOLD) / SLOPE_TO_ROCK_BLEND_RANGE,
 				0.0, 1.0,
@@ -220,6 +297,50 @@ static func bake_mesh(
 			var dz: float = (hz1 - hz0) / (2.0 * QUAD_SIZE_M)
 			normals[i] = Vector3(-dx, 1.0, -dz).normalized()
 
+	# Cliff-face geometry. Where two adjacent grid vertices differ in
+	# height by more than CLIFF_THRESHOLD_M, the smooth ramp triangle
+	# that connects them reads as an unconvincing slope at distance.
+	# We splice in a short vertical wall (4 verts / 2 tris per cliff
+	# edge) so coastlines and ridge drops read as actual cliffs in
+	# the silhouette.
+	#
+	# Each interior grid edge is shared by two quads, so we dedupe
+	# via a sorted-vertex-index dictionary key — without this, every
+	# interior cliff face would be drawn twice (once per side) which
+	# is wasteful and can cause z-fighting on the wall surface.
+	var visited_edges: Dictionary = {}
+	var cliff_verts := PackedVector3Array()
+	var cliff_normals := PackedVector3Array()
+	var cliff_colors := PackedColorArray()
+	var cliff_indices := PackedInt32Array()
+	for zi in quads_z:
+		for xi in quads_x:
+			var i00: int = xi + zi * verts_x
+			var i10: int = (xi + 1) + zi * verts_x
+			var i01: int = xi + (zi + 1) * verts_x
+			var i11: int = (xi + 1) + (zi + 1) * verts_x
+			# 4 edges of this quad: south, east, north, west.
+			_maybe_add_cliff_edge(visited_edges, vertices, heights, i00, i10,
+				cliff_verts, cliff_normals, cliff_colors, cliff_indices)
+			_maybe_add_cliff_edge(visited_edges, vertices, heights, i10, i11,
+				cliff_verts, cliff_normals, cliff_colors, cliff_indices)
+			_maybe_add_cliff_edge(visited_edges, vertices, heights, i11, i01,
+				cliff_verts, cliff_normals, cliff_colors, cliff_indices)
+			_maybe_add_cliff_edge(visited_edges, vertices, heights, i01, i00,
+				cliff_verts, cliff_normals, cliff_colors, cliff_indices)
+
+	# Splice the cliff data onto the end of the main arrays. Indices
+	# in cliff_indices are local to cliff_verts, so offset them by
+	# the current grid-vertex count before merging.
+	var cliff_base: int = vertices.size()
+	if cliff_verts.size() > 0:
+		vertices.append_array(cliff_verts)
+		normals.append_array(cliff_normals)
+		vert_colors.append_array(cliff_colors)
+		for ci in cliff_indices.size():
+			cliff_indices[ci] += cliff_base
+		indices.append_array(cliff_indices)
+
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -231,8 +352,10 @@ static func bake_mesh(
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	@warning_ignore("integer_division")
 	var tri_count: int = indices.size() / 3
-	print("[SkirtBaker] Baked %d × %d quad skirt (%d tris) over %.0fm × %.0fm" % [
-		quads_x, quads_z, tri_count, width, depth,
+	@warning_ignore("integer_division")
+	var cliff_tri_count: int = cliff_indices.size() / 3
+	print("[SkirtBaker] Baked %d × %d quad skirt (%d tris, of which %d are cliff faces) over %.0fm × %.0fm" % [
+		quads_x, quads_z, tri_count, cliff_tri_count, width, depth,
 	])
 	return mesh
 
@@ -265,3 +388,85 @@ static func _compute_slope_at(
 		if d > max_diff:
 			max_diff = d
 	return float(max_diff)
+
+
+# Cliff helper. For a single grid edge between two existing vertex
+# slots (i_a, i_b), check whether the height delta exceeds
+# CLIFF_THRESHOLD_M; if it does, append a 4-vertex / 2-triangle
+# vertical wall into the cliff_* arrays.
+#
+# Dedupes via `visited` so each interior edge (shared by two adjacent
+# quads) is only processed once. The dictionary key is a Vector2i of
+# the two vertex indices in sorted order — same key from either quad's
+# perspective.
+#
+# Wall geometry: a vertical rectangle in the XZ plane of the edge,
+# spanning Y from min(h_a, h_b) up to max(h_a, h_b). The 4 corners
+# share the two edge endpoints' XZ coords but pair-up at the high
+# and low Y. Two triangles form the rectangular face.
+#
+# Wall normal: perpendicular to the edge in the XZ plane. The runtime
+# material uses CULL_DISABLED, so both sides of the wall render —
+# which side is "outward" matters only for lighting, not visibility.
+# We pick the right-hand perpendicular (rotating the edge direction
+# 90° clockwise as viewed from above). That keeps lighting consistent
+# across the wall regardless of view angle.
+#
+# Cliff vertices land in their own buffers (`cliff_verts` etc.) and
+# get spliced onto the main arrays after this loop completes; indices
+# returned here are LOCAL to cliff_verts and the caller offsets them
+# by `vertices.size()` before merging.
+static func _maybe_add_cliff_edge(
+	visited: Dictionary,
+	grid_vertices: PackedVector3Array,
+	heights_arr: PackedFloat32Array,
+	i_a: int,
+	i_b: int,
+	cliff_verts: PackedVector3Array,
+	cliff_normals: PackedVector3Array,
+	cliff_colors: PackedColorArray,
+	cliff_indices: PackedInt32Array,
+) -> void:
+	var key: Vector2i = Vector2i(mini(i_a, i_b), maxi(i_a, i_b))
+	if visited.has(key):
+		return
+	visited[key] = true
+	var h_a: float = heights_arr[i_a]
+	var h_b: float = heights_arr[i_b]
+	if absf(h_a - h_b) < CLIFF_THRESHOLD_M:
+		return
+	var pos_a: Vector3 = grid_vertices[i_a]
+	var pos_b: Vector3 = grid_vertices[i_b]
+	var y_high: float = maxf(h_a, h_b)
+	var y_low: float = minf(h_a, h_b)
+	# Outward normal — rotate the edge direction 90° clockwise in XZ.
+	var edge_xz: Vector2 = Vector2(pos_b.x - pos_a.x, pos_b.z - pos_a.z)
+	if edge_xz.length_squared() < 0.0001:
+		return
+	edge_xz = edge_xz.normalized()
+	var wall_normal: Vector3 = Vector3(edge_xz.y, 0.0, -edge_xz.x)
+	# 4 wall corners. Remember: pos_a / pos_b carry their original
+	# Y values, but here we override to the high/low Y of the pair
+	# so the wall is a true vertical rectangle.
+	var v0: Vector3 = Vector3(pos_a.x, y_high, pos_a.z)
+	var v1: Vector3 = Vector3(pos_b.x, y_high, pos_b.z)
+	var v2: Vector3 = Vector3(pos_a.x, y_low, pos_a.z)
+	var v3: Vector3 = Vector3(pos_b.x, y_low, pos_b.z)
+	var base: int = cliff_verts.size()
+	cliff_verts.append(v0)
+	cliff_verts.append(v1)
+	cliff_verts.append(v2)
+	cliff_verts.append(v3)
+	for _i in 4:
+		cliff_normals.append(wall_normal)
+		cliff_colors.append(CLIFF_COLOR)
+	# Two triangles. CULL_DISABLED in HorizonSkirt.gd means winding
+	# direction doesn't gate visibility, but we still wind CCW from
+	# the wall_normal side so that any future switch back to
+	# CULL_BACK behaves sensibly.
+	cliff_indices.append(base + 0)
+	cliff_indices.append(base + 1)
+	cliff_indices.append(base + 2)
+	cliff_indices.append(base + 1)
+	cliff_indices.append(base + 3)
+	cliff_indices.append(base + 2)

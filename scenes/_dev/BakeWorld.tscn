@@ -37,12 +37,13 @@ script = ExtResource("1_controller")
 environment = SubResource("Env_1")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=1760345377]
-lod_count = 14
+lod_count = 9
 lod_distance = 128.0
 secondary_lod_distance = 128.0
 lod_fade_duration = 1.0
 material = SubResource("VoxelTerrainMat_1")
 run_stream_in_editor = false
+mesh_block_size = 32
 cache_generated_blocks = true
 streaming_system = 1
 stream = SubResource("VoxelStream_1")
