@@ -1,5 +1,11 @@
-extends CanvasLayer
+extends Control
 # DiceGameUI — Bones (tavern dice) mini-game overlay.
+#
+# CHANGED: was extends CanvasLayer; now Control. Diagnosis showed mouse
+# clicks were reaching the CanvasLayer's _input but never any child
+# Control's _gui_input. Switching to Control as the root sidesteps that
+# input-routing problem entirely; the modal still floats on top of any
+# scene because it's added to /root with PRESET_FULL_RECT.
 #
 # Built programmatically; no .tscn file. Mirrors the LockpickingUI pattern:
 # instance at runtime, call open(opponent), wait for match_ended.
@@ -114,11 +120,11 @@ var _sfx_lose: AudioStreamPlayer
 var _ambient_player: AudioStreamPlayer
 
 
-func _init() -> void:
-	layer = HUD_LAYER
-
-
 func _ready() -> void:
+	# Cover the full screen so the modal floats over any underlying scene.
+	# PASS lets unhandled clicks bubble up but doesn't block children.
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_PASS
 	_rng.randomize()
 	_build_ui()
 	_build_audio()
