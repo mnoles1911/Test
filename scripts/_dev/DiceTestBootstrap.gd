@@ -51,7 +51,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _open_match() -> void:
+	print("[DiceTest] _open_match called. _active_ui=%s" % _active_ui)
 	if _active_ui != null:
+		print("[DiceTest] match already active, ignoring")
 		return
 	if not ResourceLoader.exists(OPPONENT_PATH):
 		push_error("[DiceTest] Missing opponent resource: %s" % OPPONENT_PATH)
@@ -67,6 +69,7 @@ func _open_match() -> void:
 	_active_ui.match_cancelled.connect(_on_match_cancelled)
 	_active_ui.tree_exited.connect(_on_ui_freed)
 	_active_ui.open(opponent)
+	print("[DiceTest] match opened: %s vs %s" % [opponent.npc_id, opponent.display_name])
 
 
 func _on_match_ended(net_delta: int) -> void:

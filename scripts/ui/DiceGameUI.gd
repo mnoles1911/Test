@@ -927,6 +927,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_on_leave_pressed()
 
 
+# Debug: catches every input event at the modal's CanvasLayer level so we
+# can confirm the modal is alive and receiving events. Should fire BEFORE
+# any control's _gui_input.
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed:
+			var rect: Rect2 = Rect2(Vector2.ZERO, Vector2.ZERO)
+			if _root_panel:
+				rect = _root_panel.get_global_rect()
+			print("[DiceGameUI._input] mouse_down at %s state=%s visible=%s panel_rect=%s" % [
+				mb.position, State.keys()[_state], visible, rect
+			])
+
+
 # =============================================================
 # OPTIONAL ART (lazy-loaded; missing files leave defaults in place)
 # =============================================================
