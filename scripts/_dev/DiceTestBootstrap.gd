@@ -13,7 +13,7 @@ const OPPONENT_PATH: String = "res://assets/dice/opponents/tomlin_stub.tres"
 const STARTING_COIN: int = 100
 const DICE_GAME_UI_SCRIPT: GDScript = preload("res://scripts/ui/DiceGameUI.gd")
 
-var _active_ui: CanvasLayer = null
+var _active_ui: Control = null
 var _coin_label: Label = null
 
 
