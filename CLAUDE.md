@@ -283,6 +283,48 @@ Do not write shell commands that try to run Godot headlessly — there is no suc
 
 ## Critical GDScript patterns
 
+**UI buttons / sliders need MANUAL `_input` dispatch — do NOT rely on `Button.pressed` or `HSlider` drag:**
+```gdscript
+# WRONG — these signals never fire in this project. Godot's GUI input
+# dispatch is silently disabled (Dialogic's input subsystem consumes
+# InputEventMouseButton globally). Layout, anchors, mouse_filter, even
+# CanvasLayer-vs-Control roots are NOT the cause — events simply never
+# enter the GUI input pipeline. See LESSONS_LEARNED.md 2026-05-03 + 2026-05-09.
+my_button.pressed.connect(_on_pressed)
+my_slider.value_changed.connect(_on_slider_changed)
+
+# RIGHT — every UI scene in this project (PauseMenu, MainMenu, Settings,
+# DiceGameUI) implements its own _input handler and routes clicks via
+# get_global_rect().has_point(pos). Reference impl: PauseMenu._input /
+# _dispatch_click / _hits.
+func _input(event: InputEvent) -> void:
+    if not (event is InputEventMouseButton):
+        return
+    var mb: InputEventMouseButton = event
+    if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+        return
+    _dispatch_click(mb.position)
+
+func _dispatch_click(pos: Vector2) -> void:
+    if _hits(_my_button, pos):
+        _on_my_button_pressed()
+        return
+    # Slider: translate click X into value
+    if _my_slider.visible and _my_slider.get_global_rect().has_point(pos):
+        var rect := _my_slider.get_global_rect()
+        var t: float = clampf((pos.x - rect.position.x) / rect.size.x, 0.0, 1.0)
+        _my_slider.value = _my_slider.min_value + t * (_my_slider.max_value - _my_slider.min_value)
+        return
+
+func _hits(ctrl: Control, pos: Vector2) -> bool:
+    if ctrl == null or not ctrl.visible:
+        return false
+    if ctrl is Button and (ctrl as Button).disabled:
+        return false
+    return ctrl.get_global_rect().has_point(pos)
+```
+This is non-negotiable. Don't spend a single commit debugging "why doesn't `Button.pressed` fire" — that ship sailed in May 2026. Implement manual dispatch from the first commit on any new UI.
+
 **Autoload check before calling Dialogic:**
 ```gdscript
 if get_node_or_null("/root/Dialogic"):
