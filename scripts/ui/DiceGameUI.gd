@@ -136,8 +136,6 @@ func _ready() -> void:
 	_build_audio()
 	_apply_optional_art()
 	_set_state(State.IDLE)
-	# Trace where events die in the container chain.
-	gui_input.connect(func(e): _trace("ui_root", e))
 
 
 func _resize_to_viewport() -> void:
@@ -959,6 +957,91 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if _state == State.PLAYER_ROLL or _state == State.OPPONENT_ROLL:
 			return  # ignore mid-roll
 		_on_leave_pressed()
+
+
+# =============================================================
+# MANUAL CLICK DISPATCH
+# =============================================================
+# This project's GUI dispatch is silently disabled (likely Dialogic's
+# input subsystem listens to LMB events globally and consumes them
+# before they reach Control._gui_input). PauseMenu, MainMenu, and
+# Settings all bypass Godot's gui_input routing the same way: they
+# implement _input, hit-test buttons against get_global_rect(), and
+# fire pressed signals manually. We do the same here.
+
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb: InputEventMouseButton = event
+	if not mb.pressed:
+		return
+	if mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if _state == State.PLAYER_ROLL or _state == State.OPPONENT_ROLL:
+		return  # mid-roll: ignore clicks until dice settle
+	_dispatch_click(mb.position)
+
+
+func _dispatch_click(pos: Vector2) -> void:
+	# Always-available controls first.
+	if _hits(_leave_btn, pos):
+		_on_leave_pressed()
+		return
+
+	# State-specific controls.
+	match _state:
+		State.ANTE:
+			# Slider — click sets value to ratio across the track.
+			if _wager_slider != null and _wager_slider.visible \
+					and _wager_slider.get_global_rect().has_point(pos):
+				_set_slider_from_click(pos)
+				return
+			if _hits(_confirm_wager_btn, pos):
+				_on_confirm_wager_pressed()
+				return
+
+		State.PLAYER_LOCK:
+			# Dice card buttons — clicking toggles the lock for that die.
+			for i in _die_card_buttons.size():
+				if _hits(_die_card_buttons[i], pos):
+					_on_die_card_pressed(i)
+					return
+			if _hits(_reroll_btn, pos):
+				_on_reroll_pressed()
+				return
+			if _hits(_reveal_now_btn, pos):
+				_on_reveal_now_pressed()
+				return
+
+		State.REVEAL:
+			if _hits(_continue_btn, pos):
+				_on_continue_pressed()
+				return
+
+
+func _hits(ctrl: Control, pos: Vector2) -> bool:
+	# True if pos is inside the Control's global rect AND it's currently
+	# visible and (for Buttons) not disabled.
+	if ctrl == null or not ctrl.visible:
+		return false
+	if ctrl is Button and (ctrl as Button).disabled:
+		return false
+	return ctrl.get_global_rect().has_point(pos)
+
+
+func _set_slider_from_click(pos: Vector2) -> void:
+	# Translate click position to slider value.
+	var rect: Rect2 = _wager_slider.get_global_rect()
+	if rect.size.x <= 0.0:
+		return
+	var t: float = clampf((pos.x - rect.position.x) / rect.size.x, 0.0, 1.0)
+	var range: float = _wager_slider.max_value - _wager_slider.min_value
+	var new_val: float = _wager_slider.min_value + t * range
+	# Snap to step.
+	if _wager_slider.step > 0.0:
+		new_val = round(new_val / _wager_slider.step) * _wager_slider.step
+	_wager_slider.value = new_val
+	# value_changed fires automatically when value changes.
 
 
 # (removed _input on DiceGameUI — testing whether it was suppressing
