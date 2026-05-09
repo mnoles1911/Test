@@ -192,7 +192,9 @@ func _build_ui() -> void:
 	_dim = ColorRect.new()
 	_dim.color = Color(0.0, 0.0, 0.0, 0.82)
 	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	# IGNORE — the dim is purely visual. Modal-blocking comes from the
+	# panel's STOP filter. STOP on dim was a suspect for swallowing clicks.
+	_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_dim)
 
 	_root_panel = PanelContainer.new()
@@ -326,6 +328,7 @@ func _build_dice_cards(parent: VBoxContainer) -> void:
 		btn.text = ""
 		_apply_card_style(btn, false)
 		btn.pressed.connect(_on_die_card_pressed.bind(i))
+		btn.gui_input.connect(_debug_log_gui.bind("die_card_%d" % i))
 		row.add_child(btn)
 		_die_card_buttons.append(btn)
 
@@ -426,6 +429,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_wager_slider.add_theme_stylebox_override("grabber_area", fill_box)
 	_wager_slider.add_theme_stylebox_override("grabber_area_highlight", fill_box)
 	_wager_slider.value_changed.connect(_on_wager_slider_changed)
+	_wager_slider.gui_input.connect(_debug_log_gui.bind("slider"))
 	_ante_hbox.add_child(_wager_slider)
 
 	# Wager value sits on a parchment card. The card is a sibling
@@ -456,6 +460,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_confirm_wager_btn.text = "Ante Up"
 	UIStyles.apply_menu_button(_confirm_wager_btn)
 	_confirm_wager_btn.pressed.connect(_on_confirm_wager_pressed)
+	_confirm_wager_btn.gui_input.connect(_debug_log_gui.bind("ante_up"))
 	_ante_hbox.add_child(_confirm_wager_btn)
 
 	# --- LOCK row: Reroll, Reveal Now
@@ -533,6 +538,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_leave_btn.text = "Leave Table"
 	UIStyles.apply_menu_button(_leave_btn)
 	_leave_btn.pressed.connect(_on_leave_pressed)
+	_leave_btn.gui_input.connect(_debug_log_gui.bind("leave"))
 	parent.add_child(_leave_btn)
 
 
@@ -1014,6 +1020,17 @@ func _play_ambient() -> void:
 func _stop_ambient() -> void:
 	if _ambient_player:
 		_ambient_player.stop()
+
+
+func _debug_log_gui(event: InputEvent, label: String) -> void:
+	# Bound to gui_input on each interactive control. Fires for every
+	# event that REACHES the control, regardless of whether the control's
+	# pressed/value_changed signal also fires. Lets us localize whether
+	# clicks reach a control at all.
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed:
+			print("[gui_input:%s] mouse_down at %s button=%d" % [label, mb.position, mb.button_index])
 
 
 func _flash_win_glow() -> void:
