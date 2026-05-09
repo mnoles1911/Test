@@ -122,17 +122,26 @@ var _ambient_player: AudioStreamPlayer
 
 func _ready() -> void:
 	# This Control lives inside a CanvasLayer (set up by the bootstrap).
-	# IGNORE on the root: the Control's job is to be a layout root for
-	# the modal, not to capture clicks itself. Children handle clicks.
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Use TOP_LEFT anchors + explicit size so Godot doesn't recompute
+	# size from anchors against a parent that has no Control-style
+	# layout (CanvasLayer is a Node, not a Control).
+	# IGNORE filter so the modal Control itself doesn't capture clicks;
+	# children (panel + buttons) do.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Inside a CanvasLayer, anchor sizing resolves against the viewport
-	# automatically — no need to manually set size.
+	set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_resize_to_viewport()
+	get_viewport().size_changed.connect(_resize_to_viewport)
 	_rng.randomize()
 	_build_ui()
 	_build_audio()
 	_apply_optional_art()
 	_set_state(State.IDLE)
+
+
+func _resize_to_viewport() -> void:
+	var vp_size: Vector2 = get_viewport_rect().size
+	position = Vector2.ZERO
+	size = vp_size
 
 
 # =============================================================
@@ -209,14 +218,20 @@ func _build_ui() -> void:
 	_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_dim)
 
+	# CenterContainer fills the screen and auto-centers its single child.
+	# This avoids hand-computed (-540, -440) anchor offsets that broke
+	# layout when the parent's size wasn't well-defined.
+	var center_holder: CenterContainer = CenterContainer.new()
+	center_holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(center_holder)
+
 	_root_panel = PanelContainer.new()
 	_root_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	_root_panel.custom_minimum_size = Vector2(1080, 880)
-	_root_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_root_panel.position = Vector2(-540, -440)
 	# Debug: log any event that reaches the panel itself.
 	_root_panel.gui_input.connect(_debug_log_gui.bind("ROOT_PANEL"))
-	add_child(_root_panel)
+	center_holder.add_child(_root_panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 14)
