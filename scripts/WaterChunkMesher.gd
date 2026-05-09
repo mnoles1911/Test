@@ -189,10 +189,16 @@ const SOURCE_REGION_MAX_SUBDIV: int = 256
 # coastline at the horizon doesn't appear to float over void. The
 # chunked mesh overdraws the inner 96 m so the player only "sees"
 # the horizon plane in the 96 m–300 m ring.
-const SOURCE_REGION_VISIBLE_HORIZON_M: float = 3000.0
-# Was 300 m. Bumped for the Copper Isles mountaintop vista — from a
-# 500 m peak the player needs to see the ocean stretching kilometres
-# in every direction, not a tiny 600 m × 600 m puddle around them.
+const SOURCE_REGION_VISIBLE_HORIZON_M: float = 5000.0
+# Was 300 m → 3000 m → 5000 m (2026-05-09). Bumped to 5000 m so the
+# 10 km × 10 km plane covers the full 5 km × 5 km playable area
+# plus the 8 km × 8 km skirt extent regardless of where the player
+# spawns inside the map. Previously at 3000 m the plane Z extent
+# from spawn (-88, 500, 740) was Z = -2260..3740 — short of the
+# Z = -2500 map edge by ~240 m, leaving a visible water gap at the
+# southern boundary. From a Copper Isles mountaintop the player
+# needs to see ocean stretching past the playable boundary in every
+# direction.
 # 3000 m gives a 6 km × 6 km plane, large enough to cover the full
 # 5 km Copper Isles map regardless of player position. Cost is
 # nothing — the plane is two triangles regardless of size.
@@ -267,6 +273,7 @@ func _build_debug_water_material(is_horizon: bool) -> StandardMaterial3D:
 	mat.albedo_color = Color(0.10, 0.50, 0.90)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.disable_fog = true
 	if is_horizon:
 		mat.cull_mode = BaseMaterial3D.CULL_BACK
 		mat.render_priority = -1
@@ -818,6 +825,26 @@ func _rebuild_horizon_plane() -> void:
 	inst.global_position = Vector3(0.0, horizon_y, 0.0)
 	_source_region_planes.append(inst)
 	print("[WaterChunkMesher] horizon plane built at world Y=%.2f" % horizon_y)
+	# Diagnostic dump: plane mesh dimensions, material identity, and
+	# scene-tree path. If the plane ever stops appearing, this tells
+	# us whether construction succeeded, where it lives, and what
+	# material it's actually wearing. Fires once per build.
+	var plane_mesh: PlaneMesh = inst.mesh as PlaneMesh
+	if plane_mesh != null:
+		print("[WaterChunkMesher]   plane size=(%.1f, %.1f) m  subdiv=%d" % [
+			plane_mesh.size.x, plane_mesh.size.y, plane_mesh.subdivide_width,
+		])
+	var mat: Material = inst.material_override
+	if mat is StandardMaterial3D:
+		var sm: StandardMaterial3D = mat
+		print("[WaterChunkMesher]   material albedo=(%.2f, %.2f, %.2f, %.2f)  cull=%d  shading=%d  no_depth_test=%s  disable_fog=%s  render_priority=%d" % [
+			sm.albedo_color.r, sm.albedo_color.g, sm.albedo_color.b, sm.albedo_color.a,
+			sm.cull_mode, sm.shading_mode, sm.no_depth_test, sm.disable_fog,
+			sm.render_priority,
+		])
+	print("[WaterChunkMesher]   tree path: %s  parent=%s" % [
+		inst.get_path(), str(inst.get_parent()),
+	])
 
 
 func _build_horizon_plane() -> MeshInstance3D:

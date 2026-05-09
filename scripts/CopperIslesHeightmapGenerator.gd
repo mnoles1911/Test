@@ -306,17 +306,86 @@ func _ensure_image() -> Image:
 	# ~1-2 s on a modern CPU. Done once on the first chunk-generation
 	# call (no editor freeze). Future bake invocations reuse the cache.
 	var max_g: float = 0.0
+	var min_g: float = 1.0
+	var sum_g: float = 0.0
+	# OCEAN THRESHOLD with the linear gray-to-Y mapping (post-2026-05-09
+	# refactor): ground_y_voxels = gray * elevation_above_at_white_voxels.
+	# A pixel is ocean iff its ground voxel-Y is below sea_level_voxels,
+	# i.e. gray < sea_level_voxels / elevation_above_at_white_voxels.
+	var elev_above: int = maxi(elevation_above_at_white_voxels, 1)
+	var ocean_threshold: float = float(sea_level_voxels) / float(elev_above)
+	var below_thresh: int = 0
+	var hist_buckets: PackedInt32Array = PackedInt32Array()
+	hist_buckets.resize(10)
 	for y_scan in _heightmap_h:
 		for x_scan in _heightmap_w:
-			var g: float = img.get_pixel(x_scan, y_scan).r
+			var g: float = clampf(img.get_pixel(x_scan, y_scan).r, 0.0, 1.0)
 			if g > max_g:
 				max_g = g
+			if g < min_g:
+				min_g = g
+			sum_g += g
+			if g < ocean_threshold:
+				below_thresh += 1
+			var bucket: int = clampi(int(g * 10.0), 0, 9)
+			hist_buckets[bucket] += 1
+	var total_pixels: int = _heightmap_h * _heightmap_w
+	var avg_g: float = sum_g / float(total_pixels)
+	var ocean_pct: float = 100.0 * float(below_thresh) / float(total_pixels)
 	_max_gray = clampf(max_g, 0.0, 1.0)
 	_max_ground_y_voxels = _gray_to_ground_y(_max_gray)
 	_max_ground_y_computed = true
 	print("[CopperIsles] Loaded heightmap %dx%d from %s  (max_gray=%.4f → max_ground_y=%d vox)" % [
 		_heightmap_w, _heightmap_h, heightmap_path, _max_gray, _max_ground_y_voxels,
 	])
+	print("[CopperIsles] heightmap stats: min_gray=%.4f  max_gray=%.4f  avg_gray=%.4f" % [min_g, max_g, avg_g])
+	print("[CopperIsles] ocean threshold (gray<%.4f) covers %.2f%% of pixels (%d / %d)" % [
+		ocean_threshold, ocean_pct, below_thresh, total_pixels,
+	])
+	var hist_str := ""
+	for i in 10:
+		var pct: float = 100.0 * float(hist_buckets[i]) / float(total_pixels)
+		hist_str += "  [%.1f-%.1f]:%.1f%%" % [i * 0.1, (i + 1) * 0.1, pct]
+	print("[CopperIsles] gray histogram:%s" % hist_str)
+	# ASCII heightmap dump: 32x32 grid sampled across the full image.
+	# Each character covers ~256 heightmap pixels, ~156 m world. Legend:
+	#   '~'  ocean (gray < threshold)
+	#   '.'  low land (gray < 2*threshold, just above sea level)
+	#   ':'  mid (gray < 0.1)
+	#   '+'  hills (gray < 0.2)
+	#   '#'  mountain (gray >= 0.2)
+	# The grid origin (0,0 in ASCII) is the heightmap's (-X, -Z) corner;
+	# the grid centre is world (0, 0) where the player spawns.
+	print("[CopperIsles] ASCII heightmap (32x32; ~ocean . low : mid + hill # mountain):")
+	var grid_size: int = 32
+	var step_x: int = _heightmap_w / grid_size
+	var step_y: int = _heightmap_h / grid_size
+	# Bands chosen relative to ocean_threshold so they remain meaningful
+	# at any sea level: shallow above ocean = up to ~2× ocean threshold
+	# (or "barely above water"); lowland up to 4×; hill up to 6×;
+	# mountain everything taller. With sea_level_voxels=900 and
+	# elev_above=15000, ocean_threshold=0.06 → bands at 0.06, 0.12,
+	# 0.24, 0.36, ∞.
+	var band_shallow: float = ocean_threshold * 2.0
+	var band_low: float = ocean_threshold * 4.0
+	var band_hill: float = ocean_threshold * 6.0
+	for gy in grid_size:
+		var row := ""
+		for gx in grid_size:
+			var px: int = gx * step_x + step_x / 2
+			var py: int = gy * step_y + step_y / 2
+			var g: float = clampf(img.get_pixel(px, py).r, 0.0, 1.0)
+			var ch: String = "#"
+			if g < ocean_threshold:
+				ch = "~"
+			elif g < band_shallow:
+				ch = "."
+			elif g < band_low:
+				ch = ":"
+			elif g < band_hill:
+				ch = "+"
+			row += ch
+		print("  " + row)
 	return img
 
 
@@ -354,22 +423,31 @@ func _sample_gray(world_x: int, world_z: int) -> float:
 
 
 func _gray_to_ground_y(gray: float) -> int:
-	# Split the gray range at sea_level_gray. Above maps linearly to
-	# 0..elevation_above_at_white_voxels above sea level; below maps
-	# linearly to 0..elevation_below_at_black_voxels below sea level.
+	# REFACTORED 2026-05-09: simple linear mapping from gray ∈ [0, 1]
+	# to ground_y ∈ [0, elevation_above_at_white_voxels]. Sea level
+	# is now an INDEPENDENT visual concept — it does NOT enter this
+	# formula at all.
+	#
+	# Contract:
+	#   gray = 0.0 → ground at world Y = 0 (lowest ocean floor)
+	#   gray = 1.0 → ground at world Y = elevation_above_at_white_voxels / 6
+	#                (= 2500 m at the default of 15000 voxels)
+	#
+	# Anything below sea_level_voxels is automatically ocean (no
+	# separate threshold needed). Raising or lowering sea_level_voxels
+	# only moves the water plane — terrain Y never shifts.
+	#
+	# The legacy `sea_level_gray` and `elevation_below_at_black_voxels`
+	# fields are now ignored. They remain on the resource for backward
+	# compatibility with old .tres files, but the values do not affect
+	# generation. See design/COPPER_ISLES_BAKE_NOTES.md "World scale
+	# refactor" for the full rationale.
 	#
 	# Gray is clamped to 0..1 because Gaea's EXR exports can carry HDR
-	# values outside the standard 0..1 range (linear EXRs, raw-meters
-	# encodings, etc.). Without the clamp those would blow past the
-	# elevation caps and produce sky-high or below-floor terrain.
+	# values outside the standard 0..1 range. Without the clamp those
+	# would blow past the elevation cap.
 	var g: float = clampf(gray, 0.0, 1.0)
-	if g >= sea_level_gray:
-		var span_up: float = maxf(1.0 - sea_level_gray, 0.001)
-		var t_up: float = (g - sea_level_gray) / span_up
-		return sea_level_voxels + int(round(t_up * elevation_above_at_white_voxels))
-	var span_dn: float = maxf(sea_level_gray, 0.001)
-	var t_dn: float = (sea_level_gray - g) / span_dn
-	return sea_level_voxels - int(round(t_dn * elevation_below_at_black_voxels))
+	return int(round(g * float(elevation_above_at_white_voxels)))
 
 
 # =============================================================

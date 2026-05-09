@@ -50,7 +50,8 @@ Completed milestones (see git log for full PR detail; the autoload section below
 - **Milestone 5-3D (2026-05-03):** destructible-voxel slice — VoxelLodTerrain + SQLite deltas, CubicHeightmapGenerator, edit/gravity/water managers, NoEditZones, pickaxe + explosives, swimming, day/night.
 - **Milestone 6-3D Weather (2026-05-04):** WeatherManager — six-state machine, 30 s transitions, fog/wind/particles/lightning, location profiles, proximity zones.
 - **Voxel water refactor (2026-05-05):** Area3D water replaced with voxel-cell flow sim (`WaterFlowManager` 4 Hz tick, `WaterChunkMesher` transparent surfaces, `WORLD_GENERATOR_VERSION = 11`).
-- **Copper Isles demo (2026-05-06):** Heightmap-driven generator (`CopperIslesHeightmapGenerator.gd`) for the 5 km × 5 km Copper Isles archipelago; per-voxel water bytes written into `CHANNEL_DATA5` at gen time (no AABB flood heuristic); `WORLD_GENERATOR_VERSION = 13`; bake pipeline (`scenes/_dev/BakeWorld.tscn` + `WorldBakeController.gd` + `SkirtBaker.gd`) for streaming the full map into a baseline SQLite; `HorizonSkirt.gd` draws distant peaks beyond the 250 m view distance. Test scene: `scenes/CopperIslesTest.tscn`.
+- **Copper Isles demo (2026-05-06):** Heightmap-driven generator (`CopperIslesHeightmapGenerator.gd`) for the 5 km × 5 km Copper Isles map; per-voxel water bytes written into `CHANNEL_DATA5` at gen time (no AABB flood heuristic); `WORLD_GENERATOR_VERSION = 13`; bake pipeline (`scenes/_dev/BakeWorld.tscn` + `WorldBakeController.gd` + `SkirtBaker.gd`) for streaming the full map into a baseline SQLite; `HorizonSkirt.gd` draws distant peaks beyond the 250 m view distance. Test scene: `scenes/CopperIslesTest.tscn`.
+  - **Heightmap divergence from lore (verified 2026-05-09):** the delivered EXR is a **single irregular continent** with ocean only at the perimeter (~24% ocean, concentrated on the west and east edges), NOT the five-large-island archipelago specified in `lore/copper_isles/GEOGRAPHY.md` and `design/COPPER_ISLES_DEMO_HEIGHTMAP.md`. Sea level Y=200 m world; central spawn (0, Y, 0) sits on a hill at world Y≈414–668 m, ~2 km from the nearest coastline. The heightmap is fit-for-purpose for tech validation (cache, water rendering, bake pipeline) but does not deliver the playable Copper Isles geography. A re-source of the EXR is required before the demo matches its narrative spec.
 
 Outstanding pickups: low-poly Blender Roland model (still placeholder green box), MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio OGGs, region-boundary profile auto-swap. See `DESIGNER_TODO.md` and `design/LESSONS_LEARNED.md`.
 
@@ -175,7 +176,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/TTS_PIPELINE.md — AI-assisted draft → ElevenLabs render → Dialogic handoff (bulk vs craft pipelines, filename + manifest contract)
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
-- design/COPPER_ISLES_DEMO_HEIGHTMAP.md — AI prompt + per-island terrain spec for the 5 km × 5 km Copper Isles archipelago heightmap; Godot import notes
+- design/COPPER_ISLES_DEMO_HEIGHTMAP.md — AI prompt + per-island terrain spec for the 5 km × 5 km Copper Isles heightmap (specifies an archipelago; current EXR delivers a single continent — see "Heightmap divergence from lore" in milestone history); Godot import notes
 - design/COPPER_ISLES_BAKE_NOTES.md — Zylann GDExtension probe results (API behaviors verified at runtime), bake-pipeline design decisions and gotchas
 
 ## Current project state

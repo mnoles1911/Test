@@ -28,9 +28,24 @@ const QUAD_SIZE_M: float = 12.0
 # laughs. If perf hurts later we can mix-resolution (8 m inner,
 # 24 m outer ring).
 
-const Y_OFFSET_DOWN_M: float = 0.1
-# Tiny offset below true ground to break z-fighting against the live
-# LOD0 voxel mesh. 0.1 m is enough; bigger creates a visible seam.
+const Y_OFFSET_DOWN_M: float = 1.5
+# Larger offset 2026-05-08 because the previous 0.1 m was insufficient.
+# The voxel terrain is stair-stepped (cube voxels), and the skirt's
+# flat triangulated surface interpolates BETWEEN voxel ledges. With a
+# 0.1 m drop the skirt poked up through some LOD0 cubes on slopes
+# (visible as smooth light bands cutting through chunky terrain).
+# 1.5 m drop puts the skirt safely below voxel cube tops at the ~16.7 cm
+# voxel size — never visible inside the streamed area but still close
+# enough to read as "ground" past view_distance where there's no
+# voxel mesh to compare to.
+
+const SKIRT_SAMPLE_MIN_NEIGHBOURHOOD: bool = true
+# When true, each skirt vertex is positioned at the MIN ground-Y of a
+# small neighbourhood around its sample coord, not the centre value.
+# Eliminates the stair-step pokethrough on slopes — the flat skirt
+# triangle ends up at or below every voxel top in that area, never
+# above. Costs four extra heightmap samples per vertex (cheap; only
+# hurts the bake-time scan, not runtime).
 
 const SLOPE_TO_ROCK_THRESHOLD: float = 0.35
 # Rise/run threshold above which we shift the vertex colour toward
@@ -83,6 +98,19 @@ static func bake_mesh(
 			var voxel_x: int = int(world_x * voxels_per_metre)
 			var voxel_z: int = int(world_z * voxels_per_metre)
 			var ground_voxels: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
+			# When SKIRT_SAMPLE_MIN_NEIGHBOURHOOD is true, sample 4
+			# additional points around the vertex (one quad-size
+			# step in each cardinal direction) and take the MIN.
+			# Result: the flat skirt triangle that connects this
+			# vertex to its neighbours sits at or below every voxel
+			# cube-top in the area — no pokethrough through LOD0.
+			if SKIRT_SAMPLE_MIN_NEIGHBOURHOOD:
+				var step: int = int(QUAD_SIZE_M * voxels_per_metre)
+				var n0: int = generator.get_ground_voxel_y_at(voxel_x + step, voxel_z)
+				var n1: int = generator.get_ground_voxel_y_at(voxel_x - step, voxel_z)
+				var n2: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z + step)
+				var n3: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z - step)
+				ground_voxels = mini(ground_voxels, mini(mini(n0, n1), mini(n2, n3)))
 			var ground_world_y: float = float(ground_voxels) / voxels_per_metre
 			heights[xi + zi * verts_x] = ground_world_y - Y_OFFSET_DOWN_M
 			# Vertex colour mirrors the generator's material bands,

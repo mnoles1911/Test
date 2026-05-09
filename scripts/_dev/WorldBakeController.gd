@@ -56,29 +56,54 @@ const TILE_SIZE_M: float = 30.0
 
 # Wait time at each viewer position (seconds) for Zylann to stream
 # everything within view_distance and persist it via
-# save_generator_output. With 8 worker threads (project.godot
-# voxel/threads/count/minimum=8) and the LOD pyramid extending out
-# to 8000 vox, Zylann typically resolves a tile's full LOD set in
-# 2-3 s. 4 s leaves margin without being wasteful. If chunks come
-# out missing in the cache (DIAG rate spikes during runtime
-# exploration), bump back to 5-6 s.
-const WAIT_PER_POSITION_S: float = 4.0
+# save_generator_output. Bumped 2026-05-08 from 4 → 6 to give the
+# larger view sphere (8000 vox / 1333 m, matched to runtime) time
+# to resolve all LODs. Per-tile chunk count is significantly higher
+# than at the old 1500-vox viewer because LOD4-6 are now in scope.
+# With 12 worker threads chunks usually finish in 3-4 s; 6 s leaves
+# margin for the slowest tiles.
+const WAIT_PER_POSITION_S: float = 6.0
 
 # Force a SQLite flush every N tiles. Crash safety + UI file-size
 # update cadence.
 const SAVE_EVERY_N_TILES: int = 8
 
-# When a column's max_ground_y is taller than this many world metres,
-# the walker adds extra vertical viewer placements to cover the
-# whole column. Originally 200 m, sized for the old 250 m
-# view_distance. With view_distance now = 8000 vox = 1333 m, a
-# single viewer position covers the entire vertical column of even
-# the tallest peak (~910 m at the new sea level) in one shot —
-# extra placements are pure overhead. Set effectively-infinite to
-# disable multi-vertical sweeps. Drop back to 200 if a future change
-# shrinks view_distance or pushes peaks past ~1000 m.
+# Tile classification + walker stop offsets.
+# Per design/COPPER_ISLES_BAKE_NOTES.md "Walker plan — surface-band,
+# ±30 m editing window" (2026-05-09). The player edits voxels almost
+# exclusively within ±30 m of the local ground surface; the bake
+# covers exactly that band per land tile, plus an upward margin for
+# scaffold/tower placements. LOD0 sphere radius is ≈21 m world
+# (lod_distance=128 vox at 1/6 scale), so two stops 42 m apart
+# overlap and bound a 60 m+ band cleanly.
+enum TileClass {
+	LAND,           # gray ≥ 2× ocean threshold; full surface band
+	COAST,          # narrow beach band; treat like land but use sea level as anchor
+	SHALLOW_OCEAN,  # below sea level, has land/coast neighbour within 1 tile
+	DEEP_OCEAN,     # below sea level, isolated → SKIP (horizon plane covers it)
+}
+
+# World-metre offsets relative to the anchor point for each class:
+#   LAND uses  ground+offset
+#   COAST + SHALLOW_OCEAN use  sea_level+offset
+const STOP_LAND_BELOW: float = -9.0    # ground − 9   covers ground−30..+12
+const STOP_LAND_ABOVE: float = 33.0    # ground + 33  covers ground+12..+54
+const STOP_COAST_LOW: float  = 5.0     # sea + 5      covers sea−16..+26
+const STOP_COAST_HIGH: float = 35.0    # sea + 35     covers sea+14..+56
+const STOP_SHALLOW: float    = 5.0     # sea + 5      single stop, covers sea−16..+26
+
+# Beach band: how many voxels above sea level still counts as COAST
+# rather than LAND. Mirrors generator.beach_y_threshold semantics —
+# kept generous so the walker uses the sea-level-anchored stops where
+# the visual sand band actually exists.
+const COAST_BAND_VOXELS_ABOVE_SEA: int = 12   # = 2 m world
+
+# Legacy multi-vertical knobs — retained for backward-compat with
+# code paths that may still reference them. The new classifier-driven
+# walker plan above renders these moot for the production bake. Don't
+# rely on these for sweep behaviour; use _vertical_positions_for_class.
 const MULTI_VERTICAL_THRESHOLD_M: float = 99999.0
-const VERTICAL_STEP_M: float = 200.0  # only used if MULTI_VERTICAL_THRESHOLD trips
+const VERTICAL_STEP_M: float = 200.0
 
 # Bake DB path. user:// because res:// is read-only at runtime; a
 # separate "Copy to assets/voxel" UI button shifts the finished DB
@@ -179,6 +204,12 @@ func _configure_terrain() -> void:
 		# Property is INT in this Zylann build; 0.1 truncates to 0.
 		# 100 = ~100 ms batching window for collision-shape rebuilds.
 		terrain.set("collision_update_delay", 100)
+	# mesh_block_size: 32 makes each rendered mesh cover 8× more voxels
+	# than the default 16. World3DBootstrap forces it programmatically;
+	# we mirror that here so bake and runtime configurations match.
+	if "mesh_block_size" in terrain:
+		terrain.set("mesh_block_size", 32)
+		print("[Bake] terrain.mesh_block_size set to 32 (actual=%s)" % terrain.get("mesh_block_size"))
 
 	# Belt-and-suspenders LOD enforcement. Override the .tscn values in
 	# case Godot editor's normalisation stripped them. Print the before/
@@ -286,15 +317,15 @@ func _build_ui() -> void:
 	_btn_diagnostics.pressed.connect(_on_run_diagnostics)
 	vbox.add_child(_btn_diagnostics)
 
-	_btn_bake_1km = _make_button("2a. Bake 1 km central  (validation; ~75 min)")
+	_btn_bake_1km = _make_button("2a. Bake 1 km central  (validation; ~110 min)")
 	_btn_bake_1km.pressed.connect(_on_bake_1km)
 	vbox.add_child(_btn_bake_1km)
 
-	_btn_bake_2km = _make_button("2b. Bake 2 km central  (working dev bake; ~5 hr)")
+	_btn_bake_2km = _make_button("2b. Bake 2 km central  (working dev bake; ~7 hr)")
 	_btn_bake_2km.pressed.connect(_on_bake_2km)
 	vbox.add_child(_btn_bake_2km)
 
-	_btn_bake_5km = _make_button("2c. Bake full 5 km  (overnight; ~31 hr / ~9 hr land-only+2s)")
+	_btn_bake_5km = _make_button("2c. Bake full 5 km  (overnight; ~47 hr / ~14 hr land-only+3s)")
 	_btn_bake_5km.pressed.connect(_on_bake_5km)
 	vbox.add_child(_btn_bake_5km)
 
@@ -538,7 +569,7 @@ func _on_bake_1km() -> void:
 func _on_bake_2km() -> void:
 	# 2 km × 2 km centred on world (0, 0). The "real" working bake
 	# for active dev — covers the central archipelago islands the
-	# player spawns in (Player3D.SPAWN_POSITION = (0, 300, 0)) plus
+	# player spawns in (Player3D.SPAWN_POSITION = (0, 500, 0)) plus
 	# enough surroundings to fly a few hundred metres in any
 	# direction without hitting uncached territory.
 	# At 30 m walker + 4 s/tile + ~4400 tiles ≈ ~5 hours.
@@ -575,14 +606,52 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		_running = false
 		return
 
-	# Pre-pass: scan the EXR (via the generator) at tile granularity.
-	# Builds an ordered list of tile centres that have any land. Skips
-	# pure-ocean tiles entirely (~40 % of the full 5 km region).
-	_set_status("Scanning EXR for land-bearing tiles...")
+	# Pre-pass: scan the EXR for tiles + classify each as
+	# LAND / COAST / SHALLOW_OCEAN / DEEP_OCEAN. Deep-ocean tiles are
+	# skipped (the horizon plane covers their visuals; first runtime
+	# dive triggers cache_generated_blocks fill on demand).
+	_set_status("Scanning EXR + classifying tiles...")
 	await get_tree().process_frame
-	var land_tiles: Array[Vector2] = _scan_land_tiles(generator, min_xz, max_xz)
-	_tiles_total = land_tiles.size()
-	_set_status("Found %d land-bearing tiles. Spawning phantom viewer." % _tiles_total)
+	var all_tiles: Array[Vector2] = _scan_land_tiles(generator, min_xz, max_xz)
+	# Pull sea-level + beach-band thresholds from the generator config,
+	# fall back to defaults if the property doesn't exist on this build.
+	var sea_level_voxels: int = 1200
+	if "sea_level_voxels" in generator:
+		sea_level_voxels = int(generator.get("sea_level_voxels"))
+	var coast_band_top_voxels: int = sea_level_voxels + COAST_BAND_VOXELS_ABOVE_SEA
+	if "beach_y_threshold" in generator:
+		coast_band_top_voxels = int(generator.get("beach_y_threshold"))
+	var sea_level_world_m: float = float(sea_level_voxels) / VOXELS_PER_METRE
+
+	var tile_classes: Dictionary = _classify_tiles(
+			generator, all_tiles, sea_level_voxels, coast_band_top_voxels)
+
+	# Build the actual walk list: skip DEEP_OCEAN tiles entirely.
+	var bake_tiles: Array[Vector2] = []
+	var counts: Dictionary = {
+		TileClass.LAND: 0,
+		TileClass.COAST: 0,
+		TileClass.SHALLOW_OCEAN: 0,
+		TileClass.DEEP_OCEAN: 0,
+	}
+	for tile in all_tiles:
+		var c: int = tile_classes[tile]
+		counts[c] += 1
+		if c != TileClass.DEEP_OCEAN:
+			bake_tiles.append(tile)
+	_tiles_total = bake_tiles.size()
+	_set_status("Tile classification: %d LAND, %d COAST, %d SHALLOW, %d DEEP (skipped). Walking %d tiles." % [
+		counts[TileClass.LAND], counts[TileClass.COAST],
+		counts[TileClass.SHALLOW_OCEAN], counts[TileClass.DEEP_OCEAN],
+		_tiles_total,
+	])
+	print("[Bake] sea_level world Y=%.1f m  coast band top vox=%d" % [
+		sea_level_world_m, coast_band_top_voxels])
+	print("[Bake] tile classes: LAND=%d  COAST=%d  SHALLOW=%d  DEEP=%d  (skipped DEEP, baking %d / %d)" % [
+		counts[TileClass.LAND], counts[TileClass.COAST],
+		counts[TileClass.SHALLOW_OCEAN], counts[TileClass.DEEP_OCEAN],
+		_tiles_total, all_tiles.size(),
+	])
 	await get_tree().process_frame
 
 	# Phantom viewer.
@@ -596,12 +665,20 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		_running = false
 		return
 	if "view_distance" in _viewer:
-		_viewer.view_distance = 1500
+		# Phantom viewer view_distance MUST match (or exceed) the
+		# runtime player's view_distance, or the bake won't generate
+		# chunks at LODs whose outer ring exceeds 1500 vox. With
+		# runtime view_distance = 8000 vox, the previous 1500 captured
+		# LODs 0-3 fully but missed LOD4 (radius 2048 vox), LOD5 (4096),
+		# LOD6 (8192). Those chunks cache-missed at runtime → generator
+		# fired at L4-L7 unnecessarily. Matching to 8000 makes each
+		# bake tile load all LODs the runtime will request.
+		_viewer.view_distance = 8000
 	add_child(_viewer)
 
 	# Walk.
 	var terrain := get_node_or_null(voxel_terrain_path)
-	for tile_center in land_tiles:
+	for tile_center in bake_tiles:
 		if _cancel_requested:
 			break
 		while _pause_requested:
@@ -609,12 +686,14 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		_current_tile_xz = tile_center
 		var tile_start_ms: int = Time.get_ticks_msec()
 
-		# Compute vertical positions for this tile based on max_ground.
+		# Compute vertical positions based on tile classification.
+		var tile_class: int = tile_classes[tile_center]
 		var voxel_x: int = int(tile_center.x * VOXELS_PER_METRE)
 		var voxel_z: int = int(tile_center.y * VOXELS_PER_METRE)
-		var max_ground_voxels: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
-		var max_ground_world_m: float = float(max_ground_voxels) / VOXELS_PER_METRE
-		var positions: Array[float] = _vertical_positions_for_tile(max_ground_world_m)
+		var ground_voxels: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
+		var ground_world_m: float = float(ground_voxels) / VOXELS_PER_METRE
+		var positions: Array[float] = _vertical_positions_for_class(
+				tile_class, ground_world_m, sea_level_world_m)
 
 		for y_world in positions:
 			if _cancel_requested:
@@ -659,23 +738,87 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		])
 
 
-func _vertical_positions_for_tile(max_ground_world_m: float) -> Array[float]:
-	# Returns the list of viewer Y positions to visit for this tile.
-	# For low islands one position suffices (view_distance covers the
-	# whole vertical column). Tall peaks need multiple positions
-	# stepping up at VERTICAL_STEP_M increments.
+func _vertical_positions_for_class(
+		tile_class: int,
+		ground_world_m: float,
+		sea_level_world_m: float
+) -> Array[float]:
+	# Returns the list of viewer Y positions to visit for this tile,
+	# parameterised by tile class. See TileClass enum and the STOP_*
+	# constants for the rationale. Deep ocean returns an empty array
+	# (skipped — horizon plane covers visuals; first dive at runtime
+	# triggers cache_generated_blocks fill).
 	var positions: Array[float] = []
-	if max_ground_world_m <= MULTI_VERTICAL_THRESHOLD_M:
-		# Single position: midway between sea floor and peak. View
-		# sphere reaches well above peak and well below sea floor.
-		positions.append(max(0.0, max_ground_world_m * 0.5))
-	else:
-		# Multi-position: step from base to peak at VERTICAL_STEP_M.
-		var y: float = 0.0
-		while y <= max_ground_world_m + VERTICAL_STEP_M:
-			positions.append(y)
-			y += VERTICAL_STEP_M
+	match tile_class:
+		TileClass.LAND:
+			positions.append(ground_world_m + STOP_LAND_BELOW)
+			positions.append(ground_world_m + STOP_LAND_ABOVE)
+		TileClass.COAST:
+			positions.append(sea_level_world_m + STOP_COAST_LOW)
+			positions.append(sea_level_world_m + STOP_COAST_HIGH)
+		TileClass.SHALLOW_OCEAN:
+			positions.append(sea_level_world_m + STOP_SHALLOW)
+		TileClass.DEEP_OCEAN:
+			pass  # skipped
 	return positions
+
+
+func _classify_tiles(
+		generator: Resource,
+		tiles: Array[Vector2],
+		sea_level_voxels: int,
+		coast_band_top_voxels: int
+) -> Dictionary:
+	# Classifies every tile in the bake region. Two passes:
+	#   1. Per-tile ground-Y vs sea level: LAND / COAST / OCEAN(provisional)
+	#   2. For each ocean tile, check 8 neighbours. If any neighbour is
+	#      LAND or COAST, promote to SHALLOW_OCEAN; else DEEP_OCEAN.
+	# Tiles outside the bake region are unknown — edge ocean tiles that
+	# border land beyond the region get classified as DEEP, which is a
+	# minor over-skip but acceptable.
+	var classes: Dictionary = {}
+	# Pass 1
+	for tile in tiles:
+		var voxel_x: int = int(tile.x * VOXELS_PER_METRE)
+		var voxel_z: int = int(tile.y * VOXELS_PER_METRE)
+		var ground: int = generator.get_ground_voxel_y_at(voxel_x, voxel_z)
+		if ground < sea_level_voxels:
+			classes[tile] = TileClass.SHALLOW_OCEAN  # provisional
+		elif ground < coast_band_top_voxels:
+			classes[tile] = TileClass.COAST
+		else:
+			classes[tile] = TileClass.LAND
+	# Pass 2: ocean tiles with no land/coast neighbour become DEEP_OCEAN.
+	# Build a Vector2 lookup by quantising tile centres so cross-tile
+	# float arithmetic doesn't miss the dictionary key.
+	for tile in tiles:
+		if classes[tile] != TileClass.SHALLOW_OCEAN:
+			continue
+		var has_shore: bool = false
+		for dx in [-TILE_SIZE_M, 0.0, TILE_SIZE_M]:
+			for dz in [-TILE_SIZE_M, 0.0, TILE_SIZE_M]:
+				if dx == 0.0 and dz == 0.0:
+					continue
+				var n_key: Vector2 = Vector2(tile.x + dx, tile.y + dz)
+				if classes.has(n_key):
+					var nc: int = classes[n_key]
+					if nc == TileClass.LAND or nc == TileClass.COAST:
+						has_shore = true
+						break
+			if has_shore:
+				break
+		if not has_shore:
+			classes[tile] = TileClass.DEEP_OCEAN
+	return classes
+
+
+func _class_name(tile_class: int) -> String:
+	match tile_class:
+		TileClass.LAND: return "LAND"
+		TileClass.COAST: return "COAST"
+		TileClass.SHALLOW_OCEAN: return "SHALLOW"
+		TileClass.DEEP_OCEAN: return "DEEP"
+	return "?"
 
 
 func _scan_land_tiles(generator: Resource, min_xz: Vector2, max_xz: Vector2) -> Array[Vector2]:

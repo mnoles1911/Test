@@ -36,9 +36,36 @@ extends Node3D
 ## toggle_fly_mode(); we call it once at startup if requested.
 @export var start_in_fly_mode: bool = true
 
+## Optional per-scene spawn override. When this Vector3 is anything
+## other than (0, 0, 0), it OVERRIDES Player3D.SPAWN_POSITION for the
+## CopperIslesTest scene only — useful for water-rendering iteration
+## (set to a known coastline like (-2000, 500, 0) so launch puts you
+## right next to ocean instead of needing 40 s of flight). Leave at
+## (0, 0, 0) to defer to Player3D.SPAWN_POSITION.
+@export var spawn_position_override: Vector3 = Vector3.ZERO
+
 # Vertical drop height for the player on first spawn (dynamic mode
 # only — overridden when spawn_override_enabled is true).
 const SPAWN_HEIGHT_MARGIN_M: float = 30.0
+
+
+# =============================================================
+# DIAGNOSTIC TELEMETRY — ported from World3DBootstrap (2026-05-08)
+# =============================================================
+# 1 Hz [DIAG] line: player pos, speed, VoxelViewer pos, lag_xz.
+# Critical for diagnosing "I outwalked the streamer" symptoms in
+# fly-mode traversal of the baked world. F12 toggles Zylann's
+# built-in debug draws.
+
+@export var diag_enabled: bool = true
+
+var _diag_terrain: Object = null
+var _diag_player: Node3D = null
+var _diag_viewer: Node3D = null
+var _diag_acc_time: float = 0.0
+var _diag_last_player_pos: Vector3 = Vector3.ZERO
+var _diag_last_player_pos_valid: bool = false
+var _diag_debug_draw_on: bool = false
 
 
 func _enter_tree() -> void:
@@ -110,6 +137,13 @@ func _ready() -> void:
 		var gen: Resource = terrain.get("generator")
 		if gen != null and "require_heightmap_in_editor_only" in gen:
 			gen.set("require_heightmap_in_editor_only", true)
+		# Force-load the heightmap on bootstrap so its stats print
+		# immediately, even when the cache fully covers the spawn area
+		# and the generator never fires on-demand. Diagnostic only;
+		# the call is idempotent — if the EXR is already loaded, it
+		# returns the cached image.
+		if gen != null and gen.has_method("_ensure_image"):
+			gen.call("_ensure_image")
 
 	# Move per-edit voxel-block updates off the main thread; defer
 	# collision-shape rebuilds so they batch instead of firing on every
@@ -122,6 +156,14 @@ func _ready() -> void:
 	if "collision_update_delay" in terrain:
 		terrain.set("collision_update_delay", 100)
 		print("[CopperIslesTest] terrain.collision_update_delay set to 100 (actual=%s)" % terrain.get("collision_update_delay"))
+	# mesh_block_size: 32 makes each rendered mesh cover 8× more voxels
+	# than the default 16. Ported from World3DBootstrap — measurable
+	# improvement on per-chunk overhead during streaming. Doesn't
+	# invalidate the voxel cache (cache is keyed by data-block coords,
+	# not mesh-block coords). Readback flags any silent clamp.
+	if "mesh_block_size" in terrain:
+		terrain.set("mesh_block_size", 32)
+		print("[CopperIslesTest] terrain.mesh_block_size set to 32 (actual=%s)" % terrain.get("mesh_block_size"))
 
 	# Belt-and-suspenders LOD enforcement (mirror of WorldBakeController).
 	# These MUST match the bake scene or cached chunks are at the wrong
@@ -161,6 +203,94 @@ func _ready() -> void:
 # empty file at the user:// path.
 const WORKING_SQLITE_PATH: String = "user://copper_isles_test.sqlite"
 const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline.sqlite"
+
+
+# =============================================================
+# DIAG TELEMETRY (ported from World3DBootstrap)
+# =============================================================
+
+func _process(delta: float) -> void:
+	# 1 Hz [DIAG] line — player pos, speed, viewer pos, viewer lag.
+	# If lag_xz stays near 0 while chunks visibly fail to keep up, the
+	# bottleneck is throughput (worker threads, meshing, collision),
+	# not viewer placement. If lag_xz grows when moving fast, the
+	# viewer node isn't tracking the player — different bug.
+	if not diag_enabled:
+		return
+	_diag_acc_time += delta
+	if _diag_acc_time < 1.0:
+		return
+	var dt: float = _diag_acc_time
+	_diag_acc_time = 0.0
+	_diag_resolve_refs()
+	if _diag_player == null:
+		return
+	var p_pos: Vector3 = _diag_player.global_position
+	var speed: float = 0.0
+	if _diag_last_player_pos_valid:
+		var d: Vector3 = p_pos - _diag_last_player_pos
+		# Horizontal speed only — gravity drift would skew the number
+		# while idle / falling.
+		var d_xz: Vector2 = Vector2(d.x, d.z)
+		speed = d_xz.length() / dt
+	_diag_last_player_pos = p_pos
+	_diag_last_player_pos_valid = true
+	var v_pos: Vector3 = Vector3.INF
+	var lag_xz: float = -1.0
+	if _diag_viewer != null:
+		v_pos = _diag_viewer.global_position
+		var lag_v: Vector2 = Vector2(p_pos.x - v_pos.x, p_pos.z - v_pos.z)
+		lag_xz = lag_v.length()
+	# Pull terrain.get_statistics() if exposed (varies by Zylann build).
+	var stats: String = ""
+	if _diag_terrain != null and "get_statistics" in _diag_terrain:
+		var s = _diag_terrain.call("get_statistics")
+		if s is Dictionary:
+			for k in s.keys():
+				stats += " %s=%s" % [k, s[k]]
+	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m%s" % [
+		p_pos.x, p_pos.y, p_pos.z, speed,
+		v_pos.x, v_pos.y, v_pos.z, lag_xz,
+		stats,
+	])
+
+
+func _input(event: InputEvent) -> void:
+	# F12 toggles Zylann's built-in chunk visualisations:
+	#   - debug_draw_active_mesh_blocks (wireframes around active chunks)
+	#   - debug_draw_viewer_clipboxes (the streaming sphere)
+	#   - debug_draw_octree_nodes (LOD shells)
+	# F12 instead of F8 because F8 is Godot editor's "Stop Scene"
+	# shortcut; the editor intercepts it before the running game.
+	if not diag_enabled:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F12:
+			_diag_resolve_refs()
+			if _diag_terrain == null:
+				return
+			_diag_debug_draw_on = not _diag_debug_draw_on
+			_diag_terrain.set("debug_draw_enabled", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_active_mesh_blocks", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_viewer_clipboxes", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_octree_nodes", _diag_debug_draw_on)
+			var state_str: String = "ON" if _diag_debug_draw_on else "OFF"
+			print("[DIAG] terrain debug draws %s" % state_str)
+
+
+func _diag_resolve_refs() -> void:
+	# Lazy lookup — Player3D adds itself to the "player" group in its
+	# own _ready, which may race ahead of bootstrap _ready on some
+	# loads. Cache once everything's alive.
+	if _diag_terrain == null:
+		_diag_terrain = get_node_or_null(voxel_terrain_path)
+	if _diag_player == null:
+		var players: Array = get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			_diag_player = players[0] as Node3D
+	if _diag_viewer == null and _diag_player != null:
+		# VoxelViewer lives as a direct child of Player3D (Player3D.tscn).
+		_diag_viewer = _diag_player.get_node_or_null("VoxelViewer") as Node3D
 
 
 func _seed_from_baseline_if_needed() -> void:
@@ -203,12 +333,13 @@ func _seed_from_baseline_if_needed() -> void:
 # with REQUIRED_* constants in scripts/_dev/WorldBakeController.gd —
 # changing one without the other corrupts the cache contract.
 const REQUIRED_LOD_COUNT: int = 9
-# 9 LOD levels — at lod_distance=128 vox each level doubles its
-# outer radius, so LOD8 reaches 128 × 2^8 = 32 768 vox = 5.5 km
-# world. With view_distance at 8000 vox (≈ 1.33 km), in-use LODs
-# cap around LOD6; LOD7-8 are headroom. Trimmed 2026-05-07 from 14
-# because the upper shells sat permanently outside view_distance and
-# only added bookkeeping cost. Zylann's MAX_LOD is 24, well within.
+# 9 LOD levels — sized for view_distance = 8000 voxels.
+# At lod_distance=128 (Zylann max), LOD6 outer radius reaches 8192
+# vox (1366 m world), just past the 1333 m view_distance. LODs 7-8
+# are safety margin in case view_distance grows. LODs 9-13 would be
+# pure overhead — entirely outside any plausible view radius.
+# Earlier we set lod_count=14 thinking it was free; the diagnostic
+# now confirms it's just unused bookkeeping.
 # Lowering only affects future bakes; existing baselines baked at the
 # old count remain readable (Zylann ignores LOD slots above lod_count).
 const REQUIRED_LOD_DISTANCE: float = 128.0
@@ -305,21 +436,24 @@ func _terrain_scale(terrain: Node3D) -> float:
 # names are versioned and a stale read would silently put the player
 # inside the islands; hardcoding here is the safer option for a dev
 # scene.)
-# Sea level moved to voxel-Y 720 (= world Y 120 m at scale 1/6). MUST
+# Sea level at voxel-Y 1980 (= world Y 330 m at scale 1/6). MUST
 # match `sea_level_voxels` in assets/voxel/copper_isles_generator.tres.
-const GEN_SEA_LEVEL_VOXELS: float = 720.0
+#
+# REFACTORED 2026-05-09: this is now PURELY the water plane Y. Sea
+# level no longer anchors any terrain math — moving this value moves
+# only the visual water surface, not any voxel positions. Terrain Y
+# is fixed by the heightmap gray-to-Y mapping (see
+# CopperIslesHeightmapGenerator._gray_to_ground_y).
+const GEN_SEA_LEVEL_VOXELS: float = 1980.0
 const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
 
-# Override world-Y for the *visual* horizon plane only. The voxel
-# water in CHANNEL_DATA5 still lives at GEN_SEA_LEVEL_VOXELS (= world
-# Y 120 m at scale 1/6) — the chunked water mesh near the player
-# draws at that Y. Setting this constant higher than the voxel sea
-# raises ONLY the distant follow-player horizon plane. Trade-off:
-# there will be a vertical seam at the chunked-mesh boundary where
-# Y=120 close water meets Y=N far water. For full consistency,
-# instead bump sea_level_voxels in the generator .tres + matching
-# bootstrap constants and re-bake.
-const HORIZON_PLANE_OVERRIDE_Y: float = 155.0
+# Horizon plane override DISABLED 2026-05-08 — now that the
+# generator's sea level is at voxel-Y 1200 (= world Y 200 m), the
+# voxel sea and the follow-player horizon plane match exactly.
+# No seam, no override needed. Set to 0 means "use generator sea
+# level"; the bootstrap's _reseed_water_for_scale uses maxf() so a
+# zero override never wins.
+const HORIZON_PLANE_OVERRIDE_Y: float = 0.0
 
 
 func _reseed_water_for_scale(terrain_scale: float) -> void:
@@ -375,7 +509,15 @@ func _snap_player_above_terrain() -> void:
 			var already_flying: bool = "is_flying" in player and bool(player.get("is_flying"))
 			if not already_flying:
 				player.call("toggle_fly_mode")
-		player.global_position = Player3D.SPAWN_POSITION
+		# Per-scene override wins over Player3D.SPAWN_POSITION when set.
+		# Used for water-rendering iteration: set spawn_position_override
+		# to (-2000, 500, 0) in the Inspector to launch directly at the
+		# west coastline.
+		var spawn_pos: Vector3 = Player3D.SPAWN_POSITION
+		if spawn_position_override != Vector3.ZERO:
+			spawn_pos = spawn_position_override
+			print("[CopperIslesTest] spawn_position_override active: %s" % str(spawn_pos))
+		player.global_position = spawn_pos
 		if player is CharacterBody3D:
 			(player as CharacterBody3D).velocity = Vector3.ZERO
 		return

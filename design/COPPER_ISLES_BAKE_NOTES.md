@@ -12,6 +12,137 @@ here so future passes don't re-litigate the same questions.
 
 ---
 
+## World-scale refactor (2026-05-09)
+
+The generator's gray-to-ground-Y formula was conflating two
+separate concepts: "sea level" as the absolute Y of the water
+surface, and "sea level" as the anchor point for terrain elevation
+calculations. Every adjustment of `sea_level_voxels` was shifting
+the entire terrain Y range by the same amount, which made it
+impossible to tune water level visually without moving all the
+ground with it.
+
+The fix: a fixed linear gray-to-Y mapping that doesn't reference
+sea level at all.
+
+```
+ground_y_voxels = clampf(gray, 0, 1) * elevation_above_at_white_voxels
+```
+
+With the canonical config of `elevation_above_at_white_voxels =
+15000` and `terrain.transform.scale = 1/6`:
+
+| gray | ground (vox) | world Y |
+|---|---|---|
+| 0.0 | 0 | 0 m (lowest ocean floor) |
+| 0.05 | 750 | 125 m |
+| 0.12 | 1800 | 300 m (current sea level) |
+| 0.3159 | 4738 | 790 m (current actual peak) |
+| 1.0 | 15000 | 2500 m (theoretical max) |
+
+Sea level is now a pure visual / physics knob. `sea_level_voxels`
+sets where the water plane sits and which voxels are considered
+submerged; it does not enter the ground-Y calculation. Move it
+freely.
+
+The legacy `sea_level_gray` and `elevation_below_at_black_voxels`
+fields are kept on the resource for backward compatibility with
+existing .tres files but are now ignored by the generator. Setting
+them does nothing.
+
+**Cache invalidation:** any bake produced under the old formula
+has terrain Y values that don't match the new formula. Delete the
+user-side `copper_isles_test.sqlite` and re-bake. Fresh runtime
+generation works fine without a re-bake.
+
+---
+
+## Actual world layout (verified 2026-05-09)
+
+The shipped `copper_isles_heightmap.exr` does NOT deliver the five-island
+archipelago described in `lore/copper_isles/GEOGRAPHY.md` and the prompt in
+`design/COPPER_ISLES_DEMO_HEIGHTMAP.md`. An in-engine 32×32 ASCII heatmap of
+the heightmap on 2026-05-09 confirmed the actual layout:
+
+- **One large irregular continent** filling roughly the central 70 % of the
+  5 km × 5 km map, surrounded by ocean on all four sides
+- **~24 % of pixels are below the ocean threshold** (gray < 0.0157)
+- Ocean is concentrated on the **west and east** perimeters; thinner ocean
+  bands on north and south
+- **Central spawn (0, 0)** sits on the `+` (hill) band — gray 0.1–0.2 →
+  ground at world Y=414–668 m, ~2 km from the nearest coastline
+- **A mountain spine** runs roughly north–south, just east of map centre,
+  with peaks up to gray=0.3159 (world Y≈990 m)
+
+This is a fit-for-purpose validation world for the bake / cache / water
+pipeline, but the demo's narrative geography (five distinct islands with
+sailable straits between them) does not exist on disk. A re-source of the
+EXR is required before the lore matches the playable space. Until then,
+all bake-walker reasoning in this file assumes the single-continent layout
+above.
+
+### Tile-class distribution (single-continent)
+
+For walker stop-count math:
+
+| Class | Heightmap match | % of 5 km map | Notes |
+|---|---|---|---|
+| Land (lowland / hill / mountain) | gray ≥ 0.03 | ~76 % | Full ±30 m surface band |
+| Coast (beach band) | 0.016–0.03 | ~3 % | Treat like land |
+| Shallow ocean (within 156 m of land) | gray < 0.016, near land | ~6 % | Single Y stop |
+| Deep ocean | gray < 0.016, isolated | ~15 % | Skip — horizon plane covers visuals |
+
+---
+
+## Walker plan — surface-band, ±30 m editing window (2026-05-09)
+
+The player edits voxels almost exclusively within ±30 m of the local ground
+surface (mining a tunnel, building a tower, carving a trench). The bake walker
+covers exactly this band per land tile, plus a small upward margin where
+schematic placements (towers, scaffolds) extend higher. Anything outside the
+band falls through to runtime generation + `cache_generated_blocks` — the
+first visit pays a one-time generator cost, then it persists per-save-slot.
+
+| Class | Stops/tile | Walker Y positions | LOD0 coverage |
+|---|---|---|---|
+| Land | **2** | `local_ground − 9`, `local_ground + 33` | ground−30 to ground+54 |
+| Coast | 2 | `sea+5`, `sea+35` | sea−16 to sea+56 (catches surf + shallow bottom) |
+| Shallow ocean | 1 | `sea+5` | sea−16 to sea+26 |
+| Deep ocean | 0 | — | runtime gen on first dive only |
+
+LOD0 sphere radius is ≈21 m world (lod_distance=128 voxels at 1/6 scale).
+Two stops 42 m apart produce two overlapping spheres covering 84 m vertically,
+which cleanly bounds the ±30 m editing band plus generous margins.
+
+### Bake-time projections (single-continent distribution)
+
+| Region | Total tiles | Avg stops/tile | Wall-clock @ 6 s/stop |
+|---|---|---|---|
+| 1 km central (validation) | 1,100 | 1.85 | **~3.4 hr** |
+| 2 km | 4,400 | 1.85 | ~14 hr |
+| 5 km full | 27,800 | 1.85 | **~86 hr** (3.6 days) |
+
+The 1 km bake is an after-dinner job; the 5 km bake is a long weekend. Skipping
+deep-ocean tiles (~15 % of the map) saves roughly the same fraction of bake
+time vs visiting every tile uniformly.
+
+### Risks of skipping deep ocean
+
+- **First dive at any deep-ocean column** triggers runtime generation — brief
+  stutter (30–80 ms per chunk) the first time a player visits. After that
+  visit, `cache_generated_blocks` persists the chunks per save slot, so
+  subsequent visits are silent. Verified working in this build (SQLite grew
+  by 89 MB after a flying tour on 2026-05-08).
+- **The horizon plane** (a flat 6 km × 6 km mesh at sea level Y=200, follows
+  player) covers the visual ocean across the entire map. Players never see
+  voids over deep water.
+- **Voxel water flow simulation** doesn't run for chunks that don't exist.
+  Acceptable: deep-ocean columns are static seafloor 40 m below sea level
+  with no rivers, springs, or edits to simulate. Coastal water (where the
+  ocean meets land) IS baked, so wave / shore animation works there.
+
+---
+
 ## Voxel-resolution constants — change all together or none
 
 If you ever want to bump the world from 6 vox/m to 8 or 10 (finer detail per
