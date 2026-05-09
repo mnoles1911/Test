@@ -15,9 +15,10 @@ extends Node3D
 #       die has come to rest. Read the 5-element array for face values 1..6.
 #
 # Asset hooks (optional — fall back to solid colors if missing):
-#   res://assets/dice/felt_burgundy.png   — felt material albedo
-#   res://assets/dice/table_oak_rim.png   — rim material albedo
-#   res://assets/dice/die_face_atlas.png  — die material albedo
+#   res://assets/dice/felt_burgundy.jpg   — felt material albedo
+#   res://assets/dice/table_oak_rim.jpg   — rim material albedo
+#   res://assets/dice/dice_face_atlas.jpg — die material albedo (3×2 grid:
+#       top row faces 1/2/3 left→right, bottom row faces 4/5/6 left→right)
 
 signal roll_settled(face_values: PackedInt32Array)
 
@@ -29,9 +30,9 @@ const SPAWN_HEIGHT: float = 0.20            # drop dice from 20 cm
 const SETTLE_VELOCITY_EPSILON: float = 0.05  # below = "stopped"
 const SETTLE_DELAY_SEC: float = 0.35         # must stay stopped this long
 
-const FELT_TEX_PATH: String = "res://assets/dice/felt_burgundy.png"
-const RIM_TEX_PATH: String = "res://assets/dice/table_oak_rim.png"
-const DIE_TEX_PATH: String = "res://assets/dice/die_face_atlas.png"
+const FELT_TEX_PATH: String = "res://assets/dice/felt_burgundy.jpg"
+const RIM_TEX_PATH: String = "res://assets/dice/table_oak_rim.jpg"
+const DIE_TEX_PATH: String = "res://assets/dice/dice_face_atlas.jpg"
 
 var _dice: Array[RigidBody3D] = []
 var _lock_markers: Array[MeshInstance3D] = []   # little ring above each die
@@ -39,6 +40,10 @@ var _settle_timers: Array[float] = []           # per-die "stopped" accumulator
 var _rolling_indices: Array[int] = []
 var _settle_pending: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
+# Built once, shared by every die. When the atlas JPG is on disk we use
+# the custom-UV ArrayMesh; otherwise we fall back to a plain BoxMesh.
+var _shared_die_mesh: Mesh = null
 
 
 func _ready() -> void:
@@ -189,10 +194,20 @@ func _make_die(index: int) -> RigidBody3D:
 	shape.shape = box_shape
 	body.add_child(shape)
 
+	# Build the shared mesh once. With the atlas, each face has its own
+	# UV cell (3 columns × 2 rows on the JPG) so the cube actually shows
+	# distinct pip patterns. Without it, a default BoxMesh + brown albedo
+	# is the fallback.
+	if _shared_die_mesh == null:
+		if ResourceLoader.exists(DIE_TEX_PATH):
+			_shared_die_mesh = _build_die_atlas_mesh()
+		else:
+			var box_mesh: BoxMesh = BoxMesh.new()
+			box_mesh.size = Vector3(DIE_SIZE, DIE_SIZE, DIE_SIZE)
+			_shared_die_mesh = box_mesh
+
 	var mesh: MeshInstance3D = MeshInstance3D.new()
-	var box_mesh: BoxMesh = BoxMesh.new()
-	box_mesh.size = Vector3(DIE_SIZE, DIE_SIZE, DIE_SIZE)
-	mesh.mesh = box_mesh
+	mesh.mesh = _shared_die_mesh
 	var die_mat: StandardMaterial3D = StandardMaterial3D.new()
 	die_mat.albedo_color = Color(0.78, 0.62, 0.40)   # honey oak fallback
 	die_mat.roughness = 0.70
@@ -200,12 +215,77 @@ func _make_die(index: int) -> RigidBody3D:
 	mesh.set_surface_override_material(0, die_mat)
 	body.add_child(mesh)
 
-	# Per-face Label3D fallbacks while no atlas texture exists. Removed
-	# automatically when the atlas is detected.
+	# Per-face Label3D fallbacks ONLY when the atlas is missing — the
+	# atlas already paints the digit onto each face.
 	if not ResourceLoader.exists(DIE_TEX_PATH):
 		_attach_face_labels(body)
 
 	return body
+
+
+func _build_die_atlas_mesh() -> ArrayMesh:
+	# Custom-UV cube mesh. The atlas is 3 cols × 2 rows. Each cube face
+	# claims one cell, with the convention that opposite faces sum to 7
+	# (matching _read_die_face).
+	#
+	# Atlas cell layout (col, row):
+	#   (0,0)=face1  (1,0)=face2  (2,0)=face3
+	#   (0,1)=face4  (1,1)=face5  (2,1)=face6
+	#
+	# Cube face → atlas cell:
+	#   +Y (top)    value 1 → (0, 0)
+	#   +X (right)  value 2 → (1, 0)
+	#   +Z (front)  value 3 → (2, 0)
+	#   -Z (back)   value 4 → (0, 1)
+	#   -X (left)   value 5 → (1, 1)
+	#   -Y (bottom) value 6 → (2, 1)
+	#
+	# Vertex winding for each face is CCW from outside so normals point
+	# outward. UV order: v0=bottom-left, v1=bottom-right, v2=top-right,
+	# v3=top-left of the texture cell.
+	var st: SurfaceTool = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var s: float = DIE_SIZE * 0.5
+
+	var faces: Array = [
+		# +Y top, value 1, cell (0,0)
+		[Vector3(-s,  s,  s), Vector3( s,  s,  s), Vector3( s,  s, -s), Vector3(-s,  s, -s), Vector3.UP,      0, 0],
+		# -Y bottom, value 6, cell (2,1)
+		[Vector3(-s, -s, -s), Vector3( s, -s, -s), Vector3( s, -s,  s), Vector3(-s, -s,  s), Vector3.DOWN,    2, 1],
+		# +X right, value 2, cell (1,0)
+		[Vector3( s, -s,  s), Vector3( s, -s, -s), Vector3( s,  s, -s), Vector3( s,  s,  s), Vector3.RIGHT,   1, 0],
+		# -X left, value 5, cell (1,1)
+		[Vector3(-s, -s, -s), Vector3(-s, -s,  s), Vector3(-s,  s,  s), Vector3(-s,  s, -s), Vector3.LEFT,    1, 1],
+		# +Z front, value 3, cell (2,0)
+		[Vector3(-s, -s,  s), Vector3( s, -s,  s), Vector3( s,  s,  s), Vector3(-s,  s,  s), Vector3.BACK,    2, 0],
+		# -Z back, value 4, cell (0,1)
+		[Vector3( s, -s, -s), Vector3(-s, -s, -s), Vector3(-s,  s, -s), Vector3( s,  s, -s), Vector3.FORWARD, 0, 1],
+	]
+
+	for face in faces:
+		var v0: Vector3 = face[0]
+		var v1: Vector3 = face[1]
+		var v2: Vector3 = face[2]
+		var v3: Vector3 = face[3]
+		var normal: Vector3 = face[4]
+		var col: int = face[5]
+		var row: int = face[6]
+
+		var u_min: float = float(col) / 3.0
+		var u_max: float = float(col + 1) / 3.0
+		var v_min: float = float(row) / 2.0
+		var v_max: float = float(row + 1) / 2.0
+
+		# Triangle 1: v0 → v1 → v2
+		st.set_normal(normal); st.set_uv(Vector2(u_min, v_max)); st.add_vertex(v0)
+		st.set_normal(normal); st.set_uv(Vector2(u_max, v_max)); st.add_vertex(v1)
+		st.set_normal(normal); st.set_uv(Vector2(u_max, v_min)); st.add_vertex(v2)
+		# Triangle 2: v0 → v2 → v3
+		st.set_normal(normal); st.set_uv(Vector2(u_min, v_max)); st.add_vertex(v0)
+		st.set_normal(normal); st.set_uv(Vector2(u_max, v_min)); st.add_vertex(v2)
+		st.set_normal(normal); st.set_uv(Vector2(u_min, v_min)); st.add_vertex(v3)
+
+	return st.commit()
 
 
 func _attach_face_labels(die: RigidBody3D) -> void:

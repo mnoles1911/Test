@@ -26,6 +26,23 @@ const TABLE_SCENE: PackedScene = preload("res://scenes/dice/DiceTable3D.tscn")
 const HUD_LAYER: int = 10
 const MAX_REROLLS: int = 2
 
+# --- Optional art paths (JPG; missing files fall back to plain styling) ---
+const TEX_LOCK_INDICATOR: String = "res://assets/dice/lock_indicator.jpg"
+const TEX_COIN: String = "res://assets/dice/coin.jpg"
+const TEX_WAGER_CARD_BG: String = "res://assets/dice/wager_card_bg.jpg"
+const TEX_REVEAL_BANNER: String = "res://assets/dice/reveal_banner.jpg"
+const TEX_WIN_GLOW: String = "res://assets/dice/win_glow.jpg"
+
+# --- Audio paths ---
+const SFX_DICE_SHAKE: String = "res://assets/audio/dice/dice_shake.ogg"
+const SFX_DICE_THROW: String = "res://assets/audio/dice/dice_throw.ogg"
+const SFX_DICE_SETTLE: String = "res://assets/audio/dice/dice_settle.ogg"
+const SFX_DICE_LOCK: String = "res://assets/audio/dice/dice_lock.ogg"
+const SFX_COIN_CLINK: String = "res://assets/audio/dice/coin_clink.ogg"
+const SFX_WIN_CHIME: String = "res://assets/audio/dice/win_chime.ogg"
+const SFX_LOSE_THUD: String = "res://assets/audio/dice/lose_thud.ogg"
+const SFX_TAVERN_AMBIENT: String = "res://assets/audio/dice/tavern_ambient.ogg"
+
 enum State {
 	IDLE,
 	ANTE,
@@ -78,6 +95,24 @@ var _reveal_banner_label: Label
 var _continue_btn: Button
 var _leave_btn: Button
 
+# --- Optional art TextureRects (only present if the JPG was found) ---
+var _die_card_lock_textures: Array[TextureRect] = []   # wax-seal scrap on each card
+var _balance_coin_icon: TextureRect
+var _pot_coin_icon: TextureRect
+var _wager_card_bg_rect: TextureRect
+var _reveal_banner_bg_rect: TextureRect
+var _win_glow_overlay: TextureRect
+
+# --- Audio players (pre-built, reused) ---
+var _sfx_throw: AudioStreamPlayer
+var _sfx_settle: AudioStreamPlayer
+var _sfx_shake: AudioStreamPlayer
+var _sfx_lock: AudioStreamPlayer
+var _sfx_coin: AudioStreamPlayer
+var _sfx_win: AudioStreamPlayer
+var _sfx_lose: AudioStreamPlayer
+var _ambient_player: AudioStreamPlayer
+
 
 func _init() -> void:
 	layer = HUD_LAYER
@@ -86,6 +121,8 @@ func _init() -> void:
 func _ready() -> void:
 	_rng.randomize()
 	_build_ui()
+	_build_audio()
+	_apply_optional_art()
 	_set_state(State.IDLE)
 
 
@@ -132,6 +169,7 @@ func open(opponent: DiceOpponentData) -> void:
 		_table.roll_settled.connect(_on_table_roll_settled)
 
 	visible = true
+	_play_ambient()
 	_set_state(State.ANTE)
 
 
@@ -141,6 +179,7 @@ func close() -> void:
 	if _table != null:
 		_table.queue_free()
 		_table = null
+	_stop_ambient()
 	visible = false
 	queue_free()
 
@@ -172,6 +211,22 @@ func _build_ui() -> void:
 	_build_dice_cards(vbox)
 	_build_state_controls(vbox)
 
+	# Win-glow overlay sits above the panel so a winning hand briefly
+	# washes the whole UI in warm light. JPG with no alpha so we use
+	# additive-style modulate (alpha 0..1 fades the glow brightness).
+	_win_glow_overlay = TextureRect.new()
+	_win_glow_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_win_glow_overlay.stretch_mode = TextureRect.STRETCH_SCALE
+	_win_glow_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_win_glow_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_win_glow_overlay.modulate = Color(1, 1, 1, 0)
+	# Additive blend so dark areas of the JPG don't gray out the panel.
+	var glow_mat: CanvasItemMaterial = CanvasItemMaterial.new()
+	glow_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_win_glow_overlay.material = glow_mat
+	_win_glow_overlay.visible = false
+	add_child(_win_glow_overlay)
+
 
 func _build_header(parent: VBoxContainer) -> void:
 	var hbox: HBoxContainer = HBoxContainer.new()
@@ -187,9 +242,23 @@ func _build_header(parent: VBoxContainer) -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.add_child(spacer)
 
+	_balance_coin_icon = TextureRect.new()
+	_balance_coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_balance_coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_balance_coin_icon.custom_minimum_size = Vector2(24, 24)
+	_balance_coin_icon.visible = false
+	hbox.add_child(_balance_coin_icon)
+
 	_balance_label = Label.new()
 	UIStyles.apply_body_label(_balance_label, 18)
 	hbox.add_child(_balance_label)
+
+	_pot_coin_icon = TextureRect.new()
+	_pot_coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_pot_coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_pot_coin_icon.custom_minimum_size = Vector2(24, 24)
+	_pot_coin_icon.visible = false
+	hbox.add_child(_pot_coin_icon)
 
 	_pot_label = Label.new()
 	UIStyles.apply_body_label(_pot_label, 18)
@@ -254,12 +323,27 @@ func _build_dice_cards(parent: VBoxContainer) -> void:
 		_die_card_value_labels.append(value_label)
 
 		var lock_overlay: ColorRect = ColorRect.new()
-		lock_overlay.color = Color(0.65, 0.18, 0.18, 0.35)
+		lock_overlay.color = Color(0.65, 0.18, 0.18, 0.30)
 		lock_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 		lock_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		lock_overlay.visible = false
 		inner.add_child(lock_overlay)
 		_die_card_lock_overlays.append(lock_overlay)
+
+		# Wax-seal scrap, top-right corner badge. Small + offset so the
+		# value digit underneath stays readable. The JPG is opaque
+		# (no alpha) so we modulate slightly to soften it.
+		var lock_tex: TextureRect = TextureRect.new()
+		lock_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		lock_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		lock_tex.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		lock_tex.position = Vector2(-38, 4)
+		lock_tex.size = Vector2(34, 34)
+		lock_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lock_tex.modulate = Color(1, 1, 1, 0.92)
+		lock_tex.visible = false
+		inner.add_child(lock_tex)
+		_die_card_lock_textures.append(lock_tex)
 
 
 func _apply_card_style(btn: Button, locked: bool) -> void:
@@ -302,12 +386,28 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_wager_slider.value_changed.connect(_on_wager_slider_changed)
 	_ante_hbox.add_child(_wager_slider)
 
+	# Wager value sits on a parchment card. The card is a sibling
+	# TextureRect anchored behind the label inside a fixed-size Control.
+	var wager_card_holder: Control = Control.new()
+	wager_card_holder.custom_minimum_size = Vector2(140, 50)
+	_ante_hbox.add_child(wager_card_holder)
+
+	_wager_card_bg_rect = TextureRect.new()
+	_wager_card_bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_wager_card_bg_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	_wager_card_bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_wager_card_bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wager_card_bg_rect.visible = false
+	wager_card_holder.add_child(_wager_card_bg_rect)
+
 	_wager_value_label = Label.new()
 	_wager_value_label.text = "5"
-	UIStyles.apply_title_label(_wager_value_label, 22)
-	_wager_value_label.custom_minimum_size = Vector2(60, 0)
+	UIStyles.apply_title_label(_wager_value_label, 26)
+	_wager_value_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_wager_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_ante_hbox.add_child(_wager_value_label)
+	_wager_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_wager_value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wager_card_holder.add_child(_wager_value_label)
 
 	_confirm_wager_btn = Button.new()
 	_confirm_wager_btn.text = "Ante Up"
@@ -339,10 +439,27 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_reveal_vbox.add_theme_constant_override("separation", 8)
 	parent.add_child(_reveal_vbox)
 
+	# Banner — parchment ribbon behind a centered title label.
+	var banner_holder: Control = Control.new()
+	banner_holder.custom_minimum_size = Vector2(640, 96)
+	banner_holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_reveal_vbox.add_child(banner_holder)
+
+	_reveal_banner_bg_rect = TextureRect.new()
+	_reveal_banner_bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_reveal_banner_bg_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	_reveal_banner_bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_reveal_banner_bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_reveal_banner_bg_rect.visible = false
+	banner_holder.add_child(_reveal_banner_bg_rect)
+
 	_reveal_banner_label = Label.new()
+	_reveal_banner_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_reveal_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UIStyles.apply_title_label(_reveal_banner_label, 30)
-	_reveal_vbox.add_child(_reveal_banner_label)
+	_reveal_banner_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_reveal_banner_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UIStyles.apply_title_label(_reveal_banner_label, 36)
+	banner_holder.add_child(_reveal_banner_label)
 
 	_reveal_player_label = Label.new()
 	_reveal_player_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -445,6 +562,7 @@ func _on_confirm_wager_pressed() -> void:
 	_net_delta -= _wager
 	_refresh_balance_label()
 	_refresh_pot_label()
+	_play_sfx(_sfx_coin)
 
 	# Reset hand state for the new round.
 	_player_hand = DiceHand.new()
@@ -472,12 +590,14 @@ func _roll_table_for(hand: DiceHand, indices: PackedInt32Array) -> void:
 	# Sync visual lock markers in the 3D scene with hand.locked.
 	for i in DiceHand.DIE_COUNT:
 		_table.set_die_lock_visual(i, hand.locked[i])
+	_play_sfx(_sfx_throw)
 	_table.roll(indices)
 
 
 func _on_table_roll_settled(face_values: PackedInt32Array) -> void:
 	# face_values has 5 ints. We only adopt values for dice that were
 	# rolled — locked dice keep their previous face.
+	_play_sfx(_sfx_settle)
 	if _table_owner == "player":
 		_apply_face_values_to_hand(_player_hand, face_values)
 		_refresh_die_card_visuals(_player_hand)
@@ -506,6 +626,7 @@ func _on_die_card_pressed(idx: int) -> void:
 	_refresh_die_card_lock_visual(idx, _player_hand.locked[idx])
 	if _table != null:
 		_table.set_die_lock_visual(idx, _player_hand.locked[idx])
+	_play_sfx(_sfx_lock)
 	_update_state_visibility()
 
 
@@ -570,6 +691,8 @@ func _continue_opponent_turn() -> void:
 		if not _opponent_hand.locked[i]:
 			unlocked.append(i)
 	# Small delay so the player can see the AI's lock decision before re-rolling.
+	# Fill it with the rattle sound — sells the moment.
+	_play_sfx(_sfx_shake)
 	await get_tree().create_timer(0.6).timeout
 	_set_state(State.OPPONENT_ROLL)
 	_roll_table_for(_opponent_hand, unlocked)
@@ -593,10 +716,14 @@ func _resolve_reveal() -> void:
 		bark_trigger = "DICE_REVEAL_PLAYER_WIN"
 		_add_coin(_pot)
 		_net_delta += _pot
+		_play_sfx(_sfx_win)
+		_play_sfx(_sfx_coin)   # coins sliding to the player
+		_flash_win_glow()
 	elif cmp < 0:
 		banner_text = "YOU LOSE"
 		banner_color = Colors.HP_BRIGHT
 		bark_trigger = "DICE_REVEAL_OPPONENT_WIN"
+		_play_sfx(_sfx_lose)
 		# Opponent takes pot — player already paid the ante; nothing more to do.
 	else:
 		banner_text = "PUSH"
@@ -605,6 +732,7 @@ func _resolve_reveal() -> void:
 		# Refund the player's ante. Opponent's ante is fictional here.
 		_add_coin(_wager)
 		_net_delta += _wager
+		_play_sfx(_sfx_coin)
 
 	_pot = 0
 	_refresh_pot_label()
@@ -677,6 +805,10 @@ func _refresh_die_card_visuals(hand: DiceHand) -> void:
 
 func _refresh_die_card_lock_visual(idx: int, locked: bool) -> void:
 	_die_card_lock_overlays[idx].visible = locked
+	# Wax seal TextureRect — only visible when the texture has been
+	# loaded (i.e., the JPG was present at startup) AND the die is locked.
+	if idx < _die_card_lock_textures.size() and _die_card_lock_textures[idx].texture != null:
+		_die_card_lock_textures[idx].visible = locked
 	_apply_card_style(_die_card_buttons[idx], locked)
 
 
@@ -733,3 +865,110 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if _state == State.PLAYER_ROLL or _state == State.OPPONENT_ROLL:
 			return  # ignore mid-roll
 		_on_leave_pressed()
+
+
+# =============================================================
+# OPTIONAL ART (lazy-loaded; missing files leave defaults in place)
+# =============================================================
+
+func _apply_optional_art() -> void:
+	# Coin icons — appear next to balance and pot labels.
+	var coin_tex: Texture2D = _try_load_tex(TEX_COIN)
+	if coin_tex != null:
+		_balance_coin_icon.texture = coin_tex
+		_balance_coin_icon.visible = true
+		_pot_coin_icon.texture = coin_tex
+		_pot_coin_icon.visible = true
+
+	# Lock indicators — wax-seal scrap on each die card.
+	var lock_tex: Texture2D = _try_load_tex(TEX_LOCK_INDICATOR)
+	if lock_tex != null:
+		for tr in _die_card_lock_textures:
+			tr.texture = lock_tex
+
+	var wager_bg: Texture2D = _try_load_tex(TEX_WAGER_CARD_BG)
+	if wager_bg != null:
+		_wager_card_bg_rect.texture = wager_bg
+		_wager_card_bg_rect.visible = true
+
+	var banner_bg: Texture2D = _try_load_tex(TEX_REVEAL_BANNER)
+	if banner_bg != null:
+		_reveal_banner_bg_rect.texture = banner_bg
+		_reveal_banner_bg_rect.visible = true
+
+	var glow: Texture2D = _try_load_tex(TEX_WIN_GLOW)
+	if glow != null:
+		_win_glow_overlay.texture = glow
+
+
+func _try_load_tex(path: String) -> Texture2D:
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+
+# =============================================================
+# AUDIO
+# =============================================================
+
+func _build_audio() -> void:
+	# All players are children of the CanvasLayer (which is fine for
+	# non-spatial UI sound). Streams are loaded lazily; missing files
+	# leave the player silent (set_stream(null)).
+	_sfx_throw   = _make_sfx_player(SFX_DICE_THROW)
+	_sfx_settle  = _make_sfx_player(SFX_DICE_SETTLE)
+	_sfx_shake   = _make_sfx_player(SFX_DICE_SHAKE)
+	_sfx_lock    = _make_sfx_player(SFX_DICE_LOCK)
+	_sfx_coin    = _make_sfx_player(SFX_COIN_CLINK)
+	_sfx_win     = _make_sfx_player(SFX_WIN_CHIME)
+	_sfx_lose    = _make_sfx_player(SFX_LOSE_THUD)
+
+	# Tavern ambient is a quiet looping bed for the whole match.
+	_ambient_player = AudioStreamPlayer.new()
+	add_child(_ambient_player)
+	if ResourceLoader.exists(SFX_TAVERN_AMBIENT):
+		var stream: AudioStream = load(SFX_TAVERN_AMBIENT)
+		# Force loop on OggVorbis streams — Godot sometimes loads them
+		# with loop=false depending on import settings.
+		if stream is AudioStreamOggVorbis:
+			(stream as AudioStreamOggVorbis).loop = true
+		_ambient_player.stream = stream
+		_ambient_player.volume_db = -14.0
+
+
+func _make_sfx_player(path: String) -> AudioStreamPlayer:
+	var p: AudioStreamPlayer = AudioStreamPlayer.new()
+	add_child(p)
+	if ResourceLoader.exists(path):
+		p.stream = load(path)
+	return p
+
+
+func _play_sfx(player: AudioStreamPlayer) -> void:
+	if player == null or player.stream == null:
+		return
+	# Stop-then-play guarantees re-trigger if already playing.
+	player.stop()
+	player.play()
+
+
+func _play_ambient() -> void:
+	if _ambient_player and _ambient_player.stream:
+		_ambient_player.play()
+
+
+func _stop_ambient() -> void:
+	if _ambient_player:
+		_ambient_player.stop()
+
+
+func _flash_win_glow() -> void:
+	if _win_glow_overlay == null or _win_glow_overlay.texture == null:
+		return
+	_win_glow_overlay.visible = true
+	_win_glow_overlay.modulate = Color(1, 1, 1, 0)
+	var tw: Tween = create_tween()
+	tw.tween_property(_win_glow_overlay, "modulate:a", 0.55, 0.18)
+	tw.tween_interval(0.45)
+	tw.tween_property(_win_glow_overlay, "modulate:a", 0.0, 0.7)
+	tw.tween_callback(func(): _win_glow_overlay.visible = false)
