@@ -27,8 +27,12 @@ const DIE_SIZE: float = 0.07                # 7 cm cube — readable in viewport
 const TABLE_RADIUS: float = 0.30            # 30 cm felt circle
 const RIM_HEIGHT: float = 0.025
 const SPAWN_HEIGHT: float = 0.22            # drop dice from above the rim
-const SETTLE_VELOCITY_EPSILON: float = 0.05  # below = "stopped"
-const SETTLE_DELAY_SEC: float = 0.35         # must stay stopped this long
+const SETTLE_VELOCITY_EPSILON: float = 0.18  # below = "stopped" (generous;
+                                              # micro-vibrations on edge contact
+                                              # were keeping settle from firing)
+const SETTLE_DELAY_SEC: float = 0.30         # must stay stopped this long
+const SETTLE_MAX_SEC: float = 4.0            # force-settle after this long
+                                              # regardless of velocity (fail-safe)
 
 const FELT_TEX_PATH: String = "res://assets/dice/felt_burgundy.jpg"
 const RIM_TEX_PATH: String = "res://assets/dice/table_oak_rim.jpg"
@@ -39,6 +43,7 @@ var _lock_markers: Array[MeshInstance3D] = []   # little ring above each die
 var _settle_timers: Array[float] = []           # per-die "stopped" accumulator
 var _rolling_indices: Array[int] = []
 var _settle_pending: bool = false
+var _settle_elapsed: float = 0.0   # accumulated time since current roll started
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 # Shared cube mesh, built once. v1 uses a plain BoxMesh with a wood-tinted
@@ -202,8 +207,10 @@ func _make_die(index: int) -> RigidBody3D:
 	var body: RigidBody3D = RigidBody3D.new()
 	body.name = "Die_%d" % index
 	body.mass = 0.02
-	body.linear_damp = 0.4
-	body.angular_damp = 0.4
+	# Higher damp values bring dice to rest faster, reducing the chance
+	# of a die getting stuck oscillating against the rim wall.
+	body.linear_damp = 0.8
+	body.angular_damp = 1.0
 	body.continuous_cd = true
 	body.can_sleep = true
 
@@ -365,6 +372,7 @@ func roll(active_indices: PackedInt32Array) -> void:
 	# full 5-element face_values array (including non-rolled dice).
 	_rolling_indices.clear()
 	_settle_pending = true
+	_settle_elapsed = 0.0
 	for idx in active_indices:
 		if idx < 0 or idx >= DIE_COUNT:
 			continue
@@ -420,17 +428,34 @@ func _physics_process(delta: float) -> void:
 		_update_lock_marker_positions()
 		return
 
+	_settle_elapsed += delta
+
 	var all_settled: bool = true
 	for idx in _rolling_indices:
 		var die: RigidBody3D = _dice[idx]
 		var v: float = die.linear_velocity.length()
 		var av: float = die.angular_velocity.length()
-		if v < SETTLE_VELOCITY_EPSILON and av < SETTLE_VELOCITY_EPSILON:
+		# Either: low velocity counts as stopped, OR Godot's own sleep
+		# detection has fired (which is more reliable for tiny vibrations).
+		var stopped: bool = (v < SETTLE_VELOCITY_EPSILON and av < SETTLE_VELOCITY_EPSILON) or die.sleeping
+		if stopped:
 			_settle_timers[idx] += delta
 		else:
 			_settle_timers[idx] = 0.0
 		if _settle_timers[idx] < SETTLE_DELAY_SEC:
 			all_settled = false
+
+	# Fail-safe: don't get stuck forever if a die is jammed against the
+	# rim wall and oscillating at low amplitude. Force-zero the velocity
+	# and emit settled.
+	if not all_settled and _settle_elapsed >= SETTLE_MAX_SEC:
+		for idx in _rolling_indices:
+			var die: RigidBody3D = _dice[idx]
+			die.linear_velocity = Vector3.ZERO
+			die.angular_velocity = Vector3.ZERO
+			die.sleeping = true
+		all_settled = true
+		print("[DiceTable3D] settle force-fired after %.1fs (some dice were vibrating)" % _settle_elapsed)
 
 	_update_lock_marker_positions()
 
