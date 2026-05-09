@@ -136,6 +136,8 @@ func _ready() -> void:
 	_build_audio()
 	_apply_optional_art()
 	_set_state(State.IDLE)
+	# Trace where events die in the container chain.
+	gui_input.connect(func(e): _trace("ui_root", e))
 
 
 func _resize_to_viewport() -> void:
@@ -217,6 +219,7 @@ func _build_ui() -> void:
 	# panel's STOP filter. STOP on dim was a suspect for swallowing clicks.
 	_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_dim)
+	_dim.gui_input.connect(func(e): _trace("dim", e))
 
 	# CenterContainer fills the screen and auto-centers its single child.
 	# This avoids hand-computed (-540, -440) anchor offsets that broke
@@ -225,16 +228,17 @@ func _build_ui() -> void:
 	center_holder.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center_holder)
+	center_holder.gui_input.connect(func(e): _trace("center", e))
 
 	_root_panel = PanelContainer.new()
 	_root_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	_root_panel.custom_minimum_size = Vector2(1080, 880)
-	# Debug: log any event that reaches the panel itself.
-	_root_panel.gui_input.connect(_debug_log_gui.bind("ROOT_PANEL"))
+	_root_panel.gui_input.connect(func(e): _trace("panel", e))
 	center_holder.add_child(_root_panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 14)
+	vbox.gui_input.connect(func(e): _trace("vbox", e))
 	_root_panel.add_child(vbox)
 
 	_build_header(vbox)
@@ -357,7 +361,8 @@ func _build_dice_cards(parent: VBoxContainer) -> void:
 		btn.text = ""
 		_apply_card_style(btn, false)
 		btn.pressed.connect(_on_die_card_pressed.bind(i))
-		btn.gui_input.connect(_debug_log_gui.bind("die_card_%d" % i))
+		var card_label: String = "die_card_%d" % i
+		btn.gui_input.connect(func(e): _trace(card_label, e))
 		row.add_child(btn)
 		_die_card_buttons.append(btn)
 
@@ -458,7 +463,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_wager_slider.add_theme_stylebox_override("grabber_area", fill_box)
 	_wager_slider.add_theme_stylebox_override("grabber_area_highlight", fill_box)
 	_wager_slider.value_changed.connect(_on_wager_slider_changed)
-	_wager_slider.gui_input.connect(_debug_log_gui.bind("slider"))
+	_wager_slider.gui_input.connect(func(e): _trace("slider", e))
 	_ante_hbox.add_child(_wager_slider)
 
 	# Wager value sits on a parchment card. The card is a sibling
@@ -489,7 +494,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_confirm_wager_btn.text = "Ante Up"
 	UIStyles.apply_menu_button(_confirm_wager_btn)
 	_confirm_wager_btn.pressed.connect(_on_confirm_wager_pressed)
-	_confirm_wager_btn.gui_input.connect(_debug_log_gui.bind("ante_up"))
+	_confirm_wager_btn.gui_input.connect(func(e): _trace("ante_up", e))
 	_ante_hbox.add_child(_confirm_wager_btn)
 
 	# --- LOCK row: Reroll, Reveal Now
@@ -567,7 +572,7 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 	_leave_btn.text = "Leave Table"
 	UIStyles.apply_menu_button(_leave_btn)
 	_leave_btn.pressed.connect(_on_leave_pressed)
-	_leave_btn.gui_input.connect(_debug_log_gui.bind("leave"))
+	_leave_btn.gui_input.connect(func(e): _trace("leave", e))
 	parent.add_child(_leave_btn)
 
 
@@ -1064,6 +1069,15 @@ func _debug_print_layout() -> void:
 	print("[layout] leave_btn:    %s disabled=%s" % [_leave_btn.get_global_rect(), _leave_btn.disabled])
 	for i in _die_card_buttons.size():
 		print("[layout] die_card[%d]:  %s" % [i, _die_card_buttons[i].get_global_rect()])
+
+
+func _trace(label: String, event: InputEvent) -> void:
+	# Logs every gui_input event hitting a control so we can see where
+	# events die in the panel hierarchy.
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed:
+			print("[trace:%s] mouse_down at %s button=%d" % [label, mb.position, mb.button_index])
 
 
 func _debug_log_gui(event: InputEvent, label: String) -> void:
