@@ -444,7 +444,7 @@ func _terrain_scale(terrain: Node3D) -> float:
 # only the visual water surface, not any voxel positions. Terrain Y
 # is fixed by the heightmap gray-to-Y mapping (see
 # CopperIslesHeightmapGenerator._gray_to_ground_y).
-const GEN_SEA_LEVEL_VOXELS: float = 1980.0
+const GEN_SEA_LEVEL_VOXELS: float = 750.0
 const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
 
 # Horizon plane override DISABLED 2026-05-08 — now that the
@@ -498,13 +498,10 @@ func _snap_player_above_terrain() -> void:
 	var player: Node3D = players[0] as Node3D
 
 	if spawn_override_enabled:
-		# Engage fly mode first — toggle_fly_mode() now ALSO teleports
-		# to Player3D.SPAWN_POSITION as part of its reset behaviour
-		# (shared single source of truth, see Player3D.SPAWN_POSITION
-		# const). So engaging fly here puts the player exactly where
-		# we want them. The explicit assignment below is redundant
-		# when fly mode runs but kept as defence for the
-		# start_in_fly_mode = false case.
+		# Engage fly mode first (if requested), then place the player.
+		# toggle_fly_mode() preserves position now, so the explicit
+		# global_position assignment below is the authoritative spawn
+		# placement on scene load.
 		if start_in_fly_mode and player.has_method("toggle_fly_mode"):
 			var already_flying: bool = "is_flying" in player and bool(player.get("is_flying"))
 			if not already_flying:

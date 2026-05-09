@@ -54,7 +54,7 @@ origin_z_voxels = -15000
 ; fields kept for back-compat with existing .tres files. The
 ; refactored generator ignores both. Do not change them expecting
 ; an effect.
-sea_level_voxels = 1980
+sea_level_voxels = 750
 sea_level_gray = 0.0
 elevation_above_at_white_voxels = 15000
 elevation_below_at_black_voxels = 0
@@ -63,5 +63,5 @@ bilinear_sampling = true
 require_heightmap_in_editor_only = false
 grass_layer_thickness_voxels = 1
 dirt_layer_thickness_voxels = 3
-beach_y_threshold = 1992
+beach_y_threshold = 762
 early_out_margin_voxels = 4

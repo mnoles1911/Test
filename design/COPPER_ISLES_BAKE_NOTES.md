@@ -35,8 +35,8 @@ With the canonical config of `elevation_above_at_white_voxels =
 | gray | ground (vox) | world Y |
 |---|---|---|
 | 0.0 | 0 | 0 m (lowest ocean floor) |
-| 0.05 | 750 | 125 m |
-| 0.12 | 1800 | 300 m (current sea level) |
+| 0.05 | 750 | 125 m (current sea level) |
+| 0.12 | 1800 | 300 m |
 | 0.3159 | 4738 | 790 m (current actual peak) |
 | 1.0 | 15000 | 2500 m (theoretical max) |
 
@@ -133,7 +133,7 @@ time vs visiting every tile uniformly.
   visit, `cache_generated_blocks` persists the chunks per save slot, so
   subsequent visits are silent. Verified working in this build (SQLite grew
   by 89 MB after a flying tour on 2026-05-08).
-- **The horizon plane** (a flat 6 km × 6 km mesh at sea level Y=200, follows
+- **The horizon plane** (a flat 10 km × 10 km mesh at sea level Y=125, follows
   player) covers the visual ocean across the entire map. Players never see
   voids over deep water.
 - **Voxel water flow simulation** doesn't run for chunks that don't exist.
@@ -159,9 +159,9 @@ runtime won't read, and so on.
 | `origin_x_voxels` / `origin_z_voxels` | `assets/voxel/copper_isles_generator.tres` | -15 000 | -20 000 | -25 000 |
 | `elevation_above_at_white_voxels` | `assets/voxel/copper_isles_generator.tres` | 15 000 | 20 000 | 25 000 |
 | `elevation_below_at_black_voxels` | `assets/voxel/copper_isles_generator.tres` | 240 | 320 | 400 |
-| `sea_level_voxels` | `assets/voxel/copper_isles_generator.tres` | 720 | 960 | 1200 |
-| `beach_y_threshold` | `assets/voxel/copper_isles_generator.tres` | 732 | 976 | 1220 |
-| `GEN_SEA_LEVEL_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 720.0 | 960.0 | 1200.0 |
+| `sea_level_voxels` | `assets/voxel/copper_isles_generator.tres` | 750 | 1000 | 1250 |
+| `beach_y_threshold` | `assets/voxel/copper_isles_generator.tres` | 762 | 1016 | 1270 |
+| `GEN_SEA_LEVEL_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 750.0 | 1000.0 | 1250.0 |
 | `GEN_PEAK_ABOVE_SEA_VOXELS` | `scripts/CopperIslesTestBootstrap.gd` | 15000.0 | 20000.0 | 25000.0 |
 | `VOXELS_PER_METRE` | `scripts/_dev/WorldBakeController.gd` | 6.0 | 8.0 | 10.0 |
 | `WORLD_FLOOR_VOXEL_Y` | three places: `CubicHeightmapGenerator.gd`, `CopperIslesHeightmapGenerator.gd`, `VoxelEditManager.gd` | -300 | -400 | -500 |
@@ -511,6 +511,62 @@ orphans, vram). Replaces the previous per-frame `[FRAME SPIKE]` flood that
 was itself contributing to the spikes (each Output-panel print costs
 0.5–2 ms at sub-10 FPS). Toggle off via `HUDOverlay.PERF_DIAG = false`
 when not actively investigating perf.
+
+---
+
+## Skirt design (current defaults)
+
+The horizon skirt covers the 8 km × 8 km region around spawn (-4000 m to
++4000 m on both axes — extended 1.5 km past the heightmap edge so peaks at
+the map border don't clip). Baked once via button "4. Bake horizon skirt"
+in `scenes/_dev/BakeWorld.tscn`. Output:
+`assets/voxel/copper_isles_skirt.res`. Loaded at runtime by
+`scripts/HorizonSkirt.gd`.
+
+All defaults below are constants at the top of `scripts/_dev/SkirtBaker.gd`
+— change there, re-bake to apply.
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `QUAD_SIZE_M` | 8.0 m | Grid spacing. 1000² = ~2M tris over the 8 km region. Drop to 6 m if silhouettes still look blocky; bump to 12 m if bake walltime hurts. |
+| `Y_OFFSET_DOWN_M` | 1.5 m | Drop applied to every skirt vertex so the flat-triangulated skirt sits below the stair-stepped LOD0 voxel cubes (no pokethrough on slopes). |
+| `SKIRT_SAMPLE_MIN_NEIGHBOURHOOD` | true | Each vertex takes the MIN of its centre + 4 cardinal neighbours' ground-Y. Belt-and-braces against pokethrough that the Y_OFFSET alone can miss. |
+| `SLOPE_TO_ROCK_THRESHOLD` | 0.35 | ~19° — slopes steeper than this start lerping toward `rock_color` regardless of elevation. Cliffs read as cliffs at distance. |
+| `SLOPE_TO_ROCK_BLEND_RANGE` | 0.30 | Soft-shoulder beyond the slope threshold; full rock at threshold + this. |
+| `SNOW_LINE_LATITUDE_OFFSET_M` | 200.0 m | How far the snow band slides between the south edge of the bake region and the north edge. North-south asymmetry: north reads as colder (Solgrade is the polar reference). 0 disables. Bump to 400 for a more dramatic gradient. |
+| `CLIFF_THRESHOLD_M` | 20.0 m | Grid edges with a height delta over this get a vertical wall (4 verts / 2 tris) spliced in. At 8 m quad spacing that's a 2.5:1 slope — coastlines mostly trip it. |
+| `CLIFF_COLOR` | (0.55, 0.52, 0.48) | Mineral-stained wave-eroded stone tone for the cliff faces. Distinct from the marble-grey summit `rock_color` so cliff faces stand out from the summit caps in the silhouette. |
+
+### Palette stops (elevation-band lerp)
+
+Keyed to `lore/copper_isles/GEOGRAPHY.md` — wave-eroded marble massifs,
+weathered coastal woodland (dwarf-oak / salt-pine / sea-laurel) below the
+~350 m treeline, white-marble summit outcroppings above. Tweak with the
+lore in mind.
+
+| Band | RGB | Notes |
+|---|---|---|
+| Below sea | (0.14, 0.18, 0.22) | Submerged stone — darker than ice-blue under the water shader. |
+| Beach | (0.78, 0.72, 0.58) | Salt-bleached coastal sand, paler/cooler than tropical sand. |
+| Forest (low) | (0.26, 0.36, 0.20) | Weathered coastal woodland under salt-spray — desaturated. |
+| Rock (mid) | (0.62, 0.60, 0.56) | Marble-grey base. |
+| Snow (high) | (0.93, 0.94, 0.95) | Bare marble peaks (slightly brighter than literal snow). |
+| Slope-shift target (`rock_color`) | (0.60, 0.58, 0.54) | Marble-grey, in line with the mid band. |
+
+### Per-vertex normals
+
+Computed via central differences across the height grid in the same loop
+that generates indices (`SkirtBaker.gd` ~line 286). Stored in
+`Mesh.ARRAY_NORMAL`. The runtime material (`HorizonSkirt.gd:107` —
+`SHADING_MODE_PER_PIXEL`, `vertex_color_use_as_albedo = true`,
+`CULL_DISABLED`) honours those normals — distant slopes facing the sun
+read brighter than slopes in shadow, and the directional sun's CSM
+shadows project onto the skirt.
+
+Cliff faces get a horizontal outward-pointing normal in the XZ plane
+(perpendicular to the cliff edge), set inside `_maybe_add_cliff_edge`.
+With `CULL_DISABLED` both sides of each wall render — normal direction
+matters only for which side gets the warmer lighting bias.
 
 ---
 

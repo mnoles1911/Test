@@ -46,7 +46,7 @@ These are independent. Order: **1 → 2-verify → 3 → 5 → 4.** Reasoning at
 **Validation:**
 - Trigger button "4. Bake horizon skirt" in `scenes/_dev/BakeWorld.tscn`
 - Confirm Output panel shows tri count consistent with new density (~2M tris at 8 m)
-- Launch `scenes/CopperIslesTest.tscn` — at spawn `(-88, 500, 740)` the skirt should look smoother along distant coastlines, fewer visible "blocky" patches
+- Launch `scenes/CopperIslesTest.tscn` — at spawn `(-61, 185, 732)` the skirt should look smoother along distant coastlines, fewer visible "blocky" patches
 
 ---
 
@@ -290,7 +290,7 @@ var t1: float = clampf(
 | 5 | Latitude snow line | Independent of geometry too. Builds on the new palette. |
 | 4 | Cliff sides | Most invasive. Saved for last so a regression here doesn't block validating the others. |
 
-**After each task:** trigger a re-bake (button 4 in `BakeWorld.tscn`) and visually validate at spawn `(-88, 500, 740)` in `CopperIslesTest.tscn`. The skirt is loaded by `HorizonSkirt.gd` automatically on scene load.
+**After each task:** trigger a re-bake (button 4 in `BakeWorld.tscn`) and visually validate at spawn `(-61, 185, 732)` in `CopperIslesTest.tscn`. The skirt is loaded by `HorizonSkirt.gd` automatically on scene load.
 
 ---
 
@@ -321,11 +321,11 @@ This baseline re-bake is the "task 0" and validates the pipeline before stacking
 
 ## Done state
 
-- [ ] Task 1: `QUAD_SIZE_M = 8.0` (or 6.0 if 8 looks too coarse)
-- [ ] Task 2: normals confirmed working (no code change in most cases)
-- [ ] Task 3: palette retuned to weathered coastal woodland + marble
-- [ ] Task 4: cliff-edge generation working at coastlines
-- [ ] Task 5: snow line varies with world Z
-- [ ] `assets/voxel/copper_isles_skirt.res` re-baked with all changes
-- [ ] `design/COPPER_ISLES_BAKE_NOTES.md` updated with new defaults
-- [ ] Visual validation: skirt at spawn `(-88, 500, 740)` reads as Copper Isles, not generic terrain
+- [x] Task 1: `QUAD_SIZE_M = 8.0`
+- [x] Task 2: normals confirmed working (no code change — `HorizonSkirt.gd` material already `SHADING_MODE_PER_PIXEL`)
+- [x] Task 3: palette retuned to weathered coastal woodland + marble
+- [x] Task 4: cliff-edge generation working at coastlines (vertical-wall splice via `_maybe_add_cliff_edge`)
+- [x] Task 5: snow line varies with world Z (`SNOW_LINE_LATITUDE_OFFSET_M = 200`)
+- [ ] `assets/voxel/copper_isles_skirt.res` re-baked with all changes (pending — designer to run BakeWorld button 4)
+- [x] `design/COPPER_ISLES_BAKE_NOTES.md` updated with new defaults (added "Skirt design" section)
+- [ ] Visual validation: skirt at spawn `(-61, 185, 732)` reads as Copper Isles, not generic terrain (blocked on re-bake)
