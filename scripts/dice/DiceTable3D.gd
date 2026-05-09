@@ -41,8 +41,11 @@ var _rolling_indices: Array[int] = []
 var _settle_pending: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
-# Built once, shared by every die. When the atlas JPG is on disk we use
-# the custom-UV ArrayMesh; otherwise we fall back to a plain BoxMesh.
+# Shared cube mesh, built once. v1 uses a plain BoxMesh with a wood-tinted
+# StandardMaterial — per-face pip patterns are read from the 2D UI cards
+# below the viewport. (Earlier custom-UV atlas mapping had layout issues
+# and is parked until we can verify the user's atlas image matches the
+# 3×2 grid convention.)
 var _shared_die_mesh: Mesh = null
 
 
@@ -207,36 +210,28 @@ func _make_die(index: int) -> RigidBody3D:
 	shape.shape = box_shape
 	body.add_child(shape)
 
-	# Build the shared mesh once. With the atlas, each face has its own
-	# UV cell (3 columns × 2 rows on the JPG) so the cube actually shows
-	# distinct pip patterns. Without it, a default BoxMesh + brown albedo
-	# is the fallback.
+	# Plain BoxMesh, wood-tinted, no atlas texture. Per-face digits are
+	# painted as Label3D children so the 3D viewport stays readable.
 	if _shared_die_mesh == null:
-		if ResourceLoader.exists(DIE_TEX_PATH):
-			_shared_die_mesh = _build_die_atlas_mesh()
-		else:
-			var box_mesh: BoxMesh = BoxMesh.new()
-			box_mesh.size = Vector3(DIE_SIZE, DIE_SIZE, DIE_SIZE)
-			_shared_die_mesh = box_mesh
+		var box_mesh: BoxMesh = BoxMesh.new()
+		box_mesh.size = Vector3(DIE_SIZE, DIE_SIZE, DIE_SIZE)
+		_shared_die_mesh = box_mesh
 
 	var mesh: MeshInstance3D = MeshInstance3D.new()
 	mesh.mesh = _shared_die_mesh
 	var die_mat: StandardMaterial3D = StandardMaterial3D.new()
-	die_mat.albedo_color = Color(0.78, 0.62, 0.40)   # honey oak fallback
+	die_mat.albedo_color = Color(0.78, 0.62, 0.40)   # honey oak
 	die_mat.roughness = 0.70
-	_apply_optional_texture(die_mat, DIE_TEX_PATH)
 	mesh.set_surface_override_material(0, die_mat)
 	body.add_child(mesh)
 
-	# Per-face Label3D fallbacks ONLY when the atlas is missing — the
-	# atlas already paints the digit onto each face.
-	if not ResourceLoader.exists(DIE_TEX_PATH):
-		_attach_face_labels(body)
+	# Always attach face-digit labels — they're the 3D readable layer.
+	_attach_face_labels(body)
 
 	return body
 
 
-func _build_die_atlas_mesh() -> ArrayMesh:
+func _build_die_atlas_mesh_unused() -> ArrayMesh:
 	# Custom-UV cube mesh. The atlas is 3 cols × 2 rows. Each cube face
 	# claims one cell, with the convention that opposite faces sum to 7
 	# (matching _read_die_face).
@@ -302,10 +297,10 @@ func _build_die_atlas_mesh() -> ArrayMesh:
 
 
 func _attach_face_labels(die: RigidBody3D) -> void:
-	# Six small Label3Ds, one per face, showing the digit 1..6. Pure
-	# debug-time fallback — when the real atlas drops in, ResourceLoader
-	# will see the file and we skip this branch entirely.
-	var half: float = DIE_SIZE * 0.5 + 0.001
+	# Six big-pip-style digits, one per face, painted just outside the
+	# cube surface so they read clearly at the camera's framing distance.
+	# Convention: opposite faces sum to 7. Matches _read_die_face.
+	var half: float = DIE_SIZE * 0.5 + 0.0015
 	var face_data: Array = [
 		{"text": "1", "pos": Vector3(0, half, 0),  "rot": Vector3(-PI/2, 0, 0)},
 		{"text": "6", "pos": Vector3(0, -half, 0), "rot": Vector3(PI/2, 0, 0)},
@@ -319,9 +314,11 @@ func _attach_face_labels(die: RigidBody3D) -> void:
 		label.text = entry.text
 		label.position = entry.pos
 		label.rotation = entry.rot
-		label.pixel_size = 0.0015
-		label.modulate = Color(0.15, 0.10, 0.05)
-		label.outline_modulate = Color(1, 1, 1, 0)
+		label.pixel_size = 0.0040          # readable at table distance
+		label.modulate = Color(0.10, 0.06, 0.03)
+		label.outline_modulate = Color(0.95, 0.85, 0.55, 0.85)
+		label.outline_size = 12
+		label.font_size = 64
 		label.no_depth_test = false
 		label.fixed_size = false
 		die.add_child(label)

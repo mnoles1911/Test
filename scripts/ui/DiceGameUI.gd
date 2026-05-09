@@ -116,6 +116,7 @@ var _ambient_player: AudioStreamPlayer
 
 func _init() -> void:
 	layer = HUD_LAYER
+	visible = false   # stay hidden until open() is called
 
 
 func _ready() -> void:
@@ -197,9 +198,9 @@ func _build_ui() -> void:
 
 	_root_panel = PanelContainer.new()
 	_root_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
-	_root_panel.custom_minimum_size = Vector2(1000, 760)
+	_root_panel.custom_minimum_size = Vector2(1080, 880)
 	_root_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_root_panel.position = Vector2(-500, -380)
+	_root_panel.position = Vector2(-540, -440)
 	add_child(_root_panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()
@@ -235,6 +236,7 @@ func _build_header(parent: VBoxContainer) -> void:
 
 	_opponent_label = Label.new()
 	_opponent_label.text = "Opponent"
+	_opponent_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_title_label(_opponent_label, 28)
 	hbox.add_child(_opponent_label)
 
@@ -246,10 +248,12 @@ func _build_header(parent: VBoxContainer) -> void:
 	_balance_coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_balance_coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_balance_coin_icon.custom_minimum_size = Vector2(24, 24)
+	_balance_coin_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_balance_coin_icon.visible = false
 	hbox.add_child(_balance_coin_icon)
 
 	_balance_label = Label.new()
+	_balance_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_body_label(_balance_label, 18)
 	hbox.add_child(_balance_label)
 
@@ -257,52 +261,47 @@ func _build_header(parent: VBoxContainer) -> void:
 	_pot_coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_pot_coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_pot_coin_icon.custom_minimum_size = Vector2(24, 24)
+	_pot_coin_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_pot_coin_icon.visible = false
 	hbox.add_child(_pot_coin_icon)
 
 	_pot_label = Label.new()
+	_pot_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_body_label(_pot_label, 18)
 	_pot_label.add_theme_color_override("font_color", Colors.GOLD)
 	hbox.add_child(_pot_label)
 
 	_rerolls_label = Label.new()
+	_rerolls_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_dim_label(_rerolls_label, 16)
 	hbox.add_child(_rerolls_label)
 
 	_state_label = Label.new()
+	_state_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_body_label(_state_label, 16)
 	_state_label.add_theme_color_override("font_color", Colors.INK_DIM)
 	parent.add_child(_state_label)
 
-	# Rules summary — small parchment strip so the player isn't guessing.
-	var rules_panel: PanelContainer = PanelContainer.new()
-	rules_panel.add_theme_stylebox_override("panel", UIStyles.parchment_panel())
-	parent.add_child(rules_panel)
-
+	# Compact one-line rules hint. Sits in the same vbox as the state
+	# label, no panel, no autowrap — keeps the layout simple.
 	var rules_label: Label = Label.new()
-	rules_label.text = (
-		"  Rules:  Roll 5 dice. Best hand wins the pot."
-		+ "    Click a die to lock it.    Reroll up to twice."
-		+ "    Pair < Two Pair < Three of a Kind < Straight (1-5 or 2-6)"
-		+ " < Full House < Four of a Kind < Five of a Kind."
-	)
-	rules_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	rules_label.add_theme_color_override("font_color", Colors.PARCHMENT_INK)
-	rules_label.add_theme_font_size_override("font_size", 13)
-	var serif := UIStyles.font_serif()
-	if serif:
-		rules_label.add_theme_font_override("font", serif)
-	rules_panel.add_child(rules_label)
+	rules_label.text = "Best of 5 dice. Click cards to lock, reroll up to twice. Ranks: Pair < 2-Pair < 3-of-a-Kind < Straight < Full House < 4-of-a-Kind < 5-of-a-Kind."
+	rules_label.add_theme_color_override("font_color", Colors.INK_DIM)
+	rules_label.add_theme_font_size_override("font_size", 12)
+	rules_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(rules_label)
 
 
 func _build_viewport(parent: VBoxContainer) -> void:
 	_viewport_container = SubViewportContainer.new()
-	_viewport_container.custom_minimum_size = Vector2(960, 380)
+	_viewport_container.custom_minimum_size = Vector2(960, 320)
 	_viewport_container.stretch = true
+	# Don't expand into space the buttons below need.
+	_viewport_container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	parent.add_child(_viewport_container)
 
 	_viewport = SubViewport.new()
-	_viewport.size = Vector2i(960, 380)
+	_viewport.size = Vector2i(960, 320)
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.transparent_bg = false
 	_viewport_container.add_child(_viewport)
@@ -338,6 +337,10 @@ func _build_dice_cards(parent: VBoxContainer) -> void:
 		value_label.size = Vector2(60, 60)
 		value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		# CRITICAL: Labels default to MOUSE_FILTER_STOP, which would block
+		# clicks from reaching the parent Button. IGNORE lets clicks pass
+		# straight through to the button's pressed handler.
+		value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		UIStyles.apply_title_label(value_label, 44)
 		inner.add_child(value_label)
 		_die_card_value_labels.append(value_label)
@@ -500,11 +503,13 @@ func _build_state_controls(parent: VBoxContainer) -> void:
 
 	_reveal_player_label = Label.new()
 	_reveal_player_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_reveal_player_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_body_label(_reveal_player_label, 18)
 	_reveal_vbox.add_child(_reveal_player_label)
 
 	_reveal_opponent_label = Label.new()
 	_reveal_opponent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_reveal_opponent_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UIStyles.apply_body_label(_reveal_opponent_label, 18)
 	_reveal_vbox.add_child(_reveal_opponent_label)
 
