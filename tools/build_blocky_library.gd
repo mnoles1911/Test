@@ -148,6 +148,20 @@ func _run() -> void:
 	var models: Array = []
 	models.resize(max_id + 1)
 
+	# Zylann Cube SIDE enum (from voxel/util/godot/classes/cube.h):
+	#   0 = SIDE_NEGATIVE_X (left / west)
+	#   1 = SIDE_POSITIVE_X (right / east)
+	#   2 = SIDE_NEGATIVE_Y (bottom / down)
+	#   3 = SIDE_POSITIVE_Y (top / up)
+	#   4 = SIDE_NEGATIVE_Z (front / north)
+	#   5 = SIDE_POSITIVE_Z (back / south)
+	const SIDE_NEG_X: int = 0
+	const SIDE_POS_X: int = 1
+	const SIDE_NEG_Y: int = 2
+	const SIDE_POS_Y: int = 3
+	const SIDE_NEG_Z: int = 4
+	const SIDE_POS_Z: int = 5
+
 	for mat_id in MATERIAL_TILES.keys():
 		var faces: Dictionary = MATERIAL_TILES[mat_id]
 		var model: Resource = ClassDB.instantiate("VoxelBlockyModelCube")
@@ -156,31 +170,46 @@ func _run() -> void:
 			continue
 
 		# Atlas grid size on every cube so Zylann knows how to compute
-		# per-face UVs from the integer tile coords below.
+		# per-face UVs from the integer tile coords below. This DOES
+		# work via direct .set() because it's a simple property.
 		model.set("atlas_size_in_tiles", atlas_grid)
 
-		# Per-face tile coords. The four side faces all share the same
-		# tile (we don't yet author per-direction sides).
-		model.set("tile_top", faces["top"])
-		model.set("tile_bottom", faces["bottom"])
-		model.set("tile_left", faces["side"])
-		model.set("tile_right", faces["side"])
-		model.set("tile_front", faces["side"])
-		model.set("tile_back", faces["side"])
+		# Per-face tile coords MUST be set via the set_tile() method.
+		# Direct property assignment via .set("tile_top", v) silently
+		# no-ops because Zylann's serializer routes property storage
+		# through set_tile/get_tile pair.
+		model.call("set_tile", SIDE_POS_Y, faces["top"])
+		model.call("set_tile", SIDE_NEG_Y, faces["bottom"])
+		model.call("set_tile", SIDE_NEG_X, faces["side"])
+		model.call("set_tile", SIDE_POS_X, faces["side"])
+		model.call("set_tile", SIDE_NEG_Z, faces["side"])
+		model.call("set_tile", SIDE_POS_Z, faces["side"])
 
 		# Each cube carries the atlas material on its single surface.
-		model.set("material_override_0", atlas_mat)
+		# `material_override_0` is a dynamic per-surface property name
+		# — must use the set_material_override(surface_idx, mat) method.
+		model.call("set_material_override", 0, atlas_mat)
 
-		# Transparency / culling.
+		# Transparency / culling. transparency_index is a real property
+		# (it's the only one that previously persisted), so .set() works.
 		if int(mat_id) in TRANSPARENT_MATERIALS:
 			model.set("transparency_index", 1)
 		if int(mat_id) in NON_CULLING_MATERIALS:
 			model.set("culls_neighbors", false)
 
-		models[mat_id] = model
-		print("  slot %d: top=%s side=%s bottom=%s" % [
-			mat_id, faces["top"], faces["side"], faces["bottom"]
+		# Read-back verification — confirms set_tile actually stuck
+		# before we try to save. If these don't match, the build is
+		# broken before serialization gets involved.
+		var rb_top: Vector2i = model.call("get_tile", SIDE_POS_Y)
+		var rb_mat = model.call("get_material_override", 0)
+		var ok: bool = rb_top == (faces["top"] as Vector2i) and rb_mat != null
+		var status: String = "OK" if ok else "FAIL"
+		print("  slot %d [%s]: top=%s side=%s bottom=%s mat=%s" % [
+			mat_id, status, faces["top"], faces["side"], faces["bottom"],
+			"yes" if rb_mat != null else "MISSING"
 		])
+
+		models[mat_id] = model
 
 	# Assign models array onto the library.
 	library.set("models", models)
