@@ -90,6 +90,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/MINING_TIME_SCALING.md | New voxel material added, baseline `mining_time_seconds` values tuned, volume-scaling formula changed, or tool-tier multipliers wired in |
 | design/SYSTEMS_DESIGN.md | Companion roster changes, faction triggers updated, new game systems added |
 | design/ART_DIRECTION.md | New locations added to the game, palette or shader decisions finalized |
+| design/ASSET_PIPELINE_AI.md | New AI tool replaces a recommended one, character voxel scale changes, new asset class added, or a pipeline workaround needs documenting |
 | design/ITEM_LIBRARY.md | New craftable items, recipes, or input materials added to any section |
 | design/SKILLS_AND_PROGRESSION.md | New perks, sub-skills, or trainer NPCs added; XP values tuned |
 | design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock for a new character, manifest schema changes |
@@ -172,6 +173,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/CAMERA_AND_PERSPECTIVE.md — why the 3/4 view is an art style, not a camera transform
 - design/TECH_STACK.md — full technology stack: every tool, plugin, and pipeline; current generator (`CubicHeightmapGenerator`); autoload status table (kept in sync with `project.godot`)
 - design/ART_PIPELINE.md — MagicaVoxel, Zylann plugin, Blender. Note: the Gaea → EXR → VoxelGeneratorGraph pipeline section is aspirational (planned for v1 Mira authoring); current implementation uses `CubicHeightmapGenerator`
+- design/ASSET_PIPELINE_AI.md — AI-heavy pipeline for 3D characters/enemies (Nano Banana → Meshy → Blender voxelize → Mixamo + Cascadeur), with two prompts per asset (3D-conversion ready vs. concept/mood), Blender bridge steps, and 18 SFX prompts for ElevenLabs Audio. Companion to ART_PIPELINE.md; together they cover manual + AI workflows.
 - design/3D_VOXEL_MIGRATION.md — full pivot plan: what changes, what survives, 3D milestones
 
 **Planning and ops:**
