@@ -245,7 +245,7 @@ func _setup_background() -> void:
 	# text stays readable against most pieces.
 	var tint := ColorRect.new()
 	tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tint.color = Color(0, 0, 0, 0.5)
+	tint.color = Color(Colors.BG_NIGHT.r, Colors.BG_NIGHT.g, Colors.BG_NIGHT.b, 0.55)
 	tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(tint)
 	move_child(tint, insert_index + 1)
@@ -312,16 +312,16 @@ func _build_main_column() -> void:
 
 	# --- Title ---
 	var title := Label.new()
-	title.text = "GAME ONE"
-	title.add_theme_font_size_override("font_size", 72)
-	title.add_theme_color_override("font_color", Color(0.92, 0.86, 0.7, 1))
+	title.text = "VOXELMARK"
+	UIStyles.apply_title_label(title, 84)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Mira-Thal Trilogy"
-	subtitle.add_theme_font_size_override("font_size", 24)
-	subtitle.add_theme_color_override("font_color", Color(0.55, 0.5, 0.42, 1))
+	subtitle.text = "Mira-Thal Trilogy · Game One"
+	UIStyles.apply_subtitle_label(subtitle)
+	subtitle.add_theme_font_size_override("font_size", 18)
+	subtitle.add_theme_color_override("font_color", Colors.INK_DIM)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(subtitle)
 
@@ -331,15 +331,14 @@ func _build_main_column() -> void:
 	v.add_child(spacer)
 
 	# --- Buttons ---
-	# All buttons share a layout: flat, 1080p-sized font,
-	# fixed minimum height so they don't shrink.
+	# All buttons share a layout: oak gradient + gold hover seam,
+	# 1080p-sized font, fixed minimum height so they don't shrink.
 	var make_btn := func(label: String) -> Button:
 		var b := Button.new()
 		b.text = label
-		b.flat = true
 		b.custom_minimum_size = Vector2(0, 56)
-		b.add_theme_font_size_override("font_size", 28)
-		b.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+		UIStyles.apply_menu_button(b)
+		b.add_theme_font_size_override("font_size", 24)
 		return b
 
 	# Order from top to bottom: Continue, New Game, Load Game,
@@ -378,8 +377,7 @@ func _build_main_column() -> void:
 	# --- Version stamp in the corner ---
 	var version := Label.new()
 	version.text = "Milestone 5-3D — dev build"
-	version.add_theme_font_size_override("font_size", 12)
-	version.add_theme_color_override("font_color", Color(0.32, 0.32, 0.32, 1))
+	UIStyles.apply_muted_label(version, 12)
 	version.position = Vector2(16, 16)
 	# Anchor to bottom-left.
 	version.anchor_top = 1.0
@@ -405,6 +403,7 @@ func _build_load_picker() -> void:
 	_load_panel.offset_right  =  360
 	_load_panel.offset_bottom =  280
 	_load_panel.visible = false
+	_load_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	add_child(_load_panel)
 
 	var v := VBoxContainer.new()
@@ -417,9 +416,8 @@ func _build_load_picker() -> void:
 	_load_panel.add_child(v)
 
 	var title := Label.new()
-	title.text = "— LOAD GAME —"
-	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(0.92, 0.86, 0.7, 1))
+	title.text = "LOAD GAME"
+	UIStyles.apply_title_label(title, 32)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 
@@ -435,8 +433,8 @@ func _build_load_picker() -> void:
 
 	_load_cancel_btn = Button.new()
 	_load_cancel_btn.text = "CANCEL"
-	_load_cancel_btn.add_theme_font_size_override("font_size", 20)
 	_load_cancel_btn.custom_minimum_size = Vector2(160, 44)
+	UIStyles.apply_menu_button(_load_cancel_btn)
 	_load_cancel_btn.pressed.connect(_show_main_column)
 	v.add_child(_load_cancel_btn)
 
@@ -449,8 +447,7 @@ func _populate_load_list() -> void:
 	if saves.is_empty():
 		var empty_lbl := Label.new()
 		empty_lbl.text = "No saves yet. Start a New Game to begin."
-		empty_lbl.add_theme_font_size_override("font_size", 16)
-		empty_lbl.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65, 1))
+		UIStyles.apply_muted_label(empty_lbl, 16)
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_load_list_container.add_child(empty_lbl)
 		return
@@ -473,22 +470,24 @@ func _make_save_row(meta: Dictionary) -> Control:
 		pos.x, pos.y, pos.z,
 	]
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_lbl.add_theme_font_size_override("font_size", 16)
-	info_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	UIStyles.apply_body_label(info_lbl, 16)
 	hbox.add_child(info_lbl)
 
 	var load_btn := Button.new()
 	load_btn.text = "LOAD"
-	load_btn.add_theme_font_size_override("font_size", 16)
 	load_btn.custom_minimum_size = Vector2(96, 44)
+	UIStyles.apply_menu_button(load_btn)
+	load_btn.add_theme_font_size_override("font_size", 16)
 	load_btn.pressed.connect(_on_load_select.bind(meta.get("filename", "")))
 	hbox.add_child(load_btn)
 
 	var delete_btn := Button.new()
 	delete_btn.text = "DELETE"
-	delete_btn.add_theme_font_size_override("font_size", 16)
-	delete_btn.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5, 1))
 	delete_btn.custom_minimum_size = Vector2(96, 44)
+	UIStyles.apply_menu_button(delete_btn)
+	delete_btn.add_theme_font_size_override("font_size", 16)
+	delete_btn.add_theme_color_override("font_color", Colors.HP_BRIGHT)
+	delete_btn.add_theme_color_override("font_hover_color", Colors.HP_BRIGHT)
 	delete_btn.pressed.connect(_on_load_delete.bind(meta.get("filename", "")))
 	hbox.add_child(delete_btn)
 
@@ -510,6 +509,7 @@ func _build_help_panel() -> void:
 	_help_panel.offset_right  =  360
 	_help_panel.offset_bottom =  280
 	_help_panel.visible = false
+	_help_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	add_child(_help_panel)
 
 	var v := VBoxContainer.new()
@@ -522,16 +522,14 @@ func _build_help_panel() -> void:
 	_help_panel.add_child(v)
 
 	var title := Label.new()
-	title.text = "— HELP —"
-	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(0.92, 0.86, 0.7, 1))
+	title.text = "HELP"
+	UIStyles.apply_title_label(title, 32)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 
 	var body := Label.new()
 	body.text = "Help content coming soon."
-	body.add_theme_font_size_override("font_size", 18)
-	body.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	UIStyles.apply_body_label(body, 18)
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -540,8 +538,8 @@ func _build_help_panel() -> void:
 
 	_help_cancel_btn = Button.new()
 	_help_cancel_btn.text = "BACK"
-	_help_cancel_btn.add_theme_font_size_override("font_size", 20)
 	_help_cancel_btn.custom_minimum_size = Vector2(160, 44)
+	UIStyles.apply_menu_button(_help_cancel_btn)
 	_help_cancel_btn.pressed.connect(_show_main_column)
 	v.add_child(_help_cancel_btn)
 
@@ -559,6 +557,7 @@ func _build_credits_panel() -> void:
 	_credits_panel.offset_right  =  360
 	_credits_panel.offset_bottom =  280
 	_credits_panel.visible = false
+	_credits_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	add_child(_credits_panel)
 
 	var v := VBoxContainer.new()
@@ -571,16 +570,14 @@ func _build_credits_panel() -> void:
 	_credits_panel.add_child(v)
 
 	var title := Label.new()
-	title.text = "— CREDITS —"
-	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(0.92, 0.86, 0.7, 1))
+	title.text = "CREDITS"
+	UIStyles.apply_title_label(title, 32)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 
 	var body := Label.new()
 	body.text = "Credits coming soon."
-	body.add_theme_font_size_override("font_size", 18)
-	body.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	UIStyles.apply_body_label(body, 18)
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -589,8 +586,8 @@ func _build_credits_panel() -> void:
 
 	_credits_cancel_btn = Button.new()
 	_credits_cancel_btn.text = "BACK"
-	_credits_cancel_btn.add_theme_font_size_override("font_size", 20)
 	_credits_cancel_btn.custom_minimum_size = Vector2(160, 44)
+	UIStyles.apply_menu_button(_credits_cancel_btn)
 	_credits_cancel_btn.pressed.connect(_show_main_column)
 	v.add_child(_credits_cancel_btn)
 
@@ -644,11 +641,14 @@ func _on_new_game() -> void:
 	print("[MainMenu] NEW GAME pressed")
 	GameState.reset_for_new_game()
 	_handoff_music_to_loading_screen()
-	# 10 s loading hold — gives Zylann's worker threads a window to
-	# stream the player's spawn-area chunks before the fade clears.
-	# Without this the player sees half-loaded blocky terrain for
-	# the first few seconds of every new game.
-	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 10.0)
+	# 45 s loading hold — gives Zylann's worker threads + main-thread
+	# mesh-upload pipeline a window to stream the player's spawn-area
+	# chunks before the fade clears. Tuned generously because the
+	# project uses gl_compatibility (single-threaded renderer) —
+	# chunk uploads run serial with everything else, and 10 s wasn't
+	# enough to get nearby terrain into a presentable state on
+	# slower hardware.
+	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 120.0)
 
 
 func _on_load() -> void:
@@ -705,9 +705,9 @@ func _on_load_select(filename: String) -> void:
 		scene = WORLD_SCENE
 	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
 	_handoff_music_to_loading_screen()
-	# Same 10 s loading hold as NEW GAME — restored saves still need
+	# Same 120 s loading hold as NEW GAME — restored saves still need
 	# chunk streaming time, plus voxel deltas reading from SQLite.
-	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 10.0)
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 120.0)
 
 
 func _on_load_delete(filename: String) -> void:

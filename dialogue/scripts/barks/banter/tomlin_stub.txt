@@ -1,0 +1,19 @@
+# Trigger: DICE_REVEAL_OPPONENT_WIN
+TOMLIN: [satisfied] Better luck next throw.
+TOMLIN: [low laugh] The dice favor me tonight.
+TOMLIN: [grunt] Hah.
+
+# Trigger: DICE_REVEAL_PLAYER_WIN
+TOMLIN: [grudging] Lucky.
+TOMLIN: [quiet] A fine hand.
+TOMLIN: [flat] Don't get comfortable.
+
+# Trigger: DICE_REVEAL_PUSH
+TOMLIN: [neutral] Even split.
+TOMLIN: [shrug] A wash.
+
+# Trigger: DICE_MATCH_LEAVE
+TOMLIN: [calling after] Come back when you've got coin.
+
+# Trigger: DICE_MATCH_LEAVE_BROKE
+TOMLIN: [softer] Cleaned out, eh? Come back when you've earned more.

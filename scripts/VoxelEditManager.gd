@@ -43,7 +43,7 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 13
+const WORLD_GENERATOR_VERSION: int = 15
 # Bump this constant whenever the procedural baseline produced by
 # the active generator (currently CubicHeightmapGenerator) changes
 # shape OR encoding — e.g. swap to a new heightmap, change cave
@@ -61,11 +61,24 @@ const WORLD_GENERATOR_VERSION: int = 13
 #         Generator writes mat_id=6 bedrock at that exact Y; voxels
 #         below are air (the world has a finite bottom). Edits below
 #         the floor are rejected at this manager.
-#   v13 → VoxelMesherBlocky migration. Terrain voxels live in
+#   v13 → CHANNEL_DATA5 water voxels (Minecraft-style ocean). Generator
+#         now writes one byte per voxel into CHANNEL_DATA5 encoding
+#         water level/source/tick (see WaterByteCodec). Below-sea-level
+#         columns get water bytes at gen time; above-sea-level columns
+#         do not. The legacy AABB ocean shortcut goes away. Old saves
+#         have no CHANNEL_DATA5 stored, so they read as fully-dry —
+#         hard-reject and require a new game.
+#   v14 → Sea level raised from voxel Y=60 (world 10 m) to voxel Y=72
+#         (world 12 m). Beach band raised from voxel 7 to 74 to match.
+#         Shifts the land/water split from 50/50 to ~40/60 so ocean
+#         basins are clearly visible between landmasses. Old saves'
+#         water columns assume the v13 sea level and would mismatch.
+#   v15 → VoxelMesherBlocky migration. Terrain voxels live in
 #         CHANNEL_TYPE (8-bit integer = material_id directly), no
 #         longer in CHANNEL_COLOR as packed RGBA. Library-driven
-#         per-face textures via VoxelBlockyLibrary. Pre-v13 saves
-#         are invalid — no migration path; the channel changed.
+#         per-face textures via VoxelBlockyLibrary; water continues
+#         to live in CHANNEL_DATA5 (orthogonal). Pre-v15 saves are
+#         invalid — no migration path; the terrain channel changed.
 
 
 # ============================================================
@@ -175,6 +188,17 @@ signal edit_rejected_no_edit_zone(world_pos: Vector3)
 # Fired when an edit is rejected because it's inside a NoEditZone.
 # The bark system listens and triggers Roland's "This place doesn't
 # yield to me." line, throttled to once per session per zone.
+
+signal water_changed_at(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: AABB)
+# Fired after every CHANNEL_DATA water write. Distinct from edit_applied
+# (which fires for COLOR/terrain edits) so the WaterChunkMesher
+# subscribes ONLY to water changes and doesn't pay the cost of rebuilding
+# its mesh on every pickaxe swing.
+#
+# The reverse is also true: VoxelGravityManager subscribes to
+# edit_applied for terrain falling-voxel scans, and is NOT fired for
+# water writes — placing a bucket of water doesn't trigger gravity
+# analysis on neighbouring solid voxels.
 
 
 # ============================================================
@@ -346,6 +370,65 @@ func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
 		"type": "set",
 		"pos": world_pos,
 		"value": voxel_value,
+	})
+	return true
+
+
+func queue_set_water_voxel(voxel_pos: Vector3i, water_byte: int) -> bool:
+	# Write a single CHANNEL_DATA byte at the given voxel grid position.
+	# Used by player buckets, river headwater authoring, and the flow
+	# simulator for occasional out-of-band single-cell writes (most flow
+	# tick writes go via terrain.paste of a whole region).
+	#
+	# Routes through the same async queue as terrain edits, so writes
+	# don't stutter the frame and respect the same per-frame voxel
+	# budget. NoEditZone gating uses blocks_water_flow (not the COLOR-
+	# edit gate) — designers can have a zone that allows water flow but
+	# rejects terrain edits, or vice versa.
+	#
+	# Returns true if accepted. Bedrock-floor rejection is intentionally
+	# omitted: a flooded mineshaft can extend down to the bedrock floor;
+	# the floor itself is solid and water above it is fine.
+	var world_pos: Vector3 = (Vector3(voxel_pos) + Vector3(0.5, 0.5, 0.5)) / VOXELS_PER_METER
+	if get_node_or_null("/root/NoEditZoneRegistry") != null:
+		if NoEditZoneRegistry.is_water_flow_blocked_at(world_pos):
+			return false
+	if _edit_queue.size() >= max_queue_length:
+		push_warning("VoxelEditManager: queue full, dropping water-set edit")
+		return false
+	_edit_queue.append({
+		"type": "water_set",
+		"voxel_pos": voxel_pos,
+		"water_byte": water_byte & 0xFF,
+	})
+	return true
+
+
+func queue_set_water_box(voxel_min: Vector3i, voxel_max: Vector3i, water_byte: int) -> bool:
+	# Bulk water write: fill a voxel-grid box with the same water byte.
+	# Used by World3DBootstrap to seed the test pond after Phase 5
+	# (replaces the legacy add_source_region path), and by future
+	# flood-trigger story events.
+	#
+	# voxel_min is inclusive, voxel_max is exclusive — matches the
+	# semantics of queue_edit_box_voxels.
+	#
+	# NoEditZone gate applied at the box centre, same coarse policy as
+	# queue_edit_box_voxels. A box that straddles a zone boundary is
+	# rejected if the centre is inside the zone, accepted otherwise.
+	var center_voxel: Vector3 = (Vector3(voxel_min) + Vector3(voxel_max)) * 0.5
+	var world_center: Vector3 = center_voxel / VOXELS_PER_METER
+	if get_node_or_null("/root/NoEditZoneRegistry") != null:
+		if NoEditZoneRegistry.is_water_flow_blocked_at(world_center):
+			return false
+	if _edit_queue.size() >= max_queue_length:
+		push_warning("VoxelEditManager: queue full, dropping water-box edit")
+		return false
+	_edit_queue.append({
+		"type": "water_box",
+		"voxel_min": voxel_min,
+		"voxel_max": voxel_max,
+		"water_byte": water_byte & 0xFF,
 	})
 	return true
 
@@ -579,6 +662,57 @@ func _apply_edit(cmd: Dictionary) -> void:
 				AABB(sv_aabb_min, sv_aabb_max - sv_aabb_min),
 			)
 
+		"water_set":
+			# Single CHANNEL_DATA byte write. Switch the tool to the
+			# DATA channel for this command — restored to COLOR after
+			# the match block below for safety, though the tool is
+			# discarded at end of _apply_edit so it doesn't matter for
+			# the next command.
+			var ws_voxel_pos: Vector3i = cmd["voxel_pos"]
+			var ws_byte: int = cmd["water_byte"]
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			tool.value = ws_byte
+			# Editability guard — Zylann's do_box prints "Area not editable"
+			# and silently no-ops if the target chunk hasn't been streamed
+			# in at LOD0 yet. Re-queue with a retry counter rather than
+			# losing the write. Common at world boot when the test pond
+			# tries to seed before terrain has finished its first stream.
+			var ws_box := AABB(Vector3(ws_voxel_pos), Vector3.ONE)
+			if not _try_requeue_if_not_editable(tool, ws_box, cmd):
+				return
+			# do_box on a 1-voxel box is the same write pattern used
+			# by the bulk path. Avoids relying on tool.set_voxel which
+			# has churned signatures across Zylann builds.
+			tool.do_box(Vector3(ws_voxel_pos), Vector3(ws_voxel_pos) + Vector3.ONE)
+			var ws_world: Vector3 = (Vector3(ws_voxel_pos) + Vector3(0.5, 0.5, 0.5)) / VOXELS_PER_METER
+			var ws_aabb := AABB(
+				Vector3(ws_voxel_pos) / VOXELS_PER_METER,
+				Vector3.ONE / VOXELS_PER_METER,
+			)
+			# Mark the chunk so save persistence picks it up — same
+			# bookkeeping as terrain edits. Otherwise a flooded chunk
+			# might not be flushed by save_modified_blocks.
+			_mark_chunks_in_aabb(ws_aabb.position, ws_aabb.position + ws_aabb.size)
+			water_changed_at.emit(ws_world, _world_to_chunk(ws_world), ws_aabb)
+
+		"water_box":
+			var wb_min: Vector3i = cmd["voxel_min"]
+			var wb_max: Vector3i = cmd["voxel_max"]
+			var wb_byte: int = cmd["water_byte"]
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			tool.value = wb_byte
+			# Editability guard — see "water_set" above for why.
+			var wb_box := AABB(Vector3(wb_min), Vector3(wb_max - wb_min))
+			if not _try_requeue_if_not_editable(tool, wb_box, cmd):
+				return
+			tool.do_box(Vector3(wb_min), Vector3(wb_max))
+			var wb_world_min: Vector3 = Vector3(wb_min) / VOXELS_PER_METER
+			var wb_world_max: Vector3 = Vector3(wb_max) / VOXELS_PER_METER
+			var wb_aabb := AABB(wb_world_min, wb_world_max - wb_world_min)
+			_mark_chunks_in_aabb(wb_world_min, wb_world_max)
+			var wb_center: Vector3 = (wb_world_min + wb_world_max) * 0.5
+			water_changed_at.emit(wb_center, _world_to_chunk(wb_center), wb_aabb)
+
 		"bulk":
 			# Bulk single-voxel write — cluster re-deposit (and cluster
 			# carve) path. We emit edit_applied ONCE for the whole batch
@@ -700,6 +834,51 @@ func _check_edit_allowed(world_pos: Vector3) -> bool:
 
 
 # ============================================================
+# Private — editability retry
+# ============================================================
+
+# Max times a water-edit cmd may be requeued before being dropped. At
+# 60 fps the queue drain runs every physics frame, so 60 retries
+# covers a 1-second window of "terrain not yet streamed for this
+# voxel." If a chunk genuinely can't be streamed (way outside view
+# distance, or a stream error), we eventually give up rather than
+# pinning the queue forever.
+const _MAX_WATER_RETRY: int = 60
+
+
+func _try_requeue_if_not_editable(tool: VoxelTool, voxel_box: AABB, cmd: Dictionary) -> bool:
+	# Returns true if the area is editable (caller proceeds with
+	# do_box). Returns false if we requeued the command for a later
+	# frame OR dropped it after exhausting retries.
+	#
+	# Why this exists: Zylann's `tool.do_box` prints "Area not editable"
+	# and silently no-ops if the chunk hasn't been streamed in at LOD0.
+	# That used to swallow the test-pond seed at world boot and
+	# occasionally drop water writes for chunks the player walked
+	# toward fast enough to outrun the streamer. With this guard we
+	# requeue and retry instead.
+	if not tool.has_method("is_area_editable"):
+		# Older Zylann build without the probe API — assume editable.
+		# Worst case is the same silent no-op we had before.
+		return true
+	if tool.call("is_area_editable", voxel_box):
+		return true
+	# Not editable yet. Requeue if we have retries left.
+	var retries: int = int(cmd.get("_retry", 0))
+	if retries >= _MAX_WATER_RETRY:
+		push_warning("[VoxelEditManager] dropping water cmd after %d retries (area never became editable): %s" % [
+			retries, cmd.get("type", "?"),
+		])
+		return false
+	cmd["_retry"] = retries + 1
+	# Push to the BACK of the queue so we don't spin in a tight loop
+	# blocking subsequent commands; this gives the streamer a chance
+	# to catch up before we look at this voxel again.
+	_edit_queue.append(cmd)
+	return false
+
+
+# ============================================================
 # Private — chunk bookkeeping
 # ============================================================
 
@@ -787,6 +966,11 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 			return size.x * size.y * size.z
 		"set":
 			return 1
+		"water_set":
+			return 1
+		"water_box":
+			var wb_size: Vector3i = cmd["voxel_max"] - cmd["voxel_min"]
+			return maxi(1, wb_size.x * wb_size.y * wb_size.z)
 		"bulk":
 			return cmd.get("writes", []).size()
 		_:

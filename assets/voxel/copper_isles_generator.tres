@@ -1,0 +1,67 @@
+[gd_resource type="VoxelGeneratorScript" load_steps=2 format=3]
+
+; Copper Isles heightmap-driven generator. Loads
+; assets/heightmaps/copper_isles_heightmap.exr at first chunk
+; generation, samples ground heights per voxel column, and writes
+; CHANNEL_COLOR (terrain) + CHANNEL_DATA5 (water source bytes).
+;
+; Defaults match the new 8K EXR spec:
+;   - 5000 m × 5000 m world (30000 × 30000 voxel extent at scale 1/6)
+;   - 2500 m peak elevation when gray = 1.0 (15000 voxels)
+;   - Sea level at gray = 0.0, voxel-Y = 0 (heightmap is land-only)
+;   - Out-of-bounds → deep ocean (40 m below sea level)
+;
+; HEIGHTMAP STATUS NOTE (2026-05-09): the shipped EXR delivers a
+; SINGLE irregular continent (~76% land, ~24% perimeter ocean), NOT
+; the five-island archipelago specified in
+; design/COPPER_ISLES_DEMO_HEIGHTMAP.md and lore/copper_isles/
+; GEOGRAPHY.md. Verified by in-engine ASCII heatmap dump. Sea level
+; world Y=200 m. Central spawn (0, 0) lands on hill terrain (gray
+; ~0.1-0.2 → world Y≈414-668 m). Closest coastline ~2 km west.
+; Generator math is correct; the EXR content itself diverges from
+; spec. Re-source the EXR to make the lore match the playable space.
+; See design/COPPER_ISLES_BAKE_NOTES.md "Actual world layout" for
+; the per-tile distribution used by the walker.
+;
+; Tune any field in the Inspector while the test scene runs.
+
+[ext_resource type="Script" path="res://scripts/CopperIslesHeightmapGenerator.gd" id="1_copper_gen"]
+
+[resource]
+script = ExtResource("1_copper_gen")
+heightmap_path = "res://assets/heightmaps/copper_isles_heightmap.exr"
+extent_x_voxels = 30000
+extent_z_voxels = 30000
+origin_x_voxels = -15000
+origin_z_voxels = -15000
+; WORLD-SCALE REFACTOR (2026-05-09): the generator is now a simple
+; linear map from heightmap gray to ground voxel-Y. Sea level is a
+; PURELY VISUAL knob — it does not anchor the terrain math, so
+; raising or lowering it only moves the water plane.
+;
+; New contract (see scripts/CopperIslesHeightmapGenerator.gd
+; _gray_to_ground_y):
+;   gray = 0.0 → ground at world Y = 0      (lowest ocean floor)
+;   gray = 1.0 → ground at world Y = elevation_above_at_white_voxels / 6
+;                (= 2500 m at 15 000 voxels and the canonical 1/6 scale)
+;
+; Sea level: water surface sits at sea_level_voxels in voxel space
+; (= world Y = sea_level_voxels / 6). Anywhere ground_y < sea_level
+; is automatically ocean — no separate threshold needed. Move sea
+; level wherever you want, terrain stays put.
+;
+; sea_level_gray and elevation_below_at_black_voxels are LEGACY
+; fields kept for back-compat with existing .tres files. The
+; refactored generator ignores both. Do not change them expecting
+; an effect.
+sea_level_voxels = 750
+sea_level_gray = 0.0
+elevation_above_at_white_voxels = 15000
+elevation_below_at_black_voxels = 0
+emit_water = true
+bilinear_sampling = true
+require_heightmap_in_editor_only = false
+grass_layer_thickness_voxels = 1
+dirt_layer_thickness_voxels = 3
+beach_y_threshold = 762
+early_out_margin_voxels = 4

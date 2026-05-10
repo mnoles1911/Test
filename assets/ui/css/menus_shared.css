@@ -1,0 +1,286 @@
+/* ============================================================
+   VOXELMARK — shared menu framework
+   Used by Inventory / Map / Journal / Codex / Skills
+   Same palette + chrome + top tab bar so the menus feel cohesive.
+   ============================================================ */
+
+@font-face{
+  font-family: "Macondo Swash Caps";
+  src: url("fonts/MacondoSwashCaps-Regular.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+:root{
+  --bg-night:#0d0a07; --bg-stone:#1a1410;
+  --panel-oak-1:#4a2f1a; --panel-oak-2:#2e1b0d; --panel-oak-edge:#6b4422;
+  --panel-iron:#2a241f; --panel-iron-edge:#4a4038;
+  --parchment:#e8d9b0; --parchment-2:#d4c08c; --parchment-edge:#a8895a;
+  --parchment-ink:#3a2a14;
+
+  --bronze:#b07a3a; --bronze-deep:#6b4520;
+  --gold:#f0c14b;   --gold-deep:#a87320;
+  --iron:#6e6358;   --iron-deep:#3a342d;
+
+  --hp:#b8302a; --hp-deep:#5a1410; --hp-bright:#e84a3a;
+  --stam:#c8a04a; --hunger:#8a5a28; --mana:#3a6fb8;
+
+  --rare-common:#8a8378;
+  --rare-uncommon:#5fa84a;
+  --rare-rare:#4a86d8;
+  --rare-epic:#a04ac8;
+  --rare-legendary:#f0a02a;
+
+  --ink:#f3e6c4; --ink-dim:#b4a07a; --ink-mute:#7a6a4e;
+
+  --serif:"Macondo Swash Caps", serif;
+  --mono:"VT323", ui-monospace, monospace;
+  --pixel:"Press Start 2P", monospace;
+
+  --tile:56px; --gap:4px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--mono); color:var(--ink); background:#000;
+  overflow:hidden;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none; font-smooth: never;
+  user-select:none;
+}
+
+/* ---------- background scene ---------- */
+.bg-scene{
+  position:fixed; inset:0;
+  background:
+    radial-gradient(120% 60% at 50% 78%, rgba(120,70,30,0.35), transparent 60%),
+    linear-gradient(180deg,
+      #1a1208 0%, #2a1a0c 18%, #4a2a14 38%, #7a4820 52%,
+      #5a3a1c 60%, #2a1e10 72%, #14100a 100%);
+  filter: brightness(0.55) saturate(0.85);
+}
+.bg-vignette{
+  position:fixed; inset:0; pointer-events:none; z-index:1;
+  box-shadow: inset 0 0 240px rgba(0,0,0,0.85);
+}
+.bg-grain{
+  position:fixed; inset:0; pointer-events:none; z-index:2;
+  background: repeating-linear-gradient(0deg, rgba(255,180,80,0.02) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+
+/* ---------- shell layout ---------- */
+.menu-shell{
+  position:fixed; inset:0; z-index:10;
+  display:flex; flex-direction:column;
+  padding:18px 24px 22px;
+}
+
+/* ---------- top tab bar ---------- */
+.menu-tabs{
+  display:flex; align-items:flex-end; gap:0;
+  border-bottom:2px solid #000;
+  box-shadow: 0 1px 0 var(--panel-oak-edge);
+  padding-left:8px;
+}
+.menu-tab{
+  font-family:var(--serif); font-weight:700;
+  font-size:14px; letter-spacing:3px;
+  color:var(--ink-mute);
+  padding:10px 22px 9px;
+  cursor:pointer;
+  border:2px solid #000; border-bottom:none;
+  background: linear-gradient(180deg, var(--panel-iron) 0%, #14100a 100%);
+  box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+  margin-right:-2px; position:relative;
+  text-decoration:none; display:inline-block;
+  text-shadow:1px 1px 0 #000;
+  transition: color .12s;
+}
+.menu-tab:hover{ color:var(--ink); }
+.menu-tab.active{
+  color:var(--gold);
+  background: linear-gradient(180deg, var(--panel-oak-1) 0%, var(--panel-oak-2) 100%);
+  box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 -3px 0 var(--gold);
+  z-index:2;
+  padding-bottom:11px;
+}
+.menu-tab .key{
+  display:inline-block;
+  font-family:var(--pixel); font-size:8px;
+  color:var(--gold); margin-right:8px; letter-spacing:1px;
+  vertical-align:1px;
+}
+.menu-tab.active .key{ color:var(--ink); }
+
+.menu-spacer{ flex:1; border-bottom:2px solid #000; box-shadow: 0 1px 0 var(--panel-oak-edge); }
+
+.menu-close{
+  font-family:var(--pixel); font-size:10px;
+  color:var(--ink-dim); cursor:pointer;
+  padding:10px 14px 9px;
+  border:2px solid #000; border-bottom:none;
+  background: var(--panel-iron);
+  box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+  text-shadow:1px 1px 0 #000;
+}
+.menu-close:hover{ color:var(--hp-bright); }
+
+/* ---------- big content panel ---------- */
+.menu-body{
+  flex:1; min-height:0;
+  background:
+    linear-gradient(180deg, var(--panel-oak-1) 0%, var(--panel-oak-2) 100%);
+  border:2px solid #000; border-top:none;
+  box-shadow:
+    inset 0 0 0 1px var(--panel-oak-edge),
+    inset 0 0 0 2px #0a0805,
+    inset 0 0 0 4px var(--panel-oak-edge),
+    0 8px 0 -2px rgba(0,0,0,0.55);
+  padding:18px;
+  position:relative;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.menu-body::before{
+  content:""; position:absolute; inset:8px;
+  pointer-events:none;
+  background:
+    radial-gradient(circle at 0 0,    var(--bronze) 2px, transparent 3px),
+    radial-gradient(circle at 100% 0, var(--bronze) 2px, transparent 3px),
+    radial-gradient(circle at 0 100%, var(--bronze) 2px, transparent 3px),
+    radial-gradient(circle at 100% 100%, var(--bronze) 2px, transparent 3px);
+  background-repeat:no-repeat;
+}
+
+/* ---------- panel sub-titles ---------- */
+.sub-title{
+  font-family:var(--serif); font-weight:700;
+  font-size:14px; letter-spacing:4px; color:var(--gold);
+  text-transform:uppercase; text-shadow:1px 1px 0 #000;
+  border-bottom:2px solid #000;
+  box-shadow: 0 1px 0 var(--panel-oak-edge);
+  padding-bottom:6px; margin-bottom:10px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+
+/* ---------- footer hint strip ---------- */
+.menu-foot{
+  display:flex; align-items:center; justify-content:flex-end; gap:14px;
+  padding:8px 4px 0;
+  font-family:var(--mono); font-size:14px; color:var(--ink-mute);
+}
+.menu-foot kbd{
+  display:inline-block;
+  font-family:var(--pixel); font-size:9px;
+  padding:3px 6px; margin-right:5px;
+  background:var(--panel-iron);
+  border:2px solid #000;
+  box-shadow: inset 0 0 0 1px var(--panel-iron-edge), 0 2px 0 #000;
+  color:var(--gold);
+}
+
+/* ============================================================
+   Slot + item glyph kit
+   ============================================================ */
+.slot{
+  position:relative;
+  width:var(--tile); height:var(--tile);
+  background: linear-gradient(180deg, #1a1410 0%, #0a0805 100%);
+  border:2px solid #000;
+  box-shadow:
+    inset 0 0 0 1px var(--iron),
+    inset 0 0 0 2px var(--iron-deep);
+  cursor:pointer; image-rendering:pixelated;
+}
+.slot:hover{
+  box-shadow:
+    inset 0 0 0 1px var(--gold),
+    inset 0 0 0 2px var(--gold-deep);
+}
+.slot.rare-uncommon { box-shadow: inset 0 0 0 1px var(--rare-uncommon),  inset 0 0 0 2px var(--iron-deep); }
+.slot.rare-rare     { box-shadow: inset 0 0 0 1px var(--rare-rare),      inset 0 0 0 2px var(--iron-deep); }
+.slot.rare-epic     { box-shadow: inset 0 0 0 1px var(--rare-epic),      inset 0 0 0 2px var(--iron-deep); }
+.slot.rare-legendary{ box-shadow: inset 0 0 0 1px var(--rare-legendary), inset 0 0 0 2px var(--iron-deep); }
+.slot .qty{
+  position:absolute; right:3px; bottom:2px;
+  font-family:var(--pixel); font-size:9px;
+  color:var(--ink); text-shadow:1px 1px 0 #000;
+}
+.dura{
+  position:absolute; left:3px; right:3px; bottom:3px; height:3px;
+  background:#000; border:1px solid rgba(0,0,0,0.9);
+}
+.dura > i{ display:block; height:100%;
+  background: linear-gradient(180deg,#6fbb47 0 50%, #2f7c1a 50% 100%);
+}
+.dura.warn > i{ background: linear-gradient(180deg,#f0a02a 0 50%, #a86c14 50% 100%); }
+.dura.crit > i{ background: linear-gradient(180deg,#e84a3a 0 50%, #5a1410 50% 100%); }
+
+/* item glyphs (pixel art via clip-path) */
+.it{ position:absolute; inset:6px; image-rendering:pixelated; }
+.it.sword{
+  background:
+    linear-gradient(180deg, transparent 0 8%, #d8d4c8 8% 60%, #8a8378 60% 64%, transparent 64%),
+    linear-gradient(180deg, transparent 0 60%, #6b4520 60% 78%, #b07a3a 78% 84%, #6b4520 84% 100%);
+  clip-path: polygon(45% 0, 55% 0, 60% 60%, 75% 60%, 75% 68%, 60% 68%, 60% 100%, 40% 100%, 40% 68%, 25% 68%, 25% 60%, 40% 60%);
+}
+.it.pick{ background: linear-gradient(180deg,#6b4520 0 60%,#b07a3a 60% 100%);
+  clip-path: polygon(0 20%,100% 20%,100% 36%,60% 36%,60% 100%,40% 100%,40% 36%,0 36%); }
+.it.axe{ background: linear-gradient(180deg,#c8c0b0 0 50%,#8a8378 50% 60%,#6b4520 60% 100%);
+  clip-path: polygon(20% 0,80% 0,100% 20%,100% 50%,60% 50%,60% 100%,40% 100%,40% 50%,0 50%,0 20%); }
+.it.bow{ background:
+    radial-gradient(ellipse at 50% 50%, transparent 50%, #6b4520 50% 60%, transparent 60%),
+    linear-gradient(90deg, transparent 48%, #d8d4c8 48% 52%, transparent 52%); }
+.it.shield-i{ background:
+    radial-gradient(circle at 50% 30%, var(--bronze) 0 18%, transparent 18%),
+    linear-gradient(180deg,#6b4520 0 12%,#4a2f1a 12% 100%);
+  clip-path: polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
+.it.potion-hp{ background: linear-gradient(180deg,#6b4520 0 14%,#b07a3a 14% 22%,#d8d4c8 22% 30%,#b8302a 30% 86%,#5a1410 86% 100%);
+  clip-path: polygon(38% 0,62% 0,62% 22%,80% 36%,80% 100%,20% 100%,20% 36%,38% 22%); }
+.it.potion-mn{ background: linear-gradient(180deg,#6b4520 0 14%,#b07a3a 14% 22%,#d8d4c8 22% 30%,#3a6fb8 30% 86%,#173258 86% 100%);
+  clip-path: polygon(38% 0,62% 0,62% 22%,80% 36%,80% 100%,20% 100%,20% 36%,38% 22%); }
+.it.meat{ background: radial-gradient(ellipse at 50% 50%, #c88848 0 50%, #8a5a28 50% 100%);
+  clip-path: polygon(20% 30%,80% 30%,100% 50%,80% 70%,50% 100%,20% 70%,0 50%); }
+.it.bread{ background: linear-gradient(180deg,#d8a868 0 40%,#a87320 40% 100%);
+  clip-path: polygon(10% 30%,90% 30%,100% 70%,80% 100%,20% 100%,0 70%); }
+.it.log{ background:
+    repeating-linear-gradient(90deg,#6b4520 0 6px,#4a2f1a 6px 8px),#6b4520;
+  clip-path: polygon(0 30%,100% 30%,100% 70%,0 70%); }
+.it.stone{ background: radial-gradient(circle at 30% 30%,#8a8378 0 20%,#4a4038 20% 70%,#2a241f 70% 100%);
+  clip-path: polygon(20% 0,80% 0,100% 30%,90% 80%,70% 100%,30% 100%,10% 80%,0 30%); }
+.it.iron{ background: linear-gradient(180deg,#c8c0b0 0 30%,#8a8378 30% 100%);
+  clip-path: polygon(20% 30%,80% 30%,95% 70%,5% 70%); }
+.it.goldb{ background: linear-gradient(180deg,#f0d878 0 30%,#a87320 30% 100%);
+  clip-path: polygon(20% 30%,80% 30%,95% 70%,5% 70%); }
+.it.gem{ background: linear-gradient(135deg,#fff 0 10%,#e84a3a 10% 50%,#8a1410 50% 100%);
+  clip-path: polygon(50% 0,100% 30%,80% 100%,20% 100%,0 30%); }
+.it.arrow{ background: linear-gradient(90deg,#d8d4c8 0 12%,#6b4520 12% 80%,#f0e0a8 80% 100%);
+  clip-path: polygon(0 40%,80% 40%,80% 30%,100% 50%,80% 70%,80% 60%,0 60%); }
+.it.helm{ background: linear-gradient(180deg,#c8c0b0 0 10%,#8a8378 10% 60%,#4a4038 60% 100%);
+  clip-path: polygon(15% 30%,85% 30%,100% 50%,100% 80%,80% 100%,20% 100%,0 80%,0 50%); }
+.it.armor{ background: linear-gradient(180deg,#8a8378 0 30%,#4a4038 30% 100%);
+  clip-path: polygon(10% 0,90% 0,100% 20%,80% 30%,100% 100%,0 100%,20% 30%,0 20%); }
+.it.ring{ background:
+    radial-gradient(circle at 50% 50%, transparent 30%, var(--gold) 30% 50%, transparent 50%),
+    radial-gradient(circle at 50% 30%, var(--rare-rare) 0 8%, transparent 8%); }
+.it.coin{ background:
+    radial-gradient(circle at 35% 60%, var(--gold) 0 18%, transparent 18%),
+    radial-gradient(circle at 60% 50%, var(--gold) 0 18%, transparent 18%),
+    radial-gradient(circle at 50% 75%, var(--gold) 0 22%, transparent 22%); }
+.it.torch{ background:
+    radial-gradient(circle at 50% 22%, #f0c14b 0 14%, #e84a3a 14% 22%, transparent 22%),
+    linear-gradient(180deg, transparent 0 30%, #6b4520 30% 100%); }
+.it.boots{ background: linear-gradient(180deg,#6b4520 0 50%,#4a2f1a 50% 100%);
+  clip-path: polygon(20% 20%,60% 20%,60% 70%,90% 70%,90% 90%,10% 90%,10% 30%); }
+.it.scroll{ background:
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+  clip-path: polygon(10% 10%,90% 10%,90% 90%,10% 90%);
+  box-shadow: inset 0 0 0 1px var(--parchment-edge), inset 0 0 0 2px #6b4520;
+}
+.it.skill-rune{
+  background:
+    radial-gradient(circle at 50% 50%, var(--gold) 0 12%, transparent 12%),
+    linear-gradient(135deg, var(--bronze) 0%, var(--bronze-deep) 100%);
+  clip-path: polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+}

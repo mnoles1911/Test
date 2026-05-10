@@ -1,4 +1,7 @@
+class_name Player3D
 extends CharacterBody3D
+# Class name added so external scripts (e.g. CopperIslesTestBootstrap)
+# can read the SPAWN_POSITION const as a single source of truth.
 # Player3D — Roland's movement controller.
 #
 # PHYSICS MODEL
@@ -212,14 +215,88 @@ var _spawn_freeze: bool = false
 # its collision mesh yet. World3DBootstrap.gd flips this off once a
 # downward raycast confirms ground exists.
 
+# =============================================================
+# VOXEL VIEWER LOOKAHEAD (LOD streaming bias toward direction of travel)
+# =============================================================
+# The VoxelViewer node (a child of Player3D) defines the centre of
+# Zylann's streaming sphere. By default the sphere is symmetric around
+# the player — half the chunk-load budget covers chunks BEHIND, where
+# the player will never look. We push the viewer's local position
+# forward in the direction of travel so the sphere becomes lopsided:
+# more LOD0 budget ahead, less behind. Same total streaming volume,
+# biased toward what's about to be on-screen.
+#
+# OPINIONATED DESIGN — the offset scales with velocity in TWO ways:
+#
+#   1. Direction is horizontal velocity (dir = vel_xz.normalized()).
+#      Y is excluded — gravity / jumping is not navigation intent.
+#
+#   2. Lookahead SECONDS itself ramps with speed. Idle and slow walk
+#      get a small bias (no point reaching far ahead — the player
+#      may turn). Sprint gets a much bigger bias (long straight runs
+#      need maximum forward priority). This is the "function of
+#      velocity" knob: faster motion = aggressively further ahead.
+#
+# Then a hard distance cap (MAX_OFFSET_METERS) prevents fly mode
+# (~45 m/s) from pushing the viewer past the LOD0 ring at 128 m,
+# which would leave the chunks under the player's feet at LOD1+.
+#
+# Concrete values across the speed range:
+#   idle (0 m/s):    seconds=1.5  →  offset = 0 m  (symmetric sphere)
+#   walk (4.5 m/s):  seconds=2.0  →  offset = 9 m  (~7% of LOD0 ring)
+#   sprint (8.5 m/s):seconds=3.5  →  offset = 30 m (~23% of LOD0 ring)
+#   fly (45 m/s):    seconds=4.0  →  capped at 40 m (~31% of ring)
+#
+# All of this is tunable via the constants below. Set
+# VIEWER_LOOKAHEAD_MAX_OFFSET_M = 0.0 to disable the lookahead entirely
+# (viewer stays at the player's origin, original symmetric behaviour).
+
+const VIEWER_LOOKAHEAD_MIN_SECONDS: float = 1.5
+# Lookahead time at and below VIEWER_LOOKAHEAD_LOW_SPEED_MPS.
+# Smaller value → less bias when moving slowly. 1.5 s × 4.5 m/s walk
+# = 6.75 m. Past this, seconds ramps up linearly with speed.
+
+const VIEWER_LOOKAHEAD_MAX_SECONDS: float = 4.0
+# Lookahead time at and above VIEWER_LOOKAHEAD_HIGH_SPEED_MPS. Combined
+# with the speed at that point, this defines the maximum theoretical
+# offset before the distance cap clamps it. Pick higher for more
+# aggressive bias on long sprints / fly traversals.
+
+const VIEWER_LOOKAHEAD_LOW_SPEED_MPS: float = 4.5
+# Speed below which the lookahead seconds value pegs at MIN_SECONDS.
+# Set to BASE_WALK_SPEED so casual exploration walking gets the gentle
+# bias (the player may turn at any moment).
+
+const VIEWER_LOOKAHEAD_HIGH_SPEED_MPS: float = 8.5
+# Speed above which the lookahead seconds value pegs at MAX_SECONDS.
+# Set to BASE_SPRINT_SPEED so committed sprints get full lookahead.
+# Fly mode (~45 m/s) pegs here too and then gets clamped by the
+# distance cap.
+
+const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
+# Hard cap on the viewer offset in metres. Prevents fly mode (or any
+# future high-speed traversal) from pushing the viewer past the LOD0
+# ring, which would leave the chunks under the player at LOD1+ and
+# create visible LOD pop directly under their feet. 40 m is ~31 % of
+# the 128 m LOD0 ring — comfortably inside the safety margin.
+# Set to 0.0 to disable the entire lookahead system.
+
+@onready var _voxel_viewer: Node = get_node_or_null("VoxelViewer")
+# Cached on first frame. The VoxelViewer node is added by Player3D.tscn;
+# get_node_or_null guards against custom Player3D instances that don't
+# include one (e.g. headless tests).
+
+
 const FLY_SPEED_MULT: float = 10.0
 # Multiplier on walk speed while flying. 10x means ~50 m/s — fast
 # enough to cross the test world in seconds, slow enough that the
 # camera can keep up.
 
-const FLY_TELEPORT_HEIGHT: float = 100.0
-# Y coordinate Roland is teleported to when fly mode is first
-# engaged (per the design ask "teleport up to Y=100").
+const SPAWN_POSITION: Vector3 = Vector3(-61.0, 185.0, 732.0)
+# Single hardcoded spawn point used by CopperIslesTestBootstrap when
+# placing the player on scene load. toggle_fly_mode() does NOT teleport
+# here — it preserves the player's current position so testers can
+# enter/exit fly mode without losing their place.
 
 # Precomputed from mass — calculated once in _ready().
 # Call _recalculate_movement_stats() if mass changes at runtime.
@@ -294,6 +371,69 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	# get_node_or_null guard for the case Player3D runs outside the main
+	# game (e.g. test harness without the autoload registered).
+	var _t0_prof: int = Time.get_ticks_usec()
+	_physics_process_inner(delta)
+	_update_viewer_lookahead()
+	if get_node_or_null("/root/HUDOverlay"):
+		HUDOverlay.profile_record("Player3D_phys", Time.get_ticks_usec() - _t0_prof)
+
+
+func _update_viewer_lookahead() -> void:
+	# Velocity-scaled VoxelViewer offset — see the constants block above
+	# for full design rationale. Two-stage scaling:
+	#   1. Lookahead seconds ramps from MIN_SECONDS to MAX_SECONDS as
+	#      speed climbs from LOW_SPEED to HIGH_SPEED.
+	#   2. Direction is horizontal velocity (Y excluded so gravity /
+	#      jump bobs don't shake the streaming sphere).
+	# Final offset is then clamped to MAX_OFFSET_METERS to keep the
+	# viewer inside the LOD0 ring at any speed (incl. fly mode).
+	#
+	# Runs every physics frame from _physics_process. Cost: a length
+	# call + one lerp + one position write. Effectively free.
+	if _voxel_viewer == null:
+		return
+	if VIEWER_LOOKAHEAD_MAX_OFFSET_M <= 0.0:
+		# Lookahead disabled — keep viewer at player origin (symmetric).
+		_voxel_viewer.position = Vector3.ZERO
+		return
+
+	var horiz: Vector3 = Vector3(velocity.x, 0.0, velocity.z)
+	var speed: float = horiz.length()
+	if speed < 0.05:
+		# Effectively idle. Snap to symmetric so the streaming budget
+		# spreads evenly while the player decides where to go next.
+		_voxel_viewer.position = Vector3.ZERO
+		return
+
+	# Stage 1 — pick a lookahead-seconds value scaled by speed.
+	# remap clamps the input to [LOW_SPEED, HIGH_SPEED] before lerping,
+	# so speeds outside that band peg at MIN_SECONDS or MAX_SECONDS.
+	var t: float = clampf(
+		(speed - VIEWER_LOOKAHEAD_LOW_SPEED_MPS) \
+			/ max(0.001, VIEWER_LOOKAHEAD_HIGH_SPEED_MPS - VIEWER_LOOKAHEAD_LOW_SPEED_MPS),
+		0.0,
+		1.0,
+	)
+	var lookahead_s: float = lerpf(VIEWER_LOOKAHEAD_MIN_SECONDS, VIEWER_LOOKAHEAD_MAX_SECONDS, t)
+
+	# Stage 2 — offset = velocity vector * lookahead seconds. Direction
+	# inherent in the vector, magnitude is speed * seconds. No need to
+	# normalise then re-multiply.
+	var offset: Vector3 = horiz * lookahead_s
+
+	# Distance cap — fly mode at 45 m/s with seconds=4 would request a
+	# 180 m offset, way past the LOD0 ring. Clamp into the safe band.
+	var offset_len: float = offset.length()
+	if offset_len > VIEWER_LOOKAHEAD_MAX_OFFSET_M:
+		offset *= VIEWER_LOOKAHEAD_MAX_OFFSET_M / offset_len
+
+	_voxel_viewer.position = offset
+
+
+func _physics_process_inner(delta: float) -> void:
 	# --- Spawn freeze short-circuit ---
 	# While the world is still streaming chunks under the player's
 	# saved/spawn position, do nothing — no gravity, no input. This
@@ -636,21 +776,15 @@ func _physics_process_flying(_delta: float) -> void:
 
 func toggle_fly_mode() -> bool:
 	# Public toggle for the F1 debug overlay. Returns the new state
-	# (true = flying, false = grounded).
-	#
-	# On engagement: teleport up to FLY_TELEPORT_HEIGHT so the player
-	# pops above any terrain peaks and can see the world from above.
-	# On disengagement: zero velocity so we don't suddenly fall at
-	# whatever fly-speed Roland was moving at.
+	# (true = flying, false = grounded). Preserves position — testers
+	# can pop in/out of fly mode mid-flight without losing their place.
+	# Velocity is zeroed so Roland doesn't drift off after the toggle.
 	is_flying = not is_flying
+	velocity = Vector3.ZERO
 	if is_flying:
-		global_position.y = FLY_TELEPORT_HEIGHT
-		velocity = Vector3.ZERO
 		# Clear water state so the swim HUD doesn't linger.
 		_in_water = false
 		_is_submerged = false
 		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 			_underwater_filter.set_active(false)
-	else:
-		velocity = Vector3.ZERO
 	return is_flying

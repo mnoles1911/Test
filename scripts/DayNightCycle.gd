@@ -176,7 +176,10 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	# Profiling wrapper — see HUDOverlay.profile_record.
+	var _t0_prof: int = Time.get_ticks_usec()
 	_apply()
+	HUDOverlay.profile_record("DayNightCycle", Time.get_ticks_usec() - _t0_prof)
 
 
 func _apply() -> void:
@@ -293,44 +296,44 @@ func _apply() -> void:
 			_moon_mesh.global_position = cam.global_position + moon_dir * MOON_DISTANCE
 
 	# --- Sky + fog ---
-	var sky_top: Color
-	var sky_horizon: Color
+	var _sky_top: Color
+	var _sky_horizon: Color
 	var fog: Color
 	if h < 5.0:
-		sky_top     = SKY_TOP_NIGHT
-		sky_horizon = SKY_HORIZON_NIGHT
+		_sky_top     = SKY_TOP_NIGHT
+		_sky_horizon = SKY_HORIZON_NIGHT
 		fog         = FOG_COLOR_NIGHT
 	elif h < 6.0:
 		# Late night → dawn: night palette → dawn palette
 		var t: float = h - 5.0
-		sky_top     = SKY_TOP_NIGHT.lerp(SKY_TOP_DAWN, t)
-		sky_horizon = SKY_HORIZON_NIGHT.lerp(SKY_HORIZON_DAWN, t)
+		_sky_top     = SKY_TOP_NIGHT.lerp(SKY_TOP_DAWN, t)
+		_sky_horizon = SKY_HORIZON_NIGHT.lerp(SKY_HORIZON_DAWN, t)
 		fog         = FOG_COLOR_NIGHT.lerp(FOG_COLOR_DAY, t * 0.5)
 	elif h < 8.0:
 		# Dawn → noon: dawn palette → noon palette
 		var t: float = (h - 6.0) / 2.0
-		sky_top     = SKY_TOP_DAWN.lerp(SKY_TOP_NOON, t)
-		sky_horizon = SKY_HORIZON_DAWN.lerp(SKY_HORIZON_NOON, t)
+		_sky_top     = SKY_TOP_DAWN.lerp(SKY_TOP_NOON, t)
+		_sky_horizon = SKY_HORIZON_DAWN.lerp(SKY_HORIZON_NOON, t)
 		fog         = FOG_COLOR_NIGHT.lerp(FOG_COLOR_DAY, 0.5 + t * 0.5)
 	elif h < 17.0:
-		sky_top     = SKY_TOP_NOON
-		sky_horizon = SKY_HORIZON_NOON
+		_sky_top     = SKY_TOP_NOON
+		_sky_horizon = SKY_HORIZON_NOON
 		fog         = FOG_COLOR_DAY
 	elif h < 19.0:
 		# Afternoon → dusk
 		var t: float = (h - 17.0) / 2.0
-		sky_top     = SKY_TOP_NOON.lerp(SKY_TOP_DUSK, t)
-		sky_horizon = SKY_HORIZON_NOON.lerp(SKY_HORIZON_DUSK, t)
+		_sky_top     = SKY_TOP_NOON.lerp(SKY_TOP_DUSK, t)
+		_sky_horizon = SKY_HORIZON_NOON.lerp(SKY_HORIZON_DUSK, t)
 		fog         = FOG_COLOR_DAY.lerp(FOG_COLOR_NIGHT, t * 0.5)
 	elif h < 21.0:
 		# Dusk → night
 		var t: float = (h - 19.0) / 2.0
-		sky_top     = SKY_TOP_DUSK.lerp(SKY_TOP_NIGHT, t)
-		sky_horizon = SKY_HORIZON_DUSK.lerp(SKY_HORIZON_NIGHT, t)
+		_sky_top     = SKY_TOP_DUSK.lerp(SKY_TOP_NIGHT, t)
+		_sky_horizon = SKY_HORIZON_DUSK.lerp(SKY_HORIZON_NIGHT, t)
 		fog         = FOG_COLOR_DAY.lerp(FOG_COLOR_NIGHT, 0.5 + t * 0.5)
 	else:
-		sky_top     = SKY_TOP_NIGHT
-		sky_horizon = SKY_HORIZON_NIGHT
+		_sky_top     = SKY_TOP_NIGHT
+		_sky_horizon = SKY_HORIZON_NIGHT
 		fog         = FOG_COLOR_NIGHT
 
 	var env: Environment = _env.environment
@@ -340,10 +343,10 @@ func _apply() -> void:
 	# Sky panorama cross-fade.
 	# Old version tried to cast env.sky.sky_material to ProceduralSkyMaterial,
 	# but the scene actually used PhysicalSkyMaterial — the cast silently
-	# returned null and the sky_top / sky_horizon writes did nothing.
+	# returned null and the _sky_top / _sky_horizon writes did nothing.
 	# Now the scene uses our custom sky_blend.gdshader (a ShaderMaterial),
 	# and _update_sky_blend picks two of the four anchor panoramas and
-	# writes the blend factor to the shader. The sky_top/sky_horizon Color
+	# writes the blend factor to the shader. The _sky_top/_sky_horizon Color
 	# variables computed above remain authoritative for the fog tint and
 	# could be repurposed later (e.g. tinting the panoramas via a colour
 	# multiplier uniform) but currently aren't pushed anywhere visible.

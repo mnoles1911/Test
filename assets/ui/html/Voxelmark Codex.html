@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — Codex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="menus_shared.css" />
+<style>
+  .cd-grid{
+    flex:1; min-height:0;
+    display:grid;
+    grid-template-columns: 220px 240px 1fr;
+    gap:14px;
+  }
+  .cat-list, .ent-list{
+    display:flex; flex-direction:column;
+    overflow-y:auto; min-height:0;
+  }
+  .cat-list::-webkit-scrollbar, .ent-list::-webkit-scrollbar{ width:8px }
+  .cat-list::-webkit-scrollbar-thumb,
+  .ent-list::-webkit-scrollbar-thumb{ background:var(--panel-oak-edge); border:1px solid #000 }
+
+  .cat{
+    font-family:var(--serif); font-weight:700; font-size:13px;
+    letter-spacing:2px; color:var(--ink-mute);
+    padding:8px 10px; cursor:pointer; text-shadow:1px 1px 0 #000;
+    border-bottom: 1px solid rgba(107,68,34,0.35);
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .cat:hover{ color:var(--ink); }
+  .cat.active{ color:var(--gold); background: var(--panel-oak-2);
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  .cat .n{ font-family:var(--pixel); font-size:8px; color:var(--ink-mute); }
+
+  .ent{
+    font-family:var(--mono); font-size:16px; color:var(--ink-dim);
+    padding:6px 10px; cursor:pointer;
+    border-bottom: 1px solid rgba(107,68,34,0.25);
+    display:flex; align-items:center; gap:8px;
+  }
+  .ent::before{
+    content:""; width:8px; height:8px; flex:none;
+    background:var(--ink-mute); border:1px solid #000;
+  }
+  .ent.read::before{ background:var(--rare-uncommon); }
+  .ent.new::before{ background:var(--gold); box-shadow: 0 0 4px var(--gold); }
+  .ent.locked{ color:var(--ink-mute); font-style:italic; }
+  .ent.locked::before{ background: transparent; }
+  .ent:hover{ color:var(--ink); }
+  .ent.active{ color:var(--gold); background:var(--panel-oak-2); }
+
+  .entry{
+    border:2px solid #000;
+    background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+    box-shadow: inset 0 0 0 2px var(--parchment-edge), inset 0 0 60px rgba(120,80,30,0.4);
+    color:var(--parchment-ink);
+    padding:26px 32px; overflow-y:auto;
+    font-family:"Cormorant Garamond","IM Fell English",serif;
+    position:relative;
+  }
+  .entry::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse at 18% 22%, rgba(80,40,10,0.18), transparent 40%),
+      radial-gradient(ellipse at 82% 78%, rgba(80,40,10,0.18), transparent 40%);
+  }
+  .e-kind{
+    font-family:var(--pixel); font-size:9px; letter-spacing:2px; color:#a04a14;
+  }
+  .e-title{
+    font-family:var(--serif); font-weight:700; font-size:32px;
+    letter-spacing:2px; color:var(--parchment-ink);
+    margin:4px 0 4px;
+    border-bottom:1px solid rgba(60,40,20,0.4);
+    padding-bottom:8px;
+  }
+  .e-sub{
+    font-family:var(--mono); font-size:15px; font-style:italic;
+    color:#5a3a1c; margin-bottom:14px;
+  }
+  .e-body{
+    font-size:18px; line-height:1.55; color:#3a2a14;
+  }
+  .e-body p{ margin-bottom:14px; text-indent:1.4em; }
+  .e-body p:first-child{ text-indent:0; }
+  .e-body .first{
+    float:left; font-family:var(--serif); font-size:54px;
+    line-height:0.85; padding:6px 10px 0 0; color:#5a2a14;
+  }
+  .e-body em{ color:#5a2a14; }
+  .e-body blockquote{
+    margin:14px 24px; padding:10px 16px;
+    border-left: 3px solid #5a2a14;
+    background: rgba(60,40,20,0.06);
+    font-style:italic; color:#3a2a14;
+  }
+  .e-stats{
+    display:grid; grid-template-columns: 1fr 1fr; gap:4px 14px;
+    background: rgba(60,40,20,0.08);
+    border:1px solid rgba(60,40,20,0.4);
+    padding:10px 14px; margin:14px 0;
+    font-family:var(--mono); font-size:15px;
+  }
+  .e-stats .k{ color:#7a4a1c; }
+  .e-stats .v{ color:#3a2a14; text-align:right; font-weight:600; }
+</style>
+</head>
+<body>
+  <div class="bg-scene"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-grain"></div>
+
+  <div class="menu-shell">
+    <nav class="menu-tabs">
+      <a href="Voxelmark Inventory.html" class="menu-tab">INVENTORY</a>
+      <a href="Voxelmark Map.html"       class="menu-tab">MAP</a>
+      <a href="Voxelmark Journal.html"   class="menu-tab">JOURNAL</a>
+      <a href="Voxelmark Codex.html"     class="menu-tab active">CODEX</a>
+      <a href="Voxelmark Skills.html"    class="menu-tab">SKILLS</a>
+      <div class="menu-spacer"></div>
+      <div class="menu-close">[ESC] CLOSE</div>
+    </nav>
+
+    <div class="menu-body">
+      <div class="cd-grid">
+        <div class="cat-list">
+          <div class="cat active">Places <span class="n">6/9</span></div>
+          <div class="cat">People <span class="n">4/12</span></div>
+          <div class="cat">Bestiary <span class="n">3/8</span></div>
+          <div class="cat">Factions <span class="n">2/4</span></div>
+          <div class="cat">Lore <span class="n">5/14</span></div>
+          <div class="cat">Items <span class="n">7/20</span></div>
+        </div>
+
+        <div class="ent-list">
+          <div class="ent read active">Aldenholt</div>
+          <div class="ent read">Hollowford caves</div>
+          <div class="ent read">Brothers' End</div>
+          <div class="ent read">The Cold Sea</div>
+          <div class="ent new">Sundered Crown</div>
+          <div class="ent read">Ashwood</div>
+          <div class="ent locked">??? — the Spires</div>
+          <div class="ent locked">??? — the Thornways</div>
+          <div class="ent locked">??? — the Pale Vale</div>
+        </div>
+
+        <div class="entry">
+          <div class="e-kind">◆ PLACE · DISCOVERED DAY 1</div>
+          <div class="e-title">Aldenholt</div>
+          <div class="e-sub">— a holdfast on the Vain, between Ashwood and the sea</div>
+
+          <div class="e-stats">
+            <div class="k">Population</div>     <div class="v">~ 240 souls</div>
+            <div class="k">Region</div>         <div class="v">Vainfold</div>
+            <div class="k">Notable</div>        <div class="v">The Brotherhood chapel</div>
+            <div class="k">Weather</div>        <div class="v">Light rain · 11°</div>
+          </div>
+
+          <div class="e-body">
+            <p><span class="first">A</span>ldenholt sits where the Vain bends west toward the sea. The holdfast was raised in the second age by Maelren the Quiet, and its inner walls are older still — said to be built upon stones laid by the Brotherhood when their order was young and the Sundered Crown was whole.</p>
+
+            <p>The town survives on the river and on the road that runs east to Hollowford. Most who come stay one night and move on; few have reason to linger in a place where the chapel bell still rings the old hours.</p>
+
+            <blockquote>"The bell rings even when no hand is on the rope. Halren says that is how the Brotherhood remembers itself, but I have seen the rope move, and there is no one there." — A miller's daughter, in the long winter</blockquote>
+
+            <p>The chapel is the only building still tended by the Brotherhood. Brother Halren lives there alone since the others left for Brothers' End, and the door is kept open at all hours, even in storm.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  document.querySelectorAll('.cat').forEach(c=>{
+    c.addEventListener('click',()=>{
+      document.querySelectorAll('.cat').forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.ent').forEach(e=>{
+    e.addEventListener('click',()=>{
+      if(e.classList.contains('locked')) return;
+      document.querySelectorAll('.ent').forEach(x=>x.classList.remove('active'));
+      e.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

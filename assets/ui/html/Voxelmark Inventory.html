@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — Inventory</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="menus_shared.css" />
+<style>
+  .inv-grid{
+    flex:1; min-height:0;
+    display:grid;
+    grid-template-columns: 460px 1fr;
+    gap:18px;
+  }
+  .col{ display:flex; flex-direction:column; gap:10px; min-height:0; }
+
+  /* ============ CHARACTER PANEL ============ */
+  .char-head{ display:flex; align-items:baseline; gap:10px; }
+  .char-name{
+    font-family:var(--serif); font-weight:700;
+    font-size:20px; letter-spacing:2px; color:var(--ink);
+    text-shadow:1px 1px 0 #000;
+  }
+  .char-class{
+    font-family:var(--mono); color:var(--ink-dim);
+    font-size:15px;
+  }
+
+  .doll-row{
+    display:grid;
+    grid-template-columns: 60px 1fr 60px;
+    gap:10px;
+    align-items:center;
+  }
+  .gear-col{
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .eq{
+    width:60px; height:60px; position:relative;
+    background: linear-gradient(180deg, #1a1410 0%, #0a0805 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--iron), inset 0 0 0 2px var(--iron-deep);
+    image-rendering:pixelated; cursor:pointer;
+    transition: box-shadow .12s;
+  }
+  .eq:hover{
+    box-shadow: inset 0 0 0 1px var(--gold), inset 0 0 0 2px var(--gold-deep);
+  }
+  .eq.empty::after{
+    content: attr(data-empty);
+    position:absolute; inset:0;
+    display:grid; place-items:center;
+    font-family:var(--pixel); font-size:7px;
+    color: var(--ink-mute); text-align:center; line-height:1.2;
+    pointer-events:none;
+  }
+  .eq .lab{
+    position:absolute; bottom:-12px; left:0; right:0;
+    font-family:var(--pixel); font-size:6px; letter-spacing:1px;
+    color:var(--ink-mute); text-align:center;
+    text-shadow:1px 1px 0 #000; pointer-events:none;
+  }
+  .eq .it{ inset:8px; }
+  .eq .x{
+    position:absolute; top:-4px; right:-4px;
+    width:14px; height:14px;
+    background:var(--hp); border:1px solid #000;
+    color:#fff; font-family:var(--pixel); font-size:7px;
+    display:none; align-items:center; justify-content:center;
+    cursor:pointer; line-height:1;
+  }
+  .eq:hover .x{ display:flex; }
+  .eq:hover .x:hover{ background:var(--hp-bright); }
+  .eq.rare-uncommon{ box-shadow: inset 0 0 0 1px var(--rare-uncommon), inset 0 0 0 2px var(--iron-deep); }
+  .eq.rare-rare    { box-shadow: inset 0 0 0 1px var(--rare-rare),     inset 0 0 0 2px var(--iron-deep); }
+  .eq.rare-epic    { box-shadow: inset 0 0 0 1px var(--rare-epic),     inset 0 0 0 2px var(--iron-deep); }
+
+  /* 3D character render (voxel placeholder) */
+  .render-frame{
+    height: 100%;
+    min-height: 280px;
+    background:
+      radial-gradient(ellipse 60% 30% at 50% 92%, rgba(0,0,0,0.7), transparent 60%),
+      radial-gradient(ellipse at 50% 30%, rgba(232,217,176,0.12), transparent 70%),
+      linear-gradient(180deg, #1a1410 0%, #0a0805 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    position:relative;
+    overflow:hidden;
+    display:grid; place-items:center;
+    perspective: 700px;
+  }
+  .render-frame::before{
+    content:""; position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,180,80,0.025) 0 1px, transparent 1px 3px);
+    pointer-events:none;
+  }
+  .render-stage{
+    transform-style: preserve-3d;
+    animation: turntable 14s linear infinite;
+    transform: rotateY(0deg);
+  }
+  @keyframes turntable{
+    0%   { transform: rotateY(-22deg); }
+    50%  { transform: rotateY(22deg); }
+    100% { transform: rotateY(-22deg); }
+  }
+  /* voxel character built from layered colored squares */
+  .voxel-char{
+    width: 96px; height: 168px;
+    image-rendering:pixelated;
+    position:relative;
+    transform-style: preserve-3d;
+  }
+  .vc{ position:absolute; }
+  /* helmet */
+  .vc.head { left:32px; top:0; width:32px; height:32px;
+    background: linear-gradient(180deg,#c8c0b0 0 24%,#8a8378 24% 100%);
+    box-shadow: inset 0 0 0 2px #2a241f, inset -3px 0 0 rgba(0,0,0,0.45);
+  }
+  .vc.face { left:36px; top:14px; width:24px; height:14px;
+    background: linear-gradient(180deg,#8a6a4a 0 50%,#6b4a2a 50% 100%);
+    box-shadow: inset 0 0 0 1px #2a241f;
+  }
+  .vc.eye-l, .vc.eye-r{ width:3px; height:3px; background:#f0e0a8; top:18px; }
+  .vc.eye-l{ left:42px; }
+  .vc.eye-r{ left:51px; }
+  /* shoulder pauldrons */
+  .vc.shoulder-l, .vc.shoulder-r{ top:32px; width:20px; height:18px;
+    background: linear-gradient(180deg,#8a8378 0 40%,#4a4038 40% 100%);
+    box-shadow: inset 0 0 0 2px #2a241f;
+  }
+  .vc.shoulder-l{ left:12px; }
+  .vc.shoulder-r{ left:64px; }
+  /* chest */
+  .vc.chest{ left:24px; top:34px; width:48px; height:50px;
+    background:
+      radial-gradient(circle at 50% 30%, var(--bronze) 0 8%, transparent 8%),
+      linear-gradient(180deg,#6a5a4a 0 30%,#4a4038 30% 100%);
+    box-shadow: inset 0 0 0 2px #2a241f, inset -4px 0 0 rgba(0,0,0,0.4);
+  }
+  /* belt */
+  .vc.belt{ left:24px; top:84px; width:48px; height:8px;
+    background: linear-gradient(180deg,#6b4520 0 50%,#4a2f1a 50% 100%);
+    box-shadow: inset 0 0 0 1px #2a241f;
+  }
+  /* legs */
+  .vc.leg-l, .vc.leg-r{ top:92px; width:20px; height:48px;
+    background: linear-gradient(180deg,#4a4038 0 70%,#2a241f 70% 100%);
+    box-shadow: inset 0 0 0 2px #14100a;
+  }
+  .vc.leg-l{ left:28px; }
+  .vc.leg-r{ left:48px; }
+  /* boots */
+  .vc.boot-l, .vc.boot-r{ top:140px; width:22px; height:14px;
+    background: linear-gradient(180deg,#6b4520 0 50%,#2a1a0c 50% 100%);
+    box-shadow: inset 0 0 0 2px #14100a;
+  }
+  .vc.boot-l{ left:27px; }
+  .vc.boot-r{ left:47px; }
+  /* sword in left hand */
+  .vc.weapon{ left:0; top:60px; width:8px; height:78px;
+    background: linear-gradient(180deg,
+      #6b4520 0 8%, #b07a3a 8% 12%, #6b4520 12% 16%,
+      #d8d4c8 16% 88%, #8a8378 88% 92%, transparent 92%);
+    box-shadow: 0 0 0 1px #2a241f;
+  }
+  /* shield in right hand */
+  .vc.shield{ left:80px; top:48px; width:18px; height:32px;
+    background:
+      radial-gradient(circle at 50% 30%, var(--bronze) 0 22%, transparent 22%),
+      linear-gradient(180deg,#6b4520 0 14%,#4a2f1a 14% 100%);
+    clip-path: polygon(0 0,100% 0,100% 60%,50% 100%,0 60%);
+    box-shadow: inset 0 0 0 1px #14100a;
+  }
+  /* contact shadow */
+  .vc.shadow{ left:14px; top:152px; width:68px; height:8px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.6) 0 50%, transparent 70%);
+    transform: translateZ(-1px);
+  }
+  /* turntable plinth */
+  .render-plinth{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    width:140px; height:6px;
+    background: linear-gradient(180deg, #3a342d, #14100a);
+    border:1px solid #000;
+    box-shadow: 0 0 16px rgba(240,193,75,0.15);
+  }
+  /* loadout dropdown anchored to bottom of render frame */
+  .loadout-dock{
+    position:absolute; left:0; right:0; bottom:0;
+    background: linear-gradient(180deg, rgba(20,16,10,0.4) 0%, rgba(10,8,5,0.95) 60%);
+    border-top: 1px solid var(--panel-iron-edge);
+    padding:8px 10px;
+    display:flex; align-items:center; gap:8px;
+    backdrop-filter: blur(2px);
+  }
+  .loadout-dock .lab{
+    font-family:var(--pixel); font-size:7px; letter-spacing:2px;
+    color:var(--gold-deep); text-shadow:1px 1px 0 #000;
+  }
+  .loadout-select{
+    flex:1; position:relative;
+  }
+  .loadout-trigger{
+    width:100%;
+    font-family:var(--serif); font-weight:700; font-size:13px;
+    letter-spacing:2px; color:var(--gold);
+    padding:6px 10px;
+    border:2px solid #000;
+    background: linear-gradient(180deg, var(--bronze) 0%, var(--bronze-deep) 100%);
+    box-shadow: inset 0 0 0 1px var(--gold);
+    text-shadow:1px 1px 0 #000;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:space-between; gap:6px;
+  }
+  .loadout-trigger:hover{
+    background: linear-gradient(180deg, var(--gold) 0%, var(--bronze) 100%);
+    color:var(--parchment-ink); text-shadow:none;
+  }
+  .loadout-trigger .ico{
+    width:10px; height:10px; flex:none; background:#fff8e0;
+    clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%);
+  }
+  .loadout-trigger .caret{
+    font-family:var(--pixel); font-size:9px;
+  }
+  .loadout-menu{
+    display:none;
+    position:absolute; left:0; right:0; bottom:100%;
+    margin-bottom:4px;
+    background: linear-gradient(180deg, var(--panel-oak-1) 0%, var(--panel-oak-2) 100%);
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), 0 -4px 0 #000;
+    z-index:5;
+  }
+  .loadout-select.open .loadout-menu{ display:block; }
+  .loadout-item{
+    font-family:var(--serif); font-weight:700; font-size:12px;
+    letter-spacing:2px; color:var(--ink-dim);
+    padding:7px 10px; cursor:pointer;
+    border-bottom: 1px solid rgba(107,68,34,0.4);
+    text-shadow:1px 1px 0 #000;
+    display:flex; align-items:center; gap:8px;
+  }
+  .loadout-item:hover{ color:var(--gold); background:var(--panel-oak-2); }
+  .loadout-item.active{ color:var(--gold); }
+  .loadout-item .ico{
+    width:8px; height:8px; flex:none; background:var(--bronze);
+    clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%);
+  }
+  .loadout-item.add{
+    color:var(--gold); border-top: 2px dashed var(--panel-oak-edge);
+    border-bottom: none;
+    font-family:var(--pixel); font-size:9px;
+  }
+  .loadout-item.add:hover{ color:#fff8e0; background:var(--bronze-deep); }
+  .loadout-item.add .ico{
+    background:transparent;
+    border:1px dashed var(--gold);
+    clip-path:none;
+  }
+
+  .render-rune{
+    display:none;
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+    font-family:var(--pixel); font-size:7px; letter-spacing:3px;
+    color:var(--gold-deep);
+  }
+
+  /* stats */
+  .stats{
+    border-top:2px solid #000;
+    box-shadow: 0 -1px 0 var(--panel-oak-edge);
+    padding-top:8px;
+    display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:3px 12px;
+    font-family:var(--mono); font-size:14px;
+  }
+  .stats .k{ color:var(--ink-dim); }
+  .stats .v{ color:var(--gold); text-align:right;
+    font-family:var(--pixel); font-size:8px; text-shadow:1px 1px 0 #000;
+  }
+
+  /* ============ PACK ============ */
+  .pack-head{
+    display:flex; align-items:center; gap:10px; margin-bottom:8px;
+  }
+  .search{
+    flex:1; display:flex; align-items:center; gap:6px;
+    background: #14100a;
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    padding: 4px 8px;
+  }
+  .search svg{ width:14px; height:14px; flex:none; opacity:.7; }
+  .search input{
+    flex:1; background:transparent; border:0; outline:0;
+    font-family:var(--mono); font-size:16px; color:var(--ink);
+    letter-spacing:1px;
+  }
+  .search input::placeholder{ color:var(--ink-mute); }
+  .search .clear{
+    font-family:var(--pixel); font-size:8px; color:var(--ink-mute);
+    cursor:pointer; padding:2px 4px;
+  }
+  .search .clear:hover{ color:var(--hp-bright); }
+  .weight{
+    font-family:var(--pixel); font-size:9px; color:var(--ink-dim);
+    text-shadow:1px 1px 0 #000;
+    display:flex; align-items:center; gap:6px;
+  }
+  .weight i{ width:12px; height:12px; background:var(--bronze);
+    clip-path: polygon(20% 0,80% 0,100% 30%,90% 100%,10% 100%,0% 30%); }
+
+  .filter-row{ display:flex; gap:0; flex-wrap:wrap; margin-bottom:8px; }
+  .filter-tab{
+    font-family:var(--serif); font-weight:700; font-size:11px;
+    letter-spacing:2px; color:var(--ink-mute);
+    padding:5px 10px; cursor:pointer;
+    border:2px solid #000;
+    background: var(--panel-iron);
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    margin-right:-2px;
+    text-shadow:1px 1px 0 #000;
+    display:flex; align-items:center; gap:6px;
+  }
+  .filter-tab .n{
+    font-family:var(--pixel); font-size:7px; color:var(--ink-mute);
+  }
+  .filter-tab:hover{ color:var(--ink); }
+  .filter-tab.active{
+    color:var(--gold); background: var(--panel-oak-2);
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 -3px 0 var(--gold);
+  }
+  .filter-tab.active .n{ color:var(--gold); }
+
+  /* tighter pack grid */
+  .grid{
+    flex:1; min-height:0;
+    display:grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 1px;
+    align-content:start;
+    overflow-y:auto;
+    background: #0a0805;
+    border:2px solid #000;
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    padding: 12px;
+  }
+  .slot.drag-over{
+    box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 3px var(--gold-deep), 0 0 8px rgba(240,193,75,0.6) !important;
+  }
+  .slot.dragging{ opacity:0.35; }
+  .eq.drag-over{
+    box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 3px var(--gold-deep), 0 0 8px rgba(240,193,75,0.6) !important;
+  }
+  .eq.drag-bad{
+    box-shadow: inset 0 0 0 2px var(--hp-bright), inset 0 0 0 3px var(--hp-deep) !important;
+  }
+
+  /* loadout bar */
+  .loadouts{
+    display:flex; align-items:center; gap:6px; margin-bottom:8px;
+    flex-wrap:wrap;
+  }
+  .loadout-label{
+    font-family:var(--pixel); font-size:8px; color:var(--ink-mute);
+    letter-spacing:2px; margin-right:4px;
+  }
+  .loadout{
+    font-family:var(--serif); font-weight:700; font-size:11px;
+    letter-spacing:2px; color:var(--ink-dim);
+    padding:5px 10px 5px 8px; cursor:pointer;
+    border:2px solid #000;
+    background: linear-gradient(180deg, var(--panel-iron) 0%, #14100a 100%);
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    text-shadow:1px 1px 0 #000;
+    display:flex; align-items:center; gap:6px;
+  }
+  .loadout:hover{ color:var(--gold); }
+  .loadout.active{
+    color:var(--gold);
+    background: linear-gradient(180deg, var(--bronze) 0%, var(--bronze-deep) 100%);
+    box-shadow: inset 0 0 0 1px var(--gold);
+  }
+  .loadout .ico{ width:10px; height:10px; flex:none;
+    background: var(--bronze);
+    clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%);
+  }
+  .loadout.active .ico{ background:#fff8e0; }
+  .loadout-add{
+    font-family:var(--pixel); font-size:9px; color:var(--gold);
+    padding:5px 10px; cursor:pointer;
+    border:2px dashed var(--panel-oak-edge);
+    background:transparent;
+    text-shadow:1px 1px 0 #000;
+  }
+  .loadout-add:hover{ border-color:var(--gold); color:#fff8e0; }
+  .grid::-webkit-scrollbar{ width:8px }
+  .grid::-webkit-scrollbar-track{ background:#0a0805 }
+  .grid::-webkit-scrollbar-thumb{ background:var(--panel-oak-edge); border:1px solid #000 }
+  .grid .slot{ width:auto; aspect-ratio:1; }
+  .grid .slot.hidden{ display:none; }
+  .empty-msg{
+    grid-column: 1 / -1;
+    font-family:var(--mono); font-size:16px; color:var(--ink-mute);
+    text-align:center; padding:40px 10px; font-style:italic;
+  }
+</style>
+</head>
+<body>
+  <div class="bg-scene"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-grain"></div>
+
+  <div class="menu-shell">
+    <nav class="menu-tabs">
+      <a href="Voxelmark Inventory.html" class="menu-tab active">INVENTORY</a>
+      <a href="Voxelmark Map.html"       class="menu-tab">MAP</a>
+      <a href="Voxelmark Journal.html"   class="menu-tab">JOURNAL</a>
+      <a href="Voxelmark Codex.html"     class="menu-tab">CODEX</a>
+      <a href="Voxelmark Skills.html"    class="menu-tab">SKILLS</a>
+      <div class="menu-spacer"></div>
+      <div class="menu-close">[ESC] CLOSE</div>
+    </nav>
+
+    <div class="menu-body">
+      <div class="inv-grid">
+        <!-- LEFT: character render flanked by gear -->
+        <div class="col">
+          <div class="sub-title"><span>◆ Character</span></div>
+          <div class="char-head">
+            <span class="char-name">Roland of Aldenholt</span>
+            <span class="char-class">Wayfarer · Lv 23</span>
+          </div>
+
+          <div class="doll-row">
+            <!-- LEFT slots -->
+            <div class="gear-col">
+              <div class="eq rare-uncommon" title="Iron Helm">
+                <div class="it helm"></div><div class="x">×</div>
+                <div class="lab">HEAD</div>
+              </div>
+              <div class="eq empty" data-empty="AMULET">
+                <div class="lab">NECK</div>
+              </div>
+              <div class="eq rare-rare" title="Chain Hauberk">
+                <div class="it armor"></div><div class="x">×</div>
+                <div class="lab">CHEST</div>
+              </div>
+              <div class="eq empty" data-empty="GLOVES">
+                <div class="lab">HANDS</div>
+              </div>
+              <div class="eq empty" data-empty="LEGS">
+                <div class="lab">LEGS</div>
+              </div>
+            </div>
+
+            <!-- CENTER 3D render -->
+            <div class="render-frame">
+              <div class="render-stage">
+                <div class="voxel-char">
+                  <div class="vc shadow"></div>
+                  <div class="vc head"></div>
+                  <div class="vc face"></div>
+                  <div class="vc eye-l"></div>
+                  <div class="vc eye-r"></div>
+                  <div class="vc shoulder-l"></div>
+                  <div class="vc shoulder-r"></div>
+                  <div class="vc chest"></div>
+                  <div class="vc belt"></div>
+                  <div class="vc leg-l"></div>
+                  <div class="vc leg-r"></div>
+                  <div class="vc boot-l"></div>
+                  <div class="vc boot-r"></div>
+                  <div class="vc weapon"></div>
+                  <div class="vc shield"></div>
+                </div>
+              </div>
+              <div class="render-plinth"></div>
+              <div class="loadout-dock">
+                <span class="lab">LOADOUT</span>
+                <div class="loadout-select" id="loadoutSelect">
+                  <button class="loadout-trigger" id="loadoutTrigger" type="button">
+                    <span style="display:flex;align-items:center;gap:8px;">
+                      <span class="ico"></span><span id="loadoutLabel">Combat</span>
+                    </span>
+                    <span class="caret">▾</span>
+                  </button>
+                  <div class="loadout-menu" id="loadoutMenu">
+                    <div class="loadout-item active" data-loadout="combat"><span class="ico"></span>Combat</div>
+                    <div class="loadout-item" data-loadout="mining"><span class="ico"></span>Mining</div>
+                    <div class="loadout-item" data-loadout="hunt"><span class="ico"></span>Hunt</div>
+                    <div class="loadout-item" data-loadout="court"><span class="ico"></span>Court Feast</div>
+                    <div class="loadout-item add" id="loadoutAdd"><span class="ico"></span>+ SAVE CURRENT</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT slots -->
+            <div class="gear-col">
+              <div class="eq empty" data-empty="CLOAK">
+                <div class="lab">BACK</div>
+              </div>
+              <div class="eq" title="Iron Longsword">
+                <div class="it sword"></div><div class="x">×</div>
+                <div class="lab">MAIN</div>
+              </div>
+              <div class="eq rare-uncommon" title="Oaken Shield">
+                <div class="it shield-i"></div><div class="x">×</div>
+                <div class="lab">OFF</div>
+              </div>
+              <div class="eq rare-rare" title="Ring of Vigor">
+                <div class="it ring"></div><div class="x">×</div>
+                <div class="lab">RING</div>
+              </div>
+              <div class="eq" title="Leather Boots">
+                <div class="it boots"></div><div class="x">×</div>
+                <div class="lab">FEET</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="k">Armor</div>     <div class="v">42</div>
+            <div class="k">Strength</div>  <div class="v">14</div>
+            <div class="k">Damage</div>    <div class="v">28-34</div>
+            <div class="k">Dexterity</div> <div class="v">11</div>
+            <div class="k">Block</div>     <div class="v">12</div>
+            <div class="k">Endurance</div> <div class="v">16</div>
+            <div class="k">Carry</div>     <div class="v">112/180</div>
+            <div class="k">Wisdom</div>    <div class="v">9</div>
+          </div>
+        </div>
+
+        <!-- RIGHT: pack -->
+        <div class="col">
+          <div class="sub-title">
+            <span>◆ Pack</span>
+            <span class="weight"><i></i> 112 / 180</span>
+          </div>
+          <div class="pack-head">
+            <div class="search">
+              <svg viewBox="0 0 16 16" fill="none" stroke="#b4a07a" stroke-width="2">
+                <circle cx="7" cy="7" r="5"/><path d="M11 11 L15 15"/>
+              </svg>
+              <input id="invSearch" type="text" placeholder="Search items by name…" autocomplete="off" />
+              <span class="clear" id="invClear">CLEAR</span>
+            </div>
+          </div>
+          <div class="filter-row" id="filters">
+            <div class="filter-tab active" data-filter="all">All <span class="n" data-count="all">0</span></div>
+            <div class="filter-tab" data-filter="weapons">Weapons <span class="n" data-count="weapons">0</span></div>
+            <div class="filter-tab" data-filter="armor">Armor <span class="n" data-count="armor">0</span></div>
+            <div class="filter-tab" data-filter="tools">Tools <span class="n" data-count="tools">0</span></div>
+            <div class="filter-tab" data-filter="food">Food <span class="n" data-count="food">0</span></div>
+            <div class="filter-tab" data-filter="materials">Materials <span class="n" data-count="materials">0</span></div>
+            <div class="filter-tab" data-filter="quest">Quest <span class="n" data-count="quest">0</span></div>
+            <div class="filter-tab" data-filter="misc">Misc <span class="n" data-count="misc">0</span></div>
+          </div>
+          <div class="grid" id="invGrid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const PACK = [
+  // weapons
+  { glyph:'sword', name:'Old Iron Sword',   cat:'weapons',   rarity:'rare-common',  dura:0.20 },
+  { glyph:'axe',   name:'Battle Axe',       cat:'weapons',   rarity:'rare-uncommon',dura:0.55 },
+  { glyph:'bow',   name:"Hunter's Bow",     cat:'weapons',   rarity:'rare-uncommon',dura:0.62 },
+  { glyph:'arrow', name:'Steel Arrow',      cat:'weapons',   rarity:'rare-uncommon',qty:64 },
+  { glyph:'arrow', name:'Iron Arrow',       cat:'weapons',   rarity:'rare-common',  qty:128 },
+  // armor
+  { glyph:'helm',  name:'Iron Helm',        cat:'armor',     rarity:'rare-uncommon',dura:0.70 },
+  { glyph:'armor', name:'Chain Hauberk',    cat:'armor',     rarity:'rare-rare',    dura:0.65 },
+  { glyph:'shield-i', name:'Oaken Shield',  cat:'armor',     rarity:'rare-uncommon',dura:0.42 },
+  { glyph:'boots', name:'Leather Boots',    cat:'armor',     rarity:'rare-common',  dura:0.88 },
+  { glyph:'ring',  name:'Ring of Vigor',    cat:'armor',     rarity:'rare-rare' },
+  // tools
+  { glyph:'pick',  name:"Miner's Pickaxe",  cat:'tools',     rarity:'rare-common',  dura:0.34 },
+  { glyph:'axe',   name:'Woodaxe',          cat:'tools',     rarity:'rare-common',  dura:0.78 },
+  { glyph:'torch', name:'Long Torch',       cat:'tools',     rarity:'rare-common',  qty:11 },
+  { glyph:'scroll',name:'Recall Scroll',    cat:'tools',     rarity:'rare-rare',    qty:2 },
+  // food
+  { glyph:'bread', name:'Honey Loaf',       cat:'food',      rarity:'rare-common',  qty:4 },
+  { glyph:'meat',  name:'Smoked Venison',   cat:'food',      rarity:'rare-uncommon',qty:2 },
+  { glyph:'meat',  name:'Roast Boar',       cat:'food',      rarity:'rare-common',  qty:5 },
+  { glyph:'potion-hp', name:'Greater Healing', cat:'food',   rarity:'rare-rare',    qty:1 },
+  { glyph:'potion-mn', name:'Mana Draught', cat:'food',      rarity:'rare-rare',    qty:2 },
+  // materials
+  { glyph:'iron',  name:'Iron Ingot',       cat:'materials', rarity:'rare-common',  qty:14 },
+  { glyph:'goldb', name:'Gold Ingot',       cat:'materials', rarity:'rare-uncommon',qty:3 },
+  { glyph:'log',   name:'Oak Log',          cat:'materials', rarity:'rare-common',  qty:48 },
+  { glyph:'stone', name:'Cobblestone',      cat:'materials', rarity:'rare-common',  qty:96 },
+  { glyph:'gem',   name:'Bloodstone',       cat:'materials', rarity:'rare-epic',    qty:2 },
+  // quest
+  { glyph:'scroll',name:"Halren's Letter",  cat:'quest',     rarity:'rare-rare' },
+  { glyph:'gem',   name:'Iron Key',         cat:'quest',     rarity:'rare-epic' },
+  // misc
+  { glyph:'coin',  name:'Silver Mark',      cat:'misc',      rarity:'rare-uncommon',qty:284 },
+  { glyph:'coin',  name:'Gold Crown',       cat:'misc',      rarity:'rare-legendary',qty:7 },
+];
+
+const grid = document.getElementById('invGrid');
+const search = document.getElementById('invSearch');
+const clear = document.getElementById('invClear');
+let activeFilter = 'all';
+let query = '';
+
+function render(){
+  grid.innerHTML = '';
+  let shown = 0;
+  PACK.forEach(it=>{
+    const matchesCat = (activeFilter === 'all' || it.cat === activeFilter);
+    const matchesQuery = !query || it.name.toLowerCase().includes(query);
+    if(!matchesCat || !matchesQuery) return;
+    const s = document.createElement('div');
+    s.className = 'slot ' + it.rarity;
+    s.title = it.name;
+    const g = document.createElement('div'); g.className = 'it ' + it.glyph; s.appendChild(g);
+    if(it.qty){ const q = document.createElement('div'); q.className = 'qty'; q.textContent = '×' + it.qty; s.appendChild(q); }
+    if(it.dura != null){
+      const d = document.createElement('div'); d.className = 'dura';
+      if(it.dura < 0.4) d.classList.add('warn');
+      if(it.dura < 0.2) d.classList.add('crit');
+      const i = document.createElement('i'); i.style.width = (it.dura*100) + '%';
+      d.appendChild(i); s.appendChild(d);
+    }
+    grid.appendChild(s);
+    shown++;
+  });
+  // pad with empty slots so the grid still feels full (only when no filter/search)
+  if(activeFilter === 'all' && !query){
+    const target = 60;
+    for(let i = shown; i < target; i++){
+      const s = document.createElement('div'); s.className = 'slot'; grid.appendChild(s);
+    }
+  } else if(shown === 0){
+    const m = document.createElement('div');
+    m.className = 'empty-msg';
+    m.textContent = query ? `No items match "${query}".` : 'Nothing in this category.';
+    grid.appendChild(m);
+  }
+}
+function refreshCounts(){
+  const counts = { all: PACK.length, weapons:0, armor:0, tools:0, food:0, materials:0, quest:0, misc:0 };
+  PACK.forEach(it => { counts[it.cat] = (counts[it.cat] || 0) + 1; });
+  document.querySelectorAll('[data-count]').forEach(el=>{
+    el.textContent = counts[el.dataset.count] || 0;
+  });
+}
+refreshCounts();
+render();
+
+document.querySelectorAll('.filter-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.filter-tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    activeFilter = t.dataset.filter;
+    render();
+  });
+});
+search.addEventListener('input', e=>{
+  query = e.target.value.trim().toLowerCase();
+  render();
+});
+clear.addEventListener('click', ()=>{
+  search.value = ''; query = ''; render(); search.focus();
+});
+
+// equipment slot un-equip
+function bindUnequip(x){
+  x.addEventListener('click', e=>{
+    e.stopPropagation();
+    const eq = x.parentElement;
+    eq.classList.add('empty');
+    eq.classList.remove('rare-uncommon','rare-rare','rare-epic');
+    const it = eq.querySelector('.it'); if(it) it.remove();
+    eq.removeAttribute('title');
+    x.remove();
+  });
+}
+document.querySelectorAll('.eq .x').forEach(bindUnequip);
+
+/* ============ DRAG + DROP ============ */
+let dragSrc = null;       // element being dragged
+let dragSrcType = null;   // 'pack' or 'eq'
+
+function makeSlotDraggable(slot){
+  if(!slot.querySelector('.it')) return; // empty pack slot
+  slot.draggable = true;
+}
+function clearDragHover(){
+  document.querySelectorAll('.drag-over,.drag-bad').forEach(e=>{
+    e.classList.remove('drag-over','drag-bad');
+  });
+}
+
+document.addEventListener('dragstart', e=>{
+  const slot = e.target.closest('.slot, .eq');
+  if(!slot) return;
+  if(!slot.querySelector('.it')) { e.preventDefault(); return; }
+  dragSrc = slot;
+  dragSrcType = slot.classList.contains('eq') ? 'eq' : 'pack';
+  slot.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  // chrome needs some payload
+  try { e.dataTransfer.setData('text/plain', slot.title || ''); } catch(_){}
+});
+document.addEventListener('dragend', ()=>{
+  if(dragSrc) dragSrc.classList.remove('dragging');
+  clearDragHover();
+  dragSrc = null; dragSrcType = null;
+});
+document.addEventListener('dragover', e=>{
+  const target = e.target.closest('.slot, .eq');
+  if(!target || target === dragSrc) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  clearDragHover();
+  target.classList.add('drag-over');
+});
+document.addEventListener('drop', e=>{
+  const target = e.target.closest('.slot, .eq');
+  if(!target || !dragSrc || target === dragSrc) { clearDragHover(); return; }
+  e.preventDefault();
+  // swap inner contents (.it, .qty, .dura) between dragSrc and target
+  const grab = el => {
+    const out = [];
+    el.querySelectorAll('.it, .qty, .dura').forEach(n => out.push(n));
+    return out;
+  };
+  const aChildren = grab(dragSrc);
+  const bChildren = grab(target);
+  // remove all
+  aChildren.forEach(n => n.remove());
+  bChildren.forEach(n => n.remove());
+  // place a's contents into target, b's into a
+  bChildren.forEach(n => dragSrc.appendChild(n));
+  aChildren.forEach(n => target.appendChild(n));
+  // titles + rarity classes
+  const aTitle = dragSrc.title, bTitle = target.title;
+  dragSrc.title = bTitle || ''; target.title = aTitle || '';
+  // for equipment slots, manage empty state + un-equip ×
+  const refreshEq = el=>{
+    if(!el.classList.contains('eq')) return;
+    const has = !!el.querySelector('.it');
+    el.classList.toggle('empty', !has);
+    let x = el.querySelector('.x');
+    if(has && !x){
+      x = document.createElement('div'); x.className='x'; x.textContent='×';
+      el.appendChild(x); bindUnequip(x);
+    }
+    if(!has && x) x.remove();
+  };
+  refreshEq(dragSrc); refreshEq(target);
+  // re-arm draggable
+  [dragSrc, target].forEach(s=>{
+    if(s.classList.contains('slot')){
+      s.draggable = !!s.querySelector('.it');
+    }
+  });
+  clearDragHover();
+});
+
+// override render() to also make new slots draggable
+const _origRender = render;
+render = function(){
+  _origRender();
+  grid.querySelectorAll('.slot').forEach(makeSlotDraggable);
+};
+render();
+// equipment slots are always droppable; make filled ones draggable
+function armEqDrag(){
+  document.querySelectorAll('.eq').forEach(eq=>{
+    eq.draggable = !!eq.querySelector('.it');
+  });
+}
+armEqDrag();
+new MutationObserver(armEqDrag).observe(
+  document.querySelector('.doll-row'),
+  { childList:true, subtree:true }
+);
+
+/* ============ LOADOUTS ============ */
+const lSelect = document.getElementById('loadoutSelect');
+const lTrigger = document.getElementById('loadoutTrigger');
+const lMenu = document.getElementById('loadoutMenu');
+const lLabel = document.getElementById('loadoutLabel');
+const lAdd = document.getElementById('loadoutAdd');
+
+lTrigger.addEventListener('click', e=>{
+  e.stopPropagation();
+  lSelect.classList.toggle('open');
+});
+document.addEventListener('click', e=>{
+  if(!lSelect.contains(e.target)) lSelect.classList.remove('open');
+});
+function bindLoadoutItem(item){
+  item.addEventListener('click', e=>{
+    if(item.classList.contains('add')) return;
+    e.stopPropagation();
+    lMenu.querySelectorAll('.loadout-item').forEach(x=>x.classList.remove('active'));
+    item.classList.add('active');
+    lLabel.textContent = item.textContent.trim();
+    lSelect.classList.remove('open');
+  });
+}
+lMenu.querySelectorAll('.loadout-item:not(.add)').forEach(bindLoadoutItem);
+lAdd.addEventListener('click', e=>{
+  e.stopPropagation();
+  const name = prompt('Name this loadout (e.g. "Cave Run"):');
+  if(!name) return;
+  const el = document.createElement('div');
+  el.className = 'loadout-item';
+  el.dataset.loadout = name.toLowerCase();
+  el.innerHTML = '<span class="ico"></span>' + name;
+  bindLoadoutItem(el);
+  lMenu.insertBefore(el, lAdd);
+  el.click();
+});
+</script>
+</body>
+</html>

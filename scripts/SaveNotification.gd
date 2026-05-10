@@ -66,6 +66,11 @@ func _ready() -> void:
 # =============================================================
 
 func show_notification() -> void:
+	# Dev-scene guard — BakeWorld / CopperIslesTest / any scene in the
+	# "dev_scene" group skips the "— SAVING —" indicator so dev workflows
+	# (e.g. F5 mid-bake) don't paint the corner label.
+	if get_node_or_null("/root/GameState") and GameState.is_dev_scene():
+		return
 	# If already showing, restart the sequence from the beginning.
 	_is_showing = true
 	_label.modulate.a = 0.0

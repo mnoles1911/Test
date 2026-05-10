@@ -137,7 +137,38 @@ var _ps_played_label: Label
 var _coords_label: Label
 var _aim_label: Label
 var _world_time_label: Label
+var _terrain_scale_label: Label
 var _crosshair_root: Control
+
+# Top-RIGHT FPS + worst-frame-ms readout. Used to live on HUDOverlay
+# but moved here on 2026-05-06 — the FPS readout is dev info, sits
+# better next to coords / aim / world-time on the dev overlay than on
+# the player-facing HUD chrome. Visible whenever DebugOverlay.enabled
+# is true, regardless of whether a player is in the tree (so it works
+# on the title screen, settings, dev scenes, etc.).
+var _fps_label: Label
+
+# Frame-time sliding window for spike detection. 60 samples = ~1 sec
+# at 60fps, ~0.4 sec at 144fps. Long enough to catch the periodic
+# chunk-streaming hitches; short enough that the worst-ms readout
+# updates fast as stutters come and go. Pre-allocated so the per-
+# frame writeback doesn't allocate.
+var _frame_times: PackedFloat32Array = PackedFloat32Array()
+var _frame_times_idx: int = 0
+
+# F7 cycles through these voxels-per-metre values for the Copper Isles
+# scale-test scene. Stored as (vox_per_metre, terrain_scale) pairs;
+# terrain_scale = 1 / vox_per_metre — keeping both pre-computed avoids
+# float-division noise in the comparison and read-back path.
+const F7_CYCLE: Array = [
+	{"vox_per_m": 6, "scale": 1.0 / 6.0},
+	{"vox_per_m": 8, "scale": 1.0 / 8.0},
+	{"vox_per_m": 10, "scale": 1.0 / 10.0},
+]
+# Index of the entry F7 will apply on its NEXT press. Advances after
+# every press so the cycle reads 6 → 8 → 10 → 6 → ... regardless of
+# whether F5 / F6 / F8 / F9 also fired in between.
+var _f7_next_index: int = 0
 
 enum DebugTab { COMMANDS, CONSOLE, PLAYER_STATE }
 const TAB_NAMES: Array[String] = ["COMMANDS", "CONSOLE", "PLAYER STATE"]
@@ -156,8 +187,15 @@ func _ready() -> void:
 	_build_coords_hud()
 	_build_aim_hud()
 	_build_world_time_hud()
+	_build_terrain_scale_hud()
+	_build_fps_hud()
 	_build_crosshair()
 	_root.visible = false
+
+	# Pre-size the frame-time ring so per-frame writes don't allocate.
+	_frame_times.resize(60)
+	for i in _frame_times.size():
+		_frame_times[i] = 0.0
 
 	log_action("DebugOverlay initialized.")
 
@@ -183,6 +221,14 @@ func _process(delta: float) -> void:
 		_world_time_label.visible = has_player
 		if has_player:
 			_update_world_time_label()
+	# Terrain-scale readout — visible only when the active scene owns
+	# a VoxelLodTerrain (the Copper Isles test scene + main world).
+	# `_update_terrain_scale_label` does its own present/absent check.
+	if _terrain_scale_label != null:
+		_update_terrain_scale_label()
+	# FPS / worst-ms readout — always on while DebugOverlay.enabled.
+	if _fps_label != null:
+		_update_fps_label(delta)
 	_update_crosshair_visibility()
 
 	# DELETE ALL SAVES auto-disarm timer.
@@ -502,16 +548,19 @@ func _refresh_sqlite_size_label() -> void:
 	# the main DB). Reports the total in MB so the player can see how
 	# fast the voxel cache is growing as they explore.
 	#
-	# Cheap — three FileAccess.file_exists + open + get_length calls.
-	# Called whenever the commands list view becomes visible, NOT in
-	# _process, because growth is on the order of MB/sec at most.
+	# DB path is resolved DYNAMICALLY from the active scene's terrain
+	# stream — World3D uses `voxel_deltas.sqlite`, CopperIslesTest uses
+	# `copper_isles_test.sqlite`, the bake tool uses `baked_baseline.sqlite`,
+	# etc. Earlier this method hardcoded the World3D path, which made the
+	# label read 20 KB in every other scene.
 	if _sqlite_size_label == null:
 		return
-	const DB_PATH: String = "user://voxel_deltas.sqlite"
-	const WAL_PATH: String = "user://voxel_deltas.sqlite-wal"
-	const JOURNAL_PATH: String = "user://voxel_deltas.sqlite-journal"
+	var db_path: String = _resolve_active_voxel_db_path()
+	if db_path == "":
+		_sqlite_size_label.text = "Voxel cache: (no terrain in scene)"
+		return
 	var total_bytes: int = 0
-	for path in [DB_PATH, WAL_PATH, JOURNAL_PATH]:
+	for path in [db_path, db_path + "-wal", db_path + "-journal"]:
 		if FileAccess.file_exists(path):
 			var f: FileAccess = FileAccess.open(path, FileAccess.READ)
 			if f != null:
@@ -532,7 +581,32 @@ func _refresh_sqlite_size_label() -> void:
 		size_str = "%.1f MB" % (float(total_bytes) / (1024.0 * 1024.0))
 	else:
 		size_str = "%.2f GB" % (float(total_bytes) / (1024.0 * 1024.0 * 1024.0))
-	_sqlite_size_label.text = "Voxel cache: %s  (full-caching ON)" % size_str
+	# Strip the user:// prefix for display brevity — the user already
+	# knows it's the user-data dir.
+	var display_path: String = db_path.replace("user://", "")
+	_sqlite_size_label.text = "Voxel cache: %s  (%s)" % [size_str, display_path]
+
+
+func _resolve_active_voxel_db_path() -> String:
+	# Walks the active scene for any VoxelLodTerrain (the same helper
+	# the F5–F9 scale hotkeys use), then asks its stream resource for
+	# the database_path. Falls back to the legacy World3D path so the
+	# label still shows something sensible if no terrain is in the
+	# tree (e.g. on the title screen).
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return ""
+	var terrains: Array[Node] = []
+	_collect_voxel_terrains(scene_root, terrains)
+	if terrains.is_empty():
+		return ""
+	var terrain: Node = terrains[0]
+	if not "stream" in terrain:
+		return ""
+	var stream: Resource = terrain.get("stream") as Resource
+	if stream == null or not "database_path" in stream:
+		return ""
+	return stream.get("database_path") as String
 
 
 func _show_delete_save_view() -> void:
@@ -1159,6 +1233,126 @@ func _update_world_time_label() -> void:
 	_world_time_label.text = "%s   |   Played: %s" % [time_part, played_part]
 
 
+func _build_terrain_scale_hud() -> void:
+	# Top-centre readout of the live VoxelLodTerrain scale, shown only
+	# when a terrain exists in the active scene. Designed for the
+	# Copper Isles scale-test workflow — F7 cycles 6 → 8 → 10 vox/m
+	# and this label confirms which value is currently rendering.
+	#
+	# Anchored to the top-centre via a top-anchored Control wrapper
+	# so the label stays centred across viewport resizes. We can't
+	# anchor a Label directly because Label sizes itself to its text;
+	# we want the text centred regardless of length.
+	var wrapper := Control.new()
+	wrapper.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	wrapper.offset_top = 12
+	wrapper.offset_bottom = 50
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(wrapper)
+
+	_terrain_scale_label = Label.new()
+	_terrain_scale_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_terrain_scale_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_terrain_scale_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_terrain_scale_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_terrain_scale_label.add_theme_font_size_override("font_size", 22)
+	_terrain_scale_label.add_theme_color_override("font_color", Color(1.0, 0.93, 0.55, 0.95))
+	_terrain_scale_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	_terrain_scale_label.add_theme_constant_override("shadow_offset_x", 2)
+	_terrain_scale_label.add_theme_constant_override("shadow_offset_y", 2)
+	_terrain_scale_label.add_theme_constant_override("shadow_outline_size", 4)
+	_terrain_scale_label.text = ""
+	wrapper.add_child(_terrain_scale_label)
+
+
+func _build_fps_hud() -> void:
+	# Top-RIGHT FPS + worst-frame-ms readout. Two lines, outlined white
+	# text so it stays readable against any backdrop. Sits in a fixed-
+	# width slot anchored to the top-right corner so digits can grow
+	# (FPS 60 → 144) without the layout shifting. Mirrors the style
+	# language of the top-left coords / aim labels (12-14 px font,
+	# semi-transparent white, hard 1 px shadow), with the addition of
+	# a 4 px outline for legibility on bright skies.
+	_fps_label = Label.new()
+	_fps_label.text = "FPS: --\nworst: --"
+	_fps_label.add_theme_font_size_override("font_size", 14)
+	_fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	_fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_fps_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_fps_label.add_theme_constant_override("outline_size", 4)
+	_fps_label.add_theme_constant_override("shadow_offset_x", 1)
+	_fps_label.add_theme_constant_override("shadow_offset_y", 1)
+	_fps_label.anchor_left = 1.0
+	_fps_label.anchor_right = 1.0
+	_fps_label.anchor_top = 0.0
+	_fps_label.anchor_bottom = 0.0
+	# Slot wide enough for "worst: 999 ms" plus margin. Tall enough
+	# for two lines at font size 14.
+	_fps_label.offset_left = -160
+	_fps_label.offset_right = -12
+	_fps_label.offset_top = 12
+	_fps_label.offset_bottom = 56
+	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_fps_label)
+
+
+func _update_fps_label(delta: float) -> void:
+	# Engine.get_frames_per_second() is a smoothed average that hides
+	# hitches; the 60-sample sliding-window worst-delta is what actually
+	# correlates with perceived stutter. Show both: the smoothed FPS
+	# tells you the steady-state rate, the worst-ms calls out spikes
+	# that the average is hiding. Tints red when worst > 33 ms (= a
+	# sub-30-fps spike) so stutters surface visually rather than
+	# requiring the dev to read the digits.
+	_frame_times[_frame_times_idx] = delta
+	_frame_times_idx = (_frame_times_idx + 1) % _frame_times.size()
+	var worst: float = 0.0
+	for ft in _frame_times:
+		if ft > worst:
+			worst = ft
+	var worst_ms: int = int(round(worst * 1000.0))
+	_fps_label.text = "FPS: %d\nworst: %d ms" % [
+		Engine.get_frames_per_second(), worst_ms,
+	]
+	if worst_ms > 33:
+		_fps_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5, 0.95))
+	else:
+		_fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+
+
+func _update_terrain_scale_label() -> void:
+	# Walks the active scene for a VoxelLodTerrain, reads its uniform
+	# scale, converts to voxels-per-metre, and renders both. Hidden
+	# when no terrain is present (title screen, dialog scenes).
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		_terrain_scale_label.visible = false
+		return
+	var terrains: Array[Node] = []
+	_collect_voxel_terrains(scene_root, terrains)
+	if terrains.is_empty():
+		_terrain_scale_label.visible = false
+		return
+	var n3d := terrains[0] as Node3D
+	if n3d == null:
+		_terrain_scale_label.visible = false
+		return
+	_terrain_scale_label.visible = true
+	# Local var renamed from `scale` to dodge the CanvasLayer.scale
+	# property shadow warning. CanvasLayer (this autoload's base class)
+	# exposes a 2D scale Vector2 — different concept from the 3D voxel
+	# terrain's uniform basis scale, but Godot's lint catches the name
+	# collision and warns.
+	var terrain_scale: float = n3d.transform.basis.get_scale().x
+	# vox/m = 1 / scale. Tiny scale → many vox/m. Guard div-by-zero.
+	var vox_per_m: float = 0.0
+	if absf(terrain_scale) > 0.00001:
+		vox_per_m = 1.0 / terrain_scale
+	_terrain_scale_label.text = "TERRAIN SCALE — %.2f voxels/m   (transform.scale %.4f)" % [vox_per_m, terrain_scale]
+
+
 func _build_crosshair() -> void:
 	# Two thin ColorRects forming a + at exact screen center.
 	# Visibility is toggled per-frame in _process based on whether
@@ -1252,6 +1446,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					var next := (int(_current_tab) + 1) % 3
 					_show_tab(next as DebugTab)
 					get_viewport().set_input_as_handled()
+				# F7 cycles the Copper Isles scale-test through 6 → 8
+				# → 10 voxels/m. Routed through the active scene's
+				# apply_terrain_scale method when present (e.g.
+				# CopperIslesTestBootstrap) so the player gets
+				# re-snapped above the terrain after each change;
+				# falls back to direct transform mutation otherwise.
+				# Bound to F7 to avoid clashing with F1 (debug
+				# overlay) and F2 (freelook camera).
+			KEY_F7:
+				_cycle_f7_vox_per_m()
+				get_viewport().set_input_as_handled()
 
 
 # Manual click dispatch — same pattern as MainMenu / PauseMenu.
@@ -1448,3 +1653,60 @@ func _disarm_delete_saves() -> void:
 	_delete_saves_arm_remaining = 0.0
 	if _btn_delete_all != null:
 		_btn_delete_all.text = "  DELETE ALL SAVES"
+
+
+# =============================================================
+# TERRAIN SCALE HOTKEYS — Copper Isles iteration
+# =============================================================
+
+func _apply_terrain_scale_hotkey(new_scale: float, key_label: String) -> void:
+	# Sets a uniform scale on every VoxelLodTerrain in the current
+	# scene. Routes through the scene root's apply_terrain_scale
+	# method when present (CopperIslesTestBootstrap exposes it and
+	# also re-seeds water + re-snaps the player above the new highest
+	# peak). Falls back to raw transform mutation if the scene root
+	# doesn't have the helper — useful for testing the hotkeys in any
+	# scene that owns a VoxelLodTerrain, including the main World3D.
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		log_action("DEV: %s scale=%.3f ignored (no current scene)" % [key_label, new_scale])
+		return
+	if scene_root.has_method("apply_terrain_scale"):
+		scene_root.call("apply_terrain_scale", new_scale)
+		log_action("DEV: %s terrain scale → %.3f (via bootstrap)" % [key_label, new_scale])
+		return
+	# Fallback: walk the tree, scale every VoxelLodTerrain we find.
+	var terrains: Array[Node] = []
+	_collect_voxel_terrains(scene_root, terrains)
+	if terrains.is_empty():
+		log_action("DEV: %s scale=%.3f ignored (no VoxelLodTerrain in scene)" % [key_label, new_scale])
+		return
+	for t in terrains:
+		var n3d := t as Node3D
+		if n3d == null:
+			continue
+		var origin: Vector3 = n3d.transform.origin
+		n3d.transform = Transform3D(Basis().scaled(Vector3.ONE * new_scale), origin)
+	log_action("DEV: %s terrain scale → %.3f (%d terrain(s), no bootstrap)" % [
+		key_label, new_scale, terrains.size(),
+	])
+
+
+func _collect_voxel_terrains(node: Node, out: Array[Node]) -> void:
+	if node.get_class() == "VoxelLodTerrain" or node.get_class() == "VoxelTerrain":
+		out.append(node)
+	for child in node.get_children():
+		_collect_voxel_terrains(child, out)
+
+
+func _cycle_f7_vox_per_m() -> void:
+	# Advances through F7_CYCLE on each F7 press: 6 → 8 → 10 → 6 → ...
+	# The label at top-centre updates from the live terrain scale on
+	# the next _process tick, so the reading always matches what's
+	# rendered (no risk of label drift if the bootstrap clamps the
+	# scale or some other path mutates it).
+	var entry: Dictionary = F7_CYCLE[_f7_next_index]
+	var vox_per_m: int = int(entry.get("vox_per_m", 6))
+	var new_scale: float = float(entry.get("scale", 1.0 / 6.0))
+	_f7_next_index = (_f7_next_index + 1) % F7_CYCLE.size()
+	_apply_terrain_scale_hotkey(new_scale, "F7  (%d vox/m)" % vox_per_m)

@@ -69,16 +69,34 @@ current = true
 ; to load chunks. Position is the player's world position; the
 ; terrain streams chunks within `view_distance` of this node.
 ;
-; History: 3000 voxels (500 m) made the streaming sphere big enough
-; that worker threads were perpetually behind, so chunks right next
-; to the player took seconds to refine to LOD0. Cut to 1500 vox
-; (250 m) — half the volume to stream, queue drains responsively.
+; History:
+;   3000 voxels (500 m): worker threads perpetually behind on the M5
+;     test world, near LOD0 took seconds to resolve.
+;   1500 voxels (250 m): solved streaming starvation but cut horizon
+;     too short for the Copper Isles 5 km vista.
+;   6000 voxels (1 km): brought the archipelago into view but the
+;     mountaintop still saw the world cut off short of the far edge.
+;   12000 voxels (2 km): covers most of the 5 km Copper Isles map
+;     from any vantage but pegged streaming hard.
+;   8000 voxels (1.33 km): trades ~30 % less voxel volume to stream
+;     for tighter performance. The static HorizonSkirt covers the
+;     2-5 km band as a single static mesh + atmospheric fog hides
+;     the seam between voxel terrain and skirt.
+;   16000 voxels (2.67 km): pairs with lod_count=10 + CLIPBOX
+;     streaming. CLIPBOX is more efficient than the legacy octree at
+;     scale, and 10 LOD levels cover the whole pyramid out to
+;     ~10.9 km — most of which falls outside view_distance and
+;     never streams, but the bands within view (LOD0-7) provide
+;     graceful detail-fall to the horizon.
+;   8000 voxels (1.33 km): cut 2026-05-07 to reduce main-thread
+;     mesh-upload + collision-rebuild churn during fast movement.
+;     The HorizonSkirt + horizon plane cover everything past this
+;     radius. Bump up if a vista needs more voxel-rendered terrain
+;     at the cost of movement framerate.
 ;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
-; more visible distance (at the cost of streaming load). 1500 is the
-; floor that still feels like an "open world" — much lower than this
-; and the horizon visibly cuts off.
-view_distance = 1500
+; more visible distance (at the cost of streaming load).
+view_distance = 8000
 
 [node name="EditToolHandler" type="Node3D" parent="."]
 ; Handles "swing tool, edit voxel" input. Reads the equipped weapon

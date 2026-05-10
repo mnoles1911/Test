@@ -1,0 +1,51 @@
+[gd_scene format=3 uid="uid://btroionmwlb8k"]
+
+[ext_resource type="Script" uid="uid://bgypl6pt3js7c" path="res://scripts/_dev/LockpickTestBootstrap.gd" id="1_vo8sx"]
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 1
+background_color = Color(0.06, 0.05, 0.03, 1)
+ambient_light_source = 1
+ambient_light_color = Color(0.35, 0.28, 0.22, 1)
+ambient_light_energy = 0.5
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_1"]
+size = Vector2(20, 20)
+
+[sub_resource type="StandardMaterial3D" id="FloorMat_1"]
+albedo_color = Color(0.12, 0.09, 0.06, 1)
+roughness = 0.95
+
+[sub_resource type="BoxShape3D" id="FloorShape_1"]
+size = Vector3(20, 0.1, 20)
+
+[node name="LockpickTest" type="Node3D" unique_id=1743894051]
+script = ExtResource("1_vo8sx")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2029620768]
+environment = SubResource("Env_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2079409478]
+transform = Transform3D(0.866, -0.5, 0, 0.25, 0.433, -0.866, 0.433, 0.75, 0.5, 0, 4, 2)
+light_color = Color(1, 0.95, 0.85, 1)
+light_energy = 0.7
+shadow_enabled = true
+
+[node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=2000244797]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+light_color = Color(1, 0.85, 0.6, 1)
+light_energy = 1.2
+omni_range = 10.0
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=718584942]
+transform = Transform3D(1, 0, 0, 0, 0.921, -0.391, 0, 0.391, 0.921, 0, 2.5, 4)
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=1043496902]
+
+[node name="FloorMesh" type="MeshInstance3D" parent="Floor" unique_id=1648410989]
+mesh = SubResource("PlaneMesh_1")
+surface_material_override/0 = SubResource("FloorMat_1")
+
+[node name="FloorCollision" type="CollisionShape3D" parent="Floor" unique_id=154244189]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+shape = SubResource("FloorShape_1")

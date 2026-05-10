@@ -191,11 +191,17 @@ var _applying_preset: bool = false
 ## to 0.05 for uniform colour per height.
 @export_range(0.0, 0.5, 0.01) var color_jitter: float = 0.10
 
-## Reference voxel-Y for "ocean surface". Currently informational only
-## — actual water elevation lives on `OceanVolume.surface_y` in
-## `World3D.tscn` (default Y=8). Kept here for future generator-side
-## logic (e.g. forced sand colour at coastline).
-@export var sea_level_voxels: int = 0
+## Reference voxel-Y for "ocean surface" — also used as the upper bound
+## for generator water emission. Every column whose ground_y is below
+## this value gets water voxels written into CHANNEL_DATA from
+## ground_y+1 up through SEA_LEVEL_VOXELS. Columns above it stay dry.
+##
+## 72 voxels = world Y 12 m at 6 vox/m. The terrain noise centerline
+## sits at height_offset_voxels=60 (world Y=10), so a sea level of 72
+## puts ~60% of columns underwater and 40% above — clearly visible
+## ocean basins between landmasses, instead of the 50/50 split that
+## sea level=60 produced.
+const SEA_LEVEL_VOXELS: int = 72
 
 ## Colour of the LOWEST ground voxels (deep valleys, beach floor).
 ## LEGACY — used only as a fallback when the VoxelMaterialRegistry
@@ -240,11 +246,16 @@ var _applying_preset: bool = false
 @export_range(0, 12, 1) var dirt_layer_thickness_voxels: int = 3
 
 ## At or below this voxel-Y, the top layer of the column is sand
-## instead of grass. Roughly the OceanVolume.surface_y plus a
-## small margin to give beaches their characteristic strip above
-## the waterline. Default 7 ≈ 1 voxel above the test ocean's
-## surface_y of 8 (-1 below it for the tide line).
-@export var beach_y_threshold: int = 7
+## instead of grass. Sits just above SEA_LEVEL_VOXELS so a thin sand
+## strip forms at the natural coastline (where columns whose ground_y
+## is between sea level and this threshold show as exposed beach
+## above the waterline).
+##
+## 74 voxels = world Y 12.33 m, two voxels above SEA_LEVEL_VOXELS=72.
+## Earlier value of 7 was stale (carried over from the pre-refactor
+## OceanVolume at Y=8 in legacy voxel coords) and put sand entirely
+## below the new waterline — beaches were never visible.
+@export var beach_y_threshold: int = 74
 
 
 # =============================================================
@@ -265,6 +276,61 @@ var _cached_sand: VoxelMaterial = null
 var _cached_bedrock: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 var _depth_logged: bool = false
+var _first_water_byte_logged: bool = false
+# Diagnostic — set true the first time the generator successfully
+# writes a water byte to CHANNEL_DATA5 in any chunk. The print fires
+# once and tells you (a) the generator IS being called for at least
+# one below-sea-level column, and (b) the column's water bytes are
+# in the buffer. If you never see this print, generation is the
+# bottleneck — investigate the channel-depth log line above and the
+# generator's emit_water_here gate.
+
+
+# =============================================================
+# NO-EDIT-ZONE WATER-GENERATION SUPPRESSION
+# =============================================================
+#
+# A snapshot of world-space AABBs of every NoEditZone whose
+# blocks_water_generation flag is true. Populated ONCE on the main
+# thread by World3DBootstrap (via set_no_edit_water_aabbs) before
+# the terrain begins streaming chunks.
+#
+# Worker threads then read this Array directly during _generate_block
+# — pure data, no SceneTree access, race-safe across threads. The
+# Array reference itself is set once on the main thread; readers see
+# either the empty default or the populated snapshot, never a
+# half-built state.
+#
+# Runtime-streamed NoEditZones are intentionally NOT picked up here.
+# See NoEditZoneRegistry.get_water_blocking_aabbs_snapshot for the
+# constraint and rationale.
+var _no_edit_water_aabbs: Array[AABB] = []
+
+
+func set_no_edit_water_aabbs(aabbs: Array[AABB]) -> void:
+	# Called by World3DBootstrap on the main thread after the snapshot
+	# is captured. Safe to call again at world reload.
+	_no_edit_water_aabbs = aabbs
+
+
+func _column_blocks_water_generation(world_x: float, world_z: float) -> bool:
+	# Worker-thread-safe AABB membership test. Walks the cached
+	# snapshot — pure math, no physics, no SceneTree.
+	# The Y axis is intentionally ignored: a NoEditZone defined as a
+	# Box around a settlement at sea level should suppress water for
+	# the whole column underneath it (otherwise water below the zone's
+	# Y would still flood). Use a Y range later if a use case appears.
+	if _no_edit_water_aabbs.is_empty():
+		return false
+	for aabb in _no_edit_water_aabbs:
+		var min_x: float = aabb.position.x
+		var min_z: float = aabb.position.z
+		var max_x: float = min_x + aabb.size.x
+		var max_z: float = min_z + aabb.size.z
+		if world_x >= min_x and world_x <= max_x \
+				and world_z >= min_z and world_z <= max_z:
+			return true
+	return false
 
 
 # =============================================================
@@ -363,7 +429,13 @@ func _get_used_channels_mask() -> int:
 	#
 	# Returning a bitmask of channels we write tells the engine which
 	# channels to set up before calling _generate_block.
-	return 1 << VoxelBuffer.CHANNEL_TYPE
+	#
+	# CHANNEL_DATA5 is declared because the Minecraft-style water
+	# rewrite stores per-voxel water bytes there. VoxelMesherBlocky
+	# ignores any channel other than TYPE, so terrain rendering is
+	# unaffected — water voxels are invisible to the blocky mesher and
+	# get their own transparent surfaces from WaterChunkMesher.
+	return (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
 
 
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
@@ -388,8 +460,10 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if not _depth_logged:
 		_depth_logged = true
 		var dep_now: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_TYPE)
-		print("[Generator] CHANNEL_TYPE depth: %d (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
+		var dep_data: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_DATA5)
+		print("[Generator] CHANNEL_TYPE depth: %d  CHANNEL_DATA5 depth: %d  (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
 			dep_now,
+			dep_data,
 			VoxelBuffer.DEPTH_8_BIT,
 			VoxelBuffer.DEPTH_16_BIT,
 			VoxelBuffer.DEPTH_32_BIT,
@@ -409,8 +483,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var block_min_y: int = origin_in_voxels.y
 	var block_max_y: int = origin_in_voxels.y + (size.y * stride) - 1
 
-	if block_min_y > max_ground_y:
-		# Entire block is above terrain — leave as air (default 0).
+	if block_min_y > max_ground_y and block_min_y > SEA_LEVEL_VOXELS:
+		# Entire block is above terrain AND above sea level — leave as
+		# air (default 0). The sea-level check matters for blocks that
+		# float above terrain in a deep ocean basin: terrain ground_y
+		# may be below the block, but water (which exists from ground_y+1
+		# up to SEA_LEVEL_VOXELS) might still occupy the block. Skip the
+		# early-out unless BOTH terrain and water are absent.
 		_perf_record_block_done(t_start, lod, "above")
 		return
 
@@ -551,6 +630,16 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# uniform than before, but the LOD silhouette and material colour
 	# bands carry the visual.
 
+	# Water emission is LOD0-only. At LOD>0 the cube mesher renders
+	# coarser terrain but water doesn't have a coarse equivalent —
+	# averaging "ocean voxel" with stride 4 produces nothing useful.
+	# Distant water is covered by the horizon plane (Phase 5) instead.
+	var write_water: bool = (lod == 0)
+	# Pre-pack the canonical water source byte once per block so the
+	# inner loop is a single set_voxel call. SOURCE_BYTE = level 8 |
+	# source bit | tick 0 — see WaterByteCodec.gd for the layout.
+	var water_byte: int = WaterByteCodec.SOURCE_BYTE
+
 	# Per-column heightmap pass.
 	var half_range: float = height_range_voxels * 0.5
 	for x in size.x:
@@ -599,9 +688,31 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				top_hi = sand_hi
 				top_id = sand_id
 
+			# Decide once per column whether this column emits water.
+			# Three gates: LOD must be 0 (water is LOD0-only), the
+			# column's ground must dip below sea level (above-water
+			# columns are dry), and no NoEditZone with
+			# blocks_water_generation must cover this XZ.
+			var emit_water_here: bool = write_water \
+					and ground_y < SEA_LEVEL_VOXELS \
+					and not _column_blocks_water_generation(float(world_x), float(world_z))
+
 			for y in size.y:
 				var world_y: int = origin_in_voxels.y + y * stride
 				if world_y > ground_y:
+					# Air above terrain. If this air voxel sits at or
+					# below sea level and the column emits water, write
+					# a water source byte into CHANNEL_DATA5. The cube
+					# mesher ignores DATA5, so this voxel still renders
+					# as air — the water mesher (Phase 2) emits the
+					# transparent surface from this byte.
+					if emit_water_here and world_y <= SEA_LEVEL_VOXELS:
+						out_buffer.set_voxel(water_byte, x, y, z, VoxelBuffer.CHANNEL_DATA5)
+						if not _first_water_byte_logged:
+							_first_water_byte_logged = true
+							print("[Generator] FIRST water byte written: world_voxel=(%d, %d, %d) ground_y=%d byte=0x%02X" % [
+								world_x, world_y, world_z, ground_y, water_byte,
+							])
 					continue
 				# World floor enforcement: anything below the bedrock
 				# layer is air (no voxels). The bedrock row itself

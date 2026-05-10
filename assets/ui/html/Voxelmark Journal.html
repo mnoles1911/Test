@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voxelmark — Journal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="menus_shared.css" />
+<style>
+  .jr-grid{
+    flex:1; min-height:0;
+    display:grid;
+    grid-template-columns: 280px 1fr;
+    gap:18px;
+  }
+  .qlist{ display:flex; flex-direction:column; gap:0;
+    overflow-y:auto; min-height:0; padding-right:4px;
+  }
+  .qlist::-webkit-scrollbar{ width:8px }
+  .qlist::-webkit-scrollbar-track{ background:rgba(0,0,0,0.3) }
+  .qlist::-webkit-scrollbar-thumb{ background:var(--panel-oak-edge); border:1px solid #000 }
+
+  .qfilters{ display:flex; gap:0; margin-bottom:8px; }
+  .qfilter{
+    font-family:var(--serif); font-weight:700; font-size:11px;
+    letter-spacing:2px; color:var(--ink-mute);
+    padding:6px 12px; cursor:pointer;
+    border:2px solid #000; background:var(--panel-iron);
+    box-shadow: inset 0 0 0 1px var(--panel-iron-edge);
+    margin-right:-2px; text-shadow:1px 1px 0 #000;
+  }
+  .qfilter:hover{ color:var(--ink); }
+  .qfilter.active{
+    color:var(--gold); background:var(--panel-oak-2);
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge), inset 0 -3px 0 var(--gold);
+  }
+
+  .quest-card{
+    border:2px solid #000;
+    background: linear-gradient(180deg, rgba(46,27,13,0.85), rgba(20,12,6,0.85));
+    box-shadow: inset 0 0 0 1px var(--panel-oak-edge);
+    padding:10px 12px; cursor:pointer;
+    margin-bottom:4px;
+  }
+  .quest-card:hover{ box-shadow: inset 0 0 0 1px var(--gold); }
+  .quest-card.active{
+    box-shadow: inset 0 0 0 1px var(--gold), inset 0 -3px 0 var(--gold), 0 0 12px rgba(240,193,75,0.2);
+  }
+  .quest-card .qkind{
+    font-family:var(--pixel); font-size:8px; letter-spacing:1px;
+    color:var(--gold); text-shadow:1px 1px 0 #000;
+  }
+  .quest-card.side .qkind{ color:var(--rare-rare); }
+  .quest-card.complete .qkind{ color:var(--rare-uncommon); }
+  .quest-card .qname{
+    font-family:var(--serif); font-weight:700; font-size:15px;
+    letter-spacing:1px; color:var(--ink); margin-top:2px;
+    text-shadow:1px 1px 0 #000;
+  }
+  .quest-card.complete .qname{ text-decoration:line-through; color:var(--ink-mute); }
+  .quest-card .qmeta{
+    font-family:var(--mono); font-size:13px; color:var(--ink-dim); margin-top:2px;
+  }
+
+  .qdetail{
+    border:2px solid #000;
+    background:
+      linear-gradient(180deg, var(--parchment) 0%, var(--parchment-2) 100%);
+    box-shadow: inset 0 0 0 2px var(--parchment-edge), inset 0 0 60px rgba(120,80,30,0.4);
+    color:var(--parchment-ink);
+    padding:24px 28px; overflow-y:auto;
+    font-family:"Cormorant Garamond","IM Fell English",serif;
+    position:relative;
+  }
+  .qdetail::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse at 18% 22%, rgba(80,40,10,0.18), transparent 40%),
+      radial-gradient(ellipse at 82% 78%, rgba(80,40,10,0.18), transparent 40%);
+  }
+  .qd-kind{
+    font-family:var(--pixel); font-size:9px; letter-spacing:2px;
+    color:#a04a14;
+  }
+  .qd-name{
+    font-family:var(--serif); font-weight:700;
+    font-size:30px; letter-spacing:2px; color:var(--parchment-ink);
+    margin:4px 0 6px;
+    border-bottom:1px solid rgba(60,40,20,0.4);
+    padding-bottom:8px;
+  }
+  .qd-giver{
+    font-family:var(--mono); font-size:16px; font-style:italic;
+    color:#5a3a1c; margin-bottom:14px;
+  }
+  .qd-flavor{
+    font-size:18px; line-height:1.5; color:#3a2a14;
+    margin-bottom:18px;
+    text-indent:1.4em;
+  }
+  .qd-flavor .first{
+    float:left; font-family:var(--serif); font-size:48px;
+    line-height:0.85; padding:6px 8px 0 0;
+    color:#5a2a14;
+  }
+
+  .qd-section{
+    font-family:var(--serif); font-weight:700; font-size:13px;
+    letter-spacing:3px; color:#5a2a14;
+    border-bottom:1px solid rgba(60,40,20,0.4);
+    padding-bottom:4px; margin:14px 0 8px;
+    text-transform:uppercase;
+  }
+  .qd-objs{ list-style:none; }
+  .qd-objs li{
+    font-family:var(--mono); font-size:17px; color:var(--parchment-ink);
+    display:flex; gap:10px; padding:3px 0;
+  }
+  .qd-objs li::before{
+    content:""; width:10px; height:10px; flex:none; margin-top:5px;
+    background:#a8895a; border:1px solid #3a2a14;
+  }
+  .qd-objs li.done::before{ background:#5fa84a; }
+  .qd-objs li.active::before{ background:#a04a14; box-shadow: 0 0 4px rgba(160,74,20,0.6); }
+  .qd-objs li.done{ text-decoration:line-through; color:#7a6a4e; }
+
+  .qd-rewards{
+    display:flex; gap:10px; margin-top:6px;
+  }
+  .qd-rew{
+    background: rgba(60,40,20,0.1);
+    border:1px solid rgba(60,40,20,0.4);
+    padding:6px 10px;
+    font-family:var(--mono); font-size:15px; color:var(--parchment-ink);
+    display:flex; align-items:center; gap:8px;
+  }
+  .qd-rew b{ font-family:var(--serif); color:#5a2a14; }
+</style>
+</head>
+<body>
+  <div class="bg-scene"></div>
+  <div class="bg-vignette"></div>
+  <div class="bg-grain"></div>
+
+  <div class="menu-shell">
+    <nav class="menu-tabs">
+      <a href="Voxelmark Inventory.html" class="menu-tab">INVENTORY</a>
+      <a href="Voxelmark Map.html"       class="menu-tab">MAP</a>
+      <a href="Voxelmark Journal.html"   class="menu-tab active">JOURNAL</a>
+      <a href="Voxelmark Codex.html"     class="menu-tab">CODEX</a>
+      <a href="Voxelmark Skills.html"    class="menu-tab">SKILLS</a>
+      <div class="menu-spacer"></div>
+      <div class="menu-close">[ESC] CLOSE</div>
+    </nav>
+
+    <div class="menu-body">
+      <div class="jr-grid">
+        <div class="col" style="display:flex;flex-direction:column;min-height:0;">
+          <div class="qfilters">
+            <div class="qfilter active">Active</div>
+            <div class="qfilter">Side</div>
+            <div class="qfilter">Done</div>
+          </div>
+          <div class="qlist">
+            <div class="quest-card active">
+              <div class="qkind">▲ MAIN</div>
+              <div class="qname">The Iron Chalice</div>
+              <div class="qmeta">2 of 4 objectives · Aldenholt</div>
+            </div>
+            <div class="quest-card">
+              <div class="qkind">▲ MAIN</div>
+              <div class="qname">Embers of the Brotherhood</div>
+              <div class="qmeta">0 of 3 objectives · Brothers' End</div>
+            </div>
+            <div class="quest-card side">
+              <div class="qkind">◆ SIDE</div>
+              <div class="qname">The Hollow Knight</div>
+              <div class="qmeta">1 of 2 objectives · Hollowford</div>
+            </div>
+            <div class="quest-card side">
+              <div class="qkind">◆ SIDE</div>
+              <div class="qname">A Miller's Daughter</div>
+              <div class="qmeta">0 of 1 objective · Aldenholt</div>
+            </div>
+            <div class="quest-card complete">
+              <div class="qkind">✓ COMPLETE</div>
+              <div class="qname">The Old Bell</div>
+              <div class="qmeta">Aldenholt chapel</div>
+            </div>
+            <div class="quest-card complete">
+              <div class="qkind">✓ COMPLETE</div>
+              <div class="qname">Ash and Embers</div>
+              <div class="qmeta">Brothers' End</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qdetail">
+          <div class="qd-kind">▲ MAIN QUEST</div>
+          <div class="qd-name">The Iron Chalice</div>
+          <div class="qd-giver">— given by Brother Halren, in the chapel at Aldenholt</div>
+
+          <div class="qd-flavor">
+            <span class="first">T</span>he chalice was lost when the Brotherhood broke. Halren says it lies still in the undercroft beneath the Sundered Crown, behind a door no living hand has opened in nine winters. He places his palm on my shoulder and says: <em>bring it back, Roland, and the order will rise again.</em>
+          </div>
+
+          <div class="qd-section">Objectives</div>
+          <ul class="qd-objs">
+            <li class="done">Speak with Brother Halren</li>
+            <li class="done">Recover the iron key from Hollowford</li>
+            <li class="active">Enter the undercroft beneath the Sundered Crown</li>
+            <li>Retrieve the Iron Chalice</li>
+            <li>Return to Halren before the next dusk</li>
+          </ul>
+
+          <div class="qd-section">Rewards</div>
+          <div class="qd-rewards">
+            <div class="qd-rew"><b>180</b> Silver Marks</div>
+            <div class="qd-rew"><b>Brotherhood</b> standing</div>
+            <div class="qd-rew"><b>Halren's seal</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  document.querySelectorAll('.qfilter').forEach(f=>{
+    f.addEventListener('click',()=>{
+      document.querySelectorAll('.qfilter').forEach(x=>x.classList.remove('active'));
+      f.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.quest-card').forEach(c=>{
+    c.addEventListener('click',()=>{
+      document.querySelectorAll('.quest-card').forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

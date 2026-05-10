@@ -22,6 +22,7 @@ config/features=PackedStringArray("4.6", "GL Compatibility")
 [autoload]
 
 GameState="*res://scripts/GameState.gd"
+Colors="*res://assets/ui/Colors.gd"
 TransitionManager="*res://scripts/TransitionManager.gd"
 SaveNotification="*res://scripts/SaveNotification.gd"
 PauseMenu="*res://scripts/PauseMenu.gd"
@@ -261,4 +262,5 @@ rendering/2d/snap/snap_2d_vertices_to_pixel=true
 
 [voxel]
 
-threads/count/minimum=4
+threads/count/minimum=12
+threads/count/margin_below_max=2

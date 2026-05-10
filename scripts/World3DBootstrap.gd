@@ -24,6 +24,31 @@ extends Node3D
 # touching this script.
 
 
+# =============================================================
+# DIAGNOSTIC STATE — LOD / streaming investigation 2026-05-07
+# =============================================================
+# When the user reports "I outwalked the terrain loader," we need
+# concrete numbers: player speed, viewer position vs player, generator
+# throughput per LOD. The generator already prints [PERF GEN] every
+# 100 blocks (perf_log_enabled = true on the .tres). This script adds:
+#   • a 1 Hz [DIAG] line: player pos, speed, VoxelViewer pos, lag.
+#   • F8 toggles Zylann's built-in debug draws (clipboxes + active
+#     mesh blocks) so the user can SEE which chunks are loaded and
+#     which are starving ahead of the player.
+# All of this is gated behind diag_enabled so it can be flipped off
+# from the inspector without re-editing the script.
+
+@export var diag_enabled: bool = true
+
+var _diag_terrain: Object = null
+var _diag_player: Node3D = null
+var _diag_viewer: Node3D = null
+var _diag_acc_time: float = 0.0
+var _diag_last_player_pos: Vector3 = Vector3.ZERO
+var _diag_last_player_pos_valid: bool = false
+var _diag_debug_draw_on: bool = false
+
+
 func _ready() -> void:
 	# --- Hand the voxel terrain to the edit manager ---
 	# Without this call, VoxelEditManager has no terrain to write to
@@ -52,14 +77,33 @@ func _ready() -> void:
 		terrain.set("threaded_update_enabled", true)
 		print("[World3D] terrain.threaded_update_enabled = true")
 	# Defer collision-shape rebuilds so they batch instead of firing
-	# on every single edit. 0.1 s is imperceptible to the player
-	# (they're not pressed flush against the carved face within 100
-	# ms of breaking it), and it lets Zylann coalesce multiple
-	# edits' collision updates. Default 0 means rebuild-immediately,
-	# which is the worst case for stutter.
+	# on every single edit / stream. CRITICAL: in this Zylann build the
+	# property is INT (likely milliseconds), so the previous set(..., 0.1)
+	# silently truncated to 0 — every chunk streaming in/out fired an
+	# immediate main-thread collision rebuild. The dump in the Output
+	# panel confirms whatever value lands here: look for
+	# "terrain.collision_update_delay = N".
 	if "collision_update_delay" in terrain:
-		terrain.set("collision_update_delay", 0.1)
-		print("[World3D] terrain.collision_update_delay = 0.1")
+		terrain.set("collision_update_delay", 100)
+		var actual_delay = terrain.get("collision_update_delay")
+		print("[World3D] terrain.collision_update_delay set to 100 (actual=%s)" % actual_delay)
+	# Belt-and-suspenders for the .tscn values that the editor has been
+	# stripping on save. Setting them programmatically AND in the .tscn
+	# means at least one path lands. The readback prints make it obvious
+	# in the Output panel whether Zylann accepted the value or clamped:
+	#   - mesh_block_size: 32 makes each mesh chunk cover 8x more voxels
+	#     than the default 16, cutting per-LOD-transition mesh-upload
+	#     count by ~8x. If readback shows 16 instead of 32, this Zylann
+	#     build doesn't allow 32 and we'll need a different angle.
+	#   - lod_distance: 128 (Zylann hard cap) widens each LOD shell by
+	#     33% vs the previous 96, so the player has to walk further
+	#     before chunks transition LOD level. Reduces backtracking spikes.
+	if "mesh_block_size" in terrain:
+		terrain.set("mesh_block_size", 32)
+		print("[World3D] terrain.mesh_block_size set to 32 (actual=%s)" % terrain.get("mesh_block_size"))
+	if "lod_distance" in terrain:
+		terrain.set("lod_distance", 128.0)
+		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
@@ -166,53 +210,49 @@ func _ready() -> void:
 	else:
 		push_warning("[World3D] VoxelEditManager autoload not registered; voxel edits will not work.")
 
-	# --- Seed water source regions ---
-	# Replace the old WaterVolume_Test and OceanVolume Area3D scenes
-	# (deleted in the voxel-water refactor) with WaterFlowManager source
-	# regions. Source regions are AABBs — O(1) memory regardless of size,
-	# so a 200×200 m ocean costs nothing extra.
+	# --- Hand the NoEditZone water-blocking snapshot to the generator ---
+	# The generator's _generate_block runs on Zylann worker threads,
+	# which cannot touch the SceneTree (no get_node_or_null, no physics
+	# queries). Build the snapshot here on the main thread and push it
+	# into the generator resource via set_no_edit_water_aabbs(). Worker
+	# threads then read from the resource's local Array — pure data,
+	# safe across threads.
 	#
-	# Test pond: 10×3×10 m centered at world (-18, 0, 4), surface at
-	# Y=1.5. Visible animated surface arrives in Phase 2 with the
-	# WaterChunkMesher. Phase 1 only registers the region for swim/
-	# breath physics queries.
+	# Runtime-streamed NoEditZones are NOT picked up here. Generator
+	# output is final once written, so a settlement spawned mid-game
+	# below sea level can't retroactively dry already-generated chunks.
+	# Documented as a v1 constraint in NoEditZone.gd.
+	if "generator" in terrain:
+		var gen: Resource = terrain.get("generator")
+		if gen != null and gen.has_method("set_no_edit_water_aabbs") \
+				and get_node_or_null("/root/NoEditZoneRegistry"):
+			var snapshot: Array[AABB] = NoEditZoneRegistry.get_water_blocking_aabbs_snapshot()
+			gen.set_no_edit_water_aabbs(snapshot)
+			print("[World3D] Pushed %d NoEditZone water-blocking AABB(s) to generator." % snapshot.size())
+
+	# --- Configure water surface + seed test pond ---
+	# Phase 5: the AABB-source-region model is gone. Ocean water lives
+	# in CHANNEL_DATA, written at gen time by CubicHeightmapGenerator
+	# for every below-sea-level column. World3DBootstrap's job here is
+	# just to (a) tell WaterFlowManager what world Y the horizon plane
+	# should sit at, and (b) seed any author-time water bodies (the
+	# legacy test pond) via the new water-edit API.
 	#
-	# Ocean: massive XZ footprint so the surface continuously fills
-	# every basin within the playable area. Was 200×200 m centred on
-	# origin → terrain past X=±100 / Z=±100 had no water even when
-	# the ground dipped below sea level, producing a sharp vertical
-	# "world edge" cutoff (looked like the lake just stopped). New
-	# footprint is 20000×20000 m centred on origin — covers the
-	# whole 12×10 km playable Mira and still costs O(1) memory
-	# (source regions are AABBs, not voxel cells).
-	#
-	# Surface at Y=10. Generator caps terrain at ~Y=29 (max_ground_y)
-	# and bottoms at ~Y=-9 (min_ground_y) given height_range_voxels=200
-	# + height_offset=60 at terrain scale 1/6. So Y=10 floods low
-	# basins, leaves highlands dry.
-	#
-	# OCEAN_DEPTH_M was 200 m, which was nonsense — the AABB extended
-	# almost to the bedrock floor. WaterFlowManager.is_position_in_water
-	# now uses a clear-vertical-path check that prevents tunnel
-	# flooding even with a deep AABB, but a tighter AABB is still good
-	# defence-in-depth (and a bit faster: no clear-path call needed
-	# for queries below the AABB bottom). 18 m extends from Y=-8 to
-	# Y=10, fully covering all natural sub-sea-level terrain
-	# (min_ground_y ≈ -7) plus a small buffer.
-	const OCEAN_SURFACE_Y: float = 10.0
-	const OCEAN_DEPTH_M: float   = 18.0
-	const OCEAN_HALF_SIZE_M: float = 10000.0  # ±10 km
+	# OCEAN_SURFACE_Y at 12 m — matches the generator's
+	# SEA_LEVEL_VOXELS=72 / 6 vox/m. Keep them aligned or the chunked
+	# water mesh and any future horizon plane will sit at different Ys.
+	const OCEAN_SURFACE_Y: float = 12.0
 	if get_node_or_null("/root/WaterFlowManager"):
-		var pond_aabb := AABB(Vector3(-23.0, -1.5, -1.0), Vector3(10.0, 3.0, 10.0))
-		WaterFlowManager.add_source_region(pond_aabb)
-		var ocean_aabb := AABB(
-			Vector3(-OCEAN_HALF_SIZE_M, OCEAN_SURFACE_Y - OCEAN_DEPTH_M, -OCEAN_HALF_SIZE_M),
-			Vector3(OCEAN_HALF_SIZE_M * 2.0, OCEAN_DEPTH_M, OCEAN_HALF_SIZE_M * 2.0),
-		)
-		WaterFlowManager.add_source_region(ocean_aabb)
-		print("[World3D] Seeded WaterFlowManager with %d source regions (ocean surface Y=%.1f, footprint ±%.0f m)." % [
-			2, OCEAN_SURFACE_Y, OCEAN_HALF_SIZE_M,
-		])
+		WaterFlowManager.set_horizon_plane_y(OCEAN_SURFACE_Y)
+		# Test pond at world (-23..-13, -1.5..1.5, -1..9). The 10×3×10 m
+		# footprint matches the legacy pond AABB. Convert to voxel units
+		# (×6) for queue_set_water_box and write source bytes into
+		# CHANNEL_DATA. Deferred one frame so VoxelEditManager has the
+		# terrain bound (set_terrain runs above; the queue drain is in
+		# _physics_process so even an immediate enqueue is fine, but
+		# call_deferred keeps load-order forgiving).
+		call_deferred("_seed_test_pond")
+		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
 
@@ -347,6 +387,102 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	print("[World3D] inject_atlas_materials: re-applied tiles + atlas mat to %d models, library re-baked." % injected)
 
 
+func _process(delta: float) -> void:
+	# 1 Hz diagnostic line for the LOD-streaming investigation.
+	# Prints player position, instantaneous speed (m/s), VoxelViewer
+	# position, and the XZ distance between them ("viewer lag"). If
+	# the viewer lag stays at ~0 while chunks visibly fail to keep
+	# up, the bottleneck is throughput, not viewer placement.
+	if not diag_enabled:
+		return
+	_diag_acc_time += delta
+	if _diag_acc_time < 1.0:
+		return
+	var dt: float = _diag_acc_time
+	_diag_acc_time = 0.0
+	_diag_resolve_refs()
+	if _diag_player == null:
+		return
+	var p_pos: Vector3 = _diag_player.global_position
+	var speed: float = 0.0
+	if _diag_last_player_pos_valid:
+		var d: Vector3 = p_pos - _diag_last_player_pos
+		# Horizontal speed only — vertical drift from gravity / spawn-snap
+		# would otherwise skew the number on idle frames.
+		var d_xz: Vector2 = Vector2(d.x, d.z)
+		speed = d_xz.length() / dt
+	_diag_last_player_pos = p_pos
+	_diag_last_player_pos_valid = true
+	var v_pos: Vector3 = Vector3.INF
+	var lag_xz: float = -1.0
+	if _diag_viewer != null:
+		v_pos = _diag_viewer.global_position
+		var lag_v: Vector2 = Vector2(p_pos.x - v_pos.x, p_pos.z - v_pos.z)
+		lag_xz = lag_v.length()
+	# Pull a couple of relevant counters off VoxelEditManager / generator
+	# without crashing if they're not present.
+	var stats: String = ""
+	if _diag_terrain != null and "get_statistics" in _diag_terrain:
+		var s = _diag_terrain.call("get_statistics")
+		if s is Dictionary:
+			# Print only the fields we care about (keeps the line readable).
+			# Names vary between Zylann builds — we probe and print
+			# whatever the dict contains.
+			for k in s.keys():
+				stats += " %s=%s" % [k, s[k]]
+	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m%s" % [
+		p_pos.x, p_pos.y, p_pos.z, speed,
+		v_pos.x, v_pos.y, v_pos.z, lag_xz,
+		stats,
+	])
+
+
+func _input(event: InputEvent) -> void:
+	# F12 toggles Zylann's terrain debug draws. Visible:
+	#   • debug_draw_active_mesh_blocks → coloured wireframes around
+	#     the chunks Zylann is actively meshing.
+	#   • debug_draw_viewer_clipboxes → the streaming sphere(s).
+	#   • debug_draw_octree_nodes → octree subdivision (LOD shells).
+	# All three together let us SEE where the streamer is spending
+	# effort vs where the player actually is.
+	#
+	# Why F12 and not F8: F8 is the Godot editor's "Stop Scene"
+	# shortcut. When the project is run from the editor (the normal
+	# case during development), F8 is intercepted by the editor
+	# before the running game ever sees it — pressing F8 closes the
+	# scene instead of toggling debug draws. F12 is unbound in the
+	# editor so the running game receives it.
+	if not diag_enabled:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F12:
+			_diag_resolve_refs()
+			if _diag_terrain == null:
+				return
+			_diag_debug_draw_on = not _diag_debug_draw_on
+			_diag_terrain.set("debug_draw_enabled", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_active_mesh_blocks", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_viewer_clipboxes", _diag_debug_draw_on)
+			_diag_terrain.set("debug_draw_octree_nodes", _diag_debug_draw_on)
+			var _state_str: String = "ON" if _diag_debug_draw_on else "OFF"
+			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes)" % _state_str)
+
+
+func _diag_resolve_refs() -> void:
+	# Lazy lookup — Player3D is added to the "player" group in its
+	# own _ready; the bootstrap's _ready may race ahead of it on slow
+	# loads. Cache once everything is alive.
+	if _diag_terrain == null:
+		_diag_terrain = get_node_or_null(voxel_terrain_path)
+	if _diag_player == null:
+		var players: Array = get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			_diag_player = players[0] as Node3D
+	if _diag_viewer == null and _diag_player != null:
+		# VoxelViewer lives as a direct child of Player3D (see Player3D.tscn).
+		_diag_viewer = _diag_player.get_node_or_null("VoxelViewer") as Node3D
+
+
 func _configure_voxel_format(terrain: Object) -> void:
 	# Set CHANNEL_TYPE depth to 8-bit. After the v13 migration to
 	# VoxelMesherBlocky we store the material_id directly in TYPE,
@@ -396,6 +532,42 @@ func _configure_voxel_format(terrain: Object) -> void:
 		# Defaults are 8-bit on TYPE, so missing API path isn't fatal.
 		return
 
+	# CHANNEL_DATA5 depth — same three-path probe.
+	#
+	# Phase 0 of the Minecraft-style water rewrite: the generator now
+	# writes water bytes into CHANNEL_DATA. One byte per voxel is plenty
+	# (level 0-8 + source bit + 3-bit tick = 8 bits exactly), so
+	# DEPTH_8_BIT is what we ask for. Default is also 8-bit on most
+	# Zylann builds, so this is usually a no-op confirmation, but make
+	# it explicit so the storage size can never silently widen and
+	# double save-file size.
+	#
+	# Per the LESSONS_LEARNED.md note: never call set_channel_depth in
+	# _generate_block — only on the global VoxelFormat resource here.
+	var data_configured: bool = false
+	if fmt.has_method("set_channel_depth"):
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_DATA5, VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_DATA depth via fmt.set_channel_depth(...)")
+		data_configured = true
+	if not data_configured and "data_depth" in fmt:
+		fmt.set("data_depth", VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_DATA depth via fmt.data_depth")
+		data_configured = true
+	if not data_configured and "channel_depths" in fmt:
+		var depths_d = fmt.get("channel_depths")
+		if depths_d is Array:
+			depths_d[VoxelBuffer.CHANNEL_DATA5] = VoxelBuffer.DEPTH_8_BIT
+			fmt.set("channel_depths", depths_d)
+			print("[World3D] Set CHANNEL_DATA depth via fmt.channel_depths[CHANNEL_DATA]")
+			data_configured = true
+	if not data_configured:
+		push_warning("[World3D] VoxelFormat exists but no known API path worked for CHANNEL_DATA; water encoding may break if engine default differs from 8-bit.")
+
+	# Assign the format BEFORE terrain begins generating blocks. The
+	# property in our diagnostic dump showed up as `format`, so just
+	# write to it. If the terrain has already started generating, this
+	# may not retroactively fix existing chunks — fresh save / new game
+	# may be needed for the depth to apply across the world.
 	terrain.set("format", fmt)
 	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
 
@@ -455,6 +627,154 @@ func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
 	print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f)." % [
 		player.global_position.y, ground_y,
 	])
+
+	# Spawn ground confirmed — kick off the loading-screen close
+	# negotiation. The helper polls Zylann's blocked_lods until the
+	# backlog around the player settles (or a max wait elapses), then
+	# tells TransitionManager we're ready. TransitionManager has its
+	# own min-hold so the loading screen never closes instantly.
+	_mark_world_ready_when_settled()
+
+
+# State tracker for the world-ready signal. Set true once we've called
+# TransitionManager.mark_voxel_world_ready, so a re-entrant call from
+# _wait_for_ground_under_player (load-from-save path) doesn't double-fire.
+var _world_ready_signaled: bool = false
+
+
+func _mark_world_ready_when_settled() -> void:
+	# Combined readiness gate: a DENSE LOD0 spatial probe AND
+	# a near-idle Zylann streaming queue. Both must hold for
+	# REQUIRED_GOOD_SAMPLES consecutive 0.4 s polls before the
+	# loading screen advances.
+	#
+	# Why this is stricter than the previous 48-probe gate:
+	# 48 probes at 4 radii could pass while many LOD0 chunks
+	# in the ring were still pending — the rays just happened to
+	# hit chunks that were already loaded. The fix is two-fold:
+	#
+	#   (1) Denser probe: 6 radii × 16 directions = 96 probes.
+	#       Tighter angular and radial sampling makes it harder
+	#       for missing-LOD0 holes to slip between rays. Probe
+	#       still doesn't sample every chunk — that's covered by:
+	#
+	#   (2) blocked_lods settle gate: Zylann's get_statistics()
+	#       reports the LOD-pipeline queue depth as `blocked_lods`.
+	#       When it drops to ≤ STREAM_QUEUE_NEAR_IDLE the streamer
+	#       has very little left to do globally — any LOD0 chunks
+	#       not caught by the spatial probe are also done.
+	#
+	# Both gates close each other's blind spots: the probe handles
+	# "is the local area visually presentable" and the queue gate
+	# handles "is the streamer globally finished."
+	#
+	# Why raycasts ≡ LOD0: in this terrain config
+	# (`collision_lod_count = 0`), only LOD0 chunks have collision
+	# bodies. A raycast hit is therefore a direct confirmation that
+	# the chunk at that location is meshed at full LOD0 resolution.
+	# Higher-LOD chunks (LOD1+) are visible but uncollidable, and
+	# the raycast passes through them.
+	#
+	# REQUIRED_GOOD_SAMPLES of 3 × POLL_INTERVAL 0.4 s = 1.2 s of
+	# sustained "both gates pass" before signaling. Three samples
+	# filter out single-frame races and transient queue dips
+	# between request waves.
+	#
+	# MAX_EXTRA_WAIT 60 s — fully meshing the LOD0 sphere AND
+	# letting the queue drain takes longer than just the spatial
+	# probe. 60 s matches TransitionManager's loading_seconds cap.
+	if _world_ready_signaled:
+		return
+	const PROBE_RADII_M: Array = [20.0, 40.0, 60.0, 80.0, 100.0, 120.0]
+	const PROBE_DIRECTION_COUNT: int = 16
+	const STREAM_QUEUE_NEAR_IDLE: int = 15
+	const REQUIRED_GOOD_SAMPLES: int = 3
+	# 120 s — generator throughput is ~600 LOD0 blocks/s and the LOD0
+	# sphere has ~58k blocks at this scale. 60 s wasn't enough cold-start
+	# time for the queue to actually drain. Real fix is the bake (Tier 4),
+	# which makes this irrelevant.
+	const MAX_EXTRA_WAIT: float = 120.0
+	const POLL_INTERVAL: float = 0.4
+
+	# Build the ring of unit directions once. 16 directions = every
+	# 22.5° around the compass; tight enough that LOD0 chunks
+	# (~5–6 m wide at this scale) at the inner radius are nearly
+	# always covered by at least one ray nearby.
+	var probe_dirs: Array[Vector2] = []
+	for i in range(PROBE_DIRECTION_COUNT):
+		var theta: float = TAU * float(i) / float(PROBE_DIRECTION_COUNT)
+		probe_dirs.append(Vector2(cos(theta), sin(theta)))
+
+	var terrain := get_node_or_null(voxel_terrain_path)
+	var total_probes: int = probe_dirs.size() * PROBE_RADII_M.size()
+	var elapsed: float = 0.0
+	var consecutive_good: int = 0
+	var last_hits: int = 0
+	var last_blocked: int = -1
+	while elapsed < MAX_EXTRA_WAIT:
+		await get_tree().create_timer(POLL_INTERVAL).timeout
+		elapsed += POLL_INTERVAL
+		last_hits = _count_probe_hits(probe_dirs, PROBE_RADII_M)
+		# Read Zylann's queue depth. If get_statistics is missing or
+		# the field isn't there, fall back to "queue gate is
+		# permissive" so the probe alone can still close the screen.
+		last_blocked = -1
+		if terrain != null and terrain.has_method("get_statistics"):
+			var s = terrain.call("get_statistics")
+			if s is Dictionary and s.has("blocked_lods"):
+				last_blocked = int(s["blocked_lods"])
+		var probe_ok: bool = last_hits == total_probes
+		var queue_ok: bool = last_blocked < 0 or last_blocked <= STREAM_QUEUE_NEAR_IDLE
+		if probe_ok and queue_ok:
+			consecutive_good += 1
+			if consecutive_good >= REQUIRED_GOOD_SAMPLES:
+				_signal_world_ready("probes %d/%d hit AND queue=%d ≤ %d × %d samples after %.1fs" \
+					% [last_hits, total_probes, last_blocked,
+						STREAM_QUEUE_NEAR_IDLE, REQUIRED_GOOD_SAMPLES, elapsed])
+				return
+		else:
+			consecutive_good = 0
+	# Timed out — partial coverage is better than a stuck loading screen.
+	_signal_world_ready("timed out at %.1fs (probes %d/%d, queue=%d)" \
+		% [MAX_EXTRA_WAIT, last_hits, total_probes, last_blocked])
+
+
+func _count_probe_hits(probe_dirs: Array[Vector2], probe_radii: Array) -> int:
+	# Returns how many of the (direction × radius) probes hit voxel
+	# collision. For each direction × radius combination, casts from
+	# 200 m above the probe point straight down 400 m so we cover
+	# any plausible terrain Y at that XZ — peaks above the player's
+	# spawn elevation, deep valleys far below. Player's own collider
+	# is excluded so we don't self-hit.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return 0
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return 0
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var p_pos: Vector3 = player.global_position
+	var hits: int = 0
+	for radius in probe_radii:
+		for dir in probe_dirs:
+			var probe_x: float = p_pos.x + dir.x * float(radius)
+			var probe_z: float = p_pos.z + dir.y * float(radius)
+			var origin: Vector3 = Vector3(probe_x, p_pos.y + 200.0, probe_z)
+			var dest: Vector3 = Vector3(probe_x, p_pos.y - 200.0, probe_z)
+			var params := PhysicsRayQueryParameters3D.create(origin, dest)
+			params.exclude = [player.get_rid()]
+			if not space.intersect_ray(params).is_empty():
+				hits += 1
+	return hits
+
+
+func _signal_world_ready(reason: String) -> void:
+	if _world_ready_signaled:
+		return
+	_world_ready_signaled = true
+	print("[World3D] Signaling voxel world ready (%s)." % reason)
+	if get_node_or_null("/root/TransitionManager"):
+		TransitionManager.mark_voxel_world_ready()
 
 
 func _apply_saved_player_position() -> void:
@@ -524,6 +844,9 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 			print("[World3D] Saved-position ground check timed out; unfreezing player.")
 			if "_spawn_freeze" in player:
 				player.set("_spawn_freeze", false)
+			# Tell the loading screen to close — partial world is
+			# better than a stuck loading screen.
+			_signal_world_ready("saved-position ground timeout")
 			return
 		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
 		timer.timeout.connect(_wait_for_ground_under_player.bind(retries_remaining - 1))
@@ -533,3 +856,29 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 	if "_spawn_freeze" in player:
 		player.set("_spawn_freeze", false)
 	print("[World3D] Saved-position ground confirmed at Y=%.2f; unfreezing player." % hit["position"].y)
+
+	# Same world-ready negotiation as the new-game path. blocked_lods
+	# polling lets the loading screen close as soon as the saved-area
+	# chunks settle, instead of always running the full 45 s timer.
+	_mark_world_ready_when_settled()
+
+
+func _seed_test_pond() -> void:
+	# Replaces the legacy WaterFlowManager.add_source_region pond seed.
+	# Writes water source bytes into CHANNEL_DATA over the pond's voxel
+	# footprint via VoxelEditManager so the bytes go through the queue,
+	# get the modified-chunk mark for save persistence, and emit
+	# water_changed_at so the mesher rebuilds the affected chunks.
+	#
+	# Pond footprint: world (-23, -1.5, -1) to (-13, 1.5, 9). At 6 vox/m
+	# that's voxel (-138, -9, -6) to (-78, 9, 54), with the surface at
+	# voxel Y=9 (= world 1.5). queue_set_water_box uses inclusive-min /
+	# exclusive-max convention so we use one-past on the max side.
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return
+	var voxel_min := Vector3i(-138, -9, -6)
+	var voxel_max := Vector3i(-78, 9, 54)
+	if VoxelEditManager.queue_set_water_box(voxel_min, voxel_max, WaterByteCodec.SOURCE_BYTE):
+		print("[World3D] Test pond water-box queued (%s..%s)." % [voxel_min, voxel_max])
+	else:
+		push_warning("[World3D] Test pond seed failed (queue full or NoEditZone reject).")

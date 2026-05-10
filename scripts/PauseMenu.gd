@@ -57,6 +57,16 @@ var _load_panel: Panel
 var _load_list_container: VBoxContainer
 var _load_cancel_btn: Button
 
+# Top-right FPS readout, only visible while the pause menu is open.
+# Mirrors DebugOverlay's FPS HUD so we can read frame rate / worst-frame
+# spike even when the dev overlay is disabled (release build, or
+# DebugOverlay.enabled = false). The 60-sample sliding-window worst-ms
+# is what actually correlates with perceived stutter — Engine's smoothed
+# FPS hides hitches.
+var _fps_label: Label
+var _frame_times: PackedFloat32Array = PackedFloat32Array()
+var _frame_times_idx: int = 0
+
 
 
 # =============================================================
@@ -71,9 +81,66 @@ func _ready() -> void:
 	_build_ui()
 	_build_save_dialog()
 	_build_load_picker()
+	_build_fps_readout()
 	_root.visible = false
 
+	# Pre-size the frame-time ring so per-frame writes don't allocate.
+	_frame_times.resize(60)
+	for i in _frame_times.size():
+		_frame_times[i] = 0.0
+
 	print("[PauseMenu] Initialized.")
+
+
+func _build_fps_readout() -> void:
+	# Outlined white text top-right, two lines: smoothed FPS over
+	# worst-ms across a 60-sample sliding window. Visible only while
+	# the pause menu is open — toggled in _open / _close.
+	_fps_label = Label.new()
+	_fps_label.text = "FPS: --\nworst: --"
+	_fps_label.add_theme_font_size_override("font_size", 14)
+	_fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	_fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_fps_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_fps_label.add_theme_constant_override("outline_size", 4)
+	_fps_label.add_theme_constant_override("shadow_offset_x", 1)
+	_fps_label.add_theme_constant_override("shadow_offset_y", 1)
+	_fps_label.anchor_left = 1.0
+	_fps_label.anchor_right = 1.0
+	_fps_label.anchor_top = 0.0
+	_fps_label.anchor_bottom = 0.0
+	_fps_label.offset_left = -160
+	_fps_label.offset_right = -12
+	_fps_label.offset_top = 12
+	_fps_label.offset_bottom = 56
+	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fps_label.process_mode = Node.PROCESS_MODE_ALWAYS
+	_fps_label.visible = false
+	_root.add_child(_fps_label)
+
+
+func _process(delta: float) -> void:
+	# Pause menu only ticks when open. We need PROCESS_MODE_ALWAYS on
+	# the CanvasLayer (set in _ready) so this fires while the game tree
+	# is paused — that's the whole point of the readout.
+	if _fps_label == null or not _fps_label.visible:
+		return
+	_frame_times[_frame_times_idx] = delta
+	_frame_times_idx = (_frame_times_idx + 1) % _frame_times.size()
+	var worst: float = 0.0
+	for ft in _frame_times:
+		if ft > worst:
+			worst = ft
+	var worst_ms: int = int(round(worst * 1000.0))
+	_fps_label.text = "FPS: %d\nworst: %d ms" % [
+		Engine.get_frames_per_second(), worst_ms,
+	]
+	if worst_ms > 33:
+		_fps_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5, 0.95))
+	else:
+		_fps_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
 
 
 func _build_ui() -> void:
@@ -94,7 +161,7 @@ func _build_ui() -> void:
 
 	var backdrop := ColorRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	backdrop.color = Color(0.0, 0.0, 0.0, 0.65)
+	backdrop.color = Color(Colors.BG_NIGHT.r, Colors.BG_NIGHT.g, Colors.BG_NIGHT.b, 0.7)
 	backdrop.process_mode = Node.PROCESS_MODE_ALWAYS
 	# Backdrop catches clicks outside the panel so they don't fall
 	# through to the paused game world. STOP is the default but make
@@ -110,6 +177,7 @@ func _build_ui() -> void:
 	_main_panel.offset_right  =  220
 	_main_panel.offset_bottom =  200
 	_main_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_main_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	_root.add_child(_main_panel)
 
 	var vbox := VBoxContainer.new()
@@ -122,24 +190,23 @@ func _build_ui() -> void:
 	_main_panel.add_child(vbox)
 
 	var title_lbl := Label.new()
-	title_lbl.text = "— PAUSED —"
-	title_lbl.add_theme_font_size_override("font_size", 28)
-	title_lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	title_lbl.text = "PAUSED"
+	UIStyles.apply_title_label(title_lbl, 32)
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title_lbl)
 
 	var div := ColorRect.new()
 	div.custom_minimum_size = Vector2(0, 1)
-	div.color = Color(0.35, 0.35, 0.35, 1)
+	div.color = Colors.PANEL_OAK_EDGE
 	vbox.add_child(div)
 
 	var make_btn := func(label: String) -> Button:
 		var b := Button.new()
 		b.text = label
-		b.flat = true
 		b.custom_minimum_size = Vector2(0, 44)
-		b.add_theme_font_size_override("font_size", 22)
 		b.process_mode = Node.PROCESS_MODE_ALWAYS
+		UIStyles.apply_menu_button(b)
+		b.add_theme_font_size_override("font_size", 22)
 		return b
 
 	_resume_btn    = make_btn.call("RESUME")
@@ -171,6 +238,7 @@ func _build_save_dialog() -> void:
 	_save_panel.offset_bottom =  120
 	_save_panel.visible = false
 	_save_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_save_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	_root.add_child(_save_panel)
 
 	var v := VBoxContainer.new()
@@ -184,19 +252,18 @@ func _build_save_dialog() -> void:
 	_save_panel.add_child(v)
 
 	var title := Label.new()
-	title.text = "— SAVE GAME —"
-	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	title.text = "SAVE GAME"
+	UIStyles.apply_title_label(title, 26)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 
 	var prompt := Label.new()
 	prompt.text = "Name this save:"
-	prompt.add_theme_font_size_override("font_size", 16)
-	prompt.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
+	UIStyles.apply_body_label(prompt, 16)
 	v.add_child(prompt)
 
 	_save_name_edit = LineEdit.new()
+	UIStyles.apply_line_edit(_save_name_edit)
 	_save_name_edit.add_theme_font_size_override("font_size", 18)
 	_save_name_edit.placeholder_text = "e.g. Roland Day 1"
 	_save_name_edit.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -211,17 +278,17 @@ func _build_save_dialog() -> void:
 
 	_save_confirm_btn = Button.new()
 	_save_confirm_btn.text = "CONFIRM"
-	_save_confirm_btn.add_theme_font_size_override("font_size", 18)
 	_save_confirm_btn.custom_minimum_size = Vector2(140, 40)
 	_save_confirm_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	UIStyles.apply_menu_button(_save_confirm_btn)
 	_save_confirm_btn.pressed.connect(_on_save_confirm)
 	btn_row.add_child(_save_confirm_btn)
 
 	_save_cancel_btn = Button.new()
 	_save_cancel_btn.text = "CANCEL"
-	_save_cancel_btn.add_theme_font_size_override("font_size", 18)
 	_save_cancel_btn.custom_minimum_size = Vector2(140, 40)
 	_save_cancel_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	UIStyles.apply_menu_button(_save_cancel_btn)
 	_save_cancel_btn.pressed.connect(_show_main_panel)
 	btn_row.add_child(_save_cancel_btn)
 
@@ -238,6 +305,7 @@ func _build_load_picker() -> void:
 	_load_panel.offset_bottom =  260
 	_load_panel.visible = false
 	_load_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_load_panel.add_theme_stylebox_override("panel", UIStyles.menu_body_panel())
 	_root.add_child(_load_panel)
 
 	var v := VBoxContainer.new()
@@ -251,9 +319,8 @@ func _build_load_picker() -> void:
 	_load_panel.add_child(v)
 
 	var title := Label.new()
-	title.text = "— LOAD GAME —"
-	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7, 1))
+	title.text = "LOAD GAME"
+	UIStyles.apply_title_label(title, 26)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 
@@ -272,9 +339,9 @@ func _build_load_picker() -> void:
 
 	_load_cancel_btn = Button.new()
 	_load_cancel_btn.text = "CANCEL"
-	_load_cancel_btn.add_theme_font_size_override("font_size", 18)
 	_load_cancel_btn.custom_minimum_size = Vector2(140, 40)
 	_load_cancel_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	UIStyles.apply_menu_button(_load_cancel_btn)
 	_load_cancel_btn.pressed.connect(_show_main_panel)
 	v.add_child(_load_cancel_btn)
 
@@ -289,8 +356,7 @@ func _populate_load_list() -> void:
 	if saves.is_empty():
 		var empty_lbl := Label.new()
 		empty_lbl.text = "No saves yet. Use SAVE to create one."
-		empty_lbl.add_theme_font_size_override("font_size", 14)
-		empty_lbl.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65, 1))
+		UIStyles.apply_muted_label(empty_lbl, 14)
 		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_load_list_container.add_child(empty_lbl)
 		return
@@ -316,25 +382,28 @@ func _make_save_row(meta: Dictionary) -> Control:
 		pos.x, pos.y, pos.z,
 	]
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_lbl.add_theme_font_size_override("font_size", 14)
-	info_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	UIStyles.apply_body_label(info_lbl, 14)
 	info_lbl.process_mode = Node.PROCESS_MODE_ALWAYS
 	hbox.add_child(info_lbl)
 
 	var load_btn := Button.new()
 	load_btn.text = "LOAD"
-	load_btn.add_theme_font_size_override("font_size", 14)
 	load_btn.custom_minimum_size = Vector2(80, 40)
 	load_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	UIStyles.apply_menu_button(load_btn)
+	load_btn.add_theme_font_size_override("font_size", 14)
 	load_btn.pressed.connect(_on_load_select.bind(meta.get("filename", "")))
 	hbox.add_child(load_btn)
 
 	var delete_btn := Button.new()
 	delete_btn.text = "DELETE"
-	delete_btn.add_theme_font_size_override("font_size", 14)
-	delete_btn.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5, 1))
 	delete_btn.custom_minimum_size = Vector2(80, 40)
 	delete_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	UIStyles.apply_menu_button(delete_btn)
+	delete_btn.add_theme_font_size_override("font_size", 14)
+	# Override hover/font colors to flag the destructive action.
+	delete_btn.add_theme_color_override("font_color", Colors.HP_BRIGHT)
+	delete_btn.add_theme_color_override("font_hover_color", Colors.HP_BRIGHT)
 	delete_btn.pressed.connect(_on_load_delete.bind(meta.get("filename", "")))
 	hbox.add_child(delete_btn)
 
@@ -348,6 +417,14 @@ func _make_save_row(meta: Dictionary) -> Control:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE or event.physical_keycode == KEY_ESCAPE:
+			# Dev-scene guard — BakeWorld / CopperIslesTest / any scene
+			# in the "dev_scene" group keeps the pause menu dormant.
+			# If the menu is already open (e.g. user opened it then
+			# transitioned into a dev scene), close it cleanly.
+			if get_node_or_null("/root/GameState") and GameState.is_dev_scene():
+				if _root != null and _root.visible:
+					_close()
+				return
 			# Settings overlay takes priority — let it handle its own Escape.
 			# Check the Root Control's visibility directly rather than calling a
 			# script method, since the CanvasLayer reference may not expose it.
@@ -491,6 +568,8 @@ func _open() -> void:
 	# Disable LOAD if there are no saves on disk.
 	_load_btn.disabled = GameState.list_save_files().is_empty()
 	_show_main_panel()
+	if _fps_label != null:
+		_fps_label.visible = true
 	print("[PauseMenu] Opened.")
 
 
@@ -498,6 +577,8 @@ func _close() -> void:
 	_root.visible = false
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if _fps_label != null:
+		_fps_label.visible = false
 	print("[PauseMenu] Closed.")
 
 

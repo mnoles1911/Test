@@ -33,7 +33,13 @@ extends Control
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back)
-	header_label.text = "— LOAD GAME —"
+	header_label.text = "LOAD GAME"
+	# Scene targets a 320x180 viewport — keep font sizes small to fit
+	# the existing layout. apply_title_label sets serif + gold colour;
+	# the 12 here override its default 36.
+	UIStyles.apply_title_label(header_label, 12)
+	UIStyles.apply_menu_button(back_btn)
+	back_btn.add_theme_font_size_override("font_size", 8)
 	_build_save_rows()
 	print("[SaveSlotPicker] Ready (named-save mode).")
 
@@ -47,7 +53,8 @@ func _build_save_rows() -> void:
 	if saves.is_empty():
 		var lbl := Label.new()
 		lbl.text = "No saves found."
-		lbl.add_theme_font_size_override("font_size", 16)
+		UIStyles.apply_muted_label(lbl, 16)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		slot_rows.add_child(lbl)
 		return
 
@@ -69,16 +76,15 @@ func _make_save_row(meta: Dictionary) -> Control:
 		pos.x, pos.y, pos.z,
 	]
 	info_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_lbl.add_theme_font_size_override("font_size", 12)
-	info_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75, 1))
+	UIStyles.apply_body_label(info_lbl, 12)
 	hbox.add_child(info_lbl)
 
 	# Load button.
 	var btn := Button.new()
 	btn.text = "LOAD"
-	btn.flat = true
-	btn.custom_minimum_size = Vector2(60, 0)
-	btn.add_theme_font_size_override("font_size", 12)
+	btn.custom_minimum_size = Vector2(60, 18)
+	UIStyles.apply_menu_button(btn)
+	btn.add_theme_font_size_override("font_size", 8)
 	btn.pressed.connect(_on_save_pressed.bind(meta.get("filename", "")))
 	hbox.add_child(btn)
 

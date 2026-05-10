@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8vxm0kqls02b"]
+
+[ext_resource type="Script" uid="uid://wj7unqhleomi" path="res://scripts/ui/MenuTabBar.gd" id="1_tabbar"]
+
+[node name="MenuTabBar" type="HBoxContainer" unique_id=572252389]
+script = ExtResource("1_tabbar")

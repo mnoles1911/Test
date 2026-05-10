@@ -1,0 +1,97 @@
+[gd_scene format=3 uid="uid://cjxu6nsjr6ihj"]
+
+[ext_resource type="PackedScene" uid="uid://dp3l1roland3d" path="res://scenes/Player3D.tscn" id="1_player"]
+[ext_resource type="Script" uid="uid://xx43nl5o4ses" path="res://scripts/CopperIslesTestBootstrap.gd" id="2_bootstrap"]
+[ext_resource type="VoxelGeneratorScript" path="res://assets/voxel/copper_isles_generator.tres" id="3_copper_gen"]
+[ext_resource type="Script" uid="uid://bnx7qorxd03dt" path="res://scripts/HorizonSkirt.gd" id="4_skirt"]
+[ext_resource type="Material" uid="uid://b8skybl3nd0a1" path="res://assets/shaders/sky_blend_material.tres" id="5_skyblend"]
+[ext_resource type="Texture2D" uid="uid://cybrgfr0wjji3" path="res://assets/sky/dawn.jpg" id="6_skydawn"]
+[ext_resource type="Texture2D" uid="uid://bbtoku1kj7nen" path="res://assets/sky/noon.jpg" id="7_skynoon"]
+[ext_resource type="Texture2D" uid="uid://jpmo8712egdx" path="res://assets/sky/dusk.jpg" id="8_skydusk"]
+[ext_resource type="Texture2D" uid="uid://cjdhv5s5h43i6" path="res://assets/sky/night.jpg" id="9_skynight"]
+[ext_resource type="Script" uid="uid://ekwqr2h0r6tf" path="res://scripts/DayNightCycle.gd" id="10_daynight"]
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = ExtResource("5_skyblend")
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+ambient_light_color = Color(0.35, 0.4, 0.5, 1)
+ambient_light_energy = 0.8
+ssao_enabled = true
+ssao_radius = 1.5
+ssao_intensity = 1.2
+fog_enabled = true
+fog_light_color = Color(0.7, 0.78, 0.85, 1)
+fog_density = 0.0012
+fog_aerial_perspective = 0.35
+
+[sub_resource type="StandardMaterial3D" id="VoxelTerrainMat_1"]
+vertex_color_use_as_albedo = true
+roughness = 0.85
+
+[sub_resource type="VoxelStreamSQLite" id="VoxelStream_1"]
+database_path = "user://copper_isles_test.sqlite"
+save_generator_output = true
+
+[sub_resource type="VoxelMesherCubes" id="VoxelMesher_1"]
+opaque_material = SubResource("VoxelTerrainMat_1")
+
+[node name="CopperIslesTest" type="Node3D" unique_id=1017260727]
+script = ExtResource("2_bootstrap")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1061336443]
+environment = SubResource("Env_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=563593560]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 200, 0)
+light_color = Color(1, 0.97, 0.92, 1)
+light_energy = 1.4
+shadow_enabled = true
+shadow_bias = 0.18
+shadow_blur = 3.0
+directional_shadow_split_1 = 0.05
+directional_shadow_split_2 = 0.15
+directional_shadow_split_3 = 0.4
+directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 1500.0
+
+[node name="Moon" type="DirectionalLight3D" parent="." unique_id=2000000020]
+light_color = Color(0.55, 0.65, 0.85, 1)
+light_energy = 0.0
+shadow_enabled = true
+shadow_bias = 0.18
+shadow_blur = 3.0
+directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 1500.0
+sky_mode = 1
+
+[node name="DayNightCycle" type="Node" parent="." unique_id=2000000021]
+script = ExtResource("10_daynight")
+dawn_panorama = ExtResource("6_skydawn")
+noon_panorama = ExtResource("7_skynoon")
+dusk_panorama = ExtResource("8_skydusk")
+night_panorama = ExtResource("9_skynight")
+
+[node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=1648811141]
+lod_count = 9
+lod_distance = 128.0
+secondary_lod_distance = 128.0
+lod_fade_duration = 1.0
+material = SubResource("VoxelTerrainMat_1")
+run_stream_in_editor = false
+mesh_block_size = 32
+cache_generated_blocks = true
+streaming_system = 1
+stream = SubResource("VoxelStream_1")
+generator = ExtResource("3_copper_gen")
+mesher = SubResource("VoxelMesher_1")
+transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
+
+[node name="HorizonSkirt" type="MeshInstance3D" parent="." unique_id=1514165914]
+script = ExtResource("4_skirt")
+
+[node name="Player3D" parent="." unique_id=1849933617 instance=ExtResource("1_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -61, 185, 732)

@@ -43,12 +43,12 @@ This means:
 | | |
 |---|---|
 | **Engine** | Godot 4.6.2 |
-| **Language** | GDScript only — no C#, no C++ GDExtension |
+| **Language** | GDScript by default. C++ GDExtension permitted for measured hot paths (e.g. the voxel generator). C# is not used. |
 | **Target platforms** | Windows, macOS, Linux (Steam) |
 | **Render** | Forward+ (required for SDFGI, SSAO, volumetric fog) |
 | **Physics** | Godot built-in 3D physics (Jolt backend optional for performance) |
 
-GDScript is the only language. No exceptions. The project prioritizes readable, maintainable code over performance-first solutions. Godot's GDScript runs fast enough for a single-player narrative RPG at this scale.
+**Language policy.** GDScript is the default — readable, hot-reloadable, fast enough for gameplay logic, dialogue, UI, AI state machines, save/load, and the rest of a single-player narrative RPG. The escape hatch is C++ via GDExtension, used only when GDScript cost is the measured bottleneck on a per-frame or per-chunk hot loop. The voxel generator (`VoxelGeneratorScript._generate_block`, currently `CubicHeightmapGenerator.gd`) is the canonical candidate: ~10–22 ms per LOD0 block in GDScript caps cold-start streaming throughput. If/when the bake (Tier 4) is no longer sufficient — e.g. infinite procedural worlds in a future game — port that one class to C++ and keep everything else in GDScript. C# is not used at all (no Godot C# vs. GDScript split-brain). Don't reach for GDExtension speculatively; profile first, port second.
 
 ### How Godot Is Used
 
@@ -720,11 +720,11 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 
 | Thing | Why not |
 |---|---|
-| C# | GDScript only — project prioritizes readability |
+| C# | Not used. GDScript is the default; C++ GDExtension is the only allowed escape hatch and only for measured hot voxel paths. |
 | VoxelMesherTransvoxel | Smooths geometry — kills the blocky aesthetic |
 | CSGBox/CSGMesh | Prototype-only nodes; can't be used with physics properly |
 | GridMap for open world | Only for structured interiors; not organic terrain |
-| VoxelGeneratorScript (GDScript subclass) | Too slow — VoxelGeneratorGraph compiles to compute shader |
+| VoxelGeneratorGraph (compute-shader generator) | Bake-then-stream pipeline (`scenes/_dev/BakeWorld.tscn`) covers cold-start; if profiling later shows bake is insufficient, port `CubicHeightmapGenerator` to C++ GDExtension instead of switching generator types |
 | Billboard sprites for characters | Camera is too close; low-poly Blender models used instead |
 | Area3D gravity for river currents | Godot 4.4 bug — CharacterBody3D ignores it; manual velocity addition only |
 | Dedicated relay server for co-op | ENet direct connect + Steam Remote Play covers the audience |

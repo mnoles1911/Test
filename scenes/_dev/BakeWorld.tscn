@@ -1,0 +1,56 @@
+[gd_scene format=3 uid="uid://clg38hwy83u23"]
+
+[ext_resource type="Script" uid="uid://c432iyfcck57v" path="res://scripts/_dev/WorldBakeController.gd" id="1_controller"]
+[ext_resource type="VoxelGeneratorScript" path="res://assets/voxel/copper_isles_generator.tres" id="2_copper_gen"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
+sky_top_color = Color(0.18, 0.2, 0.28, 1)
+sky_horizon_color = Color(0.3, 0.32, 0.38, 1)
+ground_bottom_color = Color(0.05, 0.06, 0.08, 1)
+ground_horizon_color = Color(0.2, 0.2, 0.22, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("SkyMat_1")
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+ambient_light_color = Color(0.35, 0.4, 0.5, 1)
+ambient_light_energy = 0.6
+
+[sub_resource type="StandardMaterial3D" id="VoxelTerrainMat_1"]
+vertex_color_use_as_albedo = true
+roughness = 0.85
+
+[sub_resource type="VoxelStreamSQLite" id="VoxelStream_1"]
+database_path = "user://baked_baseline.sqlite"
+save_generator_output = true
+
+[sub_resource type="VoxelMesherCubes" id="VoxelMesher_1"]
+opaque_material = SubResource("VoxelTerrainMat_1")
+
+[node name="BakeWorld" type="Node3D" unique_id=798012111]
+script = ExtResource("1_controller")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1580842734]
+environment = SubResource("Env_1")
+
+[node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=1760345377]
+lod_count = 9
+lod_distance = 128.0
+secondary_lod_distance = 128.0
+lod_fade_duration = 1.0
+material = SubResource("VoxelTerrainMat_1")
+run_stream_in_editor = false
+mesh_block_size = 32
+cache_generated_blocks = true
+streaming_system = 1
+stream = SubResource("VoxelStream_1")
+generator = ExtResource("2_copper_gen")
+mesher = SubResource("VoxelMesher_1")
+transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
+
+[node name="ObserverCamera" type="Camera3D" parent="." unique_id=445430207]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 800, 800)
+fov = 50.0
