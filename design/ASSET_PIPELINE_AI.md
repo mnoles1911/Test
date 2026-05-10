@@ -507,31 +507,9 @@ After Meshy or Tripo returns a smooth `.glb`, every character passes through thi
 
 ### Setup (one time per project)
 
-You'll do this once. Both items live under `tools/blender/` so they're tracked in the repo and available on any machine where you check out the project.
+You'll do this once. The template file lives under `tools/blender/` so it's tracked in the repo and available on any machine where you check out the project.
 
-#### Step 1 — Install the Voxel Heat Diffuse Skinning add-on
-
-This add-on improves automatic skin-weight assignment for chunky / blocky meshes. The default Blender weighting (envelope-based) misplaces weights on cubic geometry, causing limbs to deform incorrectly when Mixamo animations play back. Voxel Heat Diffuse Skinning uses a volumetric algorithm that respects the actual mesh topology and produces much cleaner results on Remeshed characters.
-
-The add-on is **not bundled** with Blender — you have to download it separately:
-
-1. Download from Mesh Online's site: **https://www.meshonline.net/voxel-heat-diffuse-skinning.html**
-   - There is a free version (single-language, basic features) and a paid pro version (~$30, faster execution, batch tools). For Game One, the free version is sufficient.
-   - Save the downloaded `.zip` to a stable location — Blender references the install path; if you delete the source file later, the add-on may need reinstall.
-
-2. In Blender, open **Edit → Preferences → Add-ons → Install from Disk** (Blender 4.6 menu path; older versions used a button labeled just "Install").
-
-3. Browse to the downloaded `.zip` file, select it, click **Install Add-on**.
-
-4. Search the add-on list for **"Voxel Heat Diffuse Skinning"** — the checkbox next to its name is unchecked after install. **Check the box to enable it.**
-
-5. Verify the install: with a mesh and an armature both selected, the **Object → Voxel Heat Diffuse Skinning** menu item should appear in the 3D viewport's Object menu. If it's not there, the install didn't take — re-check the enable checkbox in Preferences.
-
-6. Save preferences (Preferences window → hamburger menu → **Save Preferences**) so the add-on persists across Blender restarts.
-
-The add-on is now available across all .blend files on this machine.
-
-#### Step 2 — Create the `voxel_character_template.blend`
+#### Create the `voxel_character_template.blend`
 
 This is a starter file with the Remesh modifier pre-configured. Per-character workflow: open the template, import the Meshy `.glb`, copy the modifier from the placeholder mesh onto the imported mesh, then save the file as `working_<asset>.blend`.
 
@@ -669,6 +647,53 @@ For **Goblin**, grab:
 - `Goblin Death` — used only briefly before topple cluster takes over; "Falling Forward" works
 
 Animation names in Godot will match the Mixamo clip names; rename in `AnimationPlayer` if you want cleaner identifiers.
+
+---
+
+## Troubleshooting Mixamo skinning — Voxel Heat Diffuse Skinning fallback
+
+Mixamo computes its own skin weights when you upload a mesh, so in the normal path you never touch skinning in Blender. **You only need this section if Mixamo's auto-skinning produces visible deformation problems on a specific character** — limbs detaching during animation playback, fingers exploding outward, head shearing off the neck on rotation.
+
+### When this happens
+
+Most often on:
+- Highly chunky voxelized humanoids where limb-torso cube boundaries are ambiguous to Mixamo's algorithm
+- Characters with floating accessory geometry (loose belts, capes, jewelry) that Mixamo binds to the wrong bone
+- Non-humanoid characters (Wolf, Bear) — Mixamo doesn't auto-rig quadrupeds at all, so you have to rig and skin them in Blender from the start
+
+### The fallback: Voxel Heat Diffuse Skinning
+
+This is a Blender add-on that uses a volumetric voxel-based diffusion algorithm to compute skin weights — much more robust on chunky / blocky meshes than Blender's default heat-diffusion method.
+
+**You don't have to buy it.** Mesh Online sells a Pro version (~$30, faster execution, batch processing), but they also offer a free version on the same page that's sufficient for one-at-a-time character work.
+
+#### Install
+
+1. Download from Mesh Online: **https://www.meshonline.net/voxel-heat-diffuse-skinning.html**
+   - Pick the free version unless you're batch-processing many characters.
+   - Save the `.zip` to a stable location (Blender references the install path).
+
+2. In Blender: **Edit → Preferences → Add-ons → Install from Disk** (Blender 4.6 menu path).
+
+3. Browse to the downloaded `.zip`, click **Install Add-on**.
+
+4. Search the add-on list for **"Voxel Heat Diffuse Skinning"** and check the box to enable it.
+
+5. Save preferences: **Preferences hamburger menu → Save Preferences** so it persists across restarts.
+
+#### Use it on a failing character
+
+1. In Blender, with the problem mesh + an armature (either Mixamo's downloaded rig or your own manual one):
+   - Select the mesh first, then **Shift+click the armature** so the armature is the active object.
+   - **Object menu → Voxel Heat Diffuse Skinning → Generate**.
+
+2. Wait — voxel diffusion is slower than Blender's default automatic weights, often 30–60 seconds for a Game-One-sized character.
+
+3. Test the new skinning by selecting the armature → Pose Mode → rotate individual bones and check that the mesh deforms cleanly with no exploded vertices.
+
+4. Re-export the rigged mesh (`.glb`) and re-upload to Mixamo. Mixamo will accept a pre-rigged mesh and let you grab animations against the existing skeleton instead of generating a new one.
+
+For **quadruped characters** (Wolf, Bear), this is the canonical skinning path since Mixamo can't help at all — you build the armature manually in Blender first, then run Voxel Heat Diffuse Skinning to compute weights.
 
 ---
 
