@@ -79,6 +79,34 @@ For non-character assets (props, decals), the pipeline collapses to: Nano Banana
 
 ---
 
+## Meshy generation settings
+
+The canonical Meshy configuration for Game One characters. Lock these on every generation unless you have a specific reason to deviate.
+
+| Setting | Value | Why |
+|---|---|---|
+| **Mode** | Standard | Low-poly beta produces sparse vertex meshes; the vertex-color bake (Blender Step 3.d) gets coarse color sampling that visibly bands across the chunky cubes after Remesh. Standard's denser vertex layout interpolates cleanly into the voxelized output. |
+| **Preset / style** | Stylized | Flatter saturated colors that survive the texture-to-vertex bake. Realistic preset's PBR detail is wasted — we throw the textures away in Step 3.g. |
+| **Target tri count** | 3,000–8,000 | After Blender Remesh at octree depth 6, output lands at 2,500–4,000 tris — well within Mixamo's 10k cap with headroom. Standard mode hits this range natively; low-poly often produces 500–2,000 source tris, which after Remesh drops below Mixamo's auto-rig sweet spot of 2,000+ and starts misplacing wrist/elbow markers. |
+| **Texture resolution** | 4K PBR | All channels (albedo, normal, roughness) ship from Meshy. We bake only the **albedo** into vertex colors in Step 3.d — normal and roughness are discarded with the rest of the texture pack at export. Generating at 4K vs 2K costs only a small credit bump and gives meaningfully cleaner vertex-color sampling. |
+| **Topology** | Quads preferred | Blender's importer triangulates on the way in — both quad and tri Meshy output work. Quads are marginally cleaner for symmetrize / merge-by-distance steps. |
+| **Rig / animation in Meshy** | OFF | Meshy's built-in rig is destroyed by Blender Remesh (skin weights live on vertices; Remesh rebuilds every vertex). Rigging happens downstream in Mixamo. Skipping it on the Meshy side saves credits. |
+
+### Generation cost estimate
+
+For a 6-character v1 cast (Roland, Goblin, future Ashfallen, Wolf, Bear, generic NPC) at Standard + 4K + no rig: ~30–60 Meshy credits total. Small money relative to the Blender + Mixamo bridge time per character.
+
+### When to deviate
+
+- **Low-poly beta** — only worth testing once on a simple asset (the Goblin is a good candidate: simple silhouette, distinct color). Generate the same character in both modes, run both through Blender Remesh, compare vertex-color bake quality side by side. If low-poly's bake looks identical to standard's, switch — you save credits and generation time. If color banding shows up on the chunky output, stay on standard.
+- **Quick prototypes** — for one-off concept tests where the asset will be thrown away, low-poly + 2K is fine. Don't use that output for production assets.
+
+### Caveat on the beta tag
+
+Meshy's low-poly mode is labeled beta as of May 2026. Beta features ship with unknown quality variance — review the changelog before each generation pass and re-test if Meshy reports significant updates to the algorithm.
+
+---
+
 ## How to use these prompts
 
 The prompts below mirror the **split-prompt pattern** from `tools/AI_TEXTURE_PROMPTS.md`:
@@ -478,8 +506,87 @@ Mood: lived-in, ordinary, the world goes on.
 After Meshy or Tripo returns a smooth `.glb`, every character passes through this Blender process before going into Mixamo. Save this checklist near your Blender workspace.
 
 ### Setup (one time per project)
-1. Install the **Voxel Heat Diffuse Skinning** add-on from Blender's add-on browser (better skin weights for chunky characters than Blender's default).
-2. Save a `voxel_character_template.blend` with the Remesh modifier preconfigured at octree depth 6 — duplicate this file for each new character.
+
+You'll do this once. Both items live under `tools/blender/` so they're tracked in the repo and available on any machine where you check out the project.
+
+#### Step 1 — Install the Voxel Heat Diffuse Skinning add-on
+
+This add-on improves automatic skin-weight assignment for chunky / blocky meshes. The default Blender weighting (envelope-based) misplaces weights on cubic geometry, causing limbs to deform incorrectly when Mixamo animations play back. Voxel Heat Diffuse Skinning uses a volumetric algorithm that respects the actual mesh topology and produces much cleaner results on Remeshed characters.
+
+The add-on is **not bundled** with Blender — you have to download it separately:
+
+1. Download from Mesh Online's site: **https://www.meshonline.net/voxel-heat-diffuse-skinning.html**
+   - There is a free version (single-language, basic features) and a paid pro version (~$30, faster execution, batch tools). For Game One, the free version is sufficient.
+   - Save the downloaded `.zip` to a stable location — Blender references the install path; if you delete the source file later, the add-on may need reinstall.
+
+2. In Blender, open **Edit → Preferences → Add-ons → Install from Disk** (Blender 4.6 menu path; older versions used a button labeled just "Install").
+
+3. Browse to the downloaded `.zip` file, select it, click **Install Add-on**.
+
+4. Search the add-on list for **"Voxel Heat Diffuse Skinning"** — the checkbox next to its name is unchecked after install. **Check the box to enable it.**
+
+5. Verify the install: with a mesh and an armature both selected, the **Object → Voxel Heat Diffuse Skinning** menu item should appear in the 3D viewport's Object menu. If it's not there, the install didn't take — re-check the enable checkbox in Preferences.
+
+6. Save preferences (Preferences window → hamburger menu → **Save Preferences**) so the add-on persists across Blender restarts.
+
+The add-on is now available across all .blend files on this machine.
+
+#### Step 2 — Create the `voxel_character_template.blend`
+
+This is a starter file with the Remesh modifier pre-configured. Per-character workflow: open the template, import the Meshy `.glb`, copy the modifier from the placeholder mesh onto the imported mesh, then save the file as `working_<asset>.blend`.
+
+1. **Open Blender** and start a fresh file (File → New → General).
+
+2. **Delete everything in the default scene** — select all (`A`), then `X → Delete`. You should have an empty scene with just the camera and light remaining (those don't matter; ignore them).
+
+3. **Add a placeholder cube** — `Shift+A → Mesh → Cube`. Name it `_ModifierTemplate` in the Outliner (double-click the name) so it's clearly not for export.
+
+4. **Add the Remesh modifier:**
+   - With the placeholder cube selected, open the **Modifier Properties** panel (the wrench icon in the Properties editor on the right side of the default workspace).
+   - Click **Add Modifier → Generate → Remesh**.
+   - Configure these exact values:
+
+     | Field | Value |
+     |---|---|
+     | Mode | **Blocks** |
+     | Octree Depth | **6** |
+     | Scale | 0.99 (default) |
+     | Threshold | 1.0 (default) |
+     | Remove Disconnected | **OFF** (so floating eye / accessory cubes survive) |
+     | Smooth Shading | **OFF** |
+
+   - **Do NOT apply the modifier** — we want it to stay live on the placeholder so it can be copied to imported meshes.
+
+5. **Save the file** — File → Save As → navigate to `tools/blender/` (create the folder if it doesn't exist) → filename `voxel_character_template.blend`.
+
+6. **Commit the template** so it's available to anyone working on the project:
+   ```
+   git add tools/blender/voxel_character_template.blend
+   git commit -m "Add Blender template for voxel character pipeline"
+   ```
+
+#### Per-character usage of the template
+
+When you start working on a new character (e.g. importing `smooth_goblin.glb` from Meshy):
+
+1. **Open the template:** File → Open → `tools/blender/voxel_character_template.blend`.
+
+2. **Immediately Save As:** File → Save As → `working_goblin.blend` somewhere outside the repo (the working file shouldn't be committed — only the final .glb exports go in `assets/models/`).
+
+3. **Import the Meshy mesh:** File → Import → glTF 2.0 → select `smooth_goblin.glb`. The imported mesh appears alongside the `_ModifierTemplate` cube.
+
+4. **Copy the Remesh modifier onto the imported mesh:**
+   - Select the imported mesh first.
+   - **Shift+click** the `_ModifierTemplate` cube to add it to the selection. The template cube must be the **active** object (last selected, highlighted brighter) — Blender copies *from* the active object.
+   - **Ctrl+L → Copy Modifiers** (Make Links menu → Copy Modifiers). The Remesh modifier appears on the imported mesh, pre-configured.
+
+5. **Delete the placeholder cube** — select `_ModifierTemplate`, press `X`. The imported mesh keeps its Remesh modifier because the modifier was copied, not linked.
+
+6. **Proceed with the per-character process below** (mesh cleanup → bake textures → apply Remesh → export).
+
+If Blender ever shows the Modifier Properties panel as empty after you load the template, that means you selected the imported mesh, not the placeholder cube — the modifier lives on the placeholder until you copy it.
+
+---
 
 ### Per-character process
 
