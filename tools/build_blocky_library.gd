@@ -6,35 +6,35 @@ extends EditorScript
 # project open:
 #
 #   1. Open Script Editor.
-#   2. File → Open Script → res://tools/build_blocky_library.gd
-#   3. Press Ctrl+Shift+X (or File → Run).
+#   2. File -> Open Script -> res://tools/build_blocky_library.gd
+#   3. Press Ctrl+Shift+X (or File -> Run).
 #
 # What it does:
 #
-#   1. Creates a VoxelBlockyLibrary with 13 entries (slot 0 = air,
+#   1. Loads the atlas texture from
+#      res://assets/voxels/texture_packs/default/atlas.png.
+#   2. Builds a single shared StandardMaterial3D with the atlas as
+#      albedo, alpha-scissor enabled (so leaves cut out the white
+#      background that the atlas builder color-keyed to alpha), and
+#      nearest-neighbour texture filtering for crisp tile edges.
+#   3. Creates a VoxelBlockyLibrary with 13 entries (slot 0 = air,
 #      slots 1..12 = active materials matching VoxelMaterialRegistry).
-#   2. Each entry is a VoxelBlockyModelCube with per-face tile
-#      indices into the texture atlas (top/side/bottom).
-#   3. Loads the atlas texture from
-#      res://assets/voxels/texture_packs/default/atlas.png and
-#      assigns it as the library's material albedo.
-#   4. Saves the library to res://assets/voxels/blocky_library.tres.
+#   4. Each entry is a VoxelBlockyModelCube with:
+#        - per-face tile_top / tile_bottom / tile_left/right/front/back
+#          coords pointing into the atlas
+#        - atlas_size_in_tiles set so Zylann can compute UVs
+#        - material_override_0 set to the shared atlas material
+#   5. Bakes the library and saves it to
+#      res://assets/voxels/blocky_library.tres.
 #
 # Re-run any time:
 #   - the material list changes (added/removed materials)
 #   - the atlas layout in tools/build_texture_atlas.py changes
 #   - the active texture pack changes (edit DEFAULT_PACK below)
 #
-# Why an EditorScript (and not a regular tool script): EditorScripts
-# run once on demand without needing to be attached to a scene, and
-# they have full editor APIs. This is the canonical Godot pattern for
-# "configure this resource from code on demand."
-#
 # Plugin dependency: Zylann's Voxel Tools must be installed and
 # enabled, otherwise VoxelBlockyLibrary and VoxelBlockyModelCube
-# don't exist and this script will error out at the first new() call.
-# See DESIGNER_TODO.md for plugin install steps.
-
+# don't exist and this script will error out at the first instantiate.
 
 # =============================================================
 # CONFIGURATION
@@ -47,8 +47,7 @@ const LIBRARY_PATH: String = "res://assets/voxels/blocky_library.tres"
 # Per-material face tile coordinates. (col, row) indexes into the
 # atlas grid where each tile is `tile_size` px (read from pack.json).
 # Mirrors MATERIAL_FACES + ATLAS_LAYOUT from tools/build_texture_atlas.py.
-# Format: material_id -> { "top": Vector2i, "side": Vector2i, "bottom": Vector2i }
-# Air (slot 0) is omitted — VoxelBlockyLibrary treats slot 0 as the
+# Air (slot 0) is omitted -- VoxelBlockyLibrary treats slot 0 as the
 # default empty entry.
 const MATERIAL_TILES: Dictionary = {
 	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},   # stone
@@ -56,9 +55,6 @@ const MATERIAL_TILES: Dictionary = {
 	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},   # grass
 	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},   # sand
 	# 5 = water — handled by WaterChunkMesher, no library entry needed.
-	#     We still register an empty cube so the slot index stays
-	#     reserved (writing material_id 5 to TYPE channel will render
-	#     nothing, which matches design intent).
 	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},   # bedrock
 	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},   # gravel
 	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},   # clay
@@ -68,10 +64,16 @@ const MATERIAL_TILES: Dictionary = {
 	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},   # copper_ore
 }
 
-# Material IDs that should render as transparent / partial-face
-# blocks. Leaves are the canonical example — adjacent leaf voxels
-# should NOT cull each other's faces, otherwise the canopy looks
-# solid from outside and hollow from inside.
+# Material IDs that should NOT cull adjacent block faces. Leaves are
+# the canonical example -- the canopy needs to look dense from outside,
+# so each leaf voxel keeps its faces visible even when surrounded by
+# other leaves.
+const NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
+
+# Material IDs that should render as transparent. Different
+# transparency_index values mean Zylann groups faces into separate
+# render passes for correct alpha sorting. 1 = leaves' alpha-cutout
+# group.
 const TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
 
 
@@ -84,10 +86,10 @@ func _run() -> void:
 
 	# Verify the Zylann plugin is loaded by checking the class.
 	if not ClassDB.class_exists("VoxelBlockyLibrary"):
-		printerr("[build_blocky_library] VoxelBlockyLibrary class not found — is Zylann's Voxel Tools plugin installed and enabled?")
+		printerr("[build_blocky_library] VoxelBlockyLibrary class not found -- is Zylann's Voxel Tools plugin installed and enabled?")
 		return
 	if not ClassDB.class_exists("VoxelBlockyModelCube"):
-		printerr("[build_blocky_library] VoxelBlockyModelCube class not found — plugin version too old? Need a recent Zylann build with Blocky model classes.")
+		printerr("[build_blocky_library] VoxelBlockyModelCube class not found -- plugin too old?")
 		return
 
 	# Resolve the active texture pack.
@@ -103,39 +105,46 @@ func _run() -> void:
 	var atlas_size_px: int = int(pack_meta.get("atlas_size", 2048))
 	@warning_ignore("integer_division")
 	var tiles_per_row: int = atlas_size_px / tile_size
+	var atlas_grid: Vector2i = Vector2i(tiles_per_row, tiles_per_row)
 	print("[build_blocky_library] pack=%s tile=%dpx atlas=%dpx (%dx%d tile grid)" % [
 		DEFAULT_PACK, tile_size, atlas_size_px, tiles_per_row, tiles_per_row
 	])
 
-	# Load the atlas texture (may not exist yet if the user hasn't run
-	# the atlas builder — warn but continue; library will work once the
-	# texture lands and Godot re-imports it).
-	var atlas_tex: Texture2D = null
-	if FileAccess.file_exists(atlas_path):
-		atlas_tex = load(atlas_path) as Texture2D
-		print("[build_blocky_library] loaded atlas: %s" % atlas_path)
-	else:
-		push_warning("[build_blocky_library] atlas.png missing at %s — library will be saved without a texture. Run `python tools/build_texture_atlas.py` first." % atlas_path)
+	if not FileAccess.file_exists(atlas_path):
+		printerr("[build_blocky_library] atlas.png missing at %s -- run `python tools/build_texture_atlas.py default` first" % atlas_path)
+		return
+	var atlas_tex: Texture2D = load(atlas_path) as Texture2D
+	if atlas_tex == null:
+		printerr("[build_blocky_library] failed to load atlas: %s" % atlas_path)
+		return
+	print("[build_blocky_library] loaded atlas: %s (%dx%d)" % [
+		atlas_path, atlas_tex.get_width(), atlas_tex.get_height()
+	])
 
-	# Build the library.
+	# Build the shared atlas material. One material drives every cube
+	# face; alpha-scissor handles the leaves' chroma-keyed gaps without
+	# needing a second material or messy depth sorting.
+	var atlas_mat: StandardMaterial3D = StandardMaterial3D.new()
+	atlas_mat.resource_name = "atlas_default"
+	atlas_mat.albedo_texture = atlas_tex
+	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	atlas_mat.alpha_scissor_threshold = 0.5
+	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	atlas_mat.roughness = 0.85
+	atlas_mat.metallic = 0.0
+	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	print("[build_blocky_library] built shared atlas material (alpha-scissor, nearest filter)")
+
+	# Build the library. Pre-size the models array so slot indices
+	# match material IDs (slot 0 = air = null).
 	var library: Resource = ClassDB.instantiate("VoxelBlockyLibrary")
 	if library == null:
 		printerr("[build_blocky_library] could not instantiate VoxelBlockyLibrary")
 		return
 
-	# Configure each material slot. We build a fresh model per slot
-	# (cube model with tile coordinates set from MATERIAL_TILES) and
-	# add it to the library. Slot 0 (air) is left as default empty.
-	#
-	# Plugin API note: Zylann's library exposes either an `add_model`
-	# method or a direct `models` array depending on plugin version.
-	# We try the method first, fall back to array assignment.
 	var max_id: int = 0
 	for k in MATERIAL_TILES.keys():
 		max_id = max(max_id, int(k))
-
-	# Pre-populate the models array with empty entries up to max_id+1
-	# so slot indices match material IDs. Air at slot 0 stays default.
 	var models: Array = []
 	models.resize(max_id + 1)
 
@@ -143,61 +152,57 @@ func _run() -> void:
 		var faces: Dictionary = MATERIAL_TILES[mat_id]
 		var model: Resource = ClassDB.instantiate("VoxelBlockyModelCube")
 		if model == null:
-			printerr("[build_blocky_library] could not instantiate VoxelBlockyModelCube for slot %d" % mat_id)
+			printerr("[build_blocky_library] could not instantiate cube for slot %d" % mat_id)
 			continue
 
-		# Set per-face tile coordinates. The exact property names depend
-		# on the Zylann plugin version. We try common names; whichever
-		# exists takes effect, the others silently no-op.
-		_try_set(model, "tiles_top", faces["top"])
-		_try_set(model, "tiles_bottom", faces["bottom"])
-		# All four side faces share the same side tile. Some plugin
-		# versions have a single "tiles_side" property; others have
-		# four (left/right/front/back). We try both.
-		_try_set(model, "tiles_side", faces["side"])
-		_try_set(model, "tiles_left", faces["side"])
-		_try_set(model, "tiles_right", faces["side"])
-		_try_set(model, "tiles_front", faces["side"])
-		_try_set(model, "tiles_back", faces["side"])
+		# Atlas grid size on every cube so Zylann knows how to compute
+		# per-face UVs from the integer tile coords below.
+		model.set("atlas_size_in_tiles", atlas_grid)
 
-		# Transparency / face culling. Leaves should not cull adjacent
-		# leaf faces.
+		# Per-face tile coords. The four side faces all share the same
+		# tile (we don't yet author per-direction sides).
+		model.set("tile_top", faces["top"])
+		model.set("tile_bottom", faces["bottom"])
+		model.set("tile_left", faces["side"])
+		model.set("tile_right", faces["side"])
+		model.set("tile_front", faces["side"])
+		model.set("tile_back", faces["side"])
+
+		# Each cube carries the atlas material on its single surface.
+		model.set("material_override_0", atlas_mat)
+
+		# Transparency / culling.
 		if int(mat_id) in TRANSPARENT_MATERIALS:
-			_try_set(model, "transparency_index", 1)
+			model.set("transparency_index", 1)
+		if int(mat_id) in NON_CULLING_MATERIALS:
+			model.set("culls_neighbors", false)
 
 		models[mat_id] = model
 		print("  slot %d: top=%s side=%s bottom=%s" % [
 			mat_id, faces["top"], faces["side"], faces["bottom"]
 		])
 
-	# Assign the models array onto the library. Try direct assignment
-	# first (most plugin versions expose `models` as an Array property);
-	# fall back to per-entry add_model() if the direct assign fails.
-	if not _try_set(library, "models", models):
-		if library.has_method("add_model"):
-			for i in range(models.size()):
-				var m = models[i]
-				if m != null:
-					library.add_model(m)
-		else:
-			push_warning("[build_blocky_library] could not assign models — plugin API mismatch. Open the .tres in the editor and configure manually using assets/voxels/texture_packs/default/README.md.")
+	# Assign models array onto the library.
+	library.set("models", models)
 
-	# Atlas size hint — older plugin versions expose `atlas_size`; we
-	# set it if present so per-face tile lookups can compute UVs.
-	_try_set(library, "atlas_size", tiles_per_row)
-
-	# Bake / refresh the library if the plugin requires it.
+	# Bake the library so Zylann compiles its internal LUTs.
 	if library.has_method("bake"):
 		library.bake()
 		print("[build_blocky_library] library.bake() called")
 
-	# Save.
-	var err: int = ResourceSaver.save(library, LIBRARY_PATH)
+	# Save. Use FLAG_BUNDLE_RESOURCES so the embedded models AND the
+	# shared StandardMaterial3D ride along inside the .tres file
+	# instead of being saved as orphaned external resources.
+	var err: int = ResourceSaver.save(
+		library,
+		LIBRARY_PATH,
+		ResourceSaver.FLAG_BUNDLE_RESOURCES
+	)
 	if err != OK:
 		printerr("[build_blocky_library] save failed: %d" % err)
 		return
 	print("[build_blocky_library] wrote %s" % LIBRARY_PATH)
-	print("[build_blocky_library] DONE — open the library in the inspector to verify, then point VoxelLodTerrain at it in World3D.tscn.")
+	print("[build_blocky_library] DONE -- run World3D.tscn to verify textured terrain.")
 
 
 # =============================================================
@@ -214,15 +219,3 @@ func _load_json(path: String) -> Dictionary:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return {}
 	return parsed
-
-
-func _try_set(obj: Object, prop: String, value: Variant) -> bool:
-	# Attempt to set `prop` on `obj` only if the property exists on
-	# this object (avoids "Invalid set index" errors for plugin API
-	# differences across versions). Returns true if set, false if the
-	# property doesn't exist.
-	for p in obj.get_property_list():
-		if p.get("name", "") == prop:
-			obj.set(prop, value)
-			return true
-	return false

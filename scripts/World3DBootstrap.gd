@@ -89,19 +89,29 @@ func _ready() -> void:
 		var mesher: Resource = terrain.mesher
 		if mesher != null:
 			print("[World3D] Mesher class: %s" % mesher.get_class())
-			# Highlight opaque_material specifically — this is the
-			# property that controls whether vertex colours reach
-			# the rendered terrain. If it's null at runtime despite
-			# the .tscn assignment, Godot didn't reimport the scene
-			# or the property name is being silently rejected.
-			var om = mesher.get("opaque_material") if "opaque_material" in mesher else null
-			if om == null:
-				print("[World3D]   ⚠ opaque_material is NULL (vertex colours WILL fall back to default — flat grey).")
+			# Verify the blocky library's first cube model has an
+			# atlas material attached. In Zylann's current API,
+			# materials live on each VoxelBlockyModelCube's
+			# `material_override_0` slot rather than on the mesher
+			# itself, so an empty material here means tools/
+			# build_blocky_library.gd hasn't been re-run after the
+			# atlas was rebuilt.
+			var lib: Resource = mesher.get("library") if "library" in mesher else null
+			if lib != null and "models" in lib:
+				var models_arr: Array = lib.get("models")
+				var first_solid = null
+				for m in models_arr:
+					if m != null:
+						first_solid = m
+						break
+				if first_solid != null:
+					var mat0 = first_solid.get("material_override_0") if "material_override_0" in first_solid else null
+					if mat0 == null:
+						print("[World3D]   ⚠ blocky library models have no material_override_0 — re-run tools/build_blocky_library.gd.")
+					else:
+						print("[World3D]   ✓ blocky library model[0].material_override_0 = %s" % mat0.get_class())
 			else:
-				print("[World3D]   ✓ opaque_material is set: %s, vertex_color_use_as_albedo=%s" % [
-					om.get_class(),
-					om.get("vertex_color_use_as_albedo") if "vertex_color_use_as_albedo" in om else "(no such property)",
-				])
+				print("[World3D]   ⚠ mesher has no library — wire it in World3D.tscn.")
 			for prop in mesher.get_property_list():
 				var pname: String = prop.get("name", "")
 				if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
