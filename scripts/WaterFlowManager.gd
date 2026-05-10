@@ -5,10 +5,10 @@ extends Node
 #
 # Water in this game lives OUTSIDE the voxel terrain. Every water cell
 # is an entry in a Dictionary<Vector3i, int> kept here. The voxel
-# terrain (Zylann VoxelLodTerrain + VoxelMesherCubes) never sees water
-# voxels — they're invisible to the cube mesher. WaterChunkMesher
-# (Phase 2) emits a separate transparent surface mesh by walking this
-# dictionary.
+# terrain (Zylann VoxelLodTerrain + VoxelMesherBlocky) never sees water
+# voxels — material slot 5 in the VoxelBlockyLibrary is intentionally
+# empty so writing TYPE=5 renders nothing. WaterChunkMesher emits the
+# transparent surface mesh by walking this dictionary.
 #
 # Two kinds of "source" exist:
 #   1. Source REGIONS: designer-placed AABBs (oceans, lakes, large
@@ -244,7 +244,7 @@ func _has_clear_vertical_path_to_surface(start_voxel: Vector3i, surface_y_world:
 	var tool: VoxelTool = terrain.get_voxel_tool()
 	if tool == null:
 		return true
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 	# Surface voxel = floor of (surface_y * VPM) - 1, since the surface
 	# is the TOP face of the highest water voxel and we want to walk up
 	# through air to reach it.
@@ -555,7 +555,7 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int) -> int:
 	var tool = terrain.get_voxel_tool()
 	if tool == null:
 		return 0
-	tool.channel = 2  # CHANNEL_COLOR
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 
 	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
 	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)

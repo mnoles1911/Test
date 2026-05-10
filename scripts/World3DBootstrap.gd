@@ -33,12 +33,11 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
-	# Configure the terrain's CHANNEL_COLOR storage depth to 32-bit.
-	# Default is 8-bit (1 byte per voxel), which truncates our packed
-	# RGBA+mat_id values to just the R byte. The right knob lives on
-	# VoxelLodTerrain.format — a VoxelFormat resource that's null by
-	# default. We instantiate it, override the channel depth, and
-	# assign it BEFORE the terrain starts streaming chunks.
+	# Configure the terrain's CHANNEL_TYPE storage depth. After the v13
+	# VoxelMesherBlocky migration we store material_id directly in
+	# CHANNEL_TYPE — 8-bit is sufficient (material_id range 0-254).
+	# Default depth for TYPE is already 8-bit, but we set it explicitly
+	# so the format is documented in code rather than implicit.
 	if "format" in terrain:
 		_configure_voxel_format(terrain)
 
@@ -215,17 +214,15 @@ func _ready() -> void:
 
 
 func _configure_voxel_format(terrain: Object) -> void:
-	# Set CHANNEL_COLOR depth to 32-bit so our packed RGBA + mat_id
-	# values survive storage. Default is 8-bit (1 byte per voxel),
-	# which truncates to just the R byte and loses both the rest of
-	# the color and the material id.
+	# Set CHANNEL_TYPE depth to 8-bit. After the v13 migration to
+	# VoxelMesherBlocky we store the material_id directly in TYPE,
+	# which fits in a single byte (0-254 is the valid range).
 	#
-	# The knob is VoxelLodTerrain.format — a VoxelFormat resource
-	# that's null by default. We construct one, override the
-	# CHANNEL_COLOR depth, and assign it BEFORE the terrain starts
-	# streaming chunks. Per-block set_channel_depth in _generate_block
-	# was tried and confirmed to break generation entirely (terrain
-	# disappears) — the global format resource is the right path.
+	# 8-bit is the Zylann default for TYPE so this is mostly defensive
+	# documentation — but we still set it explicitly because (a) older
+	# saves may have a stored format with COLOR depth pinned to 32-bit
+	# from the pre-v13 era, and (b) being explicit makes the file
+	# easier to find via grep when something goes wrong.
 	#
 	# The exact API of VoxelFormat depends on the Zylann build. We
 	# probe a couple of common patterns: a method (set_channel_depth)
@@ -234,53 +231,39 @@ func _configure_voxel_format(terrain: Object) -> void:
 	if ClassDB.class_exists("VoxelFormat"):
 		fmt = ClassDB.instantiate("VoxelFormat")
 	if fmt == null:
-		push_warning("[World3D] VoxelFormat class not found; CHANNEL_COLOR will stay at 8-bit and mining will be broken.")
+		# No VoxelFormat — pre-v13 builds didn't need this either, the
+		# defaults (8-bit TYPE) are correct. Skip silently.
 		return
-
-	print("[World3D] VoxelFormat created: %s" % fmt.get_class())
-	# Dump every property of the new format so we can see the API
-	# surface and pick the right knob if our guesses miss.
-	for prop in fmt.get_property_list():
-		var pname: String = prop.get("name", "")
-		if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
-			continue
-		if pname == "resource_path" or pname == "resource_name":
-			continue
-		print("[World3D]   format.%s = %s" % [pname, fmt.get(pname)])
 
 	var configured: bool = false
 
 	# Path 1 — method-based API: VoxelFormat.set_channel_depth(channel, depth)
 	if fmt.has_method("set_channel_depth"):
-		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
-		print("[World3D] Set CHANNEL_COLOR depth via fmt.set_channel_depth(...)")
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_TYPE, VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_TYPE depth via fmt.set_channel_depth(...)")
 		configured = true
 
-	# Path 2 — typed per-channel property: VoxelFormat.color_depth = X
-	if not configured and "color_depth" in fmt:
-		fmt.set("color_depth", VoxelBuffer.DEPTH_32_BIT)
-		print("[World3D] Set CHANNEL_COLOR depth via fmt.color_depth")
+	# Path 2 — typed per-channel property: VoxelFormat.type_depth = X
+	if not configured and "type_depth" in fmt:
+		fmt.set("type_depth", VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_TYPE depth via fmt.type_depth")
 		configured = true
 
 	# Path 3 — array property indexed by channel
 	if not configured and "channel_depths" in fmt:
 		var depths = fmt.get("channel_depths")
 		if depths is Array:
-			depths[VoxelBuffer.CHANNEL_COLOR] = VoxelBuffer.DEPTH_32_BIT
+			depths[VoxelBuffer.CHANNEL_TYPE] = VoxelBuffer.DEPTH_8_BIT
 			fmt.set("channel_depths", depths)
-			print("[World3D] Set CHANNEL_COLOR depth via fmt.channel_depths[CHANNEL_COLOR]")
+			print("[World3D] Set CHANNEL_TYPE depth via fmt.channel_depths[CHANNEL_TYPE]")
 			configured = true
 
 	if not configured:
-		push_warning("[World3D] VoxelFormat exists but no known API path worked; CHANNEL_COLOR will stay at 8-bit.")
+		# Defaults are 8-bit on TYPE, so missing API path isn't fatal.
+		return
 
-	# Assign the format BEFORE terrain begins generating blocks. The
-	# property in our diagnostic dump showed up as `format`, so just
-	# write to it. If the terrain has already started generating, this
-	# may not retroactively fix existing chunks — fresh save / new game
-	# may be needed for the depth to apply across the world.
 	terrain.set("format", fmt)
-	print("[World3D] terrain.format assigned.")
+	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
 
 
 func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:

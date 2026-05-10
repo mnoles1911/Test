@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "clay"
+material_id = 8
+display_name = "Clay"
+color_low = Color(0.42, 0.48, 0.53, 1)
+color_high = Color(0.48, 0.54, 0.59, 1)
+color_jitter = 0.04
+mining_time_seconds = 0.3
+allowed_tools = Array[String](["iron_shovel"])
+yield_item_id = "raw_clay"
+yield_quantity = 1
+fall_behavior = 4
+gravity_scale = 0.9
+damage_multiplier = 0.5

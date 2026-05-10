@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "copper_ore"
+material_id = 12
+display_name = "Copper Ore"
+color_low = Color(0.45, 0.40, 0.35, 1)
+color_high = Color(0.72, 0.45, 0.20, 1)
+color_jitter = 0.12
+mining_time_seconds = 1.5
+allowed_tools = Array[String](["iron_pickaxe"])
+yield_item_id = "copper_ore"
+yield_quantity = 1
+fall_behavior = 4
+gravity_scale = 1.2
+damage_multiplier = 1.6

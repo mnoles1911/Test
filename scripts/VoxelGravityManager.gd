@@ -268,7 +268,7 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 	var tool: VoxelTool = terrain.get_voxel_tool()
 	if tool == null:
 		return
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 
 	# DIAGNOSTIC — always capture t_start so we can auto-print slow
 	# scans without needing perf_log_enabled. Phase timers below stay
@@ -313,9 +313,9 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 
 	# --- Read the bubble into a flat dictionary ---
 	# Keys: Vector3i (relative to min_v, so 0..side-1 on each axis).
-	# Values: int (packed RGBA). Air voxels (alpha=0) are NOT inserted;
-	# absence-from-dict means air. This keeps memory proportional to
-	# solid-voxel count, not bubble volume.
+	# Values: int (material_id from CHANNEL_TYPE). Air voxels (type=0)
+	# are NOT inserted; absence-from-dict means air. This keeps memory
+	# proportional to solid-voxel count, not bubble volume.
 	#
 	# Two read paths:
 	#   1. BULK (preferred) — VoxelTool.copy() pulls the full bubble
@@ -339,14 +339,14 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 		# minimum-corner voxel coord directly.
 		var buf: VoxelBuffer = VoxelBuffer.new()
 		buf.create(side, side, side)
-		# Channels mask = bit for CHANNEL_COLOR. The mesher reads colour
-		# only; SDF/TYPE channels are unused by Cubes.
-		var color_mask: int = 1 << VoxelBuffer.CHANNEL_COLOR
-		tool.copy(min_v, buf, color_mask)
+		# Channels mask = bit for CHANNEL_TYPE. The mesher (Blocky) reads
+		# TYPE (material_id integer); COLOR/SDF channels are unused.
+		var type_mask: int = 1 << VoxelBuffer.CHANNEL_TYPE
+		tool.copy(min_v, buf, type_mask)
 		for x in range(side):
 			for y in range(side):
 				for z in range(side):
-					var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_COLOR)
+					var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
 					if (packed & 0xFF) == 0:
 						continue
 					solids[Vector3i(x, y, z)] = packed

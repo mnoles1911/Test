@@ -1,0 +1,7 @@
+{
+  "name": "Default",
+  "description": "Default texture pack — hand-painted-style tiles for the Game One material library. Source images generated at 512px and downscaled into a 32px-per-tile atlas.",
+  "tile_size": 32,
+  "atlas_size": 2048,
+  "version": "1.0.0"
+}

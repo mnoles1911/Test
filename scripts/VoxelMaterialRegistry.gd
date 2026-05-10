@@ -12,9 +12,11 @@ extends Node
 #   _by_string  — id_string (e.g. "stone") → VoxelMaterial
 #
 # Anywhere code needs to know "what is this voxel?" it queries this
-# registry. Anywhere code needs to write a voxel of a known material,
-# it calls pack_voxel(mat_id, color) to build the packed RGBA32
-# integer the voxel buffer expects.
+# registry. Voxel buffers store the material_id directly in
+# CHANNEL_TYPE — no packing, no encoding. The integer value IS the
+# material id (0 = air, 1-254 = a material in the registry, 255
+# reserved). The mesher (VoxelMesherBlocky) reads CHANNEL_TYPE and
+# looks up the matching model in the VoxelBlockyLibrary.
 #
 # IMPORTANT: this autoload MUST load BEFORE VoxelEditManager (since
 # EditToolHandler queries it on every swing) and AFTER InventoryManager
@@ -116,44 +118,51 @@ func is_loaded() -> bool:
 
 
 # =============================================================
-# PUBLIC API — voxel pack/unpack
+# PUBLIC API — voxel value encoding
 # =============================================================
+#
+# After the VoxelMesherBlocky migration, voxel values in CHANNEL_TYPE
+# are plain integers — the material_id itself. No packing, no
+# encoding tricks. These helpers exist as a thin layer so callers
+# don't sprinkle raw integer arithmetic through the codebase, and so
+# we can change the encoding again later without rewriting every
+# call site.
 
-func pack_voxel(material_id: int, color: Color) -> int:
-	# Build the packed RGBA32 integer that goes into a voxel buffer.
-	# RGB carries the cube's display colour; the alpha byte carries
-	# the material id. The mesher (VoxelMesherCubes) treats alpha != 0
-	# as "render this cube"; it doesn't interpret the alpha value
-	# itself, so we're free to use it as a material lookup key.
-	#
-	# material_id MUST be in [1, 254]. Passing 0 (air) here is almost
-	# certainly a bug — the caller probably meant to write 0 directly
-	# (no voxel). We clamp to keep the alpha non-zero and warn loudly.
-	if material_id <= 0 or material_id >= 255:
-		push_warning("[VoxelMaterialRegistry] pack_voxel called with material_id=%d (must be 1-254). Clamping." % material_id)
-		material_id = clampi(material_id, 1, 254)
-
-	# Pack RGB from the colour, then overwrite the alpha byte with the
-	# material id. We use Godot's Color.to_rgba32() and then mask away
-	# the alpha that came from `color` (which is whatever the colour
-	# specified — typically 1.0 = 255).
-	var packed: int = color.to_rgba32()
-	packed = (packed & 0xFFFFFF00) | (material_id & 0xFF)
-	return packed
+func type_value_for_material(material_id: int) -> int:
+	# Returns the integer to write into CHANNEL_TYPE for a voxel of
+	# this material. Currently a passthrough — material_id IS the
+	# type value. Range-check and warn if the caller passed something
+	# outside the valid range (0 = air; 1-254 = material; 255 reserved).
+	if material_id < 0 or material_id > 254:
+		push_warning("[VoxelMaterialRegistry] type_value_for_material called with material_id=%d (must be 0-254). Clamping." % material_id)
+		material_id = clampi(material_id, 0, 254)
+	return material_id
 
 
-func material_id_from_packed(packed_rgba: int) -> int:
-	# Extract the material id from a packed voxel integer. The id
-	# lives in the lowest byte (the alpha byte in RGBA layout).
-	# Returns 0 for air voxels.
-	return packed_rgba & 0xFF
+func material_id_from_type(type_value: int) -> int:
+	# Extract the material id from a CHANNEL_TYPE voxel value.
+	# Currently a passthrough. Returns 0 for air voxels.
+	return type_value & 0xFF
 
 
-func is_air(packed_rgba: int) -> bool:
-	# True if this voxel is air (alpha byte == 0). Convenience wrapper
-	# so the alpha-byte-as-material-id encoding stays an implementation
-	# detail of the registry, not knowledge spread across the codebase.
-	return (packed_rgba & 0xFF) == 0
+func is_air(type_value: int) -> bool:
+	# True if this voxel is air (type == 0). Convenience wrapper so
+	# the encoding stays an implementation detail of the registry,
+	# not knowledge spread across the codebase.
+	return (type_value & 0xFF) == 0
+
+
+# Legacy aliases — pre-migration call sites may still reference these
+# names. Kept as thin wrappers that ignore the colour argument so old
+# code works unchanged. New code should call type_value_for_material()
+# and material_id_from_type() directly.
+
+func pack_voxel(material_id: int, _color: Color = Color.WHITE) -> int:
+	return type_value_for_material(material_id)
+
+
+func material_id_from_packed(type_value: int) -> int:
+	return material_id_from_type(type_value)
 
 
 # =============================================================

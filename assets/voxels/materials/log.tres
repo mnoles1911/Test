@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "log"
+material_id = 10
+display_name = "Log"
+color_low = Color(0.24, 0.15, 0.06, 1)
+color_high = Color(0.36, 0.23, 0.10, 1)
+color_jitter = 0.08
+mining_time_seconds = 0.8
+allowed_tools = Array[String](["iron_axe"])
+yield_item_id = "raw_log"
+yield_quantity = 1
+fall_behavior = 1
+gravity_scale = 0.8
+damage_multiplier = 0.7
