@@ -88,6 +88,17 @@ func _ready() -> void:
 	if "mesher" in terrain:
 		var mesher: Resource = terrain.mesher
 		if mesher != null:
+			# Runtime fix for a Zylann gdextension serialization bug:
+			# VoxelBlockyModelCube's per-surface `material_override_0`
+			# saves into blocky_library.tres but doesn't restore on load
+			# (get_material_override(0) returns null at runtime even
+			# though the .tres clearly carries the SubResource ref).
+			# Workaround: load the atlas texture, build a fresh shared
+			# StandardMaterial3D, and inject it into every cube model's
+			# surface 0 right now. Tile coords serialize/restore fine,
+			# so only the materials need this round-trip bypass.
+			_inject_atlas_materials_into_library(mesher)
+
 			print("[World3D] Mesher class: %s" % mesher.get_class())
 			# Verify the blocky library's first cube model has an
 			# atlas material attached. In Zylann's current API,
@@ -229,6 +240,53 @@ func _ready() -> void:
 			# wastes the first few seconds of play. Retry every
 			# 0.2 s for up to 5 s while terrain streams in.
 			call_deferred("_snap_spawn_to_ground")
+
+
+const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
+
+
+func _inject_atlas_materials_into_library(mesher: Resource) -> void:
+	# See call site for the why. Build the shared atlas material once
+	# and pin it to every cube model's surface 0. Tile coords already
+	# survived the .tres round-trip; only the material is missing.
+	var lib: Resource = mesher.get("library") if "library" in mesher else null
+	if lib == null:
+		print("[World3D]   ⚠ inject_atlas_materials: no library on mesher.")
+		return
+
+	var atlas_tex: Texture2D = load(_ATLAS_TEXTURE_PATH) as Texture2D
+	if atlas_tex == null:
+		printerr("[World3D]   ⚠ inject_atlas_materials: failed to load %s" % _ATLAS_TEXTURE_PATH)
+		return
+
+	var atlas_mat: StandardMaterial3D = StandardMaterial3D.new()
+	atlas_mat.resource_name = "atlas_default_runtime"
+	atlas_mat.albedo_texture = atlas_tex
+	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	atlas_mat.alpha_scissor_threshold = 0.5
+	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	atlas_mat.roughness = 0.85
+	atlas_mat.metallic = 0.0
+	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+
+	if not "models" in lib:
+		print("[World3D]   ⚠ inject_atlas_materials: library has no models array.")
+		return
+	var models_arr: Array = lib.get("models")
+	var injected: int = 0
+	for m in models_arr:
+		if m == null:
+			continue
+		if m.has_method("set_material_override"):
+			m.call("set_material_override", 0, atlas_mat)
+			injected += 1
+
+	# Re-bake so Zylann recomputes whatever per-material LUTs it
+	# caches off model materials.
+	if lib.has_method("bake"):
+		lib.bake()
+
+	print("[World3D] inject_atlas_materials: assigned atlas to %d models, library re-baked." % injected)
 
 
 func _configure_voxel_format(terrain: Object) -> void:
