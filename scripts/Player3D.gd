@@ -292,7 +292,7 @@ const FLY_SPEED_MULT: float = 10.0
 # enough to cross the test world in seconds, slow enough that the
 # camera can keep up.
 
-const SPAWN_POSITION: Vector3 = Vector3(-61.0, 185.0, 732.0)
+const SPAWN_POSITION: Vector3 = Vector3(21.0, 253.0, 147.0)
 # Single hardcoded spawn point used by CopperIslesTestBootstrap when
 # placing the player on scene load. toggle_fly_mode() does NOT teleport
 # here — it preserves the player's current position so testers can

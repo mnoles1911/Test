@@ -94,4 +94,4 @@ transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
 script = ExtResource("4_skirt")
 
 [node name="Player3D" parent="." unique_id=1849933617 instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -61, 185, 732)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21, 253, 147)

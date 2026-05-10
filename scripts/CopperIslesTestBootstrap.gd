@@ -80,10 +80,14 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	# Mark this scene as a developer test scene so the gameplay UI
-	# autoloads (HUDOverlay, PauseMenu, JournalUI, SaveNotification)
-	# stay dormant. See GameState.is_dev_scene() for the contract.
-	add_to_group("dev_scene")
+	# CopperIslesTest.tscn is now the main play scene loaded via the
+	# MainMenu flow (see MainMenu.WORLD_SCENE), so the gameplay UI
+	# autoloads — HUDOverlay (HP/STAM bars), PauseMenu (Esc menu),
+	# JournalUI (J key), SaveNotification — all need to render normally.
+	# We deliberately do NOT add this scene to the `dev_scene` group;
+	# that group is reserved for scenes opened directly via F6 (e.g.
+	# `scenes/_dev/BakeWorld.tscn`) where the chrome would distract
+	# from the dev tool. See GameState.is_dev_scene() for the contract.
 
 	# Defensive belt-and-suspenders: even with the _enter_tree seed,
 	# reassign the terrain.stream to a fresh VoxelStreamSQLite pointing
@@ -444,7 +448,12 @@ func _terrain_scale(terrain: Node3D) -> float:
 # only the visual water surface, not any voxel positions. Terrain Y
 # is fixed by the heightmap gray-to-Y mapping (see
 # CopperIslesHeightmapGenerator._gray_to_ground_y).
-const GEN_SEA_LEVEL_VOXELS: float = 750.0
+#
+# 2026-05-10: bumped to 1440 (= world Y 240 m at scale 1/6) to match
+# author's visual placement intuition. Bake at user//baked_baseline
+# emitted CHANNEL_DATA5 water bytes up to this voxel-Y, so the
+# chunked water mesher will find a surface at Y=240 to render.
+const GEN_SEA_LEVEL_VOXELS: float = 1440.0
 const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
 
 # Horizon plane override DISABLED 2026-05-08 — now that the
@@ -517,11 +526,21 @@ func _snap_player_above_terrain() -> void:
 		player.global_position = spawn_pos
 		if player is CharacterBody3D:
 			(player as CharacterBody3D).velocity = Vector3.ZERO
+		# Spawn placed — kick off the loading-screen close negotiation.
+		# Polls Zylann's blocked_lods + a dense LOD0 probe ring around
+		# the spawn point, then tells TransitionManager when the area
+		# is presentable. TransitionManager has its own min-hold so the
+		# loading screen never closes instantly even on a fully-cached
+		# baseline.
+		_mark_world_ready_when_settled()
 		return
 
 	# --- Dynamic spawn (no override) ---
 	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
 	if terrain == null:
+		# No terrain to probe; signal ready immediately so the loading
+		# screen doesn't sit on its 25 s cap waiting for nothing.
+		_signal_world_ready("no terrain in scene")
 		return
 	# Local renamed `scale` → `terrain_scale` to dodge the Node3D.scale
 	# property shadow warning.
@@ -536,6 +555,169 @@ func _snap_player_above_terrain() -> void:
 	player.global_position = Vector3(0.0, spawn_y, 0.0)
 	if player is CharacterBody3D:
 		(player as CharacterBody3D).velocity = Vector3.ZERO
+	# Same readiness handoff as the override path — see comment there.
+	_mark_world_ready_when_settled()
+
+
+# =============================================================
+# LOADING-SCREEN READINESS — adaptive close
+# =============================================================
+#
+# TransitionManager opens the loading screen when MainMenu kicks off a
+# scene change with `loading_seconds > 0`. It polls `_voxel_world_ready`
+# (a flag this script flips via mark_voxel_world_ready) every frame
+# after the min-hold elapses and closes the screen as soon as we say
+# "world is presentable" — so a fully-cached baseline doesn't sit on
+# the loading screen for the full 25 s cap.
+#
+# This is a port of the same probe World3DBootstrap uses for Mira;
+# see that file for the long-form rationale on why the gate combines
+# a dense LOD0 raycast ring AND Zylann's blocked_lods queue depth.
+
+# State tracker so re-entrant calls (override + dynamic spawn paths,
+# F7 scale cycle resnap) don't double-fire the signal.
+var _world_ready_signaled: bool = false
+
+
+func _mark_world_ready_when_settled() -> void:
+	# Two-gate readiness check, polled every POLL_INTERVAL until both
+	# gates pass for REQUIRED_GOOD_SAMPLES consecutive polls OR
+	# MAX_EXTRA_WAIT elapses (whichever comes first).
+	#
+	# Gate 1 — DENSE LOD0 SPATIAL PROBE: 6 radii × 16 directions = 96
+	# raycasts straight down from 200 m above each probe XZ. Because
+	# the terrain runs with collision_lod_count = 0, only LOD0 chunks
+	# have collision shapes — a hit means "this column has a meshed
+	# LOD0 block." All 96 must hit.
+	#
+	# Gate 2 — STREAMING QUEUE NEAR-IDLE: Zylann's get_statistics()
+	# reports `blocked_lods`, the global LOD-pipeline queue depth.
+	# When it drops to ≤ STREAM_QUEUE_NEAR_IDLE, even chunks the
+	# probes don't sample are very nearly done.
+	#
+	# Together they close each other's blind spots: probes confirm
+	# "spawn area is visually presentable", the queue gate confirms
+	# "the streamer is globally finished".
+	#
+	# REQUIRED_GOOD_SAMPLES × POLL_INTERVAL = 1.2 s of sustained
+	# "both pass" filters out single-frame races.
+	#
+	# MAX_EXTRA_WAIT 60 s — Copper Isles loads from a populated
+	# baseline SQLite (no generator work for in-bounds chunks), so
+	# 60 s is generous; on a warm cache this completes in well under
+	# 10 s. Fallback caps the wait so a stuck stream can't strand the
+	# player on a black screen forever.
+	if _world_ready_signaled:
+		return
+	const PROBE_RADII_M: Array = [20.0, 50.0, 90.0, 130.0, 170.0, 210.0, 250.0]
+	const PROBE_DIRECTION_COUNT: int = 16
+	const STREAM_QUEUE_NEAR_IDLE: int = 15
+	const REQUIRED_GOOD_SAMPLES: int = 3
+	const MAX_EXTRA_WAIT: float = 60.0
+	const POLL_INTERVAL: float = 0.4
+	# Probe Y bounds — ABSOLUTE world-space, NOT relative to player. The
+	# spawn point can be anywhere (high above peaks for fly-mode debug,
+	# deep below the seabed for water testing); a player-relative ±200 m
+	# probe would miss all terrain in those cases. These bounds bracket
+	# the entire generator output range:
+	#   - Top: above peaks at gray=1 (= elevation_above_at_white/6 = 2500 m
+	#     world at the canonical 6 vox/m). +500 m headroom.
+	#   - Bottom: below the WORLD_FLOOR_VOXEL_Y bedrock (= -300 vox / -50 m
+	#     world). -200 m for cushion.
+	const PROBE_Y_TOP: float = 3000.0
+	const PROBE_Y_BOTTOM: float = -200.0
+
+	# Build the unit-direction ring once (16 directions = every 22.5°).
+	var probe_dirs: Array[Vector2] = []
+	for i in range(PROBE_DIRECTION_COUNT):
+		var theta: float = TAU * float(i) / float(PROBE_DIRECTION_COUNT)
+		probe_dirs.append(Vector2(cos(theta), sin(theta)))
+
+	var terrain := get_node_or_null(voxel_terrain_path)
+	var total_probes: int = probe_dirs.size() * PROBE_RADII_M.size()
+	print("[CopperIslesTest] readiness probe: %d total (radii=%s × %d dirs); polling every %.1fs up to %.0fs."
+		% [total_probes, PROBE_RADII_M, PROBE_DIRECTION_COUNT, POLL_INTERVAL, MAX_EXTRA_WAIT])
+	var elapsed: float = 0.0
+	var consecutive_good: int = 0
+	var last_hits: int = 0
+	var last_blocked: int = -1
+	while elapsed < MAX_EXTRA_WAIT:
+		await get_tree().create_timer(POLL_INTERVAL).timeout
+		elapsed += POLL_INTERVAL
+		last_hits = _count_probe_hits(probe_dirs, PROBE_RADII_M, PROBE_Y_TOP, PROBE_Y_BOTTOM)
+		# Read Zylann's queue depth. Fallback: if the API is missing or
+		# the field isn't there, treat the queue gate as permissive so
+		# the spatial probe alone can still close the screen.
+		last_blocked = -1
+		if terrain != null and terrain.has_method("get_statistics"):
+			var s = terrain.call("get_statistics")
+			if s is Dictionary and s.has("blocked_lods"):
+				last_blocked = int(s["blocked_lods"])
+		var probe_ok: bool = last_hits == total_probes
+		var queue_ok: bool = last_blocked < 0 or last_blocked <= STREAM_QUEUE_NEAR_IDLE
+		# Per-poll diagnostic print so we can see exactly why the gate
+		# isn't passing in the Output panel — debug aid, ~once every
+		# 0.4 s. Drop print to a less-frequent cadence if it's too noisy.
+		print("[CopperIslesTest] probe poll t=%.1fs hits=%d/%d queue=%s consec_good=%d/%d"
+			% [elapsed, last_hits, total_probes,
+				("n/a" if last_blocked < 0 else str(last_blocked)),
+				consecutive_good, REQUIRED_GOOD_SAMPLES])
+		if probe_ok and queue_ok:
+			consecutive_good += 1
+			if consecutive_good >= REQUIRED_GOOD_SAMPLES:
+				_signal_world_ready("probes %d/%d hit AND queue=%d ≤ %d × %d samples after %.1fs" \
+					% [last_hits, total_probes, last_blocked,
+						STREAM_QUEUE_NEAR_IDLE, REQUIRED_GOOD_SAMPLES, elapsed])
+				return
+		else:
+			consecutive_good = 0
+	# Timed out — partial coverage is better than a stuck loading screen.
+	_signal_world_ready("timed out at %.1fs (probes %d/%d, queue=%d)" \
+		% [MAX_EXTRA_WAIT, last_hits, total_probes, last_blocked])
+
+
+func _count_probe_hits(
+	probe_dirs: Array[Vector2],
+	probe_radii: Array,
+	y_top: float,
+	y_bottom: float,
+) -> int:
+	# Returns how many of the (direction × radius) probes hit voxel
+	# collision. Casts from y_top straight down to y_bottom — these are
+	# ABSOLUTE world-Y bounds passed in from the caller, NOT relative to
+	# the player. The whole point: a player at any spawn Y (deep ocean
+	# debug, sky-high fly mode start) still gets a probe sweep that
+	# covers the entire generator's vertical output range. Player's own
+	# collider is excluded so we don't self-hit.
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return 0
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return 0
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var p_pos: Vector3 = player.global_position
+	var hits: int = 0
+	for radius in probe_radii:
+		for dir in probe_dirs:
+			var probe_x: float = p_pos.x + dir.x * float(radius)
+			var probe_z: float = p_pos.z + dir.y * float(radius)
+			var origin: Vector3 = Vector3(probe_x, y_top, probe_z)
+			var dest: Vector3 = Vector3(probe_x, y_bottom, probe_z)
+			var params := PhysicsRayQueryParameters3D.create(origin, dest)
+			params.exclude = [player.get_rid()]
+			if not space.intersect_ray(params).is_empty():
+				hits += 1
+	return hits
+
+
+func _signal_world_ready(reason: String) -> void:
+	if _world_ready_signaled:
+		return
+	_world_ready_signaled = true
+	print("[CopperIslesTest] Signaling voxel world ready (%s)." % reason)
+	if get_node_or_null("/root/TransitionManager"):
+		TransitionManager.mark_voxel_world_ready()
 
 
 # =============================================================

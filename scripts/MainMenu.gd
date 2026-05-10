@@ -7,7 +7,8 @@ extends Control
 #   project.godot). Shows the game title and four buttons:
 #
 #     NEW GAME           — clears the active save reference and
-#                          loads World3D for a fresh playthrough
+#                          loads the Copper Isles map for a fresh
+#                          playthrough
 #     LOAD EXISTING GAME — opens an in-place picker listing every
 #                          save in user://saves/ with name, last-
 #                          played timestamp, and Roland's coords
@@ -21,8 +22,8 @@ extends Control
 #   PauseMenu so the experience is consistent: same data, same
 #   layout, same DELETE row action.
 #
-#   World3D is NOT loaded until the player clicks NEW GAME or LOAD.
-#   Showing the menu means no game scene runs in the background —
+#   The world scene is NOT loaded until the player clicks NEW GAME
+#   or LOAD. Showing the menu means no game scene runs in background —
 #   no voxel terrain streaming, no NPC ticks, no audio bleeding
 #   through. Switching scenes via TransitionManager replaces the
 #   current scene entirely.
@@ -32,7 +33,7 @@ extends Control
 # CONSTANTS
 # =============================================================
 
-const WORLD_SCENE: String    = "res://scenes/World3D.tscn"
+const WORLD_SCENE: String    = "res://scenes/CopperIslesTest.tscn"
 const SETTINGS_SCENE: String = "res://scenes/ui/Settings.tscn"
 
 # Folder scanned for menu-background images. Drop PNG / JPG / WEBP
@@ -641,14 +642,15 @@ func _on_new_game() -> void:
 	print("[MainMenu] NEW GAME pressed")
 	GameState.reset_for_new_game()
 	_handoff_music_to_loading_screen()
-	# 45 s loading hold — gives Zylann's worker threads + main-thread
-	# mesh-upload pipeline a window to stream the player's spawn-area
-	# chunks before the fade clears. Tuned generously because the
-	# project uses gl_compatibility (single-threaded renderer) —
-	# chunk uploads run serial with everything else, and 10 s wasn't
-	# enough to get nearby terrain into a presentable state on
-	# slower hardware.
-	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 120.0)
+	# 25 s loading hold — tuned for Copper Isles. With the baked
+	# baseline at assets/voxel/copper_isles_baseline.sqlite and the
+	# shallow-depth-cap cache, almost every chunk near spawn is served
+	# from SQLite (no generator work). Phases the load screen needs
+	# to cover: (1) bootstrap seeds working DB if user:// is empty
+	# (~5-10 s for ~150 MB on SSD); (2) Zylann opens the SQLite +
+	# streams chunks within view_distance; (3) main-thread mesh upload
+	# (gl_compatibility serial pipeline) for the visible LOD0 set.
+	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 25.0)
 
 
 func _on_load() -> void:
@@ -705,9 +707,11 @@ func _on_load_select(filename: String) -> void:
 		scene = WORLD_SCENE
 	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
 	_handoff_music_to_loading_screen()
-	# Same 120 s loading hold as NEW GAME — restored saves still need
-	# chunk streaming time, plus voxel deltas reading from SQLite.
-	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 120.0)
+	# Same 25 s loading hold as NEW GAME (Copper-Isles-tuned). Restored
+	# saves layer voxel deltas on top of the baseline SQLite — a few
+	# seconds of read traffic but no extra streaming work since the
+	# baseline already has the underlying chunks cached.
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 25.0)
 
 
 func _on_load_delete(filename: String) -> void:
