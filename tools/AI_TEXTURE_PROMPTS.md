@@ -17,9 +17,10 @@ game can load.
 
 - **Output size**: 512×512 (the builder downscales to 32×32 for the atlas)
 - **File format**: PNG with RGBA (alpha) for `leaves_all`, RGB OK elsewhere
-- **Seamless tiling**: required for everything except `log_top`
-  - In Midjourney, append `--tile`
-  - In DALL-E or Stable Diffusion, "seamlessly tiling" must be in the prompt
+- **Seamless tiling**: required for everything except `log_top`. The
+  prompts below request seamless tiling in natural language so they
+  work across Gemini Imagen, DALL-E, and Stable Diffusion. If using
+  Midjourney, append `--tile` to any of these prompts.
 
 ## Tiling scale context
 
@@ -58,7 +59,7 @@ Each prompt below is self-contained — copy the full block as written.
 > with no baked directional lighting and no cast shadows. No corner or
 > edge artifacts. Character: the surface quality of a hand-crafted
 > medieval RPG voxel world — Minecraft elevated with painterly detail
-> and warm material authenticity. 512×512. --tile
+> and warm material authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -79,7 +80,7 @@ Each prompt below is self-contained — copy the full block as written.
 > directional lighting and no cast shadows. No corner or edge artifacts.
 > Character: the surface quality of a hand-crafted medieval RPG voxel
 > world — Minecraft elevated with painterly detail and warm material
-> authenticity. 512×512. --tile
+> authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -100,7 +101,7 @@ Each prompt below is self-contained — copy the full block as written.
 > matte albedo with no baked directional lighting and no cast shadows.
 > No corner or edge artifacts. Character: the surface quality of a
 > hand-crafted medieval RPG voxel world — Minecraft elevated with
-> painterly detail and warm material authenticity. 512×512. --tile
+> painterly detail and warm material authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 > **NOTE:** `grass_side.png` and `grass_bottom.png` are auto-built by
 > the atlas tool. **Do not generate these.**
@@ -124,7 +125,7 @@ Each prompt below is self-contained — copy the full block as written.
 > directional lighting and no cast shadows. No corner or edge artifacts.
 > Character: the surface quality of a hand-crafted medieval RPG voxel
 > world — Minecraft elevated with painterly detail and warm material
-> authenticity. 512×512. --tile
+> authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -145,7 +146,7 @@ Each prompt below is self-contained — copy the full block as written.
 > directional lighting and no cast shadows. No corner or edge artifacts.
 > Character: the surface quality of a hand-crafted medieval RPG voxel
 > world — Minecraft elevated with painterly detail and warm material
-> authenticity. 512×512. --tile
+> authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -166,7 +167,7 @@ Each prompt below is self-contained — copy the full block as written.
 > directional lighting and no cast shadows. No corner or edge artifacts.
 > Character: the surface quality of a hand-crafted medieval RPG voxel
 > world — Minecraft elevated with painterly detail and warm material
-> authenticity. 512×512. --tile
+> authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -187,7 +188,7 @@ Each prompt below is self-contained — copy the full block as written.
 > matte albedo with no baked directional lighting and no cast shadows.
 > No corner or edge artifacts. Character: the surface quality of a
 > hand-crafted medieval RPG voxel world — Minecraft elevated with
-> painterly detail and warm material authenticity. 512×512. --tile
+> painterly detail and warm material authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -226,7 +227,7 @@ Each prompt below is self-contained — copy the full block as written.
 > directional lighting and no cast shadows. No corner or edge artifacts.
 > Character: the surface quality of a hand-crafted medieval RPG voxel
 > world — Minecraft elevated with painterly detail and warm material
-> authenticity. 512×512. --tile
+> authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -249,7 +250,7 @@ Each prompt below is self-contained — copy the full block as written.
 > leaf coverage roughly 55–65% of the face, transparent regions spread
 > uniformly throughout. Pure matte albedo with no baked directional
 > lighting and no cast shadows. No corner or edge artifacts. RGBA PNG
-> with alpha transparency. 512×512. --tile
+> with alpha transparency. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -272,7 +273,7 @@ Each prompt below is self-contained — copy the full block as written.
 > directional lighting and no cast shadows. No corner or edge artifacts.
 > Character: the surface quality of a hand-crafted medieval RPG voxel
 > world — Minecraft elevated with painterly detail and warm material
-> authenticity. 512×512. --tile
+> authenticity. Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
@@ -294,7 +295,7 @@ Each prompt below is self-contained — copy the full block as written.
 > no cast shadows. No corner or edge artifacts. Character: the surface
 > quality of a hand-crafted medieval RPG voxel world — Minecraft
 > elevated with painterly detail and warm material authenticity.
-> 512×512. --tile
+> Seamless repeating texture with no visible seams at any edge. 512×512.
 
 ---
 
