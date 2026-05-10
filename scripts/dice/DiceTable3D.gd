@@ -15,30 +15,43 @@ extends Node3D
 #       die has come to rest. Read the 5-element array for face values 1..6.
 #
 # Asset hooks (optional — fall back to solid colors if missing):
-#   res://assets/dice/felt_burgundy.png   — felt material albedo
-#   res://assets/dice/table_oak_rim.png   — rim material albedo
-#   res://assets/dice/die_face_atlas.png  — die material albedo
+#   res://assets/dice/felt_burgundy.jpg   — felt material albedo
+#   res://assets/dice/table_oak_rim.jpg   — rim material albedo
+#   res://assets/dice/dice_face_atlas.jpg — die material albedo (3×2 grid:
+#       top row faces 1/2/3 left→right, bottom row faces 4/5/6 left→right)
 
 signal roll_settled(face_values: PackedInt32Array)
 
 const DIE_COUNT: int = 5
-const DIE_SIZE: float = 0.04                # 4 cm cube
+const DIE_SIZE: float = 0.07                # 7 cm cube — readable in viewport
 const TABLE_RADIUS: float = 0.30            # 30 cm felt circle
 const RIM_HEIGHT: float = 0.025
-const SPAWN_HEIGHT: float = 0.20            # drop dice from 20 cm
-const SETTLE_VELOCITY_EPSILON: float = 0.05  # below = "stopped"
-const SETTLE_DELAY_SEC: float = 0.35         # must stay stopped this long
+const SPAWN_HEIGHT: float = 0.22            # drop dice from above the rim
+const SETTLE_VELOCITY_EPSILON: float = 0.18  # below = "stopped" (generous;
+                                              # micro-vibrations on edge contact
+                                              # were keeping settle from firing)
+const SETTLE_DELAY_SEC: float = 0.30         # must stay stopped this long
+const SETTLE_MAX_SEC: float = 4.0            # force-settle after this long
+                                              # regardless of velocity (fail-safe)
 
-const FELT_TEX_PATH: String = "res://assets/dice/felt_burgundy.png"
-const RIM_TEX_PATH: String = "res://assets/dice/table_oak_rim.png"
-const DIE_TEX_PATH: String = "res://assets/dice/die_face_atlas.png"
+const FELT_TEX_PATH: String = "res://assets/dice/felt_burgundy.jpg"
+const RIM_TEX_PATH: String = "res://assets/dice/table_oak_rim.jpg"
+const DIE_TEX_PATH: String = "res://assets/dice/dice_face_atlas.jpg"
 
 var _dice: Array[RigidBody3D] = []
 var _lock_markers: Array[MeshInstance3D] = []   # little ring above each die
 var _settle_timers: Array[float] = []           # per-die "stopped" accumulator
 var _rolling_indices: Array[int] = []
 var _settle_pending: bool = false
+var _settle_elapsed: float = 0.0   # accumulated time since current roll started
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
+# Shared cube mesh, built once. v1 uses a plain BoxMesh with a wood-tinted
+# StandardMaterial — per-face pip patterns are read from the 2D UI cards
+# below the viewport. (Earlier custom-UV atlas mapping had layout issues
+# and is parked until we can verify the user's atlas image matches the
+# 3×2 grid convention.)
+var _shared_die_mesh: Mesh = null
 
 
 func _ready() -> void:
@@ -89,8 +102,11 @@ func _build_table() -> void:
 	var rim_mesh: TorusMesh = TorusMesh.new()
 	rim_mesh.inner_radius = TABLE_RADIUS - 0.01
 	rim_mesh.outer_radius = TABLE_RADIUS + 0.02
-	rim_mesh.rings = 6
-	rim_mesh.ring_segments = 48
+	# rings = slices around the central axis (smoothness of the circle)
+	# ring_segments = subdivisions across the donut cross-section
+	# Previously had these flipped, which made the rim look hexagonal.
+	rim_mesh.rings = 48
+	rim_mesh.ring_segments = 8
 	rim.mesh = rim_mesh
 	var rim_mat: StandardMaterial3D = StandardMaterial3D.new()
 	rim_mat.albedo_color = Color(0.27, 0.18, 0.12)   # dark oak fallback
@@ -124,41 +140,54 @@ func _build_table() -> void:
 func _build_camera_and_lights() -> void:
 	var cam: Camera3D = Camera3D.new()
 	cam.name = "Camera3D"
-	# Position the camera above and slightly forward of the table,
-	# tilted ~30° downward. Frames the entire felt circle with a small
-	# margin around the rim.
-	cam.position = Vector3(0.0, 0.55, 0.55)
-	cam.fov = 50.0
+	# Tighter framing — the dice should fill ~half the viewport height.
+	# Camera sits ~40 cm above the felt and ~35 cm in front, tilted down.
+	cam.position = Vector3(0.0, 0.42, 0.40)
+	cam.fov = 55.0
 	add_child(cam)
 	# look_at must run after add_child so the global transform exists.
 	cam.look_at(Vector3.ZERO, Vector3.UP)
 	cam.current = true
 
-	# Warm candle key light (OmniLight3D) above the table.
+	# Warm candle key light — bright enough to read pip pattern on the dice.
 	var candle: OmniLight3D = OmniLight3D.new()
 	candle.name = "Candle"
-	candle.position = Vector3(0.0, 0.50, 0.0)
-	candle.light_color = Color(1.0, 0.78, 0.50)
-	candle.light_energy = 1.4
-	candle.omni_range = 1.8
+	candle.position = Vector3(0.0, 0.45, 0.10)
+	candle.light_color = Color(1.0, 0.85, 0.55)
+	candle.light_energy = 3.5
+	candle.omni_range = 2.5
 	add_child(candle)
 
 	# Cool fill light from the player side — lifts shadows on the dice
 	# nearest the camera.
 	var fill: OmniLight3D = OmniLight3D.new()
 	fill.name = "Fill"
-	fill.position = Vector3(0.0, 0.30, 0.55)
-	fill.light_color = Color(0.65, 0.70, 0.85)
-	fill.light_energy = 0.4
-	fill.omni_range = 1.2
+	fill.position = Vector3(0.0, 0.25, 0.55)
+	fill.light_color = Color(0.70, 0.75, 0.90)
+	fill.light_energy = 1.2
+	fill.omni_range = 1.5
 	add_child(fill)
+
+	# Ambient backfill so the underside of dice never goes pitch black.
+	var env_holder: WorldEnvironment = WorldEnvironment.new()
+	var env: Environment = Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.04, 0.03, 0.02)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.55, 0.45, 0.35)
+	env.ambient_light_energy = 0.6
+	env_holder.environment = env
+	add_child(env_holder)
 
 
 func _build_dice() -> void:
 	# Build each of the 5 dice. They start sleeping in a row above the
 	# felt; roll() drops them with random impulses.
-	var spacing: float = 0.07
-	var row_y: float = SPAWN_HEIGHT
+	# Initial display position — dice rest in a row just above the felt
+	# so the player sees five distinct cubes before the first roll.
+	# SPAWN_HEIGHT is reserved for drops triggered by roll().
+	var spacing: float = 0.11
+	var row_y: float = DIE_SIZE * 0.5 + 0.005
 	var start_x: float = -spacing * 2.0
 	for i in DIE_COUNT:
 		var die: RigidBody3D = _make_die(i)
@@ -178,8 +207,10 @@ func _make_die(index: int) -> RigidBody3D:
 	var body: RigidBody3D = RigidBody3D.new()
 	body.name = "Die_%d" % index
 	body.mass = 0.02
-	body.linear_damp = 0.4
-	body.angular_damp = 0.4
+	# Higher damp values bring dice to rest faster, reducing the chance
+	# of a die getting stuck oscillating against the rim wall.
+	body.linear_damp = 0.8
+	body.angular_damp = 1.0
 	body.continuous_cd = true
 	body.can_sleep = true
 
@@ -189,30 +220,97 @@ func _make_die(index: int) -> RigidBody3D:
 	shape.shape = box_shape
 	body.add_child(shape)
 
+	# Plain BoxMesh, wood-tinted, no atlas texture. Per-face digits are
+	# painted as Label3D children so the 3D viewport stays readable.
+	if _shared_die_mesh == null:
+		var box_mesh: BoxMesh = BoxMesh.new()
+		box_mesh.size = Vector3(DIE_SIZE, DIE_SIZE, DIE_SIZE)
+		_shared_die_mesh = box_mesh
+
 	var mesh: MeshInstance3D = MeshInstance3D.new()
-	var box_mesh: BoxMesh = BoxMesh.new()
-	box_mesh.size = Vector3(DIE_SIZE, DIE_SIZE, DIE_SIZE)
-	mesh.mesh = box_mesh
+	mesh.mesh = _shared_die_mesh
 	var die_mat: StandardMaterial3D = StandardMaterial3D.new()
-	die_mat.albedo_color = Color(0.78, 0.62, 0.40)   # honey oak fallback
+	die_mat.albedo_color = Color(0.78, 0.62, 0.40)   # honey oak
 	die_mat.roughness = 0.70
-	_apply_optional_texture(die_mat, DIE_TEX_PATH)
 	mesh.set_surface_override_material(0, die_mat)
 	body.add_child(mesh)
 
-	# Per-face Label3D fallbacks while no atlas texture exists. Removed
-	# automatically when the atlas is detected.
-	if not ResourceLoader.exists(DIE_TEX_PATH):
-		_attach_face_labels(body)
+	# Always attach face-digit labels — they're the 3D readable layer.
+	_attach_face_labels(body)
 
 	return body
 
 
+func _build_die_atlas_mesh_unused() -> ArrayMesh:
+	# Custom-UV cube mesh. The atlas is 3 cols × 2 rows. Each cube face
+	# claims one cell, with the convention that opposite faces sum to 7
+	# (matching _read_die_face).
+	#
+	# Atlas cell layout (col, row):
+	#   (0,0)=face1  (1,0)=face2  (2,0)=face3
+	#   (0,1)=face4  (1,1)=face5  (2,1)=face6
+	#
+	# Cube face → atlas cell:
+	#   +Y (top)    value 1 → (0, 0)
+	#   +X (right)  value 2 → (1, 0)
+	#   +Z (front)  value 3 → (2, 0)
+	#   -Z (back)   value 4 → (0, 1)
+	#   -X (left)   value 5 → (1, 1)
+	#   -Y (bottom) value 6 → (2, 1)
+	#
+	# Vertex winding for each face is CCW from outside so normals point
+	# outward. UV order: v0=bottom-left, v1=bottom-right, v2=top-right,
+	# v3=top-left of the texture cell.
+	var st: SurfaceTool = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var s: float = DIE_SIZE * 0.5
+
+	var faces: Array = [
+		# +Y top, value 1, cell (0,0)
+		[Vector3(-s,  s,  s), Vector3( s,  s,  s), Vector3( s,  s, -s), Vector3(-s,  s, -s), Vector3.UP,      0, 0],
+		# -Y bottom, value 6, cell (2,1)
+		[Vector3(-s, -s, -s), Vector3( s, -s, -s), Vector3( s, -s,  s), Vector3(-s, -s,  s), Vector3.DOWN,    2, 1],
+		# +X right, value 2, cell (1,0)
+		[Vector3( s, -s,  s), Vector3( s, -s, -s), Vector3( s,  s, -s), Vector3( s,  s,  s), Vector3.RIGHT,   1, 0],
+		# -X left, value 5, cell (1,1)
+		[Vector3(-s, -s, -s), Vector3(-s, -s,  s), Vector3(-s,  s,  s), Vector3(-s,  s, -s), Vector3.LEFT,    1, 1],
+		# +Z front, value 3, cell (2,0)
+		[Vector3(-s, -s,  s), Vector3( s, -s,  s), Vector3( s,  s,  s), Vector3(-s,  s,  s), Vector3.BACK,    2, 0],
+		# -Z back, value 4, cell (0,1)
+		[Vector3( s, -s, -s), Vector3(-s, -s, -s), Vector3(-s,  s, -s), Vector3( s,  s, -s), Vector3.FORWARD, 0, 1],
+	]
+
+	for face in faces:
+		var v0: Vector3 = face[0]
+		var v1: Vector3 = face[1]
+		var v2: Vector3 = face[2]
+		var v3: Vector3 = face[3]
+		var normal: Vector3 = face[4]
+		var col: int = face[5]
+		var row: int = face[6]
+
+		var u_min: float = float(col) / 3.0
+		var u_max: float = float(col + 1) / 3.0
+		var v_min: float = float(row) / 2.0
+		var v_max: float = float(row + 1) / 2.0
+
+		# Triangle 1: v0 → v1 → v2
+		st.set_normal(normal); st.set_uv(Vector2(u_min, v_max)); st.add_vertex(v0)
+		st.set_normal(normal); st.set_uv(Vector2(u_max, v_max)); st.add_vertex(v1)
+		st.set_normal(normal); st.set_uv(Vector2(u_max, v_min)); st.add_vertex(v2)
+		# Triangle 2: v0 → v2 → v3
+		st.set_normal(normal); st.set_uv(Vector2(u_min, v_max)); st.add_vertex(v0)
+		st.set_normal(normal); st.set_uv(Vector2(u_max, v_min)); st.add_vertex(v2)
+		st.set_normal(normal); st.set_uv(Vector2(u_min, v_min)); st.add_vertex(v3)
+
+	return st.commit()
+
+
 func _attach_face_labels(die: RigidBody3D) -> void:
-	# Six small Label3Ds, one per face, showing the digit 1..6. Pure
-	# debug-time fallback — when the real atlas drops in, ResourceLoader
-	# will see the file and we skip this branch entirely.
-	var half: float = DIE_SIZE * 0.5 + 0.001
+	# Six digits, one per face. Sized so each digit is ~3 cm tall on
+	# a 7 cm die (font_size × pixel_size = world height).
+	# Convention: opposite faces sum to 7. Matches _read_die_face.
+	var half: float = DIE_SIZE * 0.5 + 0.0015
 	var face_data: Array = [
 		{"text": "1", "pos": Vector3(0, half, 0),  "rot": Vector3(-PI/2, 0, 0)},
 		{"text": "6", "pos": Vector3(0, -half, 0), "rot": Vector3(PI/2, 0, 0)},
@@ -226,9 +324,12 @@ func _attach_face_labels(die: RigidBody3D) -> void:
 		label.text = entry.text
 		label.position = entry.pos
 		label.rotation = entry.rot
-		label.pixel_size = 0.0015
-		label.modulate = Color(0.15, 0.10, 0.05)
-		label.outline_modulate = Color(1, 1, 1, 0)
+		# 36 × 0.0008 = 0.029 m → about 3 cm tall on a 7 cm cube face.
+		label.pixel_size = 0.0008
+		label.font_size = 36
+		label.modulate = Color(0.10, 0.06, 0.03)   # dark brown digit
+		label.outline_modulate = Color(0.95, 0.88, 0.70, 0.85)
+		label.outline_size = 2
 		label.no_depth_test = false
 		label.fixed_size = false
 		die.add_child(label)
@@ -240,10 +341,10 @@ func _make_lock_marker() -> MeshInstance3D:
 	var marker: MeshInstance3D = MeshInstance3D.new()
 	marker.name = "LockMarker"
 	var torus: TorusMesh = TorusMesh.new()
-	torus.inner_radius = 0.012
-	torus.outer_radius = 0.020
-	torus.rings = 4
-	torus.ring_segments = 24
+	torus.inner_radius = 0.022
+	torus.outer_radius = 0.034
+	torus.rings = 24
+	torus.ring_segments = 6
 	marker.mesh = torus
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.65, 0.18, 0.18)
@@ -271,6 +372,7 @@ func roll(active_indices: PackedInt32Array) -> void:
 	# full 5-element face_values array (including non-rolled dice).
 	_rolling_indices.clear()
 	_settle_pending = true
+	_settle_elapsed = 0.0
 	for idx in active_indices:
 		if idx < 0 or idx >= DIE_COUNT:
 			continue
@@ -326,17 +428,34 @@ func _physics_process(delta: float) -> void:
 		_update_lock_marker_positions()
 		return
 
+	_settle_elapsed += delta
+
 	var all_settled: bool = true
 	for idx in _rolling_indices:
 		var die: RigidBody3D = _dice[idx]
 		var v: float = die.linear_velocity.length()
 		var av: float = die.angular_velocity.length()
-		if v < SETTLE_VELOCITY_EPSILON and av < SETTLE_VELOCITY_EPSILON:
+		# Either: low velocity counts as stopped, OR Godot's own sleep
+		# detection has fired (which is more reliable for tiny vibrations).
+		var stopped: bool = (v < SETTLE_VELOCITY_EPSILON and av < SETTLE_VELOCITY_EPSILON) or die.sleeping
+		if stopped:
 			_settle_timers[idx] += delta
 		else:
 			_settle_timers[idx] = 0.0
 		if _settle_timers[idx] < SETTLE_DELAY_SEC:
 			all_settled = false
+
+	# Fail-safe: don't get stuck forever if a die is jammed against the
+	# rim wall and oscillating at low amplitude. Force-zero the velocity
+	# and emit settled.
+	if not all_settled and _settle_elapsed >= SETTLE_MAX_SEC:
+		for idx in _rolling_indices:
+			var die: RigidBody3D = _dice[idx]
+			die.linear_velocity = Vector3.ZERO
+			die.angular_velocity = Vector3.ZERO
+			die.sleeping = true
+		all_settled = true
+		print("[DiceTable3D] settle force-fired after %.1fs (some dice were vibrating)" % _settle_elapsed)
 
 	_update_lock_marker_positions()
 
@@ -360,7 +479,7 @@ func _update_lock_marker_positions() -> void:
 		if not _lock_markers[i].visible:
 			continue
 		var die: RigidBody3D = _dice[i]
-		_lock_markers[i].global_position = die.global_position + Vector3(0.0, 0.035, 0.0)
+		_lock_markers[i].global_position = die.global_position + Vector3(0.0, 0.055, 0.0)
 		_lock_markers[i].rotation = Vector3(PI * 0.5, 0.0, 0.0)
 
 
