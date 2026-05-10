@@ -149,7 +149,10 @@ static func build_cluster_mesh(
 	# material_id, so we lift the registry once outside the inner loop
 	# and tint each voxel's vertices using that material's chosen
 	# representative colour.
-	var registry := Engine.get_main_loop().root.get_node_or_null("VoxelMaterialRegistry") if Engine.get_main_loop() else null
+	var registry: Node = null
+	var main_loop := Engine.get_main_loop()
+	if main_loop and main_loop is SceneTree:
+		registry = (main_loop as SceneTree).root.get_node_or_null("VoxelMaterialRegistry")
 	for v_pos_v in voxels.keys():
 		var v_pos: Vector3i = v_pos_v
 		var mat_id: int = int(voxels[v_pos]) & 0xFF
