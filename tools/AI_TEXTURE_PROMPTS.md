@@ -16,7 +16,9 @@ game can load.
 ## Generation settings
 
 - **Output size**: 512×512 (the builder downscales to 32×32 for the atlas)
-- **File format**: PNG with RGBA (alpha) for `leaves_all`, RGB OK elsewhere
+- **File format**: PNG. RGB is fine for everything — for `leaves_all`,
+  the atlas builder color-keys the white background to alpha at build
+  time, so you don't need a generator that outputs true RGBA.
 - **Seamless tiling**: required for everything except `log_top`. Tiling
   is requested in the per-material prompts below.
 
@@ -217,20 +219,21 @@ the entire square face to all four corners.)*
 
 ### `leaves_all.png`
 
-*(Requires RGBA output — transparent gaps between leaf clusters so sky
-shows through in the game engine.)*
+*(Generate with a pure white background between leaves. The atlas
+builder color-keys white to alpha automatically — you don't need an
+RGBA-capable generator.)*
 
 > A square seamless tileable texture of dense small rounded forest
-> leaves with transparent gaps between leaf clusters, designed to
-> repeat invisibly across a forest canopy. Many small leaf clusters of
-> similar size and density spread evenly across the whole surface with
-> balanced color across all areas. Deep emerald and forest green tones
-> with individual leaf variation from dark emerald to lighter olive,
-> leaves small and tough rather than lush tropical or sparse pine
-> needles. Roughly 60 percent leaf coverage with transparent gaps
-> spread uniformly between clusters. Flat top-down view, matte even
-> lighting throughout. Hand-painted painterly art style. Tiles
-> seamlessly with no edge seams. Output PNG with alpha transparency.
+> leaves on a pure white background, designed to repeat invisibly
+> across a forest canopy. Many small leaf clusters of similar size and
+> density spread evenly across the whole surface with balanced color
+> across all areas. Deep emerald and forest green tones with individual
+> leaf variation from dark emerald to lighter olive, leaves small and
+> tough rather than lush tropical or sparse pine needles. Roughly 60
+> percent leaf coverage with white gaps spread uniformly between
+> clusters. Flat top-down view, matte even lighting throughout.
+> Hand-painted painterly art style. Tiles seamlessly with no edge
+> seams.
 
 ---
 

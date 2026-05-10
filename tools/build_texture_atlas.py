@@ -28,10 +28,18 @@ WaterChunkMesher) are recorded in the manifest as null.
 import sys
 import os
 import json
-from PIL import Image, ImageStat
+from PIL import Image, ImageStat, ImageChops
 
 
 PACKS_DIR = "assets/voxels/texture_packs"
+
+
+# Sources whose white background should be color-keyed to alpha during
+# atlas build. AI image generators (Gemini, DALL-E, Midjourney) tend to
+# output flat RGB with white "transparent gaps" rather than true RGBA,
+# so we convert that white to alpha here to keep the artist workflow
+# simple — drop in a PNG, re-run the builder, done.
+CHROMA_KEY_MATERIALS = {"leaves_all"}
 
 
 # --------------------------------------------------------------
@@ -129,6 +137,33 @@ def composite_grass_side(dirt_img, grass_top_img, tile_size):
     return result
 
 
+def chroma_key_white(img, threshold=200, softness=40):
+    """
+    Convert white background to alpha. Any pixel whose minimum RGB
+    channel is <= `threshold` stays fully opaque (these are the leafy
+    parts); pixels with min channel >= `threshold + softness` become
+    fully transparent (the background); pixels in the soft band fade
+    linearly. Using min-channel rather than luminance handles
+    saturated greens correctly — bright lime would have high luminance
+    but low minimum channel, so it stays opaque.
+    """
+    img = img.convert("RGBA")
+    r, g, b, _ = img.split()
+    min_rg = ImageChops.darker(r, g)
+    min_rgb = ImageChops.darker(min_rg, b)
+
+    def lut(v):
+        if v <= threshold:
+            return 255
+        if v >= threshold + softness:
+            return 0
+        return int(255 * (1.0 - (v - threshold) / softness))
+
+    mask = min_rgb.point(lut)
+    img.putalpha(mask)
+    return img
+
+
 def load_pack_meta(pack_dir):
     with open(os.path.join(pack_dir, "pack.json")) as f:
         return json.load(f)
@@ -150,6 +185,9 @@ def load_source_images(source_dir, tile_size):
             print(f"  MISSING source PNG: {path} (slot will be blank)")
             continue
         img = Image.open(path).convert("RGBA")
+        if name in CHROMA_KEY_MATERIALS:
+            img = chroma_key_white(img)
+            print(f"  {name}: white background -> alpha (chroma key applied)")
         if img.size != (tile_size, tile_size):
             img = img.resize((tile_size, tile_size), Image.LANCZOS)
         loaded[name] = img
