@@ -402,3 +402,27 @@ func get_camera_forward_hit(max_distance_from_player: float = 5.0) -> Dictionary
 		params.exclude = [_player.get_rid()]
 
 	return space_state.intersect_ray(params)
+
+
+# --- Charge feedback (Phase 3 of Voxel Combat v1) ---
+
+const _CHARGE_FOV_BASE: float = 75.0
+const _CHARGE_FOV_PINCHED: float = 71.0
+## FOV pinch range during a charged spear throw. Holding LMB lerps the
+## Camera3D's fov from base toward pinched as charge builds, giving the
+## "held breath" feeling. Released → snap back to base. Numbers picked
+## small so the pinch reads as tension without disorienting the player.
+
+## Set the camera FOV pinch level. t ∈ [0, 1]. ThrowableHandler calls
+## this every frame during a hold. At t=0 fov is _CHARGE_FOV_BASE; at
+## t=1 it's _CHARGE_FOV_PINCHED. Caller is responsible for snapping
+## back to t=0 on release.
+##
+## No-op if the Camera3D child isn't found — keeps things working in
+## non-standard scenes (e.g. unit tests).
+func set_charge_pinch(t: float) -> void:
+	var camera: Camera3D = get_node_or_null("Camera3D")
+	if camera == null:
+		return
+	var clamped: float = clampf(t, 0.0, 1.0)
+	camera.fov = lerpf(_CHARGE_FOV_BASE, _CHARGE_FOV_PINCHED, clamped)
