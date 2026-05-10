@@ -91,11 +91,12 @@ func _ready() -> void:
 			print("[World3D] Mesher class: %s" % mesher.get_class())
 			# Verify the blocky library's first cube model has an
 			# atlas material attached. In Zylann's current API,
-			# materials live on each VoxelBlockyModelCube's
-			# `material_override_0` slot rather than on the mesher
-			# itself, so an empty material here means tools/
-			# build_blocky_library.gd hasn't been re-run after the
-			# atlas was rebuilt.
+			# materials live on each VoxelBlockyModelCube and are
+			# accessed via get_material_override(surface_idx) — the
+			# `material_override_0` listed in get_property_list() is
+			# a dynamic per-surface property name and the `in`
+			# operator returns false for it even when the property
+			# really exists. Use the method directly to avoid that.
 			var lib: Resource = mesher.get("library") if "library" in mesher else null
 			if lib != null and "models" in lib:
 				var models_arr: Array = lib.get("models")
@@ -104,12 +105,19 @@ func _ready() -> void:
 					if m != null:
 						first_solid = m
 						break
-				if first_solid != null:
-					var mat0 = first_solid.get("material_override_0") if "material_override_0" in first_solid else null
+				if first_solid != null and first_solid.has_method("get_material_override"):
+					var mat0 = first_solid.call("get_material_override", 0)
 					if mat0 == null:
-						print("[World3D]   ⚠ blocky library models have no material_override_0 — re-run tools/build_blocky_library.gd.")
+						print("[World3D]   ⚠ blocky library model[0] has no material_override(0) — re-run tools/build_blocky_library.gd.")
 					else:
-						print("[World3D]   ✓ blocky library model[0].material_override_0 = %s" % mat0.get_class())
+						var has_tex: bool = false
+						if mat0 is BaseMaterial3D:
+							has_tex = (mat0 as BaseMaterial3D).albedo_texture != null
+						print("[World3D]   ✓ blocky library model[0].material = %s (albedo_texture=%s)" % [
+							mat0.get_class(), "yes" if has_tex else "MISSING"
+						])
+				else:
+					print("[World3D]   ⚠ blocky library has no usable first model.")
 			else:
 				print("[World3D]   ⚠ mesher has no library — wire it in World3D.tscn.")
 			for prop in mesher.get_property_list():

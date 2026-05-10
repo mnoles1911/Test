@@ -11,7 +11,7 @@
 [ext_resource type="Texture2D" uid="uid://bbtoku1kj7nen" path="res://assets/sky/noon.jpg" id="11_noon"]
 [ext_resource type="Texture2D" uid="uid://jpmo8712egdx" path="res://assets/sky/dusk.jpg" id="12_dusk"]
 [ext_resource type="Texture2D" uid="uid://cjdhv5s5h43i6" path="res://assets/sky/night.jpg" id="13_night"]
-[ext_resource type="Resource" path="res://assets/voxels/blocky_library.tres" id="14_blocky_library"]
+[ext_resource type="VoxelBlockyLibrary" uid="uid://bd1vmr20la2x0" path="res://assets/voxels/blocky_library.tres" id="14_blocky_library"]
 
 [sub_resource type="Sky" id="SkyResource_1"]
 sky_material = ExtResource("9_sky_blend")
@@ -51,19 +51,6 @@ albedo_color = Color(0.88, 0.93, 1, 1)
 emission_enabled = true
 emission = Color(0.75, 0.82, 1, 1)
 emission_energy_multiplier = 1.8
-
-[sub_resource type="StandardMaterial3D" id="VoxelTerrainMat"]
-; v13 (VoxelMesherBlocky) — rendering material for the textured atlas
-; library. The library carries per-face tile coordinates; the atlas
-; texture is what those coords sample. The user assigns the atlas
-; texture by running the EditorScript at tools/build_blocky_library.gd
-; (it pulls the texture from the active texture pack's atlas.png).
-;
-; Pre-v13 this material had vertex_color_use_as_albedo enabled so the
-; per-voxel jitter colours emitted by the Cubes mesher came through.
-; That flag is unused now — vertex colours from Blocky are the atlas
-; lookups, not jittered RGB. Roughness stays at 0.85 (matte stone).
-roughness = 0.85
 
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_SQLite"]
 database_path = "user://voxel_deltas.sqlite"
@@ -147,7 +134,6 @@ surface_material_override/0 = SubResource("MoonMat")
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
 lod_count = 6
 lod_distance = 96.0
-material = SubResource("VoxelTerrainMat")
 run_stream_in_editor = false
 stream = SubResource("VoxelStream_SQLite")
 generator = SubResource("VoxelGen_Cubic")
