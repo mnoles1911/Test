@@ -627,7 +627,7 @@ Registered in `project.godot` (active now), in load order:
 `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `VoxelMaterialRegistry`,
 `JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
 `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `BarkManager`, `WorldClock`,
-`WeatherManager`
+`WeatherManager`, `BloodVFX`
 
 `Colors` (`assets/ui/Colors.gd`) is the single source of truth for the Voxelmark
 UI palette (oak / parchment / iron / gold / HP / STAM, plus 5 rarity tiers).

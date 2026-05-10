@@ -159,6 +159,13 @@ func _impact_enemy(enemy: Node, travel_dir: Vector3) -> void:
 	if enemy.has_method("take_damage"):
 		enemy.call("take_damage", combat_damage, travel_dir, hit_point)
 
+	# Layer A blood burst at the impact point, sprayed along the
+	# spear's travel direction. Intensity scales with damage so a
+	# charged-spear killshot sprays more than a light wound.
+	if get_node_or_null("/root/BloodVFX"):
+		var intensity: float = clampf(float(combat_damage) / 30.0, 0.5, 2.0)
+		BloodVFX.spawn_burst(hit_point, travel_dir, intensity)
+
 	# Stop the rigidbody and pin to the enemy's ChestSocket so the
 	# shaft visibly protrudes from the chest.
 	freeze = true
@@ -192,8 +199,14 @@ func _impact_terrain(travel_dir: Vector3) -> void:
 	_embedded_in_terrain = true
 	_pickup_lockout_remaining = pickup_lockout_seconds
 
-	# Phase 4 will fire BloodVFX.spawn_dust(global_position, travel_dir)
-	# here — placeholder log for now.
+	# Dust puff outward from the surface — we don't have the true
+	# surface normal here (body_entered doesn't carry contact details),
+	# so use the spear's reverse travel direction as a "best guess
+	# outward" axis. This is visually correct for any reasonable
+	# impact angle except glancing skims along a wall.
+	if get_node_or_null("/root/BloodVFX"):
+		BloodVFX.spawn_dust(global_position, -travel_dir)
+
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Spear embedded in terrain at %s" % global_position)
 

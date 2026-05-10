@@ -145,20 +145,33 @@ func _apply_eye_glow_for_state() -> void:
 # DAMAGE + DEATH (Phase 4 + Phase 5 wire blood + cluster here)
 # =============================================================
 
-func _on_damaged(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
-	# Phase 4 will wire BloodVFX.spawn_burst(hit_point, hit_dir, intensity)
-	# and BloodVFX.spawn_bleed(_chest_socket) here. v1 placeholder: log.
+func _on_damaged(amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
+	# ThrowableSpear already fires the Layer A burst at the hit point
+	# (it has the precise impact location + direction; we'd be guessing
+	# from over here). Goblin is responsible for the Layer B wound
+	# drip — start it on the first non-lethal hit. start_drip is a
+	# no-op if a drip is already attached, so it's safe to call on
+	# every wound event.
+	if get_node_or_null("/root/BloodVFX"):
+		BloodVFX.start_drip(self, "ChestSocket")
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Goblin %s wounded (%d) → HP %d" % [name, amount, health])
 
 
-func _on_died(damage_at_kill: int, hit_dir: Vector3, hit_point: Vector3) -> void:
+func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 	# Phase 5 will branch on damage_at_kill (topple vs. explosion),
-	# spawn FallingVoxelCluster, hide the visual, and spawn the pool.
-	# v1 placeholder: hide the mesh and log.
+	# spawn FallingVoxelCluster, etc. v1 placeholder: hide the mesh,
+	# stop the bleed, drop a Layer C pool decal at the kill site.
 	if _visual != null:
 		_visual.visible = false
 	if _eye_glow != null:
 		_eye_glow.visible = false
+	if get_node_or_null("/root/BloodVFX"):
+		BloodVFX.stop_drip(self)
+		# Pool grows larger and faster on overkill — a charged-spear
+		# kill (60+ dmg) leaves more visible mess than a finishing tap.
+		var size: float = 1.5 if damage_at_kill >= 50 else 1.0
+		var grow: float = 5.0 if damage_at_kill >= 50 else 8.0
+		BloodVFX.spawn_pool(global_position, size, grow)
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Goblin %s killed (%d dmg)" % [name, damage_at_kill])
