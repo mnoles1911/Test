@@ -2,33 +2,33 @@
 extends VoxelGeneratorScript
 class_name CubicHeightmapGenerator
 
-# CubicHeightmapGenerator — fills the COLOR channel so VoxelMesherCubes
-# can render the world as hard-edged colored cubes.
+# CubicHeightmapGenerator — fills CHANNEL_TYPE so VoxelMesherBlocky
+# can render the world with per-face textures from a VoxelBlockyLibrary.
 #
 # What this does in plain English:
 #
 #   For every voxel block the engine asks us to fill, we walk a 2D
 #   grid (X, Z) at the block's world position, sample 2D noise to get
 #   a ground height, then for every Y in the block:
-#       - if Y <= ground_height → write a packed RGBA color into
-#         CHANNEL_COLOR (visible solid cube)
-#       - if Y >  ground_height → leave default 0 (air, transparent,
-#         no cube emitted)
+#       - if Y <= ground_height → write a material_id integer into
+#         CHANNEL_TYPE (visible solid block, looked up in the library)
+#       - if Y >  ground_height → leave default 0 (air, no block emitted)
 #
-#   Color shifts subtly with altitude — peaks paler than valleys —
-#   so the cubic terrain reads as terrain rather than a uniform
-#   slab of one color.
+#   Material selection by depth: top voxel is grass (or sand below the
+#   beach line), then a dirt band, then stone, with the bedrock layer
+#   exactly at WORLD_FLOOR_VOXEL_Y. The mesher reads the integer per
+#   voxel and emits the model from the VoxelBlockyLibrary at that index.
 #
-# Why CHANNEL_COLOR and not CHANNEL_TYPE?
+# Why CHANNEL_TYPE and not CHANNEL_COLOR?
 #
-#   VoxelMesherCubes determines "is this voxel solid?" by reading the
-#   COLOR channel: alpha=0 means air, alpha>0 means a solid cube of
-#   that RGBA. Writing TYPE doesn't help Cubes — that channel is for
-#   VoxelMesherBlocky (which uses a per-type model library).
+#   VoxelMesherBlocky is a library-driven mesher: each integer in
+#   CHANNEL_TYPE maps to a model entry (cube, custom mesh, etc.) with
+#   per-face texture atlas tile coordinates. CHANNEL_COLOR is unused
+#   for terrain after the v13 migration.
 #
-#   Earlier versions of this script wrote TYPE and threw thousands
-#   of "Central buffer must be valid" errors at world load because
-#   the COLOR channel was never populated. The fix is to write COLOR.
+#   Pre-v13 (CubicMesher era) the generator wrote packed RGBA into
+#   CHANNEL_COLOR with the alpha byte carrying material_id. That
+#   encoding is gone — the integer in CHANNEL_TYPE IS the material_id.
 #
 # Coordinates:
 #
@@ -423,31 +423,31 @@ var _perf_summary_mutex: Mutex = Mutex.new()
 func _get_used_channels_mask() -> int:
 	# CRITICAL — without this override, Zylann assumes the generator
 	# writes only the default (SDF) channel and never allocates
-	# CHANNEL_COLOR in the chunk buffer. The mesher then tries to
+	# CHANNEL_TYPE in the chunk buffer. The mesher then tries to
 	# read an unallocated channel and throws "Central buffer must be
 	# valid" — thousands of times, once per streamed chunk.
 	#
 	# Returning a bitmask of channels we write tells the engine which
 	# channels to set up before calling _generate_block.
 	#
-	# CHANNEL_DATA is declared because Phase 1+ of the Minecraft-style
-	# water rewrite stores per-voxel water bytes there. VoxelMesherCubes
-	# ignores any channel other than COLOR, so terrain rendering is
-	# unaffected — water voxels are invisible to the cube mesher and
+	# CHANNEL_DATA5 is declared because the Minecraft-style water
+	# rewrite stores per-voxel water bytes there. VoxelMesherBlocky
+	# ignores any channel other than TYPE, so terrain rendering is
+	# unaffected — water voxels are invisible to the blocky mesher and
 	# get their own transparent surfaces from WaterChunkMesher.
-	return (1 << VoxelBuffer.CHANNEL_COLOR) | (1 << VoxelBuffer.CHANNEL_DATA5)
+	return (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
 
 
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
 	# Engine calls this for every chunk the player approaches. We
-	# fill out_buffer with COLOR values for that chunk.
+	# fill out_buffer with TYPE values (material_id integers) for
+	# that chunk.
 	#
 	# DO NOT call out_buffer.set_channel_depth() here — confirmed
 	# 2026-05-05: even calling on a fresh buffer before any writes
 	# produces empty chunks (terrain disappears, player falls
-	# forever). The depth must be set globally on the terrain or
-	# via a different mechanism entirely (e.g. switching the mesher
-	# to COLOR_PALETTE mode so 1 byte per voxel suffices).
+	# forever). The depth must be set globally on the terrain via
+	# the VoxelLodTerrain.format property — see World3DBootstrap.
 
 	# Perf timer — wraps the whole function. The deferred-print at the
 	# bottom decides whether to emit a log line based on perf_log_min_us.
@@ -459,9 +459,9 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# confirm what the engine has allocated. Read-only — does NOT mutate.
 	if not _depth_logged:
 		_depth_logged = true
-		var dep_now: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_COLOR)
+		var dep_now: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_TYPE)
 		var dep_data: int = out_buffer.get_channel_depth(VoxelBuffer.CHANNEL_DATA5)
-		print("[Generator] CHANNEL_COLOR depth: %d  CHANNEL_DATA depth: %d  (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
+		print("[Generator] CHANNEL_TYPE depth: %d  CHANNEL_DATA5 depth: %d  (DEPTH_8_BIT=%d, DEPTH_16_BIT=%d, DEPTH_32_BIT=%d, DEPTH_64_BIT=%d)" % [
 			dep_now,
 			dep_data,
 			VoxelBuffer.DEPTH_8_BIT,
@@ -512,14 +512,14 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		#   - straddles the floor → bedrock at the floor row, stone above,
 		#     air below (per-voxel write)
 		#   - fully below floor → already returned above
-		var stone_packed: int = _pack_for_material(_cached_stone, _cached_stone.color_low if _cached_stone != null else color_low)
+		var stone_packed: int = _pack_for_material(_cached_stone, Color.WHITE)
 		if block_min_y > WORLD_FLOOR_VOXEL_Y:
-			out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_COLOR)
+			out_buffer.fill(stone_packed, VoxelBuffer.CHANNEL_TYPE)
 		else:
 			# Straddles the floor — per-voxel fill.
 			var bedrock_packed: int = stone_packed
 			if _cached_bedrock != null:
-				bedrock_packed = _pack_for_material(_cached_bedrock, _cached_bedrock.color_high)
+				bedrock_packed = _pack_for_material(_cached_bedrock, Color.WHITE)
 			for y_s in size.y:
 				var world_y_s: int = origin_in_voxels.y + y_s * stride
 				var fill_packed: int = 0
@@ -531,7 +531,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 					continue  # air below floor
 				for x_s in size.x:
 					for z_s in size.z:
-						out_buffer.set_voxel(fill_packed, x_s, y_s, z_s, VoxelBuffer.CHANNEL_COLOR)
+						out_buffer.set_voxel(fill_packed, x_s, y_s, z_s, VoxelBuffer.CHANNEL_TYPE)
 		_perf_record_block_done(t_start, lod, "deep")
 		return
 
@@ -720,7 +720,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				if world_y < WORLD_FLOOR_VOXEL_Y:
 					continue
 				if world_y == WORLD_FLOOR_VOXEL_Y and bedrock_packed_v != 0:
-					out_buffer.set_voxel(bedrock_packed_v, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+					out_buffer.set_voxel(bedrock_packed_v, x, y, z, VoxelBuffer.CHANNEL_TYPE)
 					continue
 
 				# Pick band based on depth from this column's ground_y.
@@ -741,59 +741,20 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 					hi = stone_hi
 					mat_id = stone_id
 
-				# Inline color computation (was _compute_voxel_color).
-				var c: Color
-				if debug_vivid_colors:
-					# DEBUG mode — vivid per-material colours so the user
-					# can verify that (a) vertex colours are reaching the
-					# screen and (b) different materials get selected at
-					# different depths. If terrain still reads as flat
-					# grey/black with this on, the problem is downstream
-					# (terrain material, mesher config). If terrain shows
-					# distinct colour bands, the problem is the .tres
-					# palette being too dark for current lighting.
-					if mat_id == 1:
-						c = Color(1.0, 0.15, 0.15)   # stone → red
-					elif mat_id == 2:
-						c = Color(1.0, 0.55, 0.15)   # dirt → orange
-					elif mat_id == 3:
-						c = Color(0.20, 1.0, 0.20)   # grass → green
-					elif mat_id == 4:
-						c = Color(1.0, 1.0, 0.20)    # sand → yellow
-					else:
-						c = Color(1.0, 0.20, 1.0)    # unknown → magenta (loud)
-				else:
-					# Lerp within this material's NATURAL band, not the
-					# global world height range. Each material's color_low
-					# is the bottom of its band; color_high is the top.
-					# Without this, a grass voxel at altitude 100 would
-					# look different from a grass voxel at altitude 50 —
-					# same material, different shade — which contradicts
-					# the .tres palette design intent (see VoxelMaterial.gd
-					# docstring on color_low / color_high).
-					var t_band: float
-					if depth < grass_thick:
-						# 1-voxel-thick top layer — no internal band to
-						# lerp across. Use color_high (the lit/exposed
-						# surface tint the material author intended).
-						t_band = 1.0
-					elif depth < dirt_band_end:
-						# Dirt band — top of band → color_high,
-						# bottom of band → color_low.
-						t_band = 1.0 - float(depth - grass_thick) * dirt_band_inv_max
-					else:
-						# Stone band — fade from color_high at the top
-						# of the band (just below dirt) to color_low
-						# over STONE_BAND_REF_VOXELS depth. Anything
-						# deeper pegs at color_low (deep cool stone).
-						var stone_depth: int = depth - dirt_band_end
-						t_band = clampf(1.0 - float(stone_depth) / STONE_BAND_REF_VOXELS, 0.0, 1.0)
-					c = lo.lerp(hi, t_band)
-
-				# Inline pack: RGB from c, alpha byte = mat_id.
-				# (Was _pack_for_material — now one bit-op.)
-				var packed: int = (c.to_rgba32() & 0xFFFFFF00) | (mat_id & 0xFF)
-				out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+				# v13: VoxelMesherBlocky reads CHANNEL_TYPE as plain
+				# integers — the material_id IS the value to write.
+				# No color packing, no per-voxel colour lerp. Material
+				# variation comes from the texture atlas tiles in the
+				# VoxelBlockyLibrary, not from per-voxel RGB.
+				#
+				# The lo/hi/c locals from the Cubes-era band lerp are
+				# unused here — kept the band selection above so the
+				# layer geometry is unchanged and so VoxelClusterBuilder
+				# (which still reads color_low/high for falling-cluster
+				# tinting via the registry) keeps working with the same
+				# material assignments.
+				_unused(lo); _unused(hi)
+				out_buffer.set_voxel(mat_id, x, y, z, VoxelBuffer.CHANNEL_TYPE)
 	_perf_record_block_done(t_start, lod, "full")
 
 
@@ -894,13 +855,13 @@ func _fill_flat(out_buffer: VoxelBuffer, origin: Vector3i, stride: int) -> void:
 	# channel wiring without noise; not reached during normal play.
 	_ensure_materials_cached()
 	var size: Vector3i = out_buffer.get_size()
-	var packed: int = _pack_for_material(_cached_dirt, _cached_dirt.color_low if _cached_dirt != null else color_low)
+	var packed: int = _pack_for_material(_cached_dirt, Color.WHITE)
 	for x in size.x:
 		for z in size.z:
 			for y in size.y:
 				var world_y: int = origin.y + y * stride
 				if world_y <= 0:
-					out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+					out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_TYPE)
 
 
 # =============================================================
@@ -1028,27 +989,30 @@ func _compute_voxel_color(
 
 func _pack_for_material(material: VoxelMaterial, color: Color) -> int:
 	# Build the packed RGBA32 voxel value with the material id in the
-	# alpha byte.
+	# integer in CHANNEL_TYPE.
 	#
-	# THREADING NOTE — second instance of the same bug as
-	# _ensure_materials_cached. This function runs on a Zylann worker
-	# thread (called from _generate_block at line 384). Touching the
-	# SceneTree (`get_node_or_null("/root/...")`) from a worker thread
-	# is forbidden in Godot 4 and produces ~160k errors per minute of
-	# play during continuous chunk streaming.
+	# THREADING NOTE — this function runs on a Zylann worker thread
+	# (called from _generate_block). Touching the SceneTree (e.g.
+	# `get_node_or_null("/root/VoxelMaterialRegistry")`) from a worker
+	# thread is forbidden in Godot 4. We keep the function pure: the
+	# material is already cached on the main thread by
+	# _ensure_materials_cached(), and we just read its material_id.
 	#
-	# Fix: do the alpha-byte pack inline. The encoding is one bit-op
-	# (alpha byte = material_id) and lives canonically in
-	# VoxelMaterialRegistry.pack_voxel, but copying that math here
-	# (with a comment so it can be kept in sync if the encoding ever
-	# changes) is far cheaper than the threading hazard. The registry
-	# stays the source of truth for runtime queries from gameplay
-	# code; the generator just produces voxels matching the same
-	# encoding.
+	# v13: post-VoxelMesherBlocky migration, the value to write is
+	# simply material.material_id. The `color` argument is kept for
+	# API compatibility but ignored — material colour now lives in
+	# the texture atlas, not in per-voxel data. (VoxelClusterBuilder
+	# still reads color_low/high directly off the VoxelMaterial
+	# resource for falling-cluster vertex tinting, but that's a
+	# separate code path.)
+	_unused(color)
 	if material == null:
-		return color.to_rgba32()
-	# Encoding: high 24 bits = RGB888 from `color`, low 8 bits =
-	# material_id. Mirrors VoxelMaterialRegistry.pack_voxel(); if the
-	# alpha-byte-as-id encoding ever changes, update both sites.
-	var packed: int = color.to_rgba32()
-	return (packed & 0xFFFFFF00) | (material.material_id & 0xFF)
+		return 0  # treat as air
+	return material.material_id & 0xFF
+
+
+func _unused(_x) -> void:
+	# Tiny helper — silences "local variable not used" warnings on
+	# values we keep around for clarity but no longer feed into a
+	# write. Cheaper than scattering @warning_ignore everywhere.
+	pass

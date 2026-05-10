@@ -5,10 +5,10 @@ extends Node
 #
 # Water in this game lives OUTSIDE the voxel terrain. Every water cell
 # is an entry in a Dictionary<Vector3i, int> kept here. The voxel
-# terrain (Zylann VoxelLodTerrain + VoxelMesherCubes) never sees water
-# voxels — they're invisible to the cube mesher. WaterChunkMesher
-# (Phase 2) emits a separate transparent surface mesh by walking this
-# dictionary.
+# terrain (Zylann VoxelLodTerrain + VoxelMesherBlocky) never sees water
+# voxels — material slot 5 in the VoxelBlockyLibrary is intentionally
+# empty so writing TYPE=5 renders nothing. WaterChunkMesher emits the
+# transparent surface mesh by walking this dictionary.
 #
 # Two kinds of "source" exist:
 #   1. Source REGIONS: designer-placed AABBs (oceans, lakes, large
@@ -233,17 +233,17 @@ func is_position_in_water(world_pos: Vector3) -> bool:
 	# generator wrote water at every voxel from ground_y+1 up to sea
 	# level for that column.
 	#
-	# This delete the entire AABB-source-region path AND the
+	# This deletes the entire AABB-source-region path AND the
 	# clear-vertical-path workaround that used to compensate for it.
 	# The bug the workaround fixed (tunnels under sea level reading as
 	# water just because they sat inside the ocean AABB) is now
 	# impossible by construction: there's no AABB to be inside.
 	#
 	# Per-cell sources (player-placed buckets via add_source) ALSO go
-	# through CHANNEL_DATA (Phase 3 redirected add_source via
+	# through CHANNEL_DATA5 (Phase 3 redirected add_source via
 	# VoxelEditManager). _cells is still maintained as a transient
 	# in-memory cache for the legacy flow tick, but it's not consulted
-	# here — a cell in _cells without a CHANNEL_DATA byte would be a
+	# here — a cell in _cells without a CHANNEL_DATA5 byte would be a
 	# bug, and adding _cells fallback would mask such bugs.
 	var byte: int = _read_water_byte_at(world_pos)
 	return WaterByteCodec.is_water(byte)
@@ -564,7 +564,7 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 	# ms/sec just on flow reads. Same pattern that previously caused the
 	# 6 s freeze in VoxelGravityManager (LESSONS_LEARNED 2026-05-05).
 	#
-	# Now: copy the chunk's CHANNEL_DATA5 + CHANNEL_COLOR into local
+	# Now: copy the chunk's CHANNEL_DATA5 + CHANNEL_TYPE into local
 	# 16³ buffers ONCE per call, plus the chunk-above's CHANNEL_DATA5
 	# for cross-chunk "above" reads at the y=15 boundary. Then walk the
 	# buffers with cheap byte reads. Cross-chunk lateral neighbours fall
@@ -575,20 +575,22 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 	var voxel_min: Vector3i = chunk * CHUNK_SIZE_VOXELS
 	var voxel_max: Vector3i = voxel_min + Vector3i(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
 
-	# Default the shared tool to COLOR so any slow-path _is_solid_at
-	# fallback reads the right channel. tool.copy() takes an explicit
-	# channel_mask so the buffer copies below are unaffected by this
-	# setting.
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	# Default the shared tool to CHANNEL_TYPE so any slow-path
+	# _is_solid_at fallback reads the right channel for terrain
+	# solidity (post-VoxelMesherBlocky migration: material_id lives
+	# directly in CHANNEL_TYPE, 0 = air, anything else = solid).
+	# tool.copy() takes an explicit channel_mask so the buffer copies
+	# below are unaffected by this setting.
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 
 	# ---- Pre-copy chunk buffers ----
 	var data_buf := VoxelBuffer.new()
 	data_buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
 	tool.copy(voxel_min, data_buf, 1 << VoxelBuffer.CHANNEL_DATA5)
 
-	var color_buf := VoxelBuffer.new()
-	color_buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
-	tool.copy(voxel_min, color_buf, 1 << VoxelBuffer.CHANNEL_COLOR)
+	var type_buf := VoxelBuffer.new()
+	type_buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(voxel_min, type_buf, 1 << VoxelBuffer.CHANNEL_TYPE)
 
 	# Chunk above's CHANNEL_DATA5 — needed for the gravity-drop check
 	# "is the voxel above water?" when the candidate voxel sits at
@@ -663,9 +665,9 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				var here_byte: int = data_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_DATA5)
 				if WaterByteCodec.is_water(here_byte):
 					continue  # already water (source or flow); don't overwrite
-				var here_color: int = color_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_COLOR)
-				if (here_color & 0xFF) != 0:
-					continue  # solid terrain
+				var here_type: int = type_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_TYPE)
+				if here_type != 0:
+					continue  # solid terrain (CHANNEL_TYPE: 0 = air, anything else = solid)
 
 				# Check the voxel directly above. If at the top of the
 				# chunk, read from the chunk-above buffer at local y=0.
@@ -730,13 +732,13 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				continue
 			# Already water in CHANNEL_DATA5? Skip.
 			var n_water_byte: int
-			var n_color_packed: int
+			var n_type: int
 			if n_in_chunk:
 				var nlx: int = neighbor.x - voxel_min.x
 				var nly: int = neighbor.y - voxel_min.y
 				var nlz: int = neighbor.z - voxel_min.z
 				n_water_byte = data_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_DATA5)
-				n_color_packed = color_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_COLOR)
+				n_type = type_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_TYPE)
 			else:
 				# Cross-chunk fallback (rare — only at chunk edges).
 				if _is_water_at_voxel(neighbor):
@@ -744,10 +746,10 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				if _is_solid_at(tool, neighbor):
 					continue
 				n_water_byte = 0
-				n_color_packed = 0
+				n_type = 0
 			if WaterByteCodec.is_water(n_water_byte):
 				continue
-			if (n_color_packed & 0xFF) != 0:
+			if n_type != 0:
 				continue
 			if _is_water_blocked_at_voxel(neighbor):
 				continue
@@ -764,7 +766,7 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				var blx: int = below.x - voxel_min.x
 				var bly: int = below.y - voxel_min.y
 				var blz: int = below.z - voxel_min.z
-				below_solid = (color_buf.get_voxel(blx, bly, blz, VoxelBuffer.CHANNEL_COLOR) & 0xFF) != 0
+				below_solid = type_buf.get_voxel(blx, bly, blz, VoxelBuffer.CHANNEL_TYPE) != 0
 				if not below_solid:
 					below_water = WaterByteCodec.is_water(
 						data_buf.get_voxel(blx, bly, blz, VoxelBuffer.CHANNEL_DATA5)
@@ -788,12 +790,12 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 			var wp: Vector3i = w["pos"]
 			tool.value = w["byte"]
 			tool.do_box(Vector3(wp), Vector3(wp) + Vector3.ONE)
-		# Restore tool to COLOR — the caller may reuse the same tool
-		# for the next chunk's color reads, and the remaining decay /
-		# gravity reads we just did all assumed COLOR was the active
-		# channel. Defensive: future code reusing this tool won't
-		# silently read the wrong channel.
-		tool.channel = VoxelBuffer.CHANNEL_COLOR
+		# Restore tool to CHANNEL_TYPE — the caller may reuse the same
+		# tool for the next chunk's solidity reads, and the remaining
+		# decay / gravity reads we just did all assumed TYPE was the
+		# active channel. Defensive: future code reusing this tool
+		# won't silently read the wrong channel.
+		tool.channel = VoxelBuffer.CHANNEL_TYPE
 
 	for c in dirty_neighbors.keys():
 		_dirty_chunks[c] = true

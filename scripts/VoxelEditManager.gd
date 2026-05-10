@@ -43,12 +43,12 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 14
+const WORLD_GENERATOR_VERSION: int = 15
 # Bump this constant whenever the procedural baseline produced by
 # the active generator (currently CubicHeightmapGenerator) changes
 # shape OR encoding — e.g. swap to a new heightmap, change cave
-# parameters, change biome material indices, or change what the
-# alpha byte means.
+# parameters, change biome material indices, or change which voxel
+# channel terrain lives in.
 #
 # Version history:
 #   v9  → CubicHeightmapGenerator. Voxels written as packed RGBA;
@@ -61,18 +61,24 @@ const WORLD_GENERATOR_VERSION: int = 14
 #         Generator writes mat_id=6 bedrock at that exact Y; voxels
 #         below are air (the world has a finite bottom). Edits below
 #         the floor are rejected at this manager.
-#   v13 → CHANNEL_DATA water voxels (Minecraft-style ocean). Generator
-#         now writes one byte per voxel into CHANNEL_DATA encoding
+#   v13 → CHANNEL_DATA5 water voxels (Minecraft-style ocean). Generator
+#         now writes one byte per voxel into CHANNEL_DATA5 encoding
 #         water level/source/tick (see WaterByteCodec). Below-sea-level
 #         columns get water bytes at gen time; above-sea-level columns
 #         do not. The legacy AABB ocean shortcut goes away. Old saves
-#         have no CHANNEL_DATA stored, so they read as fully-dry —
+#         have no CHANNEL_DATA5 stored, so they read as fully-dry —
 #         hard-reject and require a new game.
 #   v14 → Sea level raised from voxel Y=60 (world 10 m) to voxel Y=72
 #         (world 12 m). Beach band raised from voxel 7 to 74 to match.
 #         Shifts the land/water split from 50/50 to ~40/60 so ocean
 #         basins are clearly visible between landmasses. Old saves'
 #         water columns assume the v13 sea level and would mismatch.
+#   v15 → VoxelMesherBlocky migration. Terrain voxels live in
+#         CHANNEL_TYPE (8-bit integer = material_id directly), no
+#         longer in CHANNEL_COLOR as packed RGBA. Library-driven
+#         per-face textures via VoxelBlockyLibrary; water continues
+#         to live in CHANNEL_DATA5 (orthogonal). Pre-v15 saves are
+#         invalid — no migration path; the terrain channel changed.
 
 
 # ============================================================
@@ -250,9 +256,10 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 	# Queue a spherical voxel edit centered at world_pos with the given
 	# radius (in meters).
 	#
-	# voxel_value semantics for VoxelMesherCubes (blocky terrain):
+	# voxel_value semantics for VoxelMesherBlocky:
 	#   0 = AIR — carves out (the pickaxe / axe / shovel / explosive case)
-	#   N = material index — fills with material N (the place-block case)
+	#   N = material_id — fills with that material from the
+	#       VoxelBlockyLibrary (the place-block case). 1-254 only.
 	#
 	# Returns true if accepted into the queue, false if rejected by
 	# NoEditZone or if the queue is full. The caller can use a false
@@ -551,20 +558,18 @@ func _apply_edit(cmd: Dictionary) -> void:
 			cmd.get("value", 0),
 		])
 
-	# Edits target CHANNEL_COLOR because the world uses VoxelMesherCubes,
-	# which reads packed RGBA per-voxel. CHANNEL_SDF / CHANNEL_TYPE are
-	# the wrong channel for Cubes — writes go through but the mesher
-	# never sees them, so terrain looked untouched even though the queue
-	# drained. (When/if we ever swap mesher, this is the line to revisit
-	# alongside the generator's _get_used_channels_mask.)
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	# Edits target CHANNEL_TYPE because the world uses VoxelMesherBlocky,
+	# which reads an integer per voxel and looks up the matching model
+	# in the VoxelBlockyLibrary. The integer IS the material_id (0 = air,
+	# 1-12 = active materials, see VoxelMaterialRegistry).
+	#
+	# Pre-v13 (CubicMesher era) this targeted CHANNEL_COLOR with packed
+	# RGBA — that channel is now unused for terrain.
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 
-	# Cubes uses one mode: SET. The packed RGBA value to write goes in
-	# tool.value. value 0 means alpha=0 = air = "carved" (no cube emitted
-	# by the mesher). Non-zero = fill of that color (Build-Mode block
-	# placement, future). MODE_REMOVE / MODE_ADD only mean something for
-	# SDF channels — they were silently no-oping for the COLOR channel
-	# even when the channel was right.
+	# Blocky uses MODE_SET: tool.value is the type integer to write.
+	# value 0 = air (carved); 1-254 = a material from the registry.
+	# MODE_REMOVE / MODE_ADD only mean something for SDF channels.
 	tool.mode = VoxelTool.MODE_SET
 	tool.value = cmd.get("value", 0)
 
@@ -753,7 +758,7 @@ func _apply_edit(cmd: Dictionary) -> void:
 			if registry != null and registry.has_method("does_aabb_overlap_no_edit_zone"):
 				bulk_overlaps_zone = registry.does_aabb_overlap_no_edit_zone(bulk_min, bulk_max)
 
-			tool.channel = VoxelBuffer.CHANNEL_COLOR
+			tool.channel = VoxelBuffer.CHANNEL_TYPE
 			tool.mode = VoxelTool.MODE_SET
 			var written: int = 0
 			for w in writes:

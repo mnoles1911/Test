@@ -192,13 +192,14 @@ enum FallBehavior {
 	# dig under it.
 
 	LIQUID,
-	# Water model. The voxel does NOT live in CHANNEL_COLOR — it lives
-	# in WaterFlowManager's dictionary as a flow cell. VoxelMesherCubes
-	# never sees liquid voxels (they're invisible to the cube mesher);
-	# WaterChunkMesher emits a separate transparent surface mesh for
-	# them. Flow rules: source cells (designer/player-placed) are
-	# permanent; flowing cells spread cellular-automata-style downward
-	# and laterally with monotone-decay, capped at 8 levels of distance
+	# Water model. The voxel does NOT live in CHANNEL_TYPE — it lives
+	# in WaterFlowManager's dictionary as a flow cell. The water slot
+	# (material_id 5) in VoxelBlockyLibrary is intentionally empty so
+	# writing TYPE=5 renders nothing; WaterChunkMesher emits the
+	# transparent surface mesh separately by walking the flow dict.
+	# Flow rules: source cells (designer/player-placed) are permanent;
+	# flowing cells spread cellular-automata-style downward and
+	# laterally with monotone-decay, capped at 8 levels of distance
 	# from a source. See scripts/WaterFlowManager.gd.
 
 	PICKUP_DROP,

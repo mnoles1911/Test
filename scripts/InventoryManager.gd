@@ -62,9 +62,9 @@ const ITEM_REGISTRY: Dictionary = {
 	# Edit-verb tools — go in the weapon slot. tool_target_materials is
 	# the list of voxel-material tags this tool can affect; using the
 	# wrong tool on the wrong material is a no-op.
-	"iron_pickaxe":    {"name": "Iron Pickaxe",    "type": "tool", "description": "Wood-hafted iron pick. For stone, ore, and patient work.",                      "tool_target_materials": ["stone", "ore"], "combat_damage": 8},
-	"iron_axe":        {"name": "Iron Axe",        "type": "tool", "description": "A felling axe. Lighter than it looks; bites trees and armor in equal measure.", "tool_target_materials": ["wood"],         "combat_damage": 12},
-	"iron_shovel":     {"name": "Iron Shovel",     "type": "tool", "description": "Iron blade on a hardwood haft. Earth, sand, ash — anything that yields.",        "tool_target_materials": ["dirt", "sand", "clay", "ash"], "combat_damage": 6},
+	"iron_pickaxe":    {"name": "Iron Pickaxe",    "type": "tool", "description": "Wood-hafted iron pick. For stone, ore, marble, and patient work.",                "tool_target_materials": ["stone", "ore", "marble"], "combat_damage": 8},
+	"iron_axe":        {"name": "Iron Axe",        "type": "tool", "description": "A felling axe. Lighter than it looks; bites trees and armor in equal measure.", "tool_target_materials": ["wood", "leaves"],        "combat_damage": 12},
+	"iron_shovel":     {"name": "Iron Shovel",     "type": "tool", "description": "Iron blade on a hardwood haft. Earth, sand, gravel, clay, ash — anything that yields.", "tool_target_materials": ["dirt", "sand", "gravel", "clay", "ash"], "combat_damage": 6},
 	"bucket":          {"name": "Bucket",          "type": "tool", "description": "Empty bucket. Swing at water to fill it.",                                       "tool_target_materials": ["water"], "combat_damage": 0},
 	"bucket_filled":   {"name": "Bucket of Water", "type": "tool", "description": "Sloshes when carried. Swing at empty space to place a water source.",            "tool_target_materials": ["water"], "combat_damage": 0},
 
@@ -74,6 +74,11 @@ const ITEM_REGISTRY: Dictionary = {
 	"raw_log":         {"name": "Raw Log",         "type": "crafting_mat", "description": "A length of green wood. Will need seasoning.",          "voxel_material": "wood"},
 	"raw_dirt":        {"name": "Raw Dirt",        "type": "crafting_mat", "description": "Loose earth. Good for filling, less so for building.", "voxel_material": "dirt"},
 	"raw_sand":        {"name": "Raw Sand",        "type": "crafting_mat", "description": "Pale grit, scooped from a riverbank or beach.",         "voxel_material": "sand"},
+	"raw_gravel":      {"name": "Raw Gravel",      "type": "crafting_mat", "description": "A handful of mixed shingle and small stones.",          "voxel_material": "gravel"},
+	"raw_clay":        {"name": "Raw Clay",        "type": "crafting_mat", "description": "Wet blue-grey clay from the tide-line. Shapeable.",     "voxel_material": "clay"},
+	"raw_marble":      {"name": "Raw Marble",      "type": "crafting_mat", "description": "A chunk of weathered island marble, white-veined.",    "voxel_material": "marble"},
+	"raw_leaves":      {"name": "Raw Leaves",      "type": "crafting_mat", "description": "A bundle of fresh-cut foliage. Kindling, mostly.",       "voxel_material": "leaves"},
+	"copper_ore":      {"name": "Copper Ore",      "type": "crafting_mat", "description": "Coarse ore: orange-bronze metal striped through grey stone.", "voxel_material": "copper_ore"},
 
 	# Crafting materials
 	"ashsteel_ingot":  {"name": "Ashsteel Ingot",  "type": "crafting_mat","description": "Raw Ashsteel. Required to forge Ashsteel weapons."},

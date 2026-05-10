@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "leaves"
+material_id = 11
+display_name = "Leaves"
+color_low = Color(0.18, 0.29, 0.10, 1)
+color_high = Color(0.23, 0.36, 0.13, 1)
+color_jitter = 0.10
+mining_time_seconds = 0.1
+allowed_tools = Array[String](["iron_axe"])
+yield_item_id = "raw_leaves"
+yield_quantity = 1
+fall_behavior = 0
+gravity_scale = 1.0
+damage_multiplier = 0.0

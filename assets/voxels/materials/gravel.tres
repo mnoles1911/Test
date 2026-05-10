@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "gravel"
+material_id = 7
+display_name = "Gravel"
+color_low = Color(0.42, 0.38, 0.33, 1)
+color_high = Color(0.48, 0.48, 0.48, 1)
+color_jitter = 0.18
+mining_time_seconds = 0.2
+allowed_tools = Array[String](["iron_shovel"])
+yield_item_id = "raw_gravel"
+yield_quantity = 1
+fall_behavior = 2
+gravity_scale = 1.0
+damage_multiplier = 0.6

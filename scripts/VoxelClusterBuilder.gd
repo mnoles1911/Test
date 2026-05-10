@@ -45,8 +45,8 @@ static func build_cluster_mesh(
 	# Build a single-surface ArrayMesh from the cluster.
 	#
 	# voxels: Dictionary keyed by Vector3i (voxel-grid positions),
-	#         value is int (packed RGBA32, the same format VoxelTool
-	#         get_voxel returns from CHANNEL_COLOR).
+	#         value is int (material_id from CHANNEL_TYPE — same
+	#         format VoxelTool.get_voxel returns post-v13).
 	# centre_offset_m: a Vector3 (meters) subtracted from each voxel
 	#         position so the cluster's centroid sits at the mesh's
 	#         local origin. This is what makes the RigidBody3D rotate
@@ -54,7 +54,7 @@ static func build_cluster_mesh(
 	#
 	# Per-face culling: only emit a quad for a voxel face if the
 	# neighbour voxel on that face is NOT in the cluster. This is the
-	# same "no-interior-faces" trick VoxelMesherCubes uses internally.
+	# same "no-interior-faces" trick VoxelMesherBlocky uses internally.
 	# A 4096-voxel solid cube has 4096*6 = 24576 faces naive but only
 	# the ~1500 boundary faces actually need rendering — ~94% saving.
 	#
@@ -142,10 +142,21 @@ static func build_cluster_mesh(
 		},
 	]
 
+	# Look up the registry once — falling-cluster vertex colors come
+	# from the per-material color_high field rather than packed RGBA.
+	# Pre-v13 this script unpacked color from the alpha-byte-encoded
+	# voxel value. Post-migration, the voxel value IS just the
+	# material_id, so we lift the registry once outside the inner loop
+	# and tint each voxel's vertices using that material's chosen
+	# representative colour.
+	var registry: Node = null
+	var main_loop := Engine.get_main_loop()
+	if main_loop and main_loop is SceneTree:
+		registry = (main_loop as SceneTree).root.get_node_or_null("VoxelMaterialRegistry")
 	for v_pos_v in voxels.keys():
 		var v_pos: Vector3i = v_pos_v
-		var packed_rgba: int = int(voxels[v_pos])
-		var color: Color = _unpack_rgba32(packed_rgba)
+		var mat_id: int = int(voxels[v_pos]) & 0xFF
+		var color: Color = _color_for_material_id(mat_id, registry)
 		# Cube origin in cluster-local meters, then shifted so the
 		# whole cluster pivots around its centre of mass.
 		var origin_m: Vector3 = (Vector3(v_pos) * VOXEL_SIZE_M) - centre_offset_m
@@ -294,10 +305,32 @@ static func get_shared_material() -> StandardMaterial3D:
 # Internal — color packing
 # ---------------------------------------------------------------
 
+static func _color_for_material_id(mat_id: int, registry) -> Color:
+	# Look up the representative vertex color for a falling cluster
+	# voxel of this material. Returns color_high from the material
+	# .tres if the registry is available, otherwise a magenta debug
+	# colour so missing materials are visible.
+	#
+	# Why color_high (and not color_low or a lerp)? Falling clusters
+	# are airborne fragments of the surface — visually closer to the
+	# top-of-band tint than the deep-band tint. Picking one constant
+	# also keeps the cluster tinted uniformly, which reads better
+	# during the brief seconds it spends tumbling than a per-voxel
+	# height-lerped colour would.
+	if registry == null:
+		return Color(1.0, 0.0, 1.0)
+	var mat = registry.get_by_id(mat_id)
+	if mat == null:
+		return Color(1.0, 0.0, 1.0)
+	return mat.color_high
+
+
 static func _unpack_rgba32(packed: int) -> Color:
-	# Inverse of Color.to_rgba32(). Voxel colours stored in
-	# CHANNEL_COLOR are packed as 0xRRGGBBAA (R in highest byte, A in
-	# lowest), per Godot's Color.to_rgba32 contract.
+	# DEPRECATED — kept only so any out-of-tree code that called this
+	# helper compiles. Pre-v13 this decoded the packed RGBA stored in
+	# CHANNEL_COLOR. After the VoxelMesherBlocky migration the value
+	# is just a material_id integer; there's no RGB to unpack.
+	# Returns the legacy decode for callers that still rely on it.
 	var r: int = (packed >> 24) & 0xFF
 	var g: int = (packed >> 16) & 0xFF
 	var b: int = (packed >>  8) & 0xFF

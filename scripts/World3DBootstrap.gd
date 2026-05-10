@@ -58,12 +58,11 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
-	# Configure the terrain's CHANNEL_COLOR storage depth to 32-bit.
-	# Default is 8-bit (1 byte per voxel), which truncates our packed
-	# RGBA+mat_id values to just the R byte. The right knob lives on
-	# VoxelLodTerrain.format — a VoxelFormat resource that's null by
-	# default. We instantiate it, override the channel depth, and
-	# assign it BEFORE the terrain starts streaming chunks.
+	# Configure the terrain's CHANNEL_TYPE storage depth. After the v13
+	# VoxelMesherBlocky migration we store material_id directly in
+	# CHANNEL_TYPE — 8-bit is sufficient (material_id range 0-254).
+	# Default depth for TYPE is already 8-bit, but we set it explicitly
+	# so the format is documented in code rather than implicit.
 	if "format" in terrain:
 		_configure_voxel_format(terrain)
 
@@ -133,20 +132,49 @@ func _ready() -> void:
 	if "mesher" in terrain:
 		var mesher: Resource = terrain.mesher
 		if mesher != null:
+			# Runtime fix for a Zylann gdextension serialization bug:
+			# VoxelBlockyModelCube's per-surface `material_override_0`
+			# saves into blocky_library.tres but doesn't restore on load
+			# (get_material_override(0) returns null at runtime even
+			# though the .tres clearly carries the SubResource ref).
+			# Workaround: load the atlas texture, build a fresh shared
+			# StandardMaterial3D, and inject it into every cube model's
+			# surface 0 right now. Tile coords serialize/restore fine,
+			# so only the materials need this round-trip bypass.
+			_inject_atlas_materials_into_library(mesher)
+
 			print("[World3D] Mesher class: %s" % mesher.get_class())
-			# Highlight opaque_material specifically — this is the
-			# property that controls whether vertex colours reach
-			# the rendered terrain. If it's null at runtime despite
-			# the .tscn assignment, Godot didn't reimport the scene
-			# or the property name is being silently rejected.
-			var om = mesher.get("opaque_material") if "opaque_material" in mesher else null
-			if om == null:
-				print("[World3D]   ⚠ opaque_material is NULL (vertex colours WILL fall back to default — flat grey).")
+			# Verify the blocky library's first cube model has an
+			# atlas material attached. In Zylann's current API,
+			# materials live on each VoxelBlockyModelCube and are
+			# accessed via get_material_override(surface_idx) — the
+			# `material_override_0` listed in get_property_list() is
+			# a dynamic per-surface property name and the `in`
+			# operator returns false for it even when the property
+			# really exists. Use the method directly to avoid that.
+			var lib: Resource = mesher.get("library") if "library" in mesher else null
+			if lib != null and "models" in lib:
+				var models_arr: Array = lib.get("models")
+				var first_solid = null
+				for m in models_arr:
+					if m != null:
+						first_solid = m
+						break
+				if first_solid != null and first_solid.has_method("get_material_override"):
+					var mat0 = first_solid.call("get_material_override", 0)
+					if mat0 == null:
+						print("[World3D]   ⚠ blocky library model[0] has no material_override(0) — re-run tools/build_blocky_library.gd.")
+					else:
+						var has_tex: bool = false
+						if mat0 is BaseMaterial3D:
+							has_tex = (mat0 as BaseMaterial3D).albedo_texture != null
+						print("[World3D]   ✓ blocky library model[0].material = %s (albedo_texture=%s)" % [
+							mat0.get_class(), "yes" if has_tex else "MISSING"
+						])
+				else:
+					print("[World3D]   ⚠ blocky library has no usable first model.")
 			else:
-				print("[World3D]   ✓ opaque_material is set: %s, vertex_color_use_as_albedo=%s" % [
-					om.get_class(),
-					om.get("vertex_color_use_as_albedo") if "vertex_color_use_as_albedo" in om else "(no such property)",
-				])
+				print("[World3D]   ⚠ mesher has no library — wire it in World3D.tscn.")
 			for prop in mesher.get_property_list():
 				var pname: String = prop.get("name", "")
 				if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
@@ -254,6 +282,111 @@ func _ready() -> void:
 			call_deferred("_snap_spawn_to_ground")
 
 
+const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
+const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
+
+# Zylann Cube SIDE enum (from voxel/util/godot/classes/cube.h):
+const _SIDE_NEG_X: int = 0
+const _SIDE_POS_X: int = 1
+const _SIDE_NEG_Y: int = 2
+const _SIDE_POS_Y: int = 3
+const _SIDE_NEG_Z: int = 4
+const _SIDE_POS_Z: int = 5
+
+# Per-material face tile coords. Single source of truth at runtime —
+# mirrors MATERIAL_TILES in tools/build_blocky_library.gd because the
+# .tres save/load round-trip loses these values (Zylann gdextension
+# bug). Tiles must be re-applied here every scene load.
+const _MATERIAL_TILES: Dictionary = {
+	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},
+	2:  {"top": Vector2i(1, 0), "side": Vector2i(1, 0), "bottom": Vector2i(1, 0)},
+	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},
+	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},
+	# 5 = water, no library entry
+	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},
+	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},
+	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},
+	9:  {"top": Vector2i(7, 0), "side": Vector2i(7, 0), "bottom": Vector2i(7, 0)},
+	10: {"top": Vector2i(0, 1), "side": Vector2i(1, 1), "bottom": Vector2i(0, 1)},
+	11: {"top": Vector2i(2, 1), "side": Vector2i(2, 1), "bottom": Vector2i(2, 1)},
+	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},
+}
+
+const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
+const _TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
+
+
+func _inject_atlas_materials_into_library(mesher: Resource) -> void:
+	# See call site for the why. Both `material_override_0` AND the
+	# per-face `tile_*` properties survive the .tres save but fail to
+	# restore on load (Zylann gdextension dynamic-property bug). The
+	# saved cubes come back with default tile (0,0) and null material,
+	# so every face renders with full-atlas UVs sampling the entire
+	# 2048x2048 — the visible "8 textures across the top, transparent
+	# bottom" symptom is alpha-scissor cutting the empty atlas region.
+	# Workaround: re-apply tiles + material at runtime.
+	var lib: Resource = mesher.get("library") if "library" in mesher else null
+	if lib == null:
+		print("[World3D]   ⚠ inject_atlas_materials: no library on mesher.")
+		return
+
+	var atlas_tex: Texture2D = load(_ATLAS_TEXTURE_PATH) as Texture2D
+	if atlas_tex == null:
+		printerr("[World3D]   ⚠ inject_atlas_materials: failed to load %s" % _ATLAS_TEXTURE_PATH)
+		return
+
+	var atlas_mat: StandardMaterial3D = StandardMaterial3D.new()
+	atlas_mat.resource_name = "atlas_default_runtime"
+	atlas_mat.albedo_texture = atlas_tex
+	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	atlas_mat.alpha_scissor_threshold = 0.5
+	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	atlas_mat.roughness = 0.85
+	atlas_mat.metallic = 0.0
+	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+
+	if not "models" in lib:
+		print("[World3D]   ⚠ inject_atlas_materials: library has no models array.")
+		return
+	var models_arr: Array = lib.get("models")
+	var atlas_grid: Vector2i = Vector2i(_ATLAS_TILES_PER_ROW, _ATLAS_TILES_PER_ROW)
+	var injected: int = 0
+	for slot_idx in _MATERIAL_TILES.keys():
+		var idx: int = int(slot_idx)
+		if idx < 0 or idx >= models_arr.size():
+			continue
+		var m = models_arr[idx]
+		if m == null:
+			continue
+		var faces: Dictionary = _MATERIAL_TILES[idx]
+		# Re-apply atlas grid + per-face tile coords. Use .set() for the
+		# plain property, .call() for the methods (the per-side tiles
+		# only stick when written through set_tile).
+		m.set("atlas_size_in_tiles", atlas_grid)
+		if m.has_method("set_tile"):
+			m.call("set_tile", _SIDE_POS_Y, faces["top"])
+			m.call("set_tile", _SIDE_NEG_Y, faces["bottom"])
+			m.call("set_tile", _SIDE_NEG_X, faces["side"])
+			m.call("set_tile", _SIDE_POS_X, faces["side"])
+			m.call("set_tile", _SIDE_NEG_Z, faces["side"])
+			m.call("set_tile", _SIDE_POS_Z, faces["side"])
+		if m.has_method("set_material_override"):
+			m.call("set_material_override", 0, atlas_mat)
+		# Transparency / culling overrides for leaves etc.
+		if idx in _TRANSPARENT_MATERIALS:
+			m.set("transparency_index", 1)
+		if idx in _NON_CULLING_MATERIALS:
+			m.set("culls_neighbors", false)
+		injected += 1
+
+	# Re-bake so Zylann recomputes per-cube UVs from the freshly
+	# written tile coords + atlas_size_in_tiles.
+	if lib.has_method("bake"):
+		lib.bake()
+
+	print("[World3D] inject_atlas_materials: re-applied tiles + atlas mat to %d models, library re-baked." % injected)
+
+
 func _process(delta: float) -> void:
 	# 1 Hz diagnostic line for the LOD-streaming investigation.
 	# Prints player position, instantaneous speed (m/s), VoxelViewer
@@ -351,17 +484,15 @@ func _diag_resolve_refs() -> void:
 
 
 func _configure_voxel_format(terrain: Object) -> void:
-	# Set CHANNEL_COLOR depth to 32-bit so our packed RGBA + mat_id
-	# values survive storage. Default is 8-bit (1 byte per voxel),
-	# which truncates to just the R byte and loses both the rest of
-	# the color and the material id.
+	# Set CHANNEL_TYPE depth to 8-bit. After the v13 migration to
+	# VoxelMesherBlocky we store the material_id directly in TYPE,
+	# which fits in a single byte (0-254 is the valid range).
 	#
-	# The knob is VoxelLodTerrain.format — a VoxelFormat resource
-	# that's null by default. We construct one, override the
-	# CHANNEL_COLOR depth, and assign it BEFORE the terrain starts
-	# streaming chunks. Per-block set_channel_depth in _generate_block
-	# was tried and confirmed to break generation entirely (terrain
-	# disappears) — the global format resource is the right path.
+	# 8-bit is the Zylann default for TYPE so this is mostly defensive
+	# documentation — but we still set it explicitly because (a) older
+	# saves may have a stored format with COLOR depth pinned to 32-bit
+	# from the pre-v13 era, and (b) being explicit makes the file
+	# easier to find via grep when something goes wrong.
 	#
 	# The exact API of VoxelFormat depends on the Zylann build. We
 	# probe a couple of common patterns: a method (set_channel_depth)
@@ -370,47 +501,38 @@ func _configure_voxel_format(terrain: Object) -> void:
 	if ClassDB.class_exists("VoxelFormat"):
 		fmt = ClassDB.instantiate("VoxelFormat")
 	if fmt == null:
-		push_warning("[World3D] VoxelFormat class not found; CHANNEL_COLOR will stay at 8-bit and mining will be broken.")
+		# No VoxelFormat — pre-v13 builds didn't need this either, the
+		# defaults (8-bit TYPE) are correct. Skip silently.
 		return
-
-	print("[World3D] VoxelFormat created: %s" % fmt.get_class())
-	# Dump every property of the new format so we can see the API
-	# surface and pick the right knob if our guesses miss.
-	for prop in fmt.get_property_list():
-		var pname: String = prop.get("name", "")
-		if pname == "" or pname.begins_with("script") or pname == "resource_local_to_scene":
-			continue
-		if pname == "resource_path" or pname == "resource_name":
-			continue
-		print("[World3D]   format.%s = %s" % [pname, fmt.get(pname)])
 
 	var configured: bool = false
 
 	# Path 1 — method-based API: VoxelFormat.set_channel_depth(channel, depth)
 	if fmt.has_method("set_channel_depth"):
-		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
-		print("[World3D] Set CHANNEL_COLOR depth via fmt.set_channel_depth(...)")
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_TYPE, VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_TYPE depth via fmt.set_channel_depth(...)")
 		configured = true
 
-	# Path 2 — typed per-channel property: VoxelFormat.color_depth = X
-	if not configured and "color_depth" in fmt:
-		fmt.set("color_depth", VoxelBuffer.DEPTH_32_BIT)
-		print("[World3D] Set CHANNEL_COLOR depth via fmt.color_depth")
+	# Path 2 — typed per-channel property: VoxelFormat.type_depth = X
+	if not configured and "type_depth" in fmt:
+		fmt.set("type_depth", VoxelBuffer.DEPTH_8_BIT)
+		print("[World3D] Set CHANNEL_TYPE depth via fmt.type_depth")
 		configured = true
 
 	# Path 3 — array property indexed by channel
 	if not configured and "channel_depths" in fmt:
 		var depths = fmt.get("channel_depths")
 		if depths is Array:
-			depths[VoxelBuffer.CHANNEL_COLOR] = VoxelBuffer.DEPTH_32_BIT
+			depths[VoxelBuffer.CHANNEL_TYPE] = VoxelBuffer.DEPTH_8_BIT
 			fmt.set("channel_depths", depths)
-			print("[World3D] Set CHANNEL_COLOR depth via fmt.channel_depths[CHANNEL_COLOR]")
+			print("[World3D] Set CHANNEL_TYPE depth via fmt.channel_depths[CHANNEL_TYPE]")
 			configured = true
 
 	if not configured:
-		push_warning("[World3D] VoxelFormat exists but no known API path worked; CHANNEL_COLOR will stay at 8-bit.")
+		# Defaults are 8-bit on TYPE, so missing API path isn't fatal.
+		return
 
-	# CHANNEL_DATA depth — same three-path probe.
+	# CHANNEL_DATA5 depth — same three-path probe.
 	#
 	# Phase 0 of the Minecraft-style water rewrite: the generator now
 	# writes water bytes into CHANNEL_DATA. One byte per voxel is plenty
@@ -447,7 +569,7 @@ func _configure_voxel_format(terrain: Object) -> void:
 	# may not retroactively fix existing chunks — fresh save / new game
 	# may be needed for the depth to apply across the world.
 	terrain.set("format", fmt)
-	print("[World3D] terrain.format assigned.")
+	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
 
 
 func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:

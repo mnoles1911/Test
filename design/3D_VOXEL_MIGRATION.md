@@ -18,7 +18,7 @@ The aesthetic goal: a world that feels ancient and handcrafted — stone cities 
 
 **What makes voxel work at this scale:**
 - Blocks are **6 voxels per meter** — each cube is ~16.7 cm, chunky enough to read as cubic but far finer than Minecraft's 1 m cubes (locked 2026-05-03)
-- Terrain uses **blocky voxel meshing** (`VoxelMesherCubes`) — visible cube faces on terrain steps, consistent with MagicaVoxel building style
+- Terrain uses **blocky voxel meshing** (`VoxelMesherBlocky` reading `CHANNEL_TYPE`, backed by a `VoxelBlockyLibrary` of textured cube models) — visible cube faces on terrain steps, consistent with MagicaVoxel building style. Pre-2026-05-09 the project used `VoxelMesherCubes` with packed RGBA in `CHANNEL_COLOR`; that path has been retired.
 - Buildings are **hand-assembled voxel structures** — cubes are visible and intentional, like stonework. Terrain and buildings share the same block language.
 - Characters are **low-poly 3D models** (Blender → GLTF) or **billboard sprites** (Sprite3D facing camera)
 - Lighting is **real 3D** — DirectionalLight3D for sun/moon, PointLight3D for torches and fires, SDFGI for global illumination
@@ -80,14 +80,15 @@ All the **game logic** autoloads work without modification. They are data and UI
 
 This is the premier voxel terrain plugin for Godot 4. It powers Veloren-adjacent projects and supports:
 - `VoxelTerrain` — infinite streaming terrain with LOD
-- `VoxelMesherCubes` — blocky cube-face meshing; used for all terrain and structures in this project
+- `VoxelMesherBlocky` — model-library based; each cube is a `VoxelBlockyModelCube` carrying per-face atlas tile coords. **This is what the project uses post-2026-05-09 migration.** Reads `CHANNEL_TYPE` (8-bit material id 0–254).
+- `VoxelMesherCubes` — per-voxel packed RGBA meshing; the project used this pre-2026-05-09. Retired.
 - `VoxelMesherTransvoxel` — smooth voxel meshing (not used — eliminates the blocky aesthetic we want)
 - `VoxelInstancer` — scatter props (trees, rocks) across terrain efficiently
 - Custom voxel generators via GDScript or C++
 
 **For this project:**
 - Node: `VoxelLodTerrain` (LOD streaming — required for 12km × 10km open world)
-- Terrain mesher: `VoxelMesherCubes` (hard-edged cubic terrain, blocky stepped slopes — reads `CHANNEL_COLOR`)
+- Terrain mesher: `VoxelMesherBlocky` (textured cube models per material; reads `CHANNEL_TYPE`)
 - Buildings: MagicaVoxel `.glb` exports placed as `MeshInstance3D` on top of terrain. Carved-structure terrain is rare.
 - Terrain is **editable / destructible by default**. The procedural baseline is currently produced by `CubicHeightmapGenerator` (custom GDScript `VoxelGeneratorScript` subclass — see `scripts/CubicHeightmapGenerator.gd`) using layered noise + per-voxel colour jitter. Player edits are stored as deltas in `VoxelStreamSQLite` per save slot. The originally-planned VoxelGeneratorGraph + Gaea EXR pipeline may return for v1 Mira terrain authoring later. See **"Destructible Terrain"** below.
 - Scope: full open world — 12km × 10km playable Mira, 125:1 linear compression
@@ -259,7 +260,7 @@ The two systems share `VoxelEditManager` as the only terrain-write seam (carve c
 
 Every voxel in the world carries a material identity (stone, dirt, grass, sand, …). The material drives mining time, allowed tools, harvest yield, fall behavior, gravity weight, crush damage, and visual colour. The system is **flyweight** — one `VoxelMaterial` Resource per material, every voxel of that material shares the same Resource reference via a registry lookup.
 
-**Encoding.** Voxels are packed RGBA32 in `VoxelBuffer.CHANNEL_COLOR`. RGB is the visual color; the **alpha byte holds the material id** (1–254). 0 stays reserved for air. The mesher only checks `alpha == 0?` for solid-vs-air, so the alpha byte is otherwise free for our use. Zero memory increase, zero mesher change.
+**Encoding.** Voxels store the **material id directly in `VoxelBuffer.CHANNEL_TYPE`** (8-bit, 0 = air, 1–254 = registered materials). `VoxelMesherBlocky` reads `CHANNEL_TYPE`, looks up the matching `VoxelBlockyModelCube` in the library, and renders that cube with its authored per-face atlas tiles. Visual color comes from the atlas texture, not from per-voxel RGB. (Pre-2026-05-09 the project used `VoxelMesherCubes` with packed RGBA in `CHANNEL_COLOR` — RGB for visible color, alpha byte for material id. That encoding is retired; `color_low/high/jitter` on `VoxelMaterial` are kept for falling-cluster vertex tinting and any future uses but no longer drive terrain rendering.)
 
 **Adding a new material (designer flow).**
 1. In Godot, navigate to `assets/voxels/materials/` in the FileSystem dock.

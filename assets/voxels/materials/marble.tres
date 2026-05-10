@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "marble"
+material_id = 9
+display_name = "Marble"
+color_low = Color(0.82, 0.78, 0.74, 1)
+color_high = Color(0.91, 0.88, 0.83, 1)
+color_jitter = 0.06
+mining_time_seconds = 1.2
+allowed_tools = Array[String](["iron_pickaxe"])
+yield_item_id = "raw_marble"
+yield_quantity = 1
+fall_behavior = 4
+gravity_scale = 1.1
+damage_multiplier = 1.4

@@ -469,7 +469,7 @@ func _bucket_place_at(world_pos: Vector3) -> void:
 	if terrain != null:
 		var tool: VoxelTool = terrain.get_voxel_tool()
 		if tool != null:
-			tool.channel = VoxelBuffer.CHANNEL_COLOR
+			tool.channel = VoxelBuffer.CHANNEL_TYPE
 			var packed: int = tool.get_voxel(voxel_pos)
 			var mat_id: int = 0
 			if get_node_or_null("/root/VoxelMaterialRegistry"):
@@ -734,7 +734,7 @@ func _compute_mixed_volume_mine_secs(
 	var tool: VoxelTool = terrain.get_voxel_tool()
 	if tool == null:
 		return result
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 	var registry := get_node_or_null("/root/VoxelMaterialRegistry")
 	if registry == null:
 		return result
@@ -775,12 +775,12 @@ func _get_mining_anchor() -> int:
 
 
 func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
-	# Read the voxel at world_pos, decode the material id from the
-	# alpha byte, look up the VoxelMaterial in the registry. Returns
+	# Read the voxel at world_pos, get the material_id from
+	# CHANNEL_TYPE, look up the VoxelMaterial in the registry. Returns
 	# null if the voxel is air, the registry isn't available, or the
 	# read fails for any other reason.
 	#
-	# Reads the same channel the generator writes (CHANNEL_COLOR).
+	# Reads the same channel the generator writes (CHANNEL_TYPE).
 	# CRITICAL: VoxelTool.get_voxel takes voxel-grid coords (Vector3i),
 	# not world-space metres. We use VoxelEditManager.world_to_voxel
 	# which already does the conversion (multiplies by VOXELS_PER_METER
@@ -793,7 +793,7 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	var tool: VoxelTool = terrain.get_voxel_tool()
 	if tool == null:
 		return null
-	tool.channel = VoxelBuffer.CHANNEL_COLOR
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
 	var grid_pos: Vector3i = VoxelEditManager.world_to_voxel(world_pos)
 	var packed: int = tool.get_voxel(grid_pos)
 	if (packed & 0xFF) == 0:
