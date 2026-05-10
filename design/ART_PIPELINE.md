@@ -3,6 +3,8 @@
 
 > This document covers HOW to make the art. For WHAT it should look like, see `design/ART_DIRECTION.md`. For the full technical migration plan, see `design/3D_VOXEL_MIGRATION.md`.
 
+> **STALE-IN-PLACES NOTE (2026-05-09):** Mesher references below pre-date the `VoxelMesherBlocky` migration. Terrain rendering now uses textured cube models from a `VoxelBlockyLibrary` rather than per-voxel RGBA. Texture pack workflow (AI gen → Python atlas builder → EditorScript-built library) is documented in `tools/AI_TEXTURE_PROMPTS.md` and `assets/voxels/texture_packs/default/README.md`.
+
 ---
 
 ## Confirmed Approach

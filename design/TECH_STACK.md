@@ -2,6 +2,8 @@
 
 Reference for every tool, plugin, and software in the pipeline. Covers what each tool does, why it was chosen, and how it connects to everything else.
 
+> **STALE-IN-PLACES NOTE (2026-05-09):** Several mesher / channel references below describe the pre-2026-05-09 `VoxelMesherCubes` + `CHANNEL_COLOR` setup. The current pipeline uses `VoxelMesherBlocky` reading `CHANNEL_TYPE`, with a `VoxelBlockyLibrary` of textured cube models and a 32 px-tile atlas under `assets/voxels/texture_packs/default/`. Texture pack pipeline: `tools/build_texture_atlas.py` (Pillow, downscale + chroma-key white-to-alpha) → `tools/build_blocky_library.gd` EditorScript → `assets/voxels/blocky_library.tres`. Tile coords + materials are re-applied at runtime by `World3DBootstrap._inject_atlas_materials_into_library` (Zylann gdextension serialization round-trip bug). `WORLD_GENERATOR_VERSION = 13`. See `design/3D_VOXEL_MIGRATION.md` for the canonical mesher description and `design/LESSONS_LEARNED.md` 2026-05-09 entries for the gotchas. Specific stale lines flagged inline below.
+
 ---
 
 ## Development Approach

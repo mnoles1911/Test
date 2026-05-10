@@ -50,12 +50,13 @@ Completed milestones (see git log for full PR detail; the autoload section below
 - **Milestone 5-3D (2026-05-03):** destructible-voxel slice — VoxelLodTerrain + SQLite deltas, CubicHeightmapGenerator, edit/gravity/water managers, NoEditZones, pickaxe + explosives, swimming, day/night.
 - **Milestone 6-3D Weather (2026-05-04):** WeatherManager — six-state machine, 30 s transitions, fog/wind/particles/lightning, location profiles, proximity zones.
 - **Voxel water refactor (2026-05-05):** Area3D water replaced with voxel-cell flow sim (`WaterFlowManager` 4 Hz tick, `WaterChunkMesher` transparent surfaces, `WORLD_GENERATOR_VERSION = 11`).
+- **Textured tileset migration (2026-05-09):** Terrain meshing switched from `VoxelMesherCubes` (per-voxel packed RGBA in `CHANNEL_COLOR`) to `VoxelMesherBlocky` (integer material id in `CHANNEL_TYPE` + `VoxelBlockyLibrary` of cube models). 12-material library with per-face atlas tiles (stone, dirt, grass, sand, water, bedrock, gravel, clay, marble, log, leaves, copper_ore). Texture pack pipeline: AI-generated 512–1024 px source PNGs → `tools/build_texture_atlas.py` (Pillow, downscales to 32×32 tiles, color-keys white→alpha for leaves) → `tools/build_blocky_library.gd` EditorScript builds `assets/voxels/blocky_library.tres`. **Critical runtime workaround**: Zylann's gdextension fails to restore dynamic per-surface properties (`tile_*`, `material_override_0`) on .tres load — `World3DBootstrap._inject_atlas_materials_into_library()` re-applies them via `set_tile()` / `set_material_override()` on every scene load. `WORLD_GENERATOR_VERSION = 13`.
 
 Outstanding pickups: low-poly Blender Roland model (still placeholder green box), MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio OGGs, region-boundary profile auto-swap. See `DESIGNER_TODO.md` and `design/LESSONS_LEARNED.md`.
 
 ## Art specification (3D VOXEL)
 - **Voxel scale**: 6 voxels/m (locked 2026-05-03; ~16.7 cm/block, player ~11 voxels tall).
-- **Terrain**: `VoxelLodTerrain` + `VoxelMesherCubes`. Procedural baseline from `CubicHeightmapGenerator`. **Destructible by default** — `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`, persist forever.
+- **Terrain**: `VoxelLodTerrain` + `VoxelMesherBlocky` reading `CHANNEL_TYPE` (8-bit material id), backed by `VoxelBlockyLibrary` (per-cube atlas tiles + alpha-scissor `StandardMaterial3D`). Procedural baseline from `CubicHeightmapGenerator`. Default texture pack lives in `assets/voxels/texture_packs/default/` — atlas at 32 px tile × 64 cols/rows. **Destructible by default** — `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`, persist forever.
 - **World scale**: Playable Mira 12 km × 10 km (compression 125:1). Thal ~7 km × 5.5 km.
 - **Props/buildings**: MagicaVoxel → .glb. Narratively load-bearing structures sit inside NoEditZones, never carved.
 - **Player-built**: schematic props (Carpentry Bench) + per-voxel detailing (Build Mode).
@@ -344,6 +345,53 @@ This is non-negotiable. A direct `VoxelTool.do_*` call inside a NoEditZone or
 during heavy edit traffic will desync the EditedChunkRegistry, corrupt the LOD
 cache, violate the per-frame voxel budget, OR (with gravity now wired) leave
 unsupported voxels floating in midair. Always route through the manager.
+
+**Zylann blocky-library properties: use the methods, not `.set()`, AND re-apply at runtime:**
+```gdscript
+# WRONG — silently no-ops. The property name appears in
+# get_property_list() but Zylann routes the actual storage through
+# method pairs, and .set() writes to a virtual property bag the
+# gdextension only reads for serialization. The mesh build sees default
+# values (tile (0,0), null material) and you get all-white terrain
+# with full-atlas UVs.
+model.set("tile_top", Vector2i(2, 0))
+model.set("material_override_0", atlas_mat)
+
+# RIGHT — call the method directly.
+model.call("set_tile", 3, Vector2i(2, 0))   # 3 = SIDE_POSITIVE_Y
+model.call("set_material_override", 0, atlas_mat)
+
+# AND: even when the methods are used, those values WRITE to .tres but
+# DO NOT RESTORE on load. Always re-apply at runtime (see
+# World3DBootstrap._inject_atlas_materials_into_library). The .tres is
+# a build artifact; the bootstrap is the source of truth.
+```
+SIDE enum (Zylann Cube): NEG_X=0, POS_X=1, NEG_Y=2, POS_Y=3, NEG_Z=4, POS_Z=5.
+
+**`VoxelLodTerrain.material` overrides every per-cube `material_override_0`:**
+```gdscript
+# WRONG — sets a single empty StandardMaterial3D on the terrain.
+# Even if your library's cubes have correct atlas materials, this
+# overrides them all globally and every face renders white.
+[node name="VoxelLodTerrain" type="VoxelLodTerrain"]
+material = SubResource("VoxelTerrainMat")   # ← don't do this
+
+# RIGHT — leave terrain.material null when using textured cube
+# models. Per-cube material_override_0 (set at runtime by
+# World3DBootstrap) drives rendering.
+[node name="VoxelLodTerrain" type="VoxelLodTerrain"]
+# (no material line)
+```
+
+**Probe a gdextension class before guessing its API:**
+```gdscript
+# When working with Zylann (or any gdextension) classes, write a
+# probe EditorScript that prints get_property_list() AND
+# get_method_list() before you commit to property names. Property
+# lists alone mislead — Zylann's VoxelBlockyModelCube exposes
+# tile_top/tile_bottom/etc. as listed properties, but storage actually
+# routes through set_tile()/get_tile(). See tools/probe_zylann_blocky.gd.
+```
 
 ---
 
