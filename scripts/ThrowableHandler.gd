@@ -34,6 +34,7 @@ extends Node3D
 # Mapping from item_id → scene file. Add new throwables here.
 const THROWABLE_SCENES: Dictionary = {
 	"powder_charge":  preload("res://scenes/throwables/powder_charge.tscn"),
+	"spear":          preload("res://scenes/throwables/throwable_spear.tscn"),
 	# "sappers_bundle": preload("res://scenes/throwables/sappers_bundle.tscn"),
 	# Each new throwable item drops its scene here and the equip-driven
 	# routing picks it up automatically — no per-item code paths.

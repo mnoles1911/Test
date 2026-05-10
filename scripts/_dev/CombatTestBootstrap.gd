@@ -34,6 +34,13 @@ func _ready() -> void:
 	# MOUSE_MODE_CAPTURED to register look input.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+	# Equip the spear so LMB throws it. The InventoryManager autoload
+	# already added 5× spear to the debug starting inventory; we just
+	# move it into the weapon slot so ThrowableHandler routes LMB to
+	# the spear scene rather than to the equipped shovel.
+	if get_node_or_null("/root/InventoryManager"):
+		InventoryManager.equip("weapon", "spear")
+
 	# Briefly log to confirm the arena loaded cleanly.
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("[CombatTest] Arena ready — F8 kill nearest, F9 wound nearest")
