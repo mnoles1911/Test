@@ -1,0 +1,68 @@
+[gd_scene load_steps=8 format=3 uid="uid://dgoblin01v1"]
+
+; Goblin.tscn — v1 placeholder enemy.
+;
+; Hierarchy:
+;   Goblin       (CharacterBody3D, root, runs Goblin.gd, in "enemy" group)
+;   ├── Visual   (MeshInstance3D — green box stand-in for the .glb model)
+;   ├── CollisionShape3D (capsule, 0.4 m radius, 1.8 m tall)
+;   ├── ChestSocket (Node3D — Y=+1.2; spear embed point on impact)
+;   └── EyeGlow  (MeshInstance3D — green box at head height with
+;                 emissive StandardMaterial3D the script tweaks per state)
+;
+; Asset swap path: when assets/models/goblin.glb lands (per
+; Appendix A.1 of the v1 plan), replace the Visual MeshInstance3D
+; with the imported .glb scene and reposition EyeGlow to match the
+; eye voxel cluster on the .glb head.
+
+[ext_resource type="Script" path="res://scripts/enemies/Goblin.gd" id="1_goblin"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+; Lanky goblin silhouette: 0.5 m wide × 1.8 m tall × 0.4 m deep.
+size = Vector3(0.5, 1.8, 0.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_body"]
+albedo_color = Color(0.353, 0.478, 0.227, 1)
+; Mid green (#5A7A3A) per ART_DIRECTION palette for goblin skin.
+
+[sub_resource type="BoxMesh" id="BoxMesh_eyes"]
+; Two voxels' worth side-by-side, ~12 cm wide × 4 cm tall × 4 cm deep.
+size = Vector3(0.12, 0.04, 0.04)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_eyes"]
+albedo_color = Color(0.0, 1.0, 0.25, 1)
+emission_enabled = true
+emission = Color(0.0, 1.0, 0.25, 1)
+emission_energy_multiplier = 0.0
+; Energy starts at zero — Goblin.gd raises it on state changes:
+; IDLE 0 → ALERT 2 → COMBAT 6.
+
+[node name="Goblin" type="CharacterBody3D" groups=["enemy"]]
+script = ExtResource("1_goblin")
+
+[node name="Visual" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+; Box origin sits at its center; raise by half-height (0.9) so the
+; bottom touches Y=0, matching the capsule footprint.
+mesh = SubResource("BoxMesh_body")
+material_override = SubResource("StandardMaterial3D_body")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="ChestSocket" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+; Spear embed point — chest height. ThrowableSpear reparents itself
+; here on impact so the shaft visibly sticks out of the goblin.
+
+[node name="EyeGlow" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, 0.2)
+; Face-front, head height. Slightly forward (+Z 0.2) of the body
+; center so the glow is visible from the front, hidden from behind.
+mesh = SubResource("BoxMesh_eyes")
+material_override = SubResource("StandardMaterial3D_eyes")
