@@ -656,27 +656,55 @@ func _do_transition(scene_path: String, type: Type, loading_seconds: float = 0.0
 	tween.tween_property(_fade_rect, "color:a", 1.0, FADE_DURATION)
 	await tween.finished
 
+	# Show the loading-screen overlay BEFORE the blocking scene swap.
+	# `change_scene_to_file` is synchronous and on big destinations
+	# (Copper Isles: ~843 MB SQLite seed copy in the bootstrap's
+	# _enter_tree, plus a 46 MB skirt mesh + ext_resource fan-out)
+	# freezes the main thread for 5-8 s. If we wait until AFTER the
+	# swap to call _show_loading_screen, the user stares at a black
+	# fade rect during the entire hang — feels broken.
+	#
+	# The loading-screen UI is an autoload-owned CanvasLayer (built
+	# in _build_loading_screen at TransitionManager._ready), so it
+	# survives the scene swap. Showing it here renders the art +
+	# progress bar at 0 % over the opaque fade rect during the hang.
+	# Tip/hourglass animation pauses during the blocking swap (no
+	# process frames fire while the main thread is frozen) but the
+	# static UI gives the user "something is happening" feedback.
+	#
+	# Two awaited process frames after _show_loading_screen ensure
+	# Godot actually renders the new visibility state to the screen
+	# before we hand control to change_scene_to_file. Without these
+	# the visibility change is queued but the renderer never paints
+	# it, and the user still sees black.
+	if loading_seconds > 0.0:
+		_voxel_world_ready = false
+		_show_loading_screen(loading_seconds)
+		await get_tree().process_frame
+		await get_tree().process_frame
+
 	get_tree().change_scene_to_file(scene_path)
 	await get_tree().process_frame
 
 	# Optional loading-screen hold — fade rect stays opaque, loading
-	# overlay shows on top, the destination scene streams in behind
-	# the curtain. Skipped when loading_seconds <= 0.
+	# overlay shows on top (made visible above), the destination scene
+	# streams in behind the curtain. Skipped when loading_seconds <= 0.
 	#
 	# Adaptive close: instead of always waiting the full loading_seconds,
-	# we poll _voxel_world_ready (set by World3DBootstrap once the spawn
-	# area is streamed in) every frame. If the world reports ready
-	# AFTER the min-hold has elapsed, we close early — fast machines
-	# don't sit on the loading screen unnecessarily. If the world
-	# never reports ready (slow machine, or non-voxel destination),
-	# we fall back to the full loading_seconds cap.
+	# we poll _voxel_world_ready (set by the destination scene's
+	# bootstrap once the spawn area is streamed in) every frame. If the
+	# world reports ready AFTER the min-hold has elapsed, we close
+	# early — fast machines don't sit on the loading screen unnecessarily.
+	# If the world never reports ready (slow machine, or non-voxel
+	# destination), we fall back to the full loading_seconds cap.
 	#
-	# Min-hold is the larger of 15 % of loading_seconds or 2 s, so the
+	# Min-hold is the larger of 25 % of loading_seconds or 5 s, so the
 	# hourglass + tip rotation always has time to be perceived rather
-	# than flashing for a frame.
+	# than flashing for a frame. Counts from the moment the polling
+	# loop starts (post scene-swap), NOT from when the loading screen
+	# first appeared — the blocking swap doesn't tick process frames
+	# so it can't accumulate time anyway.
 	if loading_seconds > 0.0:
-		_voxel_world_ready = false
-		_show_loading_screen(loading_seconds)
 		var min_hold: float = maxf(loading_seconds * 0.25, 5.0)
 		var max_hold: float = loading_seconds
 		var elapsed: float = 0.0

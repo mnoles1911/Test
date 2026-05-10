@@ -498,7 +498,10 @@ func _on_run_diagnostics() -> void:
 		_diag_print("    instantiated OK: %s" % (test_viewer != null))
 		if test_viewer != null:
 			if "view_distance" in test_viewer:
-				test_viewer.view_distance = 1500
+				# Probe sentinel: match the actual bake walker's
+				# view_distance (line 676) so the diagnostic mirrors
+				# what the bake will use.
+				test_viewer.view_distance = 8000
 				_diag_print("    view_distance writable: yes (set to %d)" % test_viewer.view_distance)
 			else:
 				_diag_print("    view_distance NOT in property list — !!!")
@@ -1023,6 +1026,17 @@ func _on_copy_to_assets() -> void:
 	if not FileAccess.file_exists(BAKE_DB_PATH):
 		_set_status("Bake DB not found at %s — run a bake first." % BAKE_DB_PATH)
 		return
+	# Ensure the destination directory exists. DirAccess.copy_absolute
+	# does NOT auto-create parents, so a missing assets/voxel/ folder
+	# (fresh clone, accidental deletion) silently fails the copy with
+	# err=ERR_CANT_OPEN — which is what bit us 2026-05-10 morning.
+	var dst_dir: String = dst.get_base_dir()
+	if not DirAccess.dir_exists_absolute(dst_dir):
+		var mk_err: int = DirAccess.make_dir_recursive_absolute(dst_dir)
+		if mk_err != OK:
+			_set_status("Copy failed: could not create destination dir %s (err=%d)" % [dst_dir, mk_err])
+			return
+		print("[Bake] created missing destination directory: %s" % dst_dir)
 	var err: int = DirAccess.copy_absolute(src, dst)
 	if err == OK:
 		_set_status("Copied %s → %s" % [BAKE_DB_PATH, FINAL_BASELINE_PATH])
