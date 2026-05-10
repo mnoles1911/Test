@@ -243,12 +243,48 @@ func _ready() -> void:
 
 
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
+const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
+
+# Zylann Cube SIDE enum (from voxel/util/godot/classes/cube.h):
+const _SIDE_NEG_X: int = 0
+const _SIDE_POS_X: int = 1
+const _SIDE_NEG_Y: int = 2
+const _SIDE_POS_Y: int = 3
+const _SIDE_NEG_Z: int = 4
+const _SIDE_POS_Z: int = 5
+
+# Per-material face tile coords. Single source of truth at runtime —
+# mirrors MATERIAL_TILES in tools/build_blocky_library.gd because the
+# .tres save/load round-trip loses these values (Zylann gdextension
+# bug). Tiles must be re-applied here every scene load.
+const _MATERIAL_TILES: Dictionary = {
+	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},
+	2:  {"top": Vector2i(1, 0), "side": Vector2i(1, 0), "bottom": Vector2i(1, 0)},
+	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},
+	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},
+	# 5 = water, no library entry
+	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},
+	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},
+	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},
+	9:  {"top": Vector2i(7, 0), "side": Vector2i(7, 0), "bottom": Vector2i(7, 0)},
+	10: {"top": Vector2i(0, 1), "side": Vector2i(1, 1), "bottom": Vector2i(0, 1)},
+	11: {"top": Vector2i(2, 1), "side": Vector2i(2, 1), "bottom": Vector2i(2, 1)},
+	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},
+}
+
+const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
+const _TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
 
 
 func _inject_atlas_materials_into_library(mesher: Resource) -> void:
-	# See call site for the why. Build the shared atlas material once
-	# and pin it to every cube model's surface 0. Tile coords already
-	# survived the .tres round-trip; only the material is missing.
+	# See call site for the why. Both `material_override_0` AND the
+	# per-face `tile_*` properties survive the .tres save but fail to
+	# restore on load (Zylann gdextension dynamic-property bug). The
+	# saved cubes come back with default tile (0,0) and null material,
+	# so every face renders with full-atlas UVs sampling the entire
+	# 2048x2048 — the visible "8 textures across the top, transparent
+	# bottom" symptom is alpha-scissor cutting the empty atlas region.
+	# Workaround: re-apply tiles + material at runtime.
 	var lib: Resource = mesher.get("library") if "library" in mesher else null
 	if lib == null:
 		print("[World3D]   ⚠ inject_atlas_materials: no library on mesher.")
@@ -273,20 +309,42 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 		print("[World3D]   ⚠ inject_atlas_materials: library has no models array.")
 		return
 	var models_arr: Array = lib.get("models")
+	var atlas_grid: Vector2i = Vector2i(_ATLAS_TILES_PER_ROW, _ATLAS_TILES_PER_ROW)
 	var injected: int = 0
-	for m in models_arr:
+	for slot_idx in _MATERIAL_TILES.keys():
+		var idx: int = int(slot_idx)
+		if idx < 0 or idx >= models_arr.size():
+			continue
+		var m = models_arr[idx]
 		if m == null:
 			continue
+		var faces: Dictionary = _MATERIAL_TILES[idx]
+		# Re-apply atlas grid + per-face tile coords. Use .set() for the
+		# plain property, .call() for the methods (the per-side tiles
+		# only stick when written through set_tile).
+		m.set("atlas_size_in_tiles", atlas_grid)
+		if m.has_method("set_tile"):
+			m.call("set_tile", _SIDE_POS_Y, faces["top"])
+			m.call("set_tile", _SIDE_NEG_Y, faces["bottom"])
+			m.call("set_tile", _SIDE_NEG_X, faces["side"])
+			m.call("set_tile", _SIDE_POS_X, faces["side"])
+			m.call("set_tile", _SIDE_NEG_Z, faces["side"])
+			m.call("set_tile", _SIDE_POS_Z, faces["side"])
 		if m.has_method("set_material_override"):
 			m.call("set_material_override", 0, atlas_mat)
-			injected += 1
+		# Transparency / culling overrides for leaves etc.
+		if idx in _TRANSPARENT_MATERIALS:
+			m.set("transparency_index", 1)
+		if idx in _NON_CULLING_MATERIALS:
+			m.set("culls_neighbors", false)
+		injected += 1
 
-	# Re-bake so Zylann recomputes whatever per-material LUTs it
-	# caches off model materials.
+	# Re-bake so Zylann recomputes per-cube UVs from the freshly
+	# written tile coords + atlas_size_in_tiles.
 	if lib.has_method("bake"):
 		lib.bake()
 
-	print("[World3D] inject_atlas_materials: assigned atlas to %d models, library re-baked." % injected)
+	print("[World3D] inject_atlas_materials: re-applied tiles + atlas mat to %d models, library re-baked." % injected)
 
 
 func _configure_voxel_format(terrain: Object) -> void:
