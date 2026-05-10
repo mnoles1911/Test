@@ -181,17 +181,23 @@ recitation filter accepts.*
 
 ### `log_top.png`
 
-*(Single centered composition. NOT seamlessly tiling. Used for both
-the top and bottom face of the log block. The circular cut-end fills
-the full frame.)*
+*(Used for the top and bottom face of the log block. Must tile
+seamlessly -- a wide tree trunk or horizontal beam spans multiple
+adjacent blocks, each showing this face. Do NOT generate a circular
+log-slice illustration with a white background. The grain must fill
+the entire square face to all four corners.)*
 
-> A circular cross-section view of a freshly cut wood log end, filling
-> a square frame edge to edge. Concentric annual growth rings on warm
-> honey-brown wood with fine radial grain lines running from the
-> center outward. Slight heartwood darkening at the center from deep
-> amber to medium brown. Tightly packed rings suggesting slow growth.
-> Flat top-down view, matte even lighting throughout. Hand-painted
-> painterly art style.
+> A square seamless tileable texture of wood end-grain filling the
+> full square face corner to corner, designed to repeat invisibly
+> across the top of a multi-block tree trunk or timber beam. Curved
+> annual growth lines flowing gently across the entire face, reaching
+> all four edges, warm honey-brown tones with subtle variation from
+> lighter sapwood to slightly richer areas. No circular silhouette,
+> no white or empty corners -- the grain covers the full square. Many
+> softly curved grain lines spread evenly across the whole surface
+> with balanced color across all areas. Flat top-down view, matte
+> even lighting throughout. Hand-painted painterly art style. Tiles
+> seamlessly with no edge seams.
 
 ---
 
