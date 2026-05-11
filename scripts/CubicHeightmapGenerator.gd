@@ -291,6 +291,21 @@ const SEA_LEVEL_VOXELS: int = 72
 
 
 # =============================================================
+# TIER 2 — altitude-driven snow line
+# =============================================================
+# Default 30000 = effectively disabled on the procedural Mira map
+# (max ground_y at the default noise settings is ~520 voxels). The
+# Copper Isles heightmap generator uses 12000 by default to catch
+# the peak band. Override in the Inspector for any world that has
+# real altitude.
+
+@export_range(0, 30000, 1) var snow_line_voxels: int = 30000
+@export_range(0, 200, 1) var snow_line_jitter_voxels: int = 30
+@export_range(1, 64, 1) var snow_line_jitter_block_size: int = 8
+@export_range(0, 99999, 1) var snow_line_seed: int = 2
+
+
+# =============================================================
 # RUNTIME CACHE — material references, looked up once
 # =============================================================
 #
@@ -308,6 +323,7 @@ var _cached_sand: VoxelMaterial = null
 var _cached_bedrock: VoxelMaterial = null
 var _cached_marble: VoxelMaterial = null
 var _cached_stone_dark: VoxelMaterial = null
+var _cached_snow: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 var _depth_logged: bool = false
 var _first_water_byte_logged: bool = false
@@ -659,6 +675,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if _cached_stone_dark != null:
 		stone_dark_id = _cached_stone_dark.material_id
 
+	# Tier 2 snow material (0 = not loaded → snow line silently disabled).
+	var snow_id: int = 0
+	if _cached_snow != null:
+		snow_id = _cached_snow.material_id
+
 	var grass_lo: Color = dirt_lo
 	var grass_hi: Color = dirt_hi
 	var grass_id: int = dirt_id
@@ -740,6 +761,12 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var jitter_marble: float = marble_rare_threshold
 	var jitter_dark: float = marble_dark_threshold
 
+	# Tier 2 snow-line cache.
+	var snow_block: int = maxi(1, snow_line_jitter_block_size)
+	var snow_jitter_amp: float = float(snow_line_jitter_voxels)
+	var snow_alt_voxels: int = snow_line_voxels
+	var run_snow_line: bool = snow_id != 0
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -760,9 +787,25 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			# Tier 1: cliff override — collapse top + dirt sandwich to
 			# bare stone when slope exceeds the threshold.
 			var col_dirt_band_end: int = dirt_band_end
-			if run_cliff_rule and _column_is_cliff(world_x, world_z, ground_y):
+			var column_is_cliff: bool = run_cliff_rule \
+				and _column_is_cliff(world_x, world_z, ground_y)
+			if column_is_cliff:
 				top_id = stone_id
 				col_dirt_band_end = grass_thick
+
+			# Tier 2: snow line. Wins on non-cliff columns whose
+			# ground_y crosses (snow_alt + jitter) — cliff faces poke
+			# through snowcaps.
+			if run_snow_line and not column_is_cliff and ground_y >= snow_alt_voxels:
+				@warning_ignore("integer_division")
+				var sj: float = (VoxelGenerationMath.hash3(
+					world_x / snow_block,
+					0,
+					world_z / snow_block,
+					snow_line_seed,
+				) - 0.5) * 2.0 * snow_jitter_amp
+				if float(ground_y) >= float(snow_alt_voxels) + sj:
+					top_id = snow_id
 
 			# Decide once per column whether this column emits water.
 			# Three gates: LOD must be 0 (water is LOD0-only), the
@@ -1003,6 +1046,7 @@ func _ensure_materials_cached() -> void:
 	_cached_bedrock = ResourceLoader.load("res://assets/voxels/materials/bedrock.tres") as VoxelMaterial
 	_cached_marble = ResourceLoader.load("res://assets/voxels/materials/marble.tres") as VoxelMaterial
 	_cached_stone_dark = ResourceLoader.load("res://assets/voxels/materials/stone_dark.tres") as VoxelMaterial
+	_cached_snow = ResourceLoader.load("res://assets/voxels/materials/snow.tres") as VoxelMaterial
 	# If any of the four .tres files is missing, the corresponding
 	# `_cached_*` will be null. _select_material_for_depth() already
 	# falls through to the next-best material, so missing files

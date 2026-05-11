@@ -194,6 +194,39 @@ class_name CopperIslesHeightmapGenerator
 
 
 # =============================================================
+# TIER 2 — altitude-driven snow line
+# =============================================================
+#
+# On non-cliff columns whose ground_y is above the snow line (with
+# a per-XZ jittered fade), override the top voxel to snow. Cliff
+# faces poke through snowcaps — exposed rock stays visible at the
+# peak's shoulders (Tier 1 fires before Tier 2).
+#
+# Order of precedence on the top voxel:
+#   1. Cliff override (Tier 1) — wins everywhere
+#   2. Snow line (Tier 2) — wins on non-cliff high columns
+#   3. Beach band (existing) — wins on non-cliff low columns
+#   4. Grass (default)
+
+## Voxel-Y above which non-cliff columns become snow. 12000 ≈ 2000 m
+## at the canonical 6 vox/m scale — matches the Copper Isles peak
+## band. Set to 30000+ to effectively disable on flatter worlds.
+@export_range(0, 30000, 1) var snow_line_voxels: int = 12000
+
+## Per-XZ random offset in voxels added to the snow line — breaks
+## up the razor-straight horizontal stripe. 30 voxels = ±5 m wobble.
+@export_range(0, 200, 1) var snow_line_jitter_voxels: int = 30
+
+## How fast the jitter pattern varies horizontally. Higher = coarser
+## patches of snow-vs-bare. 8 voxels ≈ 1.3 m patch radius.
+@export_range(1, 64, 1) var snow_line_jitter_block_size: int = 8
+
+## Hash seed so the snow-line wobble doesn't collide with the marble
+## jitter or ore-vein hash fields.
+@export_range(0, 99999, 1) var snow_line_seed: int = 2
+
+
+# =============================================================
 # WORLD FLOOR (must mirror CubicHeightmapGenerator + VoxelEditManager)
 # =============================================================
 
@@ -245,6 +278,7 @@ var _cached_sand: VoxelMaterial = null
 var _cached_bedrock: VoxelMaterial = null
 var _cached_marble: VoxelMaterial = null
 var _cached_stone_dark: VoxelMaterial = null
+var _cached_snow: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 
 
@@ -560,6 +594,7 @@ func _ensure_materials_cached() -> void:
 	_cached_bedrock = ResourceLoader.load("res://assets/voxels/materials/bedrock.tres") as VoxelMaterial
 	_cached_marble = ResourceLoader.load("res://assets/voxels/materials/marble.tres") as VoxelMaterial
 	_cached_stone_dark = ResourceLoader.load("res://assets/voxels/materials/stone_dark.tres") as VoxelMaterial
+	_cached_snow = ResourceLoader.load("res://assets/voxels/materials/snow.tres") as VoxelMaterial
 
 
 # =============================================================
@@ -619,6 +654,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if _cached_stone_dark != null:
 		stone_dark_id = _cached_stone_dark.material_id
 
+	# Tier 2 snow material (0 = not loaded → snow line silently disabled).
+	var snow_id: int = 0
+	if _cached_snow != null:
+		snow_id = _cached_snow.material_id
+
 	var grass_id: int = dirt_id
 	if _cached_grass != null:
 		grass_id = _cached_grass.material_id
@@ -652,6 +692,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var jitter_marble: float = marble_rare_threshold
 	var jitter_dark: float = marble_dark_threshold
 
+	# Tier 2 snow-line cache. Disabled when snow_id is 0 (snow.tres
+	# failed to load) — top voxel falls through to grass/sand.
+	var snow_block: int = maxi(1, snow_line_jitter_block_size)
+	var snow_jitter_amp: float = float(snow_line_jitter_voxels)
+	var snow_alt_voxels: int = snow_line_voxels
+	var run_snow_line: bool = snow_id != 0
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -672,9 +719,26 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			# matches Minecraft's `steep` rule (it bypasses both the
 			# grass and dirt layer when fired).
 			var col_dirt_band_end: int = dirt_band_end
-			if run_cliff_rule and _column_is_cliff(world_x, world_z, ground_y):
+			var column_is_cliff: bool = run_cliff_rule \
+				and _column_is_cliff(world_x, world_z, ground_y)
+			if column_is_cliff:
 				top_id = stone_id
 				col_dirt_band_end = grass_thick   # depth>=1 falls straight into stone band
+
+			# Tier 2: altitude-driven snow line. Wins on non-cliff
+			# columns whose ground_y is above (snow_alt + jitter). The
+			# jitter breaks the razor-straight horizontal line into a
+			# wavy patch boundary.
+			if run_snow_line and not column_is_cliff and ground_y >= snow_alt_voxels:
+				@warning_ignore("integer_division")
+				var sj: float = (VoxelGenerationMath.hash3(
+					world_x / snow_block,
+					0,
+					world_z / snow_block,
+					snow_line_seed,
+				) - 0.5) * 2.0 * snow_jitter_amp
+				if float(ground_y) >= float(snow_alt_voxels) + sj:
+					top_id = snow_id
 
 			var emit_water_here: bool = write_water and ground_y < sea_level_voxels
 
