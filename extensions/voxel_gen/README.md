@@ -14,29 +14,51 @@ integration works and Phase 1+ can proceed.
 
 ## Build prerequisites (Windows)
 
-1. **C++ compiler.** Choose one:
-   - **MSVC Build Tools 2019 or newer** (recommended). Download "Build Tools
-     for Visual Studio" from Microsoft and install the
-     **"Desktop development with C++"** workload. After install, open an
-     **"x64 Native Tools Command Prompt for VS"** before running `scons`.
-   - **MinGW-w64**. Install via `winget install MartinStorsjo.LLVM-MinGW` or
-     download a release from <https://github.com/niXman/mingw-builds-binaries/releases>.
-     Add the `bin/` directory to your `PATH`. Pass `use_mingw=yes` to
-     `scons`.
+1. **C++ compiler — LLVM-MinGW (UCRT) is the recommended path on this
+   project.** Smaller (~150 MB vs MSVC's 10+ GB), faster to install, and
+   produces UCRT-runtime binaries that match what Godot 4 ships as.
+
+   Install via winget (no admin needed):
+   ```powershell
+   winget install --id MartinStorsjo.LLVM-MinGW.UCRT \
+       --accept-package-agreements --accept-source-agreements --silent
+   ```
+
+   After install, the toolchain lands at (approximately)
+   `%LOCALAPPDATA%\Programs\llvm-mingw-<version>-ucrt-x86_64\`. Add its
+   `bin\` subdirectory to your `PATH`, or use the "Developer Command
+   Prompt" shortcut the installer drops if one appears.
+
+   Verify:
+   ```powershell
+   g++ --version    # should report "clang version ... (Rev..., Built by LLVM-MinGW)"
+   ```
+
+   *Alternative (not recommended unless you specifically want MSVC):*
+   MSVC Build Tools 2019+. Install the "Desktop development with C++"
+   workload and launch builds from an "x64 Native Tools Command Prompt
+   for VS 2022".
+
 2. **Python 3.8+** (already installed: 3.12.10).
-3. **SCons 4.x** (already installed via pip 4.10.1; if `scons` is not on
-   PATH, invoke as `python -m SCons`).
+3. **SCons 4.x** (already installed via `pip --user install scons`,
+   v4.10.1). Invoke as `python -m SCons` since the user-site `Scripts`
+   dir is typically not on `PATH`.
 
 ## Build commands
 
-From the repo root, in an MSVC "x64 Native Tools" prompt or a shell that
-has the chosen compiler on PATH:
+From a shell where the compiler is on `PATH`:
 
 ```sh
 cd extensions/voxel_gen
-python -m SCons platform=windows target=template_debug -j8
-python -m SCons platform=windows target=template_release -j8
+
+# Debug build (used by the editor and by F6/F5 runs)
+python -m SCons platform=windows target=template_debug use_mingw=yes -j8
+
+# Release build (used by exported projects). Skip until you actually export.
+python -m SCons platform=windows target=template_release use_mingw=yes -j8
 ```
+
+If you're on MSVC instead, drop `use_mingw=yes`.
 
 The first build takes a while because godot-cpp's binding library
 (`libgodot-cpp.windows.*.lib`) compiles from scratch. Subsequent builds

@@ -13,6 +13,16 @@
 # Local SCons options (per-developer compiler/path overrides)
 custom.py
 
+# Final build outputs in bin/ — each dev/CI rebuilds locally for now.
+# Revisit this policy if we add contributors who don't have a toolchain.
+bin/*.dll
+bin/*.so
+bin/*.dylib
+bin/*.a
+bin/*.lib
+bin/*.exp
+bin/*.framework/
+
 # godot-cpp builds its own binding artifacts inside its tree; ignore them
 godot-cpp/bin/
 godot-cpp/gen/
