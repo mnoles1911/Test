@@ -163,11 +163,15 @@ func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> vo
 	# spawn FallingVoxelCluster, etc. v1 placeholder behavior:
 	#   - Lay the visual flat (rotate forward 90°) so it reads as a
 	#     fallen body rather than vanishing
+	#   - Rotate the chest socket alongside the visual so any
+	#     embedded spears pivot with the body and end up pointing
+	#     up out of the corpse's back (face-down body)
 	#   - Darken the color and kill the eye glow so it looks dead
 	#   - Stop the wound drip
 	#   - Drop a Layer C blood pool at the kill site
 	# Enemy3D.die() handles the eventual queue_free via
-	# corpse_lifetime_seconds (default 60 s).
+	# corpse_lifetime_seconds (default 5 minutes) and spawns the
+	# corpse-interaction Area3D for E-press loot.
 	if _visual != null:
 		# Rotate -90° on X (faceplant forward), then sink so the
 		# now-horizontal box rests on the ground rather than floating
@@ -182,6 +186,20 @@ func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> vo
 		var corpse_mat: StandardMaterial3D = StandardMaterial3D.new()
 		corpse_mat.albedo_color = Color(0.18, 0.22, 0.14, 1.0)
 		_visual.material_override = corpse_mat
+	if _chest_socket != null:
+		# Rotate the chest socket the same -90° X so any spears
+		# parented inside it pivot with the body. The spear's local
+		# transform (relative to ChestSocket) doesn't change — only
+		# its global transform follows the rotation. A spear that
+		# was sticking horizontally through the chest now points
+		# vertically up from the corpse's back, like an arrow buried
+		# in a fallen body.
+		#
+		# Drop the socket to the chest height of the lying-down
+		# body (~0.5 m) so the spear ends up at the right place
+		# spatially.
+		_chest_socket.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		_chest_socket.position = Vector3(0.0, 0.5, 0.0)
 	if _eye_glow != null:
 		_eye_glow.visible = false
 	if get_node_or_null("/root/BloodVFX"):
@@ -193,3 +211,28 @@ func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> vo
 		BloodVFX.spawn_pool(global_position, size, grow)
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Goblin %s killed (%d dmg)" % [name, damage_at_kill])
+
+
+## Override of Enemy3D._loot_corpse. Walks the chest socket's child
+## list, returns any embedded ThrowableSpear instances to the
+## player's inventory, and frees them. Future: also deposit any
+## non-spear items the goblin was carrying (none in v1).
+##
+## Called by Enemy3D._physics_process when the player is in the
+## corpse interaction area and presses the "interact" action (E).
+## The base class guards against double-loot via _corpse_looted.
+func _loot_corpse() -> void:
+	if _chest_socket == null:
+		return
+	var spears_recovered: int = 0
+	# Iterate over a copy because we're going to free children
+	# during the loop.
+	var children := _chest_socket.get_children()
+	for child in children:
+		if child is ThrowableSpear:
+			child.queue_free()
+			spears_recovered += 1
+	if spears_recovered > 0 and get_node_or_null("/root/InventoryManager"):
+		InventoryManager.add_item("spear", spears_recovered)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Looted goblin %s — %d spear(s) recovered" % [name, spears_recovered])
