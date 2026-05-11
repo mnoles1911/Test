@@ -360,9 +360,140 @@ func _on_mp_connected_to_server() -> void:
 	_mode = MP_MODE.CLIENT
 	_add_peer(local_peer_id(), _local_display_name())
 	session_started.emit(_mode)
-	# In MP-1 we skip the handshake stage; promote straight to PLAYING.
-	# MP-6 will replace this with the actual hello/accept exchange.
+	# Move into HANDSHAKING; the handshake hello RPC drives the
+	# transition to PLAYING (or back to IDLE if host rejects).
+	_set_state(LIFECYCLE.HANDSHAKING)
+	_send_handshake_hello()
+
+
+# PR-A handshake — client sends hello with their CharacterRecord;
+# host runs CharacterValidator and replies with accept/reject.
+#
+# For this milestone the handshake is INFORMATIONAL — even on
+# validation failure the session proceeds (with default inventory
+# on the failing client). Hard rejection (host disconnects the
+# peer + shows reason) is a future polish item; it requires also
+# wiring a brief UI delay so the kicked client can see the reason
+# before the disconnect lands.
+
+const PROTOCOL_VERSION: int = 1
+
+func _send_handshake_hello() -> void:
+	# Wrap in a try-style guard — CharacterStore may not be loaded
+	# in degraded environments (test harnesses).
+	var record_dict: Dictionary = {}
+	if get_node_or_null("/root/CharacterStore") != null:
+		var rec = CharacterStore.get_active_character()
+		if rec != null:
+			# Serialize the record to a Dictionary for safe transport.
+			# Resources marshal natively in Godot 4 RPC, but Dictionary
+			# is more tolerant of future schema additions.
+			record_dict = _serialize_character(rec)
+	_rpc_handshake_hello.rpc_id(HOST_PEER_ID, PROTOCOL_VERSION, record_dict)
+
+
+# Client → host. Host validates and replies via _rpc_handshake_accept
+# or _rpc_handshake_reject. The hello is sent to peer 1 (host) only.
+@rpc("any_peer", "reliable")
+func _rpc_handshake_hello(protocol_v: int, record_dict: Dictionary) -> void:
+	if not is_host():
+		return
+	var sender: int = multiplayer.get_remote_sender_id()
+	if protocol_v != PROTOCOL_VERSION:
+		_rpc_handshake_reject.rpc_id(sender, "protocol mismatch: server=%d, client=%d" % [PROTOCOL_VERSION, protocol_v])
+		return
+	# Validate the character record. We deserialize back to a
+	# CharacterRecord, run the validator, and send back a sanitized
+	# Dictionary the client adopts.
+	var record = _deserialize_character(record_dict)
+	if record == null:
+		# Client didn't send a record (or it was corrupt). Accept
+		# without character data — they'll use InventoryManager defaults.
+		_rpc_handshake_accept.rpc_id(sender, {})
+		print("[MultiplayerManager] handshake_hello from %d: no character, accepting with defaults" % sender)
+		return
+	# Run validator (RefCounted, host-side only — no autoload).
+	var validator_class = load("res://scripts/net/CharacterValidator.gd")
+	var result: Dictionary = validator_class.validate(record, {})
+	if not bool(result.get("ok", false)):
+		_rpc_handshake_reject.rpc_id(sender, String(result.get("reason", "validation failed")))
+		print("[MultiplayerManager] handshake_hello from %d REJECTED: %s" % [sender, result.get("reason", "?")])
+		return
+	# Accept with the sanitized record so the client can adopt any
+	# clamps the validator applied (over-cap skills, illegal items).
+	var sanitized = result.get("sanitized", record)
+	_rpc_handshake_accept.rpc_id(sender, _serialize_character(sanitized))
+	if (result.get("warnings", PackedStringArray()) as PackedStringArray).size() > 0:
+		print("[MultiplayerManager] handshake_hello from %d accepted with warnings: %s" % [sender, result["warnings"]])
+	else:
+		print("[MultiplayerManager] handshake_hello from %d accepted clean" % sender)
+
+
+# Host → client. Carries the sanitized record back to the client so
+# they can adopt the validator's clamps. Empty dict means accept
+# with defaults (no character data sent).
+@rpc("authority", "reliable")
+func _rpc_handshake_accept(sanitized_record: Dictionary) -> void:
+	if not sanitized_record.is_empty() and get_node_or_null("/root/CharacterStore") != null:
+		var adopted = _deserialize_character(sanitized_record)
+		if adopted != null:
+			CharacterStore.select_character(adopted)
+			if get_node_or_null("/root/InventoryManager") != null:
+				InventoryManager.load_from_character_record(adopted)
 	_set_state(LIFECYCLE.PLAYING)
+
+
+# Host → client. Validation failed; PR-A leaves the session running
+# (just logs). Future: surface to UI + leave_session.
+@rpc("authority", "reliable")
+func _rpc_handshake_reject(reason: String) -> void:
+	push_warning("[MultiplayerManager] host rejected handshake: %s" % reason)
+	# PR-A informational behavior: keep playing with default inventory.
+	# A future polish PR adds a UI hook + leave_session on hard reject.
+	_set_state(LIFECYCLE.PLAYING)
+
+
+# Serialize CharacterRecord → Dictionary for transport. Mirrors
+# CharacterRecord's @export schema. Future schema_version bumps
+# add fields here without breaking older clients (extra keys
+# tolerated by _deserialize_character via .get).
+func _serialize_character(rec) -> Dictionary:
+	return {
+		"schema_version":   rec.schema_version,
+		"steam_id":         rec.steam_id,
+		"character_id":     rec.character_id,
+		"display_name":     rec.display_name,
+		"created_unix":     rec.created_unix,
+		"last_played_unix": rec.last_played_unix,
+		"appearance":       rec.appearance,
+		"skill_levels":     rec.skill_levels,
+		"perks":            rec.perks,
+		"inventory_items":  rec.inventory_items,
+		"equipped":         rec.equipped,
+		"gold":             rec.gold,
+		"play_time_seconds": rec.play_time_seconds,
+	}
+
+
+func _deserialize_character(d: Dictionary):
+	if d.is_empty():
+		return null
+	var record_class = load("res://scripts/net/CharacterRecord.gd")
+	var rec = record_class.new()
+	rec.schema_version    = int(d.get("schema_version", 1))
+	rec.steam_id          = int(d.get("steam_id", 0))
+	rec.character_id      = String(d.get("character_id", ""))
+	rec.display_name      = String(d.get("display_name", "Wanderer"))
+	rec.created_unix      = int(d.get("created_unix", 0))
+	rec.last_played_unix  = int(d.get("last_played_unix", 0))
+	rec.appearance        = d.get("appearance", {})
+	rec.skill_levels      = d.get("skill_levels", {})
+	rec.perks             = d.get("perks", PackedStringArray())
+	rec.inventory_items   = d.get("inventory_items", [])
+	rec.equipped          = d.get("equipped", {})
+	rec.gold              = int(d.get("gold", 0))
+	rec.play_time_seconds = int(d.get("play_time_seconds", 0))
+	return rec
 
 
 func _on_mp_connection_failed() -> void:

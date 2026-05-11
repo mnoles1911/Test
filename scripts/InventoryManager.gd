@@ -432,3 +432,75 @@ func reset_to_defaults() -> void:
 	set_quick_slot(1, "iron_pickaxe")
 	set_quick_slot(2, "iron_axe")
 	set_quick_slot(3, "powder_charge")
+
+
+# =============================================================
+# MP-6 RUNTIME — CharacterRecord bridge (PR A polish)
+# =============================================================
+# Loads + saves player state into a portable CharacterRecord.
+# Called by the session lifecycle (CharacterStore on host/join,
+# autosave timer, leave_session).
+#
+# Why direct dict access here:
+#   _inventory, _coin_balance, _equipped are private state owned
+#   by this autoload. The bridge methods are the documented seam
+#   between in-memory game state and the persisted CharacterRecord.
+#   External callers should still use add_item / spend_coin / etc.
+
+
+## Populate this manager from a CharacterRecord. Overwrites all
+## current inventory/coin/equipment state. Quick-slot bindings are
+## restored from saved equipped weapon when present.
+##
+## Called when a session starts and the active character is loaded
+## (see CharacterStore.get_active_character).
+func load_from_character_record(record) -> void:
+	if record == null:
+		push_warning("[InventoryManager] load_from_character_record: null record, skipping")
+		return
+	# Rebuild _inventory from inventory_items[]
+	_inventory.clear()
+	for entry in record.inventory_items:
+		if not (entry is Dictionary):
+			continue
+		var e: Dictionary = entry
+		var iid: String = String(e.get("id", ""))
+		var qty: int = int(e.get("qty", 0))
+		if iid.is_empty() or qty <= 0:
+			continue
+		_inventory[iid] = qty
+	# Coin
+	_coin_balance = max(0, int(record.gold))
+	coin_changed.emit(_coin_balance)
+	# Equipment — record uses our slot names directly.
+	for slot in _equipped.keys():
+		_equipped[slot] = String(record.equipped.get(slot, ""))
+	print("[InventoryManager] loaded from CharacterRecord: %d items, %d gold, equipped=%s" % [
+		_inventory.size(), _coin_balance, _equipped,
+	])
+
+
+## Write the current in-memory state back into a CharacterRecord.
+## Mutates the passed record in place. last_played_unix is bumped
+## by CharacterStore.save_character.
+##
+## Skill levels and perks are NOT yet touched — InventoryManager
+## doesn't own those. The skill-progression refactor that wires
+## learn-by-doing into the record is a future task.
+func save_to_character_record(record) -> void:
+	if record == null:
+		push_warning("[InventoryManager] save_to_character_record: null record, skipping")
+		return
+	# Serialize _inventory back to the flat array shape the record
+	# uses on disk.
+	var entries: Array = []
+	for iid in _inventory.keys():
+		entries.append({
+			"id": String(iid),
+			"qty": int(_inventory[iid]),
+			"meta": {},  # MP-6 v1: no per-item meta. Future smithed
+			             # weapons / signed potions slot into meta.
+		})
+	record.inventory_items = entries
+	record.gold = _coin_balance
+	record.equipped = _equipped.duplicate()

@@ -71,9 +71,30 @@ func _ready() -> void:
 	# group convention".
 	add_to_group("dev_scene")
 	_steam_available = SteamP2PBackend.new().is_available()
+	# PR-A: auto-resolve / create the local character so host_session
+	# and join_session ship a valid CharacterRecord through the
+	# handshake. A proper CharacterSelect roster lands when MainMenu
+	# integration is built; for the dev path, "Wanderer" + the local
+	# Steam ID (or DEV_FALLBACK_STEAM_ID) is fine.
+	_ensure_active_character()
 	_build_ui()
 	_wire_signals()
 	_refresh_status()
+
+
+func _ensure_active_character() -> void:
+	if get_node_or_null("/root/CharacterStore") == null:
+		return
+	if CharacterStore.get_active_character() != null:
+		return
+	var local_sid: int = CharacterStore.resolve_local_steam_id()
+	var existing = CharacterStore.load_character(local_sid)
+	if existing != null:
+		CharacterStore.select_character(existing)
+		print("[NetTest] using existing local character '%s' (steam_id=%d)" % [existing.display_name, local_sid])
+		return
+	var fresh = CharacterStore.create_character(local_sid, "Wanderer")
+	print("[NetTest] auto-created character '%s' (steam_id=%d)" % [fresh.display_name, local_sid])
 
 
 func _input(event: InputEvent) -> void:
@@ -350,6 +371,16 @@ func _refresh_status() -> void:
 		MultiplayerManager.LIFECYCLE.keys()[MultiplayerManager.lifecycle()],
 	])
 	lines.append("Local peer id: %d" % MultiplayerManager.local_peer_id())
+	# PR-A — show the active character if CharacterStore is loaded.
+	if get_node_or_null("/root/CharacterStore") != null:
+		var active = CharacterStore.get_active_character()
+		if active != null:
+			lines.append("Character: %s (steam_id %d, %d gold, %d items)" % [
+				active.display_name, active.steam_id, active.gold,
+				active.inventory_items.size(),
+			])
+		else:
+			lines.append("Character: (none — pick one before host/join)")
 	_status_label.text = "\n".join(lines)
 
 	# Steam buttons greyed out if Steam backend isn't available.
