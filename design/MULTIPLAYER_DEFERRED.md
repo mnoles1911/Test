@@ -17,23 +17,26 @@ description and prune the entry here.
 
 ## Deferred (tracked — likely to land in a future PR)
 
-### Prior-session sqlite delta streaming
-- **Where it shows up:** Late-join voxel state. The PR-E session log
-  covers edits made WHILE the host has been in a session. Edits
-  loaded from `voxel_deltas.sqlite` at world boot (i.e., a host who
-  carved 10000 voxels yesterday, saved, and re-launched today) are
-  not in the log.
-- **Why deferred:** Requires a worker-thread sqlite reader, per-
-  frame N-write throttle, and a progress UI on the joining guest.
-  Each piece is tractable but together they're a meaningful
-  subsystem with its own design questions (compressed payload vs.
-  raw delta stream, resumability if the guest disconnects mid-replay).
-- **Effect today:** A guest joining a freshly-launched session with
-  no carving sees the procedural baseline (same as host). A guest
-  joining a re-loaded session with pre-existing edits sees those
-  edits MISSING.
-- **Tracked:** known UX gap; documented in `CatchupCoordinator.gd`
-  header.
+### Prior-session sqlite delta streaming — **CLOSED in PR-K**
+- **Status:** Closed. PR-K's `start_prior_session_extraction` walks
+  `_edited_chunks` and synthesizes bulk cmds from `VoxelTool` reads
+  on first peer_joined. Throttled (4 chunks/frame default) so large
+  saves extract without main-thread stalls. Effect today: regardless
+  of whether host's edits came from this session or a saved-world
+  load, joining guests see them stream in.
+- **Trade-offs from the original plan:** Instead of streaming sqlite
+  blobs directly (the plan's worker-thread reader), PR-K reads via
+  `VoxelTool` on the main thread, throttled. Simpler and sidesteps
+  Zylann's stream internals; cost is the throttle latency (~3s for
+  1000 chunks). If multi-tens-of-thousands-of-chunks saves prove
+  too slow, the original sqlite path is still tractable.
+- **Edge case still open:** chunks that aren't currently streamed
+  into LOD0 at the moment the extractor runs aren't included
+  (VoxelTool returns 0 for non-resident chunks). For the typical
+  use case (host loads world, guest joins minutes later — chunks
+  near host are resident) this is fine; far-away edited chunks the
+  host hasn't visited yet won't be in the replay until the host
+  walks there.
 
 ### FallingVoxelCluster MultiplayerSpawner integration
 - **Where it shows up:** In-flight cluster visuals on guest peers.
