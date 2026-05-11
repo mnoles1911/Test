@@ -245,11 +245,10 @@ func kick_peer(peer_id: int, reason: String = "") -> bool:
 	return false
 
 
-## Reads the round-trip latency to a peer if the underlying transport
-## supports it. ENetMultiplayerPeer exposes
-## `get_peer().peer.get_packet_loss_pct()` and timing through the
-## ENetConnection; GodotSteam's SteamMultiplayerPeer has a
-## `get_peer_latency` method. Returns -1 if unknown.
+## Reads the round-trip latency to a peer. SteamMultiplayerPeer has
+## a native get_peer_latency; ENet doesn't, so we maintain our own
+## ping cache from a timestamped RPC pair (see _rpc_ping / _rpc_pong
+## below). Returns -1 if no measurement is available yet.
 ##
 ## Used by MPDevMenu's per-peer ping display.
 func get_peer_latency_ms(peer_id: int) -> int:
@@ -258,14 +257,76 @@ func get_peer_latency_ms(peer_id: int) -> int:
 	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
 	if peer == null:
 		return -1
-	# GodotSteam SteamMultiplayerPeer
+	# GodotSteam SteamMultiplayerPeer — native ping.
 	if peer.has_method("get_peer_latency"):
 		return int(peer.call("get_peer_latency", peer_id))
-	# Generic ENet path — return -1; MP-8 doesn't add a custom
-	# heartbeat-RPC ping mechanism for the ENet backend yet, that's
-	# a polish item. A future RPC-based ping (send timestamp, peer
-	# echoes, compute delta) would work for any backend.
+	# ENet path — read from our own cache populated by _rpc_pong.
+	if _peer_latency_cache.has(peer_id):
+		return int(_peer_latency_cache[peer_id])
 	return -1
+
+
+# =============================================================
+# PR-D — ENet ping RPC (for any backend without native latency)
+# =============================================================
+#
+# Sends a timestamped ping to every remote peer at PING_INTERVAL.
+# They echo it back via _rpc_pong; we compute the round-trip in
+# microseconds → milliseconds and cache by peer_id. Unreliable
+# channel — packet drops just mean we keep last measurement until
+# the next interval.
+
+const PING_INTERVAL_SECONDS: float = 2.0
+
+var _peer_latency_cache: Dictionary = {}  # peer_id -> ping_ms
+var _ping_accumulator: float = 0.0
+
+
+func _ping_tick(delta: float) -> void:
+	# Driven from _process below. Pings every PING_INTERVAL_SECONDS
+	# when in a session AND we have remote peers to ping.
+	if get_node_or_null("/root/NetTransport") == null:
+		return
+	if is_offline():
+		return
+	# Skip native-latency backends — pinging them would waste packets.
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if peer != null and peer.has_method("get_peer_latency"):
+		return
+	_ping_accumulator += delta
+	if _ping_accumulator < PING_INTERVAL_SECONDS:
+		return
+	_ping_accumulator = 0.0
+	var now_us: int = Time.get_ticks_usec()
+	for pid in peers.keys():
+		var p: int = int(pid)
+		if p == local_peer_id():
+			continue
+		_rpc_ping.rpc_id(p, now_us)
+
+
+func _process(delta: float) -> void:
+	_ping_tick(delta)
+
+
+@rpc("any_peer", "unreliable")
+func _rpc_ping(sender_timestamp_us: int) -> void:
+	# Echo it straight back to the caller. The receiver's clock
+	# doesn't enter into the calculation — we measure round-trip
+	# entirely with the originator's clock.
+	var sender: int = multiplayer.get_remote_sender_id()
+	_rpc_pong.rpc_id(sender, sender_timestamp_us)
+
+
+@rpc("any_peer", "unreliable")
+func _rpc_pong(originator_timestamp_us: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	var now_us: int = Time.get_ticks_usec()
+	var rtt_ms: int = (now_us - originator_timestamp_us) / 1000
+	if rtt_ms < 0:
+		# Defensive — clock can wrap or be sampled before send.
+		return
+	_peer_latency_cache[sender] = rtt_ms
 
 
 # MP-8 RPC — host sends a courtesy disconnect-reason to a kicked peer
@@ -520,6 +581,9 @@ func _add_peer(peer_id: int, display_name: String) -> void:
 
 func _remove_peer(peer_id: int) -> void:
 	peers.erase(peer_id)
+	# PR-D — clean up our ping cache so stale measurements don't
+	# linger for re-used peer_ids in a future session.
+	_peer_latency_cache.erase(peer_id)
 
 
 func _clear_peers() -> void:

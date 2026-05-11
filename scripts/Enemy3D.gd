@@ -320,6 +320,61 @@ func take_damage(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
 	_rpc_apply_damage_visual.rpc(amount, hit_dir, hit_point)
 
 
+# PR-D late-join state push. Host calls this on every alive (and
+# recently-dead) enemy when a new peer joins so the joining guest
+# sees the current visual state without waiting for the next host-
+# side change to fire the MultiplayerSynchronizer.
+#
+# CatchupCoordinator.on_peer_joined iterates Enemy3D nodes in the
+# "enemy" group and calls push_state_to_peer(peer_id) on each.
+#
+# Skips guest callers (only authority can push state). Argument is
+# the joining peer's id; we rpc_id to them specifically rather than
+# broadcasting, so the other already-present peers don't replay
+# their corpse-lay timer + corpse-interact-area spawn.
+func push_state_to_peer(peer_id: int) -> void:
+	if not is_multiplayer_authority():
+		return
+	_rpc_apply_snapshot.rpc_id(peer_id, {
+		"global_position": global_position,
+		"global_rotation": global_rotation,
+		"current_state":   int(current_state),
+		"_is_dead":        _is_dead,
+		"health":          health,
+	})
+
+
+# PR-D — receive a late-join snapshot. Apply state defensively;
+# tolerate missing keys. If _is_dead transitions false → true here
+# (i.e., the joining guest is learning about a host-side kill that
+# happened before they joined), trigger the death visual locally so
+# the corpse pose + interaction area exist without waiting for a
+# new host event.
+@rpc("authority", "reliable")
+func _rpc_apply_snapshot(snap: Dictionary) -> void:
+	if "global_position" in snap:
+		global_position = snap["global_position"]
+	if "global_rotation" in snap:
+		global_rotation = snap["global_rotation"]
+	if "current_state" in snap:
+		current_state = int(snap["current_state"])
+	if "health" in snap:
+		health = int(snap["health"])
+	# Death handling: if host says dead but we're still alive locally,
+	# replay the death visual so the corpse pose lands. Hit dir +
+	# point aren't available retroactively; use neutral defaults.
+	if bool(snap.get("_is_dead", false)) and not _is_dead:
+		_is_dead = true
+		velocity = Vector3.ZERO
+		_on_died(0, Vector3.FORWARD, global_position)
+		_spawn_corpse_interact_area()
+		# No corpse_lifetime timer here — host's timer fires
+		# locally on host, and a despawn replicates via future
+		# MultiplayerSpawner work; until then guest's corpse may
+		# persist past host's removal (visible-but-not-interactable
+		# stale geometry). Known gap.
+
+
 # MP-4 RPC — guest forwards a damage request to the enemy's authority.
 @rpc("any_peer", "reliable")
 func _rpc_request_damage(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:

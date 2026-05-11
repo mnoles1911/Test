@@ -106,6 +106,16 @@ func _on_peer_joined(peer_id: int) -> void:
 	print("[CatchupCoordinator] sent catchup snapshot to peer %d: %s" % [
 		peer_id, _summarize_snapshot(snapshot),
 	])
+	# PR-D — push current state of every alive (and recently-dead)
+	# enemy to the joining peer. Each Enemy3D handles its own RPC
+	# via push_state_to_peer.
+	var enemy_count: int = 0
+	for n in get_tree().get_nodes_in_group("enemy"):
+		if n.has_method("push_state_to_peer"):
+			n.push_state_to_peer(peer_id)
+			enemy_count += 1
+	if enemy_count > 0:
+		print("[CatchupCoordinator] pushed snapshot for %d enemies to peer %d" % [enemy_count, peer_id])
 
 
 func _build_snapshot() -> Dictionary:
