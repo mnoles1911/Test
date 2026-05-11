@@ -91,6 +91,11 @@ const ITEM_REGISTRY: Dictionary = {
 	# intact inside settlements).
 	"powder_charge":   {"name": "Powder Charge",   "type": "throwable", "description": "A linen-wrapped charge of saltpeter and sulphur. Loud. Bites stone.",     "voxel_aoe_radius": 0.75, "combat_damage": 40},
 	"sappers_bundle":  {"name": "Sapper's Bundle", "type": "throwable", "description": "Multiple charges bound together. Reserved for breaching, not for fights.", "voxel_aoe_radius": 1.5,  "combat_damage": 80},
+	# Single-target throwable. No voxel AOE (set 0.0 so ThrowableHandler's
+	# spawn-time push doesn't try to override an irrelevant field). The
+	# combat_damage here is the LIGHT-throw value; charged throws scale
+	# this up at the input layer in Phase 3.
+	"spear":           {"name": "Throwing Spear",  "type": "throwable", "description": "A wood-shafted iron spear, balanced for the throw. Sticks where it lands.",   "voxel_aoe_radius": 0.0,  "combat_damage": 30},
 
 	# Lockpicks — consumable tools for the lockpicking minigame.
 	# One pick is consumed per failed attempt (snap). Successful picks and
@@ -410,6 +415,13 @@ func reset_to_defaults() -> void:
 	# which needs a shovel; pickaxe only breaks stone. Player can swap
 	# via number keys 1-4 (quick slots, see below) once equipped.
 	add_item("powder_charge", 5)
+	add_item("spear", 5)
+	# Spear is given here so it's available in any scene that loads
+	# the autoload, but NOT bound to a quick slot — the quick-slot bar
+	# is capped at 4 entries (QUICK_SLOT_COUNT) and the existing tool
+	# loadout fills it. Combat-focused scenes (CombatTest, future
+	# combat encounters) equip the spear directly via
+	# InventoryManager.equip("weapon", "spear") in their bootstrap.
 
 	# Default quick-slot bindings — number keys 1-4 swap to these tools.
 	# Player can rebind via right-click in the HUD (Phase 2). Order

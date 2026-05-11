@@ -1,0 +1,70 @@
+[gd_scene load_steps=6 format=3 uid="uid://dbloodburst01"]
+
+; BloodBurst.tscn — Layer A blood spray.
+;
+; Pre-instantiated by BloodVFX autoload at scene-load (12 in the pool).
+; BloodVFX.spawn_burst() picks one from the pool, positions it at the
+; impact point, rotates it so its -Z axis points along the impact
+; direction, and calls restart() to emit.
+;
+; Particle direction is Vector3(0, 0, -1) — particles travel along the
+; node's local -Z, which after look_at_from_position aligns with the
+; world impact direction. Cone spread is 40° so the spray reads as
+; directional but not a laser.
+;
+; Visual: ~3 cm cube boxes (BoxMesh size 0.03), saturated red fading
+; to dark red as they age. Gravity pulls them down. Tumble in flight
+; via random angular velocity.
+;
+; The "base_amount" metadata key is read by BloodVFX.spawn_burst() to
+; scale particle count by intensity (light hit → 0.5×, charged kill →
+; 2×). The amount property here is the intensity=1.0 baseline.
+
+[sub_resource type="Gradient" id="Gradient_blood"]
+; Color over particle lifetime: bright arterial red → dark red →
+; nearly-black with full alpha at the end (the engine handles the
+; fade-out via the alpha curve below, not via this gradient's alpha).
+offsets = PackedFloat32Array(0.0, 0.5, 1.0)
+colors = PackedColorArray(0.78, 0.08, 0.12, 1, 0.43, 0.03, 0.06, 1, 0.23, 0.02, 0.03, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_blood"]
+gradient = SubResource("Gradient_blood")
+
+[sub_resource type="Curve" id="Curve_alpha_fade"]
+; Alpha curve: full opacity for the first 70% of life, then linear
+; fade to 0 over the last 30%. Stops particles popping out abruptly.
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1.0, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_burst"]
+emission_shape = 1
+emission_sphere_radius = 0.05
+direction = Vector3(0, 0, -1)
+spread = 40.0
+flatness = 0.0
+initial_velocity_min = 4.0
+initial_velocity_max = 8.0
+gravity = Vector3(0, -9.8, 0)
+angular_velocity_min = -180.0
+angular_velocity_max = 180.0
+scale_min = 0.8
+scale_max = 1.2
+color_ramp = SubResource("GradientTexture1D_blood")
+alpha_curve = SubResource("Curve_alpha_fade")
+
+[sub_resource type="BoxMesh" id="BoxMesh_blood_cube"]
+; ~3 cm chunky blood cube. Reads as voxel-scale blood — finer than
+; character voxels (5.5 cm) but still respects the cubic aesthetic.
+size = Vector3(0.03, 0.03, 0.03)
+
+[node name="BloodBurst" type="GPUParticles3D"]
+emitting = false
+amount = 80
+lifetime = 1.5
+one_shot = true
+explosiveness = 1.0
+process_material = SubResource("ParticleProcessMaterial_burst")
+draw_pass_1 = SubResource("BoxMesh_blood_cube")
+metadata/base_amount = 80

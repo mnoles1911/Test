@@ -1,0 +1,53 @@
+[gd_scene load_steps=4 format=3 uid="uid://dblooddrip01"]
+
+; BloodDrip.tscn — Layer B continuous wound drip.
+;
+; Instantiated on-demand by BloodVFX.start_drip(target). Reparented
+; to the target's ChestSocket (or to target itself if no socket) so
+; the drip tracks the enemy's movement.
+;
+; Continuous emit (one_shot = false), low rate. Particles spawn at
+; the socket position, fall straight down with gravity. Color stays
+; dark red — no fade-to-bright-blood like the burst, because this
+; is venous bleed-out, not arterial spray.
+;
+; BloodVFX.stop_drip() sets emitting = false and frees the node after
+; one full lifetime so in-flight particles finish naturally.
+
+[sub_resource type="Gradient" id="Gradient_drip"]
+; Stays dark red across lifetime — no color animation. The alpha
+; curve below handles the visual fade.
+offsets = PackedFloat32Array(0.0, 1.0)
+colors = PackedColorArray(0.45, 0.04, 0.06, 1, 0.35, 0.03, 0.05, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_drip"]
+gradient = SubResource("Gradient_drip")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_drip"]
+emission_shape = 1
+emission_sphere_radius = 0.02
+direction = Vector3(0, -1, 0)
+spread = 8.0
+flatness = 0.0
+initial_velocity_min = 0.5
+initial_velocity_max = 1.5
+gravity = Vector3(0, -9.8, 0)
+angular_velocity_min = -90.0
+angular_velocity_max = 90.0
+scale_min = 0.6
+scale_max = 0.9
+color_ramp = SubResource("GradientTexture1D_drip")
+
+[sub_resource type="BoxMesh" id="BoxMesh_drip_cube"]
+; Slightly smaller than the burst cubes — a wound drip is finer
+; than an arterial spray.
+size = Vector3(0.025, 0.025, 0.025)
+
+[node name="BloodDrip" type="GPUParticles3D"]
+emitting = false
+amount = 8
+lifetime = 1.2
+one_shot = false
+explosiveness = 0.0
+process_material = SubResource("ParticleProcessMaterial_drip")
+draw_pass_1 = SubResource("BoxMesh_drip_cube")
