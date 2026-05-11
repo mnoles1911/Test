@@ -461,11 +461,37 @@ func _rpc_apply_death_visual(damage_at_kill: int, hit_dir: Vector3, hit_point: V
 	# root's origin which is also the corpse's center.
 	_spawn_corpse_interact_area()
 	# Auto-free after a long delay so dead enemies don't accumulate
-	# forever in long sessions, but stay visible long enough that the
-	# player can see the consequence of their kill (and return to
-	# loot). Dev arena Reset bypasses this timer.
-	var timer := get_tree().create_timer(corpse_lifetime_seconds)
-	timer.timeout.connect(queue_free)
+	# forever in long sessions, but stay visible long enough that
+	# the player can see the consequence of their kill (and return
+	# to loot). Dev arena Reset bypasses this timer.
+	#
+	# PR-I — only the authority starts the timer. When it fires,
+	# authority RPCs _rpc_despawn_corpse to all guests so they
+	# queue_free in sync. This avoids per-peer timer races (each
+	# peer would start at slightly different wall-times and could
+	# attempt to queue_free a node the host's RPC just deleted).
+	# In OFFLINE the authority gate passes for the local Player3D
+	# tree (is_multiplayer_authority returns true), so the existing
+	# single-player flow is preserved.
+	if is_multiplayer_authority():
+		var timer := get_tree().create_timer(corpse_lifetime_seconds)
+		timer.timeout.connect(_on_corpse_lifetime_expired)
+
+
+func _on_corpse_lifetime_expired() -> void:
+	# Authority-only entry. Broadcast despawn first, then free
+	# locally via call_local.
+	if get_node_or_null("/root/MultiplayerManager") != null \
+			and not MultiplayerManager.is_offline() \
+			and is_multiplayer_authority():
+		_rpc_despawn_corpse.rpc()
+	queue_free()
+
+
+# PR-I — receive a despawn directive from authority. Idempotent.
+@rpc("authority", "reliable")
+func _rpc_despawn_corpse() -> void:
+	queue_free()
 
 
 # =============================================================
