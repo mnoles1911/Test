@@ -297,11 +297,17 @@ func _on_leave_pressed() -> void:
 # =============================================================
 
 func _on_session_started(mode: int) -> void:
-	_log("session_started: mode=%s  backend=%s" % [
+	_log("session_started: mode=%s  backend=%s — entering NetTestWorld" % [
 		MultiplayerManager.MP_MODE.keys()[mode],
 		NetTransport.backend_name(),
 	])
 	_refresh_status()
+	# As of MP-2: as soon as we have a session, transition into the
+	# acceptance world so both peers can spawn players and walk around.
+	# change_scene_to_file is deferred to next frame end; the
+	# multiplayer_peer + MultiplayerManager state persists across
+	# scene swaps because they live on autoloads / SceneTree.
+	get_tree().change_scene_to_file("res://scenes/_dev/NetTestWorld.tscn")
 
 
 func _on_session_failed(reason: String) -> void:

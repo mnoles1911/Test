@@ -354,6 +354,13 @@ func _recalculate_movement_stats() -> void:
 # =============================================================
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Input gate — only the peer who owns this Player3D may drive it.
+	# In single-player (no multiplayer_peer set) is_multiplayer_authority()
+	# returns true so the existing single-player flow is untouched.
+	# See _can_take_input() below for why this exists even though we
+	# never spawn Player3D for a non-authority peer in practice.
+	if not _can_take_input():
+		return
 	if event.is_action_pressed("crouch"):
 		# In water, crouch is reused as the dive control (held). Skip
 		# the toggle so pressing crouch underwater doesn't pollute
@@ -366,11 +373,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			_is_sprinting = false
 
 
+# Authority gate used by _unhandled_input and _physics_process.
+#
+# Returns true when this Player3D instance is owned by the local peer
+# (or no multiplayer session is active — see CLAUDE.md "OFFLINE-IS-HOST
+# POLICY"). This is the single source of truth for "do I take input" so
+# we don't sprinkle is_multiplayer_authority() checks across every Input
+# read site.
+#
+# In normal MP-2 deployment, Player3D is only ever instantiated for the
+# local peer; RemotePlayer.tscn is used for remote peers. So this
+# check is defensive — if authority is ever reassigned at runtime (host
+# migration in a future milestone, or a buggy spawn path), it prevents
+# accidental input-driven motion on a non-owned body.
+func _can_take_input() -> bool:
+	return is_multiplayer_authority()
+
+
 # =============================================================
 # PHYSICS PROCESS
 # =============================================================
 
 func _physics_process(delta: float) -> void:
+	# Same gate as _unhandled_input. A non-authority Player3D should
+	# never receive physics updates — its position is driven by the
+	# MultiplayerSynchronizer in normal deployment, and in practice
+	# we use RemotePlayer.tscn for remote peers anyway. Defensive.
+	if not _can_take_input():
+		return
 	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
 	# get_node_or_null guard for the case Player3D runs outside the main
 	# game (e.g. test harness without the autoload registered).

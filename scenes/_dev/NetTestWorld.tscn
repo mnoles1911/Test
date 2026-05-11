@@ -1,0 +1,84 @@
+[gd_scene load_steps=8 format=3 uid="uid://dnettestworldmp2"]
+
+; NetTestWorld.tscn — MP-2 acceptance scene.
+;
+; A flat dev arena: 50 m × 50 m grey plane, directional sun, ambient
+; sky, and a PlayerSpawner that listens to MultiplayerManager. When
+; this scene loads on each peer, the spawner instantiates one Player3D
+; for the local peer and one RemotePlayer for each connected remote
+; peer.
+;
+; The host transitions here from scenes/_dev/NetTest.tscn the instant
+; their lobby is ready. The guest transitions here the instant they
+; connect. Both end up in this same scene, both spawn into it, and
+; both see each other's puppet walk around.
+;
+; Joins the "dev_scene" group via NetTestWorldBootstrap.gd so HUDOverlay
+; / PauseMenu / JournalUI / SaveNotification stay dormant.
+;
+; PATH CONTRACT: every peer's spawner adds children at
+; `NetTestWorld/Players/PlayerSpawner/Player_<peer_id>`. Identical
+; paths across peers are required for MultiplayerSynchronizer to
+; route packets correctly.
+
+[ext_resource type="Script" path="res://scripts/_dev/NetTestWorldBootstrap.gd" id="1_bootstrap"]
+[ext_resource type="Script" path="res://scripts/net/PlayerSpawner.gd" id="2_spawner"]
+[ext_resource type="PackedScene" path="res://scenes/Player3D.tscn" id="3_player_local"]
+[ext_resource type="PackedScene" path="res://scenes/player/RemotePlayer.tscn" id="4_player_remote"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_top_color = Color(0.42, 0.58, 0.78, 1)
+sky_horizon_color = Color(0.75, 0.78, 0.82, 1)
+ground_bottom_color = Color(0.2, 0.22, 0.26, 1)
+ground_horizon_color = Color(0.55, 0.56, 0.58, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+ambient_light_color = Color(0.9, 0.9, 1, 1)
+ambient_light_energy = 0.4
+fog_enabled = true
+fog_light_color = Color(0.55, 0.58, 0.62, 1)
+fog_density = 0.002
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+size = Vector2(50, 50)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.35, 0.4, 0.34, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(50, 0.1, 50)
+
+[node name="NetTestWorld" type="Node3D"]
+script = ExtResource("1_bootstrap")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 12, 0)
+light_energy = 1.1
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="GroundMesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("PlaneMesh_ground")
+surface_material_override/0 = SubResource("StandardMaterial3D_ground")
+
+[node name="GroundCollision" type="CollisionShape3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+shape = SubResource("BoxShape3D_ground")
+
+[node name="Players" type="Node3D" parent="."]
+
+[node name="PlayerSpawner" type="Node" parent="Players"]
+script = ExtResource("2_spawner")
+local_player_scene = ExtResource("3_player_local")
+remote_player_scene = ExtResource("4_player_remote")
+spawn_point = Vector3(0, 1, 0)

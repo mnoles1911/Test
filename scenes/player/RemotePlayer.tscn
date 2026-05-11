@@ -1,0 +1,62 @@
+[gd_scene load_steps=5 format=3 uid="uid://dremoteplayermp2"]
+
+; RemotePlayer.tscn — lightweight visual puppet for non-local peers.
+;
+; WHAT THIS IS (plain English):
+;
+;   Every peer's machine maintains one node per player in the session.
+;   For the LOCAL peer, that node is Player3D.tscn (full controller,
+;   camera, input handlers). For REMOTE peers, that node is THIS scene
+;   — just a visible mesh + collision + sync, no camera, no input,
+;   no script.
+;
+;   The MultiplayerSynchronizer below uses the shared
+;   assets/net/player_replication.tres resource. The remote peer
+;   broadcasts their global_position + rotation; we receive and apply
+;   to this puppet. No interpolation in MP-2 — just snap to whatever
+;   arrives. Movement feels acceptable at 20Hz on local LAN; if it
+;   feels jittery in practice we'll add a Tween-based smoother in
+;   MP-8 polish.
+;
+; AUTHORITY:
+;   set_multiplayer_authority(peer_id) is called by PlayerSpawner.gd
+;   right after instantiate, before add_child. That tells Godot which
+;   peer is allowed to broadcast updates for this node — anyone else
+;   trying to write the synced properties is rejected.
+;
+; WHY NO SCRIPT:
+;   MP-2 needs nothing beyond "receive position + display." The
+;   MultiplayerSynchronizer writes the properties directly. A script
+;   would just be ceremony. When we add anim_state in a later
+;   milestone, RemotePlayer.gd will land alongside it.
+;
+; PINK BOX:
+;   Distinct color from Player3D's box (which is the same shape and
+;   the default white) so during MP-2 testing you can tell at a glance
+;   which one is you and which one is the remote peer.
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_remote"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_remote"]
+size = Vector3(0.8, 1.8, 0.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_remote"]
+albedo_color = Color(0.95, 0.4, 0.7, 1.0)
+
+[ext_resource type="SceneReplicationConfig" path="res://assets/net/player_replication.tres" id="1_repl_config"]
+
+[node name="RemotePlayer" type="CharacterBody3D" groups=["remote_player"]]
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_remote")
+
+[node name="Visual" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("BoxMesh_remote")
+surface_material_override/0 = SubResource("StandardMaterial3D_remote")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = ExtResource("1_repl_config")

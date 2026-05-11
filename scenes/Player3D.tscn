@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://dp3l1roland3d"]
+[gd_scene load_steps=7 format=3 uid="uid://dp3l1roland3d"]
 
 ; Player3D — the 3D Roland scene.
 ;
@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://scripts/EditToolHandler.gd" id="3_edit_tool"]
 [ext_resource type="Script" path="res://scripts/ThrowableHandler.gd" id="4_throwable"]
 [ext_resource type="Script" path="res://scripts/UnderwaterFilter.gd" id="5_underwater"]
+[ext_resource type="SceneReplicationConfig" path="res://assets/net/player_replication.tres" id="6_repl_config"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -128,3 +129,17 @@ anchor_bottom = 1.0
 mouse_filter = 2
 visible = false
 color = Color(0.18, 0.32, 0.42, 0.42)
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+; Broadcasts this player's global_position + rotation to all peers at
+; the configured replication interval (default = every physics tick).
+; Uses the shared player_replication.tres resource so the property set
+; matches RemotePlayer.tscn exactly — drift would silently drop sync
+; packets. See assets/net/player_replication.tres for the property
+; list and replication mode rationale.
+;
+; PlayerSpawner.gd calls set_multiplayer_authority(local_peer_id) on
+; the Player3D root right after instantiate, before add_child. The
+; sync node inherits that authority — only the owning peer's writes
+; are broadcast; everyone else's would be rejected.
+replication_config = ExtResource("6_repl_config")
