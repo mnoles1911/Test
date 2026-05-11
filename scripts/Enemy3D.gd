@@ -156,6 +156,11 @@ func _ready() -> void:
 		_player = players[0] as Node3D
 	else:
 		push_warning("[Enemy3D] No node in 'player' group found — detection will not work.")
+	# PR-J — apply the configured enemy sync interval to our
+	# MultiplayerSynchronizer child (set up in MP-4).
+	var sync_node := get_node_or_null("MultiplayerSynchronizer") as MultiplayerSynchronizer
+	if sync_node != null and get_node_or_null("/root/SyncRateConfig") != null:
+		SyncRateConfig.apply_to_enemy_synchronizer(sync_node)
 
 
 func _physics_process(delta: float) -> void:
