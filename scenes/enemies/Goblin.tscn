@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://dgoblin01v1"]
+[gd_scene load_steps=9 format=3 uid="uid://dgoblin01v1"]
 
 ; Goblin.tscn — v1 placeholder enemy.
 ;
@@ -16,6 +16,7 @@
 ; eye voxel cluster on the .glb head.
 
 [ext_resource type="Script" path="res://scripts/enemies/Goblin.gd" id="1_goblin"]
+[ext_resource type="SceneReplicationConfig" path="res://assets/net/enemy_replication.tres" id="2_enemy_repl"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.4
@@ -71,3 +72,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, -0.2)
 ; player walked away.)
 mesh = SubResource("BoxMesh_eyes")
 material_override = SubResource("StandardMaterial3D_eyes")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+; MP-4 — broadcasts position, rotation, current_state, _is_dead, and
+; health from the authoritative peer (default = host = peer 1) to all
+; other peers. Drives the puppet's visual state on guest machines so
+; goblins move, glow, and die in sync with the host's simulation.
+;
+; Uses the shared enemy_replication.tres so future enemy subclasses
+; (Ashfallen, Wolf, Bear) get the same synced property set without
+; per-scene drift.
+replication_config = ExtResource("2_enemy_repl")

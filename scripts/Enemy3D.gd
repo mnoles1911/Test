@@ -159,6 +159,24 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# MP-4 host gate — AI + contact damage + movement run on the host
+	# only. Guests' enemy nodes are puppets driven by the
+	# MultiplayerSynchronizer (position, rotation, current_state,
+	# _is_dead, health). In OFFLINE mode is_multiplayer_authority()
+	# returns true so single-player behavior is unchanged.
+	#
+	# Corpse interaction (E to loot) DOES run on all peers — looting
+	# is a local action; the actual inventory grant should happen on
+	# the looter's peer (currently the local InventoryManager). When
+	# MP-6 lands portable characters, looting will route through a
+	# claim/grant RPC pair instead.
+	if not is_multiplayer_authority():
+		if _is_dead and _player_in_corpse_range and not _corpse_looted:
+			if Input.is_action_just_pressed("interact"):
+				_corpse_looted = true
+				_loot_corpse()
+		return
+
 	if _is_dead:
 		# Dead enemies poll for corpse interaction (E to loot) instead
 		# of running movement / detection logic. The interact area
@@ -269,9 +287,24 @@ func _check_contact_damage() -> void:
 ## PowderCharge AOE, by the debug F8 key, and eventually by melee
 ## hitboxes. hit_dir is the direction the damage came from (for blood
 ## spurt direction); hit_point is the world position of the impact.
+##
+## MP-4 routing: if the caller is not the authority for this enemy
+## (i.e. a guest trying to damage a host-authoritative enemy), the
+## request is forwarded to the authoritative peer via
+## _rpc_request_damage. The authority then mutates health and
+## broadcasts the visual reaction (blood, flinch) to all peers via
+## _rpc_apply_damage_visual. In OFFLINE mode is_multiplayer_authority()
+## returns true and the path collapses to the existing local flow.
 func take_damage(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
 	if _is_dead:
 		return
+	if not is_multiplayer_authority():
+		# Guest path — forward to the enemy's authoritative peer
+		# (typically host). Returns optimistically; the host's
+		# subsequent visual broadcast will land within ~RTT.
+		_rpc_request_damage.rpc_id(get_multiplayer_authority(), amount, hit_dir, hit_point)
+		return
+	# Authority (host or offline) — mutate health and dispatch.
 	health -= amount
 	if health <= 0:
 		# die() reads damage_at_kill to pick topple vs. explosion. We
@@ -280,8 +313,26 @@ func take_damage(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
 		# the goblin had left.
 		die(amount, hit_dir, hit_point)
 		return
-	# Non-lethal hit — fire signal so Goblin.gd can play a flinch,
-	# trigger Layer A blood burst, start Layer B bleed, etc.
+	# Non-lethal hit — broadcast visuals to all peers (including
+	# self via call_local). The signal + _on_damaged hook fire from
+	# inside the broadcast handler so listeners (Goblin's blood
+	# spawn, future HP bar) see the event on every machine.
+	_rpc_apply_damage_visual.rpc(amount, hit_dir, hit_point)
+
+
+# MP-4 RPC — guest forwards a damage request to the enemy's authority.
+@rpc("any_peer", "reliable")
+func _rpc_request_damage(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
+	if not is_multiplayer_authority():
+		return  # defense-in-depth; @rpc("any_peer") allows the call but logic gate stops non-host handling
+	take_damage(amount, hit_dir, hit_point)
+
+
+# MP-4 RPC — authority broadcasts a non-lethal damage event so every
+# peer plays the visual reaction. call_local also runs on the sender
+# so the host's local visual matches what guests see.
+@rpc("authority", "reliable", "call_local")
+func _rpc_apply_damage_visual(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
 	damaged.emit(amount, hit_point)
 	_on_damaged(amount, hit_dir, hit_point)
 
@@ -305,6 +356,40 @@ func _on_damaged(_amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 func die(damage_at_kill: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vector3 = Vector3.ZERO) -> void:
 	if _is_dead:
 		return
+	# MP-4 routing — die() can be called publicly (dev F8 kill key).
+	# Non-authority callers forward to the authority. Inside
+	# take_damage's path this is already on the authority, so the
+	# gate just short-circuits to the broadcast below.
+	if not is_multiplayer_authority():
+		_rpc_request_die.rpc_id(get_multiplayer_authority(), damage_at_kill, hit_dir, hit_point)
+		return
+	# Authority side — broadcast death so every peer (including host
+	# via call_local) plays the visual flip + spawns the corpse
+	# interaction area + starts the corpse-lifetime timer locally.
+	# The actual state mutation + signal emission + _on_died call
+	# live inside the RPC handler so they happen identically on
+	# every peer.
+	_rpc_apply_death_visual.rpc(damage_at_kill, hit_dir, hit_point)
+
+
+# MP-4 RPC — a guest's death request reaches the authority here.
+@rpc("any_peer", "reliable")
+func _rpc_request_die(damage_at_kill: int, hit_dir: Vector3, hit_point: Vector3) -> void:
+	if not is_multiplayer_authority():
+		return
+	die(damage_at_kill, hit_dir, hit_point)
+
+
+# MP-4 RPC — authority broadcasts the death visual to every peer
+# (including itself via call_local). Each peer runs the local state
+# mutation, signal emission, corpse spawn, and despawn timer
+# independently — the timer durations are deterministic from
+# corpse_lifetime_seconds so all peers despawn within the same frame
+# modulo network jitter.
+@rpc("authority", "reliable", "call_local")
+func _rpc_apply_death_visual(damage_at_kill: int, hit_dir: Vector3, hit_point: Vector3) -> void:
+	if _is_dead:
+		return  # idempotent — replays from late-join also pass through
 	_is_dead = true
 	# Stop any pending physics so the corpse doesn't keep walking.
 	velocity = Vector3.ZERO
