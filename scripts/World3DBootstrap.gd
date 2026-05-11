@@ -229,6 +229,15 @@ func _ready() -> void:
 			var snapshot: Array[AABB] = NoEditZoneRegistry.get_water_blocking_aabbs_snapshot()
 			gen.set_no_edit_water_aabbs(snapshot)
 			print("[World3D] Pushed %d NoEditZone water-blocking AABB(s) to generator." % snapshot.size())
+		# Tier 4: push the registry's pre-filtered ore list into the
+		# generator on the main thread. Worker threads then iterate
+		# the local Array reference without touching the SceneTree.
+		if gen != null and gen.has_method("set_ore_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var ores: Array[VoxelMaterial] = VoxelMaterialRegistry.get_ore_materials()
+			gen.call("set_ore_materials", ores)
+			print("[World3D] Pushed %d ore material(s) to generator." % ores.size())
 
 	# --- Configure water surface + seed test pond ---
 	# Phase 5: the AABB-source-region model is gone. Ocean water lives

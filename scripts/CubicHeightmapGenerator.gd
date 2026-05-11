@@ -363,6 +363,15 @@ func set_no_edit_water_aabbs(aabbs: Array[AABB]) -> void:
 	_no_edit_water_aabbs = aabbs
 
 
+# Tier 4: receives the pre-filtered ore list from
+# VoxelMaterialRegistry.get_ore_materials(). Bootstrap pushes on the
+# main thread; worker threads iterate the local Array reference.
+var _cached_ore_list: Array[VoxelMaterial] = []
+
+func set_ore_materials(list: Array[VoxelMaterial]) -> void:
+	_cached_ore_list = list
+
+
 func _column_blocks_water_generation(world_x: float, world_z: float) -> bool:
 	# Worker-thread-safe AABB membership test. Walks the cached
 	# snapshot — pure math, no physics, no SceneTree.
@@ -767,6 +776,10 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var snow_alt_voxels: int = snow_line_voxels
 	var run_snow_line: bool = snow_id != 0
 
+	# Tier 4 ore-vein cache.
+	var ore_list: Array[VoxelMaterial] = _cached_ore_list
+	var has_ores: bool = not ore_list.is_empty()
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -877,6 +890,28 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 						mat_id = stone_dark_id
 					else:
 						mat_id = stone_id
+
+					# Tier 4 ore veins — first matching ore wins.
+					# Ores only replace their declared parent material
+					# (iron stays in plain stone, skipping marble and
+					# stone_dark) for the "rare stripe through plain
+					# rock" feel.
+					if has_ores:
+						for ore in ore_list:
+							if mat_id != ore.replaces_material_id:
+								continue
+							if world_y < ore.min_altitude_voxels or world_y > ore.max_altitude_voxels:
+								continue
+							var s: float = ore.ore_noise_scale
+							var on: float = VoxelGenerationMath.hash3(
+								int(float(world_x) * s),
+								int(float(world_y) * s),
+								int(float(world_z) * s),
+								ore.material_id * 1009,
+							)
+							if on > ore.ore_noise_threshold:
+								mat_id = ore.material_id
+								break
 
 				# v13: VoxelMesherBlocky reads CHANNEL_TYPE as plain
 				# integers — the material_id IS the value to write.

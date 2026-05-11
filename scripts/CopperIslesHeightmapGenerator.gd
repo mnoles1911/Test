@@ -300,6 +300,17 @@ func set_no_edit_water_aabbs(_aabbs: Array[AABB]) -> void:
 	pass
 
 
+# Tier 4: receives the pre-filtered ore list from
+# VoxelMaterialRegistry.get_ore_materials(). The bootstrap pushes it
+# on the main thread (set-once-at-scene-load) so the generator's
+# worker threads can iterate without touching the SceneTree.
+# Mirror of the set_no_edit_water_aabbs pattern.
+var _cached_ore_list: Array[VoxelMaterial] = []
+
+func set_ore_materials(list: Array[VoxelMaterial]) -> void:
+	_cached_ore_list = list
+
+
 # Public: sample the ground voxel-Y at a world voxel coord. Used by
 # CopperIslesTestBootstrap to spawn the player just above the central
 # island's actual peak instead of dropping them from the
@@ -699,6 +710,12 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var snow_alt_voxels: int = snow_line_voxels
 	var run_snow_line: bool = snow_id != 0
 
+	# Tier 4 ore-vein cache. Snapshot the list once per block — even
+	# though the registry's array is shared and immutable, taking the
+	# local reference avoids a property read every voxel.
+	var ore_list: Array[VoxelMaterial] = _cached_ore_list
+	var has_ores: bool = not ore_list.is_empty()
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -789,4 +806,27 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 						mat_id = stone_dark_id
 					else:
 						mat_id = stone_id
+
+					# Tier 4: ore-vein override. Each ore only replaces
+					# its declared parent material (iron only replaces
+					# plain stone, not marble or stone_dark — gives the
+					# "rare stripe through plain rock" feel). First
+					# matching ore wins; iteration is in material_id
+					# ascending order from get_ore_materials().
+					if has_ores:
+						for ore in ore_list:
+							if mat_id != ore.replaces_material_id:
+								continue
+							if world_y < ore.min_altitude_voxels or world_y > ore.max_altitude_voxels:
+								continue
+							var s: float = ore.ore_noise_scale
+							var on: float = VoxelGenerationMath.hash3(
+								int(float(world_x) * s),
+								int(float(world_y) * s),
+								int(float(world_z) * s),
+								ore.material_id * 1009,
+							)
+							if on > ore.ore_noise_threshold:
+								mat_id = ore.material_id
+								break
 				out_buffer.set_voxel(mat_id, x, y, z, VoxelBuffer.CHANNEL_TYPE)

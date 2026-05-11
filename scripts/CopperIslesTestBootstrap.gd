@@ -153,6 +153,17 @@ func _ready() -> void:
 		var gen: Resource = terrain.get("generator")
 		if gen != null and "require_heightmap_in_editor_only" in gen:
 			gen.set("require_heightmap_in_editor_only", true)
+		# Tier 4: push the pre-filtered ore list into the generator on
+		# the main thread. `set_ore_materials` is the worker-thread-safe
+		# data handoff pattern (mirror of set_no_edit_water_aabbs). The
+		# registry's _ores array is read-only after _loaded=true, so the
+		# generator can iterate it from any worker thread.
+		if gen != null and gen.has_method("set_ore_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var ores: Array[VoxelMaterial] = VoxelMaterialRegistry.get_ore_materials()
+			gen.call("set_ore_materials", ores)
+			print("[CopperIslesTest] Pushed %d ore material(s) to generator." % ores.size())
 		# Force-load the heightmap on bootstrap so its stats print
 		# immediately, even when the cache fully covers the spawn area
 		# and the generator never fires on-demand. Diagnostic only;
