@@ -169,97 +169,16 @@ func _ready() -> void:
 	add_to_group("dev_scene")
 	_build_ui()
 	_configure_terrain()
-	_probe_sqlite_stream_for_pragma_hooks()
 	_set_status("Ready. Run Diagnostics first to verify Zylann APIs, then Bake 1 km central.")
 
-
-# =============================================================
-# ONE-SHOT SPIKE — does VoxelStreamSQLite expose PRAGMA hooks?
-# =============================================================
-#
-# WAL mode + larger cache + `synchronous=NORMAL` gives SQLite a
-# 1.2-2× write throughput boost. To wire it into the bake we need
-# Zylann to expose journal_mode / synchronous / cache_size / page_size
-# as @export properties on VoxelStreamSQLite, OR expose methods that
-# accept arbitrary PRAGMAs.
-#
-# This probe dumps the stream's property + method lists at scene load
-# and tries to set each common PRAGMA name to see if Zylann accepts
-# the value (no error + readable back). Output goes to the Output
-# panel. Once we know what's available, we wire the optimization
-# permanently and delete this probe.
-func _probe_sqlite_stream_for_pragma_hooks() -> void:
-	var terrain := get_node_or_null(voxel_terrain_path)
-	if terrain == null or not ("stream" in terrain):
-		print("[Spike-SQLite] terrain or stream missing; skipping probe")
-		return
-	var stream: Resource = terrain.get("stream") as Resource
-	if stream == null:
-		print("[Spike-SQLite] stream is null; skipping probe")
-		return
-	print("=============================================================")
-	print("[Spike-SQLite] PROBE START — stream class: %s" % stream.get_class())
-	print("=============================================================")
-	# 1. Property list — anything PRAGMA-shaped?
-	var pragma_keywords: PackedStringArray = PackedStringArray([
-		"journal", "synchronous", "cache_size", "page_size", "wal",
-		"mode", "pragma", "transaction", "batch", "flush", "fsync"
-	])
-	var found_props: Array[String] = []
-	for prop in stream.get_property_list():
-		var pname: String = prop.get("name", "")
-		if pname == "" or pname.begins_with("script") or pname.begins_with("resource"):
-			continue
-		var ptype: int = int(prop.get("type", 0))
-		var phint: int = int(prop.get("hint", 0))
-		var phint_string: String = str(prop.get("hint_string", ""))
-		var keyword_hit: bool = false
-		for kw in pragma_keywords:
-			if pname.findn(kw) != -1:
-				keyword_hit = true
-				break
-		var marker: String = " <-- PRAGMA candidate" if keyword_hit else ""
-		print("[Spike-SQLite]   prop: %s (type=%d hint=%d '%s')%s" % [
-			pname, ptype, phint, phint_string, marker,
-		])
-		if keyword_hit:
-			found_props.append(pname)
-	# 2. Method list — anything PRAGMA-shaped?
-	var found_methods: Array[String] = []
-	for m in stream.get_method_list():
-		var mname: String = m.get("name", "")
-		if mname == "" or mname.begins_with("_"):
-			continue
-		for kw in pragma_keywords:
-			if mname.findn(kw) != -1:
-				print("[Spike-SQLite]   method: %s  <-- PRAGMA candidate" % mname)
-				found_methods.append(mname)
-				break
-	# 3. Trial sets for common PRAGMA names. If a property exists and
-	# accepts the value (readable back as set), it's wireable.
-	var trial_values: Dictionary = {
-		"journal_mode": 3,        # often an enum: 0=DEFAULT 1=DELETE 2=TRUNCATE 3=WAL...
-		"synchronous": 1,         # 0=OFF 1=NORMAL 2=FULL
-		"cache_size": -65536,     # negative = KB; -65536 = 64 MB
-		"page_size": 8192,        # bytes
-	}
-	for k in trial_values.keys():
-		if k in stream:
-			var before = stream.get(k)
-			stream.set(k, trial_values[k])
-			var after = stream.get(k)
-			var ok: bool = after == trial_values[k]
-			print("[Spike-SQLite]   trial set %s: before=%s → asked %s → after=%s%s" % [
-				k, before, trial_values[k], after, " ✓" if ok else " ✗ (rejected)",
-			])
-			# Restore so the bake's default behaviour isn't perturbed.
-			stream.set(k, before)
-	print("[Spike-SQLite] SUMMARY: %d PRAGMA-looking properties, %d PRAGMA-looking methods" % [
-		found_props.size(), found_methods.size(),
-	])
-	if found_props.is_empty() and found_methods.is_empty():
-		print("[Spike-SQLite] No native hooks found. Options: (a) godot-sqlite addon, (b) write PRAGMA via raw SQLite FFI before stream open, (c) skip WAL.")
-	print("=============================================================")
+# SQLite WAL-mode spike result (2026-05-11): Zylann's
+# `VoxelStreamSQLite` does NOT expose any PRAGMA hooks. Its only
+# tunable knobs are `database_path`, `preferred_coordinate_format`,
+# `save_generator_output`, `compression_mode` (None/LZ4/ZSTD), and a
+# `flush` method. WAL mode is unreachable without (a) the godot-sqlite
+# addon for out-of-band PRAGMA writes, or (b) raw sqlite3 CLI before
+# Zylann opens the file. Both deferred — PR #194's skip-LOD0 +
+# skip-meshing already gets us the bulk of the bake-perf win.
 
 
 # Terrain config the bake MUST run with. These are the same values
