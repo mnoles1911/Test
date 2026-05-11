@@ -276,6 +276,21 @@ const SEA_LEVEL_VOXELS: int = 72
 
 
 # =============================================================
+# TIER 3 — marble + stone_dark jitter on stone
+# =============================================================
+# Per stone-band voxel, sample a deterministic 3D hash. Above
+# `marble_rare_threshold` → marble; above `marble_dark_threshold`
+# but below the rare cut → stone_dark; otherwise plain stone.
+# Coords are integer-divided by `marble_jitter_block_size` so the
+# patches read as ~4-voxel chunks rather than per-voxel speckle.
+
+@export_range(1, 16, 1) var marble_jitter_block_size: int = 4
+@export_range(0, 99999, 1) var marble_jitter_seed: int = 1
+@export_range(0.0, 1.0, 0.01) var marble_rare_threshold: float = 0.92
+@export_range(0.0, 1.0, 0.01) var marble_dark_threshold: float = 0.75
+
+
+# =============================================================
 # RUNTIME CACHE — material references, looked up once
 # =============================================================
 #
@@ -291,6 +306,8 @@ var _cached_dirt: VoxelMaterial = null
 var _cached_grass: VoxelMaterial = null
 var _cached_sand: VoxelMaterial = null
 var _cached_bedrock: VoxelMaterial = null
+var _cached_marble: VoxelMaterial = null
+var _cached_stone_dark: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 var _depth_logged: bool = false
 var _first_water_byte_logged: bool = false
@@ -634,6 +651,14 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		stone_hi = _cached_stone.color_high
 		stone_id = _cached_stone.material_id
 
+	# Tier 3 jitter materials (0 = not loaded → fall back to plain stone).
+	var marble_id: int = 0
+	if _cached_marble != null:
+		marble_id = _cached_marble.material_id
+	var stone_dark_id: int = 0
+	if _cached_stone_dark != null:
+		stone_dark_id = _cached_stone_dark.material_id
+
 	var grass_lo: Color = dirt_lo
 	var grass_hi: Color = dirt_hi
 	var grass_id: int = dirt_id
@@ -707,6 +732,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# Tier 1: only run slope check at near LODs. Distant LODs already
 	# blur cliff detail; per-column ×4 noise lookups would be wasted.
 	var run_cliff_rule: bool = cliff_rule_max_lod >= 0 and lod <= cliff_rule_max_lod
+
+	# Tier 3 jitter cache. Clamped to ≥1 so the integer division in the
+	# hash input never crashes on a misconfigured 0.
+	var jitter_block: int = maxi(1, marble_jitter_block_size)
+	var jitter_seed: int = marble_jitter_seed
+	var jitter_marble: float = marble_rare_threshold
+	var jitter_dark: float = marble_dark_threshold
 
 	for x in size.x:
 		for z in size.z:
@@ -786,7 +818,22 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				else:
 					lo = stone_lo
 					hi = stone_hi
-					mat_id = stone_id
+					# Tier 3 stone-band jitter. Patches of rare marble
+					# and uncommon stone_dark break up uniform stone.
+					# Missing materials (id 0) fall back to plain stone.
+					@warning_ignore("integer_division")
+					var n: float = VoxelGenerationMath.hash3(
+						world_x / jitter_block,
+						world_y / jitter_block,
+						world_z / jitter_block,
+						jitter_seed,
+					)
+					if n > jitter_marble and marble_id != 0:
+						mat_id = marble_id
+					elif n > jitter_dark and stone_dark_id != 0:
+						mat_id = stone_dark_id
+					else:
+						mat_id = stone_id
 
 				# v13: VoxelMesherBlocky reads CHANNEL_TYPE as plain
 				# integers — the material_id IS the value to write.
@@ -954,6 +1001,8 @@ func _ensure_materials_cached() -> void:
 	_cached_grass = ResourceLoader.load("res://assets/voxels/materials/grass.tres") as VoxelMaterial
 	_cached_sand = ResourceLoader.load("res://assets/voxels/materials/sand.tres") as VoxelMaterial
 	_cached_bedrock = ResourceLoader.load("res://assets/voxels/materials/bedrock.tres") as VoxelMaterial
+	_cached_marble = ResourceLoader.load("res://assets/voxels/materials/marble.tres") as VoxelMaterial
+	_cached_stone_dark = ResourceLoader.load("res://assets/voxels/materials/stone_dark.tres") as VoxelMaterial
 	# If any of the four .tres files is missing, the corresponding
 	# `_cached_*` will be null. _select_material_for_depth() already
 	# falls through to the next-best material, so missing files
