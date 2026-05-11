@@ -23,6 +23,12 @@ class_name DialogueTrigger3D
 # Example: "henrietta_archive"
 # If empty, the trigger just prints to the Output panel for debugging.
 
+## MP-7 proximity cutscene radius (meters). Default 20m matches the
+## plan recommendation. Special values:
+##   -1.0 — pull in ALL guests regardless of distance
+##    0.0 — host-only (no guest mirror; solo cutscene)
+@export var cutscene_pull_radius: float = 20.0
+
 var _player_inside: bool = false
 
 
@@ -56,5 +62,21 @@ func _fire_trigger() -> void:
 	if get_node_or_null("/root/Dialogic"):
 		print("[DialogueTrigger3D] Starting timeline: %s" % timeline_name)
 		Dialogic.start(timeline_name)
+		# MP-7 — notify ProximityCutsceneManager so it can mirror the
+		# cutscene to in-radius guests. Host-only no-ops in OFFLINE
+		# (manager itself gates on is_host).
+		if get_node_or_null("/root/ProximityCutsceneManager") != null:
+			ProximityCutsceneManager.begin_cutscene(timeline_name, global_position, cutscene_pull_radius)
+		# Connect to Dialogic's timeline_ended signal so we can close
+		# the mirror when the host's dialogue actually finishes. Use
+		# CONNECT_ONE_SHOT so we don't accumulate handlers across
+		# repeated triggers.
+		if Dialogic.has_signal("timeline_ended") and not Dialogic.timeline_ended.is_connected(_on_dialogic_timeline_ended):
+			Dialogic.timeline_ended.connect(_on_dialogic_timeline_ended, CONNECT_ONE_SHOT)
 	else:
 		push_warning("[DialogueTrigger3D] Dialogic autoload not found.")
+
+
+func _on_dialogic_timeline_ended() -> void:
+	if get_node_or_null("/root/ProximityCutsceneManager") != null:
+		ProximityCutsceneManager.end_cutscene()

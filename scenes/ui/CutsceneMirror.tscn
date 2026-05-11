@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3 uid="uid://dcutscenemirror7"]
+
+; CutsceneMirror.tscn — read-only Dialogic overlay for in-radius guests.
+;
+; Stub scene; UI built programmatically by CutsceneMirror.gd in _ready.
+; Autoloaded so every client has an instance ready to show. The
+; overlay is invisible until ProximityCutsceneManager calls
+; show_cutscene() on it via group-lookup ("cutscene_mirror_overlay").
+
+[ext_resource type="Script" path="res://scripts/ui/CutsceneMirror.gd" id="1_mirror"]
+
+[node name="CutsceneMirror" type="CanvasLayer"]
+script = ExtResource("1_mirror")
