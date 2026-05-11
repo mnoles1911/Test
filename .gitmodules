@@ -1,0 +1,4 @@
+[submodule "extensions/voxel_gen/godot-cpp"]
+	path = extensions/voxel_gen/godot-cpp
+	url = https://github.com/godotengine/godot-cpp.git
+	branch = 4.5

@@ -1,0 +1,18 @@
+# Build intermediates from SCons
+.sconsign.dblite
+*.os
+*.obj
+*.o
+*.pdb
+*.exp
+*.lib
+*.ilk
+*.cache
+.scons_cache/
+
+# Local SCons options (per-developer compiler/path overrides)
+custom.py
+
+# godot-cpp builds its own binding artifacts inside its tree; ignore them
+godot-cpp/bin/
+godot-cpp/gen/

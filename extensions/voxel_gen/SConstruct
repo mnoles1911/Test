@@ -1,0 +1,53 @@
+# SConstruct for voxel_gen GDExtension.
+#
+# This delegates to godot-cpp's SConstruct (the submodule at ./godot-cpp/),
+# which already knows how to build for Windows (MSVC + MinGW), Linux (GCC),
+# and macOS (Clang) across debug / release / arch combos.
+#
+# Build invocation (from this directory, with scons on PATH or via
+# `python -m SCons`):
+#
+#   scons platform=windows target=template_debug
+#   scons platform=windows target=template_release
+#
+# Output goes to ./bin/ with the names declared in voxel_gen.gdextension.
+#
+# Prerequisites (Windows): MSVC Build Tools 2019+ (cl.exe on PATH via the
+# "x64 Native Tools" prompt) OR MinGW-w64 (g++ on PATH). godot-cpp picks
+# MSVC by default on Windows; pass `use_mingw=yes` to force MinGW.
+
+#!/usr/bin/env python
+import os
+import sys
+
+# Load godot-cpp's SConstruct as our base environment. godot-cpp builds
+# itself as a static library and exposes `env` for downstream extensions to
+# add their own sources.
+env = SConscript("godot-cpp/SConstruct")
+
+# Add our own source tree to the include search path.
+env.Append(CPPPATH=["src/"])
+
+# Collect every .cpp under src/.
+sources = Glob("src/*.cpp")
+
+# Library output name. Matches the path declared in voxel_gen.gdextension.
+# godot-cpp encodes platform / target / arch into the filename suffix; we
+# only set the prefix here.
+LIB_NAME = "libvoxel_gen"
+
+if env["platform"] == "macos":
+    library = env.SharedLibrary(
+        "bin/{0}.{1}.{2}.framework/{0}.{1}.{2}".format(
+            LIB_NAME, env["platform"], env["target"]
+        ),
+        source=sources,
+    )
+else:
+    # Linux + Windows: standard .so / .dll naming with full suffix
+    library = env.SharedLibrary(
+        "bin/{}{}{}".format(LIB_NAME, env["suffix"], env["SHLIBSUFFIX"]),
+        source=sources,
+    )
+
+Default(library)
