@@ -28,11 +28,11 @@ const TABLE_RADIUS: float = 0.30            # 30 cm felt circle
 const RIM_HEIGHT: float = 0.025
 const SPAWN_HEIGHT: float = 0.22            # drop dice from above the rim
 const SETTLE_VELOCITY_EPSILON: float = 0.18  # below = "stopped" (generous;
-                                              # micro-vibrations on edge contact
-                                              # were keeping settle from firing)
+											  # micro-vibrations on edge contact
+											  # were keeping settle from firing)
 const SETTLE_DELAY_SEC: float = 0.30         # must stay stopped this long
 const SETTLE_MAX_SEC: float = 4.0            # force-settle after this long
-                                              # regardless of velocity (fail-safe)
+											  # regardless of velocity (fail-safe)
 
 const FELT_TEX_PATH: String = "res://assets/dice/felt_burgundy.jpg"
 const RIM_TEX_PATH: String = "res://assets/dice/table_oak_rim.jpg"

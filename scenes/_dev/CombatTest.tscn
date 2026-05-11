@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://dcombat3st1v1"]
+[gd_scene format=3 uid="uid://dcombat3st1v1"]
 
 ; CombatTest.tscn — v1 combat dev arena.
 ;
@@ -12,27 +12,37 @@
 ;   SaveNotification) stay dormant during testing.
 ;
 ; Debug keys (wired in CombatTestBootstrap.gd):
+;   F1 — toggle debug menu
+;   R  — reset enemies (frees alive + corpses, respawns triangle)
+;   Q  — quit
 ;   F8 — kill nearest goblin (60 dmg, charged-spear equivalent)
 ;   F9 — wound nearest goblin (30 dmg, light-spear equivalent)
 ;
-; This scene exists so the gore loop can be iterated on without
-; blocking on World3D's bake state. When v1 ships, the same encounter
-; can be re-authored at a chosen spot in World3D — the goblin scene
-; itself is portable.
+; This scene exists so the combat / blood loop can be iterated on
+; without blocking on World3D's bake state. When v1 ships, the same
+; encounter can be re-authored at a chosen spot in World3D — the
+; goblin scene itself is portable.
+;
+; HEADS UP: Godot strips top-of-file comments when it re-emits a
+; scene from the editor (e.g. after opening + saving). If these
+; vanish again, restore from git history.
 
-[ext_resource type="Script" path="res://scripts/_dev/CombatTestBootstrap.gd" id="1_bootstrap"]
+[ext_resource type="Script" uid="uid://donur323x6b4y" path="res://scripts/_dev/CombatTestBootstrap.gd" id="1_bootstrap"]
 [ext_resource type="PackedScene" uid="uid://dgoblin01v1" path="res://scenes/enemies/Goblin.tscn" id="2_goblin"]
 [ext_resource type="PackedScene" uid="uid://dp3l1roland3d" path="res://scenes/Player3D.tscn" id="3_player"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_horizon_color = Color(0.7, 0.55, 0.35, 1)
 ground_horizon_color = Color(0.5, 0.4, 0.25, 1)
-sun_angle_max = 30.0
 
 [sub_resource type="Sky" id="Sky_1"]
 sky_material = SubResource("ProceduralSkyMaterial_1")
 
 [sub_resource type="Environment" id="Environment_1"]
+; Warm afternoon palette to match the forest-battle concept-art mood.
+; Light fog gives distance falloff so the placeholder ground doesn't
+; read as an infinite plane. Saturated red blood pools pop against
+; the desaturated browns and oranges baked in here.
 background_mode = 2
 sky = SubResource("Sky_1")
 ambient_light_source = 3
@@ -43,59 +53,55 @@ ssao_intensity = 1.5
 fog_enabled = true
 fog_light_color = Color(0.7, 0.6, 0.5, 1)
 fog_density = 0.005
-; Warm afternoon palette to match forest-battle concept-art mood.
-; Light fog gives distance falloff so the placeholder ground doesn't
-; read as an infinite plane.
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
 size = Vector3(60, 0.5, 60)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+; Forest-floor brown (#6E5233) — slightly desaturated so saturated
+; red blood pools pop against it.
+albedo_color = Color(0.43, 0.32, 0.2, 1)
+
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
 size = Vector2(60, 60)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.43, 0.32, 0.2, 1)
-; Forest-floor brown (#6B5233) — matches the dirt-path palette in
-; the concept art. Slightly desaturated so saturated red blood pools
-; will pop against it once Phase 4 lands.
-
-[node name="CombatTest" type="Node3D"]
+[node name="CombatTest" type="Node3D" unique_id=1826951766]
 script = ExtResource("1_bootstrap")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1433036704]
 environment = SubResource("Environment_1")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1808457647]
+; Late-afternoon sun, ~35° elevation, warm tint. Strong shadows for
+; cinematic combat read.
 transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 10, 0)
-; Late-afternoon sun, ~35° elevation, warm tint built into the
-; environment ambient. Strong shadows for cinematic combat read.
 light_color = Color(1, 0.92, 0.78, 1)
 light_energy = 1.4
 shadow_enabled = true
 
-[node name="Ground" type="StaticBody3D" parent="."]
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1307915211]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1635384451]
 shape = SubResource("BoxShape3D_ground")
 
-[node name="Visual" type="MeshInstance3D" parent="Ground"]
+[node name="Visual" type="MeshInstance3D" parent="Ground" unique_id=894416499]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
-mesh = SubResource("PlaneMesh_ground")
 material_override = SubResource("StandardMaterial3D_ground")
+mesh = SubResource("PlaneMesh_ground")
 
-[node name="Player3D" parent="." instance=ExtResource("3_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 12)
+[node name="Player3D" parent="." unique_id=1788121581 instance=ExtResource("3_player")]
 ; Spawn 12 m south of arena center, facing toward the goblins to the north.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 12)
 
-[node name="Goblin1" parent="." instance=ExtResource("2_goblin")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, -2)
-
-[node name="Goblin2" parent="." instance=ExtResource("2_goblin")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -2)
-
-[node name="Goblin3" parent="." instance=ExtResource("2_goblin")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -6)
 ; Triangle formation: two goblins at -2 m Z (closer to player), one at
 ; -6 m Z (rear). Player walks north (-Z) toward them; first detection
 ; triggers around 8–10 m, COMBAT triggers around 5 m.
+[node name="Goblin1" parent="." unique_id=1632375188 instance=ExtResource("2_goblin")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, -2)
+
+[node name="Goblin2" parent="." unique_id=55224385 instance=ExtResource("2_goblin")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -2)
+
+[node name="Goblin3" parent="." unique_id=1223688569 instance=ExtResource("2_goblin")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -6)
