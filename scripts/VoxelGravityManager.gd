@@ -185,6 +185,12 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if not enabled:
 		return
+	# MP-3 host gate — same reasoning as the _on_edit_applied gate.
+	# Falling clusters are spawned on host; MP-4 will add MultiplayerSpawner
+	# wiring so guests receive them. Until then guests simply don't
+	# simulate gravity locally.
+	if get_node_or_null("/root/MultiplayerManager") != null and not MultiplayerManager.is_host():
+		return
 	# Drain pending drop spawns regardless of scan-queue state — they
 	# pile up after a big carve and need to come out smoothly even on
 	# frames when no new scan runs.
@@ -233,6 +239,13 @@ func notify_cluster_settled(cluster: Node, landing_pos: Vector3) -> void:
 
 func _on_edit_applied(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: AABB) -> void:
 	if not enabled:
+		return
+	# MP-3 host gate — gravity scans + falling-cluster physics are
+	# host-authoritative. Guests will receive cluster spawn/state via
+	# MultiplayerSpawner once MP-4 wires it; for now they simply skip
+	# the scan and never spawn local clusters of their own.
+	# OFFLINE (no session) → is_host() returns true → unchanged.
+	if get_node_or_null("/root/MultiplayerManager") != null and not MultiplayerManager.is_host():
 		return
 	# Drop oldest if the queue is full — the player's already moved on
 	# from the older edit; the recent one is more interesting. Note that

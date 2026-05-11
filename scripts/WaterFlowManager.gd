@@ -172,6 +172,16 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# MP-3 host gate — water flow is host-authoritative. Guests' local
+	# CHANNEL_DATA5 still updates because every water-byte write goes
+	# through VoxelEditManager and replicates via _rpc_replicate_edit.
+	# Running the flow sim on guests would just diverge from the
+	# host's authoritative state.
+	#
+	# In OFFLINE (no session) MultiplayerManager.is_host() returns
+	# true so single-player behavior is unchanged.
+	if get_node_or_null("/root/MultiplayerManager") != null and not MultiplayerManager.is_host():
+		return
 	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner()

