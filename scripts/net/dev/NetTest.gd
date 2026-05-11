@@ -57,6 +57,8 @@ var _join_steam_btn: Button
 var _rejoin_btn: Button
 var _leave_btn: Button
 var _quit_btn: Button
+var _switch_char_btn: Button
+var _character_select_overlay: CanvasLayer
 
 # Cached at _ready to avoid allocating a SteamP2PBackend on every
 # UI refresh. Plugin install state can't change mid-session anyway.
@@ -74,12 +76,35 @@ func _ready() -> void:
 	_steam_available = SteamP2PBackend.new().is_available()
 	# PR-A: auto-resolve / create the local character so host_session
 	# and join_session ship a valid CharacterRecord through the
-	# handshake. A proper CharacterSelect roster lands when MainMenu
-	# integration is built; for the dev path, "Wanderer" + the local
-	# Steam ID (or DEV_FALLBACK_STEAM_ID) is fine.
+	# handshake. PR-H replaces the bare auto-create with a roster UI:
+	# if no character exists, we still auto-create "Wanderer" as the
+	# default so the dev test path works without forcing a click,
+	# but the operator can now switch via the "Switch Character"
+	# button which opens CharacterSelect.tscn.
 	_ensure_active_character()
 	_build_ui()
+	_instance_character_select()
 	_wire_signals()
+	_refresh_status()
+
+
+func _instance_character_select() -> void:
+	# Mount the CharacterSelect overlay as our child so its layer
+	# (50) sits above NetTest's overlay (layer 10) and below
+	# MPNotification (99).
+	var packed: PackedScene = preload("res://scenes/ui/CharacterSelect.tscn")
+	_character_select_overlay = packed.instantiate()
+	add_child(_character_select_overlay)
+	_character_select_overlay.character_changed.connect(_on_character_changed)
+
+
+func _on_character_changed() -> void:
+	# Refresh the status panel so the new active character shows
+	# immediately. Auto-create a fresh default if the operator
+	# deleted the active one and left no characters at all.
+	if get_node_or_null("/root/CharacterStore") != null:
+		if CharacterStore.get_active_character() == null:
+			_ensure_active_character()
 	_refresh_status()
 
 
@@ -192,6 +217,10 @@ func _build_ui() -> void:
 
 	vbox.add_child(_make_separator())
 
+	# --- PR-H: switch / create character
+	_switch_char_btn = _make_button("Switch Character...")
+	vbox.add_child(_switch_char_btn)
+
 	# --- PR-F: rejoin last session
 	_rejoin_btn = _make_button("Rejoin Last Session")
 	vbox.add_child(_rejoin_btn)
@@ -241,6 +270,9 @@ func _dispatch_click(pos: Vector2) -> void:
 		return
 	if _hits(_join_steam_btn, pos):
 		_on_join_steam_pressed()
+		return
+	if _hits(_switch_char_btn, pos):
+		_on_switch_char_pressed()
 		return
 	if _hits(_rejoin_btn, pos):
 		_on_rejoin_pressed()
@@ -337,6 +369,20 @@ func _on_rejoin_pressed() -> void:
 		_log("rejoin returned error: %s" % error_string(err))
 
 
+# PR-H — open the CharacterSelect overlay so the operator can pick
+# a different character or create a new one. Disabled while in a
+# session because changing the active character mid-session would
+# desync InventoryManager (the runtime bridge loads on
+# session_started, not on switch).
+func _on_switch_char_pressed() -> void:
+	if get_node_or_null("/root/MultiplayerManager") != null \
+			and not MultiplayerManager.is_offline():
+		_log("Switch character disabled mid-session — leave the session first.")
+		return
+	if _character_select_overlay != null and _character_select_overlay.has_method("show_overlay"):
+		_character_select_overlay.show_overlay()
+
+
 func _on_leave_pressed() -> void:
 	if MultiplayerManager.is_offline():
 		_log("Already offline — nothing to leave.")
@@ -421,6 +467,15 @@ func _refresh_status() -> void:
 	if not _steam_available:
 		_host_steam_btn.text = "Host (Steam, plugin not installed)"
 		_join_steam_btn.text = "Join (Steam, plugin not installed)"
+
+	# PR-H — switch-character button disabled mid-session.
+	if _switch_char_btn != null:
+		var in_session: bool = false
+		if get_node_or_null("/root/MultiplayerManager") != null:
+			in_session = not MultiplayerManager.is_offline()
+		_switch_char_btn.disabled = in_session
+		_switch_char_btn.text = ("Switch Character..."
+			if not in_session else "Switch Character (leave session first)")
 
 	# PR-F — rejoin button only active when SessionHistory has a
 	# recent non-stale entry.

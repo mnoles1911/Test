@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://dcharacterselect"]
+
+; CharacterSelect.tscn — roster overlay for picking / creating /
+; deleting characters.
+;
+; Stub scene; UI built programmatically by CharacterSelect.gd in
+; _ready. Instantiated as a child of NetTest (or future MainMenu)
+; and shown via show_overlay() / hidden via hide_overlay() or ESC.
+;
+; See scripts/ui/CharacterSelect.gd for the full layout and click
+; routing.
+
+[ext_resource type="Script" path="res://scripts/ui/CharacterSelect.gd" id="1_select"]
+
+[node name="CharacterSelect" type="CanvasLayer"]
+script = ExtResource("1_select")
