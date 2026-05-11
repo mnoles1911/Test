@@ -259,6 +259,23 @@ const SEA_LEVEL_VOXELS: int = 72
 
 
 # =============================================================
+# TIER 1 — slope-driven cliff rule
+# =============================================================
+#
+# Sample neighbour columns at `cliff_slope_sample_distance_voxels`
+# away in ±X and ±Z, measure the largest Y drop, and if it crosses
+# `cliff_slope_threshold_voxels`, override the column's top voxels
+# to bare stone. Slope math at 6 vox/m, sample_distance=6:
+#   threshold = ceil(tan(angle) × 6)
+#   45°→6, 50°→8, 55°→9, 60°→11, 65°→13, 70°→17, 75°→23
+# Default 10 ≈ 59° slope.
+
+@export_range(0, 30, 1) var cliff_slope_sample_distance_voxels: int = 6
+@export_range(0, 50, 1) var cliff_slope_threshold_voxels: int = 10
+@export_range(-1, 3, 1) var cliff_rule_max_lod: int = 2
+
+
+# =============================================================
 # RUNTIME CACHE — material references, looked up once
 # =============================================================
 #
@@ -438,6 +455,49 @@ func _get_used_channels_mask() -> int:
 	return (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
 
 
+# Public: sample the ground voxel-Y at an arbitrary world XZ. Reuses
+# the exact macro+mid+detail noise sum the per-column block uses, so
+# slope-rule neighbour samples land on the same surface the generator
+# would emit at that XZ. Worker-thread-safe (pure FastNoiseLite reads).
+func _ground_y_at(world_x: int, world_z: int) -> int:
+	if noise == null:
+		return height_offset_voxels   # flat-fallback case
+	var half_range: float = height_range_voxels * 0.5
+	var n_macro: float = noise.get_noise_2d(float(world_x), float(world_z))
+	var macro_y: int
+	if quantize_to_meters:
+		var macro_meters: int = roundi(n_macro * half_range / 8.0)
+		macro_y = macro_meters * 8
+	else:
+		macro_y = int(n_macro * half_range)
+	var n_mid: float = noise.get_noise_2d(
+		float(world_x) * mid_frequency_multiplier,
+		float(world_z) * mid_frequency_multiplier,
+	)
+	var mid_y: int = int(n_mid * float(mid_amplitude_voxels))
+	var n_detail: float = noise.get_noise_2d(
+		float(world_x) * detail_frequency_multiplier,
+		float(world_z) * detail_frequency_multiplier,
+	)
+	var detail_y: int = int(n_detail * float(detail_amplitude_voxels))
+	return macro_y + mid_y + detail_y + height_offset_voxels
+
+
+# Tier 1 helper. True when the column at (world_x, world_z) has a
+# ≥ cliff_slope_threshold_voxels drop to any of its 4-neighbour
+# columns at ± cliff_slope_sample_distance_voxels away.
+func _column_is_cliff(world_x: int, world_z: int, this_ground_y: int) -> bool:
+	var step: int = cliff_slope_sample_distance_voxels
+	if step <= 0 or cliff_slope_threshold_voxels <= 0:
+		return false
+	var max_drop: int = 0
+	max_drop = maxi(max_drop, this_ground_y - _ground_y_at(world_x - step, world_z))
+	max_drop = maxi(max_drop, this_ground_y - _ground_y_at(world_x + step, world_z))
+	max_drop = maxi(max_drop, this_ground_y - _ground_y_at(world_x, world_z - step))
+	max_drop = maxi(max_drop, this_ground_y - _ground_y_at(world_x, world_z + step))
+	return max_drop >= cliff_slope_threshold_voxels
+
+
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
 	# Engine calls this for every chunk the player approaches. We
 	# fill out_buffer with TYPE values (material_id integers) for
@@ -603,10 +663,10 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			| ((_cached_bedrock.material_id & 0xFF) << 24)
 
 	# Per-column thickness boundaries (read property once per block).
+	# height_offset_voxels is now read inside _ground_y_at, not here.
 	var grass_thick: int = grass_layer_thickness_voxels
 	var dirt_band_end: int = grass_thick + dirt_layer_thickness_voxels
 	var beach_y: int = beach_y_threshold
-	var h_offset_v: int = height_offset_voxels
 	# Reference depth (in voxels) over which the stone band lerps from
 	# color_high (top, just under dirt) down to color_low (deep). 30 vox
 	# = 5 m at 6 vox/m. Anything deeper than this pegs at color_low.
@@ -640,43 +700,20 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	# source bit | tick 0 — see WaterByteCodec.gd for the layout.
 	var water_byte: int = WaterByteCodec.SOURCE_BYTE
 
-	# Per-column heightmap pass.
-	var half_range: float = height_range_voxels * 0.5
+	# Per-column heightmap pass. `_ground_y_at` reads the same noise
+	# sum the old inline code computed; the slope-rule neighbour
+	# samples need the same source-of-truth, so the math lives in
+	# one place.
+	# Tier 1: only run slope check at near LODs. Distant LODs already
+	# blur cliff detail; per-column ×4 noise lookups would be wasted.
+	var run_cliff_rule: bool = cliff_rule_max_lod >= 0 and lod <= cliff_rule_max_lod
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
 			var world_z: int = origin_in_voxels.z + z * stride
 
-			# --- Macro height: wide-feature noise, optionally quantized
-			#     to integer-metre (8-voxel) steps for terraced look. ---
-			var n_macro: float = noise.get_noise_2d(float(world_x), float(world_z))
-			var macro_y: int
-			if quantize_to_meters:
-				# roundi → terraces centred on integer metres rather
-				# than always rounded down. Cliff transitions happen
-				# at the half-metre crossings of the macro noise.
-				var macro_meters: int = roundi(n_macro * half_range / 8.0)
-				macro_y = macro_meters * 8
-			else:
-				macro_y = int(n_macro * half_range)
-
-			# --- Mid height: 8-m-scale rolling hills layered on the
-			#     macro silhouette. ±2 m amplitude. ---
-			var n_mid: float = noise.get_noise_2d(
-				float(world_x) * mid_frequency_multiplier,
-				float(world_z) * mid_frequency_multiplier,
-			)
-			var mid_y: int = int(n_mid * float(mid_amplitude_voxels))
-
-			# --- Detail height: cube-by-cube high-frequency wobble.
-			#     ±50 cm at ~1-2 m feature scale. ---
-			var n_detail: float = noise.get_noise_2d(
-				float(world_x) * detail_frequency_multiplier,
-				float(world_z) * detail_frequency_multiplier,
-			)
-			var detail_y: int = int(n_detail * float(detail_amplitude_voxels))
-
-			var ground_y: int = macro_y + mid_y + detail_y + h_offset_v
+			var ground_y: int = _ground_y_at(world_x, world_z)
 
 			# Pick this column's TOP-band tuple (grass on grasslands,
 			# sand at coastlines). Done once per column.
@@ -687,6 +724,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				top_lo = sand_lo
 				top_hi = sand_hi
 				top_id = sand_id
+
+			# Tier 1: cliff override — collapse top + dirt sandwich to
+			# bare stone when slope exceeds the threshold.
+			var col_dirt_band_end: int = dirt_band_end
+			if run_cliff_rule and _column_is_cliff(world_x, world_z, ground_y):
+				top_id = stone_id
+				col_dirt_band_end = grass_thick
 
 			# Decide once per column whether this column emits water.
 			# Three gates: LOD must be 0 (water is LOD0-only), the
@@ -724,6 +768,9 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 					continue
 
 				# Pick band based on depth from this column's ground_y.
+				# col_dirt_band_end collapses to grass_thick on cliff
+				# columns (Tier 1), so depth>=1 lands straight in the
+				# stone band — no dirt sandwich on exposed rock faces.
 				var depth: int = ground_y - world_y  # 0 = top voxel
 				var lo: Color
 				var hi: Color
@@ -732,7 +779,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 					lo = top_lo
 					hi = top_hi
 					mat_id = top_id
-				elif depth < dirt_band_end:
+				elif depth < col_dirt_band_end:
 					lo = dirt_lo
 					hi = dirt_hi
 					mat_id = dirt_id

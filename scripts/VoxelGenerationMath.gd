@@ -44,7 +44,7 @@ static func cliff_threshold_for_angle_voxels(angle_degrees: float, sample_distan
 	# of "exactly threshold" still triggers.
 	#
 	# At the canonical 6 vox/m scale and sample_distance=6 voxels (=1 m):
-	#   45° → 6, 50° → 7, 55° → 9, 60° → 11, 65° → 13, 70° → 17, 75° → 23
+	#   45° → 6, 50° → 8, 55° → 9, 60° → 11, 65° → 13, 70° → 17, 75° → 23
 	#
 	# Callers usually hardcode the threshold in the generator
 	# (Inspector-tunable) but use this helper to compute the default

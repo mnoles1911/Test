@@ -131,6 +131,39 @@ class_name CopperIslesHeightmapGenerator
 
 
 # =============================================================
+# TIER 1 — slope-driven cliff rule
+# =============================================================
+#
+# Sample neighbour columns at `cliff_slope_sample_distance_voxels`
+# away in ±X and ±Z, measure the largest Y drop, and if it crosses
+# `cliff_slope_threshold_voxels`, override the column's top voxels
+# to bare stone — the Veloren / Minecraft `steep` rule.
+#
+# Slope math at the canonical 6 vox/m scale and sample_distance=6
+# (= 1 in-game metre horizontal step):
+#   threshold = ceil(tan(angle) × 6)
+#   45°→6, 50°→8, 55°→9, 60°→11, 65°→13, 70°→17, 75°→23
+# Default threshold=10 ≈ 59° slope (just under 60°). Adjust per-
+# generator in the Inspector to taste.
+
+## Horizontal distance (in voxels) to sample neighbour columns for
+## the slope check. 6 voxels = 1 m at 6 vox/m. Wider samples smooth
+## out per-voxel noise; tighter samples catch sharper micro-cliffs.
+@export_range(0, 30, 1) var cliff_slope_sample_distance_voxels: int = 6
+
+## Minimum Y drop (in voxels) to any neighbour at the sample distance
+## for this column to be flagged as a cliff face. With distance=6 the
+## default 10 ≈ 60° slope. Set higher for steeper-only cliffs.
+@export_range(0, 50, 1) var cliff_slope_threshold_voxels: int = 10
+
+## Highest LOD at which the cliff rule runs. Distant chunks (LOD≥3)
+## skip the slope check entirely — the visual return is minimal at
+## that distance and the extra neighbour lookups are wasted. Set to
+## -1 to disable the cliff rule everywhere.
+@export_range(-1, 3, 1) var cliff_rule_max_lod: int = 2
+
+
+# =============================================================
 # WORLD FLOOR (must mirror CubicHeightmapGenerator + VoxelEditManager)
 # =============================================================
 
@@ -208,6 +241,24 @@ func set_no_edit_water_aabbs(_aabbs: Array[AABB]) -> void:
 # scale 0.5 with the current defaults).
 func get_ground_voxel_y_at(world_x: int, world_z: int) -> int:
 	return _gray_to_ground_y(_sample_gray(world_x, world_z))
+
+
+# Tier 1 helper. Returns true when the column at (world_x, world_z)
+# has a ≥ `cliff_slope_threshold_voxels` drop to any of its 4-neighbour
+# columns sampled at ± `cliff_slope_sample_distance_voxels` away.
+# Worker-thread-safe (pure heightmap reads via _sample_gray).
+func _column_is_cliff(world_x: int, world_z: int, this_ground_y: int) -> bool:
+	var step: int = cliff_slope_sample_distance_voxels
+	if step <= 0 or cliff_slope_threshold_voxels <= 0:
+		return false
+	var max_drop: int = 0
+	# 4-neighbour sample. Matches Minecraft's `steep` rule cardinal-only
+	# check; 8-neighbour is smoother but costs 2× the heightmap reads.
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x - step, world_z))
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x + step, world_z))
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x, world_z - step))
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x, world_z + step))
+	return max_drop >= cliff_slope_threshold_voxels
 
 
 # Diagnostic counter — tracks how often _generate_block early-outs
@@ -547,6 +598,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var write_water: bool = emit_water and (lod == 0)
 	var water_byte: int = WaterByteCodec.SOURCE_BYTE
 
+	# Tier 1 cliff rule: only run the slope check at near LODs. Distant
+	# LODs already blur cliff detail; the per-column ×4 neighbour
+	# heightmap sample wastes time at LOD3+.
+	var run_cliff_rule: bool = cliff_rule_max_lod >= 0 and lod <= cliff_rule_max_lod
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -560,6 +616,16 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			var top_id: int = grass_id
 			if ground_y <= beach_y:
 				top_id = sand_id
+
+			# Tier 1: if this column's slope crosses the cliff threshold,
+			# override the top band AND collapse the dirt sandwich. The
+			# whole column reads as bare stone from the top voxel down —
+			# matches Minecraft's `steep` rule (it bypasses both the
+			# grass and dirt layer when fired).
+			var col_dirt_band_end: int = dirt_band_end
+			if run_cliff_rule and _column_is_cliff(world_x, world_z, ground_y):
+				top_id = stone_id
+				col_dirt_band_end = grass_thick   # depth>=1 falls straight into stone band
 
 			var emit_water_here: bool = write_water and ground_y < sea_level_voxels
 
@@ -590,7 +656,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				var mat_id: int
 				if depth < grass_thick:
 					mat_id = top_id
-				elif depth < dirt_band_end:
+				elif depth < col_dirt_band_end:
 					mat_id = dirt_id
 				else:
 					mat_id = stone_id

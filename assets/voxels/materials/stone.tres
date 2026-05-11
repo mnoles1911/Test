@@ -17,3 +17,4 @@ yield_quantity = 1
 fall_behavior = 4
 gravity_scale = 1.0
 damage_multiplier = 1.2
+is_cliff_face_material = true
