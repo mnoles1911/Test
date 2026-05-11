@@ -44,6 +44,7 @@ BarkManager="*res://scripts/BarkManager.gd"
 WorldClock="*res://scripts/WorldClock.gd"
 WeatherManager="*res://scripts/WeatherManager.gd"
 BloodVFX="*res://scripts/BloodVFX.gd"
+CatchupCoordinator="*res://scripts/net/CatchupCoordinator.gd"
 
 [dialogic]
 
