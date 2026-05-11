@@ -433,6 +433,17 @@ during heavy edit traffic will desync the EditedChunkRegistry, corrupt the LOD
 cache, violate the per-frame voxel budget, OR (with gravity now wired) leave
 unsupported voxels floating in midair. Always route through the manager.
 
+Multiplayer routing (MP-3): every public `queue_edit_*` / `queue_set_*` method
+has an MP gate at the top. Guests forward to host via `_rpc_request_edit` and
+return `true` optimistically — no local apply. Host validates against
+NoEditZone + bedrock as usual, queues, and on successful apply broadcasts
+`_rpc_replicate_edit(cmd)` to every guest. Guests receive the cmd, queue it
+locally with `_replicated = true`, and `_apply_edit` skips the rebroadcast.
+In OFFLINE mode the gate short-circuits because `MultiplayerManager.is_host()`
+returns `true`, so single-player code paths are unchanged. **Do NOT** add an
+alternative bypass that constructs cmd dicts directly and appends to
+`_edit_queue` — that would skip both the NoEditZone gate and the broadcast.
+
 **User-defined voxel data channel is CHANNEL_DATA5, not CHANNEL_DATA:**
 ```gdscript
 # WRONG — CHANNEL_DATA doesn't exist in Zylann's enum.
