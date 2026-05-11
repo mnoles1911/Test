@@ -108,8 +108,14 @@ const VERTICAL_STEP_M: float = 200.0
 # Bake DB path. user:// because res:// is read-only at runtime; a
 # separate "Copy to assets/voxel" UI button shifts the finished DB
 # into the project tree for PCK inclusion.
-const BAKE_DB_PATH: String = "user://baked_baseline.sqlite"
-const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline.sqlite"
+#
+# `_v13` suffix added 2026-05-10 with the textured-tileset migration
+# (CHANNEL_COLOR → CHANNEL_TYPE). Matches CopperIslesTestBootstrap's
+# BAKED_BASELINE_PATH so a fresh bake automatically lands at the
+# path the runtime now reads. Old pre-v13 baseline files remain on
+# disk inert.
+const BAKE_DB_PATH: String = "user://baked_baseline_v13.sqlite"
+const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v13.sqlite"
 
 # Voxels per world metre at the canonical terrain.transform.scale of
 # 1/6. Used to convert tile centres (world metres) into voxel-grid
@@ -264,15 +270,17 @@ func _enforce_lod_config(terrain: Object) -> void:
 
 
 func _configure_voxel_format(terrain: Object) -> void:
-	# Lifted from CopperIslesTestBootstrap. CHANNEL_COLOR must be
-	# 32-bit so packed RGBA + material id survive storage.
+	# v13 textured tileset: CHANNEL_TYPE (8-bit) carries the
+	# material_id integer that VoxelMesherBlocky reads; CHANNEL_DATA5
+	# (8-bit) carries water source bytes. Must match CopperIslesTest
+	# runtime so cached baseline chunks read back correctly.
 	var fmt: Resource = null
 	if ClassDB.class_exists("VoxelFormat"):
 		fmt = ClassDB.instantiate("VoxelFormat")
 	if fmt == null:
 		return
 	if fmt.has_method("set_channel_depth"):
-		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_TYPE, VoxelBuffer.DEPTH_8_BIT)
 		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_DATA5, VoxelBuffer.DEPTH_8_BIT)
 	terrain.set("format", fmt)
 
@@ -362,7 +370,7 @@ func _build_ui() -> void:
 
 	vbox.add_child(_make_divider())
 
-	_btn_copy = _make_button("3. Copy bake DB → assets/voxel/copper_isles_baseline.sqlite")
+	_btn_copy = _make_button("3. Copy bake DB → assets/voxel/copper_isles_baseline_v13.sqlite")
 	_btn_copy.pressed.connect(_on_copy_to_assets)
 	vbox.add_child(_btn_copy)
 

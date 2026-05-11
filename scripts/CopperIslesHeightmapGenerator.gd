@@ -2,14 +2,20 @@
 extends VoxelGeneratorScript
 class_name CopperIslesHeightmapGenerator
 
-# CopperIslesHeightmapGenerator — fills CHANNEL_COLOR (terrain) and
-# CHANNEL_DATA (water source bytes) from a Gaea heightmap EXR.
+# CopperIslesHeightmapGenerator — fills CHANNEL_TYPE (terrain
+# material_id) and CHANNEL_DATA5 (water source bytes) from a Gaea
+# heightmap EXR.
 #
 # Mirrors the structure of CubicHeightmapGenerator but replaces the
 # layered-noise ground-height calculation with a heightmap sample.
 # Material banding (sand at coastline, grass above, dirt, then stone)
 # is identical so the world reads the same as procedural Mira at any
 # scale.
+#
+# v13 textured tileset (2026-05-10): writes integer material_id to
+# CHANNEL_TYPE for VoxelMesherBlocky + VoxelBlockyLibrary, matching
+# the pipeline World3D / CubicHeightmapGenerator already use. The
+# legacy CHANNEL_COLOR (packed RGBA + mat_id in alpha) path is gone.
 #
 # Heightmap mapping (gray 0..1):
 #   gray < 0.5  → seabed at sea_level - (0.5 - gray) * 2 * deep_below_sea_voxels
@@ -177,12 +183,15 @@ var _cached_bedrock: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 
 
-# Required by the cube mesher pipeline — see CubicHeightmapGenerator
-# for the long-form explanation. Without this override the engine
-# never allocates CHANNEL_COLOR and the mesher logs thousands of
-# "Central buffer must be valid" errors at world load.
+# Required by VoxelMesherBlocky — see CubicHeightmapGenerator for the
+# long-form explanation. Without this override the engine never
+# allocates CHANNEL_TYPE and the mesher logs thousands of "Central
+# buffer must be valid" errors at world load.
+#
+# CHANNEL_DATA5 carries water source bytes (see WaterByteCodec). The
+# blocky mesher ignores it; WaterChunkMesher reads it separately.
 func _get_used_channels_mask() -> int:
-	return (1 << VoxelBuffer.CHANNEL_COLOR) | (1 << VoxelBuffer.CHANNEL_DATA5)
+	return (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
 
 
 # Stub so World3DBootstrap-style callers that push NoEditZone water
@@ -504,59 +513,36 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	_diag_record(false, lod)
 	_ensure_materials_cached()
 
-	# Pre-extract per-material tuples (same hot-loop optimisation as
-	# CubicHeightmapGenerator).
-	var dirt_lo: Color = Color(0.30, 0.20, 0.12)
-	var dirt_hi: Color = Color(0.45, 0.32, 0.20)
+	# Pre-extract per-material ids (one lookup per block; the inner
+	# y-loop just reads locals + does inline math). v13: only the
+	# integer material_id is needed for CHANNEL_TYPE; per-material
+	# colour palettes are unused at generation time and live in the
+	# texture atlas instead.
 	var dirt_id: int = 0
 	if _cached_dirt != null:
-		dirt_lo = _cached_dirt.color_low
-		dirt_hi = _cached_dirt.color_high
 		dirt_id = _cached_dirt.material_id
 
-	var stone_lo: Color = Color(0.40, 0.40, 0.42)
-	var stone_hi: Color = Color(0.62, 0.62, 0.64)
 	var stone_id: int = 0
 	if _cached_stone != null:
-		stone_lo = _cached_stone.color_low
-		stone_hi = _cached_stone.color_high
 		stone_id = _cached_stone.material_id
 
-	var grass_lo: Color = dirt_lo
-	var grass_hi: Color = dirt_hi
 	var grass_id: int = dirt_id
 	if _cached_grass != null:
-		grass_lo = _cached_grass.color_low
-		grass_hi = _cached_grass.color_high
 		grass_id = _cached_grass.material_id
 
-	var sand_lo: Color = grass_lo
-	var sand_hi: Color = grass_hi
 	var sand_id: int = grass_id
 	if _cached_sand != null:
-		sand_lo = _cached_sand.color_low
-		sand_hi = _cached_sand.color_high
 		sand_id = _cached_sand.material_id
 
-	# Bedrock pre-pack.
-	var bedrock_packed_v: int = 0
+	# Bedrock material id for the world-floor row. v13: just the integer
+	# id goes into CHANNEL_TYPE; no RGBA packing.
+	var bedrock_id: int = 0
 	if _cached_bedrock != null:
-		var br_c: Color = _cached_bedrock.color_high
-		var br_r: int = clampi(int(round(br_c.r * 255.0)), 0, 255)
-		var br_g: int = clampi(int(round(br_c.g * 255.0)), 0, 255)
-		var br_b: int = clampi(int(round(br_c.b * 255.0)), 0, 255)
-		bedrock_packed_v = br_r | (br_g << 8) | (br_b << 16) \
-			| ((_cached_bedrock.material_id & 0xFF) << 24)
+		bedrock_id = _cached_bedrock.material_id & 0xFF
 
 	var grass_thick: int = grass_layer_thickness_voxels
 	var dirt_band_end: int = grass_thick + dirt_layer_thickness_voxels
 	var beach_y: int = beach_y_threshold
-
-	const STONE_BAND_REF_VOXELS: float = 30.0
-	var dirt_band_size: int = dirt_band_end - grass_thick
-	var dirt_band_inv_max: float = 0.0
-	if dirt_band_size > 1:
-		dirt_band_inv_max = 1.0 / float(dirt_band_size - 1)
 
 	var write_water: bool = emit_water and (lod == 0)
 	var water_byte: int = WaterByteCodec.SOURCE_BYTE
@@ -570,13 +556,9 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			var gray: float = _sample_gray(world_x, world_z)
 			var ground_y: int = _gray_to_ground_y(gray)
 
-			# Top-band tuple (sand at coastline, grass elsewhere).
-			var top_lo: Color = grass_lo
-			var top_hi: Color = grass_hi
+			# Top-band id (sand at coastline, grass elsewhere).
 			var top_id: int = grass_id
 			if ground_y <= beach_y:
-				top_lo = sand_lo
-				top_hi = sand_hi
 				top_id = sand_id
 
 			var emit_water_here: bool = write_water and ground_y < sea_level_voxels
@@ -596,39 +578,20 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 					continue
 
 				# Bedrock layer — single solid unmineable row.
-				if world_y == WORLD_FLOOR_VOXEL_Y and bedrock_packed_v != 0:
-					out_buffer.set_voxel(bedrock_packed_v, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+				if world_y == WORLD_FLOOR_VOXEL_Y and bedrock_id != 0:
+					out_buffer.set_voxel(bedrock_id, x, y, z, VoxelBuffer.CHANNEL_TYPE)
 					continue
 
-				# Pick band by depth.
+				# Pick band by depth. Only the material_id is needed for
+				# the textured cube pipeline — per-voxel colour lerp is
+				# gone (texture atlas tiles in the VoxelBlockyLibrary
+				# carry the visual variation).
 				var depth: int = ground_y - world_y
-				var lo: Color
-				var hi: Color
 				var mat_id: int
 				if depth < grass_thick:
-					lo = top_lo
-					hi = top_hi
 					mat_id = top_id
 				elif depth < dirt_band_end:
-					lo = dirt_lo
-					hi = dirt_hi
 					mat_id = dirt_id
 				else:
-					lo = stone_lo
-					hi = stone_hi
 					mat_id = stone_id
-
-				# Lerp colour within the material's natural band.
-				var t_band: float
-				if depth < grass_thick:
-					t_band = 1.0
-				elif depth < dirt_band_end:
-					t_band = 1.0 - float(depth - grass_thick) * dirt_band_inv_max
-				else:
-					var stone_depth: int = depth - dirt_band_end
-					t_band = clampf(1.0 - float(stone_depth) / STONE_BAND_REF_VOXELS, 0.0, 1.0)
-				var c: Color = lo.lerp(hi, t_band)
-
-				# Inline pack: high 24 bits = RGB888, low 8 = mat_id.
-				var packed: int = (c.to_rgba32() & 0xFFFFFF00) | (mat_id & 0xFF)
-				out_buffer.set_voxel(packed, x, y, z, VoxelBuffer.CHANNEL_COLOR)
+				out_buffer.set_voxel(mat_id, x, y, z, VoxelBuffer.CHANNEL_TYPE)

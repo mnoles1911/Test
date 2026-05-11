@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c432iyfcck57v" path="res://scripts/_dev/WorldBakeController.gd" id="1_controller"]
 [ext_resource type="VoxelGeneratorScript" path="res://assets/voxel/copper_isles_generator.tres" id="2_copper_gen"]
+[ext_resource type="VoxelBlockyLibrary" uid="uid://bd1vmr20la2x0" path="res://assets/voxels/blocky_library.tres" id="3_blocky_library"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
 sky_top_color = Color(0.18, 0.2, 0.28, 1)
@@ -19,16 +20,12 @@ ambient_light_source = 3
 ambient_light_color = Color(0.35, 0.4, 0.5, 1)
 ambient_light_energy = 0.6
 
-[sub_resource type="StandardMaterial3D" id="VoxelTerrainMat_1"]
-vertex_color_use_as_albedo = true
-roughness = 0.85
-
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_1"]
-database_path = "user://baked_baseline.sqlite"
+database_path = "user://baked_baseline_v13.sqlite"
 save_generator_output = true
 
-[sub_resource type="VoxelMesherCubes" id="VoxelMesher_1"]
-opaque_material = SubResource("VoxelTerrainMat_1")
+[sub_resource type="VoxelMesherBlocky" id="VoxelMesher_1"]
+library = ExtResource("3_blocky_library")
 
 [node name="BakeWorld" type="Node3D" unique_id=798012111]
 script = ExtResource("1_controller")
@@ -41,7 +38,6 @@ lod_count = 9
 lod_distance = 128.0
 secondary_lod_distance = 128.0
 lod_fade_duration = 1.0
-material = SubResource("VoxelTerrainMat_1")
 run_stream_in_editor = false
 mesh_block_size = 32
 cache_generated_blocks = true

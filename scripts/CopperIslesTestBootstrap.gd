@@ -125,11 +125,23 @@ func _ready() -> void:
 				f.close()
 			print("[CopperIslesTest] Reopened stream: %s (%d bytes on disk)" % [fresh.database_path, sz])
 
-	# Configure CHANNEL_COLOR depth to 32-bit so packed RGBA + mat_id
-	# values survive storage. Default 8-bit truncates to just the red
-	# byte, which makes mining + colours both broken.
+	# Configure CHANNEL_TYPE depth to 8-bit (Zylann default, set
+	# explicitly here for parity with World3D). CHANNEL_DATA5 carries
+	# water bytes — also 8-bit. v13: terrain rendering reads
+	# CHANNEL_TYPE via VoxelMesherBlocky, not the pre-v13 CHANNEL_COLOR.
 	if "format" in terrain:
 		_configure_voxel_format(terrain)
+
+	# Re-apply per-cube tile coords + atlas material at runtime to work
+	# around Zylann's gdextension serialization bug — `material_override_0`
+	# and per-face `tile_*` properties save into the .tres but fail to
+	# restore on load (return null / default (0,0) at runtime). Without
+	# this re-injection the terrain renders all-white or with the
+	# full-atlas UV smear. See World3DBootstrap for the full rationale.
+	if "mesher" in terrain:
+		var mesher: Resource = terrain.mesher
+		if mesher != null:
+			_inject_atlas_materials_into_library(mesher)
 
 	# Tell the generator to skip the EXR load in shipped builds. The
 	# baked SQLite covers every in-bounds chunk, so the generator only
@@ -205,8 +217,16 @@ func _ready() -> void:
 # read off the stream because we run BEFORE the stream resource
 # initialises — the copy must happen first or the stream opens an
 # empty file at the user:// path.
-const WORKING_SQLITE_PATH: String = "user://copper_isles_test.sqlite"
-const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline.sqlite"
+#
+# `_v13` suffix added 2026-05-10 when the generator migrated from
+# CHANNEL_COLOR (packed RGBA) to CHANNEL_TYPE (material_id integer)
+# for the textured-tileset migration. The old paths
+# (copper_isles_test.sqlite / copper_isles_baseline.sqlite) contain
+# pre-v13 data that won't render under VoxelMesherBlocky — bumping
+# the path naturally invalidates them without forcing a delete. The
+# old files can be removed from disk whenever convenient.
+const WORKING_SQLITE_PATH: String = "user://copper_isles_test_v13.sqlite"
+const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v13.sqlite"
 
 
 # =============================================================
@@ -405,10 +425,11 @@ func _enforce_lod_config(terrain: Object) -> void:
 
 
 func _configure_voxel_format(terrain: Object) -> void:
-	# Lifted from World3DBootstrap. See that file for the long-form
-	# explanation — short version: we instantiate VoxelFormat, force
-	# CHANNEL_COLOR to DEPTH_32_BIT, and assign it BEFORE the terrain
-	# starts streaming.
+	# Lifted from World3DBootstrap. v13: CHANNEL_TYPE (8-bit) carries
+	# the material_id integer that VoxelMesherBlocky reads;
+	# CHANNEL_DATA5 (8-bit) carries water source bytes for
+	# WaterChunkMesher. Assign the format BEFORE the terrain starts
+	# streaming so cached chunks store at the right depth.
 	var fmt: Resource = null
 	if ClassDB.class_exists("VoxelFormat"):
 		fmt = ClassDB.instantiate("VoxelFormat")
@@ -416,16 +437,119 @@ func _configure_voxel_format(terrain: Object) -> void:
 		push_warning("[CopperIslesTest] VoxelFormat class not found.")
 		return
 	if fmt.has_method("set_channel_depth"):
-		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
+		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_TYPE, VoxelBuffer.DEPTH_8_BIT)
 		fmt.call("set_channel_depth", VoxelBuffer.CHANNEL_DATA5, VoxelBuffer.DEPTH_8_BIT)
-	elif "color_depth" in fmt:
-		fmt.set("color_depth", VoxelBuffer.DEPTH_32_BIT)
+	elif "type_depth" in fmt:
+		fmt.set("type_depth", VoxelBuffer.DEPTH_8_BIT)
 	elif "channel_depths" in fmt:
 		var depths = fmt.get("channel_depths")
 		if depths is Array:
-			depths[VoxelBuffer.CHANNEL_COLOR] = VoxelBuffer.DEPTH_32_BIT
+			depths[VoxelBuffer.CHANNEL_TYPE] = VoxelBuffer.DEPTH_8_BIT
+			depths[VoxelBuffer.CHANNEL_DATA5] = VoxelBuffer.DEPTH_8_BIT
 			fmt.set("channel_depths", depths)
 	terrain.set("format", fmt)
+
+
+# =============================================================
+# TEXTURE ATLAS RUNTIME RE-INJECTION
+# =============================================================
+# Mirrors World3DBootstrap._inject_atlas_materials_into_library. Per-
+# cube `material_override_0` and per-face `tile_*` properties save
+# correctly into blocky_library.tres but Zylann's gdextension fails
+# to restore them on load — get_material_override(0) returns null and
+# get_tile() returns (0,0). Without re-injection the terrain renders
+# all-white or smears the full atlas across each cube. Re-apply every
+# scene load. The .tres remains a build artifact; this script is the
+# source of truth at runtime.
+
+const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
+const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
+
+# Zylann Cube SIDE enum (voxel/util/godot/classes/cube.h):
+const _SIDE_NEG_X: int = 0
+const _SIDE_POS_X: int = 1
+const _SIDE_NEG_Y: int = 2
+const _SIDE_POS_Y: int = 3
+const _SIDE_NEG_Z: int = 4
+const _SIDE_POS_Z: int = 5
+
+# Per-material face tile coords — must mirror MATERIAL_TILES in
+# tools/build_blocky_library.gd and the matching dict in
+# World3DBootstrap. Keep all three in sync if tile coords change.
+const _MATERIAL_TILES: Dictionary = {
+	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},
+	2:  {"top": Vector2i(1, 0), "side": Vector2i(1, 0), "bottom": Vector2i(1, 0)},
+	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},
+	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},
+	# 5 = water, no library entry
+	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},
+	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},
+	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},
+	9:  {"top": Vector2i(7, 0), "side": Vector2i(7, 0), "bottom": Vector2i(7, 0)},
+	10: {"top": Vector2i(0, 1), "side": Vector2i(1, 1), "bottom": Vector2i(0, 1)},
+	11: {"top": Vector2i(2, 1), "side": Vector2i(2, 1), "bottom": Vector2i(2, 1)},
+	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},
+}
+
+const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
+const _TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
+
+
+func _inject_atlas_materials_into_library(mesher: Resource) -> void:
+	var lib: Resource = mesher.get("library") if "library" in mesher else null
+	if lib == null:
+		push_warning("[CopperIslesTest] inject_atlas_materials: no library on mesher.")
+		return
+
+	var atlas_tex: Texture2D = load(_ATLAS_TEXTURE_PATH) as Texture2D
+	if atlas_tex == null:
+		printerr("[CopperIslesTest] inject_atlas_materials: failed to load %s" % _ATLAS_TEXTURE_PATH)
+		return
+
+	var atlas_mat: StandardMaterial3D = StandardMaterial3D.new()
+	atlas_mat.resource_name = "atlas_default_runtime"
+	atlas_mat.albedo_texture = atlas_tex
+	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	atlas_mat.alpha_scissor_threshold = 0.5
+	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	atlas_mat.roughness = 0.85
+	atlas_mat.metallic = 0.0
+	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+
+	if not "models" in lib:
+		push_warning("[CopperIslesTest] inject_atlas_materials: library has no models array.")
+		return
+	var models_arr: Array = lib.get("models")
+	var atlas_grid: Vector2i = Vector2i(_ATLAS_TILES_PER_ROW, _ATLAS_TILES_PER_ROW)
+	var injected: int = 0
+	for slot_idx in _MATERIAL_TILES.keys():
+		var idx: int = int(slot_idx)
+		if idx < 0 or idx >= models_arr.size():
+			continue
+		var m = models_arr[idx]
+		if m == null:
+			continue
+		var faces: Dictionary = _MATERIAL_TILES[idx]
+		m.set("atlas_size_in_tiles", atlas_grid)
+		if m.has_method("set_tile"):
+			m.call("set_tile", _SIDE_POS_Y, faces["top"])
+			m.call("set_tile", _SIDE_NEG_Y, faces["bottom"])
+			m.call("set_tile", _SIDE_NEG_X, faces["side"])
+			m.call("set_tile", _SIDE_POS_X, faces["side"])
+			m.call("set_tile", _SIDE_NEG_Z, faces["side"])
+			m.call("set_tile", _SIDE_POS_Z, faces["side"])
+		if m.has_method("set_material_override"):
+			m.call("set_material_override", 0, atlas_mat)
+		if idx in _TRANSPARENT_MATERIALS:
+			m.set("transparency_index", 1)
+		if idx in _NON_CULLING_MATERIALS:
+			m.set("culls_neighbors", false)
+		injected += 1
+
+	if lib.has_method("bake"):
+		lib.bake()
+
+	print("[CopperIslesTest] inject_atlas_materials: re-applied tiles + atlas mat to %d models, library re-baked." % injected)
 
 
 func _terrain_scale(terrain: Node3D) -> float:
