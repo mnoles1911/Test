@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3 uid="uid://dhellosteam0mp0"]
+
+; HelloSteam.tscn — MP-0 acceptance test for the GodotSteam plugin.
+;
+; This scene is a stub. The entire UI is built programmatically by
+; scripts/net/dev/HelloSteam.gd in _ready() — see that file for the
+; full layout, click dispatch, and Steam-singleton resolution logic.
+;
+; To run:
+;   1. Install the GodotSteam GDExtension (addons/godotsteam/INSTALL.md).
+;   2. Make sure the Steam client is running and you're logged in.
+;   3. F6 with this scene open, or set as the temporary main scene
+;      via Project Settings → Run → Main Scene.
+;
+; Expected: status label shows "Steam status: ONLINE — user: <you>"
+; after pressing INIT STEAM. Two friend Steam accounts each running
+; this scene should be able to see each other's lobbies via the
+; LIST LOBBIES button.
+;
+; Joins the "dev_scene" group in _ready so HUDOverlay / PauseMenu /
+; JournalUI / SaveNotification stay quiet (see CLAUDE.md "Dev-scene
+; group convention").
+
+[ext_resource type="Script" path="res://scripts/net/dev/HelloSteam.gd" id="1_hellosteam_script"]
+
+[node name="HelloSteam" type="Node"]
+script = ExtResource("1_hellosteam_script")
