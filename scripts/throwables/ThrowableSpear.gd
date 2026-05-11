@@ -138,6 +138,15 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if _impacted:
 		return
+	# Ignore the thrower. The spear's 2 m capsule, when oriented along
+	# its travel vector, often has its rear half overlapping Roland's
+	# collision capsule on spawn — body_entered fires the same frame
+	# the spear leaves his hand, freezing it in mid-air. Filtering by
+	# group is cheaper and more robust than spawn offsets, and it also
+	# protects against corner cases like the spear arcing back through
+	# the player on a high-angle throw.
+	if body != null and body.is_in_group("player"):
+		return
 	_impacted = true
 
 	# Lock the spear's current orientation as the "stuck" pose. The

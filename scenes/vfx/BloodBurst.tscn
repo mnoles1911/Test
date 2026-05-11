@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://dbloodburst01"]
+[gd_scene load_steps=7 format=3 uid="uid://dbloodburst01"]
 
 ; BloodBurst.tscn — Layer A blood spray.
 ;
@@ -54,10 +54,25 @@ scale_max = 1.2
 color_ramp = SubResource("GradientTexture1D_blood")
 alpha_curve = SubResource("Curve_alpha_fade")
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_particle_mat"]
+; Without this material on the particle mesh, GPUParticles3D's
+; per-instance color from the ParticleProcessMaterial.color_ramp
+; never reaches the fragment shader — particles render as default
+; white/grey regardless of the gradient. vertex_color_use_as_albedo
+; tells the shader to read the per-instance color and use it as the
+; albedo. shading_mode = UNSHADED keeps the saturated red popping
+; without ambient/directional dimming. transparency = ALPHA enables
+; the alpha_curve fade-out.
+shading_mode = 0
+vertex_color_use_as_albedo = true
+transparency = 1
+albedo_color = Color(1, 1, 1, 1)
+
 [sub_resource type="BoxMesh" id="BoxMesh_blood_cube"]
 ; ~3 cm chunky blood cube. Reads as voxel-scale blood — finer than
 ; character voxels (5.5 cm) but still respects the cubic aesthetic.
 size = Vector3(0.03, 0.03, 0.03)
+material = SubResource("StandardMaterial3D_particle_mat")
 
 [node name="BloodBurst" type="GPUParticles3D"]
 emitting = false

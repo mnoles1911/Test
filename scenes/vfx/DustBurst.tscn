@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://ddustburst01"]
+[gd_scene load_steps=7 format=3 uid="uid://ddustburst01"]
 
 ; DustBurst.tscn — terrain-impact dust puff.
 ;
@@ -39,9 +39,18 @@ scale_max = 0.8
 color_ramp = SubResource("GradientTexture1D_dust")
 alpha_curve = SubResource("Curve_dust_alpha")
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dust_mat"]
+; Same per-particle-color contract as BloodBurst — see that scene's
+; comment for why every particle mesh needs this material.
+shading_mode = 0
+vertex_color_use_as_albedo = true
+transparency = 1
+albedo_color = Color(1, 1, 1, 1)
+
 [sub_resource type="BoxMesh" id="BoxMesh_dust_cube"]
 ; ~1.8 cm dust mote.
 size = Vector3(0.018, 0.018, 0.018)
+material = SubResource("StandardMaterial3D_dust_mat")
 
 [node name="DustBurst" type="GPUParticles3D"]
 emitting = false

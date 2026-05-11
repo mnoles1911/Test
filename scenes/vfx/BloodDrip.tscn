@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://dblooddrip01"]
+[gd_scene load_steps=5 format=3 uid="uid://dblooddrip01"]
 
 ; BloodDrip.tscn — Layer B continuous wound drip.
 ;
@@ -38,10 +38,19 @@ scale_min = 0.6
 scale_max = 0.9
 color_ramp = SubResource("GradientTexture1D_drip")
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_drip_mat"]
+; Same per-particle-color contract as BloodBurst — see that scene's
+; comment for why every particle mesh needs this material.
+shading_mode = 0
+vertex_color_use_as_albedo = true
+transparency = 1
+albedo_color = Color(1, 1, 1, 1)
+
 [sub_resource type="BoxMesh" id="BoxMesh_drip_cube"]
 ; Slightly smaller than the burst cubes — a wound drip is finer
 ; than an arterial spray.
 size = Vector3(0.025, 0.025, 0.025)
+material = SubResource("StandardMaterial3D_drip_mat")
 
 [node name="BloodDrip" type="GPUParticles3D"]
 emitting = false
