@@ -713,10 +713,23 @@ bark *"This place doesn't yield to me."*
 
 Registered in `project.godot` (active now), in load order:
 `GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
+`NetTransport`, `MultiplayerManager`,
 `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `VoxelMaterialRegistry`,
 `JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
 `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `BarkManager`, `WorldClock`,
 `WeatherManager`, `BloodVFX`
+
+`NetTransport` and `MultiplayerManager` are the multiplayer transport
+seam (landed in MP-1). `NetTransport` picks one of three backends at
+startup based on the `multiplayer/backend` project setting (`"enet"` /
+`"steam"` / future `"dedicated"`); `MultiplayerManager` owns the
+SceneTree's `multiplayer_peer`, exposes `is_offline()` / `is_host()` /
+`is_client()` / `local_peer_id()`, and runs the session lifecycle
+state machine. **In OFFLINE mode (no session active),
+`MultiplayerManager.is_host()` returns true** so existing single-player
+authority gates work without modification — the MP-aware behavior only
+kicks in once `_mode != OFFLINE`. Acceptance dev scene:
+`scenes/_dev/NetTest.tscn`.
 
 `Colors` (`assets/ui/Colors.gd`) is the single source of truth for the Voxelmark
 UI palette (oak / parchment / iron / gold / HP / STAM, plus 5 rarity tiers).
@@ -729,6 +742,8 @@ Every programmatic UI scene (`HUDOverlay`, `PauseMenu`, `MainMenu`,
 both. CSS source-of-truth: `assets/ui/css/menus_shared.css`.
 
 Load-order rules to preserve:
+- `NetTransport` MUST load before `MultiplayerManager` (MM resolves `/root/NetTransport` and connects to its signals in `_ready`).
+- `MultiplayerManager` MUST load before any gameplay autoload that gates on `MultiplayerManager.is_host()` in its own `_ready` — none today, but `VoxelEditManager`, `VoxelGravityManager`, `WaterFlowManager`, and `WeatherManager` will once MP-3+ lands. The current ordering already satisfies this.
 - `Colors` MUST load before any UI autoload (`PauseMenu`, `HUDOverlay`, `JournalUI`) — those scripts reference `Colors.PANEL_OAK_1` / `Colors.HP` / etc. directly in `_ready()`.
 - `InventoryManager` MUST load before `VoxelMaterialRegistry` (the registry validates `yield_item_id` against `ITEM_REGISTRY` at startup).
 - `VoxelMaterialRegistry` MUST load before `VoxelEditManager` (`EditToolHandler` queries the registry on every swing for material lookup).
