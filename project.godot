@@ -28,6 +28,7 @@ SaveNotification="*res://scripts/SaveNotification.gd"
 PauseMenu="*res://scripts/PauseMenu.gd"
 NetTransport="*res://scripts/net/NetTransport.gd"
 MultiplayerManager="*res://scripts/net/MultiplayerManager.gd"
+SyncRateConfig="*res://scripts/net/SyncRateConfig.gd"
 CharacterStore="*res://scripts/net/CharacterStore.gd"
 Settings="*res://scenes/ui/Settings.tscn"
 DebugOverlay="*res://scripts/DebugOverlay.gd"
@@ -281,6 +282,24 @@ ping_interval_seconds=2.0
 ; eviction keeps the most recent N. Tune up for hosts with
 ; long sessions + a need for full late-join coverage.
 edit_log_max_entries=50000
+
+; PR-J — per-system sync rates (seconds between MultiplayerSynchronizer
+; updates). Each system reads its rate on _ready and applies to its
+; sync node. See scripts/net/SyncRateConfig.gd for the full schema.
+;
+; player_sync_interval = 0.0  → every physics tick (~16ms). Bump to
+;                                0.05 for 20Hz if bandwidth is tight.
+; enemy_sync_interval = 0.1   → 10Hz. Enemy movement is slow enough.
+; cluster_sync_interval = 0.066 → ~15Hz. Mid-flight clusters need
+;                                  smoother sync than enemies.
+; cutscene_membership_seconds = 0.5 → in-radius re-check cadence.
+; cutscene_text_poll_seconds  = 0.25 → Dialogic state poll for line
+;                                       + speaker broadcast.
+player_sync_interval=0.0
+enemy_sync_interval=0.1
+cluster_sync_interval=0.066
+cutscene_membership_seconds=0.5
+cutscene_text_poll_seconds=0.25
 
 [rendering]
 

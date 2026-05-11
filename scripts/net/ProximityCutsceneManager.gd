@@ -64,8 +64,13 @@ extends Node
 # CONFIG
 # =============================================================
 
-const CHECK_INTERVAL_SECONDS: float = 0.5
-const POLL_INTERVAL_SECONDS: float = 0.25
+## Defaults. Overridden at _ready from SyncRateConfig if loaded —
+## PR-J brought these under ProjectSettings control so operators
+## can tune cutscene responsiveness without editing source.
+const CHECK_INTERVAL_SECONDS_DEFAULT: float = 0.5
+const POLL_INTERVAL_SECONDS_DEFAULT: float = 0.25
+var CHECK_INTERVAL_SECONDS: float = CHECK_INTERVAL_SECONDS_DEFAULT
+var POLL_INTERVAL_SECONDS: float = POLL_INTERVAL_SECONDS_DEFAULT
 
 ## Default pull radius used when DialogueTrigger3D doesn't specify
 ## one. 20m matches the plan's recommendation — generous enough
@@ -114,6 +119,10 @@ func _ready() -> void:
 	if get_node_or_null("/root/MultiplayerManager") == null:
 		push_warning("[ProximityCutsceneManager] /root/MultiplayerManager missing — cutscene mirroring disabled")
 		return
+	# PR-J — pick up configurable intervals from SyncRateConfig.
+	if get_node_or_null("/root/SyncRateConfig") != null:
+		CHECK_INTERVAL_SECONDS = SyncRateConfig.cutscene_membership_seconds
+		POLL_INTERVAL_SECONDS = SyncRateConfig.cutscene_text_poll_seconds
 	# We only need physics process when an active cutscene is running;
 	# but the cost of an always-on _process tick is negligible. Keep
 	# enabled so the next call_when_dialogic_ends edge case (host quits

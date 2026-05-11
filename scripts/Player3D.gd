@@ -336,6 +336,13 @@ var status_text: String:
 func _ready() -> void:
 	_recalculate_movement_stats()
 	_underwater_filter = get_node_or_null(underwater_filter_path)
+	# PR-J — apply the configured player sync interval to our
+	# MultiplayerSynchronizer child (set up in MP-2). If the
+	# node or autoload is missing, fall through silently — the
+	# default 0.0 = every physics tick is fine.
+	var sync_node := get_node_or_null("MultiplayerSynchronizer") as MultiplayerSynchronizer
+	if sync_node != null and get_node_or_null("/root/SyncRateConfig") != null:
+		SyncRateConfig.apply_to_player_synchronizer(sync_node)
 
 
 func _recalculate_movement_stats() -> void:

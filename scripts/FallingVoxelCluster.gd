@@ -309,6 +309,11 @@ func _ready() -> void:
 		# Disable contact-monitor — replicas don't fire body_entered
 		# (host handles crush damage authoritatively).
 		contact_monitor = false
+	# PR-J — apply the configured cluster sync interval to our
+	# MultiplayerSynchronizer child (set up in PR-C).
+	var sync_node := get_node_or_null("MultiplayerSynchronizer") as MultiplayerSynchronizer
+	if sync_node != null and get_node_or_null("/root/SyncRateConfig") != null:
+		SyncRateConfig.apply_to_cluster_synchronizer(sync_node)
 
 
 func _resolve_node_refs() -> void:
