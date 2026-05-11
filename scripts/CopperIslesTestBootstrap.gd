@@ -477,18 +477,21 @@ const _SIDE_POS_Z: int = 5
 # tools/build_blocky_library.gd and the matching dict in
 # World3DBootstrap. Keep all three in sync if tile coords change.
 const _MATERIAL_TILES: Dictionary = {
-	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},
-	2:  {"top": Vector2i(1, 0), "side": Vector2i(1, 0), "bottom": Vector2i(1, 0)},
-	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},
-	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},
+	1:  {"top": Vector2i(0, 0),  "side": Vector2i(0, 0),  "bottom": Vector2i(0, 0)},
+	2:  {"top": Vector2i(1, 0),  "side": Vector2i(1, 0),  "bottom": Vector2i(1, 0)},
+	3:  {"top": Vector2i(2, 0),  "side": Vector2i(3, 0),  "bottom": Vector2i(1, 0)},
+	4:  {"top": Vector2i(4, 0),  "side": Vector2i(4, 0),  "bottom": Vector2i(4, 0)},
 	# 5 = water, no library entry
-	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},
-	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},
-	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},
-	9:  {"top": Vector2i(7, 0), "side": Vector2i(7, 0), "bottom": Vector2i(7, 0)},
-	10: {"top": Vector2i(0, 1), "side": Vector2i(1, 1), "bottom": Vector2i(0, 1)},
-	11: {"top": Vector2i(2, 1), "side": Vector2i(2, 1), "bottom": Vector2i(2, 1)},
-	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},
+	6:  {"top": Vector2i(4, 1),  "side": Vector2i(4, 1),  "bottom": Vector2i(4, 1)},
+	7:  {"top": Vector2i(5, 0),  "side": Vector2i(5, 0),  "bottom": Vector2i(5, 0)},
+	8:  {"top": Vector2i(6, 0),  "side": Vector2i(6, 0),  "bottom": Vector2i(6, 0)},
+	9:  {"top": Vector2i(7, 0),  "side": Vector2i(7, 0),  "bottom": Vector2i(7, 0)},
+	10: {"top": Vector2i(0, 1),  "side": Vector2i(1, 1),  "bottom": Vector2i(0, 1)},
+	11: {"top": Vector2i(2, 1),  "side": Vector2i(2, 1),  "bottom": Vector2i(2, 1)},
+	12: {"top": Vector2i(3, 1),  "side": Vector2i(3, 1),  "bottom": Vector2i(3, 1)},
+	13: {"top": Vector2i(8, 0),  "side": Vector2i(8, 0),  "bottom": Vector2i(8, 0)},   # snow (Tier 2)
+	14: {"top": Vector2i(9, 0),  "side": Vector2i(9, 0),  "bottom": Vector2i(9, 0)},   # stone_dark (Tier 3)
+	15: {"top": Vector2i(10, 0), "side": Vector2i(10, 0), "bottom": Vector2i(10, 0)},  # iron_ore (Tier 4)
 }
 
 const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves

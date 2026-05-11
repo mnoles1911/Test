@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "stone_dark"
+material_id = 14
+display_name = "Dark Stone"
+color_low = Color(0.28, 0.28, 0.32, 1)
+color_high = Color(0.4, 0.4, 0.45, 1)
+color_jitter = 0.08
+mining_time_seconds = 0.9
+allowed_tools = Array[String](["iron_pickaxe"])
+yield_item_id = "raw_stone"
+yield_quantity = 1
+fall_behavior = 4
+gravity_scale = 1.0
+damage_multiplier = 1.2
+is_cliff_face_material = true

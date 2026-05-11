@@ -50,18 +50,21 @@ const LIBRARY_PATH: String = "res://assets/voxels/blocky_library.tres"
 # Air (slot 0) is omitted -- VoxelBlockyLibrary treats slot 0 as the
 # default empty entry.
 const MATERIAL_TILES: Dictionary = {
-	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},   # stone
-	2:  {"top": Vector2i(1, 0), "side": Vector2i(1, 0), "bottom": Vector2i(1, 0)},   # dirt
-	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},   # grass
-	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},   # sand
+	1:  {"top": Vector2i(0, 0),  "side": Vector2i(0, 0),  "bottom": Vector2i(0, 0)},   # stone
+	2:  {"top": Vector2i(1, 0),  "side": Vector2i(1, 0),  "bottom": Vector2i(1, 0)},   # dirt
+	3:  {"top": Vector2i(2, 0),  "side": Vector2i(3, 0),  "bottom": Vector2i(1, 0)},   # grass
+	4:  {"top": Vector2i(4, 0),  "side": Vector2i(4, 0),  "bottom": Vector2i(4, 0)},   # sand
 	# 5 = water — handled by WaterChunkMesher, no library entry needed.
-	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},   # bedrock
-	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},   # gravel
-	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},   # clay
-	9:  {"top": Vector2i(7, 0), "side": Vector2i(7, 0), "bottom": Vector2i(7, 0)},   # marble
-	10: {"top": Vector2i(0, 1), "side": Vector2i(1, 1), "bottom": Vector2i(0, 1)},   # log
-	11: {"top": Vector2i(2, 1), "side": Vector2i(2, 1), "bottom": Vector2i(2, 1)},   # leaves
-	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},   # copper_ore
+	6:  {"top": Vector2i(4, 1),  "side": Vector2i(4, 1),  "bottom": Vector2i(4, 1)},   # bedrock
+	7:  {"top": Vector2i(5, 0),  "side": Vector2i(5, 0),  "bottom": Vector2i(5, 0)},   # gravel
+	8:  {"top": Vector2i(6, 0),  "side": Vector2i(6, 0),  "bottom": Vector2i(6, 0)},   # clay
+	9:  {"top": Vector2i(7, 0),  "side": Vector2i(7, 0),  "bottom": Vector2i(7, 0)},   # marble
+	10: {"top": Vector2i(0, 1),  "side": Vector2i(1, 1),  "bottom": Vector2i(0, 1)},   # log
+	11: {"top": Vector2i(2, 1),  "side": Vector2i(2, 1),  "bottom": Vector2i(2, 1)},   # leaves
+	12: {"top": Vector2i(3, 1),  "side": Vector2i(3, 1),  "bottom": Vector2i(3, 1)},   # copper_ore
+	13: {"top": Vector2i(8, 0),  "side": Vector2i(8, 0),  "bottom": Vector2i(8, 0)},   # snow (Tier 2)
+	14: {"top": Vector2i(9, 0),  "side": Vector2i(9, 0),  "bottom": Vector2i(9, 0)},   # stone_dark (Tier 3)
+	15: {"top": Vector2i(10, 0), "side": Vector2i(10, 0), "bottom": Vector2i(10, 0)},  # iron_ore (Tier 4)
 }
 
 # Material IDs that should NOT cull adjacent block faces. Leaves are

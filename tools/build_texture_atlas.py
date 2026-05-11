@@ -53,20 +53,23 @@ CHROMA_KEY_MATERIALS = {"leaves_all"}
 
 ATLAS_LAYOUT = {
     # Row 0
-    "stone_all":      (0, 0),
-    "dirt_all":       (1, 0),
-    "grass_top":      (2, 0),
-    "grass_side":     (3, 0),   # auto-composited; not in source/
-    "sand_all":       (4, 0),
-    "gravel_all":     (5, 0),
-    "clay_all":       (6, 0),
-    "marble_all":     (7, 0),
+    "stone_all":       (0, 0),
+    "dirt_all":        (1, 0),
+    "grass_top":       (2, 0),
+    "grass_side":      (3, 0),   # auto-composited; not in source/
+    "sand_all":        (4, 0),
+    "gravel_all":      (5, 0),
+    "clay_all":        (6, 0),
+    "marble_all":      (7, 0),
+    "snow_all":        (8, 0),   # new — Tier 2 snow caps (paint source PNG to enable)
+    "stone_dark_all":  (9, 0),   # new — Tier 3 marble-jitter sibling
+    "iron_ore_all":    (10, 0),  # new — Tier 4 vein ore
     # Row 1
-    "log_top":        (0, 1),
-    "log_side":       (1, 1),
-    "leaves_all":     (2, 1),
-    "copper_ore_all": (3, 1),
-    "bedrock_all":    (4, 1),
+    "log_top":         (0, 1),
+    "log_side":        (1, 1),
+    "leaves_all":      (2, 1),
+    "copper_ore_all":  (3, 1),
+    "bedrock_all":     (4, 1),
 }
 
 
@@ -92,6 +95,9 @@ MATERIAL_FACES = {
     10: {"top": "log_top", "side": "log_side", "bottom": "log_top"},
     11: {"all": "leaves_all"},
     12: {"all": "copper_ore_all"},
+    13: {"all": "snow_all"},        # Tier 2 — snow caps above the snow line
+    14: {"all": "stone_dark_all"},  # Tier 3 — darker stone variant
+    15: {"all": "iron_ore_all"},    # Tier 4 — iron ore vein
 }
 
 
