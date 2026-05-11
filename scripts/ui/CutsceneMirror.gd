@@ -38,6 +38,7 @@ extends CanvasLayer
 var _panel: PanelContainer
 var _speaker_label: Label
 var _line_label: Label
+var _choices_container: VBoxContainer
 var _watching_label: Label
 
 
@@ -75,8 +76,35 @@ func set_line(speaker: String, line: String) -> void:
 	_line_label.text = line
 
 
+## PR-B — render the host's current pending choices in a grayed-out
+## list so guests can SEE the decision the host is about to make
+## without being able to interact. Empty array hides the choices
+## panel entirely (no decision pending).
+func set_choices(choices: PackedStringArray) -> void:
+	if not visible:
+		return
+	# Clear existing choice labels.
+	for c in _choices_container.get_children():
+		c.queue_free()
+	if choices.is_empty():
+		_choices_container.visible = false
+		return
+	_choices_container.visible = true
+	for label in choices:
+		var lbl := Label.new()
+		lbl.text = "▸ %s" % label
+		lbl.add_theme_font_size_override("font_size", 14)
+		# Grayed-out modulate — visually communicates "host-only."
+		lbl.modulate = Color(0.65, 0.65, 0.65, 1.0)
+		_choices_container.add_child(lbl)
+
+
 func hide_cutscene() -> void:
 	visible = false
+	if _choices_container != null:
+		for c in _choices_container.get_children():
+			c.queue_free()
+		_choices_container.visible = false
 
 
 # =============================================================
@@ -112,6 +140,12 @@ func _build_ui() -> void:
 	_line_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_line_label.custom_minimum_size = Vector2(0, 64)
 	vbox.add_child(_line_label)
+
+	# PR-B — grayed-out choices panel; hidden when no choice pending.
+	_choices_container = VBoxContainer.new()
+	_choices_container.add_theme_constant_override("separation", 2)
+	_choices_container.visible = false
+	vbox.add_child(_choices_container)
 
 	_watching_label = Label.new()
 	_watching_label.text = ""

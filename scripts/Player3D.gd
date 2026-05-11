@@ -376,18 +376,28 @@ func _unhandled_input(event: InputEvent) -> void:
 # Authority gate used by _unhandled_input and _physics_process.
 #
 # Returns true when this Player3D instance is owned by the local peer
-# (or no multiplayer session is active — see CLAUDE.md "OFFLINE-IS-HOST
-# POLICY"). This is the single source of truth for "do I take input" so
-# we don't sprinkle is_multiplayer_authority() checks across every Input
-# read site.
+# AND the player isn't currently spectating a mirrored cutscene. Two
+# conditions both have to pass:
+#   1. is_multiplayer_authority() — see CLAUDE.md "OFFLINE-IS-HOST
+#      POLICY". True in OFFLINE so single-player is unaffected.
+#   2. not ProximityCutsceneManager.is_local_in_cutscene() — when
+#      this peer was pulled into a host-driven cutscene (per MP-7),
+#      their input is suppressed for the duration. ESC still works
+#      because dev-scene bootstraps handle it directly.
 #
-# In normal MP-2 deployment, Player3D is only ever instantiated for the
-# local peer; RemotePlayer.tscn is used for remote peers. So this
-# check is defensive — if authority is ever reassigned at runtime (host
-# migration in a future milestone, or a buggy spawn path), it prevents
-# accidental input-driven motion on a non-owned body.
+# This is the single source of truth for "do I take input" so we
+# don't sprinkle is_multiplayer_authority() checks across every
+# Input read site.
 func _can_take_input() -> bool:
-	return is_multiplayer_authority()
+	if not is_multiplayer_authority():
+		return false
+	# PR-B — pulled-in cutscene guests can't drive their player.
+	# Gated on get_node_or_null so older projects without the
+	# autoload (testing, regression scenes) keep working.
+	if get_node_or_null("/root/ProximityCutsceneManager") != null:
+		if ProximityCutsceneManager.is_local_in_cutscene():
+			return false
+	return true
 
 
 # =============================================================

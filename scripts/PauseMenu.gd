@@ -623,6 +623,18 @@ func _on_resume() -> void:
 
 
 func _on_save() -> void:
+	# PR-B — can't save while a proximity cutscene is active. The
+	# plan calls this a hard requirement: a save mid-cutscene captures
+	# Dialogic's internal state at an arbitrary point, which would
+	# leave guests' CutsceneMirror overlays out of sync after a reload.
+	# Tolerated in OFFLINE / outside cutscene (the common case).
+	# Check both predicates so the lockout fires on host (active
+	# cutscene driving mirrors) AND on guest (mirrored locally).
+	if get_node_or_null("/root/ProximityCutsceneManager") != null:
+		var psm = ProximityCutsceneManager
+		if psm.is_local_in_cutscene() or psm.has_active_cutscene():
+			print("[PauseMenu] save blocked — cutscene active")
+			return
 	_show_save_dialog()
 
 
