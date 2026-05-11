@@ -26,6 +26,8 @@ Colors="*res://assets/ui/Colors.gd"
 TransitionManager="*res://scripts/TransitionManager.gd"
 SaveNotification="*res://scripts/SaveNotification.gd"
 PauseMenu="*res://scripts/PauseMenu.gd"
+NetTransport="*res://scripts/net/NetTransport.gd"
+MultiplayerManager="*res://scripts/net/MultiplayerManager.gd"
 Settings="*res://scenes/ui/Settings.tscn"
 DebugOverlay="*res://scripts/DebugOverlay.gd"
 FlagScheduler="*res://scripts/FlagScheduler.gd"
@@ -250,6 +252,14 @@ quick_slot_4={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":52,"key_label":0,"unicode":52,"location":0,"echo":false,"script":null)
 ]
 }
+
+[multiplayer]
+
+; Active transport backend chosen at startup by NetTransport.
+; Values: "enet" (LAN dev, default), "steam" (GodotSteam P2P).
+; A future "dedicated" backend slots in the same way.
+; Override at runtime via NetTransport.select_backend(<id>).
+backend="enet"
 
 [rendering]
 

@@ -1,0 +1,357 @@
+extends Node
+# MultiplayerManager — autoload, owns the SceneTree's multiplayer_peer.
+#
+# WHAT THIS IS (plain English):
+#
+#   The thing gameplay code asks "are we in multiplayer? am I the
+#   host?" Sits between NetTransport (which knows how to make a
+#   MultiplayerPeer) and the SceneTree's MultiplayerAPI (which
+#   actually delivers RPCs and replicates nodes).
+#
+#   Three modes:
+#     • OFFLINE — no multiplayer_peer assigned. Single-player.
+#                 is_host() returns true (so existing code paths that
+#                 ask "am I authoritative?" work without modification).
+#     • HOST    — we created the session. peer_id 1 is us.
+#     • CLIENT  — we joined someone else's session.
+#
+#   Lifecycle:
+#     IDLE → host_session(N) → LOBBY_CREATING → LOBBY_READY
+#       → (peers connect) → PLAYING
+#     IDLE → join_session(target) → PEER_CONNECTING → HANDSHAKING
+#       → (handshake completes — MP-6) → PLAYING
+#     PLAYING → leave_session() → DISCONNECTING → IDLE
+#
+#   Right now (MP-1) the handshake is a stub: the moment a peer is
+#   connected, we mark them as PLAYING. The protocol-version and
+#   character-record exchange land in MP-6 (portable characters),
+#   when handshake_hello / handshake_accept RPCs get added here.
+#
+# WHY THIS OWNS multiplayer_peer (and not NetTransport):
+#
+#   NetTransport's job ends when it produces a MultiplayerPeer. Wiring
+#   it into the SceneTree, tracking peer connections, and exposing
+#   "am I the host" is gameplay-state policy, not transport policy.
+#   Splitting these means a future server-only build of NetTransport
+#   doesn't need a SceneTree at all.
+#
+# AUTOLOAD LOAD ORDER (critical):
+#
+#   NetTransport must load BEFORE MultiplayerManager (we resolve it
+#   in our _ready). MultiplayerManager must load BEFORE every
+#   gameplay autoload that gates on `MultiplayerManager.is_host()`
+#   in its own _ready — most importantly VoxelEditManager,
+#   VoxelGravityManager, WaterFlowManager, WeatherManager.
+#
+#   Project.godot puts NetTransport + MultiplayerManager right after
+#   PauseMenu, before Settings.
+#
+# OFFLINE-IS-HOST POLICY:
+#
+#   When no session is active (`_mode == OFFLINE`), `is_host()` returns
+#   true and `local_peer_id()` returns 1. This is intentional: the
+#   single-player game spent its entire history believing it was the
+#   sole authority. Returning true preserves the existing behavior of
+#   the autoloads we'll later gate (VoxelEditManager, etc.) so they
+#   keep doing exactly what they did before MP existed. The MP-aware
+#   gates only matter once `_mode != OFFLINE`.
+
+
+# =============================================================
+# ENUMS
+# =============================================================
+
+enum MP_MODE {
+	OFFLINE,
+	HOST,
+	CLIENT,
+}
+
+enum LIFECYCLE {
+	IDLE,                ## No session active.
+	LOBBY_CREATING,      ## host_session called; waiting on backend.
+	LOBBY_READY,         ## We have a peer, are listening for joins.
+	PEER_CONNECTING,     ## join_session called; waiting on backend.
+	HANDSHAKING,         ## Connected to host, exchanging hello/accept (MP-6+).
+	PLAYING,             ## Normal play. RPCs flowing.
+	DISCONNECTING,       ## Tear-down in progress.
+}
+
+
+# =============================================================
+# CONSTANTS
+# =============================================================
+
+const HOST_PEER_ID: int = 1
+const DEFAULT_MAX_PEERS: int = 10
+
+
+# =============================================================
+# STATE
+# =============================================================
+
+var _mode: MP_MODE = MP_MODE.OFFLINE
+var _state: LIFECYCLE = LIFECYCLE.IDLE
+
+## peer_id (int) -> Dictionary { display_name, joined_at_ms }
+## Local peer is in the dict too (under HOST_PEER_ID for the host,
+## or our assigned ID for a client). Includes the local entry so UI
+## code can iterate one collection.
+var peers: Dictionary = {}
+
+
+# =============================================================
+# SIGNALS
+# =============================================================
+
+signal session_started(mode: MP_MODE)
+signal session_failed(reason: String)
+signal session_ended(reason: String)
+signal peer_joined(peer_id: int)
+signal peer_left(peer_id: int)
+signal lifecycle_changed(state: LIFECYCLE)
+
+
+# =============================================================
+# LIFECYCLE
+# =============================================================
+
+func _ready() -> void:
+	# We need NetTransport to be loaded before us — that's why
+	# project.godot lists NetTransport first in the autoload order.
+	# Crash early with a clear message if the order got broken.
+	if get_node_or_null("/root/NetTransport") == null:
+		push_error("[MultiplayerManager] /root/NetTransport not found. "
+			+ "Check autoload order in project.godot — NetTransport must load FIRST.")
+		return
+
+	NetTransport.session_ready.connect(_on_transport_session_ready)
+	NetTransport.session_failed.connect(_on_transport_session_failed)
+	NetTransport.session_ended.connect(_on_transport_session_ended)
+
+	# Hook the SceneTree's MultiplayerAPI for peer connect/disconnect
+	# events. These fire whenever a remote peer joins or leaves —
+	# regardless of which transport is underneath.
+	multiplayer.peer_connected.connect(_on_mp_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_mp_peer_disconnected)
+	multiplayer.connected_to_server.connect(_on_mp_connected_to_server)
+	multiplayer.connection_failed.connect(_on_mp_connection_failed)
+	multiplayer.server_disconnected.connect(_on_mp_server_disconnected)
+
+
+# =============================================================
+# PUBLIC API — gameplay-facing predicates
+# =============================================================
+
+func is_offline() -> bool:
+	return _mode == MP_MODE.OFFLINE
+
+
+func is_host() -> bool:
+	# OFFLINE counts as host so existing single-player gates that ask
+	# "am I authoritative?" keep returning true without changes.
+	# See OFFLINE-IS-HOST POLICY at top of file.
+	return _mode != MP_MODE.CLIENT
+
+
+func is_client() -> bool:
+	return _mode == MP_MODE.CLIENT
+
+
+func mode() -> MP_MODE:
+	return _mode
+
+
+func lifecycle() -> LIFECYCLE:
+	return _state
+
+
+func local_peer_id() -> int:
+	if _mode == MP_MODE.OFFLINE:
+		return HOST_PEER_ID
+	return multiplayer.get_unique_id()
+
+
+func remote_peer_count() -> int:
+	# Excludes the local peer.
+	return peers.size() - (1 if peers.has(local_peer_id()) else 0)
+
+
+# =============================================================
+# PUBLIC API — session control
+# =============================================================
+
+func host_session(max_peers: int = DEFAULT_MAX_PEERS) -> Error:
+	if _state != LIFECYCLE.IDLE:
+		push_warning("[MultiplayerManager] host_session called in state %s — ignoring" % LIFECYCLE.keys()[_state])
+		return ERR_ALREADY_IN_USE
+	_set_state(LIFECYCLE.LOBBY_CREATING)
+	var err: Error = NetTransport.start_host(max_peers)
+	if err != OK:
+		# NetTransport will emit session_failed via its async path; we
+		# return the sync error code too so the caller can show an
+		# immediate hint without waiting for the signal.
+		return err
+	return OK
+
+
+func join_session(target: Variant) -> Error:
+	if _state != LIFECYCLE.IDLE:
+		push_warning("[MultiplayerManager] join_session called in state %s — ignoring" % LIFECYCLE.keys()[_state])
+		return ERR_ALREADY_IN_USE
+	_set_state(LIFECYCLE.PEER_CONNECTING)
+	var err: Error = NetTransport.join(target)
+	if err != OK:
+		return err
+	return OK
+
+
+func leave_session(reason: String = "") -> void:
+	if _state == LIFECYCLE.IDLE:
+		return
+	_set_state(LIFECYCLE.DISCONNECTING)
+	NetTransport.disconnect_now()
+	# Drop the SceneTree peer immediately so further RPCs no-op
+	# rather than queueing into nothing.
+	multiplayer.multiplayer_peer = null
+	_clear_peers()
+	_mode = MP_MODE.OFFLINE
+	_set_state(LIFECYCLE.IDLE)
+	session_ended.emit(reason)
+
+
+# =============================================================
+# NetTransport SIGNAL HANDLERS
+# =============================================================
+
+func _on_transport_session_ready(peer: MultiplayerPeer) -> void:
+	# The backend has produced a usable peer. Hand it to the SceneTree.
+	multiplayer.multiplayer_peer = peer
+
+	if _state == LIFECYCLE.LOBBY_CREATING:
+		_mode = MP_MODE.HOST
+		_set_state(LIFECYCLE.LOBBY_READY)
+		# Add ourselves to the peers dict so UI shows "1 connected"
+		# even when no guests have joined yet.
+		_add_peer(HOST_PEER_ID, _local_display_name())
+		session_started.emit(_mode)
+		# Hosts move straight to PLAYING — no waiting required.
+		_set_state(LIFECYCLE.PLAYING)
+	elif _state == LIFECYCLE.PEER_CONNECTING:
+		# Client side: wait for connected_to_server to fire (the SceneTree
+		# multiplayer API delivers that once the connection is fully up).
+		_set_state(LIFECYCLE.HANDSHAKING)
+
+
+func _on_transport_session_failed(reason: String) -> void:
+	push_warning("[MultiplayerManager] transport reported session_failed: %s" % reason)
+	# Clean rollback to IDLE regardless of which lifecycle stage we
+	# were in.
+	multiplayer.multiplayer_peer = null
+	_clear_peers()
+	_mode = MP_MODE.OFFLINE
+	_set_state(LIFECYCLE.IDLE)
+	session_failed.emit(reason)
+
+
+func _on_transport_session_ended(reason: String) -> void:
+	# Fired by the backend when it tears itself down (e.g. Steam
+	# lobby leave). leave_session() already handles the local
+	# cleanup; this is just for backend-initiated tear-downs.
+	if _state == LIFECYCLE.IDLE:
+		return
+	multiplayer.multiplayer_peer = null
+	_clear_peers()
+	_mode = MP_MODE.OFFLINE
+	_set_state(LIFECYCLE.IDLE)
+	session_ended.emit(reason)
+
+
+# =============================================================
+# SceneTree.MultiplayerAPI SIGNAL HANDLERS
+# =============================================================
+
+func _on_mp_peer_connected(peer_id: int) -> void:
+	# Fires on host when a guest connects, AND on guest when other
+	# guests connect (the host's id 1 is also delivered to clients).
+	_add_peer(peer_id, "peer_%d" % peer_id)
+	peer_joined.emit(peer_id)
+
+
+func _on_mp_peer_disconnected(peer_id: int) -> void:
+	_remove_peer(peer_id)
+	peer_left.emit(peer_id)
+
+
+func _on_mp_connected_to_server() -> void:
+	# Client-only — fired once we have a confirmed connection. Add
+	# ourselves to the peers dict.
+	_mode = MP_MODE.CLIENT
+	_add_peer(local_peer_id(), _local_display_name())
+	session_started.emit(_mode)
+	# In MP-1 we skip the handshake stage; promote straight to PLAYING.
+	# MP-6 will replace this with the actual hello/accept exchange.
+	_set_state(LIFECYCLE.PLAYING)
+
+
+func _on_mp_connection_failed() -> void:
+	# Client-side: tried to connect, never got there (timeout, host
+	# refused, transport unavailable).
+	_on_transport_session_failed("connection failed (host unreachable or refused)")
+
+
+func _on_mp_server_disconnected() -> void:
+	# Client-side: we were connected, the host went away.
+	_on_transport_session_ended("host disconnected")
+
+
+# =============================================================
+# INTERNAL — peer dict management
+# =============================================================
+
+func _add_peer(peer_id: int, display_name: String) -> void:
+	peers[peer_id] = {
+		"display_name": display_name,
+		"joined_at_ms": Time.get_ticks_msec(),
+	}
+
+
+func _remove_peer(peer_id: int) -> void:
+	peers.erase(peer_id)
+
+
+func _clear_peers() -> void:
+	peers.clear()
+
+
+# =============================================================
+# INTERNAL — state machine
+# =============================================================
+
+func _set_state(s: LIFECYCLE) -> void:
+	if _state == s:
+		return
+	_state = s
+	lifecycle_changed.emit(s)
+
+
+# =============================================================
+# INTERNAL — display name resolution
+# =============================================================
+
+func _local_display_name() -> String:
+	# Prefer the Steam persona name if the Steam backend is active and
+	# initialized. Falls back to "Player" otherwise (will be replaced
+	# in MP-6 once CharacterStore lands and we have a chosen
+	# character with a display_name).
+	if NetTransport.backend_id() == NetTransport.BACKEND_STEAM:
+		var sid: int = NetTransport.get_steam_id_for_peer(local_peer_id())
+		if sid != 0:
+			# We have a steam id; steam persona name comes via the
+			# Steam singleton directly (NetTransport doesn't expose
+			# it because it's a Steam-specific concept).
+			if Engine.has_singleton("Steam"):
+				var steam_obj: Object = Engine.get_singleton("Steam")
+				if steam_obj.has_method("getPersonaName"):
+					return String(steam_obj.call("getPersonaName"))
+	return "Player"
