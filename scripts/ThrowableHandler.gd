@@ -118,7 +118,42 @@ func _try_throw(item_id: String) -> void:
 		# Decrement first so a failed instance doesn't burn the item.
 		InventoryManager.remove_item(item_id, 1)
 
-	# --- Resolve the scene for this throwable ---
+	# --- Compute spawn position + velocity (unchanged) ---
+	# Spawn position: chest height, slightly in front of Roland's body.
+	# We deliberately use the PLAYER BODY's forward (horizontal only)
+	# for the spawn offset — NOT the camera's aim direction — so the
+	# spawn point stays near Roland's chest regardless of camera pitch.
+	var body_forward: Vector3 = -_player.transform.basis.z.normalized()
+	var spawn_pos: Vector3 = _player.global_position + (body_forward * spawn_offset_forward_meters) + Vector3(0, spawn_offset_up_meters, 0)
+	# Throw direction: follow the camera's aim. Falls back to
+	# body_forward if the camera isn't where expected.
+	var aim_direction: Vector3 = body_forward
+	var camera: Camera3D = _player.get_node_or_null("CameraTarget/SpringArm3D/Camera3D") as Camera3D
+	if camera != null:
+		aim_direction = -camera.global_transform.basis.z.normalized()
+	var velocity: Vector3 = aim_direction * throw_speed_meters_per_second
+
+	# --- PR-C: route through ThrowableNet for MP-aware spawning ---
+	# In OFFLINE / on host, ThrowableNet spawns locally + (if MP)
+	# broadcasts to other peers. On guest, ThrowableNet RPCs to host
+	# which spawns + broadcasts back. Inventory tuning data ships
+	# with the request so each peer's replica has the same aoe /
+	# damage values.
+	var inv_data: Dictionary = {}
+	if InventoryManager.ITEM_REGISTRY.has(item_id):
+		inv_data = InventoryManager.ITEM_REGISTRY[item_id]
+	if get_node_or_null("/root/ThrowableNet") != null:
+		ThrowableNet.request_throw(item_id, spawn_pos, velocity, inv_data)
+	else:
+		# Fallback for projects without the autoload yet (testing
+		# the old code path). Identical to the pre-PR-C local spawn.
+		_legacy_local_throw(item_id, spawn_pos, velocity, inv_data)
+
+
+# Preserved direct-spawn path for environments without ThrowableNet
+# loaded (test harnesses, regression scenes). Mirrors the previous
+# pre-PR-C behavior — no MP routing, instant local spawn.
+func _legacy_local_throw(item_id: String, spawn_pos: Vector3, velocity: Vector3, inv_data: Dictionary) -> void:
 	if not THROWABLE_SCENES.has(item_id):
 		push_error("[ThrowableHandler] No scene registered for throwable '%s'" % item_id)
 		return
@@ -132,46 +167,10 @@ func _try_throw(item_id: String) -> void:
 		charge.queue_free()
 		return
 	var rigid_body := charge as RigidBody3D
-
-	# Spawn position: chest height, slightly in front of Roland's body.
-	# We deliberately use the PLAYER BODY's forward (horizontal only)
-	# for the spawn offset — NOT the camera's aim direction — so the
-	# spawn point stays near Roland's chest regardless of camera pitch.
-	# (Spawning along camera forward would put the charge near the
-	# ground when looking down, which detonates immediately at his
-	# feet.)
-	var body_forward: Vector3 = -_player.transform.basis.z.normalized()
-	var spawn_pos: Vector3 = _player.global_position + (body_forward * spawn_offset_forward_meters) + Vector3(0, spawn_offset_up_meters, 0)
-
-	# Add to the world tree (the player's parent — the World3D root)
-	# so the throwable's lifetime is tied to the world, not Roland.
 	_player.get_parent().add_child(rigid_body)
 	rigid_body.global_position = spawn_pos
-
-	# Push inventory-driven sizing onto the spawned charge.
-	# Without this the PowderCharge.aoe_radius_meters export keeps its
-	# hardcoded default (2.0) and inventory-side tuning of
-	# voxel_aoe_radius is silently ignored.
-	if InventoryManager.ITEM_REGISTRY.has(item_id):
-		var data: Dictionary = InventoryManager.ITEM_REGISTRY[item_id]
-		if data.has("voxel_aoe_radius") and "aoe_radius_meters" in rigid_body:
-			rigid_body.aoe_radius_meters = float(data["voxel_aoe_radius"])
-		if data.has("combat_damage") and "combat_damage" in rigid_body:
-			rigid_body.combat_damage = int(data["combat_damage"])
-
-	# Throw direction: follow the camera's aim (includes pitch). The
-	# camera lives a few nodes deep on Player3D — see Player3D.tscn.
-	# Falls back to body_forward if the camera isn't where expected,
-	# so a missing rig still throws something reasonable rather than
-	# silently dropping at Roland's feet.
-	#
-	# No hardcoded upward bias here (the previous +UP*0.3 fought
-	# aiming down). Gravity provides the natural arc; the player
-	# compensates for distance by aiming a bit above the target,
-	# the same way real-world grenade throws work.
-	var aim_direction: Vector3 = body_forward
-	var camera: Camera3D = _player.get_node_or_null("CameraTarget/SpringArm3D/Camera3D") as Camera3D
-	if camera != null:
-		aim_direction = -camera.global_transform.basis.z.normalized()
-
-	rigid_body.linear_velocity = aim_direction * throw_speed_meters_per_second
+	if inv_data.has("voxel_aoe_radius") and "aoe_radius_meters" in rigid_body:
+		rigid_body.aoe_radius_meters = float(inv_data["voxel_aoe_radius"])
+	if inv_data.has("combat_damage") and "combat_damage" in rigid_body:
+		rigid_body.combat_damage = int(inv_data["combat_damage"])
+	rigid_body.linear_velocity = velocity

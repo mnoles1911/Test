@@ -1,0 +1,37 @@
+[gd_resource type="SceneReplicationConfig" format=3 uid="uid://dclusterreplmp4p"]
+
+; SceneReplicationConfig for FallingVoxelCluster (MP-4-polish / PR-C).
+;
+; Used by the MultiplayerSynchronizer child of FallingVoxelCluster.tscn.
+;
+; Replicated properties:
+;   .:global_position    Vector3, on_change
+;   .:global_rotation    Vector3, on_change
+;   .:linear_velocity    Vector3, on_change
+;   .:angular_velocity   Vector3, on_change
+;
+; Authority is set on the host's spawn (peer 1 by default for any
+; node added during a session). Guests' MultiplayerSpawner replicas
+; receive the synced fields without running their own physics
+; simulation — freeze = true is set on the guest replica's _ready by
+; the cluster's MP-aware code path (FallingVoxelCluster.gd PR-C
+; gate).
+;
+; Rate: on_change. At cluster bounce-and-settle speeds (~5-15 m/s for
+; ~1-3 seconds), that's a manageable update budget. If clusters
+; visibly snap on guests during landing, MP-8 polish can bump to
+; "always" mode (option 1) for the final 0.5s of flight.
+
+[resource]
+properties/0/path = NodePath(".:global_position")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:global_rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:linear_velocity")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+properties/3/path = NodePath(".:angular_velocity")
+properties/3/spawn = true
+properties/3/replication_mode = 2

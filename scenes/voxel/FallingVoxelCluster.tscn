@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/FallingVoxelCluster.gd" id="1_cluster"]
+[ext_resource type="SceneReplicationConfig" path="res://assets/net/cluster_replication.tres" id="2_cluster_repl"]
 
 [sub_resource type="BoxShape3D" id="PlaceholderBox"]
 ; Placeholder shape — silences Godot's "CollisionShape3D has no shape"
@@ -19,3 +20,13 @@ max_contacts_reported = 8
 
 [node name="Collision" type="CollisionShape3D" parent="."]
 shape = SubResource("PlaceholderBox")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+; PR-C — broadcasts cluster transform + velocity from the host's
+; authoritative spawn to all guests. The full MultiplayerSpawner
+; wiring (so guests get the spawn event itself) is a future PR;
+; this synchronizer is staged so it's ready when the spawner lands.
+; Until then guests don't see cluster spawns — they see the final
+; re-deposited terrain after the cluster settles (per MP-3's
+; queue_set_voxels_bulk replication).
+replication_config = ExtResource("2_cluster_repl")
