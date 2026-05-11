@@ -125,6 +125,11 @@ func _ready() -> void:
 			+ "Check autoload order in project.godot — NetTransport must load FIRST.")
 		return
 
+	# PR-F — read configurable ping cadence from project settings.
+	# Falls back to PING_INTERVAL_SECONDS_DEFAULT if missing.
+	_ping_interval_seconds = float(ProjectSettings.get_setting(
+		"multiplayer/ping_interval_seconds", PING_INTERVAL_SECONDS_DEFAULT))
+
 	NetTransport.session_ready.connect(_on_transport_session_ready)
 	NetTransport.session_failed.connect(_on_transport_session_failed)
 	NetTransport.session_ended.connect(_on_transport_session_ended)
@@ -276,14 +281,17 @@ func get_peer_latency_ms(peer_id: int) -> int:
 # channel — packet drops just mean we keep last measurement until
 # the next interval.
 
-const PING_INTERVAL_SECONDS: float = 2.0
+## Default ping cadence. Overridden at _ready from ProjectSetting
+## "multiplayer/ping_interval_seconds" if the entry exists.
+const PING_INTERVAL_SECONDS_DEFAULT: float = 2.0
+var _ping_interval_seconds: float = PING_INTERVAL_SECONDS_DEFAULT
 
 var _peer_latency_cache: Dictionary = {}  # peer_id -> ping_ms
 var _ping_accumulator: float = 0.0
 
 
 func _ping_tick(delta: float) -> void:
-	# Driven from _process below. Pings every PING_INTERVAL_SECONDS
+	# Driven from _process below. Pings every _ping_interval_seconds
 	# when in a session AND we have remote peers to ping.
 	if get_node_or_null("/root/NetTransport") == null:
 		return
@@ -294,7 +302,7 @@ func _ping_tick(delta: float) -> void:
 	if peer != null and peer.has_method("get_peer_latency"):
 		return
 	_ping_accumulator += delta
-	if _ping_accumulator < PING_INTERVAL_SECONDS:
+	if _ping_accumulator < _ping_interval_seconds:
 		return
 	_ping_accumulator = 0.0
 	var now_us: int = Time.get_ticks_usec()
