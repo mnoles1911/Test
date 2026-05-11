@@ -51,6 +51,7 @@ CutsceneMirror="*res://scenes/ui/CutsceneMirror.tscn"
 MPDevMenu="*res://scripts/net/dev/MPDevMenu.gd"
 CharacterRuntime="*res://scripts/net/CharacterRuntime.gd"
 ThrowableNet="*res://scripts/net/ThrowableNet.gd"
+SessionHistory="*res://scripts/net/SessionHistory.gd"
 
 [dialogic]
 
@@ -267,6 +268,17 @@ quick_slot_4={
 ; A future "dedicated" backend slots in the same way.
 ; Override at runtime via NetTransport.select_backend(<id>).
 backend="enet"
+
+; PR-F — ping cadence for the ENet ping RPC pair. SteamMultiplayerPeer
+; ignores this (it has native get_peer_latency). Lower = more
+; responsive ping display, more packets/sec. Default 2.0s.
+ping_interval_seconds=2.0
+
+; PR-F — voxel edit log retention cap. Each entry is a ~100B
+; Dictionary; 50000 ≈ 5MB resident. When the cap hits, FIFO
+; eviction keeps the most recent N. Tune up for hosts with
+; long sessions + a need for full late-join coverage.
+edit_log_max_entries=50000
 
 [rendering]
 

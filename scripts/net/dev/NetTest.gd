@@ -54,6 +54,7 @@ var _host_enet_btn: Button
 var _join_enet_btn: Button
 var _host_steam_btn: Button
 var _join_steam_btn: Button
+var _rejoin_btn: Button
 var _leave_btn: Button
 var _quit_btn: Button
 
@@ -191,6 +192,10 @@ func _build_ui() -> void:
 
 	vbox.add_child(_make_separator())
 
+	# --- PR-F: rejoin last session
+	_rejoin_btn = _make_button("Rejoin Last Session")
+	vbox.add_child(_rejoin_btn)
+
 	# --- Common controls
 	_leave_btn = _make_button("Leave Session")
 	vbox.add_child(_leave_btn)
@@ -237,6 +242,9 @@ func _dispatch_click(pos: Vector2) -> void:
 	if _hits(_join_steam_btn, pos):
 		_on_join_steam_pressed()
 		return
+	if _hits(_rejoin_btn, pos):
+		_on_rejoin_pressed()
+		return
 	if _hits(_leave_btn, pos):
 		_on_leave_pressed()
 		return
@@ -272,6 +280,9 @@ func _on_join_enet_pressed() -> void:
 		_log("Enter an IP (e.g. 127.0.0.1) in the target box first.")
 		return
 	_log("Joining ENet host: %s" % target)
+	# PR-F — record so Rejoin Last works next time.
+	if get_node_or_null("/root/SessionHistory") != null:
+		SessionHistory.record_target(NetTransport.BACKEND_ENET, target)
 	var err: Error = MultiplayerManager.join_session(target)
 	if err != OK:
 		_log("join_session returned error: %s" % error_string(err))
@@ -300,9 +311,30 @@ func _on_join_steam_pressed() -> void:
 		_log("Paste a Steam lobby id (the long uint64 number) into the target box first.")
 		return
 	_log("Joining Steam lobby: %s" % lobby_id_raw)
+	# PR-F — record so Rejoin Last works next time.
+	if get_node_or_null("/root/SessionHistory") != null:
+		SessionHistory.record_target(NetTransport.BACKEND_STEAM, lobby_id_raw)
 	var err: Error = MultiplayerManager.join_session(lobby_id_raw)
 	if err != OK:
 		_log("join_session returned error: %s" % error_string(err))
+
+
+# PR-F — Rejoin Last button reads from SessionHistory and re-issues
+# the previous join. Falls back to a no-op message if no recent
+# target is available (or the entry is stale > 24h).
+func _on_rejoin_pressed() -> void:
+	if get_node_or_null("/root/SessionHistory") == null:
+		_log("SessionHistory not available — can't rejoin.")
+		return
+	if not SessionHistory.has_recent_target():
+		_log("No recent session to rejoin.")
+		return
+	var entry: Dictionary = SessionHistory.get_last_target()
+	NetTransport.select_backend(String(entry["backend"]))
+	_log("Rejoining %s: %s" % [entry["backend"], entry["target"]])
+	var err: Error = MultiplayerManager.join_session(entry["target"])
+	if err != OK:
+		_log("rejoin returned error: %s" % error_string(err))
 
 
 func _on_leave_pressed() -> void:
@@ -389,6 +421,16 @@ func _refresh_status() -> void:
 	if not _steam_available:
 		_host_steam_btn.text = "Host (Steam, plugin not installed)"
 		_join_steam_btn.text = "Join (Steam, plugin not installed)"
+
+	# PR-F — rejoin button only active when SessionHistory has a
+	# recent non-stale entry.
+	if _rejoin_btn != null:
+		var has_recent: bool = false
+		if get_node_or_null("/root/SessionHistory") != null:
+			has_recent = SessionHistory.has_recent_target()
+		_rejoin_btn.disabled = not has_recent
+		_rejoin_btn.text = ("Rejoin Last Session"
+			if has_recent else "Rejoin Last Session (no recent session)")
 
 	# Peer list.
 	if MultiplayerManager.peers.is_empty():
