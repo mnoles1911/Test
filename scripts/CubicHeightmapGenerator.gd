@@ -306,6 +306,13 @@ const SEA_LEVEL_VOXELS: int = 72
 
 
 # =============================================================
+# TIER 5 — clay / gravel disks near water
+# =============================================================
+@export_range(8, 96, 1) var disk_anchor_grid_voxels: int = 24
+@export_range(-1, 3, 1) var disk_rule_max_lod: int = 1
+
+
+# =============================================================
 # RUNTIME CACHE — material references, looked up once
 # =============================================================
 #
@@ -370,6 +377,51 @@ var _cached_ore_list: Array[VoxelMaterial] = []
 
 func set_ore_materials(list: Array[VoxelMaterial]) -> void:
 	_cached_ore_list = list
+
+
+# Tier 5: see CopperIslesHeightmapGenerator for the long-form rationale.
+var _cached_disk_list: Array[VoxelMaterial] = []
+
+func set_disk_materials(list: Array[VoxelMaterial]) -> void:
+	_cached_disk_list = list
+
+
+func _disk_at_column(world_x: int, world_z: int, ground_y: int, sea_level_v: int) -> VoxelMaterial:
+	if _cached_disk_list.is_empty():
+		return null
+	var max_reach: int = 0
+	for d in _cached_disk_list:
+		if d.disk_max_distance_to_water_voxels > max_reach:
+			max_reach = d.disk_max_distance_to_water_voxels
+	if absi(ground_y - sea_level_v) > max_reach:
+		return null
+	var grid: int = maxi(1, disk_anchor_grid_voxels)
+	for disk in _cached_disk_list:
+		if absi(ground_y - sea_level_v) > disk.disk_max_distance_to_water_voxels:
+			continue
+		var r: int = disk.disk_radius_voxels
+		if r <= 0:
+			continue
+		var ax_min: int = floori(float(world_x - r) / float(grid))
+		var ax_max: int = floori(float(world_x + r) / float(grid))
+		var az_min: int = floori(float(world_z - r) / float(grid))
+		var az_max: int = floori(float(world_z + r) / float(grid))
+		var density_seed: int = disk.material_id * 7919
+		var jitter_seed: int = disk.material_id
+		for ax in range(ax_min, ax_max + 1):
+			for az in range(az_min, az_max + 1):
+				var density_hash: float = VoxelGenerationMath.hash3(ax, 0, az, density_seed)
+				if density_hash > disk.disk_anchor_density:
+					continue
+				var jx: float = VoxelGenerationMath.hash3(ax, 1, az, jitter_seed) - 0.5
+				var jz: float = VoxelGenerationMath.hash3(ax, 2, az, jitter_seed) - 0.5
+				var anchor_x: int = ax * grid + int(jx * float(grid))
+				var anchor_z: int = az * grid + int(jz * float(grid))
+				var dx: int = world_x - anchor_x
+				var dz: int = world_z - anchor_z
+				if dx * dx + dz * dz <= r * r:
+					return disk
+	return null
 
 
 func _column_blocks_water_generation(world_x: float, world_z: float) -> bool:
@@ -780,6 +832,12 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var ore_list: Array[VoxelMaterial] = _cached_ore_list
 	var has_ores: bool = not ore_list.is_empty()
 
+	# Tier 5 disk cache.
+	var run_disk_rule: bool = disk_rule_max_lod >= 0 \
+		and lod <= disk_rule_max_lod \
+		and not _cached_disk_list.is_empty()
+	var sea_level_v_local: int = SEA_LEVEL_VOXELS
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -819,6 +877,14 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				) - 0.5) * 2.0 * snow_jitter_amp
 				if float(ground_y) >= float(snow_alt_voxels) + sj:
 					top_id = snow_id
+
+			# Tier 5: per-column disk lookup.
+			var disk_match: VoxelMaterial = null
+			var disk_thickness: int = 0
+			if run_disk_rule and not column_is_cliff:
+				disk_match = _disk_at_column(world_x, world_z, ground_y, sea_level_v_local)
+				if disk_match != null:
+					disk_thickness = 1 + disk_match.disk_half_height_voxels * 2
 
 			# Decide once per column whether this column emits water.
 			# Three gates: LOD must be 0 (water is LOD0-only), the
@@ -912,6 +978,11 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 							if on > ore.ore_noise_threshold:
 								mat_id = ore.material_id
 								break
+
+				# Tier 5: disk override on the top voxels of any
+				# column inside a near-water disk anchor.
+				if disk_match != null and depth < disk_thickness:
+					mat_id = disk_match.material_id
 
 				# v13: VoxelMesherBlocky reads CHANNEL_TYPE as plain
 				# integers — the material_id IS the value to write.

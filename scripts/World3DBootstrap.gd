@@ -238,6 +238,13 @@ func _ready() -> void:
 			var ores: Array[VoxelMaterial] = VoxelMaterialRegistry.get_ore_materials()
 			gen.call("set_ore_materials", ores)
 			print("[World3D] Pushed %d ore material(s) to generator." % ores.size())
+		# Tier 5: clay / gravel disk materials.
+		if gen != null and gen.has_method("set_disk_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var disks: Array[VoxelMaterial] = VoxelMaterialRegistry.get_disk_materials()
+			gen.call("set_disk_materials", disks)
+			print("[World3D] Pushed %d disk material(s) to generator." % disks.size())
 
 	# --- Configure water surface + seed test pond ---
 	# Phase 5: the AABB-source-region model is gone. Ocean water lives

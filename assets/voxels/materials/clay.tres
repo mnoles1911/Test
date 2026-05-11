@@ -17,3 +17,7 @@ yield_quantity = 1
 fall_behavior = 4
 gravity_scale = 0.9
 damage_multiplier = 0.5
+disk_radius_voxels = 4
+disk_half_height_voxels = 1
+disk_anchor_density = 0.04
+disk_max_distance_to_water_voxels = 12

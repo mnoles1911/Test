@@ -164,6 +164,13 @@ func _ready() -> void:
 			var ores: Array[VoxelMaterial] = VoxelMaterialRegistry.get_ore_materials()
 			gen.call("set_ore_materials", ores)
 			print("[CopperIslesTest] Pushed %d ore material(s) to generator." % ores.size())
+		# Tier 5: same pattern for clay / gravel disk materials.
+		if gen != null and gen.has_method("set_disk_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var disks: Array[VoxelMaterial] = VoxelMaterialRegistry.get_disk_materials()
+			gen.call("set_disk_materials", disks)
+			print("[CopperIslesTest] Pushed %d disk material(s) to generator." % disks.size())
 		# Force-load the heightmap on bootstrap so its stats print
 		# immediately, even when the cache fully covers the spawn area
 		# and the generator never fires on-demand. Diagnostic only;
