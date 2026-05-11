@@ -650,7 +650,10 @@ func _on_new_game() -> void:
 	# (~5-10 s for ~150 MB on SSD); (2) Zylann opens the SQLite +
 	# streams chunks within view_distance; (3) main-thread mesh upload
 	# (gl_compatibility serial pipeline) for the visible LOD0 set.
-	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 25.0)
+	# 60 s loading cap — matches CopperIslesTestBootstrap's readiness
+	# probe MAX_EXTRA_WAIT, so the loading screen waits the full probe
+	# duration before timing out. Closes early via mark_voxel_world_ready.
+	TransitionManager.change_scene(WORLD_SCENE, "default", TransitionManager.Type.FADE_BLACK, 60.0)
 
 
 func _on_load() -> void:
@@ -707,11 +710,12 @@ func _on_load_select(filename: String) -> void:
 		scene = WORLD_SCENE
 	print("[MainMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
 	_handoff_music_to_loading_screen()
-	# Same 25 s loading hold as NEW GAME (Copper-Isles-tuned). Restored
-	# saves layer voxel deltas on top of the baseline SQLite — a few
-	# seconds of read traffic but no extra streaming work since the
-	# baseline already has the underlying chunks cached.
-	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 25.0)
+	# 60 s loading cap — matches NEW GAME path and the bootstrap's
+	# readiness probe MAX_EXTRA_WAIT. Restored saves layer voxel deltas
+	# on top of the baseline SQLite — a few seconds of read traffic but
+	# no extra streaming work since the baseline already has the
+	# underlying chunks cached. Closes early via mark_voxel_world_ready.
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 60.0)
 
 
 func _on_load_delete(filename: String) -> void:

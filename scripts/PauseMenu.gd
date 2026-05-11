@@ -698,10 +698,12 @@ func _on_load_select(filename: String) -> void:
 		print("[PauseMenu]   scene unresolvable, falling back to CopperIslesTest.tscn")
 		scene = "res://scenes/CopperIslesTest.tscn"
 	print("[PauseMenu]   transitioning to '%s' (spawn='%s')" % [scene, GameState.player_spawn_id])
-	# 25 s loading hold (Copper-Isles-tuned, matches MainMenu). In-game
-	# loads still need to swap voxel deltas, restore player position,
-	# and let Zylann re-stream the spawn area before the fade clears.
-	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 25.0)
+	# 60 s loading hold (Copper-Isles-tuned, matches MainMenu and the
+	# bootstrap's readiness probe MAX_EXTRA_WAIT). In-game loads still
+	# need to swap voxel deltas, restore player position, and let Zylann
+	# re-stream the spawn area before the fade clears. Closes early via
+	# mark_voxel_world_ready when the probe gate passes.
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 60.0)
 
 
 func _on_load_delete(filename: String) -> void:
