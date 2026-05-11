@@ -313,6 +313,13 @@ const SEA_LEVEL_VOXELS: int = 72
 
 
 # =============================================================
+# TIER 6 — rare ore outcrops on cliff faces
+# =============================================================
+@export_range(0.0, 0.3, 0.005) var cliff_ore_outcrop_chance: float = 0.03
+@export_range(0, 99999, 1) var cliff_ore_seed: int = 5
+
+
+# =============================================================
 # RUNTIME CACHE — material references, looked up once
 # =============================================================
 #
@@ -863,6 +870,23 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			if column_is_cliff:
 				top_id = stone_id
 				col_dirt_band_end = grass_thick
+
+				# Tier 6: rare ore outcrop on the cliff face. Dice +
+				# uniform-pick from the ore list, gated by the picked
+				# ore's altitude band.
+				if has_ores:
+					var dice: float = VoxelGenerationMath.hash3(
+						world_x, ground_y, world_z, cliff_ore_seed)
+					if dice < cliff_ore_outcrop_chance:
+						var pick: float = VoxelGenerationMath.hash3(
+							world_x, ground_y, world_z, cliff_ore_seed + 1)
+						var ore_idx: int = clampi(
+							int(pick * float(ore_list.size())),
+							0, ore_list.size() - 1)
+						var ore_pick = ore_list[ore_idx]
+						if ground_y >= ore_pick.min_altitude_voxels \
+								and ground_y <= ore_pick.max_altitude_voxels:
+							top_id = ore_pick.material_id
 
 			# Tier 2: snow line. Wins on non-cliff columns whose
 			# ground_y crosses (snow_alt + jitter) — cliff faces poke

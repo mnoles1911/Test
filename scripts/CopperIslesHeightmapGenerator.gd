@@ -254,6 +254,32 @@ class_name CopperIslesHeightmapGenerator
 
 
 # =============================================================
+# TIER 6 — rare ore outcrops on cliff faces
+# =============================================================
+#
+# Composes Tier 1 (cliff override) + Tier 4 (ore list). Cliff
+# columns roll a deterministic dice — `cliff_ore_outcrop_chance`
+# of the time, the top voxel is overridden to a random ore from
+# the registry instead of plain stone. A second hash picks WHICH
+# ore (uniform across the ore list); the pick's altitude band
+# must include ground_y or the cliff stays stone.
+#
+# Result: walking along a cliff face occasionally reveals copper
+# or iron outcrops at the surface — visible from a distance, very
+# much the Veloren feel.
+
+## Fraction of cliff columns that get an ore outcrop. 0.03 = 3 %
+## of cliff columns. Per-column hash means clusters of nearby
+## outcrops can happen by chance, which reads as a small ore vein.
+@export_range(0.0, 0.3, 0.005) var cliff_ore_outcrop_chance: float = 0.03
+
+## Hash seed for the outcrop dice + ore picker. Distinct from the
+## marble jitter, snow line, ore vein, and disk anchor seeds so the
+## fields don't correlate.
+@export_range(0, 99999, 1) var cliff_ore_seed: int = 5
+
+
+# =============================================================
 # WORLD FLOOR (must mirror CubicHeightmapGenerator + VoxelEditManager)
 # =============================================================
 
@@ -834,6 +860,25 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			if column_is_cliff:
 				top_id = stone_id
 				col_dirt_band_end = grass_thick   # depth>=1 falls straight into stone band
+
+				# Tier 6: rare ore outcrop on the exposed rock face.
+				# Roll a dice for this column; if it lands within
+				# outcrop_chance, pick an ore uniformly from the list
+				# and override the top voxel — but only if the ore's
+				# altitude band includes this column's ground_y.
+				if has_ores:
+					var dice: float = VoxelGenerationMath.hash3(
+						world_x, ground_y, world_z, cliff_ore_seed)
+					if dice < cliff_ore_outcrop_chance:
+						var pick: float = VoxelGenerationMath.hash3(
+							world_x, ground_y, world_z, cliff_ore_seed + 1)
+						var ore_idx: int = clampi(
+							int(pick * float(ore_list.size())),
+							0, ore_list.size() - 1)
+						var ore_pick = ore_list[ore_idx]
+						if ground_y >= ore_pick.min_altitude_voxels \
+								and ground_y <= ore_pick.max_altitude_voxels:
+							top_id = ore_pick.material_id
 
 			# Tier 2: altitude-driven snow line. Wins on non-cliff
 			# columns whose ground_y is above (snow_alt + jitter). The
