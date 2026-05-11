@@ -170,16 +170,40 @@ func _impact_enemy(enemy: Node, travel_dir: Vector3) -> void:
 
 	# Layer A blood burst at the impact point, sprayed along the
 	# spear's travel direction. Intensity scales with damage so a
-	# charged-spear killshot sprays more than a light wound.
+	# charged-spear killshot sprays more than a light wound. Safe to
+	# fire synchronously because BloodVFX doesn't touch our physics.
 	if get_node_or_null("/root/BloodVFX"):
 		var intensity: float = clampf(float(combat_damage) / 30.0, 0.5, 2.0)
 		BloodVFX.spawn_burst(hit_point, travel_dir, intensity)
 
-	# Stop the rigidbody and pin to the enemy's ChestSocket so the
-	# shaft visibly protrudes from the chest.
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("Spear hit %s for %d dmg" % [String(enemy.name), combat_damage])
+
+	# Defer the physics state changes (freeze, collision layers,
+	# reparent) to the next idle frame. We're inside a body_entered
+	# physics callback right now; mutating CollisionObject state or
+	# moving a physics node through reparent() during a physics
+	# callback throws "Removing a CollisionObject node during a
+	# physics callback is not allowed" and corrupts internal physics
+	# state. call_deferred runs _attach_to_enemy_socket after the
+	# physics step completes, where these mutations are safe.
+	call_deferred("_attach_to_enemy_socket", enemy, travel_dir)
+
+
+func _attach_to_enemy_socket(enemy: Node, travel_dir: Vector3) -> void:
+	# Deferred handler — runs on the next idle frame after the
+	# body_entered physics callback completes. Both the spear and the
+	# enemy may have been freed in between (rare race: enemy died on
+	# the impact frame and was queue_free'd before this fires); guard
+	# both.
+	if not is_instance_valid(self) or not is_instance_valid(enemy):
+		return
+
+	# Stop the rigidbody and disable its collision layers so it
+	# doesn't keep interacting with the world while embedded.
 	freeze = true
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
-	collision_layer = 0  # Stop colliding with the world while embedded.
+	collision_layer = 0
 	collision_mask = 0
 
 	var socket: Node3D = enemy.get_node_or_null("ChestSocket") as Node3D
@@ -192,32 +216,40 @@ func _impact_enemy(enemy: Node, travel_dir: Vector3) -> void:
 		# is true; offset slightly forward along travel to embed visually.
 		global_transform.origin = current_global.origin + travel_dir * embed_depth_meters
 
-	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("Spear hit %s for %d dmg" % [String(enemy.name), combat_damage])
-
 
 func _impact_terrain(travel_dir: Vector3) -> void:
-	# Stop dead and embed slightly into the surface along travel.
-	freeze = true
-	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
-	collision_layer = 0
-	collision_mask = 0
-
-	# Nudge the mesh forward by embed_depth so the head buries in.
-	global_transform.origin += travel_dir * embed_depth_meters
-	_embedded_in_terrain = true
-	_pickup_lockout_remaining = pickup_lockout_seconds
-
 	# Dust puff outward from the surface — we don't have the true
 	# surface normal here (body_entered doesn't carry contact details),
 	# so use the spear's reverse travel direction as a "best guess
 	# outward" axis. This is visually correct for any reasonable
-	# impact angle except glancing skims along a wall.
+	# impact angle except glancing skims along a wall. Safe to fire
+	# synchronously because BloodVFX doesn't touch our physics.
 	if get_node_or_null("/root/BloodVFX"):
 		BloodVFX.spawn_dust(global_position, -travel_dir)
 
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Spear embedded in terrain at %s" % global_position)
+
+	# Same deferred-physics rule as _impact_enemy: freeze, collision
+	# layer changes, and the embed-position nudge all need to happen
+	# OUTSIDE the body_entered physics callback, otherwise Godot
+	# throws and corrupts internal state.
+	call_deferred("_settle_in_terrain", travel_dir)
+
+
+func _settle_in_terrain(travel_dir: Vector3) -> void:
+	# Deferred handler for terrain impact. self may have been freed
+	# between the impact and this call (unlikely but safe).
+	if not is_instance_valid(self):
+		return
+	freeze = true
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	collision_layer = 0
+	collision_mask = 0
+	# Nudge the mesh forward by embed_depth so the head buries in.
+	global_transform.origin += travel_dir * embed_depth_meters
+	_embedded_in_terrain = true
+	_pickup_lockout_remaining = pickup_lockout_seconds
 
 
 # =============================================================
