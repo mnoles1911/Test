@@ -48,6 +48,7 @@ BloodVFX="*res://scripts/BloodVFX.gd"
 CatchupCoordinator="*res://scripts/net/CatchupCoordinator.gd"
 ProximityCutsceneManager="*res://scripts/net/ProximityCutsceneManager.gd"
 CutsceneMirror="*res://scenes/ui/CutsceneMirror.tscn"
+MPDevMenu="*res://scripts/net/dev/MPDevMenu.gd"
 
 [dialogic]
 

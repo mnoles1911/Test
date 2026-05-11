@@ -206,6 +206,77 @@ func join_session(target: Variant) -> Error:
 	return OK
 
 
+## MP-8 — host-only. Disconnects a specific peer from the session.
+## No-op on guests, in OFFLINE, or if peer_id isn't currently
+## connected. The kicked peer receives the standard
+## server_disconnected event and bounces to their main menu via
+## NetTestWorldBootstrap (or whatever world they're in).
+##
+## A friendly note: the underlying disconnect_peer doesn't give
+## the recipient a reason string. If you need to tell them WHY they
+## got kicked, RPC a kick_reason message first, then disconnect on
+## a short delay so the message has time to deliver.
+func kick_peer(peer_id: int, reason: String = "") -> bool:
+	if not is_host():
+		push_warning("[MultiplayerManager] kick_peer called on non-host; ignoring")
+		return false
+	if peer_id == HOST_PEER_ID:
+		push_warning("[MultiplayerManager] cannot kick the host (peer_id 1); ignoring")
+		return false
+	if not peers.has(peer_id):
+		push_warning("[MultiplayerManager] kick_peer: peer %d not in peers dict; ignoring" % peer_id)
+		return false
+	# Send a courtesy "you got kicked" RPC first so the recipient can
+	# show a message before the disconnect. We don't yet have a UI
+	# slot for this; printing on the kicked peer's machine is fine
+	# for MP-8. Reliable channel — dropping this would be confusing.
+	if not reason.is_empty():
+		_rpc_kick_notice.rpc_id(peer_id, reason)
+	# disconnect_peer is exposed on both ENetMultiplayerPeer and
+	# SteamMultiplayerPeer in Godot 4. Defensive check anyway.
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if peer == null:
+		return false
+	if peer.has_method("disconnect_peer"):
+		peer.call("disconnect_peer", peer_id)
+		print("[MultiplayerManager] kicked peer %d (reason: %s)" % [peer_id, reason if not reason.is_empty() else "(none)"])
+		return true
+	push_warning("[MultiplayerManager] active peer doesn't expose disconnect_peer")
+	return false
+
+
+## Reads the round-trip latency to a peer if the underlying transport
+## supports it. ENetMultiplayerPeer exposes
+## `get_peer().peer.get_packet_loss_pct()` and timing through the
+## ENetConnection; GodotSteam's SteamMultiplayerPeer has a
+## `get_peer_latency` method. Returns -1 if unknown.
+##
+## Used by MPDevMenu's per-peer ping display.
+func get_peer_latency_ms(peer_id: int) -> int:
+	if peer_id == local_peer_id():
+		return 0
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if peer == null:
+		return -1
+	# GodotSteam SteamMultiplayerPeer
+	if peer.has_method("get_peer_latency"):
+		return int(peer.call("get_peer_latency", peer_id))
+	# Generic ENet path — return -1; MP-8 doesn't add a custom
+	# heartbeat-RPC ping mechanism for the ENet backend yet, that's
+	# a polish item. A future RPC-based ping (send timestamp, peer
+	# echoes, compute delta) would work for any backend.
+	return -1
+
+
+# MP-8 RPC — host sends a courtesy disconnect-reason to a kicked peer
+# before yanking their connection. The recipient just prints (the
+# disconnect happens within ~one frame so any UI handler would barely
+# render anyway).
+@rpc("authority", "reliable")
+func _rpc_kick_notice(reason: String) -> void:
+	print("[MultiplayerManager] You were kicked by host. Reason: %s" % reason)
+
+
 func leave_session(reason: String = "") -> void:
 	if _state == LIFECYCLE.IDLE:
 		return
