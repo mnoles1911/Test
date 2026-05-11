@@ -52,6 +52,7 @@ MPDevMenu="*res://scripts/net/dev/MPDevMenu.gd"
 CharacterRuntime="*res://scripts/net/CharacterRuntime.gd"
 ThrowableNet="*res://scripts/net/ThrowableNet.gd"
 SessionHistory="*res://scripts/net/SessionHistory.gd"
+MPNotification="*res://scripts/net/MPNotification.gd"
 
 [dialogic]
 

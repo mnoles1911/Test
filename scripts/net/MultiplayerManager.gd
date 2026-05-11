@@ -338,12 +338,20 @@ func _rpc_pong(originator_timestamp_us: int) -> void:
 
 
 # MP-8 RPC — host sends a courtesy disconnect-reason to a kicked peer
-# before yanking their connection. The recipient just prints (the
-# disconnect happens within ~one frame so any UI handler would barely
-# render anyway).
+# before yanking their connection. PR-G: also surface via the toast
+# so the user actually sees why before the scene swaps back to
+# NetTest. The disconnect itself fires from host's disconnect_peer
+# call within ~one frame; the message just needs to render once
+# before that.
 @rpc("authority", "reliable")
 func _rpc_kick_notice(reason: String) -> void:
 	print("[MultiplayerManager] You were kicked by host. Reason: %s" % reason)
+	if get_node_or_null("/root/MPNotification") != null:
+		# Hold 5s so the message survives the scene-swap on
+		# server_disconnected (NetTestWorldBootstrap returns to
+		# NetTest immediately). The toast layer is at layer 99 so
+		# it persists across the scene swap until its tween fires.
+		MPNotification.show_message("Kicked by host: %s" % reason, 5.0)
 
 
 func leave_session(reason: String = "") -> void:
@@ -512,14 +520,28 @@ func _rpc_handshake_accept(sanitized_record: Dictionary) -> void:
 	_set_state(LIFECYCLE.PLAYING)
 
 
-# Host → client. Validation failed; PR-A leaves the session running
-# (just logs). Future: surface to UI + leave_session.
+# Host → client. Validation failed; PR-G surfaces the reason via
+# MPNotification and disconnects after a short hold so the user
+# can read the message.
 @rpc("authority", "reliable")
 func _rpc_handshake_reject(reason: String) -> void:
 	push_warning("[MultiplayerManager] host rejected handshake: %s" % reason)
-	# PR-A informational behavior: keep playing with default inventory.
-	# A future polish PR adds a UI hook + leave_session on hard reject.
-	_set_state(LIFECYCLE.PLAYING)
+	# PR-G — show the reason on screen, then leave the session so
+	# the client isn't stuck in a half-handshake state. The default
+	# hold (3s) is enough to read the typical message; longer
+	# reasons can be tuned per-call.
+	if get_node_or_null("/root/MPNotification") != null:
+		MPNotification.show_message_then_disconnect(
+			"Host rejected: %s" % reason,
+			4.0,
+			"handshake rejected: %s" % reason,
+		)
+	else:
+		# Defensive fallback — if the notification autoload isn't
+		# loaded (test harness), at least don't leave the user
+		# stranded in HANDSHAKING state. Promote to PLAYING so they
+		# can leave normally.
+		_set_state(LIFECYCLE.PLAYING)
 
 
 # Serialize CharacterRecord → Dictionary for transport. Mirrors
@@ -567,12 +589,18 @@ func _deserialize_character(d: Dictionary):
 
 func _on_mp_connection_failed() -> void:
 	# Client-side: tried to connect, never got there (timeout, host
-	# refused, transport unavailable).
+	# refused, transport unavailable). PR-G surfaces a notice.
+	if get_node_or_null("/root/MPNotification") != null:
+		MPNotification.show_message("Connection failed — host unreachable or refused.", 4.0)
 	_on_transport_session_failed("connection failed (host unreachable or refused)")
 
 
 func _on_mp_server_disconnected() -> void:
-	# Client-side: we were connected, the host went away.
+	# Client-side: we were connected, the host went away. PR-G:
+	# surface a notice before the scene tear-down so the user
+	# knows what happened (silent return-to-menu is confusing).
+	if get_node_or_null("/root/MPNotification") != null:
+		MPNotification.show_message("Disconnected — host left the session.", 4.0)
 	_on_transport_session_ended("host disconnected")
 
 
