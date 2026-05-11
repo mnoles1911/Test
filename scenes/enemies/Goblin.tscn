@@ -61,8 +61,13 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
 ; here on impact so the shaft visibly sticks out of the goblin.
 
 [node name="EyeGlow" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, 0.2)
-; Face-front, head height. Slightly forward (+Z 0.2) of the body
-; center so the glow is visible from the front, hidden from behind.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, -0.2)
+; Face-front, head height. -Z is "forward" by Godot convention
+; (look_at orients the node's -Z toward the target). Goblin.gd's
+; _enemy_physics_step calls look_at(player) every frame in COMBAT
+; state, so -Z always faces the player. Eye glow at -Z = 0.2 puts
+; the eyes on the goblin's actual face. (Was at +Z 0.2 prior, which
+; placed eyes on the BACK of the goblin — visible only when the
+; player walked away.)
 mesh = SubResource("BoxMesh_eyes")
 material_override = SubResource("StandardMaterial3D_eyes")

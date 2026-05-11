@@ -98,14 +98,25 @@ var _is_dead: bool = false
 ## How long after dealing contact damage before this enemy can deal it
 ## again. Prevents one frame of overlap from chunking the player to zero.
 
-@export var corpse_lifetime_seconds: float = 60.0
+@export var corpse_lifetime_seconds: float = 300.0
 ## How long the corpse stays in the scene after death before being
-## auto-freed. Long enough that the player can see the consequence
-## of their kill (and the blood pool decal); short enough that long
-## play sessions don't accumulate dozens of corpses. Dev-arena Reset
-## bypasses this and frees all corpses immediately.
+## auto-freed. 5 minutes — long enough that the player can return to
+## a kill site after exploring elsewhere and still loot any embedded
+## items / ammo; short enough that overnight sessions don't
+## accumulate hundreds of corpses. Dev-arena Reset bypasses this and
+## frees all corpses immediately.
+
+@export var corpse_interact_radius_meters: float = 2.0
+## How close the player must be to press E and loot a corpse. The
+## interact area is spawned in die() and reads this value on creation.
 
 var _contact_cooldown_remaining: float = 0.0
+
+# Corpse-interaction state. Set up in die() once the enemy becomes a
+# lootable body. Not used while alive.
+var _corpse_interact_area: Area3D
+var _player_in_corpse_range: bool = false
+var _corpse_looted: bool = false  # one-shot guard so E doesn't loot twice
 
 
 # =============================================================
@@ -149,6 +160,15 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if _is_dead:
+		# Dead enemies poll for corpse interaction (E to loot) instead
+		# of running movement / detection logic. The interact area
+		# tracks player overlap via signals; we only check the input
+		# action here. Guarded by _corpse_looted so multiple E presses
+		# don't double-loot.
+		if _player_in_corpse_range and not _corpse_looted:
+			if Input.is_action_just_pressed("interact"):
+				_corpse_looted = true
+				_loot_corpse()
 		return
 
 	# Tick down the contact-damage cooldown.
@@ -294,12 +314,61 @@ func die(damage_at_kill: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vec
 	# Subclasses do the corpse visual (lay down, change color, spawn
 	# cluster, etc.).
 	_on_died(damage_at_kill, hit_dir, hit_point)
+	# Spawn the corpse-interaction area so the player can walk up and
+	# press E to loot. Done AFTER _on_died so the area's transform
+	# can be aligned to the corpse's lying-down position if subclasses
+	# moved things around — but for v1 the area sits at the goblin
+	# root's origin which is also the corpse's center.
+	_spawn_corpse_interact_area()
 	# Auto-free after a long delay so dead enemies don't accumulate
 	# forever in long sessions, but stay visible long enough that the
-	# player can see the consequence of their kill. Dev arena Reset
-	# bypasses this timer.
+	# player can see the consequence of their kill (and return to
+	# loot). Dev arena Reset bypasses this timer.
 	var timer := get_tree().create_timer(corpse_lifetime_seconds)
 	timer.timeout.connect(queue_free)
+
+
+# =============================================================
+# CORPSE INTERACTION — Area3D + E-press loot
+# =============================================================
+
+func _spawn_corpse_interact_area() -> void:
+	# Sphere area centered on the corpse's current position. Keeps
+	# the loot prompt available wherever the body fell, including any
+	# knockback offset from the kill blow.
+	var area := Area3D.new()
+	var coll := CollisionShape3D.new()
+	var shape := SphereShape3D.new()
+	shape.radius = corpse_interact_radius_meters
+	coll.shape = shape
+	area.add_child(coll)
+	# Collision mask 1 = the default physics layer where Player3D
+	# lives. Keep collision_layer = 0 so this area only DETECTS
+	# bodies, never participates in physics interactions.
+	area.collision_layer = 0
+	area.collision_mask = 1
+	add_child(area)
+	area.body_entered.connect(_on_corpse_interact_entered)
+	area.body_exited.connect(_on_corpse_interact_exited)
+	_corpse_interact_area = area
+
+
+func _on_corpse_interact_entered(body: Node) -> void:
+	if body != null and body.is_in_group("player"):
+		_player_in_corpse_range = true
+
+
+func _on_corpse_interact_exited(body: Node) -> void:
+	if body != null and body.is_in_group("player"):
+		_player_in_corpse_range = false
+
+
+## Override in subclasses to define what loot the corpse yields.
+## Base implementation is a no-op (no items to give). Goblin
+## overrides this to return any embedded throwables (spears) plus
+## any future inventory drops.
+func _loot_corpse() -> void:
+	pass
 
 
 # Subclasses override to do the actual death visuals (cluster spawn,

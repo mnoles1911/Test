@@ -58,5 +58,15 @@ amount = 24
 lifetime = 1.6
 one_shot = false
 explosiveness = 0.0
+; local_coords = false keeps in-flight particles in world space.
+; The default (true) anchors every active particle to the parent's
+; transform, which means when the goblin stops walking the particles
+; fall straight down INSIDE the goblin's collision capsule and the
+; player can't see them. With local_coords = false, the emission
+; point still follows the chest socket (so the drip tracks the body
+; as it moves) but each emitted particle then drips in world space
+; beside the body, always visible regardless of whether the goblin
+; is moving or stationary.
+local_coords = false
 process_material = SubResource("ParticleProcessMaterial_drip")
 draw_pass_1 = SubResource("BoxMesh_drip_cube")
