@@ -30,7 +30,7 @@ fog_density = 0.0012
 fog_aerial_perspective = 0.35
 
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_1"]
-database_path = "user://copper_isles_test_v13.sqlite"
+database_path = "user://copper_isles_test_v14.sqlite"
 save_generator_output = true
 
 [sub_resource type="VoxelMesherBlocky" id="VoxelMesher_1"]

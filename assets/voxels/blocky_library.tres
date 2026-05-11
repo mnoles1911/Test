@@ -23,5 +23,11 @@ transparency_index = 1
 
 [sub_resource type="VoxelBlockyModelCube" id="VoxelBlockyModelCube_gtjqa"]
 
+[sub_resource type="VoxelBlockyModelCube" id="VoxelBlockyModelCube_snow13"]
+
+[sub_resource type="VoxelBlockyModelCube" id="VoxelBlockyModelCube_stonedark14"]
+
+[sub_resource type="VoxelBlockyModelCube" id="VoxelBlockyModelCube_ironore15"]
+
 [resource]
-models = Array[VoxelBlockyModel]([null, SubResource("VoxelBlockyModelCube_r3qdn"), SubResource("VoxelBlockyModelCube_3wo2a"), SubResource("VoxelBlockyModelCube_mqcxa"), SubResource("VoxelBlockyModelCube_xuf7m"), null, SubResource("VoxelBlockyModelCube_aaexy"), SubResource("VoxelBlockyModelCube_ff8e1"), SubResource("VoxelBlockyModelCube_bfhsi"), SubResource("VoxelBlockyModelCube_bwobt"), SubResource("VoxelBlockyModelCube_nxryv"), SubResource("VoxelBlockyModelCube_8u1h5"), SubResource("VoxelBlockyModelCube_gtjqa")])
+models = Array[VoxelBlockyModel]([null, SubResource("VoxelBlockyModelCube_r3qdn"), SubResource("VoxelBlockyModelCube_3wo2a"), SubResource("VoxelBlockyModelCube_mqcxa"), SubResource("VoxelBlockyModelCube_xuf7m"), null, SubResource("VoxelBlockyModelCube_aaexy"), SubResource("VoxelBlockyModelCube_ff8e1"), SubResource("VoxelBlockyModelCube_bfhsi"), SubResource("VoxelBlockyModelCube_bwobt"), SubResource("VoxelBlockyModelCube_nxryv"), SubResource("VoxelBlockyModelCube_8u1h5"), SubResource("VoxelBlockyModelCube_gtjqa"), SubResource("VoxelBlockyModelCube_snow13"), SubResource("VoxelBlockyModelCube_stonedark14"), SubResource("VoxelBlockyModelCube_ironore15")])

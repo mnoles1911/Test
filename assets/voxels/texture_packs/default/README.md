@@ -60,6 +60,16 @@ top-left of the atlas.
 | 10 | Log | (0, 1) | (1, 1) | (0, 1) |
 | 11 | Leaves | (2, 1) | (2, 1) | (2, 1) |
 | 12 | Copper Ore | (3, 1) | (3, 1) | (3, 1) |
+| 13 | Snow | (8, 0) | (8, 0) | (8, 0) | *placeholder = marble copy* |
+| 14 | Dark Stone | (9, 0) | (9, 0) | (9, 0) | *placeholder = bedrock copy* |
+| 15 | Iron Ore | (10, 0) | (10, 0) | (10, 0) | *placeholder = copper_ore copy* |
+
+**IDs 13–15** were added 2026-05-10 with the six-tier voxel-generation
+plan. Source PNGs currently point at copies of similar existing
+materials as placeholders (snow → marble, stone_dark → bedrock,
+iron_ore → copper_ore). Paint proper 512×512 PNGs over
+`source/{snow_all,stone_dark_all,iron_ore_all}.png` whenever convenient
+and re-run the atlas + library builders to ship final art.
 
 In atlas pixel coordinates: `(column × 32, row × 32)` is the top-left
 corner of each tile.

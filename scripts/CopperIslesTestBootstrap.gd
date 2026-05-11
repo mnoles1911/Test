@@ -153,6 +153,24 @@ func _ready() -> void:
 		var gen: Resource = terrain.get("generator")
 		if gen != null and "require_heightmap_in_editor_only" in gen:
 			gen.set("require_heightmap_in_editor_only", true)
+		# Tier 4: push the pre-filtered ore list into the generator on
+		# the main thread. `set_ore_materials` is the worker-thread-safe
+		# data handoff pattern (mirror of set_no_edit_water_aabbs). The
+		# registry's _ores array is read-only after _loaded=true, so the
+		# generator can iterate it from any worker thread.
+		if gen != null and gen.has_method("set_ore_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var ores: Array[VoxelMaterial] = VoxelMaterialRegistry.get_ore_materials()
+			gen.call("set_ore_materials", ores)
+			print("[CopperIslesTest] Pushed %d ore material(s) to generator." % ores.size())
+		# Tier 5: same pattern for clay / gravel disk materials.
+		if gen != null and gen.has_method("set_disk_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var disks: Array[VoxelMaterial] = VoxelMaterialRegistry.get_disk_materials()
+			gen.call("set_disk_materials", disks)
+			print("[CopperIslesTest] Pushed %d disk material(s) to generator." % disks.size())
 		# Force-load the heightmap on bootstrap so its stats print
 		# immediately, even when the cache fully covers the spawn area
 		# and the generator never fires on-demand. Diagnostic only;
@@ -218,15 +236,16 @@ func _ready() -> void:
 # initialises — the copy must happen first or the stream opens an
 # empty file at the user:// path.
 #
-# `_v13` suffix added 2026-05-10 when the generator migrated from
-# CHANNEL_COLOR (packed RGBA) to CHANNEL_TYPE (material_id integer)
-# for the textured-tileset migration. The old paths
-# (copper_isles_test.sqlite / copper_isles_baseline.sqlite) contain
-# pre-v13 data that won't render under VoxelMesherBlocky — bumping
-# the path naturally invalidates them without forcing a delete. The
-# old files can be removed from disk whenever convenient.
-const WORKING_SQLITE_PATH: String = "user://copper_isles_test_v13.sqlite"
-const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v13.sqlite"
+# Path bumps invalidate the cache after generator output changes —
+# the .tres-based stream re-opens the new (empty) file rather than
+# reading stale chunks. Old files remain on disk inert; the user
+# can delete them whenever convenient.
+#   _v13: CHANNEL_COLOR → CHANNEL_TYPE textured tileset (2026-05-10)
+#   _v14: Tiers 1-6 generation rules — cliff override, snow line,
+#         marble + stone_dark jitter, ore veins, near-water disks,
+#         cliff outcrops (2026-05-10)
+const WORKING_SQLITE_PATH: String = "user://copper_isles_test_v14.sqlite"
+const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 
 
 # =============================================================
@@ -477,18 +496,21 @@ const _SIDE_POS_Z: int = 5
 # tools/build_blocky_library.gd and the matching dict in
 # World3DBootstrap. Keep all three in sync if tile coords change.
 const _MATERIAL_TILES: Dictionary = {
-	1:  {"top": Vector2i(0, 0), "side": Vector2i(0, 0), "bottom": Vector2i(0, 0)},
-	2:  {"top": Vector2i(1, 0), "side": Vector2i(1, 0), "bottom": Vector2i(1, 0)},
-	3:  {"top": Vector2i(2, 0), "side": Vector2i(3, 0), "bottom": Vector2i(1, 0)},
-	4:  {"top": Vector2i(4, 0), "side": Vector2i(4, 0), "bottom": Vector2i(4, 0)},
+	1:  {"top": Vector2i(0, 0),  "side": Vector2i(0, 0),  "bottom": Vector2i(0, 0)},
+	2:  {"top": Vector2i(1, 0),  "side": Vector2i(1, 0),  "bottom": Vector2i(1, 0)},
+	3:  {"top": Vector2i(2, 0),  "side": Vector2i(3, 0),  "bottom": Vector2i(1, 0)},
+	4:  {"top": Vector2i(4, 0),  "side": Vector2i(4, 0),  "bottom": Vector2i(4, 0)},
 	# 5 = water, no library entry
-	6:  {"top": Vector2i(4, 1), "side": Vector2i(4, 1), "bottom": Vector2i(4, 1)},
-	7:  {"top": Vector2i(5, 0), "side": Vector2i(5, 0), "bottom": Vector2i(5, 0)},
-	8:  {"top": Vector2i(6, 0), "side": Vector2i(6, 0), "bottom": Vector2i(6, 0)},
-	9:  {"top": Vector2i(7, 0), "side": Vector2i(7, 0), "bottom": Vector2i(7, 0)},
-	10: {"top": Vector2i(0, 1), "side": Vector2i(1, 1), "bottom": Vector2i(0, 1)},
-	11: {"top": Vector2i(2, 1), "side": Vector2i(2, 1), "bottom": Vector2i(2, 1)},
-	12: {"top": Vector2i(3, 1), "side": Vector2i(3, 1), "bottom": Vector2i(3, 1)},
+	6:  {"top": Vector2i(4, 1),  "side": Vector2i(4, 1),  "bottom": Vector2i(4, 1)},
+	7:  {"top": Vector2i(5, 0),  "side": Vector2i(5, 0),  "bottom": Vector2i(5, 0)},
+	8:  {"top": Vector2i(6, 0),  "side": Vector2i(6, 0),  "bottom": Vector2i(6, 0)},
+	9:  {"top": Vector2i(7, 0),  "side": Vector2i(7, 0),  "bottom": Vector2i(7, 0)},
+	10: {"top": Vector2i(0, 1),  "side": Vector2i(1, 1),  "bottom": Vector2i(0, 1)},
+	11: {"top": Vector2i(2, 1),  "side": Vector2i(2, 1),  "bottom": Vector2i(2, 1)},
+	12: {"top": Vector2i(3, 1),  "side": Vector2i(3, 1),  "bottom": Vector2i(3, 1)},
+	13: {"top": Vector2i(8, 0),  "side": Vector2i(8, 0),  "bottom": Vector2i(8, 0)},   # snow (Tier 2)
+	14: {"top": Vector2i(9, 0),  "side": Vector2i(9, 0),  "bottom": Vector2i(9, 0)},   # stone_dark (Tier 3)
+	15: {"top": Vector2i(10, 0), "side": Vector2i(10, 0), "bottom": Vector2i(10, 0)},  # iron_ore (Tier 4)
 }
 
 const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves

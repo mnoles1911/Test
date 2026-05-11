@@ -131,6 +131,155 @@ class_name CopperIslesHeightmapGenerator
 
 
 # =============================================================
+# TIER 1 — slope-driven cliff rule
+# =============================================================
+#
+# Sample neighbour columns at `cliff_slope_sample_distance_voxels`
+# away in ±X and ±Z, measure the largest Y drop, and if it crosses
+# `cliff_slope_threshold_voxels`, override the column's top voxels
+# to bare stone — the Veloren / Minecraft `steep` rule.
+#
+# Slope math at the canonical 6 vox/m scale and sample_distance=6
+# (= 1 in-game metre horizontal step):
+#   threshold = ceil(tan(angle) × 6)
+#   45°→6, 50°→8, 55°→9, 60°→11, 65°→13, 70°→17, 75°→23
+# Default threshold=10 ≈ 59° slope (just under 60°). Adjust per-
+# generator in the Inspector to taste.
+
+## Horizontal distance (in voxels) to sample neighbour columns for
+## the slope check. 6 voxels = 1 m at 6 vox/m. Wider samples smooth
+## out per-voxel noise; tighter samples catch sharper micro-cliffs.
+@export_range(0, 30, 1) var cliff_slope_sample_distance_voxels: int = 6
+
+## Minimum Y drop (in voxels) to any neighbour at the sample distance
+## for this column to be flagged as a cliff face. With distance=6 the
+## default 10 ≈ 60° slope. Set higher for steeper-only cliffs.
+@export_range(0, 50, 1) var cliff_slope_threshold_voxels: int = 10
+
+## Highest LOD at which the cliff rule runs. Distant chunks (LOD≥3)
+## skip the slope check entirely — the visual return is minimal at
+## that distance and the extra neighbour lookups are wasted. Set to
+## -1 to disable the cliff rule everywhere.
+@export_range(-1, 3, 1) var cliff_rule_max_lod: int = 2
+
+
+# =============================================================
+# TIER 3 — marble + stone_dark jitter on stone
+# =============================================================
+#
+# Per stone-band voxel, sample a deterministic 3D hash. Above the
+# rare threshold (0.92 = top 8 %) → marble. Above the common
+# threshold (0.75 = top 25 %) → stone_dark. Otherwise plain stone.
+# Coordinates are integer-divided by `marble_jitter_block_size` so
+# patches read as 4-voxel (≈70 cm) chunks rather than per-voxel
+# speckle. Total: ~17 % stone_dark + ~8 % marble + ~75 % plain stone
+# across exposed rock and underground.
+
+## Patch granularity. Higher = bigger uniform patches; 1 = per-voxel
+## speckle. 4 voxels ≈ 70 cm at 6 vox/m — readable striations.
+@export_range(1, 16, 1) var marble_jitter_block_size: int = 4
+
+## Hash seed so Tier 3's noise field doesn't collide with other
+## tiers' fields (ore veins use ore.material_id × 1009; cliff
+## outcrop dice rolls use their own seed).
+@export_range(0, 99999, 1) var marble_jitter_seed: int = 1
+
+## Threshold (0..1) above which a voxel becomes rare bright marble.
+## Higher = rarer marble. 0.92 ≈ top 8 % of voxels.
+@export_range(0.0, 1.0, 0.01) var marble_rare_threshold: float = 0.92
+
+## Threshold (0..1) above which a voxel becomes stone_dark (but below
+## the marble cutoff). 0.75 ≈ ~17 % stone_dark patches.
+@export_range(0.0, 1.0, 0.01) var marble_dark_threshold: float = 0.75
+
+
+# =============================================================
+# TIER 2 — altitude-driven snow line
+# =============================================================
+#
+# On non-cliff columns whose ground_y is above the snow line (with
+# a per-XZ jittered fade), override the top voxel to snow. Cliff
+# faces poke through snowcaps — exposed rock stays visible at the
+# peak's shoulders (Tier 1 fires before Tier 2).
+#
+# Order of precedence on the top voxel:
+#   1. Cliff override (Tier 1) — wins everywhere
+#   2. Snow line (Tier 2) — wins on non-cliff high columns
+#   3. Beach band (existing) — wins on non-cliff low columns
+#   4. Grass (default)
+
+## Voxel-Y above which non-cliff columns become snow. 12000 ≈ 2000 m
+## at the canonical 6 vox/m scale — matches the Copper Isles peak
+## band. Set to 30000+ to effectively disable on flatter worlds.
+@export_range(0, 30000, 1) var snow_line_voxels: int = 12000
+
+## Per-XZ random offset in voxels added to the snow line — breaks
+## up the razor-straight horizontal stripe. 30 voxels = ±5 m wobble.
+@export_range(0, 200, 1) var snow_line_jitter_voxels: int = 30
+
+## How fast the jitter pattern varies horizontally. Higher = coarser
+## patches of snow-vs-bare. 8 voxels ≈ 1.3 m patch radius.
+@export_range(1, 64, 1) var snow_line_jitter_block_size: int = 8
+
+## Hash seed so the snow-line wobble doesn't collide with the marble
+## jitter or ore-vein hash fields.
+@export_range(0, 99999, 1) var snow_line_seed: int = 2
+
+
+# =============================================================
+# TIER 5 — clay / gravel disks near water
+# =============================================================
+#
+# Worley-style deterministic anchor grid: each
+# `DISK_ANCHOR_GRID_VOXELS`-sized cell may or may not host a disk,
+# based on a per-material density hash. When a cell has an anchor,
+# its position inside the cell is jittered by a second hash so the
+# anchors don't read as a regular lattice. Every column near sea
+# level checks the few anchor cells within its disk-radius reach;
+# if it falls inside an anchor's circular footprint, the top
+# voxels of the column override to the disk material.
+#
+# This pattern is chunk-boundary-safe: every column independently
+# samples the same hash field, so an anchor that straddles two
+# chunks is consistent.
+
+## Anchor cell size. Each cell can host at most one disk anchor of
+## each material. 24 voxels = 4 m at 6 vox/m.
+@export_range(8, 96, 1) var disk_anchor_grid_voxels: int = 24
+
+## LOD gate for the disk rule. At LOD>1 the visual return drops
+## (voxel stride is ≥4, smaller than the disk radius) so we skip
+## the rule entirely. -1 disables.
+@export_range(-1, 3, 1) var disk_rule_max_lod: int = 1
+
+
+# =============================================================
+# TIER 6 — rare ore outcrops on cliff faces
+# =============================================================
+#
+# Composes Tier 1 (cliff override) + Tier 4 (ore list). Cliff
+# columns roll a deterministic dice — `cliff_ore_outcrop_chance`
+# of the time, the top voxel is overridden to a random ore from
+# the registry instead of plain stone. A second hash picks WHICH
+# ore (uniform across the ore list); the pick's altitude band
+# must include ground_y or the cliff stays stone.
+#
+# Result: walking along a cliff face occasionally reveals copper
+# or iron outcrops at the surface — visible from a distance, very
+# much the Veloren feel.
+
+## Fraction of cliff columns that get an ore outcrop. 0.03 = 3 %
+## of cliff columns. Per-column hash means clusters of nearby
+## outcrops can happen by chance, which reads as a small ore vein.
+@export_range(0.0, 0.3, 0.005) var cliff_ore_outcrop_chance: float = 0.03
+
+## Hash seed for the outcrop dice + ore picker. Distinct from the
+## marble jitter, snow line, ore vein, and disk anchor seeds so the
+## fields don't correlate.
+@export_range(0, 99999, 1) var cliff_ore_seed: int = 5
+
+
+# =============================================================
 # WORLD FLOOR (must mirror CubicHeightmapGenerator + VoxelEditManager)
 # =============================================================
 
@@ -180,6 +329,9 @@ var _cached_dirt: VoxelMaterial = null
 var _cached_grass: VoxelMaterial = null
 var _cached_sand: VoxelMaterial = null
 var _cached_bedrock: VoxelMaterial = null
+var _cached_marble: VoxelMaterial = null
+var _cached_stone_dark: VoxelMaterial = null
+var _cached_snow: VoxelMaterial = null
 var _materials_lookup_attempted: bool = false
 
 
@@ -201,6 +353,76 @@ func set_no_edit_water_aabbs(_aabbs: Array[AABB]) -> void:
 	pass
 
 
+# Tier 4: receives the pre-filtered ore list from
+# VoxelMaterialRegistry.get_ore_materials(). The bootstrap pushes it
+# on the main thread (set-once-at-scene-load) so the generator's
+# worker threads can iterate without touching the SceneTree.
+# Mirror of the set_no_edit_water_aabbs pattern.
+var _cached_ore_list: Array[VoxelMaterial] = []
+
+func set_ore_materials(list: Array[VoxelMaterial]) -> void:
+	_cached_ore_list = list
+
+
+# Tier 5: same set-once data-handoff pattern. Bootstrap pushes the
+# filtered disk list (clay, gravel, etc.) on the main thread.
+var _cached_disk_list: Array[VoxelMaterial] = []
+
+func set_disk_materials(list: Array[VoxelMaterial]) -> void:
+	_cached_disk_list = list
+
+
+# Tier 5 helper. Returns the disk VoxelMaterial that covers this
+# (world_x, world_z) column, or null if none. Worker-thread-safe —
+# pure hash math over the cached disk-list snapshot.
+#
+# Algorithm: walk anchor cells within disk_radius of this column.
+# Each cell's hash determines whether it hosts an anchor of this
+# disk material; second hash gives the anchor's jitter inside the
+# cell. If the column falls within the anchor's circular footprint
+# (dx² + dz² ≤ r²), it's inside the disk.
+func _disk_at_column(world_x: int, world_z: int, ground_y: int, sea_level_v: int) -> VoxelMaterial:
+	if _cached_disk_list.is_empty():
+		return null
+	# Cheap envelope: largest disk reach in the cached list. Most
+	# columns are far from water and bail here.
+	var max_reach: int = 0
+	for d in _cached_disk_list:
+		if d.disk_max_distance_to_water_voxels > max_reach:
+			max_reach = d.disk_max_distance_to_water_voxels
+	if absi(ground_y - sea_level_v) > max_reach:
+		return null
+	var grid: int = maxi(1, disk_anchor_grid_voxels)
+	for disk in _cached_disk_list:
+		if absi(ground_y - sea_level_v) > disk.disk_max_distance_to_water_voxels:
+			continue
+		var r: int = disk.disk_radius_voxels
+		if r <= 0:
+			continue
+		var ax_min: int = floori(float(world_x - r) / float(grid))
+		var ax_max: int = floori(float(world_x + r) / float(grid))
+		var az_min: int = floori(float(world_z - r) / float(grid))
+		var az_max: int = floori(float(world_z + r) / float(grid))
+		var density_seed: int = disk.material_id * 7919
+		var jitter_seed: int = disk.material_id
+		for ax in range(ax_min, ax_max + 1):
+			for az in range(az_min, az_max + 1):
+				# Density gate: hash < threshold → anchor present.
+				var density_hash: float = VoxelGenerationMath.hash3(ax, 0, az, density_seed)
+				if density_hash > disk.disk_anchor_density:
+					continue
+				# Anchor position inside the cell, deterministic jitter.
+				var jx: float = VoxelGenerationMath.hash3(ax, 1, az, jitter_seed) - 0.5
+				var jz: float = VoxelGenerationMath.hash3(ax, 2, az, jitter_seed) - 0.5
+				var anchor_x: int = ax * grid + int(jx * float(grid))
+				var anchor_z: int = az * grid + int(jz * float(grid))
+				var dx: int = world_x - anchor_x
+				var dz: int = world_z - anchor_z
+				if dx * dx + dz * dz <= r * r:
+					return disk
+	return null
+
+
 # Public: sample the ground voxel-Y at a world voxel coord. Used by
 # CopperIslesTestBootstrap to spawn the player just above the central
 # island's actual peak instead of dropping them from the
@@ -208,6 +430,24 @@ func set_no_edit_water_aabbs(_aabbs: Array[AABB]) -> void:
 # scale 0.5 with the current defaults).
 func get_ground_voxel_y_at(world_x: int, world_z: int) -> int:
 	return _gray_to_ground_y(_sample_gray(world_x, world_z))
+
+
+# Tier 1 helper. Returns true when the column at (world_x, world_z)
+# has a ≥ `cliff_slope_threshold_voxels` drop to any of its 4-neighbour
+# columns sampled at ± `cliff_slope_sample_distance_voxels` away.
+# Worker-thread-safe (pure heightmap reads via _sample_gray).
+func _column_is_cliff(world_x: int, world_z: int, this_ground_y: int) -> bool:
+	var step: int = cliff_slope_sample_distance_voxels
+	if step <= 0 or cliff_slope_threshold_voxels <= 0:
+		return false
+	var max_drop: int = 0
+	# 4-neighbour sample. Matches Minecraft's `steep` rule cardinal-only
+	# check; 8-neighbour is smoother but costs 2× the heightmap reads.
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x - step, world_z))
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x + step, world_z))
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x, world_z - step))
+	max_drop = maxi(max_drop, this_ground_y - get_ground_voxel_y_at(world_x, world_z + step))
+	return max_drop >= cliff_slope_threshold_voxels
 
 
 # Diagnostic counter — tracks how often _generate_block early-outs
@@ -475,6 +715,9 @@ func _ensure_materials_cached() -> void:
 	_cached_grass = ResourceLoader.load("res://assets/voxels/materials/grass.tres") as VoxelMaterial
 	_cached_sand = ResourceLoader.load("res://assets/voxels/materials/sand.tres") as VoxelMaterial
 	_cached_bedrock = ResourceLoader.load("res://assets/voxels/materials/bedrock.tres") as VoxelMaterial
+	_cached_marble = ResourceLoader.load("res://assets/voxels/materials/marble.tres") as VoxelMaterial
+	_cached_stone_dark = ResourceLoader.load("res://assets/voxels/materials/stone_dark.tres") as VoxelMaterial
+	_cached_snow = ResourceLoader.load("res://assets/voxels/materials/snow.tres") as VoxelMaterial
 
 
 # =============================================================
@@ -526,6 +769,19 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if _cached_stone != null:
 		stone_id = _cached_stone.material_id
 
+	# Tier 3 jitter materials (0 = not loaded → fall back to plain stone).
+	var marble_id: int = 0
+	if _cached_marble != null:
+		marble_id = _cached_marble.material_id
+	var stone_dark_id: int = 0
+	if _cached_stone_dark != null:
+		stone_dark_id = _cached_stone_dark.material_id
+
+	# Tier 2 snow material (0 = not loaded → snow line silently disabled).
+	var snow_id: int = 0
+	if _cached_snow != null:
+		snow_id = _cached_snow.material_id
+
 	var grass_id: int = dirt_id
 	if _cached_grass != null:
 		grass_id = _cached_grass.material_id
@@ -547,6 +803,38 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var write_water: bool = emit_water and (lod == 0)
 	var water_byte: int = WaterByteCodec.SOURCE_BYTE
 
+	# Tier 1 cliff rule: only run the slope check at near LODs. Distant
+	# LODs already blur cliff detail; the per-column ×4 neighbour
+	# heightmap sample wastes time at LOD3+.
+	var run_cliff_rule: bool = cliff_rule_max_lod >= 0 and lod <= cliff_rule_max_lod
+
+	# Tier 3 jitter cache. Block size is clamped to ≥1 so the integer
+	# division in the hash inputs never crashes on a misconfigured 0.
+	var jitter_block: int = maxi(1, marble_jitter_block_size)
+	var jitter_seed: int = marble_jitter_seed
+	var jitter_marble: float = marble_rare_threshold
+	var jitter_dark: float = marble_dark_threshold
+
+	# Tier 2 snow-line cache. Disabled when snow_id is 0 (snow.tres
+	# failed to load) — top voxel falls through to grass/sand.
+	var snow_block: int = maxi(1, snow_line_jitter_block_size)
+	var snow_jitter_amp: float = float(snow_line_jitter_voxels)
+	var snow_alt_voxels: int = snow_line_voxels
+	var run_snow_line: bool = snow_id != 0
+
+	# Tier 4 ore-vein cache. Snapshot the list once per block — even
+	# though the registry's array is shared and immutable, taking the
+	# local reference avoids a property read every voxel.
+	var ore_list: Array[VoxelMaterial] = _cached_ore_list
+	var has_ores: bool = not ore_list.is_empty()
+
+	# Tier 5 disk cache. Disabled at higher LODs (voxel stride too
+	# big for the disk radius to read).
+	var run_disk_rule: bool = disk_rule_max_lod >= 0 \
+		and lod <= disk_rule_max_lod \
+		and not _cached_disk_list.is_empty()
+	var sea_level_v_local: int = sea_level_voxels
+
 	for x in size.x:
 		for z in size.z:
 			var world_x: int = origin_in_voxels.x + x * stride
@@ -560,6 +848,65 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			var top_id: int = grass_id
 			if ground_y <= beach_y:
 				top_id = sand_id
+
+			# Tier 1: if this column's slope crosses the cliff threshold,
+			# override the top band AND collapse the dirt sandwich. The
+			# whole column reads as bare stone from the top voxel down —
+			# matches Minecraft's `steep` rule (it bypasses both the
+			# grass and dirt layer when fired).
+			var col_dirt_band_end: int = dirt_band_end
+			var column_is_cliff: bool = run_cliff_rule \
+				and _column_is_cliff(world_x, world_z, ground_y)
+			if column_is_cliff:
+				top_id = stone_id
+				col_dirt_band_end = grass_thick   # depth>=1 falls straight into stone band
+
+				# Tier 6: rare ore outcrop on the exposed rock face.
+				# Roll a dice for this column; if it lands within
+				# outcrop_chance, pick an ore uniformly from the list
+				# and override the top voxel — but only if the ore's
+				# altitude band includes this column's ground_y.
+				if has_ores:
+					var dice: float = VoxelGenerationMath.hash3(
+						world_x, ground_y, world_z, cliff_ore_seed)
+					if dice < cliff_ore_outcrop_chance:
+						var pick: float = VoxelGenerationMath.hash3(
+							world_x, ground_y, world_z, cliff_ore_seed + 1)
+						var ore_idx: int = clampi(
+							int(pick * float(ore_list.size())),
+							0, ore_list.size() - 1)
+						var ore_pick = ore_list[ore_idx]
+						if ground_y >= ore_pick.min_altitude_voxels \
+								and ground_y <= ore_pick.max_altitude_voxels:
+							top_id = ore_pick.material_id
+
+			# Tier 2: altitude-driven snow line. Wins on non-cliff
+			# columns whose ground_y is above (snow_alt + jitter). The
+			# jitter breaks the razor-straight horizontal line into a
+			# wavy patch boundary.
+			if run_snow_line and not column_is_cliff and ground_y >= snow_alt_voxels:
+				@warning_ignore("integer_division")
+				var sj: float = (VoxelGenerationMath.hash3(
+					world_x / snow_block,
+					0,
+					world_z / snow_block,
+					snow_line_seed,
+				) - 0.5) * 2.0 * snow_jitter_amp
+				if float(ground_y) >= float(snow_alt_voxels) + sj:
+					top_id = snow_id
+
+			# Tier 5: per-column disk lookup. If this column falls
+			# inside a clay/gravel disk anchor's footprint, capture
+			# the disk material and its thickness for the y-loop. The
+			# disk overrides the top N voxels (grass/dirt) of the
+			# column from depth 0 down — coastal clay reads as a
+			# visible surface patch, not a buried layer.
+			var disk_match: VoxelMaterial = null
+			var disk_thickness: int = 0
+			if run_disk_rule and not column_is_cliff:
+				disk_match = _disk_at_column(world_x, world_z, ground_y, sea_level_v_local)
+				if disk_match != null:
+					disk_thickness = 1 + disk_match.disk_half_height_voxels * 2
 
 			var emit_water_here: bool = write_water and ground_y < sea_level_voxels
 
@@ -590,8 +937,54 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				var mat_id: int
 				if depth < grass_thick:
 					mat_id = top_id
-				elif depth < dirt_band_end:
+				elif depth < col_dirt_band_end:
 					mat_id = dirt_id
 				else:
-					mat_id = stone_id
+					# Stone band — Tier 3 marble jitter. Patches of
+					# marble (rare) and stone_dark (uncommon) break up
+					# uniform stone. Missing materials (id 0) fall back
+					# to plain stone so a partial registry still works.
+					@warning_ignore("integer_division")
+					var n: float = VoxelGenerationMath.hash3(
+						world_x / jitter_block,
+						world_y / jitter_block,
+						world_z / jitter_block,
+						jitter_seed,
+					)
+					if n > jitter_marble and marble_id != 0:
+						mat_id = marble_id
+					elif n > jitter_dark and stone_dark_id != 0:
+						mat_id = stone_dark_id
+					else:
+						mat_id = stone_id
+
+					# Tier 4: ore-vein override. Each ore only replaces
+					# its declared parent material (iron only replaces
+					# plain stone, not marble or stone_dark — gives the
+					# "rare stripe through plain rock" feel). First
+					# matching ore wins; iteration is in material_id
+					# ascending order from get_ore_materials().
+					if has_ores:
+						for ore in ore_list:
+							if mat_id != ore.replaces_material_id:
+								continue
+							if world_y < ore.min_altitude_voxels or world_y > ore.max_altitude_voxels:
+								continue
+							var s: float = ore.ore_noise_scale
+							var on: float = VoxelGenerationMath.hash3(
+								int(float(world_x) * s),
+								int(float(world_y) * s),
+								int(float(world_z) * s),
+								ore.material_id * 1009,
+							)
+							if on > ore.ore_noise_threshold:
+								mat_id = ore.material_id
+								break
+
+				# Tier 5: disk override. Wins over grass/dirt/stone at
+				# the top N voxels of any column inside a disk anchor's
+				# footprint. Clay/gravel patches read as visible
+				# surface features.
+				if disk_match != null and depth < disk_thickness:
+					mat_id = disk_match.material_id
 				out_buffer.set_voxel(mat_id, x, y, z, VoxelBuffer.CHANNEL_TYPE)

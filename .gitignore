@@ -40,7 +40,7 @@ __pycache__/
 *.pyc
 
 # Copper Isles heightmap source — 268 MB EXR. The shipped game reads from
-# the baked SQLite (`assets/voxel/copper_isles_baseline_v13.sqlite`); the
+# the baked SQLite (`assets/voxel/copper_isles_baseline_v14.sqlite`); the
 # EXR is only needed in the editor for re-bakes. Distributed out-of-band;
 # see design/COPPER_ISLES_BAKE_NOTES.md for the re-bake workflow.
 assets/heightmaps/copper_isles_heightmap.exr

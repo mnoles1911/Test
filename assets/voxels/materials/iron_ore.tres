@@ -4,21 +4,21 @@
 
 [resource]
 script = ExtResource("1_voxmat")
-id_string = "copper_ore"
-material_id = 12
-display_name = "Copper Ore"
-color_low = Color(0.45, 0.40, 0.35, 1)
-color_high = Color(0.72, 0.45, 0.20, 1)
-color_jitter = 0.12
+id_string = "iron_ore"
+material_id = 15
+display_name = "Iron Ore"
+color_low = Color(0.42, 0.36, 0.32, 1)
+color_high = Color(0.58, 0.48, 0.4, 1)
+color_jitter = 0.1
 mining_time_seconds = 1.5
 allowed_tools = Array[String](["iron_pickaxe"])
-yield_item_id = "copper_ore"
+yield_item_id = "iron_ore"
 yield_quantity = 1
 fall_behavior = 4
-gravity_scale = 1.2
-damage_multiplier = 1.6
-ore_noise_threshold = 0.62
-ore_noise_scale = 0.06
+gravity_scale = 1.4
+damage_multiplier = 1.8
+ore_noise_threshold = 0.55
+ore_noise_scale = 0.04
 replaces_material_id = 1
-min_altitude_voxels = 0
-max_altitude_voxels = 1500
+min_altitude_voxels = -300
+max_altitude_voxels = 600
