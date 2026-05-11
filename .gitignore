@@ -24,6 +24,18 @@ IsometricRPGMono/publish/
 # locally; we do NOT commit this to keep the repo small.
 addons/zylann.voxel/
 
+# GodotSteam GDExtension — per-platform Steamworks SDK binaries.
+# Steamworks SSA forbids redistribution; each developer downloads from
+# godotsteam.com themselves. See addons/godotsteam/INSTALL.md for steps.
+# The .gdextension text config and INSTALL.md ARE tracked; the binaries
+# and per-platform subdirs are not.
+addons/godotsteam/linux/
+addons/godotsteam/win64/
+addons/godotsteam/macos/
+addons/godotsteam/*.so
+addons/godotsteam/*.dll
+addons/godotsteam/*.dylib
+
 # TTS audio output (rendered from scripts; manifests are kept)
 # Keeps audio/dialogue/**/manifest.json tracked, ignores binary audio.
 audio/dialogue/**/*.mp3
