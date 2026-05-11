@@ -288,6 +288,14 @@ const SEA_LEVEL_VOXELS: int = 72
 @export_range(0, 99999, 1) var marble_jitter_seed: int = 1
 @export_range(0.0, 1.0, 0.01) var marble_rare_threshold: float = 0.92
 @export_range(0.0, 1.0, 0.01) var marble_dark_threshold: float = 0.75
+## LOD gate — skipping at LOD≥2 removes the biggest per-voxel cost.
+@export_range(-1, 3, 1) var marble_jitter_max_lod: int = 1
+
+
+# =============================================================
+# TIER 4 — 3D-noise ore veins  (LOD gate only)
+# =============================================================
+@export_range(-1, 3, 1) var ore_vein_max_lod: int = 1
 
 
 # =============================================================
@@ -303,6 +311,7 @@ const SEA_LEVEL_VOXELS: int = 72
 @export_range(0, 200, 1) var snow_line_jitter_voxels: int = 30
 @export_range(1, 64, 1) var snow_line_jitter_block_size: int = 8
 @export_range(0, 99999, 1) var snow_line_seed: int = 2
+@export_range(-1, 3, 1) var snow_line_max_lod: int = 2
 
 
 # =============================================================
@@ -828,16 +837,24 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	var jitter_seed: int = marble_jitter_seed
 	var jitter_marble: float = marble_rare_threshold
 	var jitter_dark: float = marble_dark_threshold
+	var run_marble_jitter: bool = marble_jitter_max_lod >= 0 and lod <= marble_jitter_max_lod
 
 	# Tier 2 snow-line cache.
 	var snow_block: int = maxi(1, snow_line_jitter_block_size)
 	var snow_jitter_amp: float = float(snow_line_jitter_voxels)
 	var snow_alt_voxels: int = snow_line_voxels
-	var run_snow_line: bool = snow_id != 0
+	var run_snow_line: bool = snow_id != 0 \
+		and snow_line_max_lod >= 0 \
+		and lod <= snow_line_max_lod
 
 	# Tier 4 ore-vein cache.
+	#   has_ores      — registry non-empty (used by Tier 6 cliff outcrops).
+	#   run_ore_veins — also passes ore_vein_max_lod (Tier 4 only).
 	var ore_list: Array[VoxelMaterial] = _cached_ore_list
 	var has_ores: bool = not ore_list.is_empty()
+	var run_ore_veins: bool = has_ores \
+		and ore_vein_max_lod >= 0 \
+		and lod <= ore_vein_max_lod
 
 	# Tier 5 disk cache.
 	var run_disk_rule: bool = disk_rule_max_lod >= 0 \
@@ -964,29 +981,29 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				else:
 					lo = stone_lo
 					hi = stone_hi
-					# Tier 3 stone-band jitter. Patches of rare marble
-					# and uncommon stone_dark break up uniform stone.
-					# Missing materials (id 0) fall back to plain stone.
-					@warning_ignore("integer_division")
-					var n: float = VoxelGenerationMath.hash3(
-						world_x / jitter_block,
-						world_y / jitter_block,
-						world_z / jitter_block,
-						jitter_seed,
-					)
-					if n > jitter_marble and marble_id != 0:
-						mat_id = marble_id
-					elif n > jitter_dark and stone_dark_id != 0:
-						mat_id = stone_dark_id
-					else:
-						mat_id = stone_id
+					# Stone band. Plain stone is the cheap default; the
+					# Tier 3 jitter pick is LOD-gated to skip the
+					# per-voxel hash compute when patches would be
+					# invisible anyway.
+					mat_id = stone_id
+					if run_marble_jitter:
+						@warning_ignore("integer_division")
+						var n: float = VoxelGenerationMath.hash3(
+							world_x / jitter_block,
+							world_y / jitter_block,
+							world_z / jitter_block,
+							jitter_seed,
+						)
+						if n > jitter_marble and marble_id != 0:
+							mat_id = marble_id
+						elif n > jitter_dark and stone_dark_id != 0:
+							mat_id = stone_dark_id
 
-					# Tier 4 ore veins — first matching ore wins.
-					# Ores only replace their declared parent material
-					# (iron stays in plain stone, skipping marble and
-					# stone_dark) for the "rare stripe through plain
-					# rock" feel.
-					if has_ores:
+					# Tier 4 ore veins — LOD-gated by run_ore_veins.
+					# Each ore replaces only its declared parent
+					# material (iron stays in plain stone, skipping
+					# marble and stone_dark variants).
+					if run_ore_veins:
 						for ore in ore_list:
 							if mat_id != ore.replaces_material_id:
 								continue

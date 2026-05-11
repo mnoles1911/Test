@@ -570,6 +570,47 @@ matters only for which side gets the warmer lighting bias.
 
 ---
 
+## VoxelStreamSQLite API surface (probed 2026-05-11)
+
+Run `_probe_sqlite_stream_for_pragma_hooks` (now removed) at scene
+load to investigate whether WAL mode could be enabled to speed up
+bake-time writes. Findings:
+
+**Properties exposed by `VoxelStreamSQLite`:**
+
+| Property | Type | Notes |
+|---|---|---|
+| `database_path` | String (FILE) | Path to the .sqlite file |
+| `preferred_coordinate_format` | enum | `Int64_X16_Y16_Z16_LOD16`, `Int64_X19_Y19_Z19_LOD7`, `String_CSD`, `Blob80_X25_Y25_Z25_LOD5` — affects coord encoding in the SQLite, not transaction behaviour |
+| `save_generator_output` | bool | Controls whether generator output is persisted (vs just edits) |
+| `compression_mode` | enum | `None`, `LZ4`, `ZSTD` — per-chunk compression. Default LZ4 |
+
+**Methods:**
+
+| Method | Notes |
+|---|---|
+| `flush()` | Force-flushes pending writes. Useful for batch save cadence in the bake walker |
+| `set_compression_mode(mode)` / `get_compression_mode()` | Compression knob |
+
+**SQLite PRAGMAs (`journal_mode`, `synchronous`, `cache_size`,
+`page_size`) are NOT reachable** through Zylann's API. WAL mode
+would give a ~1.2-2× write-throughput boost on the bake but
+requires either:
+
+- The `godot-sqlite` addon to open the file out-of-band before
+  Zylann (PRAGMAs persist in the SQLite header → Zylann inherits
+  WAL on subsequent open).
+- The `sqlite3` CLI binary, run manually before kicking off the
+  bake (same mechanism — header-level persistence).
+- Forking Zylann to expose PRAGMA `@export` hooks.
+
+All three deferred. With PR #194's skip-LOD0 + skip-meshing wins
+already in place, the remaining WAL win isn't worth the setup cost
+for an occasional re-bake operation. Revisit only if bake wall-clock
+ever becomes a recurring bottleneck.
+
+---
+
 ## Open questions for future passes
 
 - Does Zylann respect the same chunk size at LOD>0, or do higher LODs use larger blocks? Affects walker step size for the LOD pyramid.

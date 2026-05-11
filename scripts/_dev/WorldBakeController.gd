@@ -171,6 +171,15 @@ func _ready() -> void:
 	_configure_terrain()
 	_set_status("Ready. Run Diagnostics first to verify Zylann APIs, then Bake 1 km central.")
 
+# SQLite WAL-mode spike result (2026-05-11): Zylann's
+# `VoxelStreamSQLite` does NOT expose any PRAGMA hooks. Its only
+# tunable knobs are `database_path`, `preferred_coordinate_format`,
+# `save_generator_output`, `compression_mode` (None/LZ4/ZSTD), and a
+# `flush` method. WAL mode is unreachable without (a) the godot-sqlite
+# addon for out-of-band PRAGMA writes, or (b) raw sqlite3 CLI before
+# Zylann opens the file. Both deferred — PR #194's skip-LOD0 +
+# skip-meshing already gets us the bulk of the bake-perf win.
+
 
 # Terrain config the bake MUST run with. These are the same values
 # scenes/CopperIslesTest.tscn uses at runtime — chunks cached at
@@ -184,6 +193,40 @@ const REQUIRED_LOD_DISTANCE: float = 128.0
 const REQUIRED_SECONDARY_LOD_DISTANCE: float = 128.0
 const REQUIRED_LOD_FADE_DURATION: float = 1.0
 const REQUIRED_STREAMING_SYSTEM: int = 1   # 1 = CLIPBOX, 0 = LEGACY_OCTREE
+
+
+# =============================================================
+# BAKE PERF — temporary overrides applied during the bake walk
+# =============================================================
+#
+# The bake doesn't need visuals or collision — it just needs the
+# generator output persisted to the stream SQLite. Two tweaks
+# applied at bake-start and reverted at bake-end:
+#
+# (1) Skip LOD 0. The bake walker cannot densely sample LOD 0
+#     across the full region in reasonable time (radius 21 m at
+#     30 m tile spacing → mostly-but-not-perfectly overlapping
+#     spheres; misses still cause empty LOD 0 entries to be
+#     persisted, which then OVERRIDE the runtime generator).
+#     Solution: shrink lod_distance to a value smaller than the
+#     data-block size (16 voxels) so no LOD 0 chunk's center can
+#     fall inside the viewer's LOD 0 sphere → Zylann never
+#     requests LOD 0 → no empty LOD 0 entries written to SQLite.
+#     Runtime live-generates LOD 0 on demand (fast — small block).
+#
+# (2) Skip meshing. The viewer triggers chunk LOADs which run
+#     the generator and persist via cache_generated_blocks. The
+#     meshing step is required for visuals and collision but not
+#     for the persisted data. Disabling the mesher during bake
+#     skips that GPU+CPU work, ~1.5-3× wall-clock speedup.
+#
+# Both overrides revert in a finally-style cleanup at the end
+# of `_bake_region` (and on cancel), so the BakeWorld scene's
+# observer camera still gets a normally-rendering terrain
+# between bakes if the user re-runs interactively.
+
+const BAKE_LOD_DISTANCE: float = 8.0     # < 16 vox data-block size → no LOD0 requests
+const BAKE_DISABLE_MESHING: bool = true  # set false to debug bake-time visuals
 # All MUST match CopperIslesTestBootstrap.REQUIRED_*. lod_distance
 # capped at 128 by Zylann (probe-verified). lod_count=9 covers LODs
 # out to LOD8 (~5.5 km world at lod_distance=128). Trimmed 2026-05-07
@@ -666,14 +709,41 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 	])
 	await get_tree().process_frame
 
+	# Resolve the bake terrain once. Subsequent lod_distance / mesher
+	# overrides target this node.
+	var terrain := get_node_or_null(voxel_terrain_path)
+
+	# --- Apply BAKE-ONLY perf overrides ---
+	# Both are reverted in the cleanup tail at the end of this function.
+	var bake_lod_distance_before: float = 0.0
+	var bake_mesher_before: Resource = null
+	if terrain != null:
+		# (1) Disable LOD 0 generation. See BAKE_LOD_DISTANCE comment.
+		if "lod_distance" in terrain:
+			bake_lod_distance_before = float(terrain.get("lod_distance"))
+			terrain.set("lod_distance", BAKE_LOD_DISTANCE)
+			print("[Bake] lod_distance: %s → %s (LOD 0 disabled during bake)" % [
+				bake_lod_distance_before, terrain.get("lod_distance"),
+			])
+		# (2) Detach the mesher. See BAKE_DISABLE_MESHING comment.
+		# Stash the current mesher so we can restore it on completion.
+		if BAKE_DISABLE_MESHING and "mesher" in terrain:
+			bake_mesher_before = terrain.get("mesher") as Resource
+			terrain.set("mesher", null)
+			print("[Bake] mesher detached for bake (was %s) — skipping mesh build for perf." % [
+				bake_mesher_before.get_class() if bake_mesher_before != null else "null",
+			])
+
 	# Phantom viewer.
 	if not ClassDB.class_exists("VoxelViewer"):
 		_set_status("ABORT — VoxelViewer class unavailable.")
+		_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before)
 		_running = false
 		return
 	_viewer = ClassDB.instantiate("VoxelViewer")
 	if _viewer == null:
 		_set_status("ABORT — could not instantiate VoxelViewer.")
+		_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before)
 		_running = false
 		return
 	if "view_distance" in _viewer:
@@ -689,7 +759,6 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 	add_child(_viewer)
 
 	# Walk.
-	var terrain := get_node_or_null(voxel_terrain_path)
 	for tile_center in bake_tiles:
 		if _cancel_requested:
 			break
@@ -740,6 +809,11 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		_viewer.queue_free()
 		_viewer = null
 
+	# Revert bake-only overrides so the BakeWorld scene's observer
+	# camera renders normally if the user runs another bake or just
+	# pokes around interactively after this one.
+	_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before)
+
 	_running = false
 	if _cancel_requested:
 		_set_status("Cancelled at tile %d/%d." % [_tiles_done, _tiles_total])
@@ -748,6 +822,25 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 		_set_status("DONE — %d tiles in %.1f minutes. DB size: %s." % [
 			_tiles_done, elapsed_min, _format_filesize(_db_filesize_bytes()),
 		])
+
+
+func _restore_bake_overrides(
+		terrain: Object,
+		lod_distance_before: float,
+		mesher_before: Resource
+) -> void:
+	# Counterpart of the bake-start overrides. Safe to call multiple
+	# times — `lod_distance_before == 0.0` means we never applied the
+	# override (terrain was null or didn't have the property), so we
+	# skip the restore.
+	if terrain == null:
+		return
+	if lod_distance_before > 0.0 and "lod_distance" in terrain:
+		terrain.set("lod_distance", lod_distance_before)
+		print("[Bake] lod_distance restored: %s" % terrain.get("lod_distance"))
+	if BAKE_DISABLE_MESHING and mesher_before != null and "mesher" in terrain:
+		terrain.set("mesher", mesher_before)
+		print("[Bake] mesher restored.")
 
 
 func _vertical_positions_for_class(

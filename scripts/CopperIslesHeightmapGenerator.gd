@@ -192,6 +192,24 @@ class_name CopperIslesHeightmapGenerator
 ## the marble cutoff). 0.75 ≈ ~17 % stone_dark patches.
 @export_range(0.0, 1.0, 0.01) var marble_dark_threshold: float = 0.75
 
+## Highest LOD at which the marble jitter runs. At LOD≥2 each voxel
+## covers ≥4 world voxels — the 4-voxel patch size collapses to a
+## single voxel and the jitter is visually wasted. Skipping it also
+## removes the per-voxel hash compute in the stone band hot loop,
+## which is the single biggest LOD≥2 cost. -1 disables Tier 3.
+@export_range(-1, 3, 1) var marble_jitter_max_lod: int = 1
+
+
+# =============================================================
+# TIER 4 — 3D-noise ore veins  (LOD gate only; ore params live on the .tres files)
+# =============================================================
+
+## Highest LOD at which ore veins are placed. At LOD≥2 each voxel
+## covers ≥4 world voxels — a single ore voxel is no longer
+## meaningfully visible, and the per-ore hash loop is a per-voxel
+## cost in the stone band. -1 disables Tier 4 entirely.
+@export_range(-1, 3, 1) var ore_vein_max_lod: int = 1
+
 
 # =============================================================
 # TIER 2 — altitude-driven snow line
@@ -224,6 +242,11 @@ class_name CopperIslesHeightmapGenerator
 ## Hash seed so the snow-line wobble doesn't collide with the marble
 ## jitter or ore-vein hash fields.
 @export_range(0, 99999, 1) var snow_line_seed: int = 2
+
+## Highest LOD at which the snow line runs. Per-column work only
+## (one hash3 + one comparison), so the cost is low — keeping it
+## enabled to LOD 2 means distant peaks still read as snow-capped.
+@export_range(-1, 3, 1) var snow_line_max_lod: int = 2
 
 
 # =============================================================
@@ -810,23 +833,39 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 
 	# Tier 3 jitter cache. Block size is clamped to ≥1 so the integer
 	# division in the hash inputs never crashes on a misconfigured 0.
+	# `run_marble_jitter` skips the per-voxel hash at high LODs where
+	# the 4-voxel patch resolution collapses anyway.
 	var jitter_block: int = maxi(1, marble_jitter_block_size)
 	var jitter_seed: int = marble_jitter_seed
 	var jitter_marble: float = marble_rare_threshold
 	var jitter_dark: float = marble_dark_threshold
+	var run_marble_jitter: bool = marble_jitter_max_lod >= 0 and lod <= marble_jitter_max_lod
 
 	# Tier 2 snow-line cache. Disabled when snow_id is 0 (snow.tres
-	# failed to load) — top voxel falls through to grass/sand.
+	# failed to load) — top voxel falls through to grass/sand. Also
+	# gated by snow_line_max_lod for very-far LODs.
 	var snow_block: int = maxi(1, snow_line_jitter_block_size)
 	var snow_jitter_amp: float = float(snow_line_jitter_voxels)
 	var snow_alt_voxels: int = snow_line_voxels
-	var run_snow_line: bool = snow_id != 0
+	var run_snow_line: bool = snow_id != 0 \
+		and snow_line_max_lod >= 0 \
+		and lod <= snow_line_max_lod
 
 	# Tier 4 ore-vein cache. Snapshot the list once per block — even
 	# though the registry's array is shared and immutable, taking the
 	# local reference avoids a property read every voxel.
+	#   has_ores       — registry has ores AND we're at a LOD where
+	#                    the ore picker is meaningful (used by Tier 6
+	#                    cliff outcrops; inherits cliff_rule_max_lod
+	#                    gating implicitly by being inside that branch).
+	#   run_ore_veins  — also passes ore_vein_max_lod (Tier 4 only).
+	#                    The per-voxel ore loop is the most expensive
+	#                    step in the stone band, so skip it at LOD≥2.
 	var ore_list: Array[VoxelMaterial] = _cached_ore_list
 	var has_ores: bool = not ore_list.is_empty()
+	var run_ore_veins: bool = has_ores \
+		and ore_vein_max_lod >= 0 \
+		and lod <= ore_vein_max_lod
 
 	# Tier 5 disk cache. Disabled at higher LODs (voxel stride too
 	# big for the disk radius to read).
@@ -940,31 +979,30 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 				elif depth < col_dirt_band_end:
 					mat_id = dirt_id
 				else:
-					# Stone band — Tier 3 marble jitter. Patches of
-					# marble (rare) and stone_dark (uncommon) break up
-					# uniform stone. Missing materials (id 0) fall back
-					# to plain stone so a partial registry still works.
-					@warning_ignore("integer_division")
-					var n: float = VoxelGenerationMath.hash3(
-						world_x / jitter_block,
-						world_y / jitter_block,
-						world_z / jitter_block,
-						jitter_seed,
-					)
-					if n > jitter_marble and marble_id != 0:
-						mat_id = marble_id
-					elif n > jitter_dark and stone_dark_id != 0:
-						mat_id = stone_dark_id
-					else:
-						mat_id = stone_id
+					# Stone band. Plain stone is the cheap default; the
+					# Tier 3 jitter pick is LOD-gated to skip the
+					# per-voxel hash compute when patches would be
+					# invisible anyway.
+					mat_id = stone_id
+					if run_marble_jitter:
+						@warning_ignore("integer_division")
+						var n: float = VoxelGenerationMath.hash3(
+							world_x / jitter_block,
+							world_y / jitter_block,
+							world_z / jitter_block,
+							jitter_seed,
+						)
+						if n > jitter_marble and marble_id != 0:
+							mat_id = marble_id
+						elif n > jitter_dark and stone_dark_id != 0:
+							mat_id = stone_dark_id
 
-					# Tier 4: ore-vein override. Each ore only replaces
-					# its declared parent material (iron only replaces
-					# plain stone, not marble or stone_dark — gives the
-					# "rare stripe through plain rock" feel). First
-					# matching ore wins; iteration is in material_id
-					# ascending order from get_ore_materials().
-					if has_ores:
+					# Tier 4: ore-vein override. LOD-gated by
+					# run_ore_veins. Each ore only replaces its declared
+					# parent material (iron only replaces plain stone,
+					# not marble or stone_dark) — gives the "rare stripe
+					# through plain rock" feel.
+					if run_ore_veins:
 						for ore in ore_list:
 							if mat_id != ore.replaces_material_id:
 								continue

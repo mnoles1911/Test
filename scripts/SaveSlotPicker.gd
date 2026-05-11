@@ -103,10 +103,12 @@ func _on_save_pressed(filename: String) -> void:
 	var scene: String = GameState.current_scene
 	if scene == "" or not ResourceLoader.exists(scene):
 		scene = "res://scenes/CopperIslesTest.tscn"
-	# 25 s loading hold (Copper-Isles-tuned, matches MainMenu). Loads
-	# need time for voxel deltas, player position restore, and Zylann
-	# to stream the spawn area before the fade clears.
-	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 25.0)
+	# 60 s loading hold (Copper-Isles-tuned, matches MainMenu + PauseMenu
+	# and the bootstrap's readiness probe MAX_EXTRA_WAIT). Loads need
+	# time for voxel deltas, player position restore, and Zylann to
+	# stream the spawn area before the fade clears. Closes early when
+	# the bootstrap calls TransitionManager.mark_voxel_world_ready().
+	TransitionManager.change_scene(scene, GameState.player_spawn_id, TransitionManager.Type.FADE_BLACK, 60.0)
 
 
 func _on_back() -> void:
