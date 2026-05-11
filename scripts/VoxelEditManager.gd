@@ -319,6 +319,129 @@ const REPLAY_BATCH_SIZE: int = 32
 
 var _session_edit_log: Array = []
 
+# PR-K — prior-session extraction state.
+#
+# Prior-session deltas (chunks loaded from voxel_deltas.sqlite at
+# world load) aren't in _session_edit_log because they bypassed
+# _apply_edit's broadcast path. PR-K extracts them on demand: when
+# the first guest joins, host walks _edited_chunks and synthesizes
+# a "bulk" cmd per chunk capturing every non-air voxel. Those cmds
+# get prepended to the log so the existing replay_to_peer mechanism
+# ships them.
+#
+# Extraction runs throttled (PRIOR_EXTRACT_CHUNKS_PER_FRAME chunks
+# per frame) to avoid main-thread stalls on saves with thousands of
+# edited chunks. A 1000-chunk save extracts in ~3 seconds at the
+# default budget; the joining guest sees the host's prior edits
+# stream in over that time.
+#
+# Cached per session: once extraction completes, subsequent peer
+# joins skip the extraction pass and use the existing log.
+
+signal prior_session_extracted()  ## fired when extraction completes
+
+const PRIOR_EXTRACT_CHUNKS_PER_FRAME: int = 4
+const CHUNK_BLOCK_SIZE: int = 16  ## Zylann's default block size
+
+var _prior_extraction_queue: Array = []
+var _prior_extraction_in_progress: bool = false
+var _prior_extraction_done: bool = false
+
+
+## Kick off prior-session extraction if not already done. CatchupCoordinator
+## calls this on first peer_joined. Idempotent — repeated calls during
+## an active extraction just wait for the in-flight pass.
+##
+## Caller should connect to `prior_session_extracted` signal before
+## calling so they hear when extraction finishes. Returns true if
+## extraction was newly started, false if already in progress or
+## already complete.
+func start_prior_session_extraction() -> bool:
+	if not _should_broadcast():
+		return false
+	if _prior_extraction_done:
+		return false
+	if _prior_extraction_in_progress:
+		return false
+	if _terrain == null:
+		push_warning("[VoxelEditManager] start_prior_session_extraction: no terrain bound")
+		return false
+	# Snapshot the edited-chunk list at start time so concurrent
+	# in-session edits don't perturb the queue.
+	_prior_extraction_queue = _edited_chunks.keys().duplicate()
+	if _prior_extraction_queue.is_empty():
+		_prior_extraction_done = true
+		prior_session_extracted.emit()
+		return false
+	_prior_extraction_in_progress = true
+	print("[VoxelEditManager] start_prior_session_extraction: %d chunks queued" % _prior_extraction_queue.size())
+	return true
+
+
+## True if prior-session extraction has finished. CatchupCoordinator
+## checks this to decide whether to wait for the signal or fire
+## replay_to_peer immediately.
+func is_prior_session_extracted() -> bool:
+	return _prior_extraction_done
+
+
+# Drain the extraction queue every frame, PRIOR_EXTRACT_CHUNKS_PER_FRAME
+# at a time. Each chunk → one synthesized "bulk" cmd appended to the
+# session log.
+func _drain_prior_extraction_queue() -> void:
+	if not _prior_extraction_in_progress:
+		return
+	if _terrain == null:
+		return
+	var tool: VoxelTool = _terrain.get_voxel_tool()
+	if tool == null:
+		return
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var budget: int = PRIOR_EXTRACT_CHUNKS_PER_FRAME
+	while budget > 0 and not _prior_extraction_queue.is_empty():
+		var chunk_coord: Vector3i = _prior_extraction_queue.pop_front()
+		_extract_chunk_to_log(tool, chunk_coord)
+		budget -= 1
+	if _prior_extraction_queue.is_empty():
+		_prior_extraction_in_progress = false
+		_prior_extraction_done = true
+		print("[VoxelEditManager] prior_session_extraction complete; %d cmds in log" % _session_edit_log.size())
+		prior_session_extracted.emit()
+
+
+# Read every voxel in `chunk_coord`'s block and synthesize a single
+# bulk cmd containing every non-air voxel. The bulk cmd uses world-
+# space positions (per the existing _apply_edit "bulk" arm contract).
+func _extract_chunk_to_log(tool: VoxelTool, chunk_coord: Vector3i) -> void:
+	var base_vox: Vector3i = chunk_coord * CHUNK_BLOCK_SIZE
+	var writes: Array = []
+	for dx in range(CHUNK_BLOCK_SIZE):
+		for dy in range(CHUNK_BLOCK_SIZE):
+			for dz in range(CHUNK_BLOCK_SIZE):
+				var vx: int = base_vox.x + dx
+				var vy: int = base_vox.y + dy
+				var vz: int = base_vox.z + dz
+				# tool.get_voxel signature is (Vector3i pos). Some
+				# Zylann builds also accept (x, y, z); use the
+				# Vector3i form which is portable.
+				var v: int = int(tool.get_voxel(Vector3i(vx, vy, vz)))
+				if v == 0:
+					continue  # air — skip (most chunks are 90%+ air)
+				var world_pos: Vector3 = Vector3(vx, vy, vz) / VOXELS_PER_METER
+				writes.append({"pos": world_pos, "value": v})
+	if writes.is_empty():
+		return
+	# Synthesize a bulk cmd matching the format _apply_edit expects.
+	# Prepend (insert at index 0) rather than append so prior-session
+	# state lands first chronologically before in-session edits — a
+	# replaying guest gets the world-load baseline before the
+	# pickaxe carves layered on top.
+	_session_edit_log.insert(0, {
+		"type": "bulk",
+		"writes": writes,
+		"label": "prior_session_chunk_%s" % chunk_coord,
+	})
+
 
 func _append_session_log(cmd: Dictionary) -> void:
 	# Don't log replicated cmds — those came FROM another host
@@ -431,6 +554,11 @@ func clear_terrain() -> void:
 	# baseline). A guest joining after a world change should NOT
 	# receive replay from the previous world.
 	_session_edit_log.clear()
+	# PR-K — reset prior-session extraction state so the next world
+	# load triggers a fresh extraction pass on first peer_joined.
+	_prior_extraction_queue.clear()
+	_prior_extraction_in_progress = false
+	_prior_extraction_done = false
 
 
 func flush_pending_edits() -> void:
@@ -769,6 +897,12 @@ func world_to_voxel(world_pos: Vector3) -> Vector3i:
 # ============================================================
 
 func _physics_process(_delta: float) -> void:
+	# PR-K — drain the prior-session extraction queue alongside the
+	# normal edit queue. The extractor reads from VoxelTool which
+	# needs the terrain to be bound, so this lives in the same
+	# _physics_process tick.
+	_drain_prior_extraction_queue()
+
 	# Drain the edit queue, voxel-budget at a time, every physics
 	# frame. We use _physics_process (not _process) because edits
 	# affect collision/navigation that downstream physics should see

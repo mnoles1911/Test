@@ -34,20 +34,25 @@ extends Node
 #      For MP-5 v1 we ship the full flags dict; MP-6 polish trims
 #      to only entries marked "networked = true".
 #
-# WHAT'S DELIBERATELY DEFERRED FROM MP-5 v1:
+# WHAT WAS DEFERRED FROM MP-5 v1 (PR-E LANDED, PR-K LANDED):
 #
-#   - (PR-E LANDED) Voxel chunk session-log replay. Host's
-#     VoxelEditManager retains every edit it has made this session
-#     in an in-memory log; CatchupCoordinator now ships it to the
-#     joining peer in batches via VoxelEditManager.replay_to_peer.
-#     The PRIOR-SESSION sqlite delta streaming (edits loaded from
-#     voxel_deltas.sqlite on world load) is still deferred — that
-#     requires the worker-thread reader the original plan called
-#     for. Effect: if the host launches the game, edits 500 voxels,
-#     then a guest joins → guest sees all 500 edits. If the host
-#     LOADS a saved world with 10000 prior edits, then a guest
-#     joins → guest sees the procedural baseline. Bounded retention
-#     (MAX_LOG_ENTRIES = 50000) caps memory at ~5MB.
+#   In-session edits — host's VoxelEditManager retains every edit
+#   in an in-memory log; CatchupCoordinator ships it to the joining
+#   peer via VoxelEditManager.replay_to_peer. Bounded by
+#   MAX_LOG_ENTRIES = 50000.
+#
+#   Prior-session edits — chunks loaded from voxel_deltas.sqlite
+#   on world load bypass _apply_edit's broadcast path. PR-K closes
+#   the gap by extracting those chunks on first peer_joined via
+#   VoxelEditManager.start_prior_session_extraction. The extractor
+#   walks every chunk in _edited_chunks, reads each voxel via
+#   VoxelTool, and synthesizes "bulk" cmds prepended to the session
+#   log. Throttled (PRIOR_EXTRACT_CHUNKS_PER_FRAME = 4 chunks/frame)
+#   so a 1000-chunk save extracts in ~3s without main-thread stalls.
+#
+#   Effect today: regardless of WHEN the host's edits happened (this
+#   session or a saved-world load), the joining guest sees them
+#   stream in immediately on join.
 #
 #   - Enemy state push. Per-enemy state will naturally re-sync on
 #     the next host-side state change via the MultiplayerSynchronizer.
@@ -120,15 +125,33 @@ func _on_peer_joined(peer_id: int) -> void:
 	if enemy_count > 0:
 		print("[CatchupCoordinator] pushed snapshot for %d enemies to peer %d" % [enemy_count, peer_id])
 
-	# PR-E — ship every host-side voxel edit since session start so
-	# the joining peer's terrain matches the host's. Bounded by
-	# VoxelEditManager.MAX_LOG_ENTRIES (FIFO eviction). Edits from
-	# prior sessions (loaded from voxel_deltas.sqlite at world load)
-	# aren't covered — that's a known gap until full sqlite delta
-	# streaming lands. Documented in CatchupCoordinator.gd header.
+	# PR-E + PR-K — ship every host-side voxel edit so the joining
+	# peer's terrain matches the host's. Two pieces here:
+	#
+	#   PR-E covers in-session edits (the session log accumulating
+	#   since host started).
+	#   PR-K covers prior-session edits (chunks loaded from
+	#   voxel_deltas.sqlite at world load that bypassed _apply_edit
+	#   and aren't in the log).
+	#
+	# Strategy: on first peer_joined, kick off prior-session
+	# extraction. The extraction populates the log over multiple
+	# frames; when it completes, replay_to_peer fires. Subsequent
+	# joins skip extraction (already cached) and replay immediately.
 	if get_node_or_null("/root/VoxelEditManager") != null \
 			and VoxelEditManager.has_method("replay_to_peer"):
-		VoxelEditManager.replay_to_peer(peer_id)
+		if VoxelEditManager.has_method("is_prior_session_extracted") \
+				and not VoxelEditManager.is_prior_session_extracted():
+			# Connect one-shot so we replay after extraction completes.
+			# Multiple guests joining during extraction all queue their
+			# replays here; each gets called when the signal fires.
+			VoxelEditManager.prior_session_extracted.connect(
+				func(): VoxelEditManager.replay_to_peer(peer_id),
+				CONNECT_ONE_SHOT,
+			)
+			VoxelEditManager.start_prior_session_extraction()
+		else:
+			VoxelEditManager.replay_to_peer(peer_id)
 
 
 func _build_snapshot() -> Dictionary:
