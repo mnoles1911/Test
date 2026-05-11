@@ -5,6 +5,9 @@ How enemies perceive the world, decide what to do, and fight.
 > Cross-reference: `design/COMBAT_DESIGN_3D.md` for the full combat mechanic spec (attack types, parry windows, health/endurance).
 > `design/SYSTEMS_DESIGN.md` for the enemy roster and design principles.
 > `design/SKILLS_AND_PROGRESSION.md` for how Roland's progression affects enemy difficulty.
+> `design/COMBAT_NEXT_PHASES.md` for what's actually implemented today vs. what remains, plus the prioritized order for building Ashfallen / Wolf / Bear and the group AI / attack-token system described below.
+
+> **Implementation status:** `Enemy3D` base class (state machine + damage / death + corpse looting) and `Goblin` v1 are live as of May 2026. Goblin uses a stripped-down "walk toward player + contact damage" loop — full attack pool, group alerts, swarm override, and fleeing all per spec but not yet built. Ashfallen, Wolf, Bear specs below are unimplemented.
 
 ---
 

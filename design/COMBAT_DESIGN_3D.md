@@ -1,6 +1,8 @@
 # Combat Design — 3D Voxel
 
-> **Status: DRAFT.** First-pass scoping document for the real-time 3D combat system. Replaces the M3 turn-based 2D combat scene entirely. References: Hades, Kingdom Come: Deliverance 2 (KCD2), Hyper Light Drifter, Ghost of Tsushima.
+> **Status: DRAFT design spec (what we want).** First-pass scoping document for the real-time 3D combat system. Replaces the M3 turn-based 2D combat scene entirely. References: Hades, Kingdom Come: Deliverance 2 (KCD2), Hyper Light Drifter, Ghost of Tsushima.
+>
+> **Implementation status:** Voxel Combat v1 shipped May 2026 (spear-only, Goblin enemy, blood VFX, dev arena). Full melee, parry, lock-on, attack-token AI, and other enemy types remain unbuilt. See `design/COMBAT_NEXT_PHASES.md` for the prioritized roadmap and current status of each system below.
 
 ---
 

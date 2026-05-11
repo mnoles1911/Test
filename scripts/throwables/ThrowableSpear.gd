@@ -118,12 +118,14 @@ func _physics_process(delta: float) -> void:
 		# along the velocity direction.
 		var forward: Vector3 = v.normalized()
 		var up_ref: Vector3 = Vector3.UP if absf(forward.y) < 0.95 else Vector3.FORWARD
-		var basis: Basis = Basis.looking_at(-forward, up_ref)
-		# look_at_from_position rotates -Z to face the target. Since
-		# the spear's forward is +Y, rotate the basis 90° around X to
+		# Renamed from `basis` to avoid shadowing Node3D.basis (which
+		# raised SHADOWED_VARIABLE_BASE_CLASS in the parser warnings).
+		var aim_basis: Basis = Basis.looking_at(-forward, up_ref)
+		# looking_at rotates -Z to face the target. Since the spear's
+		# forward is +Y, rotate the basis 90° around its local X to
 		# remap -Z → +Y.
-		basis = basis.rotated(basis.x, deg_to_rad(90.0))
-		global_transform.basis = basis
+		aim_basis = aim_basis.rotated(aim_basis.x, deg_to_rad(90.0))
+		global_transform.basis = aim_basis
 
 	# No-impact safety net.
 	_no_impact_remaining -= delta
