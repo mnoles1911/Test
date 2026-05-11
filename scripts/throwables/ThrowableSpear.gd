@@ -88,6 +88,17 @@ var _player: Node3D
 ## Cached on first need. We don't grab it in _ready because the
 ## spear may spawn before the player tree settles in unusual cases.
 
+## PR-C — MP gate. True when this instance is the authoritative one
+## (host's spawn or single-player). False on guest visual replicas.
+## ThrowableNet sets this on spawn; _on_body_entered gates damage +
+## terrain edits to authoritative instances only so we never get
+## N× damage across N peers.
+##
+## In OFFLINE the value stays at its default (false) but the damage
+## gate also checks for OFFLINE explicitly so single-player works
+## unchanged.
+var _mp_is_authoritative: bool = false
+
 
 # =============================================================
 # LIFECYCLE
@@ -156,11 +167,33 @@ func _on_body_entered(body: Node) -> void:
 	# _physics_process; freezing here preserves that.
 	var travel_dir: Vector3 = linear_velocity.normalized() if linear_velocity.length() > 0.01 else -global_transform.basis.z
 
+	# PR-C — only the authoritative instance applies damage / terrain
+	# attachment. Guest visual replicas just stop in flight; they
+	# don't fire take_damage (would multiply damage) and don't try to
+	# reparent into the enemy ChestSocket (would race with host's
+	# reparent and could end up parented to a freed corpse on guest).
+	# In OFFLINE everyone is implicitly authoritative.
+	var is_offline: bool = get_node_or_null("/root/MultiplayerManager") == null \
+			or MultiplayerManager.is_offline()
+	var apply_authoritative: bool = is_offline or _mp_is_authoritative
+
 	# Branch: enemy vs. terrain.
 	if body != null and body.is_in_group("enemy"):
-		_impact_enemy(body, travel_dir)
+		if apply_authoritative:
+			_impact_enemy(body, travel_dir)
+		else:
+			# Replica just stops here visually. Host's authoritative
+			# impact will broadcast the attach-to-corpse via Enemy3D's
+			# RPC; this replica becomes a no-op.
+			freeze = true
 	else:
-		_impact_terrain(travel_dir)
+		if apply_authoritative:
+			_impact_terrain(travel_dir)
+		else:
+			# Replica just settles in place — no terrain edit, no
+			# pickup tick. Host's instance handles the authoritative
+			# write; this one is purely visual.
+			freeze = true
 
 
 func _impact_enemy(enemy: Node, travel_dir: Vector3) -> void:
