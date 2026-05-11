@@ -98,6 +98,13 @@ var _is_dead: bool = false
 ## How long after dealing contact damage before this enemy can deal it
 ## again. Prevents one frame of overlap from chunking the player to zero.
 
+@export var corpse_lifetime_seconds: float = 60.0
+## How long the corpse stays in the scene after death before being
+## auto-freed. Long enough that the player can see the consequence
+## of their kill (and the blood pool decal); short enough that long
+## play sessions don't accumulate dozens of corpses. Dev-arena Reset
+## bypasses this and frees all corpses immediately.
+
 var _contact_cooldown_remaining: float = 0.0
 
 
@@ -268,6 +275,13 @@ func _on_damaged(_amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 ## Public entry point for death. Called automatically by take_damage()
 ## when health reaches zero, but exposed publicly so debug tools can
 ## kill instantly without going through health math.
+##
+## CORPSE LIFETIME: dead enemies stay in the scene as a corpse (with
+## _is_dead = true preventing further damage / movement / detection)
+## until corpse_lifetime_seconds elapses, then queue_free. Subclasses
+## decide what the corpse looks like in _on_died (lying body, gib
+## cluster, dissolve, etc.). The dev arena's Reset Enemies command
+## bypasses this timer and queue_frees all corpses immediately.
 func die(damage_at_kill: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vector3 = Vector3.ZERO) -> void:
 	if _is_dead:
 		return
@@ -275,13 +289,16 @@ func die(damage_at_kill: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vec
 	# Stop any pending physics so the corpse doesn't keep walking.
 	velocity = Vector3.ZERO
 	# Fire signal first so listeners (ThrowableSpear) can react before
-	# the visual swap (mesh hide → cluster spawn) happens.
+	# the visual swap happens.
 	died.emit(damage_at_kill)
-	# Subclasses do the cluster spawn / mesh hide / sound / etc.
+	# Subclasses do the corpse visual (lay down, change color, spawn
+	# cluster, etc.).
 	_on_died(damage_at_kill, hit_dir, hit_point)
-	# After a short delay (long enough for any embedded spear to
-	# reparent to a cluster chunk), free this node.
-	var timer := get_tree().create_timer(0.1)
+	# Auto-free after a long delay so dead enemies don't accumulate
+	# forever in long sessions, but stay visible long enough that the
+	# player can see the consequence of their kill. Dev arena Reset
+	# bypasses this timer.
+	var timer := get_tree().create_timer(corpse_lifetime_seconds)
 	timer.timeout.connect(queue_free)
 
 

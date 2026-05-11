@@ -160,10 +160,28 @@ func _on_damaged(amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 
 func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 	# Phase 5 will branch on damage_at_kill (topple vs. explosion),
-	# spawn FallingVoxelCluster, etc. v1 placeholder: hide the mesh,
-	# stop the bleed, drop a Layer C pool decal at the kill site.
+	# spawn FallingVoxelCluster, etc. v1 placeholder behavior:
+	#   - Lay the visual flat (rotate forward 90°) so it reads as a
+	#     fallen body rather than vanishing
+	#   - Darken the color and kill the eye glow so it looks dead
+	#   - Stop the wound drip
+	#   - Drop a Layer C blood pool at the kill site
+	# Enemy3D.die() handles the eventual queue_free via
+	# corpse_lifetime_seconds (default 60 s).
 	if _visual != null:
-		_visual.visible = false
+		# Rotate -90° on X (faceplant forward), then sink so the
+		# now-horizontal box rests on the ground rather than floating
+		# at original chest height. Box was 0.5×1.8×0.4 with origin
+		# at Y=0.9; after the X-rotation its vertical extent becomes
+		# 0.4, half-height 0.2, so origin Y=0.2 puts the bottom on
+		# the ground.
+		_visual.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		_visual.position = Vector3(0.0, 0.2, 0.0)
+		# Darken to dead-grey-green so the corpse reads visually
+		# distinct from living goblins still in the area.
+		var corpse_mat: StandardMaterial3D = StandardMaterial3D.new()
+		corpse_mat.albedo_color = Color(0.18, 0.22, 0.14, 1.0)
+		_visual.material_override = corpse_mat
 	if _eye_glow != null:
 		_eye_glow.visible = false
 	if get_node_or_null("/root/BloodVFX"):
