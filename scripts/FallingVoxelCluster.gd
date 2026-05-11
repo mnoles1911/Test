@@ -88,6 +88,17 @@ const EQUILIBRIUM_BREAK_RAD_S: float = 0.05
 # RUNTIME STATE — populated by configure()
 # =============================================================
 
+## PR-I — MP gate. True on the authoritative spawn (host's local
+## copy or single-player); false on guest visual replicas.
+## FallingClusterNet sets this before configure(). On guests, the
+## RigidBody3D is frozen (no physics tick) and transform is driven
+## by the MultiplayerSynchronizer staged on the scene root in PR-C.
+## On the authority, physics runs normally.
+##
+## In OFFLINE the cluster is implicitly authoritative; this flag
+## starts true and FallingClusterNet skips the broadcast.
+var _mp_is_authoritative: bool = true
+
 var _voxel_snapshot: Dictionary = {}
 # Vector3i (ABSOLUTE world voxel-grid coords) → int (packed RGBA32).
 # Frozen at spawn. Used for mesh build AND re-deposit.
@@ -288,6 +299,16 @@ func configure(
 
 func _ready() -> void:
 	_resolve_node_refs()
+	# PR-I — non-authoritative replicas freeze physics so the host's
+	# MultiplayerSynchronizer (staged on this scene's root in PR-C)
+	# can drive the transform without RigidBody3D's local sim
+	# fighting it. Guest replicas are visual-only: same mesh, same
+	# pose updates, no collision against player or terrain.
+	if not _mp_is_authoritative:
+		freeze = true
+		# Disable contact-monitor — replicas don't fire body_entered
+		# (host handles crush damage authoritatively).
+		contact_monitor = false
 
 
 func _resolve_node_refs() -> void:
@@ -301,6 +322,15 @@ func _resolve_node_refs() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# PR-I — guest replicas don't run physics-driven settle / fall-
+	# off-world / re-deposit logic. The host's authoritative cluster
+	# handles all of that and the resulting terrain delta replicates
+	# via VoxelEditManager.queue_set_voxels_bulk (PR-3 broadcast).
+	# Guest replicas just sit at the sync'd transform until the
+	# host queue_free's their authoritative cluster, after which
+	# the despawn replicates (deferred — see header).
+	if not _mp_is_authoritative:
+		return
 	if _settled:
 		return
 	_seconds_alive += delta

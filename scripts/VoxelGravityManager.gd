@@ -871,16 +871,23 @@ func _handle_cluster(
 	# --- Spawn the rigid body cluster ---
 	if _cluster_scene == null:
 		return
-	var cluster: Node = _cluster_scene.instantiate()
-	if cluster == null:
-		return
-
-	# Find a parent — prefer the world scene root (sibling to terrain).
-	# The terrain's parent is the world Node3D.
-	var world_root: Node = terrain.get_parent()
-	if world_root == null:
-		world_root = get_tree().current_scene
-	world_root.add_child(cluster)
+	# Compute the spawn world position + gravity / damage scaling
+	# below; defer the actual instantiate so we can route through
+	# FallingClusterNet (PR-I) when MP is active so guests get a
+	# visual replica.
+	var cluster: Node = null
+	var _deferred_to_net: bool = (get_node_or_null("/root/FallingClusterNet") != null) \
+			and (get_node_or_null("/root/MultiplayerManager") != null) \
+			and not MultiplayerManager.is_offline()
+	if not _deferred_to_net:
+		# OFFLINE / no MP — direct local spawn (existing path).
+		cluster = _cluster_scene.instantiate()
+		if cluster == null:
+			return
+		var world_root: Node = terrain.get_parent()
+		if world_root == null:
+			world_root = get_tree().current_scene
+		world_root.add_child(cluster)
 
 	# --- Compute per-cluster gravity_scale and damage_multiplier ---
 	# Mixed clusters can contain multiple materials (e.g. a chunk of
@@ -915,11 +922,29 @@ func _handle_cluster(
 
 	# Spawn at the cluster's world centroid.
 	var centroid_world: Vector3 = VoxelClusterBuilder.compute_centroid_world(absolute_voxels)
-	cluster.global_position = centroid_world
-	cluster.configure(absolute_voxels, edit_world_pos, gravity_scale_avg, damage_multiplier_max)
+	if _deferred_to_net:
+		# PR-I — route through FallingClusterNet so the host's
+		# authoritative cluster spawns locally AND broadcasts to
+		# guests for visual replication. FallingClusterNet handles
+		# mount + configure on each peer.
+		cluster = FallingClusterNet.spawn_authoritative(
+			absolute_voxels,
+			edit_world_pos,
+			gravity_scale_avg,
+			damage_multiplier_max,
+			centroid_world,
+		)
+		if cluster == null:
+			return
+	else:
+		# OFFLINE direct-spawn path (continuation of the
+		# pre-PR-I flow).
+		cluster.global_position = centroid_world
+		cluster.configure(absolute_voxels, edit_world_pos, gravity_scale_avg, damage_multiplier_max)
 
 	_active_clusters.append(cluster)
 	cluster_spawned.emit(cluster)
-	print("[VoxelGravityManager] spawned cluster: %d voxels at %s (active=%d)" % [
-		n, centroid_world, _active_clusters.size()
+	print("[VoxelGravityManager] spawned cluster: %d voxels at %s (active=%d, routed=%s)" % [
+		n, centroid_world, _active_clusters.size(),
+		"FallingClusterNet" if _deferred_to_net else "direct",
 	])
