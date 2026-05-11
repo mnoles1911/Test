@@ -294,6 +294,86 @@ func _rpc_request_edit(verb: String, args: Dictionary) -> void:
 	_dispatch_verb(verb, args)
 
 
+# ============================================================
+# PR-E — session edit log for late-join replay
+# ============================================================
+#
+# Every successful host-side edit gets appended to _session_edit_log.
+# When a new peer joins, CatchupCoordinator calls replay_to_peer(id)
+# which ships the log over in batches.
+#
+# Bounded by MAX_LOG_ENTRIES to cap memory in long sessions. When
+# the cap hits we drop the OLDEST entries (FIFO eviction) — a guest
+# joining a 12-hour session sees the most recent N edits rather
+# than none. The plan's polish path is to swap this for sqlite
+# delta streaming once long-session retention becomes important.
+
+## Hard cap on retained edit entries. Each entry is a ~100-byte
+## Dictionary; 50k = ~5MB resident. Set conservatively for now.
+const MAX_LOG_ENTRIES: int = 50000
+
+## Per-RPC batch size for replay. Reliable channel handles
+## fragmentation, but batching reduces per-message overhead and
+## keeps the host's main-thread cost predictable.
+const REPLAY_BATCH_SIZE: int = 32
+
+var _session_edit_log: Array = []
+
+
+func _append_session_log(cmd: Dictionary) -> void:
+	# Don't log replicated cmds — those came FROM another host
+	# (i.e., we're a guest applying a host's broadcast). Only the
+	# original authoritative cmd is interesting for replay.
+	if cmd.get("_replicated", false):
+		return
+	_session_edit_log.append(cmd)
+	if _session_edit_log.size() > MAX_LOG_ENTRIES:
+		# FIFO eviction — keep the most recent MAX_LOG_ENTRIES.
+		var drop: int = _session_edit_log.size() - MAX_LOG_ENTRIES
+		_session_edit_log = _session_edit_log.slice(drop)
+
+
+## Ship the current session's edit log to a single joining peer.
+## Called by CatchupCoordinator.on_peer_joined for each non-self
+## connected peer. Host-only.
+func replay_to_peer(peer_id: int) -> void:
+	if not _should_broadcast():
+		return
+	if _session_edit_log.is_empty():
+		return
+	# Build batches of at most REPLAY_BATCH_SIZE cmds.
+	var total: int = _session_edit_log.size()
+	var batch_count: int = 0
+	var i: int = 0
+	while i < total:
+		var end: int = min(i + REPLAY_BATCH_SIZE, total)
+		var batch: Array = _session_edit_log.slice(i, end)
+		_rpc_replicate_edit_batch.rpc_id(peer_id, batch)
+		batch_count += 1
+		i = end
+	print("[VoxelEditManager] replay_to_peer %d: %d cmds in %d batches" % [
+		peer_id, total, batch_count,
+	])
+
+
+# Bulk receive of host's session-log replay. Each cmd is queued as
+# a replicated edit so the normal apply path doesn't rebroadcast it.
+@rpc("authority", "reliable")
+func _rpc_replicate_edit_batch(cmds: Array) -> void:
+	if get_node_or_null("/root/MultiplayerManager") != null \
+			and MultiplayerManager.is_host():
+		return
+	for c in cmds:
+		if not (c is Dictionary):
+			continue
+		var cmd: Dictionary = c
+		cmd["_replicated"] = true
+		if _edit_queue.size() >= max_queue_length:
+			push_warning("[VoxelEditManager] replay dropped: local queue full (%d)" % _edit_queue.size())
+			return
+		_edit_queue.append(cmd)
+
+
 # RPC — host broadcasts a successful edit to all guests so they can
 # mirror it onto their local terrain. The guest's local apply skips
 # the rebroadcast path via the "_replicated" flag on the queued cmd.
@@ -346,6 +426,11 @@ func clear_terrain() -> void:
 	_terrain = null
 	_edit_queue.clear()
 	_edited_chunks.clear()
+	# PR-E — also clear the session log. Edits from the prior world
+	# don't apply to a new world (different generator, different
+	# baseline). A guest joining after a world change should NOT
+	# receive replay from the previous world.
+	_session_edit_log.clear()
 
 
 func flush_pending_edits() -> void:
@@ -1000,6 +1085,9 @@ func _apply_edit(cmd: Dictionary) -> void:
 		# exactly what we want — every guest receives this; the host
 		# already applied locally.
 		_rpc_replicate_edit.rpc(cmd)
+		# PR-E — also record the cmd in the session log so a future
+		# joining peer can catch up on every edit we've made.
+		_append_session_log(cmd)
 
 	# DIAGNOSTIC — auto-print phase breakdown for slow edits.
 	var t_apply_total: int = Time.get_ticks_usec() - t_apply_start
