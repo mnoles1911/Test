@@ -36,15 +36,18 @@ extends Node
 #
 # WHAT'S DELIBERATELY DEFERRED FROM MP-5 v1:
 #
-#   - Voxel chunk delta replay. The plan calls for streaming each
-#     edited chunk's deltas from VoxelStreamSQLite over batched
-#     RPCs. That's a meaningful subsystem on its own (worker-thread
-#     sqlite reader, per-frame N-write throttle, progress UI for
-#     the joining guest). Filed for MP-8 polish or a dedicated
-#     follow-up; in this milestone late-joiners see the procedural
-#     baseline without host edits applied. This is a known UX gap —
-#     until the polish lands, the host can't show a guest the
-#     dungeon they carved while solo.
+#   - (PR-E LANDED) Voxel chunk session-log replay. Host's
+#     VoxelEditManager retains every edit it has made this session
+#     in an in-memory log; CatchupCoordinator now ships it to the
+#     joining peer in batches via VoxelEditManager.replay_to_peer.
+#     The PRIOR-SESSION sqlite delta streaming (edits loaded from
+#     voxel_deltas.sqlite on world load) is still deferred — that
+#     requires the worker-thread reader the original plan called
+#     for. Effect: if the host launches the game, edits 500 voxels,
+#     then a guest joins → guest sees all 500 edits. If the host
+#     LOADS a saved world with 10000 prior edits, then a guest
+#     joins → guest sees the procedural baseline. Bounded retention
+#     (MAX_LOG_ENTRIES = 50000) caps memory at ~5MB.
 #
 #   - Enemy state push. Per-enemy state will naturally re-sync on
 #     the next host-side state change via the MultiplayerSynchronizer.
@@ -116,6 +119,16 @@ func _on_peer_joined(peer_id: int) -> void:
 			enemy_count += 1
 	if enemy_count > 0:
 		print("[CatchupCoordinator] pushed snapshot for %d enemies to peer %d" % [enemy_count, peer_id])
+
+	# PR-E — ship every host-side voxel edit since session start so
+	# the joining peer's terrain matches the host's. Bounded by
+	# VoxelEditManager.MAX_LOG_ENTRIES (FIFO eviction). Edits from
+	# prior sessions (loaded from voxel_deltas.sqlite at world load)
+	# aren't covered — that's a known gap until full sqlite delta
+	# streaming lands. Documented in CatchupCoordinator.gd header.
+	if get_node_or_null("/root/VoxelEditManager") != null \
+			and VoxelEditManager.has_method("replay_to_peer"):
+		VoxelEditManager.replay_to_peer(peer_id)
 
 
 func _build_snapshot() -> Dictionary:
