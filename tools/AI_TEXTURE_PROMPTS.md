@@ -98,6 +98,26 @@ recitation filter accepts.*
 
 ---
 
+### `stone_dark_all.png`
+
+*(Sibling of `stone_all`. The Tier 3 generator rule mixes this in
+as ~17 % darker patches inside the stone band so cliff faces and
+underground walls show three-tone variety — plain stone, dark
+stone, rare marble — rather than uniform grey.)*
+
+> A square seamless tileable texture of cool dark grey basalt stone,
+> designed to repeat invisibly across a deep cave wall. Rough angular
+> surface spread evenly across the whole face with balanced color
+> across all areas. Deep charcoal grey tones with subtle cool
+> blue-grey undertones, the heavy dense character of dark volcanic
+> rock that contrasts visibly against ordinary warm granite. Many
+> fine short micro-fractures and tiny scattered mineral specks at
+> uniform density, all of similar weight, with no single feature
+> standing out. Flat view, matte even lighting throughout. Hand-painted
+> painterly art style. Tiles seamlessly with no edge seams.
+
+---
+
 ### `dirt_all.png`
 
 > A square seamless tileable texture of dark rich brown loam soil,
@@ -181,6 +201,29 @@ recitation filter accepts.*
 
 ---
 
+### `snow_all.png`
+
+*(Tier 2 mountain-cap material. The generator overrides the top
+voxel of non-cliff columns above the snow line — typically the
+upper 500 m of peaks. Should read as bright but not pure white so
+it has internal variation under sunlight; cliff faces still poke
+through as bare stone.)*
+
+> A square seamless tileable texture of fresh dry mountain snow
+> viewed from directly above, designed to repeat invisibly across a
+> high alpine peak. Powdery undisturbed surface spread evenly across
+> the whole face with balanced color across all areas. Bright cool
+> white tones with very subtle pale blue and faint warm cream
+> undertones from low-angle light, the soft granular texture of
+> recently fallen snow rather than packed ice or slush. Many tiny
+> scattered crystalline glints and faint shadow pockets at micro
+> scale only, all of similar weight, with no single bright sparkle
+> standing out. Flat top-down view, matte even lighting throughout.
+> Hand-painted painterly art style. Tiles seamlessly with no edge
+> seams.
+
+---
+
 ### `log_top.png`
 
 *(Used for the top and bottom face of the log block. Must tile
@@ -252,6 +295,28 @@ RGBA-capable generator.)*
 
 ---
 
+### `iron_ore_all.png`
+
+*(Sibling of `copper_ore_all`. The Tier 4 generator places iron
+veins in the shallow band (-50 to 100 m) and copper higher up
+(0 to 250 m), so the player digs into one or the other depending
+on altitude. Keep the visual clearly distinct from copper — iron's
+silvery / rust-red palette vs copper's orange-bronze / green
+patina — so the player can tell them apart at a glance underground.)*
+
+> A square seamless tileable texture of grey stone with veins and
+> flecks of iron mineral, designed to repeat invisibly across a cave
+> wall. Stone base with scattered iron deposits spread evenly across
+> the whole face with balanced color across all areas. Cool grey
+> stone tones with raw silvery-grey iron and dark rust-red oxidized
+> iron mineral. Ore veins broken into many short irregular branching
+> segments scattered uniformly across the face, with iron fleck
+> clusters of similar size at even density. Flat view, matte even
+> lighting throughout. Hand-painted painterly art style. Tiles
+> seamlessly with no edge seams.
+
+---
+
 ### `bedrock_all.png`
 
 > A square seamless tileable texture of near-black dense igneous
@@ -283,4 +348,4 @@ RGBA-capable generator.)*
 - [ ] **Filename matches exactly?** `gravel_all.png`, not `Gravel.png`
   or `gravel.PNG` — the builder is case-sensitive.
 
-When all 11 source PNGs are in place, run the builder.
+When all 15 source PNGs are in place, run the builder.
