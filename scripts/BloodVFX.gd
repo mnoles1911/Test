@@ -221,12 +221,21 @@ func _on_drip_target_freed(target: Node3D) -> void:
 # PUBLIC API — Layer C: blood pool
 # =============================================================
 
-## Spawn a flat blood-pool Decal beneath world_pos. Raycasts downward
+## Spawn a flat blood-pool quad beneath world_pos. Raycasts downward
 ## up to 3 m to find the ground; if no ground is hit (enemy died in
 ## mid-air over a void), the pool is placed at world_pos directly.
 ##
 ## The pool starts at 0.3 m diameter and grows to max_size_meters over
-## grow_seconds. Once grown, the decal lingers until the scene unloads.
+## grow_seconds, then lingers until the scene unloads.
+##
+## IMPLEMENTATION NOTE: Uses a flat PlaneMesh + transparent texture
+## rather than a Decal node. Decals only render under the Forward+ /
+## Mobile renderers; this project is on gl_compatibility per
+## project.godot, where Decals are silently invisible. The plane-mesh
+## approach works on every renderer at the cost of being a fixed-
+## orientation flat quad (no surface projection). For the dev arena's
+## flat ground that's fine; if Game One ever needs blood pools that
+## conform to sloped terrain, switch to Decal AND switch the renderer.
 func spawn_pool(world_pos: Vector3, max_size_meters: float = 1.5, grow_seconds: float = 8.0) -> void:
 	# Find ground via downward raycast. Start 0.5 m above the kill site
 	# so we don't miss when the enemy's feet are exactly on a surface.
@@ -240,16 +249,27 @@ func spawn_pool(world_pos: Vector3, max_size_meters: float = 1.5, grow_seconds: 
 	if hit.has("position"):
 		ground_pos = hit["position"]
 
-	# Build the Decal. Decals project a texture onto whatever geometry
-	# is below them — they're cheap and look right on uneven terrain.
-	var decal := Decal.new()
-	decal.texture_albedo = _pool_texture
-	# size.y is the projection depth, NOT visible thickness. Keep it
-	# small so we don't project onto walls a metre away from the pool.
-	decal.size = Vector3(0.3, 0.4, 0.3)
-	decal.modulate = Color(0.5, 0.05, 0.05, 0.85)
-	decal.upper_fade = 0.5
-	decal.lower_fade = 0.1
+	# Build a flat quad with the procedural radial-gradient texture.
+	# PlaneMesh defaults to facing +Y (lies flat on the ground when
+	# placed at world position with no rotation), which is exactly
+	# what we want for a pool seen from above.
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(max_size_meters, max_size_meters)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = _pool_texture
+	mat.albedo_color = Color(0.5, 0.05, 0.05, 1.0)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# render_priority = -1 keeps the pool behind the goblin corpse if
+	# they overlap, so the corpse silhouette doesn't get visually
+	# subtracted by the pool's alpha.
+	mat.render_priority = -1
+
+	var pool_mesh := MeshInstance3D.new()
+	pool_mesh.mesh = plane
+	pool_mesh.material_override = mat
 
 	var scene_root: Node = get_tree().current_scene
 	if scene_root == null:
@@ -257,16 +277,18 @@ func spawn_pool(world_pos: Vector3, max_size_meters: float = 1.5, grow_seconds: 
 		# autoload (always at origin) which is wrong, but better than
 		# crashing during scene transitions.
 		scene_root = self
-	scene_root.add_child(decal)
-	# Lift the decal slightly off the ground so it doesn't z-fight with
-	# the surface it's projecting onto.
-	decal.global_position = ground_pos + Vector3(0, 0.05, 0)
+	scene_root.add_child(pool_mesh)
+	# Lift the quad slightly off the ground so it doesn't z-fight with
+	# the surface below.
+	pool_mesh.global_position = ground_pos + Vector3(0, 0.02, 0)
 
-	# Tween the size out over grow_seconds. Y axis stays fixed at the
-	# original projection depth — only horizontal radius grows.
-	var target_size := Vector3(max_size_meters, 0.4, max_size_meters)
-	var tween := decal.create_tween()
-	tween.tween_property(decal, "size", target_size, grow_seconds)
+	# Tween the visible scale from a small starting size to full size
+	# over grow_seconds. We tween the MeshInstance3D scale rather than
+	# the PlaneMesh size because the latter can't be Property-tweened
+	# directly (PlaneMesh is a sub-resource).
+	pool_mesh.scale = Vector3(0.2, 1.0, 0.2)
+	var tween := pool_mesh.create_tween()
+	tween.tween_property(pool_mesh, "scale", Vector3(1.0, 1.0, 1.0), grow_seconds)
 
 
 # =============================================================
