@@ -324,3 +324,64 @@ func _build_pool_texture() -> ImageTexture:
 			alpha = clampf(alpha - noise * (1.0 - alpha), 0.0, 1.0)
 			img.set_pixel(x, y, Color(0.4, 0.04, 0.04, alpha))
 	return ImageTexture.create_from_image(img)
+
+
+# ============================================================
+# MP-4 NETWORKING — visual events shared across peers.
+#
+# In a multiplayer session, a discrete visual event (a sword landing,
+# a projectile sticking) happens on one peer's machine but should be
+# visible to everyone. These _networked variants fire the local pool
+# AND broadcast an unreliable RPC to all other peers so they spawn
+# their own local pool instance at the same world position.
+#
+# Unreliable channel: blood is purely cosmetic. If a packet drops,
+# the worst case is one peer doesn't see a single flash — acceptable.
+# Reliable would cost more bandwidth + retransmits without improving
+# the user's experience.
+#
+# call_local is intentionally NOT used here — the caller already
+# plays the local event before the RPC, so adding call_local would
+# double-play on the sender.
+#
+# In OFFLINE mode (no peer set) the .rpc() call is a no-op so the
+# _networked variants degrade gracefully to a pure local play.
+# ============================================================
+
+## Cosmetic burst at a hit site. Mirrors spawn_burst() locally AND
+## broadcasts to every other peer.
+func spawn_burst_networked(world_pos: Vector3, direction: Vector3, intensity: float = 1.0) -> void:
+	spawn_burst(world_pos, direction, intensity)
+	_rpc_spawn_burst.rpc(world_pos, direction, intensity)
+
+
+## Dust puff at a stone impact. Mirrors spawn_dust() locally AND
+## broadcasts to every other peer.
+func spawn_dust_networked(world_pos: Vector3, normal: Vector3) -> void:
+	spawn_dust(world_pos, normal)
+	_rpc_spawn_dust.rpc(world_pos, normal)
+
+
+## Blood pool quad at a kill site. Mirrors spawn_pool() locally AND
+## broadcasts to every other peer. Used by Enemy3D's death visual
+## broadcast where the per-peer call would otherwise depend on the
+## death event firing on every peer separately — using the networked
+## variant lets a host-only callsite paint the pool everywhere.
+func spawn_pool_networked(world_pos: Vector3, max_size_meters: float = 1.5, grow_seconds: float = 8.0) -> void:
+	spawn_pool(world_pos, max_size_meters, grow_seconds)
+	_rpc_spawn_pool.rpc(world_pos, max_size_meters, grow_seconds)
+
+
+@rpc("any_peer", "unreliable")
+func _rpc_spawn_burst(world_pos: Vector3, direction: Vector3, intensity: float) -> void:
+	spawn_burst(world_pos, direction, intensity)
+
+
+@rpc("any_peer", "unreliable")
+func _rpc_spawn_dust(world_pos: Vector3, normal: Vector3) -> void:
+	spawn_dust(world_pos, normal)
+
+
+@rpc("any_peer", "unreliable")
+func _rpc_spawn_pool(world_pos: Vector3, max_size_meters: float, grow_seconds: float) -> void:
+	spawn_pool(world_pos, max_size_meters, grow_seconds)

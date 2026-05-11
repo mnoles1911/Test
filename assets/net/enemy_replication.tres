@@ -1,0 +1,45 @@
+[gd_resource type="SceneReplicationConfig" format=3 uid="uid://denemyreplmp4"]
+
+; SceneReplicationConfig for Enemy3D + subclasses (Goblin, future
+; Ashfallen/Wolf/Bear).
+;
+; Used by the MultiplayerSynchronizer child of every enemy scene.
+; Single source of truth across all enemy subclasses — drift would
+; silently drop sync packets.
+;
+; Replicated properties (paths relative to the enemy root):
+;   .:global_position   Vector3, on_change — drives visual position
+;   .:rotation          Vector3, on_change — yaw drives facing
+;   .:current_state     int (State enum: 0=IDLE, 1=ALERT, 2=COMBAT),
+;                       on_change — drives eye glow tier on Goblin
+;   .:_is_dead          bool, on_change — drives corpse pose
+;   .:health            int, on_change — drives HP bar (when wired)
+;
+; Replication mode = 2 = on_change. At 4-10 m/s enemy speeds that's
+; ~10-20 packets/sec on movement which Godot handles trivially.
+;
+; What's intentionally NOT synced (driven via RPC for visuals):
+;   - Discrete damage events (need hit_point + hit_dir for blood
+;     spurt direction — not a Node property)
+;   - Death events (need damage_at_kill for visual variants)
+;   - Bark / sound triggers
+;
+; See Enemy3D.gd's _rpc_apply_damage_visual / _rpc_apply_death_visual
+; for the RPC paths that handle those visual events.
+
+[resource]
+properties/0/path = NodePath(".:global_position")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:current_state")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+properties/3/path = NodePath(".:_is_dead")
+properties/3/spawn = true
+properties/3/replication_mode = 2
+properties/4/path = NodePath(".:health")
+properties/4/spawn = true
+properties/4/replication_mode = 2
