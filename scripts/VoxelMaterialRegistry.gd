@@ -69,6 +69,21 @@ var _loaded: bool = false
 # before _ready (e.g. autoloads earlier in the load order calling us)
 # can check this and bail gracefully rather than crash.
 
+var _ores: Array[VoxelMaterial] = []
+# Pre-filtered: every material with `replaces_material_id != 0`.
+# Built once during _ready. Read-only after _loaded=true → safe for
+# Zylann worker threads to iterate from the generator hot loop, no
+# need to re-walk the full dictionary every block.
+
+var _disks: Array[VoxelMaterial] = []
+# Pre-filtered: every material with `disk_radius_voxels > 0` AND
+# `disk_anchor_density > 0`. Same thread-safety guarantee as _ores.
+
+var _cliff_face_materials: Array[VoxelMaterial] = []
+# Pre-filtered: every material with `is_cliff_face_material == true`.
+# Used by Tier 1 to pick the cliff override material (usually stone)
+# without a hardcoded id lookup.
+
 
 # =============================================================
 # LIFECYCLE
@@ -78,8 +93,26 @@ func _ready() -> void:
 	# Scan the materials directory and build the lookup tables.
 	_scan_directory(MATERIALS_DIRECTORY)
 	_validate_against_inventory()
+	_build_filtered_caches()
 	_loaded = true
 	_print_summary()
+
+
+func _build_filtered_caches() -> void:
+	# Walk the materials once and bucket the generator-rule-eligible
+	# entries into pre-filtered arrays. The generator's worker threads
+	# read these arrays directly — far cheaper than re-filtering all
+	# 12+ materials on every block.
+	_ores.clear()
+	_disks.clear()
+	_cliff_face_materials.clear()
+	for mat in get_all():
+		if mat.replaces_material_id != 0 and mat.ore_noise_threshold > 0.0:
+			_ores.append(mat)
+		if mat.disk_radius_voxels > 0 and mat.disk_anchor_density > 0.0:
+			_disks.append(mat)
+		if mat.is_cliff_face_material:
+			_cliff_face_materials.append(mat)
 
 
 # =============================================================
@@ -115,6 +148,37 @@ func is_loaded() -> bool:
 	# Did _ready finish scanning? Code that runs before this autoload
 	# completes (rare but possible) can guard with this.
 	return _loaded
+
+
+# =============================================================
+# PUBLIC API — generator-rule filtered views
+# =============================================================
+#
+# Pre-filtered arrays populated once at startup. Callers (the
+# generator hot loop) iterate these without re-walking the full
+# dictionary. The returned Array reference is shared across all
+# callers and MUST be treated as read-only — Godot 4 arrays are
+# passed by reference, and mutating these would corrupt the cache.
+# Generator worker threads only ever read.
+
+func get_ore_materials() -> Array[VoxelMaterial]:
+	# Tier 4: every material with a non-zero ore_noise_threshold and
+	# a non-zero replaces_material_id. Ordered by material_id ascending
+	# (the order get_all() returns); the generator's "first ore wins"
+	# rule means iteration order = priority order.
+	return _ores
+
+
+func get_disk_materials() -> Array[VoxelMaterial]:
+	# Tier 5: every material with a non-zero disk_radius_voxels and a
+	# non-zero disk_anchor_density.
+	return _disks
+
+
+func get_cliff_face_materials() -> Array[VoxelMaterial]:
+	# Tier 1: every material with is_cliff_face_material = true.
+	# Caller picks the first whose altitude band includes ground_y.
+	return _cliff_face_materials
 
 
 # =============================================================

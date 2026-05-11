@@ -243,6 +243,75 @@ enum FallBehavior {
 
 
 # =============================================================
+# GENERATION RULES — how the world-generator chooses this material
+# =============================================================
+#
+# These fields let designers wire each material into the six-tier
+# selection pipeline (slope-cliff override, snow line, marble jitter,
+# ore veins, near-water disks, cliff-face outcrops) by editing the
+# .tres rather than the generator code. Every field defaults to a
+# "this material doesn't participate" value, so existing .tres files
+# keep working unchanged.
+
+@export var is_cliff_face_material: bool = false
+# When true, this material is eligible to override the top voxel of a
+# column whose slope crosses the cliff threshold (Tier 1). Typically
+# set on stone, bedrock, or any rock variant. The generator picks the
+# first cliff-eligible material it finds with a matching altitude band.
+
+@export_range(-1000, 30000, 1) var min_altitude_voxels: int = -1000
+@export_range(-1000, 30000, 1) var max_altitude_voxels: int = 30000
+# Vertical band where this material is eligible. Used by:
+#   - Snow line (Tier 2): snow's `min_altitude_voxels` is the snow line.
+#   - Ore veins (Tier 4): each ore is restricted to its native band
+#     (iron near sea level, copper higher, diamond near bedrock).
+#   - Cliff outcrops (Tier 6): only ores whose band includes ground_y
+#     are picked when an outcrop rolls.
+# Defaults span the full world Y range so non-altitude-gated materials
+# (stone, dirt) are eligible everywhere.
+
+@export_range(0.0, 1.0, 0.01) var ore_noise_threshold: float = 0.0
+# Tier 4 ore vein threshold on the deterministic 3D hash. 0.0 = not an
+# ore (generator skips it). Higher = rarer vein.
+#   0.55 = roughly 8 % of stone voxels in band become ore (common)
+#   0.75 = ~2 % (semi-rare)
+#   0.90 = <0.5 % (rare)
+
+@export_range(0.005, 0.5, 0.005) var ore_noise_scale: float = 0.05
+# Frequency of the 3D noise field used for vein placement. Lower = bigger,
+# more-spread-out clusters; higher = finer, more-frequent specks.
+#   0.02 = continent-scale streaks (iron rivers)
+#   0.05 = 4-8 voxel pockets (most ores)
+#   0.10 = scattered single voxels (gemstones)
+
+@export_range(0, 254, 1) var replaces_material_id: int = 0
+# Which existing material this one overlays. Ores typically set this to
+# 1 (stone), so iron veins only appear in plain stone — not in marble or
+# stone_dark variants (Tier 3) — which gives the "rare stripe through
+# regular rock" feel. 0 = no overlay, this material is not a vein/overlay.
+
+@export_range(0, 16, 1) var disk_radius_voxels: int = 0
+# Tier 5 near-water disk radius. 0 = not a disk material (generator
+# skips). 4 voxels (~0.7 m) is a good default for clay / gravel pockets.
+
+@export_range(0, 4, 1) var disk_half_height_voxels: int = 0
+# Vertical thickness of the disk in voxels. 1 = 2-voxel-thick disk
+# (matches Minecraft's `disk_clay` shape).
+
+@export_range(0.0, 1.0, 0.01) var disk_anchor_density: float = 0.0
+# Tier 5 hash threshold: fraction of anchor grid cells that host a disk
+# of this material. 0.04 ≈ 4 % of cells = clay-like density. 0.0 = no
+# anchors (disabled). The anchor grid spacing is set in the generator
+# (default 24 voxels = 4 m), so disk_anchor_density × (1/16 m²) gives
+# the per-m² disk density.
+
+@export_range(0, 32, 1) var disk_max_distance_to_water_voxels: int = 12
+# Tier 5 proximity filter — the disk only spawns when the column's
+# ground_y is within this many voxels of sea level. 12 = ~2 m above or
+# below the waterline at 6 vox/m.
+
+
+# =============================================================
 # SOUND — hooks for audio (not wired in v1)
 # =============================================================
 
