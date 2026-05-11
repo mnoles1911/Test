@@ -100,6 +100,10 @@ var _poll_accumulator: float = 0.0
 # same Dialogic state if nothing has changed since the last poll.
 var _last_speaker: String = ""
 var _last_line: String = ""
+# PR-B — last choices broadcast. Choices are an Array of String
+# labels (e.g. ["Help her", "Walk away", "Ask why"]). Empty array
+# means no choice is currently pending. Sent only on transition.
+var _last_choices: PackedStringArray = PackedStringArray()
 
 
 # =============================================================
@@ -148,6 +152,7 @@ func begin_cutscene(timeline_id: String, origin: Vector3, radius: float = DEFAUL
 	_active = ActiveCutscene.new(timeline_id, origin, radius)
 	_last_speaker = ""
 	_last_line = ""
+	_last_choices = PackedStringArray()
 	_recompute_membership()
 	print("[ProximityCutsceneManager] begin %s at %s r=%.1f → %d guest(s)" % [
 		timeline_id, origin, radius, _active.participating.size(),
@@ -169,6 +174,7 @@ func end_cutscene() -> void:
 	_active = null
 	_last_speaker = ""
 	_last_line = ""
+	_last_choices = PackedStringArray()
 
 
 ## True if THIS peer is currently in a mirrored cutscene (drives
@@ -179,6 +185,13 @@ func end_cutscene() -> void:
 var _local_is_mirrored: bool = false
 func is_local_in_cutscene() -> bool:
 	return _local_is_mirrored
+
+
+## True if the host machine currently has an active cutscene driving
+## guest mirrors. Used by PauseMenu to gate save-during-cutscene.
+## Returns false on guests (they have no host-side _active state).
+func has_active_cutscene() -> bool:
+	return _active != null
 
 
 # =============================================================
@@ -275,11 +288,51 @@ func _poll_dialogic_state_and_broadcast() -> void:
 		line = String(info.get("text", info.get("line", "")))
 		speaker = String(info.get("character", info.get("speaker", "")))
 	if speaker == _last_speaker and line == _last_line:
+		# Even when text is unchanged, choice state can shift (a new
+		# choice node has appeared, or the player just made one). Poll
+		# choices separately below.
+		_poll_choices(dialogic)
 		return
 	_last_speaker = speaker
 	_last_line = line
 	for peer_id in _active.participating.keys():
 		_rpc_cutscene_text.rpc_id(int(peer_id), speaker, line)
+	_poll_choices(dialogic)
+
+
+# PR-B — poll Dialogic 2 for any pending choice node. The API surface
+# varies; we look for any of the common shapes and broadcast a
+# diff-aware update. Choices are grayed out on the guest side —
+# only the host advances. CutsceneMirror.set_choices controls
+# render; absent / empty array hides the choice panel.
+func _poll_choices(dialogic: Node) -> void:
+	if _active == null or _active.participating.is_empty():
+		return
+	var current: PackedStringArray = PackedStringArray()
+	# Shape 1: Dialogic 2.x stores active choices in
+	# current_state_info["choices"] as Array of Dictionary
+	# { text, idx, ... }.
+	if "current_state_info" in dialogic and dialogic.current_state_info is Dictionary:
+		var info: Dictionary = dialogic.current_state_info
+		var raw = info.get("choices", info.get("text_event_choices", null))
+		if raw is Array:
+			for c in raw:
+				if c is Dictionary:
+					current.append(String((c as Dictionary).get("text", "")))
+				else:
+					current.append(String(c))
+	# Diff against last broadcast; only resend on change.
+	if current.size() == _last_choices.size():
+		var same: bool = true
+		for i in range(current.size()):
+			if current[i] != _last_choices[i]:
+				same = false
+				break
+		if same:
+			return
+	_last_choices = current
+	for peer_id in _active.participating.keys():
+		_rpc_cutscene_choices.rpc_id(int(peer_id), current)
 
 
 # =============================================================
@@ -301,6 +354,13 @@ func _rpc_cutscene_text(speaker: String, line: String) -> void:
 	for receiver in get_tree().get_nodes_in_group("cutscene_mirror_overlay"):
 		if receiver.has_method("set_line"):
 			receiver.set_line(speaker, line)
+
+
+@rpc("authority", "reliable")
+func _rpc_cutscene_choices(choices: PackedStringArray) -> void:
+	for receiver in get_tree().get_nodes_in_group("cutscene_mirror_overlay"):
+		if receiver.has_method("set_choices"):
+			receiver.set_choices(choices)
 
 
 @rpc("authority", "reliable")
