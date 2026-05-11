@@ -21,7 +21,7 @@ ambient_light_color = Color(0.35, 0.4, 0.5, 1)
 ambient_light_energy = 0.6
 
 [sub_resource type="VoxelStreamSQLite" id="VoxelStream_1"]
-database_path = "user://baked_baseline_v13.sqlite"
+database_path = "user://baked_baseline_v14.sqlite"
 save_generator_output = true
 
 [sub_resource type="VoxelMesherBlocky" id="VoxelMesher_1"]

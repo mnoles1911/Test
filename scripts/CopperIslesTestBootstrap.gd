@@ -236,15 +236,16 @@ func _ready() -> void:
 # initialises — the copy must happen first or the stream opens an
 # empty file at the user:// path.
 #
-# `_v13` suffix added 2026-05-10 when the generator migrated from
-# CHANNEL_COLOR (packed RGBA) to CHANNEL_TYPE (material_id integer)
-# for the textured-tileset migration. The old paths
-# (copper_isles_test.sqlite / copper_isles_baseline.sqlite) contain
-# pre-v13 data that won't render under VoxelMesherBlocky — bumping
-# the path naturally invalidates them without forcing a delete. The
-# old files can be removed from disk whenever convenient.
-const WORKING_SQLITE_PATH: String = "user://copper_isles_test_v13.sqlite"
-const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v13.sqlite"
+# Path bumps invalidate the cache after generator output changes —
+# the .tres-based stream re-opens the new (empty) file rather than
+# reading stale chunks. Old files remain on disk inert; the user
+# can delete them whenever convenient.
+#   _v13: CHANNEL_COLOR → CHANNEL_TYPE textured tileset (2026-05-10)
+#   _v14: Tiers 1-6 generation rules — cliff override, snow line,
+#         marble + stone_dark jitter, ore veins, near-water disks,
+#         cliff outcrops (2026-05-10)
+const WORKING_SQLITE_PATH: String = "user://copper_isles_test_v14.sqlite"
+const BAKED_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 
 
 # =============================================================

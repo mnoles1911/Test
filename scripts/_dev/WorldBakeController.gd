@@ -109,13 +109,14 @@ const VERTICAL_STEP_M: float = 200.0
 # separate "Copy to assets/voxel" UI button shifts the finished DB
 # into the project tree for PCK inclusion.
 #
-# `_v13` suffix added 2026-05-10 with the textured-tileset migration
-# (CHANNEL_COLOR → CHANNEL_TYPE). Matches CopperIslesTestBootstrap's
-# BAKED_BASELINE_PATH so a fresh bake automatically lands at the
-# path the runtime now reads. Old pre-v13 baseline files remain on
-# disk inert.
-const BAKE_DB_PATH: String = "user://baked_baseline_v13.sqlite"
-const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v13.sqlite"
+# Versioned baseline path — bumped whenever generator output
+# changes shape. Matches CopperIslesTestBootstrap.BAKED_BASELINE_PATH
+# so a fresh bake lands at the path the runtime reads.
+#   _v13: textured tileset (CHANNEL_COLOR → CHANNEL_TYPE)
+#   _v14: Tiers 1-6 generation rules (cliff / snow / jitter /
+#         ore veins / disks / cliff outcrops)
+const BAKE_DB_PATH: String = "user://baked_baseline_v14.sqlite"
+const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 
 # Voxels per world metre at the canonical terrain.transform.scale of
 # 1/6. Used to convert tile centres (world metres) into voxel-grid
@@ -370,7 +371,7 @@ func _build_ui() -> void:
 
 	vbox.add_child(_make_divider())
 
-	_btn_copy = _make_button("3. Copy bake DB → assets/voxel/copper_isles_baseline_v13.sqlite")
+	_btn_copy = _make_button("3. Copy bake DB → assets/voxel/copper_isles_baseline_v14.sqlite")
 	_btn_copy.pressed.connect(_on_copy_to_assets)
 	vbox.add_child(_btn_copy)
 
