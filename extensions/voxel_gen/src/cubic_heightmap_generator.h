@@ -1,70 +1,29 @@
 #pragma once
 
-// CubicHeightmapGeneratorCpp -- C++ port of scripts/CubicHeightmapGenerator.gd.
+// CubicHeightmapGeneratorCpp — FastNoiseLite-based heightmap generator
+// for World3D (Mira). All tier rules + chunk loop live in
+// HeightmapGeneratorBase; this class adds only:
+//   * The three noise layers (macro / mid / detail) + their amplitude
+//     and frequency multiplier params
+//   * Optional 8-meter quantization toggle
+//   * The compute_ground_y override that ties them together
 //
-// Phase 2 scope: skeleton + height-noise integration + Tier 0 only.
-// "Tier 0" = write stone (material id 1) below ground_y, leave air above.
-// No bands (grass/dirt/sand), no bedrock, no tier 1-6 rules. Those land in
-// Phase 3+ as the bit-exact parity harness ladders up.
-//
-// Registered ClassDB name: "CubicHeightmapGeneratorCpp" so it coexists
-// with the GDScript class_name "CubicHeightmapGenerator" during the
-// porting phases. Phase 6 will rename + retire the GD version.
-//
-// Lifecycle:
-//   1. GDScript CubicHeightmapGeneratorAdapter (extends VoxelGeneratorScript)
-//      is what Zylann's VoxelLodTerrain actually invokes.
-//   2. Adapter holds an exported reference to a CubicHeightmapGeneratorCpp
-//      instance and forwards _generate_block to it.
-//   3. This class does the heavy work on Zylann's worker thread.
-//   4. Worker-thread safety: this class accesses only its own member
-//      data + the FastNoiseLite ref. No SceneTree, no autoloads. Mirror
-//      of the GD original's worker-thread contract.
+// Adapter pattern unchanged (`scripts/_dev/CubicHeightmapGeneratorAdapter.gd`
+// extends VoxelGeneratorScript and forwards _generate_block here).
+
+#include "heightmap_generator_base.h"
 
 #include <godot_cpp/classes/fast_noise_lite.hpp>
 #include <godot_cpp/classes/ref.hpp>
-#include <godot_cpp/classes/resource.hpp>
-#include <godot_cpp/variant/array.hpp>
-#include <godot_cpp/variant/variant.hpp>
-#include <godot_cpp/variant/vector3i.hpp>
 
-#include <cstdint>
-#include <vector>
-
-// Phase 4d POD snapshots. The Resource class accepts Array[Dictionary]
-// from the GDScript adapter (which translates VoxelMaterial -> Dict on
-// the main thread), parses into these structs once, and stores them in
-// std::vector for the worker-thread inner loop to iterate without
-// touching the SceneTree. Mirrors the GDScript snapshot pattern
-// documented at scripts/CubicHeightmapGenerator.gd:386-402.
-struct OreMaterialPOD {
-    int material_id = 0;
-    int replaces_material_id = 0;
-    int min_altitude_voxels = 0;
-    int max_altitude_voxels = 0;
-    double ore_noise_threshold = 0.0;
-    double ore_noise_scale = 0.0;
-};
-
-struct DiskMaterialPOD {
-    int material_id = 0;
-    int disk_radius_voxels = 0;
-    int disk_half_height_voxels = 0;
-    double disk_anchor_density = 0.0;
-    int disk_max_distance_to_water_voxels = 0;
-};
-
-class CubicHeightmapGeneratorCpp : public godot::Resource {
-    GDCLASS(CubicHeightmapGeneratorCpp, godot::Resource)
+class CubicHeightmapGeneratorCpp : public HeightmapGeneratorBase {
+    GDCLASS(CubicHeightmapGeneratorCpp, HeightmapGeneratorBase)
 
 public:
     CubicHeightmapGeneratorCpp();
     ~CubicHeightmapGeneratorCpp();
 
-    // --- Properties (mirror the GDScript @export surface) ---
-    // FastNoiseLite resource drives macro + mid + detail noise layers.
-    // Same Ref<FastNoiseLite> instance shared across layers; only the
-    // sample coordinates differ via the frequency multipliers.
+    // --- FastNoiseLite + height-noise properties ---
     void set_noise(const godot::Ref<godot::FastNoiseLite> &p_noise);
     godot::Ref<godot::FastNoiseLite> get_noise() const;
 
@@ -89,156 +48,11 @@ public:
     void set_detail_frequency_multiplier(double p_value);
     double get_detail_frequency_multiplier() const;
 
-    // --- Phase 3 properties: bands + marble jitter ---
-
-    // How many top voxels of a column are grass (the green skin).
-    // Default 1 — single voxel of green over the dirt.
-    void set_grass_layer_thickness_voxels(int p_value);
-    int get_grass_layer_thickness_voxels() const;
-
-    // Voxels of dirt directly below grass.
-    void set_dirt_layer_thickness_voxels(int p_value);
-    int get_dirt_layer_thickness_voxels() const;
-
-    // At or below this voxel-Y, the column's top band is sand instead of grass.
-    void set_beach_y_threshold(int p_value);
-    int get_beach_y_threshold() const;
-
-    // Marble jitter — Tier 3 stone-band variation.
-    // Lower thresholds = more frequent. Default rare=0.92, dark=0.75 →
-    // ~8 % marble, ~17 % stone_dark, ~75 % plain stone.
-    void set_marble_jitter_block_size(int p_value);
-    int get_marble_jitter_block_size() const;
-
-    void set_marble_jitter_seed(int p_value);
-    int get_marble_jitter_seed() const;
-
-    void set_marble_rare_threshold(double p_value);
-    double get_marble_rare_threshold() const;
-
-    void set_marble_dark_threshold(double p_value);
-    double get_marble_dark_threshold() const;
-
-    // LOD gate -- marble runs only when lod <= this. -1 disables.
-    void set_marble_jitter_max_lod(int p_value);
-    int get_marble_jitter_max_lod() const;
-
-    // --- Phase 4a: bedrock + water byte ---
-
-    // Material id written at exactly world_y == world_floor_voxel_y.
-    // 0 disables the bedrock row entirely.
-    void set_bedrock_material_id(int p_value);
-    int get_bedrock_material_id() const;
-
-    // Y voxel coord of the unbreakable bedrock floor. Below this,
-    // the generator writes nothing (air); at exactly this Y it writes
-    // bedrock; above this, normal heightmap rules apply.
-    void set_world_floor_voxel_y(int p_value);
-    int get_world_floor_voxel_y() const;
-
-    // Y voxel coord of the global sea level. Water bytes fill columns
-    // whose ground_y < sea_level_voxels up through this Y at LOD=0.
-    void set_sea_level_voxels(int p_value);
-    int get_sea_level_voxels() const;
-
-    // --- Phase 4b: snow line (Tier 2) ---
-    //
-    // Non-cliff columns whose ground_y crosses (snow_line_voxels + jitter)
-    // get their top voxel replaced with snow. Jitter is a hash3 lookup
-    // bucketed at snow_line_jitter_block_size, scaled by
-    // snow_line_jitter_voxels. snow_material_id=0 disables the tier
-    // (mirrors the GD `snow_id != 0` gate).
-    void set_snow_material_id(int p_value);
-    int get_snow_material_id() const;
-
-    void set_snow_line_voxels(int p_value);
-    int get_snow_line_voxels() const;
-
-    void set_snow_line_jitter_voxels(int p_value);
-    int get_snow_line_jitter_voxels() const;
-
-    void set_snow_line_jitter_block_size(int p_value);
-    int get_snow_line_jitter_block_size() const;
-
-    void set_snow_line_seed(int p_value);
-    int get_snow_line_seed() const;
-
-    void set_snow_line_max_lod(int p_value);
-    int get_snow_line_max_lod() const;
-
-    // --- Phase 4c: cliff slope rule (Tier 1) ---
-    //
-    // Sample 4 neighbour columns at ± cliff_slope_sample_distance_voxels;
-    // if the largest Y drop is >= cliff_slope_threshold_voxels, the
-    // column is a cliff: top + dirt collapse to bare stone. LOD-gated
-    // by cliff_rule_max_lod (set to -1 to disable).
-    void set_cliff_slope_sample_distance_voxels(int p_value);
-    int get_cliff_slope_sample_distance_voxels() const;
-
-    void set_cliff_slope_threshold_voxels(int p_value);
-    int get_cliff_slope_threshold_voxels() const;
-
-    void set_cliff_rule_max_lod(int p_value);
-    int get_cliff_rule_max_lod() const;
-
-    // --- Phase 4d: ore + disk material snapshots ---
-    //
-    // Accept Array[Dictionary] from the GD adapter. Each dict must have
-    // the same keys as the corresponding VoxelMaterial.gd fields. Missing
-    // keys fall through to POD defaults. Called on the main thread from
-    // the bootstrap; worker threads read the resulting std::vector.
-    //
-    // Inner loop reads in 4e (ores) and 4f (disks). 4d just lands the
-    // plumbing — any push here is a no-op against the chunk output.
-    void set_ore_materials(const godot::Array &p_list);
-    int get_ore_material_count() const;
-
-    void set_disk_materials(const godot::Array &p_list);
-    int get_disk_material_count() const;
-
-    // --- Phase 4e: ore veins (Tier 4) ---
-    // LOD gate for the per-voxel ore-vein hash. -1 disables the tier
-    // entirely. Per-ore params live in the OreMaterialPOD snapshot.
-    void set_ore_vein_max_lod(int p_value);
-    int get_ore_vein_max_lod() const;
-
-    // --- Phase 4f: clay/gravel disks (Tier 5) ---
-    void set_disk_rule_max_lod(int p_value);
-    int get_disk_rule_max_lod() const;
-
-    void set_disk_anchor_grid_voxels(int p_value);
-    int get_disk_anchor_grid_voxels() const;
-
-    // --- Phase 4g: cliff ore outcrops (Tier 6) ---
-    void set_cliff_ore_outcrop_chance(double p_value);
-    double get_cliff_ore_outcrop_chance() const;
-
-    void set_cliff_ore_seed(int p_value);
-    int get_cliff_ore_seed() const;
-
-    // --- Core API (used by tests + by the adapter) ---
-    // Mirrors the GD generator's _ground_y_at. Returns the voxel-Y at
-    // which solid ground ends and air begins for the column (world_x, world_z).
-    // Pure function of the configured properties. Worker-thread safe.
-    int compute_ground_y(int world_x, int world_z) const;
-
-    // Public alias kept in sync with CopperIslesHeightmapGenerator's API
-    // shape. The bake controller (`scripts/_dev/WorldBakeController.gd`)
-    // calls this duck-typed off whichever generator is attached to the
-    // terrain when classifying tiles as LAND / COAST / OCEAN. Same
-    // semantics as compute_ground_y; the rename is purely interop.
-    int get_ground_voxel_y_at(int world_x, int world_z) const { return compute_ground_y(world_x, world_z); }
-
-    // Called by the GDScript adapter from _generate_block on Zylann's worker
-    // pool. out_buffer is a Zylann VoxelBuffer (no godot-cpp wrapper, so
-    // it's passed as Variant and we Variant::call into it).
-    //
-    // Tier 0 behavior: for each voxel in the buffer, write material_id 1
-    // (stone) if the world-space Y is at or below the column's ground_y;
-    // otherwise leave default 0 (air).
-    void generate_block_into_buffer(godot::Variant out_buffer,
-                                    godot::Vector3i origin_in_voxels,
-                                    int lod);
+    // Override of HeightmapGeneratorBase::compute_ground_y. Samples three
+    // FastNoiseLite layers (macro/mid/detail), adds the configured offset,
+    // optionally quantizes to 8-meter steps. Pure function of instance
+    // config + the FastNoiseLite resource — worker-thread safe.
+    int compute_ground_y(int world_x, int world_z) const override;
 
 protected:
     static void _bind_methods();
@@ -252,62 +66,4 @@ private:
     double _mid_frequency_multiplier = 3.0;
     int _detail_amplitude_voxels = 2;
     double _detail_frequency_multiplier = 12.0;
-
-    // Phase 3 (bands + marble jitter)
-    int _grass_layer_thickness_voxels = 1;
-    int _dirt_layer_thickness_voxels = 3;
-    int _beach_y_threshold = 74;
-    int _marble_jitter_block_size = 4;
-    int _marble_jitter_seed = 1;
-    double _marble_rare_threshold = 0.92;
-    double _marble_dark_threshold = 0.75;
-    int _marble_jitter_max_lod = 1;
-
-    // Phase 4a (bedrock + water)
-    int _bedrock_material_id = 0;       // 0 = bedrock row disabled
-    int _world_floor_voxel_y = -300;    // matches GD WORLD_FLOOR_VOXEL_Y
-    int _sea_level_voxels = 72;         // matches GD SEA_LEVEL_VOXELS
-
-    // Phase 4b (snow line — Tier 2)
-    int _snow_material_id = 0;          // 0 = snow tier disabled
-    int _snow_line_voxels = 30000;      // GD default — effectively off until lowered
-    int _snow_line_jitter_voxels = 30;
-    int _snow_line_jitter_block_size = 8;
-    int _snow_line_seed = 2;
-    int _snow_line_max_lod = 2;
-
-    // Phase 4c (cliff slope — Tier 1)
-    int _cliff_slope_sample_distance_voxels = 6;
-    int _cliff_slope_threshold_voxels = 10;
-    int _cliff_rule_max_lod = 2;
-
-    // Phase 4d (snapshot infrastructure).
-    // Set on main thread via set_*_materials, read on worker threads.
-    // The "publish before streaming starts" convention from the GD
-    // generator carries over verbatim — no atomic/locking needed.
-    std::vector<OreMaterialPOD> _ore_materials;
-    std::vector<DiskMaterialPOD> _disk_materials;
-
-    // Phase 4e (ore veins — Tier 4)
-    int _ore_vein_max_lod = 1;
-
-    // Phase 4f (disks — Tier 5)
-    int _disk_rule_max_lod = 1;
-    int _disk_anchor_grid_voxels = 24;
-
-    // Phase 4g (cliff outcrops — Tier 6)
-    double _cliff_ore_outcrop_chance = 0.03;
-    int _cliff_ore_seed = 5;
-
-    // True when the column at (world_x, world_z) has a drop >=
-    // cliff_slope_threshold_voxels to any of its 4-neighbour columns
-    // at ± cliff_slope_sample_distance_voxels away. Pure function of
-    // ground_y at the 5 sample points — worker-thread safe.
-    bool column_is_cliff(int world_x, int world_z, int this_ground_y) const;
-
-    // Tier 5 helper. Mirrors GD _disk_at_column. Returns pointer to a
-    // disk POD if (world_x, world_z) sits inside a disk anchor footprint
-    // at this elevation, or nullptr otherwise. The pointer is valid for
-    // the lifetime of _disk_materials, which is stable during streaming.
-    const DiskMaterialPOD *disk_at_column(int world_x, int world_z, int ground_y) const;
 };

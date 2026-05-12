@@ -1,0 +1,233 @@
+#pragma once
+
+// HeightmapGeneratorBase — shared abstract base for the two C++ heightmap
+// generators (CubicHeightmapGeneratorCpp + CopperIslesHeightmapGeneratorCpp).
+//
+// The two ports share ~500 lines of identical code:
+//   * All Tier 1–6 properties (cliff, snow, marble, bedrock, ore, disk gates)
+//   * POD snapshot parsing for ore + disk material lists
+//   * column_is_cliff (Tier 1 helper)
+//   * disk_at_column   (Tier 5 helper)
+//   * generate_block_into_buffer (the chunk inner loop)
+// The differences are entirely in compute_ground_y — the cubic generator
+// samples three FastNoiseLite layers, the Copper Isles generator samples
+// an EXR heightmap. Pulling the shared code into a base class collapses
+// each concrete generator's .cpp from ~800 lines to ~150.
+//
+// Adapter pattern is unchanged: godot-cpp can't subclass Zylann's
+// VoxelGeneratorScript, so each concrete generator stays a
+// godot::Resource and a thin GDScript adapter forwards
+// _generate_block to it. See LESSONS_LEARNED.md 2026-05-11.
+//
+// Worker-thread safety:
+//   * All shared state is value-typed (ints, doubles, std::vector<POD>) and
+//     populated from the main thread before terrain streaming begins.
+//   * generate_block_into_buffer reads instance config and the POD vectors
+//     without locking — the "publish before streaming" convention applies.
+//   * compute_ground_y is virtual; concrete implementations must be
+//     worker-thread safe themselves (e.g. Copper Isles' _ensure_image
+//     mutex on its lazy EXR cache — see LESSONS_LEARNED.md 2026-05-12).
+
+#include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/variant.hpp>
+#include <godot_cpp/variant/vector3i.hpp>
+
+#include <cstdint>
+#include <vector>
+
+// POD snapshots — the bootstrap translates Array[VoxelMaterial] into
+// Array[Dictionary] on the main thread, the resource parses into these
+// structs once, and the worker-thread inner loop iterates the
+// resulting std::vector without touching the SceneTree.
+struct OreMaterialPOD {
+    int material_id = 0;
+    int replaces_material_id = 0;
+    int min_altitude_voxels = 0;
+    int max_altitude_voxels = 0;
+    double ore_noise_threshold = 0.0;
+    double ore_noise_scale = 0.0;
+};
+
+struct DiskMaterialPOD {
+    int material_id = 0;
+    int disk_radius_voxels = 0;
+    int disk_half_height_voxels = 0;
+    double disk_anchor_density = 0.0;
+    int disk_max_distance_to_water_voxels = 0;
+};
+
+class HeightmapGeneratorBase : public godot::Resource {
+    GDCLASS(HeightmapGeneratorBase, godot::Resource)
+
+public:
+    HeightmapGeneratorBase();
+    ~HeightmapGeneratorBase();
+
+    // --- Band properties ---------------------------------------------------
+    void set_grass_layer_thickness_voxels(int p_value);
+    int get_grass_layer_thickness_voxels() const;
+
+    void set_dirt_layer_thickness_voxels(int p_value);
+    int get_dirt_layer_thickness_voxels() const;
+
+    void set_beach_y_threshold(int p_value);
+    int get_beach_y_threshold() const;
+
+    // --- Tier 3: marble jitter ---------------------------------------------
+    void set_marble_jitter_block_size(int p_value);
+    int get_marble_jitter_block_size() const;
+
+    void set_marble_jitter_seed(int p_value);
+    int get_marble_jitter_seed() const;
+
+    void set_marble_rare_threshold(double p_value);
+    double get_marble_rare_threshold() const;
+
+    void set_marble_dark_threshold(double p_value);
+    double get_marble_dark_threshold() const;
+
+    void set_marble_jitter_max_lod(int p_value);
+    int get_marble_jitter_max_lod() const;
+
+    // --- Bedrock + water byte ---------------------------------------------
+    void set_bedrock_material_id(int p_value);
+    int get_bedrock_material_id() const;
+
+    void set_world_floor_voxel_y(int p_value);
+    int get_world_floor_voxel_y() const;
+
+    void set_sea_level_voxels(int p_value);
+    int get_sea_level_voxels() const;
+
+    // --- Tier 2: snow line ------------------------------------------------
+    void set_snow_material_id(int p_value);
+    int get_snow_material_id() const;
+
+    void set_snow_line_voxels(int p_value);
+    int get_snow_line_voxels() const;
+
+    void set_snow_line_jitter_voxels(int p_value);
+    int get_snow_line_jitter_voxels() const;
+
+    void set_snow_line_jitter_block_size(int p_value);
+    int get_snow_line_jitter_block_size() const;
+
+    void set_snow_line_seed(int p_value);
+    int get_snow_line_seed() const;
+
+    void set_snow_line_max_lod(int p_value);
+    int get_snow_line_max_lod() const;
+
+    // --- Tier 1: cliff slope ----------------------------------------------
+    void set_cliff_slope_sample_distance_voxels(int p_value);
+    int get_cliff_slope_sample_distance_voxels() const;
+
+    void set_cliff_slope_threshold_voxels(int p_value);
+    int get_cliff_slope_threshold_voxels() const;
+
+    void set_cliff_rule_max_lod(int p_value);
+    int get_cliff_rule_max_lod() const;
+
+    // --- POD snapshots (Tier 4 ores, Tier 5 disks) -----------------------
+    void set_ore_materials(const godot::Array &p_list);
+    int get_ore_material_count() const;
+
+    void set_disk_materials(const godot::Array &p_list);
+    int get_disk_material_count() const;
+
+    // --- Tier 4 / 5 / 6 gates ---------------------------------------------
+    void set_ore_vein_max_lod(int p_value);
+    int get_ore_vein_max_lod() const;
+
+    void set_disk_rule_max_lod(int p_value);
+    int get_disk_rule_max_lod() const;
+
+    void set_disk_anchor_grid_voxels(int p_value);
+    int get_disk_anchor_grid_voxels() const;
+
+    void set_cliff_ore_outcrop_chance(double p_value);
+    double get_cliff_ore_outcrop_chance() const;
+
+    void set_cliff_ore_seed(int p_value);
+    int get_cliff_ore_seed() const;
+
+    // --- Core API ---------------------------------------------------------
+
+    // Concrete generators override this with their ground-Y math.
+    // Pure virtual on the C++ side; the abstract-class registration
+    // below stops Godot's editor from offering "New Resource" for the
+    // base class. ClassDB::bind_method dispatches virtually, so
+    // GDScript callers of get_ground_voxel_y_at / compute_ground_y
+    // reach the concrete override correctly.
+    virtual int compute_ground_y(int world_x, int world_z) const = 0;
+
+    // Public alias used by the bake controller (duck-typed). Same
+    // semantics as compute_ground_y; the rename is purely interop.
+    int get_ground_voxel_y_at(int world_x, int world_z) const {
+        return compute_ground_y(world_x, world_z);
+    }
+
+    // True when (world_x, world_z) has a drop >= cliff_slope_threshold_voxels
+    // to any of its 4-neighbour columns at ± cliff_slope_sample_distance_voxels
+    // away. Pure function of compute_ground_y at the 5 sample points —
+    // worker-thread safe as long as the override is.
+    bool column_is_cliff(int world_x, int world_z, int this_ground_y) const;
+
+    // Called by the GDScript adapter from _generate_block on Zylann's worker
+    // pool. out_buffer is a Zylann VoxelBuffer (no godot-cpp wrapper, so
+    // it's passed as Variant and we Variant::call into it).
+    void generate_block_into_buffer(godot::Variant out_buffer,
+                                    godot::Vector3i origin_in_voxels,
+                                    int lod);
+
+protected:
+    static void _bind_methods();
+
+    // Tier 5 helper. Mirrors GD _disk_at_column. Returns pointer to a
+    // disk POD if (world_x, world_z) sits inside a disk anchor footprint
+    // at this elevation, or nullptr otherwise. The pointer is valid for
+    // the lifetime of _disk_materials, which is stable during streaming.
+    const DiskMaterialPOD *disk_at_column(int world_x, int world_z, int ground_y) const;
+
+    // --- Band properties --------------------------------------------------
+    int _grass_layer_thickness_voxels = 1;
+    int _dirt_layer_thickness_voxels = 3;
+    int _beach_y_threshold = 74;
+
+    // --- Tier 3: marble jitter --------------------------------------------
+    int _marble_jitter_block_size = 4;
+    int _marble_jitter_seed = 1;
+    double _marble_rare_threshold = 0.92;
+    double _marble_dark_threshold = 0.75;
+    int _marble_jitter_max_lod = 1;
+
+    // --- Bedrock / world floor / sea ---------------------------------------
+    int _bedrock_material_id = 0;     // 0 disables the bedrock row
+    int _world_floor_voxel_y = -300;
+    int _sea_level_voxels = 72;
+
+    // --- Tier 2: snow line -------------------------------------------------
+    int _snow_material_id = 0;        // 0 disables the snow tier
+    int _snow_line_voxels = 30000;
+    int _snow_line_jitter_voxels = 30;
+    int _snow_line_jitter_block_size = 8;
+    int _snow_line_seed = 2;
+    int _snow_line_max_lod = 2;
+
+    // --- Tier 1: cliff slope ----------------------------------------------
+    int _cliff_slope_sample_distance_voxels = 6;
+    int _cliff_slope_threshold_voxels = 10;
+    int _cliff_rule_max_lod = 2;
+
+    // --- POD snapshots (set on main thread; read on worker threads) -------
+    std::vector<OreMaterialPOD> _ore_materials;
+    std::vector<DiskMaterialPOD> _disk_materials;
+
+    // --- Tier 4 / 5 / 6 gates ---------------------------------------------
+    int _ore_vein_max_lod = 1;
+    int _disk_rule_max_lod = 1;
+    int _disk_anchor_grid_voxels = 24;
+    double _cliff_ore_outcrop_chance = 0.03;
+    int _cliff_ore_seed = 5;
+};
