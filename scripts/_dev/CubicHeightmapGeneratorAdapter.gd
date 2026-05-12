@@ -24,6 +24,18 @@ class_name CubicHeightmapGeneratorAdapter
 
 @export var cpp_impl: CubicHeightmapGeneratorCpp
 
+
+# Declare which VoxelBuffer channels the C++ inner loop writes. Without
+# this override Zylann assumes default-SDF and may silently fail to
+# allocate the channels the mesher reads — manifesting as full-atlas
+# UVs on cube faces (the white-with-dark-squares artifact). The cubic
+# generator's symptoms were quieter than Copper Isles' but the bug was
+# the same; declare the mask explicitly. See LESSONS_LEARNED.md
+# 2026-05-03 entry on `_get_used_channels_mask`.
+func _get_used_channels_mask() -> int:
+	return (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
+
+
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
 	if cpp_impl == null:
 		push_warning("CubicHeightmapGeneratorAdapter: no cpp_impl assigned; emitting air")

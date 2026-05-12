@@ -34,18 +34,27 @@ CopperIslesHeightmapGeneratorCpp::~CopperIslesHeightmapGeneratorCpp() {}
 
 // ----- Heightmap cache --------------------------------------------------
 //
-// _ensure_image loads the EXR on first call, scans for max gray, caches
-// the Image. Worker-thread safe in the "two-stomp-is-benign" sense:
-// concurrent first calls produce identical Image objects with identical
-// pixel data, and one stomp on the cache is harmless.
+// _ensure_image loads the EXR on first call and caches it. Mutex-protected
+// because Zylann calls generate_block from many worker threads concurrently.
+// Without the lock, two threads can both pass the load-attempted check,
+// both run img.load(), and the second's assignment to _heightmap_image
+// stomps the first's WHILE other worker threads are mid-flight reading
+// _heightmap_w / _heightmap_h / dereferencing the Ref. The observable
+// failure mode is _heightmap_w==0 (or stale) for one chunk's calls,
+// sample_gray returns 0.0, ground_y collapses to 0, the chunk gets
+// terrain at world Y=0 instead of the heightmap's true height — and
+// shows up as a floating cubic block in midair. The GD original had the
+// same race in principle but the interpreter's slower per-call cost
+// rarely exposed it.
 
 Ref<Image> CopperIslesHeightmapGeneratorCpp::_ensure_image() {
+    std::lock_guard<std::mutex> lock(_heightmap_mutex);
     if (_heightmap_load_attempted) {
         return _heightmap_image;
     }
-    _heightmap_load_attempted = true;
     if (_heightmap_path.is_empty()) {
         UtilityFunctions::push_error("[CopperIslesCpp] heightmap_path is empty.");
+        _heightmap_load_attempted = true;
         return Ref<Image>();
     }
     Ref<Image> img;
@@ -56,11 +65,15 @@ Ref<Image> CopperIslesHeightmapGeneratorCpp::_ensure_image() {
                 String("[CopperIslesCpp] Failed to load heightmap '") + _heightmap_path
                 + String("' (err=") + String::num_int64(err) + String(").")
         );
+        _heightmap_load_attempted = true;
         return Ref<Image>();
     }
-    _heightmap_image = img;
+    // Populate w/h BEFORE flipping the load-attempted flag so any thread
+    // that observes the flag as true sees fully-populated state.
     _heightmap_w = img->get_width();
     _heightmap_h = img->get_height();
+    _heightmap_image = img;
+    _heightmap_load_attempted = true;
     UtilityFunctions::print(String("[CopperIslesCpp] Loaded heightmap ")
             + String::num_int64(_heightmap_w) + String("x") + String::num_int64(_heightmap_h)
             + String(" from ") + _heightmap_path);

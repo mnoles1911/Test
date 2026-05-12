@@ -23,6 +23,26 @@ class_name CopperIslesHeightmapGeneratorAdapter
 @export var require_heightmap_in_editor_only: bool = false
 
 
+# Declare which VoxelBuffer channels the generator writes. Without this
+# override Zylann assumes default-SDF and silently fails to allocate the
+# channels VoxelMesherBlocky / WaterChunkMesher actually read — result:
+# chunks render with the full atlas mapped onto each cube face (the
+# white-with-dark-squares artifact). The C++ inner loop writes:
+#   CHANNEL_TYPE   — material_id integers (for VoxelMesherBlocky)
+#   CHANNEL_DATA5  — water source bytes  (for WaterChunkMesher)
+# Mirror of the override on the retired CopperIslesHeightmapGenerator.gd
+# (line 368 in the deleted file). Lives on the adapter because Zylann
+# reads it from the script attached to the VoxelGeneratorScript — it has
+# no view into cpp_impl. See LESSONS_LEARNED.md 2026-05-03 entry.
+func _get_used_channels_mask() -> int:
+	# Retained for completeness even though Zylann appears to ignore the
+	# override on adapter-script-wrapped generators (verified empirically
+	# 2026-05-12 — terrain.format CHANNEL_TYPE+DATA5 setup in the bootstrap
+	# is what actually allocates the channels). Match the legacy GD
+	# CopperIslesHeightmapGenerator.gd declaration for symmetry.
+	return (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
+
+
 func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: int) -> void:
 	if cpp_impl == null:
 		push_warning("CopperIslesHeightmapGeneratorAdapter: no cpp_impl assigned; emitting air")

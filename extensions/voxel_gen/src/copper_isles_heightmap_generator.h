@@ -37,6 +37,7 @@
 #include <godot_cpp/variant/vector3i.hpp>
 
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 // POD snapshots — same shape as the cubic generator's. Duplicated here
@@ -209,13 +210,20 @@ protected:
 
 private:
     // Lazy heightmap cache. _ensure_image loads the EXR on first
-    // worker-thread access and scans for max_gray. Race-tolerant: two
-    // threads stomping the same Image produce identical pixel data.
+    // worker-thread access. Mutex-protected because Zylann calls
+    // generate_block from many worker threads concurrently; without the
+    // lock, a race in the load-flag check + assignment can leave one
+    // thread reading from a half-initialized Image (zeros) or a stale
+    // pointer, producing wrong gray values and therefore wrong
+    // ground_y. This was masked in the GDScript original because the
+    // slower interpreter rarely hit the race; the C++ port hits it
+    // reliably and manifests as bad terrain in the LOD pyramid.
     godot::Ref<godot::Image> _ensure_image();
     mutable godot::Ref<godot::Image> _heightmap_image;
     mutable bool _heightmap_load_attempted = false;
     mutable int _heightmap_w = 0;
     mutable int _heightmap_h = 0;
+    mutable std::mutex _heightmap_mutex;
 
     // Const helper for read paths that need to invoke _ensure_image.
     // The cache state is mutable, hence the const-cast in the impl.

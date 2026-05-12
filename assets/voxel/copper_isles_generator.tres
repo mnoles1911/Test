@@ -1,43 +1,9 @@
-[gd_resource type="VoxelGeneratorScript" load_steps=3 format=3]
+[gd_resource type="VoxelGeneratorScript" script_class="CopperIslesHeightmapGeneratorAdapter" format=3 uid="uid://cq1xllxc7weou"]
 
-; Copper Isles heightmap-driven generator (C++ port era, 2026-05-12).
-; This .tres is a VoxelGeneratorScript whose script is the GDScript
-; adapter; the adapter's `cpp_impl` is the C++ Resource that holds the
-; actual inner loop.
-;
-; Why the chain: godot-cpp can't subclass Zylann's VoxelGeneratorScript
-; directly, so the C++ class extends godot::Resource and the GDScript
-; adapter handles the VGS bridge. Same pattern as the cubic generator.
-;
-; Defaults match the previous GD-only .tres so no behavioural change at
-; the scene level:
-;   - 5000 m × 5000 m world (30000 × 30000 voxel extent at 1/6 scale)
-;   - 2500 m peak elevation at gray=1.0 (15000 voxels)
-;   - Sea level at world Y=240 m (voxel-Y 1440)
-;   - Out-of-bounds → deep ocean (gray=0 → ground_y=0, well below sea)
-;
-; HEIGHTMAP STATUS NOTE: shipped EXR delivers a single continent, not
-; the lore-spec archipelago. Generator math is correct; the EXR content
-; itself diverges from spec. See design/COPPER_ISLES_BAKE_NOTES.md.
-;
-; Bedrock and snow material ids must be set explicitly here because the
-; C++ class has no autoloaded VoxelMaterialRegistry (was implicit on the
-; GD side via lazy ResourceLoader). bedrock=6 + snow=13 mirror the
-; assets/voxels/materials/*.tres lookups the GD class did.
-
-[ext_resource type="Script" path="res://scripts/_dev/CopperIslesHeightmapGeneratorAdapter.gd" id="1_adapter"]
+[ext_resource type="Script" uid="uid://3sp0db3l8bao" path="res://scripts/_dev/CopperIslesHeightmapGeneratorAdapter.gd" id="1_adapter"]
 
 [sub_resource type="CopperIslesHeightmapGeneratorCpp" id="cpp_impl"]
-heightmap_path = "res://assets/heightmaps/copper_isles_heightmap.exr"
-extent_x_voxels = 30000
-extent_z_voxels = 30000
-origin_x_voxels = -15000
-origin_z_voxels = -15000
 sea_level_voxels = 1440
-elevation_above_at_white_voxels = 15000
-bilinear_sampling = true
-grass_layer_thickness_voxels = 1
-dirt_layer_thickness_voxels = 3
 beach_y_threshold = 1452
 bedrock_material_id = 6
 snow_material_id = 13
