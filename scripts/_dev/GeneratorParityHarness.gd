@@ -1,0 +1,1025 @@
+@tool
+extends EditorScript
+class_name GeneratorParityHarness
+
+# GeneratorParityHarness — Phase 1 verification gate.
+#
+# Runs deterministic test tuples through both the GDScript
+# VoxelGenerationMath helpers and the C++ ParityProbe shim, then
+# reports any mismatched outputs. Pass criterion for Phase 1:
+# zero mismatches.
+#
+# How to run:
+#   Open in the Godot editor, then File → Run (or Ctrl+Shift+X).
+#   Watch the Output panel for the report.
+#
+# Why @tool / EditorScript: this runs inside the editor on demand,
+# not as part of a played scene. Editor context is fine because we
+# only call pure-math functions, no SceneTree, no autoloads, no I/O.
+#
+# What we check:
+#   1. hash3 — 10 000 random (x, y, z, seed) tuples spanning the
+#      project's realistic voxel coordinate range. We want bit-exact
+#      double-precision equality.
+#   2. cliff_threshold_for_angle_voxels — an angle sweep from 0° to
+#      89° at 1° steps, with three sample-distance settings each.
+#      Returns int; equality is straightforward.
+#
+# Why a fixed RNG seed: any mismatch needs to be reproducible. If
+# the first run shows a failure at tuple #4732, the next run shows
+# the same failure at the same tuple, so we can extract it and
+# inspect manually.
+
+
+const HASH3_TUPLE_COUNT: int = 10000
+const HASH3_RNG_SEED: int = 0xDEADBEEF
+
+# Coordinate ranges chosen to cover Copper Isles (5 km × 5 km map,
+# 6 vox/m → ±15 000 voxels horizontal; Y from world floor -300 up
+# past the snow line at 12 000+). Padded out to ±100 000 so we also
+# exercise inputs that overflow 32-bit signed multiplication.
+const X_RANGE: int = 100_000   # -100k..+100k
+const Y_RANGE_LO: int = -1_000
+const Y_RANGE_HI: int = 30_000
+const Z_RANGE: int = 100_000
+const SEED_RANGE: int = 1_000
+
+# How many mismatches to dump in detail before stopping verbose logging.
+const VERBOSE_MISMATCH_CAP: int = 5
+
+# Phase 2 ground_y sweep — grid resolution + extent. A 50×50 grid at
+# 200-voxel step covers ±5000 voxels in X/Z, which is plenty to exercise
+# noise variance + the realistic playable area.
+const GROUND_Y_GRID_HALF_EXTENT: int = 5000   # ±5000 voxels around origin
+const GROUND_Y_GRID_STEP: int = 200            # one sample every 200 voxels
+
+
+func _run() -> void:
+	print("[Parity] ===== GeneratorParityHarness start =====")
+
+	var probe := ParityProbe.new()
+
+	var hash3_mismatches: int = _test_hash3(probe)
+	var cliff_mismatches: int = _test_cliff_threshold(probe)
+	var ground_y_mismatches: int = _test_ground_y()
+	var chunk_mismatches: int = _test_chunk_bytes()
+	var chunk_lod0_mismatches: int = _test_chunk_bytes_lod0()
+	var snow_mismatches: int = _test_chunk_bytes_snow()
+	var cliff_chunk_mismatches: int = _test_chunk_bytes_cliff()
+	var ore_mismatches: int = _test_chunk_bytes_ores()
+	var disk_mismatches: int = _test_chunk_bytes_disks()
+	var outcrop_mismatches: int = _test_chunk_bytes_outcrops()
+	var total: int = hash3_mismatches + cliff_mismatches + ground_y_mismatches \
+			+ chunk_mismatches + chunk_lod0_mismatches + snow_mismatches + cliff_chunk_mismatches \
+			+ ore_mismatches + disk_mismatches + outcrop_mismatches
+
+	print("[Parity] =====")
+	if total == 0:
+		print("[Parity] PASS — all checks bit-exact (incl. ores + disks + outcrops).")
+		print("[Parity] Phase 4d-g gate satisfied. C++ generator covers every tier the GD original implements.")
+	else:
+		printerr("[Parity] FAIL — %d total mismatches (hash3=%d, cliff_thresh=%d, ground_y=%d, chunk_bytes=%d, chunk_lod0=%d, snow=%d, cliff_chunks=%d, ores=%d, disks=%d, outcrops=%d)." % [
+			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches, chunk_mismatches, chunk_lod0_mismatches, snow_mismatches, cliff_chunk_mismatches, ore_mismatches, disk_mismatches, outcrop_mismatches
+		])
+
+
+func _test_hash3(probe: ParityProbe) -> int:
+	# Use a separate RNG instance so we don't disturb Godot's global RNG state.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = HASH3_RNG_SEED
+
+	var mismatches: int = 0
+	var dumped: int = 0
+
+	for i in HASH3_TUPLE_COUNT:
+		var x: int = rng.randi_range(-X_RANGE, X_RANGE)
+		var y: int = rng.randi_range(Y_RANGE_LO, Y_RANGE_HI)
+		var z: int = rng.randi_range(-Z_RANGE, Z_RANGE)
+		var seed_v: int = rng.randi_range(0, SEED_RANGE)
+
+		var gd_v: float = VoxelGenerationMath.hash3(x, y, z, seed_v)
+		var cpp_v: float = probe.hash3(x, y, z, seed_v)
+
+		# Bit-exact: GDScript float equality compares the underlying
+		# float64 representation. If both came from the same integer
+		# math + same divisor, they're equal.
+		if gd_v != cpp_v:
+			mismatches += 1
+			if dumped < VERBOSE_MISMATCH_CAP:
+				printerr("[Parity] hash3 mismatch #%d at tuple %d: (x=%d, y=%d, z=%d, seed=%d) gd=%.20f cpp=%.20f delta=%.20g" % [
+					dumped + 1, i, x, y, z, seed_v, gd_v, cpp_v, gd_v - cpp_v
+				])
+				dumped += 1
+
+	if mismatches == 0:
+		print("[Parity] hash3: %d / %d tuples match bit-for-bit." % [HASH3_TUPLE_COUNT, HASH3_TUPLE_COUNT])
+	else:
+		printerr("[Parity] hash3: %d / %d tuples mismatched (showing up to %d above)." % [mismatches, HASH3_TUPLE_COUNT, VERBOSE_MISMATCH_CAP])
+
+	return mismatches
+
+
+func _test_cliff_threshold(probe: ParityProbe) -> int:
+	var mismatches: int = 0
+	var checked: int = 0
+	var sample_distances: Array[int] = [3, 6, 12]
+
+	# Angle sweep 0°..89° in 1° steps. 90° is the asymptote of tan; skip it
+	# to avoid an infinity comparison that doesn't tell us anything new.
+	for angle_deg in range(0, 90):
+		for sd in sample_distances:
+			var gd_v: int = VoxelGenerationMath.cliff_threshold_for_angle_voxels(float(angle_deg), sd)
+			var cpp_v: int = probe.cliff_threshold_for_angle_voxels(float(angle_deg), sd)
+			checked += 1
+			if gd_v != cpp_v:
+				mismatches += 1
+				printerr("[Parity] cliff_threshold mismatch at angle=%d°, sd=%d: gd=%d cpp=%d" % [angle_deg, sd, gd_v, cpp_v])
+
+	if mismatches == 0:
+		print("[Parity] cliff_threshold: %d / %d (angle, sample_distance) pairs match." % [checked, checked])
+	else:
+		printerr("[Parity] cliff_threshold: %d / %d pairs mismatched." % [mismatches, checked])
+
+	return mismatches
+
+
+# Phase 2 — ground_y per-column parity.
+#
+# Builds two generators (GD + C++) sharing IDENTICAL configuration: same
+# FastNoiseLite resource (so all underlying noise samples are bit-identical)
+# and same height params. Then walks a grid of (world_x, world_z) and
+# compares the integer ground_y each side reports for that column.
+#
+# Both implementations are pure functions of their config + (x, z), so
+# bit-exact integer equality is the right gate.
+func _test_ground_y() -> int:
+	# Shared noise resource — both generators reference the SAME instance,
+	# so we don't have to worry about whether two FastNoiseLite resources
+	# with the same seed produce identical outputs.
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005  # macro-scale by default
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	# GDScript generator.
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.height_range_voxels = 900.0
+	gd_gen.height_offset_voxels = 60
+	gd_gen.quantize_to_meters = false
+	gd_gen.mid_amplitude_voxels = 10
+	gd_gen.mid_frequency_multiplier = 3.0
+	gd_gen.detail_amplitude_voxels = 2
+	gd_gen.detail_frequency_multiplier = 12.0
+
+	# C++ generator. Same params; same noise reference.
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = 900.0
+	cpp_gen.height_offset_voxels = 60
+	cpp_gen.quantize_to_meters = false
+	cpp_gen.mid_amplitude_voxels = 10
+	cpp_gen.mid_frequency_multiplier = 3.0
+	cpp_gen.detail_amplitude_voxels = 2
+	cpp_gen.detail_frequency_multiplier = 12.0
+
+	var mismatches: int = 0
+	var checked: int = 0
+	var dumped: int = 0
+
+	var x := -GROUND_Y_GRID_HALF_EXTENT
+	while x <= GROUND_Y_GRID_HALF_EXTENT:
+		var z := -GROUND_Y_GRID_HALF_EXTENT
+		while z <= GROUND_Y_GRID_HALF_EXTENT:
+			var gd_v: int = gd_gen._ground_y_at(x, z)
+			var cpp_v: int = cpp_gen.compute_ground_y(x, z)
+			checked += 1
+			if gd_v != cpp_v:
+				mismatches += 1
+				if dumped < VERBOSE_MISMATCH_CAP:
+					printerr("[Parity] ground_y mismatch at (x=%d, z=%d): gd=%d cpp=%d" % [x, z, gd_v, cpp_v])
+					dumped += 1
+			z += GROUND_Y_GRID_STEP
+		x += GROUND_Y_GRID_STEP
+
+	# Also sweep quantize_to_meters=true (different code path inside _ground_y_at).
+	gd_gen.quantize_to_meters = true
+	cpp_gen.quantize_to_meters = true
+	var quantize_mismatches: int = 0
+	var quantize_checked: int = 0
+	# Smaller grid for the quantize sweep — main job is to exercise the
+	# roundi-vs-lround agreement, not to re-cover the whole map.
+	var qx := -2000
+	while qx <= 2000:
+		var qz := -2000
+		while qz <= 2000:
+			var qgd: int = gd_gen._ground_y_at(qx, qz)
+			var qcpp: int = cpp_gen.compute_ground_y(qx, qz)
+			quantize_checked += 1
+			if qgd != qcpp:
+				quantize_mismatches += 1
+				if dumped < VERBOSE_MISMATCH_CAP:
+					printerr("[Parity] ground_y mismatch (quantized) at (x=%d, z=%d): gd=%d cpp=%d" % [qx, qz, qgd, qcpp])
+					dumped += 1
+			qz += GROUND_Y_GRID_STEP
+		qx += GROUND_Y_GRID_STEP
+	mismatches += quantize_mismatches
+
+	if mismatches == 0:
+		print("[Parity] ground_y: %d unquantized + %d quantized samples match bit-for-bit." % [checked, quantize_checked])
+	else:
+		printerr("[Parity] ground_y: %d / %d total mismatches (%d unquantized, %d quantized)." % [
+			mismatches, checked + quantize_checked, mismatches - quantize_mismatches, quantize_mismatches
+		])
+
+	return mismatches
+
+
+# Phase 3 — chunk-byte parity over 50 chunks.
+#
+# For each test chunk:
+#   1. Build a fresh VoxelBuffer of size 16^3.
+#   2. Call GD's _generate_block (configured to run plan-Tier 1 + plan-Tier 3 only)
+#      and C++'s generate_block_into_buffer with the same buffer dimensions
+#      and same (origin, lod).
+#   3. Read CHANNEL_TYPE byte-by-byte from each side and compare.
+#
+# We test at LOD=1 specifically to disable GD's water emission (`write_water =
+# lod == 0`), keep all chunks safely above WORLD_FLOOR_VOXEL_Y=-300 so the
+# bedrock legacy-bug discrepancy doesn't surface, and disable
+# cliff/snow/ore/disk via the GD generator's *_max_lod=-1 settings so only
+# bands + marble run.
+func _test_chunk_bytes() -> int:
+	const CHUNK_SIZE: int = 16
+	const TEST_LOD: int = 1
+
+	# Hand-picked chunk origins. Mix of low-noise (around y=50, ground likely
+	# inside chunk) and higher-noise (y=200, ground may or may not be inside).
+	# X/Z spread across a 5 km strip to exercise noise variance.
+	var test_origins: Array[Vector3i] = []
+	var y_targets: Array[int] = [50, 100, 200, -50, 0]   # 5 Y rows
+	var xz_grid: Array[int] = [-2000, -1000, 0, 1000, 2000]  # 5×2 = 10 X/Z pairs (only 5 used per Y)
+	for y in y_targets:
+		for i in range(10):
+			var x: int = xz_grid[i % 5]
+			var z: int = xz_grid[(i / 5) % 5]  # 0..4 for i in 0..9 — varies independently
+			test_origins.append(Vector3i(x, y, z))
+	# That gives 50 chunks (5 Y × 10 X/Z pairs).
+
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	# GD generator configured for plan-Tier 1 + plan-Tier 3 only.
+	# proj-Tier 1 (cliff slope) -> cliff_rule_max_lod = -1
+	# proj-Tier 2 (snow line)   -> snow_line_max_lod = -1
+	# proj-Tier 4 (ores)        -> ore_vein_max_lod = -1
+	# proj-Tier 5 (disks)       -> disk_rule_max_lod = -1
+	# plan-Tier 3 (marble)      -> marble_jitter_max_lod = 1 (default; runs at TEST_LOD)
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	# Use default marble settings (block_size=4, seed=1, thresholds 0.92/0.75).
+
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = gd_gen.height_range_voxels
+	cpp_gen.height_offset_voxels = gd_gen.height_offset_voxels
+	cpp_gen.quantize_to_meters = gd_gen.quantize_to_meters
+	cpp_gen.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	cpp_gen.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	cpp_gen.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	cpp_gen.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	cpp_gen.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	cpp_gen.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	cpp_gen.beach_y_threshold = gd_gen.beach_y_threshold
+	cpp_gen.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	cpp_gen.marble_jitter_seed = gd_gen.marble_jitter_seed
+	cpp_gen.marble_rare_threshold = gd_gen.marble_rare_threshold
+	cpp_gen.marble_dark_threshold = gd_gen.marble_dark_threshold
+	cpp_gen.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	# Phase 4c arrived after this test was written: C++ defaults to
+	# cliff_rule_max_lod=2 (mirrors the GD default), but GD here sets
+	# -1 to disable the tier. Without an explicit -1 on the C++ side,
+	# cliff would fire while GD's cliff is off, and the bands diverge.
+	cpp_gen.cliff_rule_max_lod = -1
+
+	var mismatches: int = 0
+	var voxels_checked: int = 0
+	var dumped: int = 0
+	var chunks_with_mismatches: int = 0
+
+	for origin in test_origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, TEST_LOD)
+
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, TEST_LOD)
+
+		var chunk_mismatched: bool = false
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var stride: int = 1 << TEST_LOD
+							var world_x: int = origin.x + cx * stride
+							var world_y: int = origin.y + cy * stride
+							var world_z: int = origin.z + cz * stride
+							printerr("[Parity] chunk mismatch at origin=%s lod=%d local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								origin, TEST_LOD, cx, cy, cz, world_x, world_y, world_z, gd_v, cpp_v
+							])
+							dumped += 1
+		if chunk_mismatched:
+			chunks_with_mismatches += 1
+
+	if mismatches == 0:
+		print("[Parity] chunk_bytes: %d / %d voxels match bit-for-bit across %d chunks (LOD %d)." % [
+			voxels_checked, voxels_checked, test_origins.size(), TEST_LOD
+		])
+	else:
+		printerr("[Parity] chunk_bytes: %d / %d voxels mismatched across %d / %d chunks." % [
+			mismatches, voxels_checked, chunks_with_mismatches, test_origins.size()
+		])
+
+	return mismatches
+
+
+# Phase 4a — LOD=0 chunk parity covering CHANNEL_TYPE *and* CHANNEL_DATA5.
+#
+# Adds three things the LOD=1 test couldn't exercise:
+#   1. Bedrock row at world_y == WORLD_FLOOR_VOXEL_Y = -300 (post-bugfix:
+#      writes material_id 6, not a color-byte-truncated garbage value).
+#   2. Water byte 0x18 (WaterByteCodec.SOURCE_BYTE) on CHANNEL_DATA5 for
+#      air voxels above terrain and at or below sea level (LOD0 only).
+#   3. World-floor air gate: voxels with world_y < -300 are written as
+#      nothing (default 0 air) on both sides.
+#
+# Tiers gated off the same way as _test_chunk_bytes: only bands + marble
+# + bedrock + water bytes are exercised here. Cliff/snow/ore/disk come
+# online in 4b-4g and the harness will grow new chunks per phase.
+func _test_chunk_bytes_lod0() -> int:
+	const CHUNK_SIZE: int = 16
+	const TEST_LOD: int = 0
+	const BEDROCK_MATERIAL_ID: int = 6
+	const WORLD_FLOOR_VOXEL_Y: int = -300
+	const SEA_LEVEL_VOXELS: int = 72
+	const WATER_SOURCE_BYTE: int = 0x18
+	_unused(WATER_SOURCE_BYTE)
+
+	# Chunk origins chosen to exercise each new code path:
+	#   sea-straddling      — water bytes fill the air column above
+	#                         ground_y up through SEA_LEVEL_VOXELS.
+	#   deep-ocean          — entire chunk is air above terrain but
+	#                         below sea level; every voxel is water.
+	#   above-sea-no-water  — typical surface chunk that should emit
+	#                         zero water bytes (parity must hold).
+	#   bedrock-straddling  — chunk straddles WORLD_FLOOR_VOXEL_Y;
+	#                         one row is bedrock, rows above are
+	#                         stone band, rows below are air.
+	var test_origins: Array[Vector3i] = [
+		Vector3i(0, 64, 0),         # straddles sea level (64..79)
+		Vector3i(1000, 64, -1000),  # straddles sea, offset noise
+		Vector3i(-500, 0, 500),     # spans 0..15, far below sea level
+		Vector3i(0, 100, 0),        # 100..115, above sea, no water
+		Vector3i(2000, 200, 1500),  # well above terrain at this noise
+		Vector3i(0, -310, 0),       # straddles bedrock floor (-310..-295)
+		Vector3i(800, -304, -200),  # bedrock-straddling, different XZ
+	]
+
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	# GD generator: tiers not yet ported to C++ stay off via *_max_lod = -1.
+	# Marble jitter DOES run at LOD0 with default settings; the C++ side
+	# matches via the same default marble_jitter_max_lod=1.
+	# _ensure_materials_cached() runs inside _generate_block and loads
+	# _cached_bedrock from the .tres, so bedrock fires naturally on the GD side.
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = gd_gen.height_range_voxels
+	cpp_gen.height_offset_voxels = gd_gen.height_offset_voxels
+	cpp_gen.quantize_to_meters = gd_gen.quantize_to_meters
+	cpp_gen.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	cpp_gen.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	cpp_gen.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	cpp_gen.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	cpp_gen.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	cpp_gen.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	cpp_gen.beach_y_threshold = gd_gen.beach_y_threshold
+	cpp_gen.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	cpp_gen.marble_jitter_seed = gd_gen.marble_jitter_seed
+	cpp_gen.marble_rare_threshold = gd_gen.marble_rare_threshold
+	cpp_gen.marble_dark_threshold = gd_gen.marble_dark_threshold
+	cpp_gen.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	# Phase 4a config — explicit (C++ has no autoloaded VoxelMaterialRegistry).
+	cpp_gen.bedrock_material_id = BEDROCK_MATERIAL_ID
+	cpp_gen.world_floor_voxel_y = WORLD_FLOOR_VOXEL_Y
+	cpp_gen.sea_level_voxels = SEA_LEVEL_VOXELS
+	# Disable cliff (Phase 4c) on C++ to match GD's cliff_rule_max_lod=-1.
+	cpp_gen.cliff_rule_max_lod = -1
+
+	var mismatches_type: int = 0
+	var mismatches_data5: int = 0
+	var voxels_checked: int = 0
+	var dumped: int = 0
+	var chunks_with_mismatches: int = 0
+
+	for origin in test_origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, TEST_LOD)
+
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, TEST_LOD)
+
+		var chunk_mismatched: bool = false
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_t: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_t: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var gd_w: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_DATA5)
+					var cpp_w: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_DATA5)
+					voxels_checked += 1
+					if gd_t != cpp_t:
+						mismatches_type += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var wx: int = origin.x + cx
+							var wy: int = origin.y + cy
+							var wz: int = origin.z + cz
+							printerr("[Parity] LOD0 TYPE mismatch at origin=%s local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								origin, cx, cy, cz, wx, wy, wz, gd_t, cpp_t
+							])
+							dumped += 1
+					if gd_w != cpp_w:
+						mismatches_data5 += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var wx2: int = origin.x + cx
+							var wy2: int = origin.y + cy
+							var wz2: int = origin.z + cz
+							printerr("[Parity] LOD0 DATA5 mismatch at origin=%s local=(%d,%d,%d) world=(%d,%d,%d): gd=0x%02X cpp=0x%02X" % [
+								origin, cx, cy, cz, wx2, wy2, wz2, gd_w, cpp_w
+							])
+							dumped += 1
+		if chunk_mismatched:
+			chunks_with_mismatches += 1
+
+	var total: int = mismatches_type + mismatches_data5
+	if total == 0:
+		print("[Parity] chunk_bytes_lod0: %d / %d voxels (TYPE+DATA5) match bit-for-bit across %d chunks (LOD 0)." % [
+			voxels_checked * 2, voxels_checked * 2, test_origins.size()
+		])
+	else:
+		printerr("[Parity] chunk_bytes_lod0: TYPE=%d, DATA5=%d mismatches across %d / %d chunks." % [
+			mismatches_type, mismatches_data5, chunks_with_mismatches, test_origins.size()
+		])
+
+	return total
+
+
+func _unused(_x) -> void:
+	pass
+
+
+# --- Phase 4d-g helpers ----------------------------------------------
+
+# Build a configured FastNoiseLite that matches every test on the
+# harness; centralised so the per-test setup stays short.
+func _make_test_noise() -> FastNoiseLite:
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	return noise
+
+
+# Translate Array[VoxelMaterial] → Array[Dictionary] in the exact
+# shape CubicHeightmapGeneratorCpp::set_ore_materials expects. Mirror
+# of the adapter, but inlined so the harness doesn't need the adapter.
+func _ores_to_dicts(list: Array[VoxelMaterial]) -> Array:
+	var out: Array = []
+	out.resize(list.size())
+	for i in list.size():
+		var m: VoxelMaterial = list[i]
+		out[i] = {
+			"material_id": m.material_id,
+			"replaces_material_id": m.replaces_material_id,
+			"min_altitude_voxels": m.min_altitude_voxels,
+			"max_altitude_voxels": m.max_altitude_voxels,
+			"ore_noise_threshold": m.ore_noise_threshold,
+			"ore_noise_scale": m.ore_noise_scale,
+		}
+	return out
+
+
+func _disks_to_dicts(list: Array[VoxelMaterial]) -> Array:
+	var out: Array = []
+	out.resize(list.size())
+	for i in list.size():
+		var m: VoxelMaterial = list[i]
+		out[i] = {
+			"material_id": m.material_id,
+			"disk_radius_voxels": m.disk_radius_voxels,
+			"disk_half_height_voxels": m.disk_half_height_voxels,
+			"disk_anchor_density": m.disk_anchor_density,
+			"disk_max_distance_to_water_voxels": m.disk_max_distance_to_water_voxels,
+		}
+	return out
+
+
+# Build a configured cpp_gen mirroring the supplied gd_gen field-for-field.
+# Skips the snapshot pushes (call set_ore_materials / set_disk_materials
+# separately at the caller site).
+func _cpp_from_gd(gd_gen: CubicHeightmapGenerator) -> CubicHeightmapGeneratorCpp:
+	var c := CubicHeightmapGeneratorCpp.new()
+	c.noise = gd_gen.noise
+	c.height_range_voxels = gd_gen.height_range_voxels
+	c.height_offset_voxels = gd_gen.height_offset_voxels
+	c.quantize_to_meters = gd_gen.quantize_to_meters
+	c.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	c.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	c.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	c.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	c.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	c.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	c.beach_y_threshold = gd_gen.beach_y_threshold
+	c.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	c.marble_jitter_seed = gd_gen.marble_jitter_seed
+	c.marble_rare_threshold = gd_gen.marble_rare_threshold
+	c.marble_dark_threshold = gd_gen.marble_dark_threshold
+	c.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	c.bedrock_material_id = 6
+	c.world_floor_voxel_y = -300
+	c.sea_level_voxels = 72
+	# Tier gates — copy from gd_gen so the test caller only needs to
+	# tweak one side.
+	c.cliff_rule_max_lod = gd_gen.cliff_rule_max_lod
+	c.cliff_slope_threshold_voxels = gd_gen.cliff_slope_threshold_voxels
+	c.cliff_slope_sample_distance_voxels = gd_gen.cliff_slope_sample_distance_voxels
+	c.snow_line_max_lod = gd_gen.snow_line_max_lod
+	c.ore_vein_max_lod = gd_gen.ore_vein_max_lod
+	c.disk_rule_max_lod = gd_gen.disk_rule_max_lod
+	c.disk_anchor_grid_voxels = gd_gen.disk_anchor_grid_voxels
+	c.cliff_ore_outcrop_chance = gd_gen.cliff_ore_outcrop_chance
+	c.cliff_ore_seed = gd_gen.cliff_ore_seed
+	return c
+
+
+# Compare CHANNEL_TYPE byte-by-byte across `origins` at the given LOD.
+# Returns mismatch count; logs up to VERBOSE_MISMATCH_CAP world coords.
+func _diff_type_chunks(label: String,
+		gd_gen: CubicHeightmapGenerator,
+		cpp_gen: CubicHeightmapGeneratorCpp,
+		origins: Array[Vector3i],
+		test_lod: int) -> int:
+	const CHUNK_SIZE: int = 16
+	var mismatches: int = 0
+	var dumped: int = 0
+	var voxels_checked: int = 0
+	for origin in origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, test_lod)
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, test_lod)
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var stride: int = 1 << test_lod
+							printerr("[Parity] %s TYPE mismatch at origin=%s lod=%d local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								label, origin, test_lod, cx, cy, cz,
+								origin.x + cx * stride, origin.y + cy * stride, origin.z + cz * stride,
+								gd_v, cpp_v
+							])
+							dumped += 1
+	print("[Parity] %s: %d / %d voxels match across %d chunks (LOD %d)." % [
+		label, voxels_checked - mismatches, voxels_checked, origins.size(), test_lod
+	])
+	return mismatches
+
+
+# Phase 4e — ore veins.
+#
+# Two synthetic ore materials, both replacing plain stone (id 1) with
+# different thresholds and altitude bands. Configured loose enough that
+# the noise threshold actually fires inside the test chunks (otherwise
+# the tier is "exercised" but produces no observable ores).
+func _test_chunk_bytes_ores() -> int:
+	const TEST_LOD: int = 0
+	var ores: Array[VoxelMaterial] = []
+	var iron := VoxelMaterial.new()
+	iron.material_id = 15
+	iron.replaces_material_id = 1
+	iron.min_altitude_voxels = -1000
+	iron.max_altitude_voxels = 30000
+	iron.ore_noise_threshold = 0.4   # loose so we get plenty of hits
+	iron.ore_noise_scale = 0.05
+	ores.append(iron)
+	var copper := VoxelMaterial.new()
+	copper.material_id = 16
+	copper.replaces_material_id = 1
+	copper.min_altitude_voxels = -1000
+	copper.max_altitude_voxels = 30000
+	copper.ore_noise_threshold = 0.45
+	copper.ore_noise_scale = 0.04
+	ores.append(copper)
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = _make_test_noise()
+	# Keep other tiers off so the only differentiator is ore behavior.
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	gd_gen.ore_vein_max_lod = 0
+	gd_gen.set_ore_materials(ores)
+
+	var cpp_gen := _cpp_from_gd(gd_gen)
+	cpp_gen.set_ore_materials(_ores_to_dicts(ores))
+
+	var origins: Array[Vector3i] = [
+		Vector3i(0, 0, 0),
+		Vector3i(500, -50, 500),
+		Vector3i(-500, -50, -500),
+		Vector3i(1000, -100, 1000),
+		Vector3i(-1500, 30, -1500),
+	]
+	return _diff_type_chunks("ores", gd_gen, cpp_gen, origins, TEST_LOD)
+
+
+# Phase 4f — clay/gravel disks.
+#
+# Disk material clay (id 5) with a generous anchor density and a radius
+# that means many columns near sea level hit a disk. Chunks straddle
+# the sea level so disk_match's per-column thickness is exercised on
+# the top voxels.
+func _test_chunk_bytes_disks() -> int:
+	const TEST_LOD: int = 0
+	var clay := VoxelMaterial.new()
+	clay.material_id = 5
+	clay.disk_radius_voxels = 8
+	clay.disk_half_height_voxels = 1
+	clay.disk_anchor_density = 0.20   # loose; many anchor cells qualify
+	clay.disk_max_distance_to_water_voxels = 30
+	var disks: Array[VoxelMaterial] = [clay]
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = _make_test_noise()
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = 0
+	gd_gen.set_disk_materials(disks)
+
+	var cpp_gen := _cpp_from_gd(gd_gen)
+	cpp_gen.set_disk_materials(_disks_to_dicts(disks))
+
+	var origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(500, 48, -500),
+		Vector3i(-1000, 48, 1000),
+		Vector3i(1500, 64, 1500),
+	]
+	return _diff_type_chunks("disks", gd_gen, cpp_gen, origins, TEST_LOD)
+
+
+# Phase 4g — cliff ore outcrops.
+#
+# Cliff threshold = 1 (every slope is a cliff), outcrop chance = 0.5
+# (half of cliff columns roll a hit), single iron ore in the list.
+# The outcrop branch composes Tier 1 + Tier 4 — if cliff detection,
+# the dice path, the uniform-pick math, or the altitude band check
+# diverge, mismatches appear at chunk surfaces.
+func _test_chunk_bytes_outcrops() -> int:
+	const TEST_LOD: int = 0
+	var iron := VoxelMaterial.new()
+	iron.material_id = 15
+	iron.replaces_material_id = 1
+	iron.min_altitude_voxels = -1000
+	iron.max_altitude_voxels = 30000
+	iron.ore_noise_threshold = 0.99   # Tier 4 vein essentially off
+	iron.ore_noise_scale = 0.05
+	var ores: Array[VoxelMaterial] = [iron]
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = _make_test_noise()
+	gd_gen.cliff_rule_max_lod = 0
+	gd_gen.cliff_slope_threshold_voxels = 1   # everything's a cliff
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	gd_gen.cliff_ore_outcrop_chance = 0.5    # high to get hits in 8 chunks
+	gd_gen.set_ore_materials(ores)
+
+	var cpp_gen := _cpp_from_gd(gd_gen)
+	cpp_gen.set_ore_materials(_ores_to_dicts(ores))
+
+	var origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(300, 48, 300),
+		Vector3i(-600, 48, 600),
+		Vector3i(1200, 48, -1200),
+		Vector3i(-1500, 64, -1500),
+		Vector3i(2400, 56, 800),
+		Vector3i(-2700, 56, -800),
+		Vector3i(3000, 72, 3000),
+	]
+	return _diff_type_chunks("outcrops", gd_gen, cpp_gen, origins, TEST_LOD)
+
+
+# Phase 4c — cliff slope (Tier 1) parity.
+#
+# We can't pick chunk origins by inspecting noise variance in advance
+# (the harness should be self-contained), so we *force* cliff detection
+# by configuring an aggressive threshold: cliff_slope_threshold_voxels = 1.
+# With sample_distance=6, this fires on essentially any non-flat column.
+# To still get a healthy mix of cliff and non-cliff voxels, we walk a
+# wide spread of chunks and sanity-check that both sides produced the
+# same fraction of cliff-stone tops.
+#
+# Why this proves parity: column_is_cliff is a pure function of
+# compute_ground_y at the 5 sample points, and ground_y parity was
+# already proven in Phase 2. So if the per-column cliff classification
+# diverges anywhere, top-band selection will produce different
+# CHANNEL_TYPE bytes at the surface, and the loop catches it.
+func _test_chunk_bytes_cliff() -> int:
+	const CHUNK_SIZE: int = 16
+	const TEST_LOD: int = 0
+	const BEDROCK_MATERIAL_ID: int = 6
+
+	# Spread across the map at the surface elevation. With a 0.005 freq
+	# noise the surface varies sharply over a few hundred voxels, so
+	# 6-voxel neighbour samples will catch plenty of slope variation.
+	var test_origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(300, 48, 300),
+		Vector3i(-600, 48, 600),
+		Vector3i(1200, 48, -1200),
+		Vector3i(-1500, 64, -1500),
+		Vector3i(2400, 56, 800),
+		Vector3i(-2700, 56, -800),
+		Vector3i(3000, 72, 3000),
+	]
+
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	# Aggressive cliff config — threshold=1 makes nearly every sloped
+	# column a cliff. Keep the default sample_distance=6.
+	gd_gen.cliff_slope_threshold_voxels = 1
+	gd_gen.cliff_rule_max_lod = 0
+	# Tiers not yet in C++ stay off:
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = gd_gen.height_range_voxels
+	cpp_gen.height_offset_voxels = gd_gen.height_offset_voxels
+	cpp_gen.quantize_to_meters = gd_gen.quantize_to_meters
+	cpp_gen.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	cpp_gen.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	cpp_gen.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	cpp_gen.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	cpp_gen.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	cpp_gen.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	cpp_gen.beach_y_threshold = gd_gen.beach_y_threshold
+	cpp_gen.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	cpp_gen.marble_jitter_seed = gd_gen.marble_jitter_seed
+	cpp_gen.marble_rare_threshold = gd_gen.marble_rare_threshold
+	cpp_gen.marble_dark_threshold = gd_gen.marble_dark_threshold
+	cpp_gen.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	cpp_gen.bedrock_material_id = BEDROCK_MATERIAL_ID
+	cpp_gen.world_floor_voxel_y = -300
+	cpp_gen.sea_level_voxels = 72
+	# Phase 4c config:
+	cpp_gen.cliff_slope_sample_distance_voxels = gd_gen.cliff_slope_sample_distance_voxels
+	cpp_gen.cliff_slope_threshold_voxels = gd_gen.cliff_slope_threshold_voxels
+	cpp_gen.cliff_rule_max_lod = gd_gen.cliff_rule_max_lod
+
+	var mismatches: int = 0
+	var voxels_checked: int = 0
+	var cliff_top_voxels: int = 0  # voxels where top_id became stone via cliff override
+	var grass_top_voxels: int = 0  # voxels still grass (no cliff)
+	var dumped: int = 0
+	var chunks_with_mismatches: int = 0
+
+	for origin in test_origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, TEST_LOD)
+
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, TEST_LOD)
+
+		var chunk_mismatched: bool = false
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var wx: int = origin.x + cx
+							var wy: int = origin.y + cy
+							var wz: int = origin.z + cz
+							printerr("[Parity] cliff TYPE mismatch at origin=%s local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								origin, cx, cy, cz, wx, wy, wz, gd_v, cpp_v
+							])
+							dumped += 1
+		# Surface scan: for each (x,z) in this chunk, find the topmost
+		# non-air TYPE voxel on the GD side and classify it.
+		for cx in CHUNK_SIZE:
+			for cz in CHUNK_SIZE:
+				for cy in range(CHUNK_SIZE - 1, -1, -1):
+					var v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					if v == 0:
+						continue
+					if v == 1:
+						cliff_top_voxels += 1
+					elif v == 3:
+						grass_top_voxels += 1
+					break
+		if chunk_mismatched:
+			chunks_with_mismatches += 1
+
+	if mismatches == 0:
+		print("[Parity] chunk_bytes_cliff: %d / %d voxels match (LOD 0, cliff_threshold=1; stone-top=%d, grass-top=%d) across %d chunks." % [
+			voxels_checked, voxels_checked, cliff_top_voxels, grass_top_voxels, test_origins.size()
+		])
+		if cliff_top_voxels == 0:
+			printerr("[Parity] chunk_bytes_cliff: WARNING — zero cliff-stone tops observed; cliff tier not actually exercised.")
+	else:
+		printerr("[Parity] chunk_bytes_cliff: %d / %d voxels mismatched across %d / %d chunks." % [
+			mismatches, voxels_checked, chunks_with_mismatches, test_origins.size()
+		])
+
+	return mismatches
+
+
+# Phase 4b — snow line (Tier 2) parity.
+#
+# Configures both generators with snow_line_voxels = 30 (low enough that
+# many test columns have ground_y crossing it) and snow_line_max_lod = 0,
+# then walks chunks whose Y range brackets the surface so the top voxel
+# is included. Compares CHANNEL_TYPE byte-by-byte.
+#
+# Cliff, ore, disk stay off; bedrock + water + snow are exercised. The
+# C++ side needs an explicit snow_material_id (13) because it has no
+# autoloaded VoxelMaterialRegistry; the GD side auto-loads snow.tres
+# via _ensure_materials_cached.
+func _test_chunk_bytes_snow() -> int:
+	const CHUNK_SIZE: int = 16
+	const TEST_LOD: int = 0
+	const BEDROCK_MATERIAL_ID: int = 6
+	const SNOW_MATERIAL_ID: int = 13
+	const WORLD_FLOOR_VOXEL_Y: int = -300
+	const SEA_LEVEL_VOXELS: int = 72
+	const SNOW_LINE_VOXELS: int = 30
+
+	# Origins chosen so the chunk Y-range brackets typical ground_y
+	# values (~30..90 at the default noise config). The top voxel will
+	# fall inside the chunk for most columns, exercising the snow override.
+	var test_origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(500, 48, -500),
+		Vector3i(-1000, 64, 1000),
+		Vector3i(1500, 32, -1500),
+		Vector3i(2000, 80, 2000),
+		Vector3i(-2000, 56, -2000),
+	]
+
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	# Enable snow line on the GD side.
+	gd_gen.snow_line_voxels = SNOW_LINE_VOXELS
+	gd_gen.snow_line_max_lod = 0
+	# Keep marble running at LOD0 (default).
+
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = gd_gen.height_range_voxels
+	cpp_gen.height_offset_voxels = gd_gen.height_offset_voxels
+	cpp_gen.quantize_to_meters = gd_gen.quantize_to_meters
+	cpp_gen.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	cpp_gen.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	cpp_gen.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	cpp_gen.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	cpp_gen.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	cpp_gen.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	cpp_gen.beach_y_threshold = gd_gen.beach_y_threshold
+	cpp_gen.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	cpp_gen.marble_jitter_seed = gd_gen.marble_jitter_seed
+	cpp_gen.marble_rare_threshold = gd_gen.marble_rare_threshold
+	cpp_gen.marble_dark_threshold = gd_gen.marble_dark_threshold
+	cpp_gen.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	cpp_gen.bedrock_material_id = BEDROCK_MATERIAL_ID
+	cpp_gen.world_floor_voxel_y = WORLD_FLOOR_VOXEL_Y
+	cpp_gen.sea_level_voxels = SEA_LEVEL_VOXELS
+	# Phase 4b config — match the GD generator's snow_line_* + load id 13.
+	cpp_gen.snow_material_id = SNOW_MATERIAL_ID
+	cpp_gen.snow_line_voxels = gd_gen.snow_line_voxels
+	cpp_gen.snow_line_jitter_voxels = gd_gen.snow_line_jitter_voxels
+	cpp_gen.snow_line_jitter_block_size = gd_gen.snow_line_jitter_block_size
+	cpp_gen.snow_line_seed = gd_gen.snow_line_seed
+	cpp_gen.snow_line_max_lod = gd_gen.snow_line_max_lod
+	# Disable cliff (Phase 4c) on C++ to match GD's cliff_rule_max_lod=-1.
+	cpp_gen.cliff_rule_max_lod = -1
+
+	var mismatches: int = 0
+	var voxels_checked: int = 0
+	var snow_voxels: int = 0   # how many "snow" voxels we actually saw (sanity check)
+	var dumped: int = 0
+	var chunks_with_mismatches: int = 0
+
+	for origin in test_origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, TEST_LOD)
+
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, TEST_LOD)
+
+		var chunk_mismatched: bool = false
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v == SNOW_MATERIAL_ID:
+						snow_voxels += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var wx: int = origin.x + cx
+							var wy: int = origin.y + cy
+							var wz: int = origin.z + cz
+							printerr("[Parity] snow TYPE mismatch at origin=%s local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								origin, cx, cy, cz, wx, wy, wz, gd_v, cpp_v
+							])
+							dumped += 1
+		if chunk_mismatched:
+			chunks_with_mismatches += 1
+
+	if mismatches == 0:
+		print("[Parity] chunk_bytes_snow: %d / %d voxels match (LOD 0, snow_line=%d, snow voxels observed=%d) across %d chunks." % [
+			voxels_checked, voxels_checked, SNOW_LINE_VOXELS, snow_voxels, test_origins.size()
+		])
+		if snow_voxels == 0:
+			printerr("[Parity] chunk_bytes_snow: WARNING — zero snow voxels observed; snow tier not actually exercised. Lower snow_line_voxels.")
+	else:
+		printerr("[Parity] chunk_bytes_snow: %d / %d voxels mismatched across %d / %d chunks." % [
+			mismatches, voxels_checked, chunks_with_mismatches, test_origins.size()
+		])
+
+	return mismatches

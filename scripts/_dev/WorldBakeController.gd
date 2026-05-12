@@ -25,6 +25,29 @@ extends Node3D
 
 @export var voxel_terrain_path: NodePath = "VoxelLodTerrain"
 
+# Per-walker-stop wait, in seconds. Conservative default of 6.0 was
+# tuned for the EXR-sampling Copper Isles GD generator. The C++ port
+# finishes a tile's chunks in well under a second, so set this to ~1.0
+# in BakeWorld3D.tscn (or any scene wired to the C++ adapter) to get
+# the real generator-bound wall-clock. If you see ungenerated chunks
+# / artifacts in the resulting SQLite, bump it back up.
+@export_range(0.1, 30.0, 0.1) var wait_per_position_s: float = 6.0
+
+# Y clip range applied to terrain.voxel_bounds during the bake. Chunks
+# outside this Y window never get streamed → generator never runs on
+# them → big speedup when most of the world is empty sky or deep stone.
+#
+# Defaults are wide enough not to clip Copper Isles' 15000-vox peaks
+# (peak_above_sea_voxels=15000). World3D's noise terrain runs through
+# a much tighter band (~[-40, +160] vox) and benefits from overriding
+# these in the bake scene — see BakeWorld3D.tscn.
+#
+# Set to 0 to disable Y-clipping entirely (keeps the original Zylann
+# default voxel_bounds — useful for full-volume bakes of underground
+# dungeons or sky-high structures).
+@export var bake_y_min_voxels: int = -100
+@export var bake_y_max_voxels: int = 30000
+
 ## When true, the walker's pre-pass scans the EXR for tiles with land
 ## and skips pure-ocean tiles (faster bake, but the runtime cache
 ## won't contain water voxels — player will see only grey skirt over
@@ -86,8 +109,12 @@ enum TileClass {
 # World-metre offsets relative to the anchor point for each class:
 #   LAND uses  ground+offset
 #   COAST + SHALLOW_OCEAN use  sea_level+offset
-const STOP_LAND_BELOW: float = -9.0    # ground − 9   covers ground−30..+12
-const STOP_LAND_ABOVE: float = 33.0    # ground + 33  covers ground+12..+54
+# LAND tightened 2026-05-11 to a single stop at ground+0. Previously
+# two stops at -9 / +33 covered a ground−30..+54 m band. Single stop +
+# voxel_bounds Y-clip (when set) gives roughly the same player-visible
+# coverage for half the wait time. If a build needs the wider sky/dig
+# margin restored, override STOP_LAND_OFFSETS to [-9.0, 33.0].
+const STOP_LAND_OFFSETS: Array[float] = [0.0]
 const STOP_COAST_LOW: float  = 5.0     # sea + 5      covers sea−16..+26
 const STOP_COAST_HIGH: float = 35.0    # sea + 35     covers sea+14..+56
 const STOP_SHALLOW: float    = 5.0     # sea + 5      single stop, covers sea−16..+26
@@ -369,15 +396,15 @@ func _build_ui() -> void:
 	_btn_diagnostics.pressed.connect(_on_run_diagnostics)
 	vbox.add_child(_btn_diagnostics)
 
-	_btn_bake_1km = _make_button("2a. Bake 1 km central  (validation; ~110 min)")
+	_btn_bake_1km = _make_button("2a. Bake 1 km central  %s" % _estimate_label(1000.0))
 	_btn_bake_1km.pressed.connect(_on_bake_1km)
 	vbox.add_child(_btn_bake_1km)
 
-	_btn_bake_2km = _make_button("2b. Bake 2 km central  (working dev bake; ~7 hr)")
+	_btn_bake_2km = _make_button("2b. Bake 2 km central  %s" % _estimate_label(2000.0))
 	_btn_bake_2km.pressed.connect(_on_bake_2km)
 	vbox.add_child(_btn_bake_2km)
 
-	_btn_bake_5km = _make_button("2c. Bake full 5 km  (overnight; ~47 hr / ~14 hr land-only+3s)")
+	_btn_bake_5km = _make_button("2c. Bake full 5 km  %s" % _estimate_label(5000.0))
 	_btn_bake_5km.pressed.connect(_on_bake_5km)
 	vbox.add_child(_btn_bake_5km)
 
@@ -614,6 +641,28 @@ func _on_run_diagnostics() -> void:
 # BAKE — region presets
 # =============================================================
 
+func _estimate_label(extent_m: float) -> String:
+	# Format a "~N min / ~N hr" suffix for the bake buttons based on the
+	# tile count this extent produces and the current wait_per_position_s.
+	#   tiles      = (extent_m / TILE_SIZE_M)^2  (the square XZ walk grid)
+	#   visits     = tiles × 1.1                 (avg vertical stops post-tighten:
+	#                                             LAND=1 stop (was 2), COAST=2,
+	#                                             SHALLOW=1, DEEP=0 (skipped). A
+	#                                             noise/island mix averages ~1.05;
+	#                                             1.1 is a safe upper bound).
+	#   wall_s     = visits × wait_per_position_s
+	# Per-tile overhead (viewer move, save flush, etc.) adds <10 %; ignored
+	# in the label — the wait dominates by orders of magnitude.
+	var tiles: float = pow(extent_m / TILE_SIZE_M, 2.0)
+	var visits: float = tiles * 1.1
+	var wall_s: float = visits * wait_per_position_s
+	if wall_s < 90.0:
+		return "(~%d s)" % int(round(wall_s))
+	if wall_s < 5400.0:
+		return "(~%d min)" % int(round(wall_s / 60.0))
+	return "(~%.1f hr)" % (wall_s / 3600.0)
+
+
 func _on_bake_1km() -> void:
 	# Quick validation pass — 1 km × 1 km centred on world (0, 0).
 	# Useful for sanity-checking config changes before committing to
@@ -670,12 +719,20 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 	var all_tiles: Array[Vector2] = _scan_land_tiles(generator, min_xz, max_xz)
 	# Pull sea-level + beach-band thresholds from the generator config,
 	# fall back to defaults if the property doesn't exist on this build.
+	# When the generator is the C++ adapter, the real properties live on
+	# adapter.cpp_impl, not the VoxelGeneratorScript wrapper — drill in.
 	var sea_level_voxels: int = 1200
 	if "sea_level_voxels" in generator:
 		sea_level_voxels = int(generator.get("sea_level_voxels"))
+	elif "cpp_impl" in generator and generator.get("cpp_impl") != null \
+			and "sea_level_voxels" in generator.get("cpp_impl"):
+		sea_level_voxels = int(generator.get("cpp_impl").get("sea_level_voxels"))
 	var coast_band_top_voxels: int = sea_level_voxels + COAST_BAND_VOXELS_ABOVE_SEA
 	if "beach_y_threshold" in generator:
 		coast_band_top_voxels = int(generator.get("beach_y_threshold"))
+	elif "cpp_impl" in generator and generator.get("cpp_impl") != null \
+			and "beach_y_threshold" in generator.get("cpp_impl"):
+		coast_band_top_voxels = int(generator.get("cpp_impl").get("beach_y_threshold"))
 	var sea_level_world_m: float = float(sea_level_voxels) / VOXELS_PER_METRE
 
 	var tile_classes: Dictionary = _classify_tiles(
@@ -714,9 +771,11 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 	var terrain := get_node_or_null(voxel_terrain_path)
 
 	# --- Apply BAKE-ONLY perf overrides ---
-	# Both are reverted in the cleanup tail at the end of this function.
+	# All three are reverted in the cleanup tail at the end of this function.
 	var bake_lod_distance_before: float = 0.0
 	var bake_mesher_before: Resource = null
+	var bake_voxel_bounds_before: AABB = AABB()
+	var bake_voxel_bounds_applied: bool = false
 	if terrain != null:
 		# (1) Disable LOD 0 generation. See BAKE_LOD_DISTANCE comment.
 		if "lod_distance" in terrain:
@@ -733,17 +792,34 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 			print("[Bake] mesher detached for bake (was %s) — skipping mesh build for perf." % [
 				bake_mesher_before.get_class() if bake_mesher_before != null else "null",
 			])
+		# (3) Y-clip via voxel_bounds: chunks outside [bake_y_min_voxels,
+		# bake_y_max_voxels] never stream, so the generator never runs on
+		# the empty sky / deep stone above & below the playable band.
+		# Skip if both knobs are at their disable-sentinel (0 == 0).
+		if "voxel_bounds" in terrain \
+				and not (bake_y_min_voxels == 0 and bake_y_max_voxels == 0):
+			bake_voxel_bounds_before = terrain.get("voxel_bounds") as AABB
+			var prev: AABB = bake_voxel_bounds_before
+			var clip := AABB(
+					Vector3(prev.position.x, float(bake_y_min_voxels), prev.position.z),
+					Vector3(prev.size.x, float(bake_y_max_voxels - bake_y_min_voxels), prev.size.z))
+			terrain.set("voxel_bounds", clip)
+			bake_voxel_bounds_applied = true
+			print("[Bake] voxel_bounds Y clipped to [%d, %d] voxels (was [%d, %d])." % [
+				bake_y_min_voxels, bake_y_max_voxels,
+				int(prev.position.y), int(prev.position.y + prev.size.y),
+			])
 
 	# Phantom viewer.
 	if not ClassDB.class_exists("VoxelViewer"):
 		_set_status("ABORT — VoxelViewer class unavailable.")
-		_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before)
+		_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before, bake_voxel_bounds_before, bake_voxel_bounds_applied)
 		_running = false
 		return
 	_viewer = ClassDB.instantiate("VoxelViewer")
 	if _viewer == null:
 		_set_status("ABORT — could not instantiate VoxelViewer.")
-		_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before)
+		_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before, bake_voxel_bounds_before, bake_voxel_bounds_applied)
 		_running = false
 		return
 	if "view_distance" in _viewer:
@@ -782,7 +858,10 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 			(_viewer as Node3D).global_position = Vector3(tile_center.x, y_world, tile_center.y)
 			# Wait for Zylann to stream + persist. Conservative fixed wait;
 			# can be replaced with a real idle signal if Phase 0 finds one.
-			await _wait_seconds(WAIT_PER_POSITION_S)
+			# wait_per_position_s is inspector-tunable per scene (see the
+			# @export); WAIT_PER_POSITION_S constant kept as the default
+			# the @export falls back to.
+			await _wait_seconds(wait_per_position_s)
 
 		_tiles_done += 1
 		var dur: int = Time.get_ticks_msec() - tile_start_ms
@@ -812,7 +891,7 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 	# Revert bake-only overrides so the BakeWorld scene's observer
 	# camera renders normally if the user runs another bake or just
 	# pokes around interactively after this one.
-	_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before)
+	_restore_bake_overrides(terrain, bake_lod_distance_before, bake_mesher_before, bake_voxel_bounds_before, bake_voxel_bounds_applied)
 
 	_running = false
 	if _cancel_requested:
@@ -827,7 +906,9 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 func _restore_bake_overrides(
 		terrain: Object,
 		lod_distance_before: float,
-		mesher_before: Resource
+		mesher_before: Resource,
+		voxel_bounds_before: AABB = AABB(),
+		voxel_bounds_applied: bool = false
 ) -> void:
 	# Counterpart of the bake-start overrides. Safe to call multiple
 	# times — `lod_distance_before == 0.0` means we never applied the
@@ -841,6 +922,9 @@ func _restore_bake_overrides(
 	if BAKE_DISABLE_MESHING and mesher_before != null and "mesher" in terrain:
 		terrain.set("mesher", mesher_before)
 		print("[Bake] mesher restored.")
+	if voxel_bounds_applied and "voxel_bounds" in terrain:
+		terrain.set("voxel_bounds", voxel_bounds_before)
+		print("[Bake] voxel_bounds restored.")
 
 
 func _vertical_positions_for_class(
@@ -856,8 +940,8 @@ func _vertical_positions_for_class(
 	var positions: Array[float] = []
 	match tile_class:
 		TileClass.LAND:
-			positions.append(ground_world_m + STOP_LAND_BELOW)
-			positions.append(ground_world_m + STOP_LAND_ABOVE)
+			for offset in STOP_LAND_OFFSETS:
+				positions.append(ground_world_m + offset)
 		TileClass.COAST:
 			positions.append(sea_level_world_m + STOP_COAST_LOW)
 			positions.append(sea_level_world_m + STOP_COAST_HIGH)

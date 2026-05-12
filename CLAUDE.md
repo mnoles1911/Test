@@ -43,28 +43,19 @@ Epic fantasy with grounded emotional stakes — LOTR scale, single-protagonist i
 - /tools — pipeline scripts run from the repo root (TTS rendering, draft stripping); see `tools/README.md`
 
 ## Milestone history
-Completed milestones (see git log for full PR detail; the autoload section below documents what's currently live in-engine):
-- **Milestones 1–4 (2D):** walkable cave, opening dialogue, combat prototype, full UI/state framework.
+One-line history; see git log for detail. The autoload + voxel-systems sections below document what's live now.
+- **Milestones 1–4 (2D):** walkable cave, opening dialogue, combat prototype, UI/state framework.
 - **3D pivot (2026-04-30, PR #43):** all art/camera/migration design docs rewritten for voxel.
 - **Milestone 4-3D (2026-05-01):** Player3D, CameraRig, HUDOverlay, JournalUI, triggers, World3D placeholder.
-- **Milestone 5-3D (2026-05-03):** destructible-voxel slice — VoxelLodTerrain + SQLite deltas, CubicHeightmapGenerator, edit/gravity/water managers, NoEditZones, pickaxe + explosives, swimming, day/night.
-- **Milestone 6-3D Weather (2026-05-04):** WeatherManager — six-state machine, 30 s transitions, fog/wind/particles/lightning, location profiles, proximity zones.
-- **Voxel water refactor (2026-05-05):** Area3D water replaced with voxel-cell flow sim (`WaterFlowManager` 4 Hz tick, `WaterChunkMesher` transparent surfaces).
-- **Copper Isles demo + textured tileset (2026-05-06 → 05-10):** `CopperIslesHeightmapGenerator.gd` (5 km × 5 km Gaea EXR) with per-voxel water in `CHANNEL_DATA5`; bake pipeline (`scenes/_dev/BakeWorld.tscn`) writes a baseline SQLite; `HorizonSkirt.gd` draws distant peaks beyond the 250 m stream radius. World-scale refactor locked sea level to Y=125, spawn (-61, 185, 732). Mesher migrated from `VoxelMesherCubes` (RGBA in `CHANNEL_COLOR`) to `VoxelMesherBlocky` (material id in `CHANNEL_TYPE` + `VoxelBlockyLibrary`); 12 textured materials via the texture-pack pipeline (`tools/build_texture_atlas.py` + `tools/build_blocky_library.gd`). `WORLD_GENERATOR_VERSION = 14`. Both World3D (Mira) and CopperIslesTest fully migrated; CopperIslesTestBootstrap mirrors `World3DBootstrap._inject_atlas_materials_into_library()` so per-cube `tile_*` + `material_override_0` are re-applied on every scene load (works around Zylann's gdextension dropping those dynamic properties on `.tres` load). Cache paths bumped to `*_v13.sqlite` to invalidate pre-v13 CHANNEL_COLOR baselines on disk. **Caveats:** delivered EXR is a single continent, not the lore-spec archipelago — fit-for-tech-validation only, geography re-source pending.
-- **Tiered voxel-generation rules (2026-05-10 → 05-11):** Six tiers of material-selection logic layered on top of the previous "1 voxel grass / 3 voxels dirt / rest stone" depth-only rule. Each tier reads the per-material generation fields on `VoxelMaterial.gd` (`is_cliff_face_material`, `min_/max_altitude_voxels`, `ore_noise_threshold`/`ore_noise_scale`/`replaces_material_id`, `disk_radius_voxels`/`disk_half_height_voxels`/`disk_anchor_density`/`disk_max_distance_to_water_voxels`) and a shared deterministic hash (`scripts/VoxelGenerationMath.hash3`). `VoxelMaterialRegistry` pre-builds filtered arrays (`get_cliff_face_materials`, `get_ore_materials`, `get_disk_materials`) that the bootstraps push into the generator resource on the main thread (mirror of the `set_no_edit_water_aabbs` worker-thread-safe handoff). The tiers, applied in this order per column / voxel:
-  - **Tier 1 — slope-driven cliff rule** (`_column_is_cliff`): sample 4-neighbour `ground_y` at ±6 voxels (= 1 m at 6 vox/m), if the largest Y drop ≥ `cliff_slope_threshold_voxels` (default 10 ≈ 59° slope) override top + dirt to bare stone. Gated by `cliff_rule_max_lod` (default 2).
-  - **Tier 2 — altitude-driven snow line**: non-cliff columns above `snow_line_voxels` + jitter become snow (id 13). Cliff faces poke through snowcaps. Copper Isles default 12000 vox (≈ 2000 m); CubicHeightmap default 30000 (effectively disabled).
-  - **Tier 3 — marble + stone_dark jitter on stone**: per stone-band voxel, sample `hash3(world / 4)`. Above `marble_rare_threshold` (0.92) → marble (id 9); above `marble_dark_threshold` (0.75) → stone_dark (id 14); else plain stone. ~8 % marble + 17 % stone_dark + 75 % plain stone.
-  - **Tier 4 — 3D-noise ore veins**: each ore replaces only its declared parent material (iron + copper both `replaces_material_id = 1` = plain stone, so they stay out of marble / stone_dark variants). Per-voxel hash gate + altitude band. Iron in 0..600 vox at threshold 0.55; copper in 0..1500 at 0.62.
-  - **Tier 5 — clay / gravel disks near water**: Worley-anchor grid at 24 voxels (4 m) spacing; each cell may host one disk per material via hash density gate (clay 0.04, gravel 0.02). Per-column scan covers anchor cells within disk radius; columns inside an anchor's circular footprint get a clay/gravel patch on the top `1 + half_height × 2` voxels. Chunk-boundary-safe by construction.
-  - **Tier 6 — rare ore outcrops on cliff faces**: composes Tiers 1 + 4. Cliff columns roll `cliff_ore_outcrop_chance` (default 3 %); if hit, a second hash picks an ore uniformly from the list and applies it (subject to altitude band) to the top voxel. Walking a cliff face reveals occasional copper/iron outcrops.
+- **Milestone 5-3D (2026-05-03):** destructible voxel slice — VoxelLodTerrain + SQLite deltas, CubicHeightmapGenerator, edit/gravity/water managers, NoEditZones, pickaxe + explosives, swimming, day/night.
+- **Milestone 6-3D Weather (2026-05-04):** WeatherManager six-state machine + fog/wind/particles/lightning + location profiles.
+- **Voxel water refactor (2026-05-05):** Area3D water → voxel-cell flow sim (`WaterFlowManager` 4 Hz, `WaterChunkMesher` transparent surfaces, `CHANNEL_DATA5` byte storage).
+- **Copper Isles demo + textured tileset (2026-05-06 → 05-10):** `CopperIslesHeightmapGenerator.gd` reads a 5 km Gaea EXR; bake pipeline at `scenes/_dev/BakeWorld.tscn` writes the SQLite baseline; `HorizonSkirt.gd` covers distant peaks. Mesher migrated `VoxelMesherCubes` → `VoxelMesherBlocky` (material id in `CHANNEL_TYPE` + `VoxelBlockyLibrary`); 12 textured materials via `tools/build_texture_atlas.py`. World-scale refactor: sea level Y=125, spawn (-61, 185, 732). Bootstraps re-apply per-cube `tile_*` + `material_override_0` at runtime (Zylann gdextension drops them on `.tres` load). Caches bumped to `*_v13.sqlite`. **Caveat:** delivered EXR is a single continent, not the lore-spec archipelago — re-source pending.
+- **Tiered voxel-generation rules (2026-05-10 → 05-11):** Six tiers on top of the depth-only band rule, all driven by `VoxelMaterial.gd` per-material fields + `VoxelGenerationMath.hash3`. Order: T1 cliff slope (4-neighbour `ground_y` drop ≥ threshold → bare stone), T2 snow line (altitude + jitter, id 13), T3 marble/stone_dark jitter on plain stone, T4 ore veins (per-ore 3D-noise gate, parent-material match), T5 clay/gravel disks (Worley anchor grid near water), T6 cliff outcrops (composes T1 + T4 ore list). `VoxelMaterialRegistry` pre-builds filtered ore/disk arrays; bootstraps push them to the generator on the main thread. Cache paths bumped to `*_v14.sqlite`.
+- **Voxel Combat v1 (2026-05-10 → 05-11):** `Enemy3D` base + `Goblin` (IDLE/ALERT/COMBAT eye-glow); `ThrowableSpear` (sticks on impact, pivots with corpse, auto-collects); `BloodVFX` autoload (burst/dust/drip/pool — `PlaneMesh` not `Decal` because gl_compatibility); `CombatTest.tscn` dev arena with F1 menu. Phase 3 (charge) + Phase 5 (gibs + time-slow) deferred — see `design/COMBAT_NEXT_PHASES.md`.
+- **C++ generator port (2026-05-11):** `CubicHeightmapGenerator.gd` ported to a C++ GDExtension under `extensions/voxel_gen/`. All 6 tiers + bedrock + water-byte emission bit-exact verified by `scripts/_dev/GeneratorParityHarness.gd` (389k voxel comparisons). `World3D.tscn` uses `CubicHeightmapGeneratorAdapter` (GD VoxelGeneratorScript) → `CubicHeightmapGeneratorCpp` (godot::Resource); the adapter forwards `set_ore_materials`/`set_disk_materials` so the existing bootstrap call sites work unchanged. NoEditZone water-generation suppression dropped. Bake controller (`WorldBakeController.gd`) gained `wait_per_position_s` / `bake_y_min_voxels` / `bake_y_max_voxels` `@export`s, dynamic time-estimate labels, and a `cpp_impl` drill-through for sea_level reads. `CopperIslesHeightmapGenerator.gd` is **not** ported. See "C++ perf opportunities" section below for next targets.
 
-  Cache paths bumped to `*_v14.sqlite` to invalidate the v13 textured-tileset baseline (which was generated by the depth-only rule). New `VoxelMaterial.gd` fields and the `scripts/VoxelGenerationMath.gd` helper landed as Phase 0 infra. New materials added: `snow` (13), `stone_dark` (14), `iron_ore` (15) with hand-painted 1024×1024 source PNGs and the atlas patched at slots (8,0)/(9,0)/(10,0). Re-run `scenes/_dev/BakeWorld.tscn` to produce the v14 baseline when fast cold-start is wanted again.
-- **Voxel Combat v1 (2026-05-10 → 05-11):** First end-to-end player-vs-enemy combat slice. `Enemy3D` base class + `Goblin` subclass (placeholder green box, eye glow driven by IDLE/ALERT/COMBAT detection states); `ThrowableSpear` projectile (sticks on impact, pivots with corpse rotation, auto-collects from terrain, returnable from corpses via E-press loot); `BloodVFX` autoload with three layers (Layer A directional cube burst on hit, Layer B continuous wound drip with `local_coords = false`, Layer C flat blood-pool quad — switched from `Decal` to `PlaneMesh` because project uses gl_compatibility renderer); `CombatTest.tscn` dev arena with F1 debug menu (Reset / Quit / F8 kill / F9 wound). Corpses persist 5 minutes by default. **Phase 3 (charge mechanic) and Phase 5 (gib clusters / time-slow) deferred** — see `design/COMBAT_NEXT_PHASES.md`.
-
-Outstanding pickups: low-poly Blender Roland model (still placeholder green box), MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio OGGs, region-boundary profile auto-swap. See `DESIGNER_TODO.md` and `design/LESSONS_LEARNED.md`.
-
-**Next production step: bake World3D.** The LOD-load probe (`World3DBootstrap._mark_world_ready_when_settled`) confirmed cold-start is bounded by the GDScript `CubicHeightmapGenerator` at ~60–90 s for a fully meshed LOD0 sphere. The fix is the same bake pipeline already proven on Copper Isles — run `scenes/_dev/BakeWorld.tscn` against World3D, write a baseline SQLite, ship it. After bake: cold-start drops to <10 s, walk/sprint stops outpacing the streamer, and World3D becomes the canonical testbed for downstream gameplay (combat, NPCs, quests, lockpicking, smithing) without per-test cold-start tax. C++ GDExtension porting of the generator stays in reserve for future games that need infinite procedural terrain — bake covers Game One.
+Outstanding content pickups: low-poly Blender Roland model, MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio, region-boundary profile auto-swap. See `DESIGNER_TODO.md`.
 
 ## Art specification (3D VOXEL)
 - **Voxel scale**: 6 voxels/m (locked 2026-05-03; ~16.7 cm/block, player ~11 voxels tall).
@@ -111,8 +102,9 @@ These files go stale as lore and game design evolve. Review and update them when
 | dialogue/CHARACTER_VOICES.md | New voiced character is added, or a render contract changes (voice ID, seed, stability) |
 | dialogue/PRONUNCIATION.md | Any new lore proper noun is introduced (place names, gods, titles) |
 | DESIGNER_TODO.md | New design doc lands that requires editor or asset work; tasks completed |
-| design/COPPER_ISLES_BAKE_NOTES.md | Zylann GDExtension probe results change, or new bake-pipeline decisions are made |
+| design/COPPER_ISLES_BAKE_NOTES.md | Zylann GDExtension probe results change, new bake-pipeline decisions, or bake controller `@export`s added |
 | design/COPPER_ISLES_DEMO_HEIGHTMAP.md | Copper Isles island layout, heightmap spec, or import notes change |
+| extensions/voxel_gen/ + memory/project_voxel_gen_cpp_port.md | New tier ported, new POD snapshot field added, new C++ Resource registered, parity harness extended |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -232,7 +224,7 @@ For deep mechanics, read the script header in each `.gd` file. This is a quick r
 
 - `VoxelEditManager.gd` — async edit queue, NoEditZone gate, EditedChunkRegistry, `WORLD_GENERATOR_VERSION` stamping. **Always route voxel writes through this autoload.** Emits `edit_applied` signal.
 - `NoEditZoneRegistry.gd` — registers `no_edit_zone` group Area3Ds. API: `is_point_inside_no_edit_zone(world_pos)`.
-- `CubicHeightmapGenerator.gd` — `@tool` `VoxelGeneratorScript` attached to `VoxelLodTerrain` in `World3D.tscn` (NOT autoloaded). Layered noise + per-voxel jitter + Preset enum.
+- `CubicHeightmapGeneratorCpp` (C++) + `CubicHeightmapGeneratorAdapter.gd` — the active World3D generator since 2026-05-11. C++ Resource holds the inner loop (`extensions/voxel_gen/src/cubic_heightmap_generator.cpp`); a thin GDScript adapter extends `VoxelGeneratorScript` and forwards `_generate_block` + `set_ore_materials` / `set_disk_materials` / `get_ground_voxel_y_at` to it. The legacy GDScript `CubicHeightmapGenerator.gd` is still on disk (used by `GeneratorParityHarness.gd` and tier-iteration probes) but no live scene references it. Retire in Phase 6.
 - `WorldClock.gd` — in-game time (240 real s = 1 game hour). Signals: `hour_changed`, `time_of_day_changed`, `day_changed`. Pauses during Dialogic.
 - `BarkManager.gd` — bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`, spatial audio from `assets/audio/barks/`.
 - `WaterFlowManager.gd` — water query + flow sim. Queries (`is_position_in_water`, `get_water_level_at`, `get_flow_velocity_at`) read `CHANNEL_DATA5` directly via `VoxelTool` (DATA5 because Zylann reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS). Flow tick at 4 Hz within 20 m of player; pre-copies DATA5 + COLOR + chunk-above-DATA5 buffers once per chunk. Subscribes to `VoxelEditManager.edit_applied`. API: queries above, `add_source` (routes through `VoxelEditManager.queue_set_water_voxel`), `set_horizon_plane_y` / `get_horizon_plane_y`, `set_global_wind`. Flow rules: gravity drop, lateral spread (level-1 to 4 neighbours), monotone decay; NoEditZones with `blocks_water_flow=true` act as walls. Water persists via the chunk SQLite stream — no extra save key.
@@ -257,9 +249,10 @@ For deep mechanics, read the script header in each `.gd` file. This is a quick r
 - `WeatherZone.gd` — Area3D. `@export weather_state: String`, `@export priority: int`. Pushes to WeatherManager stack on entry/exit.
 
 **Dev tools (not shipped, live in `scripts/_dev/` and `scenes/_dev/`):**
-- `WorldBakeController.gd` + `scenes/_dev/BakeWorld.tscn` — UI-driven bake that walks a `VoxelViewer` across the whole Copper Isles grid, streams + persists every chunk into a baseline SQLite at `user://baked_baseline.sqlite`, then copies it to `assets/voxel/`. Run in-game (F5 on BakeWorld.tscn) — the bake requires live terrain streaming and does nothing in the editor.
-- `SkirtBaker.gd` — builds the horizon-skirt ArrayMesh from the EXR at 64 m × 64 m quad resolution (~12 800 tris for a 5 km map). Called by `WorldBakeController` and saves `assets/voxel/copper_isles_skirt.res`.
-- `CombatTestBootstrap.gd` + `scenes/_dev/CombatTest.tscn` — flat dev arena with three placeholder goblins for combat iteration. Top-right F1-toggleable debug panel with keys: F1 (toggle menu), R (reset enemies — wipes corpses + alive, respawns triangle), Q (quit), F8 (kill nearest), F9 (wound nearest). Spear pre-equipped on _ready.
+- `WorldBakeController.gd` + `scenes/_dev/BakeWorld.tscn` (Copper Isles) + `scenes/_dev/BakeWorld3D.tscn` (Mira / C++ generator) — UI-driven bake that walks a `VoxelViewer` across the XZ grid, streams + persists every chunk to a baseline SQLite. Controller is generator-agnostic; `@export`s on the scene node tune `wait_per_position_s` (1 s for C++, 6 s for the GD heightmap), Y-clip range, etc. Run in-game; tile-classifier skips DEEP_OCEAN; LAND uses a single ground-anchored stop.
+- `SkirtBaker.gd` — builds the horizon-skirt ArrayMesh from the Copper Isles EXR (~12 800 tris for 5 km map). Saves `assets/voxel/copper_isles_skirt.res`. Copper Isles only.
+- `GeneratorParityHarness.gd` — `@tool` EditorScript that runs ~10 chunk-byte diffs across hash3 / cliff_threshold / ground_y / 7 chunk tests, comparing the legacy GD `CubicHeightmapGenerator.gd` against `CubicHeightmapGeneratorCpp`. The gate every C++ porting phase had to clear. Re-run before any change to either generator's tier rules.
+- `CombatTestBootstrap.gd` + `scenes/_dev/CombatTest.tscn` — flat dev arena with three placeholder goblins. F1 debug panel: R reset, Q quit, F8 kill nearest, F9 wound nearest. Spear pre-equipped.
 
 **Specified in design docs but not yet implemented** (build in dependency order):
 - **Combat / physics / enemy next phases** — see `design/COMBAT_NEXT_PHASES.md` for the full roadmap (Phase 3 charge mechanic, Phase 5 gib clusters + time-slow + spear-stick polish, melee combat from `design/COMBAT_DESIGN_3D.md`, Ashfallen / Wolf / Bear enemy types from `design/ENEMY_AI.md`, group AI / attack tokens / fleeing).
@@ -278,18 +271,95 @@ Manual setup still required: see `DESIGNER_TODO.md` → Section 1 (Zylann Voxel 
 
 
 
+## C++ GDExtension perf opportunities
+
+Game One is GDScript-first; the C++ GDExtension at `extensions/voxel_gen/` is the
+escape hatch for measured hot paths. One generator is ported (2026-05-11). The
+build chain is locked: LLVM-MinGW UCRT + `python -m SCons platform=windows
+target=template_debug use_mingw=yes -j8` from `extensions/voxel_gen/`.
+godot-cpp only auto-wraps engine-core classes — Zylann classes can't be
+subclassed directly, so the port pattern is **C++ extends `godot::Resource` +
+thin GDScript adapter extends `VoxelGeneratorScript`** and forwards by Variant
+call. Mirror this for any future port.
+
+**Done:**
+- `CubicHeightmapGeneratorCpp` — all 6 tier rules + bedrock + water byte +
+  ore/disk POD snapshots. Parity-verified by `GeneratorParityHarness.gd`.
+
+**Likely-worthwhile next targets**, in rough order of payoff vs. effort:
+
+1. **`CopperIslesHeightmapGenerator.gd`** (M, big win if Copper Isles bakes stay
+   in the loop). Reads an EXR `Image`, samples bilinearly, layers the same Tier
+   1-6 rules. Port pattern transfers verbatim from cubic; only difference is the
+   noise sample becomes an `Image::get_pixel` lookup. Without this, the
+   Copper Isles bake still runs the GD inner loop.
+
+2. **`WaterChunkMesher.gd`** (M). Greedy 2D run-merge across `CHANNEL_DATA5`
+   columns per chunk, ArrayMesh build. Currently runs in GDScript on the main
+   thread with an adaptive frame budget that throttles to 1 chunk/frame under
+   load — visible as water mesh pop when terrain is streaming. Porting moves
+   the per-chunk scan + ArrayMesh construction off the main thread (or at
+   least into native code) and removes the throttle pressure.
+
+3. **`WaterFlowManager.gd`** flow tick (M). 4 Hz scan over chunks within 20 m
+   of the player, per-voxel level/source/tick byte reads and writes. Currently
+   sits in the per-second `[PERF]` top-3 contributors. The `WaterByteCodec`
+   layout is already a pure POD (`level | source_bit | tick`) so the port is
+   mostly buffer iteration. Pushing this to C++ would let the tick rate climb
+   without main-thread cost.
+
+4. **`VoxelGravityManager.gd`** flood-fill (S-M). Subscribes to `edit_applied`,
+   does a 16 m local BFS for unsupported voxels, spawns `FallingVoxelCluster`.
+   The BFS itself is pure neighbour walking; a clean port. Worth doing only if
+   gravity scans start showing up in PERF — currently not load-bearing.
+
+5. **Generic chunk-bytes scratch buffers** (S). Several GD systems
+   (`WaterFlowManager`, `WaterChunkMesher`, `VoxelGravityManager`) each do their
+   own per-chunk `VoxelBuffer.get_voxel` × N copy into a `PackedByteArray`
+   before scanning. A shared C++ "snapshot a chunk's CHANNEL_TYPE + DATA5 into
+   a flat buffer" helper amortises that across systems.
+
+**Probably NOT worth porting** (Zylann does the heavy work, or the cost is
+elsewhere):
+- Voxel mesh build (`VoxelMesherBlocky` is already Zylann C++).
+- Chunk streaming / LOD octree scheduling (`time_detect_required_blocks` in
+  the `[DIAG]` line is Zylann's main-thread work — we can't optimise their
+  code from outside it).
+- `VoxelEditManager` queue management — already cheap; bound by Zylann's
+  `VoxelTool` write path, not the GD wrapper.
+- The MILESTONE_ROADMAP item "LOD-bake-on-eviction caching" deferred until perf
+  becomes an issue — the C++ generator already shrinks the cost that motivated
+  that idea. Reconsider only if streaming gaps persist after #1 and #2 above.
+
+**Process for any future port:**
+1. Pick a target with a clearly-bounded function surface; prefer pure-math hot
+   loops over anything that touches the SceneTree (worker threads can't).
+2. Write the parity harness FIRST (or extend `GeneratorParityHarness.gd`).
+   Bit-exact output on the same inputs is the only acceptable gate.
+3. Set up POD snapshot infra if the C++ side needs Resource data that lives in
+   GDScript (mirror the `set_ore_materials(Array[Dictionary])` adapter pattern).
+4. Land the port in sub-phases each ending in a green parity harness — never
+   commit a phase that breaks parity, even if you "know" the diff is benign.
+5. Adapter forwards every public method the bootstrap calls; check
+   `has_method` gates in production callers won't silently skip.
+
+See `memory/project_voxel_gen_cpp_port.md` for the full Phase 0-5 receipt of
+how the cubic generator port was done.
+
+---
+
 ## Godot workflow
 
-There is no CLI build, lint, or test command for this project. To verify changes work:
-1. Open the project in Godot 4.6.2
+There is no CLI build, lint, or test command for the Godot side. To verify changes:
+1. Open the project in Godot 4.6.2.
 2. Run the relevant scene:
-   - `World3D.tscn` — 3D movement, lighting, weather, voxel editing on Mira
-   - `CopperIslesTest.tscn` — Copper Isles heightmap terrain; press F7 to cycle terrain scale
-   - `scenes/_dev/BakeWorld.tscn` — world-bake tool (must run in-game, not editor)
-   - `scenes/_dev/CombatTest.tscn` — combat dev arena (3 placeholder goblins, F1 debug menu, spear pre-equipped)
-   - `Combat.tscn` — legacy 2D combat prototype
-3. Check the Output panel for errors and print statements
-4. Test the specific feature manually
+   - `World3D.tscn` — Mira; uses the C++ generator via adapter.
+   - `CopperIslesTest.tscn` — Copper Isles heightmap (still on GDScript generator); F7 cycles terrain scale.
+   - `scenes/_dev/BakeWorld.tscn` (Copper Isles bake) / `scenes/_dev/BakeWorld3D.tscn` (Mira bake) — UI-driven bake; must run in-game.
+   - `scenes/_dev/CombatTest.tscn` — combat dev arena, F1 debug menu, spear pre-equipped.
+3. Check the Output panel.
+
+The C++ GDExtension has its own build: `python -m SCons platform=windows target=template_debug use_mingw=yes -j8` from `extensions/voxel_gen/`. Godot must be closed or scons may fail on DLL replacement. After build, reload the Godot editor. Parity-check by running `scripts/_dev/GeneratorParityHarness.gd` via File → Run.
 
 Do not write shell commands that try to run Godot headlessly — there is no such setup here.
 
@@ -614,8 +684,10 @@ Tier 0 background NPCs do NOT use NPC.gd — plain Node3D only.
 ```
 World3D (Node3D)
 ├── VoxelLodTerrain
-│   ├── CubicHeightmapGenerator   ← custom GDScript noise generator (CHANNEL_COLOR + macro/mid/detail noise + per-voxel jitter)
-│   └── VoxelStreamSQLite           ← per-save-slot delta DB
+│   ├── generator: VoxelGeneratorScript (CubicHeightmapGeneratorAdapter.gd)
+│   │   └── cpp_impl: CubicHeightmapGeneratorCpp  ← C++ GDExtension; runs on Zylann worker threads
+│   ├── stream: VoxelStreamSQLite                  ← per-save-slot delta DB
+│   └── mesher: VoxelMesherBlocky
 ├── VoxelViewer (child of Player3D)
 ├── EntityStreamer
 └── ...

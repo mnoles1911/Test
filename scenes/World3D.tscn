@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://d3ymbeeh31nga" path="res://scripts/DialogueTrigger3D.gd" id="3_trigger"]
 [ext_resource type="Script" uid="uid://c6pjntrssbrik" path="res://scripts/World3DBootstrap.gd" id="4_bootstrap"]
 [ext_resource type="Script" uid="uid://ekwqr2h0r6tf" path="res://scripts/DayNightCycle.gd" id="7_daynight"]
-[ext_resource type="Script" uid="uid://cahyr7gl7p211" path="res://scripts/CubicHeightmapGenerator.gd" id="8_cubic_gen"]
+[ext_resource type="Script" uid="uid://c4a2pa4ujvv7e" path="res://scripts/_dev/CubicHeightmapGeneratorAdapter.gd" id="8_cpp_adapter"]
 [ext_resource type="Material" uid="uid://b8skybl3nd0a1" path="res://assets/shaders/sky_blend_material.tres" id="9_sky_blend"]
 [ext_resource type="Texture2D" uid="uid://cybrgfr0wjji3" path="res://assets/sky/dawn.jpg" id="10_dawn"]
 [ext_resource type="Texture2D" uid="uid://bbtoku1kj7nen" path="res://assets/sky/noon.jpg" id="11_noon"]
@@ -66,11 +66,15 @@ frequency = 0.0005
 fractal_type = 2
 fractal_lacunarity = 2.1
 
-[sub_resource type="VoxelGeneratorScript" id="VoxelGen_Cubic"]
-script = ExtResource("8_cubic_gen")
+[sub_resource type="CubicHeightmapGeneratorCpp" id="VoxelGen_Cpp"]
 noise = SubResource("TerrainNoise")
 height_range_voxels = 200.0
-perf_log_enabled = true
+bedrock_material_id = 6
+snow_material_id = 13
+
+[sub_resource type="VoxelGeneratorScript" id="VoxelGen_Cubic"]
+script = ExtResource("8_cpp_adapter")
+cpp_impl = SubResource("VoxelGen_Cpp")
 
 [sub_resource type="VoxelMesherBlocky" id="VoxelMesher_Blocky"]
 library = ExtResource("14_blocky_library")

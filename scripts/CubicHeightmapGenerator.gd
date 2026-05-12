@@ -774,16 +774,14 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		sand_id = _cached_sand.material_id
 
 	# Bedrock is written at exactly world_y == WORLD_FLOOR_VOXEL_Y.
-	# Pre-pack the bedrock voxel value once per block so the floor row
-	# is a single bit-op + set_voxel call, not a full pack each time.
+	# Previously this hand-packed RGBA + material_id<<24 into a 32-bit
+	# value and wrote that to CHANNEL_TYPE — but CHANNEL_TYPE is 8-bit,
+	# so the int silently truncated to the R color byte (~0..255) and
+	# bedrock came out as a wrong material. Post-VoxelMesherBlocky the
+	# correct value is simply the material id, same as _pack_for_material.
 	var bedrock_packed_v: int = 0
 	if _cached_bedrock != null:
-		var br_c: Color = _cached_bedrock.color_high
-		var br_r: int = clampi(int(round(br_c.r * 255.0)), 0, 255)
-		var br_g: int = clampi(int(round(br_c.g * 255.0)), 0, 255)
-		var br_b: int = clampi(int(round(br_c.b * 255.0)), 0, 255)
-		bedrock_packed_v = br_r | (br_g << 8) | (br_b << 16) \
-			| ((_cached_bedrock.material_id & 0xFF) << 24)
+		bedrock_packed_v = _cached_bedrock.material_id & 0xFF
 
 	# Per-column thickness boundaries (read property once per block).
 	# height_offset_voxels is now read inside _ground_y_at, not here.

@@ -48,7 +48,22 @@ This means:
 | **Render** | Forward+ (required for SDFGI, SSAO, volumetric fog) |
 | **Physics** | Godot built-in 3D physics (Jolt backend optional for performance) |
 
-**Language policy.** GDScript is the default — readable, hot-reloadable, fast enough for gameplay logic, dialogue, UI, AI state machines, save/load, and the rest of a single-player narrative RPG. The escape hatch is C++ via GDExtension, used only when GDScript cost is the measured bottleneck on a per-frame or per-chunk hot loop. The voxel generator (`VoxelGeneratorScript._generate_block`, currently `CubicHeightmapGenerator.gd`) is the canonical candidate: ~10–22 ms per LOD0 block in GDScript caps cold-start streaming throughput. If/when the bake (Tier 4) is no longer sufficient — e.g. infinite procedural worlds in a future game — port that one class to C++ and keep everything else in GDScript. C# is not used at all (no Godot C# vs. GDScript split-brain). Don't reach for GDExtension speculatively; profile first, port second.
+**Language policy.** GDScript is the default — readable, hot-reloadable, fast enough for gameplay logic, dialogue, UI, AI state machines, save/load, and the rest of a single-player narrative RPG. The escape hatch is C++ via GDExtension, used only when GDScript cost is the measured bottleneck on a per-frame or per-chunk hot loop. C# is not used at all. Don't reach for GDExtension speculatively; profile first, port second.
+
+**C++ GDExtension status (2026-05-11).** The first port has landed:
+`CubicHeightmapGenerator.gd` → `extensions/voxel_gen/src/cubic_heightmap_generator.cpp`,
+adapter-wrapped so `World3D.tscn` runs against the native inner loop without
+losing Zylann's `VoxelGeneratorScript` plug-point. All 6 generation tiers
+(cliff slope, snow line, marble jitter, ore veins, clay/gravel disks, cliff
+ore outcrops) plus bedrock and water-byte emission are bit-exact verified
+against the GDScript original by `scripts/_dev/GeneratorParityHarness.gd`
+(~389k voxel comparisons). Toolchain: LLVM-MinGW UCRT + `python -m SCons
+platform=windows target=template_debug use_mingw=yes -j8`. The pattern for
+any future port is **C++ extends `godot::Resource` + thin GDScript adapter
+extends the Zylann hook class** — godot-cpp can't directly subclass
+third-party extension classes. See `CLAUDE.md` "C++ GDExtension perf
+opportunities" for the prioritized next-target list (Copper Isles
+heightmap generator → WaterChunkMesher → WaterFlowManager flow tick).
 
 ### How Godot Is Used
 
@@ -104,9 +119,9 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 | Node | Role |
 |---|---|
 | `VoxelLodTerrain` | Streaming open-world terrain with automatic LOD (6–8 levels) |
-| `VoxelGeneratorScript` (subclassed as `CubicHeightmapGenerator`) | Custom GDScript generator that writes `CHANNEL_COLOR` per-voxel using layered noise (macro + mid + detail) and per-voxel colour jitter. Replaces the originally-planned VoxelGeneratorGraph + Gaea EXR import — see `scripts/CubicHeightmapGenerator.gd`. |
+| `VoxelGeneratorScript` (World3D → `CubicHeightmapGeneratorAdapter` → C++ `CubicHeightmapGeneratorCpp`; CopperIslesTest → GDScript `CopperIslesHeightmapGenerator`) | World3D since 2026-05-11 runs a thin GDScript adapter that forwards `_generate_block` to the C++ Resource at `extensions/voxel_gen/`. Tier rules + bedrock + water bytes parity-verified. Copper Isles still on GDScript pending its own port. |
 | `VoxelStreamSQLite` | Per-save-slot sqlite database storing every player edit as a voxel delta against the baseline (`user://voxel_deltas.sqlite`) |
-| `VoxelMesherCubes` | Blocky stepped meshing — hard cubic faces. Reads `CHANNEL_COLOR` (alpha=0 → no cube; alpha>0 → packed RGBA cube). |
+| `VoxelMesherBlocky` | Atlas-textured stepped meshing (post-2026-05-08 migration from VoxelMesherCubes). Reads `CHANNEL_TYPE` (8-bit material id) and consults a `VoxelBlockyLibrary` for per-face atlas tiles + alpha-scissor material. |
 | `VoxelViewer` | One per player — tells the terrain which area to stream |
 | `VoxelTool` (specifically `VoxelToolLodTerrain` from `terrain.get_voxel_tool()`) | Programmatic API for voxel reads/writes. **Coordinates are voxel-grid space, NOT world** — pass `terrain.to_local(world_pos)` for position and `world_radius / terrain.scale.x` for radius. |
 | `VoxelInstancer` | Scatter foliage and props (trees, rocks, grass) across terrain |
@@ -656,7 +671,7 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 | `VoxelMaterialRegistry.gd` | ✅ Active | Loads `assets/voxels/materials/*.tres` at startup. Lookup tables `_by_id` (1–254 → VoxelMaterial) and `_by_string` ("stone" → VoxelMaterial). Canonical encoding helper: `pack_voxel(material_id, color)` packs RGB from color and material_id into the alpha byte. See `design/3D_VOXEL_MIGRATION.md` → "Voxel Material System". |
 | `Settings.gd` | NOT autoload | Scene-attached script on `scenes/ui/Settings.tscn` (TransitionManager-loaded scene) |
 | `MainMenu.gd` | NOT autoload | Scene-attached script on `scenes/ui/MainMenu.tscn` |
-| `WorldGenerator` | ✅ As `CubicHeightmapGenerator` | Custom `VoxelGeneratorScript` that writes CHANNEL_COLOR with macro+mid+detail noise layers + per-voxel colour jitter. Configured on the `VoxelLodTerrain` node in `World3D.tscn`, NOT registered as autoload (lives on the terrain). Replaced the planned VoxelGeneratorGraph + Gaea EXR pipeline. |
+| `WorldGenerator` | ✅ As `CubicHeightmapGeneratorAdapter` (GDScript) → `CubicHeightmapGeneratorCpp` (C++ Resource at `extensions/voxel_gen/`) | World3D's terrain generator since 2026-05-11. Writes `CHANNEL_TYPE` material ids + `CHANNEL_DATA5` water source bytes. All 6 tier rules ported and parity-verified. NOT autoloaded — lives on the `VoxelLodTerrain` in World3D.tscn. |
 | `EntityRegistry.gd` | 🔲 Not yet built | Spatial entity dictionary by chunk |
 | `EntityStreamer.gd` | 🔲 Not yet built | Loads/unloads world entities by proximity |
 | `SchematicLibrary.gd` | 🔲 Not yet built | Registry of placeable building schematics (.glb props with placement metadata) |
@@ -724,7 +739,7 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 | VoxelMesherTransvoxel | Smooths geometry — kills the blocky aesthetic |
 | CSGBox/CSGMesh | Prototype-only nodes; can't be used with physics properly |
 | GridMap for open world | Only for structured interiors; not organic terrain |
-| VoxelGeneratorGraph (compute-shader generator) | Bake-then-stream pipeline (`scenes/_dev/BakeWorld.tscn`) covers cold-start; if profiling later shows bake is insufficient, port `CubicHeightmapGenerator` to C++ GDExtension instead of switching generator types |
+| VoxelGeneratorGraph (compute-shader generator) | Bake-then-stream pipeline + C++ port of `CubicHeightmapGenerator` (done 2026-05-11) cover cold-start. Switching generator types isn't necessary. |
 | Billboard sprites for characters | Camera is too close; low-poly Blender models used instead |
 | Area3D gravity for river currents | Godot 4.4 bug — CharacterBody3D ignores it; manual velocity addition only |
 | Dedicated relay server for co-op | ENet direct connect + Steam Remote Play covers the audience |

@@ -1,0 +1,20 @@
+[configuration]
+
+entry_symbol = "voxel_gen_library_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+; Paths are relative to this manifest file. SCons writes binaries with
+; godot-cpp's full suffix encoding (platform.target.arch).
+;
+; Phase 0 only ships Windows binaries (the dev machine). Linux + macOS
+; entries are stubbed and commented — they'll light up when CI is added.
+
+windows.debug.x86_64   = "bin/libvoxel_gen.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "bin/libvoxel_gen.windows.template_release.x86_64.dll"
+
+; linux.debug.x86_64   = "bin/libvoxel_gen.linux.template_debug.x86_64.so"
+; linux.release.x86_64 = "bin/libvoxel_gen.linux.template_release.x86_64.so"
+
+; macos.debug   = "bin/libvoxel_gen.macos.template_debug.framework/libvoxel_gen.macos.template_debug"
+; macos.release = "bin/libvoxel_gen.macos.template_release.framework/libvoxel_gen.macos.template_release"
