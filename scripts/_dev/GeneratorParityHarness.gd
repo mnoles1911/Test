@@ -64,16 +64,17 @@ func _run() -> void:
 	var ground_y_mismatches: int = _test_ground_y()
 	var chunk_mismatches: int = _test_chunk_bytes()
 	var chunk_lod0_mismatches: int = _test_chunk_bytes_lod0()
+	var snow_mismatches: int = _test_chunk_bytes_snow()
 	var total: int = hash3_mismatches + cliff_mismatches + ground_y_mismatches \
-			+ chunk_mismatches + chunk_lod0_mismatches
+			+ chunk_mismatches + chunk_lod0_mismatches + snow_mismatches
 
 	print("[Parity] =====")
 	if total == 0:
-		print("[Parity] PASS — all checks bit-exact (hash3 + cliff_threshold + ground_y + chunk_bytes + chunk_bytes_lod0).")
-		print("[Parity] Phase 4a gate satisfied (bedrock + water bytes verified). Safe to proceed.")
+		print("[Parity] PASS — all checks bit-exact (hash3 + cliff + ground_y + chunk_bytes + chunk_lod0 + snow).")
+		print("[Parity] Phase 4b gate satisfied (snow line verified). Safe to proceed.")
 	else:
-		printerr("[Parity] FAIL — %d total mismatches (hash3=%d, cliff=%d, ground_y=%d, chunk_bytes=%d, chunk_lod0=%d)." % [
-			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches, chunk_mismatches, chunk_lod0_mismatches
+		printerr("[Parity] FAIL — %d total mismatches (hash3=%d, cliff=%d, ground_y=%d, chunk_bytes=%d, chunk_lod0=%d, snow=%d)." % [
+			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches, chunk_mismatches, chunk_lod0_mismatches, snow_mismatches
 		])
 
 
@@ -490,3 +491,130 @@ func _test_chunk_bytes_lod0() -> int:
 
 func _unused(_x) -> void:
 	pass
+
+
+# Phase 4b — snow line (Tier 2) parity.
+#
+# Configures both generators with snow_line_voxels = 30 (low enough that
+# many test columns have ground_y crossing it) and snow_line_max_lod = 0,
+# then walks chunks whose Y range brackets the surface so the top voxel
+# is included. Compares CHANNEL_TYPE byte-by-byte.
+#
+# Cliff, ore, disk stay off; bedrock + water + snow are exercised. The
+# C++ side needs an explicit snow_material_id (13) because it has no
+# autoloaded VoxelMaterialRegistry; the GD side auto-loads snow.tres
+# via _ensure_materials_cached.
+func _test_chunk_bytes_snow() -> int:
+	const CHUNK_SIZE: int = 16
+	const TEST_LOD: int = 0
+	const BEDROCK_MATERIAL_ID: int = 6
+	const SNOW_MATERIAL_ID: int = 13
+	const WORLD_FLOOR_VOXEL_Y: int = -300
+	const SEA_LEVEL_VOXELS: int = 72
+	const SNOW_LINE_VOXELS: int = 30
+
+	# Origins chosen so the chunk Y-range brackets typical ground_y
+	# values (~30..90 at the default noise config). The top voxel will
+	# fall inside the chunk for most columns, exercising the snow override.
+	var test_origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(500, 48, -500),
+		Vector3i(-1000, 64, 1000),
+		Vector3i(1500, 32, -1500),
+		Vector3i(2000, 80, 2000),
+		Vector3i(-2000, 56, -2000),
+	]
+
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	# Enable snow line on the GD side.
+	gd_gen.snow_line_voxels = SNOW_LINE_VOXELS
+	gd_gen.snow_line_max_lod = 0
+	# Keep marble running at LOD0 (default).
+
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = gd_gen.height_range_voxels
+	cpp_gen.height_offset_voxels = gd_gen.height_offset_voxels
+	cpp_gen.quantize_to_meters = gd_gen.quantize_to_meters
+	cpp_gen.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	cpp_gen.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	cpp_gen.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	cpp_gen.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	cpp_gen.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	cpp_gen.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	cpp_gen.beach_y_threshold = gd_gen.beach_y_threshold
+	cpp_gen.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	cpp_gen.marble_jitter_seed = gd_gen.marble_jitter_seed
+	cpp_gen.marble_rare_threshold = gd_gen.marble_rare_threshold
+	cpp_gen.marble_dark_threshold = gd_gen.marble_dark_threshold
+	cpp_gen.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	cpp_gen.bedrock_material_id = BEDROCK_MATERIAL_ID
+	cpp_gen.world_floor_voxel_y = WORLD_FLOOR_VOXEL_Y
+	cpp_gen.sea_level_voxels = SEA_LEVEL_VOXELS
+	# Phase 4b config — match the GD generator's snow_line_* + load id 13.
+	cpp_gen.snow_material_id = SNOW_MATERIAL_ID
+	cpp_gen.snow_line_voxels = gd_gen.snow_line_voxels
+	cpp_gen.snow_line_jitter_voxels = gd_gen.snow_line_jitter_voxels
+	cpp_gen.snow_line_jitter_block_size = gd_gen.snow_line_jitter_block_size
+	cpp_gen.snow_line_seed = gd_gen.snow_line_seed
+	cpp_gen.snow_line_max_lod = gd_gen.snow_line_max_lod
+
+	var mismatches: int = 0
+	var voxels_checked: int = 0
+	var snow_voxels: int = 0   # how many "snow" voxels we actually saw (sanity check)
+	var dumped: int = 0
+	var chunks_with_mismatches: int = 0
+
+	for origin in test_origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, TEST_LOD)
+
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, TEST_LOD)
+
+		var chunk_mismatched: bool = false
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v == SNOW_MATERIAL_ID:
+						snow_voxels += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var wx: int = origin.x + cx
+							var wy: int = origin.y + cy
+							var wz: int = origin.z + cz
+							printerr("[Parity] snow TYPE mismatch at origin=%s local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								origin, cx, cy, cz, wx, wy, wz, gd_v, cpp_v
+							])
+							dumped += 1
+		if chunk_mismatched:
+			chunks_with_mismatches += 1
+
+	if mismatches == 0:
+		print("[Parity] chunk_bytes_snow: %d / %d voxels match (LOD 0, snow_line=%d, snow voxels observed=%d) across %d chunks." % [
+			voxels_checked, voxels_checked, SNOW_LINE_VOXELS, snow_voxels, test_origins.size()
+		])
+		if snow_voxels == 0:
+			printerr("[Parity] chunk_bytes_snow: WARNING — zero snow voxels observed; snow tier not actually exercised. Lower snow_line_voxels.")
+	else:
+		printerr("[Parity] chunk_bytes_snow: %d / %d voxels mismatched across %d / %d chunks." % [
+			mismatches, voxels_checked, chunks_with_mismatches, test_origins.size()
+		])
+
+	return mismatches

@@ -95,6 +95,25 @@ int CubicHeightmapGeneratorCpp::get_world_floor_voxel_y() const { return _world_
 void CubicHeightmapGeneratorCpp::set_sea_level_voxels(int p_value) { _sea_level_voxels = p_value; }
 int CubicHeightmapGeneratorCpp::get_sea_level_voxels() const { return _sea_level_voxels; }
 
+// Phase 4b setters/getters
+void CubicHeightmapGeneratorCpp::set_snow_material_id(int p_value) { _snow_material_id = p_value; }
+int CubicHeightmapGeneratorCpp::get_snow_material_id() const { return _snow_material_id; }
+
+void CubicHeightmapGeneratorCpp::set_snow_line_voxels(int p_value) { _snow_line_voxels = p_value; }
+int CubicHeightmapGeneratorCpp::get_snow_line_voxels() const { return _snow_line_voxels; }
+
+void CubicHeightmapGeneratorCpp::set_snow_line_jitter_voxels(int p_value) { _snow_line_jitter_voxels = p_value; }
+int CubicHeightmapGeneratorCpp::get_snow_line_jitter_voxels() const { return _snow_line_jitter_voxels; }
+
+void CubicHeightmapGeneratorCpp::set_snow_line_jitter_block_size(int p_value) { _snow_line_jitter_block_size = p_value; }
+int CubicHeightmapGeneratorCpp::get_snow_line_jitter_block_size() const { return _snow_line_jitter_block_size; }
+
+void CubicHeightmapGeneratorCpp::set_snow_line_seed(int p_value) { _snow_line_seed = p_value; }
+int CubicHeightmapGeneratorCpp::get_snow_line_seed() const { return _snow_line_seed; }
+
+void CubicHeightmapGeneratorCpp::set_snow_line_max_lod(int p_value) { _snow_line_max_lod = p_value; }
+int CubicHeightmapGeneratorCpp::get_snow_line_max_lod() const { return _snow_line_max_lod; }
+
 // ----- Core: ground_y at a world (x, z) column ---------------------------
 //
 // Mirror of scripts/CubicHeightmapGenerator.gd _ground_y_at (line 572).
@@ -199,6 +218,18 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
     const int sea_level_v = _sea_level_voxels;
     const bool write_water = (lod == 0);
 
+    // Phase 4b caches — snow line (Tier 2). Gated by snow_material_id != 0
+    // (mirrors the GD `snow_id != 0` check that triggers when the
+    // snow.tres resource was loaded) and snow_line_max_lod.
+    const int snow_id = _snow_material_id;
+    const int snow_alt_voxels = _snow_line_voxels;
+    const int snow_block = _snow_line_jitter_block_size < 1 ? 1 : _snow_line_jitter_block_size;
+    const double snow_jitter_amp = static_cast<double>(_snow_line_jitter_voxels);
+    const int64_t snow_seed = _snow_line_seed;
+    const bool run_snow_line = snow_id != 0
+            && _snow_line_max_lod >= 0
+            && lod <= _snow_line_max_lod;
+
     // Walk every (x, z) column. For each, compute ground_y once; pick the
     // top-band material (grass or sand); then walk Y selecting band by
     // depth from ground_y. Phase 3 implements GD's plan-Tier 1 (bands) +
@@ -216,6 +247,29 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
             int top_id = GRASS_MATERIAL_ID;
             if (ground_y <= beach_y) {
                 top_id = SAND_MATERIAL_ID;
+            }
+
+            // Phase 4b — Tier 2 snow line. Mirrors the GD inner-loop
+            // override: non-cliff columns above (snow_alt + jitter) get
+            // their top voxel turned to snow. Cliff slope (Tier 1) isn't
+            // ported yet, so `column_is_cliff = false` is implicit here;
+            // the parity harness keeps GD's cliff_rule_max_lod = -1 so
+            // both sides agree.
+            if (run_snow_line && ground_y >= snow_alt_voxels) {
+                // GD uses integer-division: world_{x,z} / snow_block.
+                // GDScript / on ints truncates toward zero; C++ / on
+                // signed ints also truncates toward zero in C++11+.
+                // Match by using the same operator.
+                const double sj = (voxel_gen::math::hash3(
+                                           static_cast<int64_t>(world_x) / snow_block,
+                                           0,
+                                           static_cast<int64_t>(world_z) / snow_block,
+                                           snow_seed)
+                                   - 0.5)
+                        * 2.0 * snow_jitter_amp;
+                if (static_cast<double>(ground_y) >= static_cast<double>(snow_alt_voxels) + sj) {
+                    top_id = snow_id;
+                }
             }
 
             // Phase 4a: per-column water-emission gate. Three conditions
@@ -425,6 +479,49 @@ void CubicHeightmapGeneratorCpp::_bind_methods() {
                          &CubicHeightmapGeneratorCpp::get_sea_level_voxels);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "sea_level_voxels"),
                  "set_sea_level_voxels", "get_sea_level_voxels");
+
+    // Phase 4b bindings — snow line
+    ClassDB::bind_method(D_METHOD("set_snow_material_id", "value"),
+                         &CubicHeightmapGeneratorCpp::set_snow_material_id);
+    ClassDB::bind_method(D_METHOD("get_snow_material_id"),
+                         &CubicHeightmapGeneratorCpp::get_snow_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_material_id"),
+                 "set_snow_material_id", "get_snow_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_snow_line_voxels", "value"),
+                         &CubicHeightmapGeneratorCpp::set_snow_line_voxels);
+    ClassDB::bind_method(D_METHOD("get_snow_line_voxels"),
+                         &CubicHeightmapGeneratorCpp::get_snow_line_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_line_voxels"),
+                 "set_snow_line_voxels", "get_snow_line_voxels");
+
+    ClassDB::bind_method(D_METHOD("set_snow_line_jitter_voxels", "value"),
+                         &CubicHeightmapGeneratorCpp::set_snow_line_jitter_voxels);
+    ClassDB::bind_method(D_METHOD("get_snow_line_jitter_voxels"),
+                         &CubicHeightmapGeneratorCpp::get_snow_line_jitter_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_line_jitter_voxels"),
+                 "set_snow_line_jitter_voxels", "get_snow_line_jitter_voxels");
+
+    ClassDB::bind_method(D_METHOD("set_snow_line_jitter_block_size", "value"),
+                         &CubicHeightmapGeneratorCpp::set_snow_line_jitter_block_size);
+    ClassDB::bind_method(D_METHOD("get_snow_line_jitter_block_size"),
+                         &CubicHeightmapGeneratorCpp::get_snow_line_jitter_block_size);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_line_jitter_block_size"),
+                 "set_snow_line_jitter_block_size", "get_snow_line_jitter_block_size");
+
+    ClassDB::bind_method(D_METHOD("set_snow_line_seed", "value"),
+                         &CubicHeightmapGeneratorCpp::set_snow_line_seed);
+    ClassDB::bind_method(D_METHOD("get_snow_line_seed"),
+                         &CubicHeightmapGeneratorCpp::get_snow_line_seed);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_line_seed"),
+                 "set_snow_line_seed", "get_snow_line_seed");
+
+    ClassDB::bind_method(D_METHOD("set_snow_line_max_lod", "value"),
+                         &CubicHeightmapGeneratorCpp::set_snow_line_max_lod);
+    ClassDB::bind_method(D_METHOD("get_snow_line_max_lod"),
+                         &CubicHeightmapGeneratorCpp::get_snow_line_max_lod);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_line_max_lod"),
+                 "set_snow_line_max_lod", "get_snow_line_max_lod");
 
     // Core API
     ClassDB::bind_method(D_METHOD("compute_ground_y", "world_x", "world_z"),

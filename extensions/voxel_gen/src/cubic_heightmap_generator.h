@@ -116,6 +116,31 @@ public:
     void set_sea_level_voxels(int p_value);
     int get_sea_level_voxels() const;
 
+    // --- Phase 4b: snow line (Tier 2) ---
+    //
+    // Non-cliff columns whose ground_y crosses (snow_line_voxels + jitter)
+    // get their top voxel replaced with snow. Jitter is a hash3 lookup
+    // bucketed at snow_line_jitter_block_size, scaled by
+    // snow_line_jitter_voxels. snow_material_id=0 disables the tier
+    // (mirrors the GD `snow_id != 0` gate).
+    void set_snow_material_id(int p_value);
+    int get_snow_material_id() const;
+
+    void set_snow_line_voxels(int p_value);
+    int get_snow_line_voxels() const;
+
+    void set_snow_line_jitter_voxels(int p_value);
+    int get_snow_line_jitter_voxels() const;
+
+    void set_snow_line_jitter_block_size(int p_value);
+    int get_snow_line_jitter_block_size() const;
+
+    void set_snow_line_seed(int p_value);
+    int get_snow_line_seed() const;
+
+    void set_snow_line_max_lod(int p_value);
+    int get_snow_line_max_lod() const;
+
     // --- Core API (used by tests + by the adapter) ---
     // Mirrors the GD generator's _ground_y_at. Returns the voxel-Y at
     // which solid ground ends and air begins for the column (world_x, world_z).
@@ -160,4 +185,12 @@ private:
     int _bedrock_material_id = 0;       // 0 = bedrock row disabled
     int _world_floor_voxel_y = -300;    // matches GD WORLD_FLOOR_VOXEL_Y
     int _sea_level_voxels = 72;         // matches GD SEA_LEVEL_VOXELS
+
+    // Phase 4b (snow line — Tier 2)
+    int _snow_material_id = 0;          // 0 = snow tier disabled
+    int _snow_line_voxels = 30000;      // GD default — effectively off until lowered
+    int _snow_line_jitter_voxels = 30;
+    int _snow_line_jitter_block_size = 8;
+    int _snow_line_seed = 2;
+    int _snow_line_max_lod = 2;
 };
