@@ -286,6 +286,43 @@ const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
 # get_node_or_null guards against custom Player3D instances that don't
 # include one (e.g. headless tests).
 
+@onready var _camera_target: Node3D = get_node_or_null("CameraTarget") as Node3D
+# Cached at _ready. Used by _smooth_camera_y to apply a Y offset that
+# damps the small per-frame Y bobbing the body undergoes while walking
+# over voxel ledges (auto-step + slope adjustments). See
+# _smooth_camera_y below for the gating + math.
+
+# Baseline Y of CameraTarget in local space (matches the .tscn value).
+# The smoothing system applies offsets RELATIVE to this baseline so a
+# return-to-zero offset always re-centres the camera at chest height.
+const CAMERA_TARGET_BASE_Y: float = 1.5
+
+# Half-life of the Y smoothing — every CAMERA_Y_SMOOTH_HALFLIFE_S the
+# offset between smoothed and real body Y halves. 0.08 s ≈ 5 frames at
+# 60 fps; small enough that the lag isn't perceptible, large enough
+# that single-voxel auto-step bumps (≈ 0.167 m at 6 vox/m) get
+# noticeably smoothed.
+const CAMERA_Y_SMOOTH_HALFLIFE_S: float = 0.08
+
+# Hard cap on how far the smoothed Y is allowed to lag behind the real
+# Y. Stops the camera from drifting away during a long slope climb;
+# also caps the snap-back distance if the gate suddenly flips off.
+# 0.5 m ≈ 3 voxels — comfortably bounded.
+const CAMERA_Y_SMOOTH_MAX_OFFSET: float = 0.5
+
+# |velocity.y| above this disables smoothing — jumps and falls need
+# 1:1 camera response so the player feels the air-time clearly. The
+# is_on_floor() gate handles the obvious cases; this threshold catches
+# the frame the jump initiates (player still touches floor but vel.y
+# is already + JUMP_VELOCITY).
+const CAMERA_Y_JUMP_GATE_VEL: float = 1.0
+
+# Smoothing state — _camera_smoothed_y is the camera's "memory" of
+# where the body was, lerped toward the body's actual Y. Difference
+# between the two is applied as a CameraTarget.position.y offset.
+var _camera_smoothed_y: float = 0.0
+var _camera_smoothed_initialized: bool = false
+
 
 const FLY_SPEED_MULT: float = 10.0
 # Multiplier on walk speed while flying. 10x means ~50 m/s — fast
@@ -454,6 +491,15 @@ func _physics_process(delta: float) -> void:
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner(delta)
 
+	# Camera Y smoothing — applies a small offset to CameraTarget so the
+	# camera glides over the body's per-frame Y bobs while walking. Gated
+	# off during jumps / falls so air-time response stays 1:1. Cheap,
+	# called every physics frame regardless. Profiled so the new cost is
+	# visible in the F3 overlay.
+	var _t_cam_start: int = Time.get_ticks_usec()
+	_smooth_camera_y(delta)
+	var _t_cam_us: int = Time.get_ticks_usec() - _t_cam_start
+
 	var _t_view_start: int = Time.get_ticks_usec()
 	_update_viewer_lookahead()
 	var _t_view_us: int = Time.get_ticks_usec() - _t_view_start
@@ -464,6 +510,7 @@ func _physics_process(delta: float) -> void:
 	var prof := get_node_or_null("/root/Profiler")
 	if prof != null:
 		prof.record("PHYS", "Player3D", _elapsed)
+		prof.record("PHYS", "Player3D_camera_smooth", _t_cam_us)
 		prof.record("PHYS", "Player3D_viewer_lookahead", _t_view_us)
 
 
@@ -517,6 +564,62 @@ func _update_viewer_lookahead() -> void:
 		offset *= VIEWER_LOOKAHEAD_MAX_OFFSET_M / offset_len
 
 	_voxel_viewer.position = offset
+
+
+func _smooth_camera_y(delta: float) -> void:
+	# Damps the per-frame Y bobbing the body undergoes walking over
+	# voxel ledges (auto-step + slope adjustments). The camera "lags"
+	# slightly behind the body's Y so the eye sees a smooth curve
+	# instead of single-voxel steps.
+	#
+	# Math: maintain `_camera_smoothed_y`, a value that lerps toward the
+	# real body Y with a half-life of CAMERA_Y_SMOOTH_HALFLIFE_S. The
+	# offset between the two (smoothed - real) is applied as the
+	# CameraTarget's local Y adjustment, so the camera's global Y =
+	# body_y + (BASE + offset) = body_y + BASE + (smoothed - body_y) =
+	# smoothed + BASE. In other words the camera renders at chest
+	# height above the SMOOTHED body Y, not the raw one.
+	#
+	# Gates:
+	#   * not on floor: snap, no smoothing (player is falling/jumping
+	#     and needs 1:1 camera feedback for air time)
+	#   * |velocity.y| > CAMERA_Y_JUMP_GATE_VEL: same — catches the
+	#     frame the jump initiates where is_on_floor() may still be
+	#     true but vel.y is already up
+	#   * fly mode (handled implicitly: _physics_process_flying does
+	#     its own move_and_slide; is_on_floor() returns false because
+	#     CharacterBody3D's floor detection runs in move_and_slide)
+	#
+	# Cheap (~1 µs/frame). No allocations.
+	if _camera_target == null:
+		return
+	var raw_y: float = global_position.y
+	if not _camera_smoothed_initialized:
+		_camera_smoothed_y = raw_y
+		_camera_smoothed_initialized = true
+		_camera_target.position.y = CAMERA_TARGET_BASE_Y
+		return
+
+	var smoothing_active: bool = is_on_floor() and absf(velocity.y) < CAMERA_Y_JUMP_GATE_VEL
+	if not smoothing_active:
+		# Jumping / falling / launched — snap to body so the camera
+		# response is fully responsive.
+		_camera_smoothed_y = raw_y
+		_camera_target.position.y = CAMERA_TARGET_BASE_Y
+		return
+
+	# Frame-rate-independent exponential lerp toward the real body Y.
+	# alpha = 1 - 0.5 ^ (delta / halflife) gives the fraction to lerp
+	# this frame so the half-life is exact regardless of frame rate.
+	var alpha: float = 1.0 - pow(0.5, delta / CAMERA_Y_SMOOTH_HALFLIFE_S)
+	_camera_smoothed_y = lerp(_camera_smoothed_y, raw_y, alpha)
+
+	# Apply the lag as a local Y offset on CameraTarget. Clamped so a
+	# long climb (smoothed never catches up) can't push the camera
+	# below the player's feet or above their head.
+	var offset_y: float = _camera_smoothed_y - raw_y
+	offset_y = clampf(offset_y, -CAMERA_Y_SMOOTH_MAX_OFFSET, CAMERA_Y_SMOOTH_MAX_OFFSET)
+	_camera_target.position.y = CAMERA_TARGET_BASE_Y + offset_y
 
 
 func _physics_process_inner(delta: float) -> void:
