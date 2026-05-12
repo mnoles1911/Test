@@ -224,7 +224,7 @@ For deep mechanics, read the script header in each `.gd` file. This is a quick r
 
 - `VoxelEditManager.gd` — async edit queue, NoEditZone gate, EditedChunkRegistry, `WORLD_GENERATOR_VERSION` stamping. **Always route voxel writes through this autoload.** Emits `edit_applied` signal.
 - `NoEditZoneRegistry.gd` — registers `no_edit_zone` group Area3Ds. API: `is_point_inside_no_edit_zone(world_pos)`.
-- `CubicHeightmapGeneratorCpp` (C++) + `CubicHeightmapGeneratorAdapter.gd` — the active World3D generator since 2026-05-11. C++ Resource holds the inner loop (`extensions/voxel_gen/src/cubic_heightmap_generator.cpp`); a thin GDScript adapter extends `VoxelGeneratorScript` and forwards `_generate_block` + `set_ore_materials` / `set_disk_materials` / `get_ground_voxel_y_at` to it. The legacy GDScript `CubicHeightmapGenerator.gd` is still on disk (used by `GeneratorParityHarness.gd` and tier-iteration probes) but no live scene references it. Retire in Phase 6.
+- `CubicHeightmapGeneratorCpp` (C++) + `CubicHeightmapGeneratorAdapter.gd` — the World3D terrain generator (Mira) since 2026-05-11. C++ Resource holds the inner loop (`extensions/voxel_gen/src/cubic_heightmap_generator.cpp`); a thin GDScript adapter extends `VoxelGeneratorScript` and forwards `_generate_block` + `set_ore_materials` / `set_disk_materials` / `get_ground_voxel_y_at` to it. The legacy GDScript `CubicHeightmapGenerator.gd` and its parity harness were retired in Phase 6 (2026-05-12); the C++ class is the canonical source for the cubic generator's tier rules.
 - `WorldClock.gd` — in-game time (240 real s = 1 game hour). Signals: `hour_changed`, `time_of_day_changed`, `day_changed`. Pauses during Dialogic.
 - `BarkManager.gd` — bark pools from `dialogue/scripts/barks/{category}/{npc_id}.txt`, spatial audio from `assets/audio/barks/`.
 - `WaterFlowManager.gd` — water query + flow sim. Queries (`is_position_in_water`, `get_water_level_at`, `get_flow_velocity_at`) read `CHANNEL_DATA5` directly via `VoxelTool` (DATA5 because Zylann reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS). Flow tick at 4 Hz within 20 m of player; pre-copies DATA5 + COLOR + chunk-above-DATA5 buffers once per chunk. Subscribes to `VoxelEditManager.edit_applied`. API: queries above, `add_source` (routes through `VoxelEditManager.queue_set_water_voxel`), `set_horizon_plane_y` / `get_horizon_plane_y`, `set_global_wind`. Flow rules: gravity drop, lateral spread (level-1 to 4 neighbours), monotone decay; NoEditZones with `blocks_water_flow=true` act as walls. Water persists via the chunk SQLite stream — no extra save key.
@@ -251,7 +251,7 @@ For deep mechanics, read the script header in each `.gd` file. This is a quick r
 **Dev tools (not shipped, live in `scripts/_dev/` and `scenes/_dev/`):**
 - `WorldBakeController.gd` + `scenes/_dev/BakeWorld.tscn` (Copper Isles) + `scenes/_dev/BakeWorld3D.tscn` (Mira / C++ generator) — UI-driven bake that walks a `VoxelViewer` across the XZ grid, streams + persists every chunk to a baseline SQLite. Controller is generator-agnostic; `@export`s on the scene node tune `wait_per_position_s` (1 s for C++, 6 s for the GD heightmap), Y-clip range, etc. Run in-game; tile-classifier skips DEEP_OCEAN; LAND uses a single ground-anchored stop.
 - `SkirtBaker.gd` — builds the horizon-skirt ArrayMesh from the Copper Isles EXR (~12 800 tris for 5 km map). Saves `assets/voxel/copper_isles_skirt.res`. Copper Isles only.
-- `GeneratorParityHarness.gd` — `@tool` EditorScript that runs ~10 chunk-byte diffs across hash3 / cliff_threshold / ground_y / 7 chunk tests, comparing the legacy GD `CubicHeightmapGenerator.gd` against `CubicHeightmapGeneratorCpp`. The gate every C++ porting phase had to clear. Re-run before any change to either generator's tier rules.
+- `ParityProbe` (C++ class in `extensions/voxel_gen/`) — exposes `hash3` + `cliff_threshold_for_angle_voxels` from the C++ math layer so GDScript-side parity harnesses can verify bit-exact agreement with the GD `VoxelGenerationMath` originals. Retained between ports as scaffolding for the next C++ port. The cubic-era harness `GeneratorParityHarness.gd` was retired in Phase 6 along with the GD generator it was comparing against; rebuild a parity harness scoped to the new port when porting `CopperIslesHeightmapGenerator.gd` (or any future GD→C++ migration).
 - `CombatTestBootstrap.gd` + `scenes/_dev/CombatTest.tscn` — flat dev arena with three placeholder goblins. F1 debug panel: R reset, Q quit, F8 kill nearest, F9 wound nearest. Spear pre-equipped.
 
 **Specified in design docs but not yet implemented** (build in dependency order):
@@ -284,7 +284,8 @@ call. Mirror this for any future port.
 
 **Done:**
 - `CubicHeightmapGeneratorCpp` — all 6 tier rules + bedrock + water byte +
-  ore/disk POD snapshots. Parity-verified by `GeneratorParityHarness.gd`.
+  ore/disk POD snapshots. Was parity-verified by a cubic-era `GeneratorParityHarness.gd`
+  that has since been retired (Phase 6); the C++ class is the canonical source now.
 
 **Likely-worthwhile next targets**, in rough order of payoff vs. effort:
 
@@ -334,8 +335,10 @@ elsewhere):
 **Process for any future port:**
 1. Pick a target with a clearly-bounded function surface; prefer pure-math hot
    loops over anything that touches the SceneTree (worker threads can't).
-2. Write the parity harness FIRST (or extend `GeneratorParityHarness.gd`).
-   Bit-exact output on the same inputs is the only acceptable gate.
+2. Write the parity harness FIRST as a `@tool` EditorScript in `scripts/_dev/`.
+   Use `ParityProbe` to compare C++ math primitives against `VoxelGenerationMath`,
+   and per-chunk byte diffs to compare generated `VoxelBuffer`s. Bit-exact output
+   on the same inputs is the only acceptable gate.
 3. Set up POD snapshot infra if the C++ side needs Resource data that lives in
    GDScript (mirror the `set_ore_materials(Array[Dictionary])` adapter pattern).
 4. Land the port in sub-phases each ending in a green parity harness — never
@@ -359,7 +362,7 @@ There is no CLI build, lint, or test command for the Godot side. To verify chang
    - `scenes/_dev/CombatTest.tscn` — combat dev arena, F1 debug menu, spear pre-equipped.
 3. Check the Output panel.
 
-The C++ GDExtension has its own build: `python -m SCons platform=windows target=template_debug use_mingw=yes -j8` from `extensions/voxel_gen/`. Godot must be closed or scons may fail on DLL replacement. After build, reload the Godot editor. Parity-check by running `scripts/_dev/GeneratorParityHarness.gd` via File → Run.
+The C++ GDExtension has its own build: `python -m SCons platform=windows target=template_debug use_mingw=yes -j8` from `extensions/voxel_gen/`. Godot must be closed or scons may fail on DLL replacement. After build, reload the Godot editor. When a port is in flight, parity-check via the port's own `@tool` harness in `scripts/_dev/` (File → Run).
 
 Do not write shell commands that try to run Godot headlessly — there is no such setup here.
 
