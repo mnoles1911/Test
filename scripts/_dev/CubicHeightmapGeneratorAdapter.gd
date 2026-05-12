@@ -80,3 +80,14 @@ func set_disk_materials(list: Array[VoxelMaterial]) -> void:
 			"disk_max_distance_to_water_voxels": m.disk_max_distance_to_water_voxels,
 		}
 	cpp_impl.set_disk_materials(translated)
+
+
+# The bake controller (scripts/_dev/WorldBakeController.gd) calls this
+# duck-typed off the terrain's generator during tile classification.
+# CopperIslesHeightmapGenerator defines it; the GDScript Cubic generator
+# does not. We forward to cpp_impl so the bake works against this adapter
+# without controller-side knowledge of which generator is attached.
+func get_ground_voxel_y_at(world_x: int, world_z: int) -> int:
+	if cpp_impl == null:
+		return 0
+	return cpp_impl.get_ground_voxel_y_at(world_x, world_z)

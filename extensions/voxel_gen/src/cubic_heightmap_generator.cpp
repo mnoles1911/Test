@@ -855,6 +855,8 @@ void CubicHeightmapGeneratorCpp::_bind_methods() {
     // Core API
     ClassDB::bind_method(D_METHOD("compute_ground_y", "world_x", "world_z"),
                          &CubicHeightmapGeneratorCpp::compute_ground_y);
+    ClassDB::bind_method(D_METHOD("get_ground_voxel_y_at", "world_x", "world_z"),
+                         &CubicHeightmapGeneratorCpp::get_ground_voxel_y_at);
     ClassDB::bind_method(
             D_METHOD("generate_block_into_buffer", "out_buffer", "origin_in_voxels", "lod"),
             &CubicHeightmapGeneratorCpp::generate_block_into_buffer);

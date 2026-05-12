@@ -222,6 +222,13 @@ public:
     // Pure function of the configured properties. Worker-thread safe.
     int compute_ground_y(int world_x, int world_z) const;
 
+    // Public alias kept in sync with CopperIslesHeightmapGenerator's API
+    // shape. The bake controller (`scripts/_dev/WorldBakeController.gd`)
+    // calls this duck-typed off whichever generator is attached to the
+    // terrain when classifying tiles as LAND / COAST / OCEAN. Same
+    // semantics as compute_ground_y; the rename is purely interop.
+    int get_ground_voxel_y_at(int world_x, int world_z) const { return compute_ground_y(world_x, world_z); }
+
     // Called by the GDScript adapter from _generate_block on Zylann's worker
     // pool. out_buffer is a Zylann VoxelBuffer (no godot-cpp wrapper, so
     // it's passed as Variant and we Variant::call into it).
