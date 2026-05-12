@@ -45,7 +45,6 @@ library = ExtResource("3_blocky_library")
 
 [node name="BakeWorld3D" type="Node3D" unique_id=798012112]
 script = ExtResource("1_controller")
-wait_per_position_s = 1.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1580842735]
 environment = SubResource("Env_1")
