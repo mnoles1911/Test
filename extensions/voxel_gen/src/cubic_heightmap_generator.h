@@ -24,10 +24,35 @@
 #include <godot_cpp/classes/fast_noise_lite.hpp>
 #include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
 
 #include <cstdint>
+#include <vector>
+
+// Phase 4d POD snapshots. The Resource class accepts Array[Dictionary]
+// from the GDScript adapter (which translates VoxelMaterial -> Dict on
+// the main thread), parses into these structs once, and stores them in
+// std::vector for the worker-thread inner loop to iterate without
+// touching the SceneTree. Mirrors the GDScript snapshot pattern
+// documented at scripts/CubicHeightmapGenerator.gd:386-402.
+struct OreMaterialPOD {
+    int material_id = 0;
+    int replaces_material_id = 0;
+    int min_altitude_voxels = 0;
+    int max_altitude_voxels = 0;
+    double ore_noise_threshold = 0.0;
+    double ore_noise_scale = 0.0;
+};
+
+struct DiskMaterialPOD {
+    int material_id = 0;
+    int disk_radius_voxels = 0;
+    int disk_half_height_voxels = 0;
+    double disk_anchor_density = 0.0;
+    int disk_max_distance_to_water_voxels = 0;
+};
 
 class CubicHeightmapGeneratorCpp : public godot::Resource {
     GDCLASS(CubicHeightmapGeneratorCpp, godot::Resource)
@@ -156,6 +181,41 @@ public:
     void set_cliff_rule_max_lod(int p_value);
     int get_cliff_rule_max_lod() const;
 
+    // --- Phase 4d: ore + disk material snapshots ---
+    //
+    // Accept Array[Dictionary] from the GD adapter. Each dict must have
+    // the same keys as the corresponding VoxelMaterial.gd fields. Missing
+    // keys fall through to POD defaults. Called on the main thread from
+    // the bootstrap; worker threads read the resulting std::vector.
+    //
+    // Inner loop reads in 4e (ores) and 4f (disks). 4d just lands the
+    // plumbing — any push here is a no-op against the chunk output.
+    void set_ore_materials(const godot::Array &p_list);
+    int get_ore_material_count() const;
+
+    void set_disk_materials(const godot::Array &p_list);
+    int get_disk_material_count() const;
+
+    // --- Phase 4e: ore veins (Tier 4) ---
+    // LOD gate for the per-voxel ore-vein hash. -1 disables the tier
+    // entirely. Per-ore params live in the OreMaterialPOD snapshot.
+    void set_ore_vein_max_lod(int p_value);
+    int get_ore_vein_max_lod() const;
+
+    // --- Phase 4f: clay/gravel disks (Tier 5) ---
+    void set_disk_rule_max_lod(int p_value);
+    int get_disk_rule_max_lod() const;
+
+    void set_disk_anchor_grid_voxels(int p_value);
+    int get_disk_anchor_grid_voxels() const;
+
+    // --- Phase 4g: cliff ore outcrops (Tier 6) ---
+    void set_cliff_ore_outcrop_chance(double p_value);
+    double get_cliff_ore_outcrop_chance() const;
+
+    void set_cliff_ore_seed(int p_value);
+    int get_cliff_ore_seed() const;
+
     // --- Core API (used by tests + by the adapter) ---
     // Mirrors the GD generator's _ground_y_at. Returns the voxel-Y at
     // which solid ground ends and air begins for the column (world_x, world_z).
@@ -214,9 +274,33 @@ private:
     int _cliff_slope_threshold_voxels = 10;
     int _cliff_rule_max_lod = 2;
 
+    // Phase 4d (snapshot infrastructure).
+    // Set on main thread via set_*_materials, read on worker threads.
+    // The "publish before streaming starts" convention from the GD
+    // generator carries over verbatim — no atomic/locking needed.
+    std::vector<OreMaterialPOD> _ore_materials;
+    std::vector<DiskMaterialPOD> _disk_materials;
+
+    // Phase 4e (ore veins — Tier 4)
+    int _ore_vein_max_lod = 1;
+
+    // Phase 4f (disks — Tier 5)
+    int _disk_rule_max_lod = 1;
+    int _disk_anchor_grid_voxels = 24;
+
+    // Phase 4g (cliff outcrops — Tier 6)
+    double _cliff_ore_outcrop_chance = 0.03;
+    int _cliff_ore_seed = 5;
+
     // True when the column at (world_x, world_z) has a drop >=
     // cliff_slope_threshold_voxels to any of its 4-neighbour columns
     // at ± cliff_slope_sample_distance_voxels away. Pure function of
     // ground_y at the 5 sample points — worker-thread safe.
     bool column_is_cliff(int world_x, int world_z, int this_ground_y) const;
+
+    // Tier 5 helper. Mirrors GD _disk_at_column. Returns pointer to a
+    // disk POD if (world_x, world_z) sits inside a disk anchor footprint
+    // at this elevation, or nullptr otherwise. The pointer is valid for
+    // the lifetime of _disk_materials, which is stable during streaming.
+    const DiskMaterialPOD *disk_at_column(int world_x, int world_z, int ground_y) const;
 };

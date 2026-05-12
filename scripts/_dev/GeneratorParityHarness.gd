@@ -66,16 +66,20 @@ func _run() -> void:
 	var chunk_lod0_mismatches: int = _test_chunk_bytes_lod0()
 	var snow_mismatches: int = _test_chunk_bytes_snow()
 	var cliff_chunk_mismatches: int = _test_chunk_bytes_cliff()
+	var ore_mismatches: int = _test_chunk_bytes_ores()
+	var disk_mismatches: int = _test_chunk_bytes_disks()
+	var outcrop_mismatches: int = _test_chunk_bytes_outcrops()
 	var total: int = hash3_mismatches + cliff_mismatches + ground_y_mismatches \
-			+ chunk_mismatches + chunk_lod0_mismatches + snow_mismatches + cliff_chunk_mismatches
+			+ chunk_mismatches + chunk_lod0_mismatches + snow_mismatches + cliff_chunk_mismatches \
+			+ ore_mismatches + disk_mismatches + outcrop_mismatches
 
 	print("[Parity] =====")
 	if total == 0:
-		print("[Parity] PASS — all checks bit-exact (hash3 + cliff_threshold + ground_y + chunk_bytes + chunk_lod0 + snow + cliff_chunks).")
-		print("[Parity] Phase 4c gate satisfied (cliff slope verified). Safe to proceed.")
+		print("[Parity] PASS — all checks bit-exact (incl. ores + disks + outcrops).")
+		print("[Parity] Phase 4d-g gate satisfied. C++ generator covers every tier the GD original implements.")
 	else:
-		printerr("[Parity] FAIL — %d total mismatches (hash3=%d, cliff_thresh=%d, ground_y=%d, chunk_bytes=%d, chunk_lod0=%d, snow=%d, cliff_chunks=%d)." % [
-			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches, chunk_mismatches, chunk_lod0_mismatches, snow_mismatches, cliff_chunk_mismatches
+		printerr("[Parity] FAIL — %d total mismatches (hash3=%d, cliff_thresh=%d, ground_y=%d, chunk_bytes=%d, chunk_lod0=%d, snow=%d, cliff_chunks=%d, ores=%d, disks=%d, outcrops=%d)." % [
+			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches, chunk_mismatches, chunk_lod0_mismatches, snow_mismatches, cliff_chunk_mismatches, ore_mismatches, disk_mismatches, outcrop_mismatches
 		])
 
 
@@ -499,6 +503,258 @@ func _test_chunk_bytes_lod0() -> int:
 
 func _unused(_x) -> void:
 	pass
+
+
+# --- Phase 4d-g helpers ----------------------------------------------
+
+# Build a configured FastNoiseLite that matches every test on the
+# harness; centralised so the per-test setup stays short.
+func _make_test_noise() -> FastNoiseLite:
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	return noise
+
+
+# Translate Array[VoxelMaterial] → Array[Dictionary] in the exact
+# shape CubicHeightmapGeneratorCpp::set_ore_materials expects. Mirror
+# of the adapter, but inlined so the harness doesn't need the adapter.
+func _ores_to_dicts(list: Array[VoxelMaterial]) -> Array:
+	var out: Array = []
+	out.resize(list.size())
+	for i in list.size():
+		var m: VoxelMaterial = list[i]
+		out[i] = {
+			"material_id": m.material_id,
+			"replaces_material_id": m.replaces_material_id,
+			"min_altitude_voxels": m.min_altitude_voxels,
+			"max_altitude_voxels": m.max_altitude_voxels,
+			"ore_noise_threshold": m.ore_noise_threshold,
+			"ore_noise_scale": m.ore_noise_scale,
+		}
+	return out
+
+
+func _disks_to_dicts(list: Array[VoxelMaterial]) -> Array:
+	var out: Array = []
+	out.resize(list.size())
+	for i in list.size():
+		var m: VoxelMaterial = list[i]
+		out[i] = {
+			"material_id": m.material_id,
+			"disk_radius_voxels": m.disk_radius_voxels,
+			"disk_half_height_voxels": m.disk_half_height_voxels,
+			"disk_anchor_density": m.disk_anchor_density,
+			"disk_max_distance_to_water_voxels": m.disk_max_distance_to_water_voxels,
+		}
+	return out
+
+
+# Build a configured cpp_gen mirroring the supplied gd_gen field-for-field.
+# Skips the snapshot pushes (call set_ore_materials / set_disk_materials
+# separately at the caller site).
+func _cpp_from_gd(gd_gen: CubicHeightmapGenerator) -> CubicHeightmapGeneratorCpp:
+	var c := CubicHeightmapGeneratorCpp.new()
+	c.noise = gd_gen.noise
+	c.height_range_voxels = gd_gen.height_range_voxels
+	c.height_offset_voxels = gd_gen.height_offset_voxels
+	c.quantize_to_meters = gd_gen.quantize_to_meters
+	c.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	c.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	c.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	c.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	c.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	c.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	c.beach_y_threshold = gd_gen.beach_y_threshold
+	c.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	c.marble_jitter_seed = gd_gen.marble_jitter_seed
+	c.marble_rare_threshold = gd_gen.marble_rare_threshold
+	c.marble_dark_threshold = gd_gen.marble_dark_threshold
+	c.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+	c.bedrock_material_id = 6
+	c.world_floor_voxel_y = -300
+	c.sea_level_voxels = 72
+	# Tier gates — copy from gd_gen so the test caller only needs to
+	# tweak one side.
+	c.cliff_rule_max_lod = gd_gen.cliff_rule_max_lod
+	c.cliff_slope_threshold_voxels = gd_gen.cliff_slope_threshold_voxels
+	c.cliff_slope_sample_distance_voxels = gd_gen.cliff_slope_sample_distance_voxels
+	c.snow_line_max_lod = gd_gen.snow_line_max_lod
+	c.ore_vein_max_lod = gd_gen.ore_vein_max_lod
+	c.disk_rule_max_lod = gd_gen.disk_rule_max_lod
+	c.disk_anchor_grid_voxels = gd_gen.disk_anchor_grid_voxels
+	c.cliff_ore_outcrop_chance = gd_gen.cliff_ore_outcrop_chance
+	c.cliff_ore_seed = gd_gen.cliff_ore_seed
+	return c
+
+
+# Compare CHANNEL_TYPE byte-by-byte across `origins` at the given LOD.
+# Returns mismatch count; logs up to VERBOSE_MISMATCH_CAP world coords.
+func _diff_type_chunks(label: String,
+		gd_gen: CubicHeightmapGenerator,
+		cpp_gen: CubicHeightmapGeneratorCpp,
+		origins: Array[Vector3i],
+		test_lod: int) -> int:
+	const CHUNK_SIZE: int = 16
+	var mismatches: int = 0
+	var dumped: int = 0
+	var voxels_checked: int = 0
+	for origin in origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, test_lod)
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, test_lod)
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var stride: int = 1 << test_lod
+							printerr("[Parity] %s TYPE mismatch at origin=%s lod=%d local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								label, origin, test_lod, cx, cy, cz,
+								origin.x + cx * stride, origin.y + cy * stride, origin.z + cz * stride,
+								gd_v, cpp_v
+							])
+							dumped += 1
+	print("[Parity] %s: %d / %d voxels match across %d chunks (LOD %d)." % [
+		label, voxels_checked - mismatches, voxels_checked, origins.size(), test_lod
+	])
+	return mismatches
+
+
+# Phase 4e — ore veins.
+#
+# Two synthetic ore materials, both replacing plain stone (id 1) with
+# different thresholds and altitude bands. Configured loose enough that
+# the noise threshold actually fires inside the test chunks (otherwise
+# the tier is "exercised" but produces no observable ores).
+func _test_chunk_bytes_ores() -> int:
+	const TEST_LOD: int = 0
+	var ores: Array[VoxelMaterial] = []
+	var iron := VoxelMaterial.new()
+	iron.material_id = 15
+	iron.replaces_material_id = 1
+	iron.min_altitude_voxels = -1000
+	iron.max_altitude_voxels = 30000
+	iron.ore_noise_threshold = 0.4   # loose so we get plenty of hits
+	iron.ore_noise_scale = 0.05
+	ores.append(iron)
+	var copper := VoxelMaterial.new()
+	copper.material_id = 16
+	copper.replaces_material_id = 1
+	copper.min_altitude_voxels = -1000
+	copper.max_altitude_voxels = 30000
+	copper.ore_noise_threshold = 0.45
+	copper.ore_noise_scale = 0.04
+	ores.append(copper)
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = _make_test_noise()
+	# Keep other tiers off so the only differentiator is ore behavior.
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	gd_gen.ore_vein_max_lod = 0
+	gd_gen.set_ore_materials(ores)
+
+	var cpp_gen := _cpp_from_gd(gd_gen)
+	cpp_gen.set_ore_materials(_ores_to_dicts(ores))
+
+	var origins: Array[Vector3i] = [
+		Vector3i(0, 0, 0),
+		Vector3i(500, -50, 500),
+		Vector3i(-500, -50, -500),
+		Vector3i(1000, -100, 1000),
+		Vector3i(-1500, 30, -1500),
+	]
+	return _diff_type_chunks("ores", gd_gen, cpp_gen, origins, TEST_LOD)
+
+
+# Phase 4f — clay/gravel disks.
+#
+# Disk material clay (id 5) with a generous anchor density and a radius
+# that means many columns near sea level hit a disk. Chunks straddle
+# the sea level so disk_match's per-column thickness is exercised on
+# the top voxels.
+func _test_chunk_bytes_disks() -> int:
+	const TEST_LOD: int = 0
+	var clay := VoxelMaterial.new()
+	clay.material_id = 5
+	clay.disk_radius_voxels = 8
+	clay.disk_half_height_voxels = 1
+	clay.disk_anchor_density = 0.20   # loose; many anchor cells qualify
+	clay.disk_max_distance_to_water_voxels = 30
+	var disks: Array[VoxelMaterial] = [clay]
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = _make_test_noise()
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = 0
+	gd_gen.set_disk_materials(disks)
+
+	var cpp_gen := _cpp_from_gd(gd_gen)
+	cpp_gen.set_disk_materials(_disks_to_dicts(disks))
+
+	var origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(500, 48, -500),
+		Vector3i(-1000, 48, 1000),
+		Vector3i(1500, 64, 1500),
+	]
+	return _diff_type_chunks("disks", gd_gen, cpp_gen, origins, TEST_LOD)
+
+
+# Phase 4g — cliff ore outcrops.
+#
+# Cliff threshold = 1 (every slope is a cliff), outcrop chance = 0.5
+# (half of cliff columns roll a hit), single iron ore in the list.
+# The outcrop branch composes Tier 1 + Tier 4 — if cliff detection,
+# the dice path, the uniform-pick math, or the altitude band check
+# diverge, mismatches appear at chunk surfaces.
+func _test_chunk_bytes_outcrops() -> int:
+	const TEST_LOD: int = 0
+	var iron := VoxelMaterial.new()
+	iron.material_id = 15
+	iron.replaces_material_id = 1
+	iron.min_altitude_voxels = -1000
+	iron.max_altitude_voxels = 30000
+	iron.ore_noise_threshold = 0.99   # Tier 4 vein essentially off
+	iron.ore_noise_scale = 0.05
+	var ores: Array[VoxelMaterial] = [iron]
+
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = _make_test_noise()
+	gd_gen.cliff_rule_max_lod = 0
+	gd_gen.cliff_slope_threshold_voxels = 1   # everything's a cliff
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	gd_gen.cliff_ore_outcrop_chance = 0.5    # high to get hits in 8 chunks
+	gd_gen.set_ore_materials(ores)
+
+	var cpp_gen := _cpp_from_gd(gd_gen)
+	cpp_gen.set_ore_materials(_ores_to_dicts(ores))
+
+	var origins: Array[Vector3i] = [
+		Vector3i(0, 48, 0),
+		Vector3i(300, 48, 300),
+		Vector3i(-600, 48, 600),
+		Vector3i(1200, 48, -1200),
+		Vector3i(-1500, 64, -1500),
+		Vector3i(2400, 56, 800),
+		Vector3i(-2700, 56, -800),
+		Vector3i(3000, 72, 3000),
+	]
+	return _diff_type_chunks("outcrops", gd_gen, cpp_gen, origins, TEST_LOD)
 
 
 # Phase 4c — cliff slope (Tier 1) parity.

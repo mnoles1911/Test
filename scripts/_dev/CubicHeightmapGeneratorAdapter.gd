@@ -29,3 +29,54 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 		push_warning("CubicHeightmapGeneratorAdapter: no cpp_impl assigned; emitting air")
 		return
 	cpp_impl.generate_block_into_buffer(out_buffer, origin_in_voxels, lod)
+
+
+# --- Phase 4d snapshot translators -----------------------------------
+#
+# The World3DBootstrap / CopperIslesTestBootstrap pattern is
+#   if gen.has_method("set_ore_materials"):
+#       gen.call("set_ore_materials", VoxelMaterialRegistry.get_ore_materials())
+#
+# The bootstrap doesn't know whether `gen` is the GDScript generator or
+# this C++ adapter, so we expose the same method names here. We
+# translate Array[VoxelMaterial] into Array[Dictionary] (plain data the
+# C++ side can parse without reaching into VoxelMaterial.gd) and forward
+# to the C++ resource.
+#
+# Called on the main thread before terrain streaming starts. Worker
+# threads then iterate the std::vector that lives inside cpp_impl
+# without touching the SceneTree.
+
+func set_ore_materials(list: Array[VoxelMaterial]) -> void:
+	if cpp_impl == null:
+		return
+	var translated: Array = []
+	translated.resize(list.size())
+	for i in list.size():
+		var m: VoxelMaterial = list[i]
+		translated[i] = {
+			"material_id": m.material_id,
+			"replaces_material_id": m.replaces_material_id,
+			"min_altitude_voxels": m.min_altitude_voxels,
+			"max_altitude_voxels": m.max_altitude_voxels,
+			"ore_noise_threshold": m.ore_noise_threshold,
+			"ore_noise_scale": m.ore_noise_scale,
+		}
+	cpp_impl.set_ore_materials(translated)
+
+
+func set_disk_materials(list: Array[VoxelMaterial]) -> void:
+	if cpp_impl == null:
+		return
+	var translated: Array = []
+	translated.resize(list.size())
+	for i in list.size():
+		var m: VoxelMaterial = list[i]
+		translated[i] = {
+			"material_id": m.material_id,
+			"disk_radius_voxels": m.disk_radius_voxels,
+			"disk_half_height_voxels": m.disk_half_height_voxels,
+			"disk_anchor_density": m.disk_anchor_density,
+			"disk_max_distance_to_water_voxels": m.disk_max_distance_to_water_voxels,
+		}
+	cpp_impl.set_disk_materials(translated)

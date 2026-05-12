@@ -4,6 +4,7 @@
 
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <cmath>
@@ -144,6 +145,135 @@ bool CubicHeightmapGeneratorCpp::column_is_cliff(int world_x, int world_z, int t
     return max_drop >= _cliff_slope_threshold_voxels;
 }
 
+// ----- Phase 4d: ore + disk material snapshots --------------------------
+//
+// The GDScript adapter translates Array[VoxelMaterial] into Array[Dict]
+// (main thread, before terrain streaming begins). The dicts shape:
+//   ores  -> {material_id, replaces_material_id, min_altitude_voxels,
+//             max_altitude_voxels, ore_noise_threshold, ore_noise_scale}
+//   disks -> {material_id, disk_radius_voxels, disk_half_height_voxels,
+//             disk_anchor_density, disk_max_distance_to_water_voxels}
+// Missing or wrong-typed keys fall through to POD defaults (no crash,
+// no warning — the bootstrap is expected to pass clean data).
+
+void CubicHeightmapGeneratorCpp::set_ore_materials(const Array &p_list) {
+    _ore_materials.clear();
+    _ore_materials.reserve(p_list.size());
+    for (int i = 0; i < p_list.size(); ++i) {
+        Variant v = p_list[i];
+        if (v.get_type() != Variant::DICTIONARY) {
+            continue;
+        }
+        Dictionary d = v;
+        OreMaterialPOD pod;
+        pod.material_id = static_cast<int>(static_cast<int64_t>(d.get("material_id", 0)));
+        pod.replaces_material_id = static_cast<int>(static_cast<int64_t>(d.get("replaces_material_id", 0)));
+        pod.min_altitude_voxels = static_cast<int>(static_cast<int64_t>(d.get("min_altitude_voxels", 0)));
+        pod.max_altitude_voxels = static_cast<int>(static_cast<int64_t>(d.get("max_altitude_voxels", 0)));
+        pod.ore_noise_threshold = static_cast<double>(d.get("ore_noise_threshold", 0.0));
+        pod.ore_noise_scale = static_cast<double>(d.get("ore_noise_scale", 0.0));
+        _ore_materials.push_back(pod);
+    }
+}
+
+int CubicHeightmapGeneratorCpp::get_ore_material_count() const {
+    return static_cast<int>(_ore_materials.size());
+}
+
+void CubicHeightmapGeneratorCpp::set_disk_materials(const Array &p_list) {
+    _disk_materials.clear();
+    _disk_materials.reserve(p_list.size());
+    for (int i = 0; i < p_list.size(); ++i) {
+        Variant v = p_list[i];
+        if (v.get_type() != Variant::DICTIONARY) {
+            continue;
+        }
+        Dictionary d = v;
+        DiskMaterialPOD pod;
+        pod.material_id = static_cast<int>(static_cast<int64_t>(d.get("material_id", 0)));
+        pod.disk_radius_voxels = static_cast<int>(static_cast<int64_t>(d.get("disk_radius_voxels", 0)));
+        pod.disk_half_height_voxels = static_cast<int>(static_cast<int64_t>(d.get("disk_half_height_voxels", 0)));
+        pod.disk_anchor_density = static_cast<double>(d.get("disk_anchor_density", 0.0));
+        pod.disk_max_distance_to_water_voxels = static_cast<int>(static_cast<int64_t>(d.get("disk_max_distance_to_water_voxels", 0)));
+        _disk_materials.push_back(pod);
+    }
+}
+
+int CubicHeightmapGeneratorCpp::get_disk_material_count() const {
+    return static_cast<int>(_disk_materials.size());
+}
+
+// Phase 4e/4f/4g setters/getters
+void CubicHeightmapGeneratorCpp::set_ore_vein_max_lod(int p_value) { _ore_vein_max_lod = p_value; }
+int CubicHeightmapGeneratorCpp::get_ore_vein_max_lod() const { return _ore_vein_max_lod; }
+
+void CubicHeightmapGeneratorCpp::set_disk_rule_max_lod(int p_value) { _disk_rule_max_lod = p_value; }
+int CubicHeightmapGeneratorCpp::get_disk_rule_max_lod() const { return _disk_rule_max_lod; }
+
+void CubicHeightmapGeneratorCpp::set_disk_anchor_grid_voxels(int p_value) { _disk_anchor_grid_voxels = p_value; }
+int CubicHeightmapGeneratorCpp::get_disk_anchor_grid_voxels() const { return _disk_anchor_grid_voxels; }
+
+void CubicHeightmapGeneratorCpp::set_cliff_ore_outcrop_chance(double p_value) { _cliff_ore_outcrop_chance = p_value; }
+double CubicHeightmapGeneratorCpp::get_cliff_ore_outcrop_chance() const { return _cliff_ore_outcrop_chance; }
+
+void CubicHeightmapGeneratorCpp::set_cliff_ore_seed(int p_value) { _cliff_ore_seed = p_value; }
+int CubicHeightmapGeneratorCpp::get_cliff_ore_seed() const { return _cliff_ore_seed; }
+
+// Tier 5 helper. Mirrors scripts/CubicHeightmapGenerator.gd:405 _disk_at_column.
+//
+// GD `floori(x)` rounds toward -inf; `(int)std::floor(x)` matches.
+// GD `int(x)` truncates toward zero; `static_cast<int>(x)` matches.
+// All other integer ops are the same on both sides.
+const DiskMaterialPOD *CubicHeightmapGeneratorCpp::disk_at_column(int world_x, int world_z, int ground_y) const {
+    if (_disk_materials.empty()) {
+        return nullptr;
+    }
+    int max_reach = 0;
+    for (const auto &d : _disk_materials) {
+        if (d.disk_max_distance_to_water_voxels > max_reach) {
+            max_reach = d.disk_max_distance_to_water_voxels;
+        }
+    }
+    const int dy_to_sea = std::abs(ground_y - _sea_level_voxels);
+    if (dy_to_sea > max_reach) {
+        return nullptr;
+    }
+    const int grid = _disk_anchor_grid_voxels < 1 ? 1 : _disk_anchor_grid_voxels;
+    for (const auto &disk : _disk_materials) {
+        if (dy_to_sea > disk.disk_max_distance_to_water_voxels) {
+            continue;
+        }
+        const int r = disk.disk_radius_voxels;
+        if (r <= 0) {
+            continue;
+        }
+        const int ax_min = static_cast<int>(std::floor(static_cast<double>(world_x - r) / static_cast<double>(grid)));
+        const int ax_max = static_cast<int>(std::floor(static_cast<double>(world_x + r) / static_cast<double>(grid)));
+        const int az_min = static_cast<int>(std::floor(static_cast<double>(world_z - r) / static_cast<double>(grid)));
+        const int az_max = static_cast<int>(std::floor(static_cast<double>(world_z + r) / static_cast<double>(grid)));
+        const int64_t density_seed = static_cast<int64_t>(disk.material_id) * 7919;
+        const int64_t jitter_seed = disk.material_id;
+        for (int ax = ax_min; ax <= ax_max; ++ax) {
+            for (int az = az_min; az <= az_max; ++az) {
+                const double density_hash = voxel_gen::math::hash3(ax, 0, az, density_seed);
+                if (density_hash > disk.disk_anchor_density) {
+                    continue;
+                }
+                const double jx = voxel_gen::math::hash3(ax, 1, az, jitter_seed) - 0.5;
+                const double jz = voxel_gen::math::hash3(ax, 2, az, jitter_seed) - 0.5;
+                const int anchor_x = ax * grid + static_cast<int>(jx * static_cast<double>(grid));
+                const int anchor_z = az * grid + static_cast<int>(jz * static_cast<double>(grid));
+                const int dx = world_x - anchor_x;
+                const int dz = world_z - anchor_z;
+                if (dx * dx + dz * dz <= r * r) {
+                    return &disk;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
 // ----- Core: ground_y at a world (x, z) column ---------------------------
 //
 // Mirror of scripts/CubicHeightmapGenerator.gd _ground_y_at (line 572).
@@ -264,6 +394,20 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
     // ground_y resamples at distant LODs.
     const bool run_cliff_rule = _cliff_rule_max_lod >= 0 && lod <= _cliff_rule_max_lod;
 
+    // Phase 4e — ore veins (Tier 4). has_ores feeds Tier 6 outcrops too;
+    // run_ore_veins additionally requires ore_vein_max_lod (Tier 4 only).
+    const bool has_ores = !_ore_materials.empty();
+    const bool run_ore_veins = has_ores
+            && _ore_vein_max_lod >= 0
+            && lod <= _ore_vein_max_lod;
+    const double cliff_ore_chance = _cliff_ore_outcrop_chance;
+    const int64_t cliff_ore_seed = _cliff_ore_seed;
+
+    // Phase 4f — disks (Tier 5). LOD-gated AND requires a non-empty list.
+    const bool run_disk_rule = _disk_rule_max_lod >= 0
+            && lod <= _disk_rule_max_lod
+            && !_disk_materials.empty();
+
     // Walk every (x, z) column. For each, compute ground_y once; pick the
     // top-band material (grass or sand); then walk Y selecting band by
     // depth from ground_y. Phase 3 implements GD's plan-Tier 1 (bands) +
@@ -295,7 +439,27 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
             if (col_is_cliff) {
                 top_id = STONE_MATERIAL_ID;
                 col_dirt_band_end = grass_thick;
-                // Tier 6 (rare ore outcrops) lands in 4g; nothing here yet.
+                // Phase 4g — Tier 6 cliff ore outcrops. Dice + uniform
+                // pick from the ore list, gated by the picked ore's
+                // altitude band. has_ores keeps the dice cost off when
+                // no ores are configured.
+                if (has_ores) {
+                    const double dice = voxel_gen::math::hash3(
+                            world_x, ground_y, world_z, cliff_ore_seed);
+                    if (dice < cliff_ore_chance) {
+                        const double pick = voxel_gen::math::hash3(
+                                world_x, ground_y, world_z, cliff_ore_seed + 1);
+                        int ore_idx = static_cast<int>(pick * static_cast<double>(_ore_materials.size()));
+                        if (ore_idx < 0) ore_idx = 0;
+                        if (ore_idx > static_cast<int>(_ore_materials.size()) - 1)
+                            ore_idx = static_cast<int>(_ore_materials.size()) - 1;
+                        const OreMaterialPOD &ore_pick = _ore_materials[ore_idx];
+                        if (ground_y >= ore_pick.min_altitude_voxels
+                                && ground_y <= ore_pick.max_altitude_voxels) {
+                            top_id = ore_pick.material_id;
+                        }
+                    }
+                }
             }
 
             // Phase 4b — Tier 2 snow line. Mirrors the GD inner-loop
@@ -316,6 +480,16 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
                         * 2.0 * snow_jitter_amp;
                 if (static_cast<double>(ground_y) >= static_cast<double>(snow_alt_voxels) + sj) {
                     top_id = snow_id;
+                }
+            }
+
+            // Phase 4f — per-column disk lookup. Non-cliff columns only.
+            const DiskMaterialPOD *disk_match = nullptr;
+            int disk_thickness = 0;
+            if (run_disk_rule && !col_is_cliff) {
+                disk_match = disk_at_column(world_x, world_z, ground_y);
+                if (disk_match != nullptr) {
+                    disk_thickness = 1 + disk_match->disk_half_height_voxels * 2;
                 }
             }
 
@@ -379,6 +553,37 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
                             mat_id = STONE_DARK_MATERIAL_ID;
                         }
                     }
+
+                    // Phase 4e — Tier 4 ore veins. Each ore replaces only
+                    // its declared parent material (e.g. plain stone),
+                    // so marble/stone_dark variants don't get overrun.
+                    if (run_ore_veins) {
+                        for (const auto &ore : _ore_materials) {
+                            if (mat_id != ore.replaces_material_id) {
+                                continue;
+                            }
+                            if (world_y < ore.min_altitude_voxels
+                                    || world_y > ore.max_altitude_voxels) {
+                                continue;
+                            }
+                            const double s = ore.ore_noise_scale;
+                            const double on = voxel_gen::math::hash3(
+                                    static_cast<int64_t>(static_cast<double>(world_x) * s),
+                                    static_cast<int64_t>(static_cast<double>(world_y) * s),
+                                    static_cast<int64_t>(static_cast<double>(world_z) * s),
+                                    static_cast<int64_t>(ore.material_id) * 1009);
+                            if (on > ore.ore_noise_threshold) {
+                                mat_id = ore.material_id;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Phase 4f — Tier 5 disk override on the top voxels of
+                // any column inside a near-water disk anchor.
+                if (disk_match != nullptr && depth < disk_thickness) {
+                    mat_id = disk_match->material_id;
                 }
                 out_buffer.call("set_voxel", mat_id, x, y, z, CHANNEL_TYPE);
             }
@@ -597,6 +802,55 @@ void CubicHeightmapGeneratorCpp::_bind_methods() {
 
     ClassDB::bind_method(D_METHOD("column_is_cliff", "world_x", "world_z", "this_ground_y"),
                          &CubicHeightmapGeneratorCpp::column_is_cliff);
+
+    // Phase 4d bindings — snapshot setters (no ADD_PROPERTY because
+    // these aren't editor-exposed; only the bootstrap adapter calls them).
+    ClassDB::bind_method(D_METHOD("set_ore_materials", "list"),
+                         &CubicHeightmapGeneratorCpp::set_ore_materials);
+    ClassDB::bind_method(D_METHOD("get_ore_material_count"),
+                         &CubicHeightmapGeneratorCpp::get_ore_material_count);
+    ClassDB::bind_method(D_METHOD("set_disk_materials", "list"),
+                         &CubicHeightmapGeneratorCpp::set_disk_materials);
+    ClassDB::bind_method(D_METHOD("get_disk_material_count"),
+                         &CubicHeightmapGeneratorCpp::get_disk_material_count);
+
+    // Phase 4e bindings — ore veins
+    ClassDB::bind_method(D_METHOD("set_ore_vein_max_lod", "value"),
+                         &CubicHeightmapGeneratorCpp::set_ore_vein_max_lod);
+    ClassDB::bind_method(D_METHOD("get_ore_vein_max_lod"),
+                         &CubicHeightmapGeneratorCpp::get_ore_vein_max_lod);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "ore_vein_max_lod"),
+                 "set_ore_vein_max_lod", "get_ore_vein_max_lod");
+
+    // Phase 4f bindings — disks
+    ClassDB::bind_method(D_METHOD("set_disk_rule_max_lod", "value"),
+                         &CubicHeightmapGeneratorCpp::set_disk_rule_max_lod);
+    ClassDB::bind_method(D_METHOD("get_disk_rule_max_lod"),
+                         &CubicHeightmapGeneratorCpp::get_disk_rule_max_lod);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "disk_rule_max_lod"),
+                 "set_disk_rule_max_lod", "get_disk_rule_max_lod");
+
+    ClassDB::bind_method(D_METHOD("set_disk_anchor_grid_voxels", "value"),
+                         &CubicHeightmapGeneratorCpp::set_disk_anchor_grid_voxels);
+    ClassDB::bind_method(D_METHOD("get_disk_anchor_grid_voxels"),
+                         &CubicHeightmapGeneratorCpp::get_disk_anchor_grid_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "disk_anchor_grid_voxels"),
+                 "set_disk_anchor_grid_voxels", "get_disk_anchor_grid_voxels");
+
+    // Phase 4g bindings — cliff outcrops
+    ClassDB::bind_method(D_METHOD("set_cliff_ore_outcrop_chance", "value"),
+                         &CubicHeightmapGeneratorCpp::set_cliff_ore_outcrop_chance);
+    ClassDB::bind_method(D_METHOD("get_cliff_ore_outcrop_chance"),
+                         &CubicHeightmapGeneratorCpp::get_cliff_ore_outcrop_chance);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cliff_ore_outcrop_chance"),
+                 "set_cliff_ore_outcrop_chance", "get_cliff_ore_outcrop_chance");
+
+    ClassDB::bind_method(D_METHOD("set_cliff_ore_seed", "value"),
+                         &CubicHeightmapGeneratorCpp::set_cliff_ore_seed);
+    ClassDB::bind_method(D_METHOD("get_cliff_ore_seed"),
+                         &CubicHeightmapGeneratorCpp::get_cliff_ore_seed);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "cliff_ore_seed"),
+                 "set_cliff_ore_seed", "get_cliff_ore_seed");
 
     // Core API
     ClassDB::bind_method(D_METHOD("compute_ground_y", "world_x", "world_z"),
