@@ -1,0 +1,31 @@
+[gd_scene load_steps=2 format=3 uid="uid://dnettest1mp1"]
+
+; NetTest.tscn — MP-1 acceptance test for the multiplayer connection
+; layer (NetTransport + MultiplayerManager).
+;
+; This scene is a stub. The entire UI is built programmatically by
+; scripts/net/dev/NetTest.gd in _ready() — see that file for the full
+; layout, click dispatch, and signal wiring.
+;
+; To run:
+;   1. Make sure the new autoloads are registered (NetTransport,
+;      MultiplayerManager — see project.godot autoload section).
+;   2. Open this scene and F6.
+;
+; Acceptance:
+;   • ENet path: open two Godot instances, one clicks Host (ENet),
+;     the other types 127.0.0.1 and clicks Join (ENet). Both should
+;     show "Mode: HOST" / "Mode: CLIENT", lifecycle "PLAYING", and
+;     each other in the peer list.
+;   • Steam path (after MP-0 GodotSteam install): host clicks Host
+;     (Steam), copies the lobby ID printed in [HelloSteam] / [NetTest]
+;     output, sends it to the friend, who pastes into the target box
+;     and clicks Join (Steam). Same end state as ENet path.
+;
+; Joins the "dev_scene" group in _ready so HUDOverlay / PauseMenu /
+; JournalUI / SaveNotification stay quiet.
+
+[ext_resource type="Script" path="res://scripts/net/dev/NetTest.gd" id="1_nettest_script"]
+
+[node name="NetTest" type="Node"]
+script = ExtResource("1_nettest_script")

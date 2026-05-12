@@ -336,6 +336,60 @@ var status_text: String:
 func _ready() -> void:
 	_recalculate_movement_stats()
 	_underwater_filter = get_node_or_null(underwater_filter_path)
+	# MP-2: claim local authority over our own player node. In OFFLINE
+	# mode MultiplayerManager.is_offline() returns true and the
+	# authority check below still permits input. When a session is
+	# active, only the local peer's Player3D will pass _can_take_input.
+	if get_node_or_null("/root/MultiplayerManager"):
+		var local_id: int = MultiplayerManager.local_peer_id()
+		if local_id != 0:
+			set_multiplayer_authority(local_id)
+	_attach_sync_node()
+
+
+func _attach_sync_node() -> void:
+	# Programmatic MultiplayerSynchronizer setup. Replicates the
+	# minimal state RemotePlayer (and any future spectator UI) needs to
+	# render this peer: position, body yaw rotation, sprint/crouch
+	# flags. Built in code so existing .tscn files don't need editing.
+	if get_node_or_null("MPSync") != null:
+		return
+	var sync := MultiplayerSynchronizer.new()
+	sync.name = "MPSync"
+	sync.replication_interval = 0.05   # 20 Hz
+	var cfg := SceneReplicationConfig.new()
+	cfg.add_property(NodePath(".:position"))
+	cfg.property_set_spawn(NodePath(".:position"), true)
+	cfg.property_set_replication_mode(NodePath(".:position"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
+	cfg.add_property(NodePath(".:rotation:y"))
+	cfg.property_set_spawn(NodePath(".:rotation:y"), true)
+	cfg.property_set_replication_mode(NodePath(".:rotation:y"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
+	# _is_sprinting / _is_crouching are exported via has_property checks
+	# in RemotePlayer; not required for movement replication but useful
+	# downstream for animation state. Added at the same level as pos so
+	# RemotePlayer can read them without an extra RPC.
+	cfg.add_property(NodePath(".:_is_sprinting"))
+	cfg.property_set_replication_mode(NodePath(".:_is_sprinting"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
+	cfg.add_property(NodePath(".:_is_crouching"))
+	cfg.property_set_replication_mode(NodePath(".:_is_crouching"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
+	sync.replication_config = cfg
+	add_child(sync)
+
+
+# =============================================================
+# MP-2 INPUT GATE
+# =============================================================
+
+func _can_take_input() -> bool:
+	# Returns true if this Player3D should read local input. True in
+	# OFFLINE mode (single-player) and when we are the multiplayer
+	# authority over this specific node. Every Input.* read in this
+	# script must guard with this — see CLAUDE.md.
+	if not get_node_or_null("/root/MultiplayerManager"):
+		return true
+	if MultiplayerManager.is_offline():
+		return true
+	return get_multiplayer_authority() == multiplayer.get_unique_id()
 
 
 func _recalculate_movement_stats() -> void:
@@ -354,6 +408,10 @@ func _recalculate_movement_stats() -> void:
 # =============================================================
 
 func _unhandled_input(event: InputEvent) -> void:
+	# MP gate — remote replicas of other players must never consume
+	# our local crouch toggle.
+	if not _can_take_input():
+		return
 	if event.is_action_pressed("crouch"):
 		# In water, crouch is reused as the dive control (held). Skip
 		# the toggle so pressing crouch underwater doesn't pollute
@@ -465,7 +523,12 @@ func _physics_process_inner(delta: float) -> void:
 	motion_mode = MOTION_MODE_FLOATING if _in_water else MOTION_MODE_GROUNDED
 
 	# --- Read WASD input and convert to camera-relative world direction ---
-	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	# MP gate: remote replicas read zero input; their position is
+	# driven entirely by MultiplayerSynchronizer replicating the local
+	# authority's transform.
+	var input_dir: Vector2 = Vector2.ZERO
+	if _can_take_input():
+		input_dir = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	var local_dir  := Vector3(input_dir.x, 0.0, input_dir.y)
 	# Multiply through the player body's transform.basis so W always moves
 	# in the direction Roland (and the camera) is currently facing.
@@ -475,7 +538,8 @@ func _physics_process_inner(delta: float) -> void:
 	# --- Sprint logic (disabled in water — Roland can't sprint while swimming) ---
 	if _sprint_locked and endurance >= ENDURANCE_SPRINT_THRESHOLD:
 		_sprint_locked = false
-	var wants_sprint := Input.is_action_pressed("sprint") \
+	var wants_sprint := _can_take_input() \
+		and Input.is_action_pressed("sprint") \
 		and not _is_crouching \
 		and not _sprint_locked \
 		and not _in_water
@@ -514,8 +578,8 @@ func _physics_process_inner(delta: float) -> void:
 		# swim-speed cap already handles "no extra speed underwater"),
 		# so repurposing Shift for dive maps to player muscle memory
 		# from most modern third-person swimmers (Skyrim, Witcher).
-		var ascend: bool = Input.is_action_pressed("dodge")
-		var descend: bool = Input.is_action_pressed("sprint") or Input.is_action_pressed("crouch")
+		var ascend: bool = _can_take_input() and Input.is_action_pressed("dodge")
+		var descend: bool = _can_take_input() and (Input.is_action_pressed("sprint") or Input.is_action_pressed("crouch"))
 		if ascend and not descend:
 			velocity.y = move_toward(velocity.y, SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		elif descend and not ascend:
@@ -546,7 +610,7 @@ func _physics_process_inner(delta: float) -> void:
 		# jump or air-hop. Reuses the dodge action because there's no
 		# combat dodge yet; when combat lands and dodge becomes a roll,
 		# this can split into a dedicated `jump` Input Map action.
-		elif Input.is_action_just_pressed("dodge"):
+		elif _can_take_input() and Input.is_action_just_pressed("dodge"):
 			velocity.y = JUMP_VELOCITY
 
 	# --- Breath / drowning ---
@@ -747,21 +811,20 @@ func _physics_process_flying(_delta: float) -> void:
 	else:
 		cam_basis = transform.basis
 
-	# WASD input.
-	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	# WASD input. MP gate: remote replicas stay still in fly mode.
+	var input_dir: Vector2 = Vector2.ZERO
+	var v_input: float = 0.0
+	if _can_take_input():
+		input_dir = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+		if Input.is_action_pressed("dodge"):
+			v_input += 1.0
+		if Input.is_action_pressed("sprint"):
+			v_input -= 1.0
 	# Forward = -Z, right = +X. Use the camera's basis directly so
 	# pitch carries — if the camera looks down 30°, W flies 30° down.
 	var forward: Vector3 = -cam_basis.z
 	var right:   Vector3 = cam_basis.x
 	var dir: Vector3 = (right * input_dir.x) + (forward * input_dir.y)
-
-	# Vertical input — Space (dodge action) ascends, Left Shift
-	# (sprint action) descends. Both held, not toggled.
-	var v_input: float = 0.0
-	if Input.is_action_pressed("dodge"):
-		v_input += 1.0
-	if Input.is_action_pressed("sprint"):
-		v_input -= 1.0
 	dir.y += v_input
 
 	if dir.length_squared() > 0.0001:
