@@ -440,14 +440,18 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
-	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
-	# get_node_or_null guard for the case Player3D runs outside the main
-	# game (e.g. test harness without the autoload registered).
+	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
+	# get_node_or_null guards for the case Player3D runs outside the main
+	# game (e.g. test harness without the autoloads registered).
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner(delta)
 	_update_viewer_lookahead()
+	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
 	if get_node_or_null("/root/HUDOverlay"):
-		HUDOverlay.profile_record("Player3D_phys", Time.get_ticks_usec() - _t0_prof)
+		HUDOverlay.profile_record("Player3D_phys", _elapsed)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("PHYS", "Player3D", _elapsed)
 
 
 func _update_viewer_lookahead() -> void:

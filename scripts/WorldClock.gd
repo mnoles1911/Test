@@ -119,6 +119,15 @@ func _ready() -> void:
 	_last_period = get_time_of_day_period()
 
 func _process(delta: float) -> void:
+	# Profiling wrapper — see CLAUDE.md pattern.
+	var _t0_prof := Time.get_ticks_usec()
+	_process_inner(delta)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WORLD", "WorldClock", Time.get_ticks_usec() - _t0_prof)
+
+
+func _process_inner(delta: float) -> void:
 	# Don't tick if paused manually, game-paused, or Dialogic is running.
 	if _manual_pause:
 		return

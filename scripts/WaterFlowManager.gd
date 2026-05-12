@@ -181,10 +181,17 @@ func _physics_process(_delta: float) -> void:
 	if get_node_or_null("/root/MultiplayerManager"):
 		if not MultiplayerManager.is_host():
 			return
-	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	# Profiling wrapper — Profiler autoload + the in-HUD [PERF] log. The
+	# Profiler call categorizes as WATER so the F3 overlay groups water
+	# work together; HUDOverlay's profile_record keeps feeding the
+	# always-on log line.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner()
-	HUDOverlay.profile_record("WaterFlowManager", Time.get_ticks_usec() - _t0_prof)
+	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
+	HUDOverlay.profile_record("WaterFlowManager", _elapsed)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WATER", "WaterFlowManager", _elapsed)
 
 
 func _physics_process_inner() -> void:

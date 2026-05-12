@@ -283,10 +283,16 @@ func _build_debug_water_material(is_horizon: bool) -> StandardMaterial3D:
 
 
 func _process(delta: float) -> void:
-	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	# Profiling wrapper — feeds both the in-HUD [PERF] log and the F3
+	# Profiler overlay. Categorized as WATER so the overlay groups all
+	# water work together.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_process_inner(delta)
-	HUDOverlay.profile_record("WaterChunkMesher", Time.get_ticks_usec() - _t0_prof)
+	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
+	HUDOverlay.profile_record("WaterChunkMesher", _elapsed)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WATER", "WaterChunkMesher", _elapsed)
 
 
 func _process_inner(delta: float) -> void:

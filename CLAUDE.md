@@ -639,28 +639,44 @@ programmatically, always read the value back. The bootstrap scripts
 (`World3DBootstrap.gd`, `CopperIslesTestBootstrap.gd`, `WorldBakeController.gd`)
 print readback values as a matter of policy.
 
-**Per-autoload performance attribution via `HUDOverlay.profile_record`:**
+**Per-autoload performance attribution via `Profiler.record` (+ `HUDOverlay.profile_record`):**
 ```gdscript
-# When you need to know which script is eating frame time, wrap the
-# autoload's _process / _physics_process body in a renamed _inner
-# function and time around it. HUDOverlay accumulates per-second and
-# the [PERF] line dumps the top 3 contributors. Pattern handles early
-# returns naturally (the inner can `return` anywhere; the outer wrapper
-# always records the elapsed time).
+# Two consumers: the always-on `[PERF]` log line (HUDOverlay, top-3 per
+# second) and the F3 Profiler overlay (Profiler autoload, full sortable
+# attribution + last-120-frame timeline + GPU/Zylann panel + JSON
+# capture). New wrappers call BOTH; legacy wrappers calling only
+# HUDOverlay get auto-forwarded to Profiler as category "OTHER".
+#
+# Wrap the autoload's _process / _physics_process body in a renamed
+# _inner function and time around it:
 func _process(delta: float) -> void:
     var _t0 := Time.get_ticks_usec()
     _process_inner(delta)
-    HUDOverlay.profile_record("AutoloadName", Time.get_ticks_usec() - _t0)
+    var _elapsed: int = Time.get_ticks_usec() - _t0
+    HUDOverlay.profile_record("AutoloadName", _elapsed)
+    var prof := get_node_or_null("/root/Profiler")
+    if prof != null:
+        prof.record("CATEGORY", "AutoloadName", _elapsed)
 
 func _process_inner(delta: float) -> void:
     # original body, unchanged
     ...
 ```
-Wrappers add ~1 µs per call. Flip `HUDOverlay.PERF_DIAG` to `false` to
-silence the per-second print without removing the wrappers. Note:
-`Performance.TIME_PROCESS` / `TIME_PHYSICS_PROCESS` are per-frame
+Categories used so far: `WORLD`, `WATER`, `WEATHER`, `PHYS`, `OTHER`.
+Wrappers add ~1 µs per call. Flip `Profiler.enabled = false` (or press
+P in the overlay) to silence Profiler bookkeeping without removing the
+wrappers; flip `HUDOverlay.PERF_DIAG` to silence the per-second log.
+
+Note: `Performance.TIME_PROCESS` / `TIME_PHYSICS_PROCESS` are per-frame
 snapshots, NOT script attribution — they correlate with `worst_ms` but
 don't tell you which autoload is slow.
+
+**Profiler overlay controls (F3 toggle):** `Tab` cycle pages (Overview /
+Timeline / GPU), `P` pause/resume sampling, `C` start/stop a JSON
+capture written to `user://profile_capture_*.json`, `S` save in-progress
+capture, `Q` clear stats, `← →` move the timeline inspect cursor. The
+overlay uses keyboard-only nav because `Button.pressed` doesn't fire in
+this project (see Dialogic input rule above).
 
 >**Zylann blocky-library properties: use the methods, not `.set()`, AND re-apply at runtime:**
 ```gdscript
@@ -782,9 +798,9 @@ Registered in `project.godot` (active now), in load order:
 `NetTransport`, `MultiplayerManager`,
 `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`,
 `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`,
-`JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
-`VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`,
-`BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`
+`JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `NoEditZoneRegistry`,
+`VoxelEditManager`, `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`,
+`SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`
 
 `PerkRegistry`, `FactionManager`, `SkillManager`, and `SpeechCheckBroker`
 landed with the skill PR. `PerkRegistry` walks `assets/skills/perks/`
