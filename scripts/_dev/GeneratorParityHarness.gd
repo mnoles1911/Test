@@ -62,15 +62,16 @@ func _run() -> void:
 	var hash3_mismatches: int = _test_hash3(probe)
 	var cliff_mismatches: int = _test_cliff_threshold(probe)
 	var ground_y_mismatches: int = _test_ground_y()
-	var total: int = hash3_mismatches + cliff_mismatches + ground_y_mismatches
+	var chunk_mismatches: int = _test_chunk_bytes()
+	var total: int = hash3_mismatches + cliff_mismatches + ground_y_mismatches + chunk_mismatches
 
 	print("[Parity] =====")
 	if total == 0:
-		print("[Parity] PASS — all checks bit-exact (hash3 + cliff_threshold + ground_y).")
-		print("[Parity] Phase 2 gate satisfied. Safe to proceed to Phase 3.")
+		print("[Parity] PASS — all checks bit-exact (hash3 + cliff_threshold + ground_y + chunk_bytes).")
+		print("[Parity] Phase 3 gate satisfied. Safe to proceed to Phase 4.")
 	else:
-		printerr("[Parity] FAIL — %d mismatches total (hash3=%d, cliff=%d, ground_y=%d). Gate NOT satisfied." % [
-			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches
+		printerr("[Parity] FAIL — %d total mismatches (hash3=%d, cliff=%d, ground_y=%d, chunk_bytes=%d)." % [
+			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches, chunk_mismatches
 		])
 
 
@@ -221,6 +222,122 @@ func _test_ground_y() -> int:
 	else:
 		printerr("[Parity] ground_y: %d / %d total mismatches (%d unquantized, %d quantized)." % [
 			mismatches, checked + quantize_checked, mismatches - quantize_mismatches, quantize_mismatches
+		])
+
+	return mismatches
+
+
+# Phase 3 — chunk-byte parity over 50 chunks.
+#
+# For each test chunk:
+#   1. Build a fresh VoxelBuffer of size 16^3.
+#   2. Call GD's _generate_block (configured to run plan-Tier 1 + plan-Tier 3 only)
+#      and C++'s generate_block_into_buffer with the same buffer dimensions
+#      and same (origin, lod).
+#   3. Read CHANNEL_TYPE byte-by-byte from each side and compare.
+#
+# We test at LOD=1 specifically to disable GD's water emission (`write_water =
+# lod == 0`), keep all chunks safely above WORLD_FLOOR_VOXEL_Y=-300 so the
+# bedrock legacy-bug discrepancy doesn't surface, and disable
+# cliff/snow/ore/disk via the GD generator's *_max_lod=-1 settings so only
+# bands + marble run.
+func _test_chunk_bytes() -> int:
+	const CHUNK_SIZE: int = 16
+	const TEST_LOD: int = 1
+
+	# Hand-picked chunk origins. Mix of low-noise (around y=50, ground likely
+	# inside chunk) and higher-noise (y=200, ground may or may not be inside).
+	# X/Z spread across a 5 km strip to exercise noise variance.
+	var test_origins: Array[Vector3i] = []
+	var y_targets: Array[int] = [50, 100, 200, -50, 0]   # 5 Y rows
+	var xz_grid: Array[int] = [-2000, -1000, 0, 1000, 2000]  # 5×2 = 10 X/Z pairs (only 5 used per Y)
+	for y in y_targets:
+		for i in range(10):
+			var x: int = xz_grid[i % 5]
+			var z: int = xz_grid[(i / 5) % 5]  # 0..4 for i in 0..9 — varies independently
+			test_origins.append(Vector3i(x, y, z))
+	# That gives 50 chunks (5 Y × 10 X/Z pairs).
+
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	# GD generator configured for plan-Tier 1 + plan-Tier 3 only.
+	# proj-Tier 1 (cliff slope) -> cliff_rule_max_lod = -1
+	# proj-Tier 2 (snow line)   -> snow_line_max_lod = -1
+	# proj-Tier 4 (ores)        -> ore_vein_max_lod = -1
+	# proj-Tier 5 (disks)       -> disk_rule_max_lod = -1
+	# plan-Tier 3 (marble)      -> marble_jitter_max_lod = 1 (default; runs at TEST_LOD)
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.cliff_rule_max_lod = -1
+	gd_gen.snow_line_max_lod = -1
+	gd_gen.ore_vein_max_lod = -1
+	gd_gen.disk_rule_max_lod = -1
+	# Use default marble settings (block_size=4, seed=1, thresholds 0.92/0.75).
+
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = gd_gen.height_range_voxels
+	cpp_gen.height_offset_voxels = gd_gen.height_offset_voxels
+	cpp_gen.quantize_to_meters = gd_gen.quantize_to_meters
+	cpp_gen.mid_amplitude_voxels = gd_gen.mid_amplitude_voxels
+	cpp_gen.mid_frequency_multiplier = gd_gen.mid_frequency_multiplier
+	cpp_gen.detail_amplitude_voxels = gd_gen.detail_amplitude_voxels
+	cpp_gen.detail_frequency_multiplier = gd_gen.detail_frequency_multiplier
+	cpp_gen.grass_layer_thickness_voxels = gd_gen.grass_layer_thickness_voxels
+	cpp_gen.dirt_layer_thickness_voxels = gd_gen.dirt_layer_thickness_voxels
+	cpp_gen.beach_y_threshold = gd_gen.beach_y_threshold
+	cpp_gen.marble_jitter_block_size = gd_gen.marble_jitter_block_size
+	cpp_gen.marble_jitter_seed = gd_gen.marble_jitter_seed
+	cpp_gen.marble_rare_threshold = gd_gen.marble_rare_threshold
+	cpp_gen.marble_dark_threshold = gd_gen.marble_dark_threshold
+	cpp_gen.marble_jitter_max_lod = gd_gen.marble_jitter_max_lod
+
+	var mismatches: int = 0
+	var voxels_checked: int = 0
+	var dumped: int = 0
+	var chunks_with_mismatches: int = 0
+
+	for origin in test_origins:
+		var gd_buf := VoxelBuffer.new()
+		gd_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		gd_gen._generate_block(gd_buf, origin, TEST_LOD)
+
+		var cpp_buf := VoxelBuffer.new()
+		cpp_buf.create(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+		cpp_gen.generate_block_into_buffer(cpp_buf, origin, TEST_LOD)
+
+		var chunk_mismatched: bool = false
+		for cx in CHUNK_SIZE:
+			for cy in CHUNK_SIZE:
+				for cz in CHUNK_SIZE:
+					var gd_v: int = gd_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					var cpp_v: int = cpp_buf.get_voxel(cx, cy, cz, VoxelBuffer.CHANNEL_TYPE)
+					voxels_checked += 1
+					if gd_v != cpp_v:
+						mismatches += 1
+						chunk_mismatched = true
+						if dumped < VERBOSE_MISMATCH_CAP:
+							var stride: int = 1 << TEST_LOD
+							var world_x: int = origin.x + cx * stride
+							var world_y: int = origin.y + cy * stride
+							var world_z: int = origin.z + cz * stride
+							printerr("[Parity] chunk mismatch at origin=%s lod=%d local=(%d,%d,%d) world=(%d,%d,%d): gd=%d cpp=%d" % [
+								origin, TEST_LOD, cx, cy, cz, world_x, world_y, world_z, gd_v, cpp_v
+							])
+							dumped += 1
+		if chunk_mismatched:
+			chunks_with_mismatches += 1
+
+	if mismatches == 0:
+		print("[Parity] chunk_bytes: %d / %d voxels match bit-for-bit across %d chunks (LOD %d)." % [
+			voxels_checked, voxels_checked, test_origins.size(), TEST_LOD
+		])
+	else:
+		printerr("[Parity] chunk_bytes: %d / %d voxels mismatched across %d / %d chunks." % [
+			mismatches, voxels_checked, chunks_with_mismatches, test_origins.size()
 		])
 
 	return mismatches

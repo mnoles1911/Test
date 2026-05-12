@@ -64,6 +64,40 @@ public:
     void set_detail_frequency_multiplier(double p_value);
     double get_detail_frequency_multiplier() const;
 
+    // --- Phase 3 properties: bands + marble jitter ---
+
+    // How many top voxels of a column are grass (the green skin).
+    // Default 1 — single voxel of green over the dirt.
+    void set_grass_layer_thickness_voxels(int p_value);
+    int get_grass_layer_thickness_voxels() const;
+
+    // Voxels of dirt directly below grass.
+    void set_dirt_layer_thickness_voxels(int p_value);
+    int get_dirt_layer_thickness_voxels() const;
+
+    // At or below this voxel-Y, the column's top band is sand instead of grass.
+    void set_beach_y_threshold(int p_value);
+    int get_beach_y_threshold() const;
+
+    // Marble jitter — Tier 3 stone-band variation.
+    // Lower thresholds = more frequent. Default rare=0.92, dark=0.75 →
+    // ~8 % marble, ~17 % stone_dark, ~75 % plain stone.
+    void set_marble_jitter_block_size(int p_value);
+    int get_marble_jitter_block_size() const;
+
+    void set_marble_jitter_seed(int p_value);
+    int get_marble_jitter_seed() const;
+
+    void set_marble_rare_threshold(double p_value);
+    double get_marble_rare_threshold() const;
+
+    void set_marble_dark_threshold(double p_value);
+    double get_marble_dark_threshold() const;
+
+    // LOD gate -- marble runs only when lod <= this. -1 disables.
+    void set_marble_jitter_max_lod(int p_value);
+    int get_marble_jitter_max_lod() const;
+
     // --- Core API (used by tests + by the adapter) ---
     // Mirrors the GD generator's _ground_y_at. Returns the voxel-Y at
     // which solid ground ends and air begins for the column (world_x, world_z).
@@ -93,4 +127,14 @@ private:
     double _mid_frequency_multiplier = 3.0;
     int _detail_amplitude_voxels = 2;
     double _detail_frequency_multiplier = 12.0;
+
+    // Phase 3 (bands + marble jitter)
+    int _grass_layer_thickness_voxels = 1;
+    int _dirt_layer_thickness_voxels = 3;
+    int _beach_y_threshold = 74;
+    int _marble_jitter_block_size = 4;
+    int _marble_jitter_seed = 1;
+    double _marble_rare_threshold = 0.92;
+    double _marble_dark_threshold = 0.75;
+    int _marble_jitter_max_lod = 1;
 };
