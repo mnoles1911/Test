@@ -670,12 +670,20 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 	var all_tiles: Array[Vector2] = _scan_land_tiles(generator, min_xz, max_xz)
 	# Pull sea-level + beach-band thresholds from the generator config,
 	# fall back to defaults if the property doesn't exist on this build.
+	# When the generator is the C++ adapter, the real properties live on
+	# adapter.cpp_impl, not the VoxelGeneratorScript wrapper — drill in.
 	var sea_level_voxels: int = 1200
 	if "sea_level_voxels" in generator:
 		sea_level_voxels = int(generator.get("sea_level_voxels"))
+	elif "cpp_impl" in generator and generator.get("cpp_impl") != null \
+			and "sea_level_voxels" in generator.get("cpp_impl"):
+		sea_level_voxels = int(generator.get("cpp_impl").get("sea_level_voxels"))
 	var coast_band_top_voxels: int = sea_level_voxels + COAST_BAND_VOXELS_ABOVE_SEA
 	if "beach_y_threshold" in generator:
 		coast_band_top_voxels = int(generator.get("beach_y_threshold"))
+	elif "cpp_impl" in generator and generator.get("cpp_impl") != null \
+			and "beach_y_threshold" in generator.get("cpp_impl"):
+		coast_band_top_voxels = int(generator.get("cpp_impl").get("beach_y_threshold"))
 	var sea_level_world_m: float = float(sea_level_voxels) / VOXELS_PER_METRE
 
 	var tile_classes: Dictionary = _classify_tiles(
