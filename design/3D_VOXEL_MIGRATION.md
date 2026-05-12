@@ -266,8 +266,8 @@ Every voxel in the world carries a material identity (stone, dirt, grass, sand, 
 1. In Godot, navigate to `assets/voxels/materials/` in the FileSystem dock.
 2. Right-click → New Resource → "VoxelMaterial" → save as `<name>.tres`.
 3. Click the new file. Fill in inspector fields:
-   - `id_string` — stable identifier ("snow", "marble")
-   - `material_id` — pick an unused integer 1–254 (registry prints used IDs at startup)
+   - `id_string` — stable identifier ("snow", "marble"). **This is the canonical ID** — keep it stable across releases or saves break.
+   - `material_id` — pick an unused integer 1–254 (registry prints used IDs at startup). **Planned change:** this field will be auto-assigned by the registry at load time and removed from the designer flow as part of the modding-infrastructure refactor — see `design/MODDING_INFRASTRUCTURE.md`. New materials authored today should still pick an unused int; that field will be ignored (or stripped) once the refactor lands.
    - `display_name` — UI string
    - `color_low` / `color_high` / `color_jitter` — visual palette
    - `mining_time_seconds` — how long held swing breaks one voxel
@@ -309,6 +309,7 @@ Band thicknesses are exposed as `@export_range` ints on the generator so designe
 - **No procedural ore distribution.** Iron/steel/adamant ore .tres files arrive when the ore-vein system lands.
 - **Hot-reload of .tres edits during play not supported.** The registry scans once at `_ready`; restart Godot to pick up edits.
 - **Mixed-material clusters** average `gravity_scale` and take max `damage_multiplier`. Mass-weighted CoM with per-voxel mass is overkill for v1.
+- **`material_id` ints are hand-authored, not auto-assigned.** Mod-hostile by design — two mods cannot both claim ID 42. Tracked refactor: `design/MODDING_INFRASTRUCTURE.md` (string-id-first, int IDs assigned at registry load). Foundational for shipping mod support at 1.0.
 
 ### Multiplayer Implications
 

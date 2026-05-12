@@ -4,6 +4,8 @@ All craftable items, their ingredients, and the input materials used across the 
 
 > This document is the canonical reference for recipe content. Design philosophy and station mechanics live in `design/CRAFTING.md`. Skill quality effects and perk interactions live in `design/SKILLS_AND_PROGRESSION.md`. Equipment stats, condition, and smithing tiers live in `design/INVENTORY_AND_EQUIPMENT.md`.
 
+> **Item ID stability contract.** Every item below maps to a string `item_id` in `InventoryManager.ITEM_REGISTRY` (e.g. `"iron_pommel"`, `"silverleaf"`). **String IDs are canonical and must stay stable across releases** — saves and quest flags reference them by string. Renaming an item's display name is free; renaming its `item_id` breaks saves. The planned modding-infrastructure refactor (`design/MODDING_INFRASTRUCTURE.md`) will migrate the inline `ITEM_REGISTRY` dictionary to one `.tres` per item under `assets/items/` and treat the string `item_id` as the only canonical key — int IDs (when needed for compact storage) get assigned at registry load.
+
 ---
 
 ## How to Read This Document

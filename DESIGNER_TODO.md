@@ -871,6 +871,12 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
+- **String-id-first refactor for `VoxelMaterial` and `InventoryManager` (modding-infrastructure foundation).**
+  Today `VoxelMaterial.material_id` is a designer-authored integer (1–254) that designers must pick from the registry's startup print of used IDs. This is mod-hostile — two mods cannot both claim ID 42. The refactor flips the system to **string-id-first**: `id_string` becomes the canonical identifier; the registry assigns int IDs deterministically at load. Same change applies to `InventoryManager.ITEM_REGISTRY` (migrate the inline const dictionary to one `.tres` per item under `assets/items/`).
+  Full spec: `design/MODDING_INFRASTRUCTURE.md` — implementation plan (4 steps, each independently shippable), save-format implications, open questions.
+  Not blocking any milestone. Schedule before 1.0 if shipping mod support; otherwise low priority. The longer we wait, the more `.tres` files need touching when it lands — sooner is cheaper.
+  Affects: `scripts/VoxelMaterial.gd`, `scripts/VoxelMaterialRegistry.gd`, `scripts/InventoryManager.gd`, every `assets/voxels/materials/*.tres`, `VoxelStreamSQLite` save format (bumps `WORLD_GENERATOR_VERSION`), `design/3D_VOXEL_MIGRATION.md`, `design/ITEM_LIBRARY.md`, `design/SAVE_SYSTEM.md`, `CLAUDE.md`.
+
 - **WeatherManager polish — deferred from PR #132 code review (2026-05-04).**
   Self-review surfaced these. Each is functionally tolerable today; bundle
   for a future cleanup pass.

@@ -113,6 +113,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | DESIGNER_TODO.md | New design doc lands that requires editor or asset work; tasks completed |
 | design/COPPER_ISLES_BAKE_NOTES.md | Zylann GDExtension probe results change, or new bake-pipeline decisions are made |
 | design/COPPER_ISLES_DEMO_HEIGHTMAP.md | Copper Isles island layout, heightmap spec, or import notes change |
+| design/MODDING_INFRASTRUCTURE.md | Mod-loader, mod-namespacing, string-id refactor, or save-format mod-header decisions change |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -192,6 +193,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
 - design/COPPER_ISLES_DEMO_HEIGHTMAP.md — AI prompt + per-island terrain spec for the 5 km × 5 km Copper Isles heightmap (specifies an archipelago; current EXR delivers a single continent — see "Heightmap divergence from lore" in milestone history); Godot import notes
 - design/COPPER_ISLES_BAKE_NOTES.md — Zylann GDExtension probe results (API behaviors verified at runtime), bake-pipeline design decisions and gotchas
+- design/MODDING_INFRASTRUCTURE.md — planning doc for 1.0 mod support: the **string-id-first refactor** (`VoxelMaterial.material_id` and `InventoryManager` item keys become string-canonical, int IDs assigned at registry load), mod namespacing rules, save-format mod header, event-hook API. **No code has landed yet** — read this before touching the material registry or the inventory item dictionary so changes don't paint us into a mod-hostile corner.
 
 ## Current project state
 Godot 4.6.2. 3D pivot complete. Open world plan confirmed: VoxelLodTerrain streaming, **editable / destructible terrain by default** (LOD0-clamped + LOD-baked at distance, edits stored as deltas in `VoxelStreamSQLite`, NoEditZones protect settlements and lore landmarks, no world healing), 12km × 10km playable Mira, third-person over-shoulder camera, low-poly Blender character models from Act I.
