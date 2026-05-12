@@ -119,7 +119,7 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 | Node | Role |
 |---|---|
 | `VoxelLodTerrain` | Streaming open-world terrain with automatic LOD (6–8 levels) |
-| `VoxelGeneratorScript` (World3D → `CubicHeightmapGeneratorAdapter` → C++ `CubicHeightmapGeneratorCpp`; CopperIslesTest → GDScript `CopperIslesHeightmapGenerator`) | World3D since 2026-05-11 runs a thin GDScript adapter that forwards `_generate_block` to the C++ Resource at `extensions/voxel_gen/`. Tier rules + bedrock + water bytes parity-verified. Copper Isles still on GDScript pending its own port. |
+| `VoxelGeneratorScript` (World3D + Copper Isles both run via adapter → C++ Resource chains at `extensions/voxel_gen/`) | As of 2026-05-12 both generators are ported. World3D: `CubicHeightmapGeneratorAdapter` → `CubicHeightmapGeneratorCpp`. Copper Isles: `CopperIslesHeightmapGeneratorAdapter` → `CopperIslesHeightmapGeneratorCpp` (EXR heightmap sampling). Tier rules + bedrock + water bytes parity-verified for both. The two C++ generators currently duplicate ~500 lines of inner-loop; extract `HeightmapGeneratorBase` as a follow-up. |
 | `VoxelStreamSQLite` | Per-save-slot sqlite database storing every player edit as a voxel delta against the baseline (`user://voxel_deltas.sqlite`) |
 | `VoxelMesherBlocky` | Atlas-textured stepped meshing (post-2026-05-08 migration from VoxelMesherCubes). Reads `CHANNEL_TYPE` (8-bit material id) and consults a `VoxelBlockyLibrary` for per-face atlas tiles + alpha-scissor material. |
 | `VoxelViewer` | One per player — tells the terrain which area to stream |
@@ -671,7 +671,7 @@ ELEVENLABS_API_KEY=<key> python3 tools/render_bulk.py dialogue/scripts/act1_scen
 | `VoxelMaterialRegistry.gd` | ✅ Active | Loads `assets/voxels/materials/*.tres` at startup. Lookup tables `_by_id` (1–254 → VoxelMaterial) and `_by_string` ("stone" → VoxelMaterial). Canonical encoding helper: `pack_voxel(material_id, color)` packs RGB from color and material_id into the alpha byte. See `design/3D_VOXEL_MIGRATION.md` → "Voxel Material System". |
 | `Settings.gd` | NOT autoload | Scene-attached script on `scenes/ui/Settings.tscn` (TransitionManager-loaded scene) |
 | `MainMenu.gd` | NOT autoload | Scene-attached script on `scenes/ui/MainMenu.tscn` |
-| `WorldGenerator` | ✅ As `CubicHeightmapGeneratorAdapter` (GDScript) → `CubicHeightmapGeneratorCpp` (C++ Resource at `extensions/voxel_gen/`) | World3D's terrain generator since 2026-05-11. Writes `CHANNEL_TYPE` material ids + `CHANNEL_DATA5` water source bytes. All 6 tier rules ported and parity-verified. NOT autoloaded — lives on the `VoxelLodTerrain` in World3D.tscn. |
+| `WorldGenerator` | ✅ Two C++ ports as of 2026-05-12. World3D: `CubicHeightmapGeneratorAdapter` → `CubicHeightmapGeneratorCpp`. Copper Isles: `CopperIslesHeightmapGeneratorAdapter` → `CopperIslesHeightmapGeneratorCpp` (EXR-driven). | Both write `CHANNEL_TYPE` material ids + `CHANNEL_DATA5` water source bytes. All 6 tier rules ported and parity-verified for each. Neither is autoloaded — they live on the `VoxelLodTerrain` per scene. |
 | `EntityRegistry.gd` | 🔲 Not yet built | Spatial entity dictionary by chunk |
 | `EntityStreamer.gd` | 🔲 Not yet built | Loads/unloads world entities by proximity |
 | `SchematicLibrary.gd` | 🔲 Not yet built | Registry of placeable building schematics (.glb props with placement metadata) |

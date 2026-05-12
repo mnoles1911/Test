@@ -1,15 +1,16 @@
 // GDExtension entry point for the voxel_gen module.
 //
-// Phase 0 (spike): registers only SpikeStoneGenerator. Subsequent phases will
-// register CubicHeightmapGenerator and CopperIslesHeightmapGenerator here
-// once they're ported. The Spike class proves that a C++ subclass of
-// Zylann's VoxelGeneratorScript loads, attaches to a VoxelLodTerrain, and
-// has its _generate_block called from the worker pool.
+// Active classes:
+//   CubicHeightmapGeneratorCpp — World3D terrain generator (Mira). Used via
+//       CubicHeightmapGeneratorAdapter.gd as the VoxelLodTerrain's generator.
+//   ParityProbe — bit-exact verification shim for voxel_gen_math (hash3,
+//       cliff_threshold_for_angle_voxels). Retained between ports so each new
+//       C++ port can extend a parity harness against the GDScript original.
 
 #include "register_types.h"
+#include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
 #include "parity_probe.h"
-#include "spike_stone_generator.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -22,9 +23,9 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
-    ClassDB::register_class<SpikeStoneGenerator>();
     ClassDB::register_class<ParityProbe>();
     ClassDB::register_class<CubicHeightmapGeneratorCpp>();
+    ClassDB::register_class<CopperIslesHeightmapGeneratorCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
