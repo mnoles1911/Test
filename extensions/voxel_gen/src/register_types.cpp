@@ -8,6 +8,7 @@
 //       C++ port can extend a parity harness against the GDScript original.
 
 #include "register_types.h"
+#include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
 #include "parity_probe.h"
 
@@ -24,6 +25,7 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     }
     ClassDB::register_class<ParityProbe>();
     ClassDB::register_class<CubicHeightmapGeneratorCpp>();
+    ClassDB::register_class<CopperIslesHeightmapGeneratorCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
