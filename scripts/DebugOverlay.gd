@@ -1143,8 +1143,19 @@ func _show_tab(tab: DebugTab) -> void:
 # =============================================================
 
 func _build_coords_hud() -> void:
+	# Moved from top-left to bottom-right (2026-05-12) so the F3 Profiler
+	# overlay doesn't compete with the always-on debug readouts. Three
+	# labels stack bottom-up: world_time (bottom-most), aim, then coords.
 	_coords_label = Label.new()
-	_coords_label.position = Vector2(12, 12)
+	_coords_label.anchor_left = 1.0
+	_coords_label.anchor_right = 1.0
+	_coords_label.anchor_top = 1.0
+	_coords_label.anchor_bottom = 1.0
+	_coords_label.offset_left = -400
+	_coords_label.offset_right = -12
+	_coords_label.offset_top = -72
+	_coords_label.offset_bottom = -52
+	_coords_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_coords_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_coords_label.add_theme_font_size_override("font_size", 14)
 	_coords_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
@@ -1168,8 +1179,17 @@ func _update_coords_label() -> void:
 
 
 func _build_aim_hud() -> void:
+	# Bottom-right stack — middle row (see _build_coords_hud comment).
 	_aim_label = Label.new()
-	_aim_label.position = Vector2(12, 32)
+	_aim_label.anchor_left = 1.0
+	_aim_label.anchor_right = 1.0
+	_aim_label.anchor_top = 1.0
+	_aim_label.anchor_bottom = 1.0
+	_aim_label.offset_left = -400
+	_aim_label.offset_right = -12
+	_aim_label.offset_top = -52
+	_aim_label.offset_bottom = -32
+	_aim_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_aim_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_aim_label.add_theme_font_size_override("font_size", 12)
 	_aim_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5, 0.85))
@@ -1200,11 +1220,20 @@ func _update_aim_label() -> void:
 
 
 func _build_world_time_hud() -> void:
-	# Sits below the AIM label in the top-left corner. Always visible
-	# (no F1 required) so the player can glance at the time of day and
-	# total play time without opening the debug overlay.
+	# Bottom-right stack — bottom-most row. Always visible (no F1
+	# required) so the player can glance at the time of day and total
+	# play time without opening the debug overlay. Moved from top-left
+	# 2026-05-12 to deconflict with the F3 Profiler overlay.
 	_world_time_label = Label.new()
-	_world_time_label.position = Vector2(12, 52)
+	_world_time_label.anchor_left = 1.0
+	_world_time_label.anchor_right = 1.0
+	_world_time_label.anchor_top = 1.0
+	_world_time_label.anchor_bottom = 1.0
+	_world_time_label.offset_left = -400
+	_world_time_label.offset_right = -12
+	_world_time_label.offset_top = -32
+	_world_time_label.offset_bottom = -12
+	_world_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_world_time_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_world_time_label.add_theme_font_size_override("font_size", 12)
 	_world_time_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0, 0.85))
@@ -1324,8 +1353,14 @@ func _update_fps_label(delta: float) -> void:
 
 func _update_terrain_scale_label() -> void:
 	# Walks the active scene for a VoxelLodTerrain, reads its uniform
-	# scale, converts to voxels-per-metre, and renders both. Hidden
-	# when no terrain is present (title screen, dialog scenes).
+	# scale, converts to voxels-per-metre, and renders both.
+	#
+	# Visibility: ONLY shown while the F1 debug panel is open (per user
+	# request 2026-05-12 — the always-on top-centre readout was visual
+	# clutter for a value that only matters during scale-tuning tests).
+	# The label still updates its text every frame so the panel sees a
+	# current value the moment F1 opens.
+	var panel_open: bool = (_root != null and _root.visible)
 	var scene_root: Node = get_tree().current_scene
 	if scene_root == null:
 		_terrain_scale_label.visible = false
@@ -1339,7 +1374,7 @@ func _update_terrain_scale_label() -> void:
 	if n3d == null:
 		_terrain_scale_label.visible = false
 		return
-	_terrain_scale_label.visible = true
+	_terrain_scale_label.visible = panel_open
 	# Local var renamed from `scale` to dodge the CanvasLayer.scale
 	# property shadow warning. CanvasLayer (this autoload's base class)
 	# exposes a 2D scale Vector2 — different concept from the 3D voxel

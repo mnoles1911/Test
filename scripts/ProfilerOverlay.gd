@@ -470,7 +470,10 @@ func _refresh_timeline() -> void:
 			detail += "  %-40s %s\n" % [r[0], _fmt_us(r[1])]
 			shown += 1
 	else:
-		detail += "\n(no spike recorded yet — threshold is %.1f ms)\n" % Profiler.SPIKE_MS_THRESHOLD
+		# Inline literal — accessing autoload constants by bare identifier
+		# doesn't resolve at parse time in Godot 4.x. Keep in sync with
+		# Profiler.SPIKE_MS_THRESHOLD if you ever change it (currently 33.0).
+		detail += "\n(no spike recorded yet — threshold is 33.0 ms)\n"
 	_timeline_detail_label.text = detail
 
 

@@ -1,23 +1,28 @@
 extends Node3D
-# WorldBakeController — drives the Copper Isles world bake.
+# WorldBakeController — generator-agnostic world bake driver.
+#
+# Attached to both scenes/_dev/BakeWorld.tscn (Copper Isles heightmap) and
+# scenes/_dev/BakeWorld3D.tscn (Mira procedural). Scene-specific config is
+# provided via @export — see the "Scene config" block below. The two
+# scenes differ in:
+#   * Which generator the VoxelLodTerrain is wired to (Copper Isles EXR
+#     vs cubic noise)
+#   * Which SQLite file the stream writes to
+#   * Whether the result ships as a baseline (Copper Isles yes; Mira no —
+#     World3D is pure procedural with per-save delta SQLites)
+#   * Whether a horizon skirt is baked (Copper Isles only — Mira's noise
+#     terrain doesn't need a static skirt)
 #
 # What this does in plain English:
 #
-#   The Copper Isles map is fixed (heightmap-driven, every player gets the
-#   same terrain). Today, the runtime regenerates voxel chunks on every
-#   fresh load — the CopperIslesHeightmapGenerator runs on Zylann's
-#   worker threads. That's wasted work for a static map.
-#
-#   This controller walks an invisible viewer across the entire world in
-#   a grid, lets Zylann stream + persist every chunk into a SQLite cache
-#   at user://baked_baseline.sqlite, and provides a UI to start / pause
-#   / cancel the process plus copy the finished DB into assets/voxel/
-#   for shipping.
+#   This controller walks an invisible viewer across the bake region in a
+#   grid, lets Zylann stream + persist every chunk through the configured
+#   generator into the scene's stream SQLite, and provides a UI to start /
+#   pause / cancel the process. For shipping-baseline scenes (Copper
+#   Isles), a Copy button promotes the finished DB into assets/voxel/.
 #
 #   The bake runs at the canonical terrain.transform.scale (1/6, ≈ 6
 #   voxels per metre). World metres × 6 = voxel-grid coordinates.
-#
-# Attached to the root node of scenes/_dev/BakeWorld.tscn.
 
 # =============================================================
 # CONFIGURATION
@@ -132,16 +137,46 @@ const COAST_BAND_VOXELS_ABOVE_SEA: int = 12   # = 2 m world
 const MULTI_VERTICAL_THRESHOLD_M: float = 99999.0
 const VERTICAL_STEP_M: float = 200.0
 
-# Bake DB path. user:// because res:// is read-only at runtime; a
-# separate "Copy to assets/voxel" UI button shifts the finished DB
-# into the project tree for PCK inclusion.
-#
-# Versioned baseline path — bumped whenever generator output
-# changes shape. Matches CopperIslesTestBootstrap.BAKED_BASELINE_PATH
-# so a fresh bake lands at the path the runtime reads.
-#   _v13: textured tileset (CHANNEL_COLOR → CHANNEL_TYPE)
-#   _v14: Tiers 1-6 generation rules (cliff / snow / jitter /
-#         ore veins / disks / cliff outcrops)
+# ----- Scene config (override these in the .tscn @export panel) ---------
+
+## Title shown at the top of the UI panel. Distinguishes the two bake
+## scenes at a glance. Defaults to the Copper Isles label so the editor's
+## default-instantiated scene shows correctly; BakeWorld3D.tscn overrides.
+@export var bake_label: String = "COPPER ISLES — WORLD BAKE TOOL"
+
+## Source path the Copy button reads + the live counter reports. MUST
+## match the database_path set on the scene's VoxelStreamSQLite resource,
+## or the counter shows 0 bytes and Copy errors with "Bake DB not found".
+##
+## Defaults to the Copper Isles convention; BakeWorld3D.tscn overrides to
+## user://baked_baseline_world3d.sqlite.
+##
+## Versioned baseline naming (Copper Isles): bumped whenever generator
+## output changes shape.
+##   _v13: textured tileset (CHANNEL_COLOR → CHANNEL_TYPE)
+##   _v14: Tiers 1-6 generation rules (cliff / snow / jitter /
+##         ore veins / disks / cliff outcrops)
+@export var bake_db_path: String = "user://baked_baseline_v14.sqlite"
+
+## Destination path the Copy button writes to. res:// is the in-PCK
+## project tree; the runtime reads from here on first launch and seeds
+## the per-save SQLite from it. Copper Isles only — Mira's world is pure
+## procedural and ships no baseline, so BakeWorld3D.tscn sets
+## show_copy_button=false and this value is unused.
+@export var final_baseline_path: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
+
+## Toggle for the "Copy bake DB → assets/voxel/..." button. Copper Isles
+## ships a baseline; Mira (BakeWorld3D) does not — its bake is purely an
+## investigative perf measurement and the result is discarded.
+@export var show_copy_button: bool = true
+
+## Toggle for the "Bake horizon skirt" button. Copper Isles uses a baked
+## low-LOD skirt mesh to render distant peaks beyond the chunk stream
+## radius. Mira's procedural noise terrain doesn't use a skirt.
+@export var show_skirt_button: bool = true
+
+# Legacy const names kept for any external reference; @exports above are
+# the runtime source of truth. Do not read these from new code.
 const BAKE_DB_PATH: String = "user://baked_baseline_v14.sqlite"
 const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 
@@ -381,7 +416,7 @@ func _build_ui() -> void:
 	panel.add_child(vbox)
 
 	var heading := Label.new()
-	heading.text = "COPPER ISLES — WORLD BAKE TOOL"
+	heading.text = bake_label
 	heading.add_theme_font_size_override("font_size", 18)
 	heading.add_theme_color_override("font_color", Color(1.0, 0.93, 0.55, 1.0))
 	vbox.add_child(heading)
@@ -441,13 +476,18 @@ func _build_ui() -> void:
 
 	vbox.add_child(_make_divider())
 
-	_btn_copy = _make_button("3. Copy bake DB → assets/voxel/copper_isles_baseline_v14.sqlite")
-	_btn_copy.pressed.connect(_on_copy_to_assets)
-	vbox.add_child(_btn_copy)
+	# Copy + Skirt are scene-specific; hidden on Mira (BakeWorld3D.tscn)
+	# via the @export toggles. Mira's bake is investigative-only, no
+	# shipping baseline and no horizon skirt.
+	if show_copy_button:
+		_btn_copy = _make_button("3. Copy bake DB → %s" % final_baseline_path)
+		_btn_copy.pressed.connect(_on_copy_to_assets)
+		vbox.add_child(_btn_copy)
 
-	var btn_bake_skirt: Button = _make_button("4. Bake horizon skirt → assets/voxel/copper_isles_skirt.res")
-	btn_bake_skirt.pressed.connect(_on_bake_skirt)
-	vbox.add_child(btn_bake_skirt)
+	if show_skirt_button:
+		var btn_bake_skirt: Button = _make_button("4. Bake horizon skirt → assets/voxel/copper_isles_skirt.res")
+		btn_bake_skirt.pressed.connect(_on_bake_skirt)
+		vbox.add_child(btn_bake_skirt)
 
 	# Manual flush — useful when debugging persistence issues. Calls
 	# save_modified_blocks on the terrain immediately so you can
@@ -1202,15 +1242,17 @@ func _on_bake_skirt() -> void:
 
 func _on_copy_to_assets() -> void:
 	# Copy the bake DB from user:// into assets/voxel/ so it ships in
-	# the PCK. Only allowed when the bake isn't running (concurrent
-	# read/write of an open SQLite is a recipe for corruption).
+	# the PCK. Reads bake_db_path / final_baseline_path @exports (set in
+	# the .tscn) — see "Scene config" block at the top of this file.
+	# Only allowed when the bake isn't running (concurrent read/write of
+	# an open SQLite is a recipe for corruption).
 	if _running:
 		_set_status("Cannot copy while baking. Cancel or finish first.")
 		return
-	var src: String = ProjectSettings.globalize_path(BAKE_DB_PATH)
-	var dst: String = ProjectSettings.globalize_path(FINAL_BASELINE_PATH)
-	if not FileAccess.file_exists(BAKE_DB_PATH):
-		_set_status("Bake DB not found at %s — run a bake first." % BAKE_DB_PATH)
+	var src: String = ProjectSettings.globalize_path(bake_db_path)
+	var dst: String = ProjectSettings.globalize_path(final_baseline_path)
+	if not FileAccess.file_exists(bake_db_path):
+		_set_status("Bake DB not found at %s — run a bake first." % bake_db_path)
 		return
 	# Ensure the destination directory exists. DirAccess.copy_absolute
 	# does NOT auto-create parents, so a missing assets/voxel/ folder
@@ -1225,7 +1267,7 @@ func _on_copy_to_assets() -> void:
 		print("[Bake] created missing destination directory: %s" % dst_dir)
 	var err: int = DirAccess.copy_absolute(src, dst)
 	if err == OK:
-		_set_status("Copied %s → %s" % [BAKE_DB_PATH, FINAL_BASELINE_PATH])
+		_set_status("Copied %s → %s" % [bake_db_path, final_baseline_path])
 	else:
 		_set_status("Copy failed (err=%d). Check the destination directory exists." % err)
 
@@ -1242,8 +1284,11 @@ func _get_generator() -> Resource:
 
 
 func _db_filesize_bytes() -> int:
+	# Reads bake_db_path @export (set in the .tscn) plus its WAL / journal
+	# sidecars. Returns the combined byte count so the live counter
+	# reflects everything Zylann has written for this bake.
 	var total: int = 0
-	for path in [BAKE_DB_PATH, BAKE_DB_PATH + "-wal", BAKE_DB_PATH + "-journal"]:
+	for path in [bake_db_path, bake_db_path + "-wal", bake_db_path + "-journal"]:
 		if FileAccess.file_exists(path):
 			var f: FileAccess = FileAccess.open(path, FileAccess.READ)
 			if f != null:
