@@ -172,15 +172,19 @@ var _skill_xp: Dictionary = {}
 signal skill_xp_changed(domain: int, sub_skill: String, new_xp: int)
 
 func add_skill_xp(domain: int, sub_skill: String, amount: int) -> void:
-	# Award amount XP to a sub-skill under a domain. Idempotent in
-	# the sense that calling repeatedly just stacks XP; no caps until
-	# the design adds them.
+	# DEPRECATED: routes to the new flat 12-skill SkillManager when it
+	# is loaded. The (domain, sub_skill) call sites in EditToolHandler
+	# and PowderCharge are migrated in the same PR as the SkillManager
+	# autoload; this shim keeps things working between commits and for
+	# any future caller that hasn't been moved yet.
 	var key: String = "%d/%s" % [domain, sub_skill]
 	var current: int = _skill_xp.get(key, 0)
 	var new_value: int = current + amount
 	_skill_xp[key] = new_value
 	skill_xp_changed.emit(domain, sub_skill, new_value)
-	print("[GameState] Skill XP: %s += %d (total %d)" % [key, amount, new_value])
+	# Forward to the new system if available.
+	if get_node_or_null("/root/SkillManager"):
+		SkillManager.legacy_route(domain, sub_skill, amount)
 
 func get_skill_xp(domain: int, sub_skill: String) -> int:
 	# Returns 0 for any (domain, sub_skill) Roland has never earned.
@@ -207,6 +211,103 @@ func get_skill_tier(domain: int) -> String:
 		else:
 			break
 	return TIER_NAMES[tier_index]
+
+
+# =============================================================
+# FLAT 12-SKILL STATE (new system — SkillManager-owned)
+# =============================================================
+# These dictionaries back SkillManager. We keep them on GameState
+# instead of a dedicated CharacterRecord because MP-6 (the resource
+# that will eventually own per-character state) hasn't landed yet.
+# When it does, SkillManager swaps the backing store without changing
+# its public API; these fields stay only for migration of old saves.
+
+var _skill_levels: Dictionary = {}        # skill_name -> int (1..100)
+var _skill_xp_progress: Dictionary = {}   # skill_name -> float (XP toward next level)
+var _owned_perks: Dictionary = {}         # perk_id -> true (set semantics on a dict)
+var _perk_points_unspent: int = 0
+var _legendary_resets: Dictionary = {}    # skill_name -> int
+var _faction_dispositions: Dictionary = {}  # faction_id -> int 0..100
+var _trainer_visits: Dictionary = {}      # trainer_id -> Dictionary[skill, int]
+
+signal skill_level_changed(skill: String, new_level: int)
+
+func ensure_skill_initialized(skill: String) -> void:
+	if not _skill_levels.has(skill):
+		_skill_levels[skill] = 1
+	if not _skill_xp_progress.has(skill):
+		_skill_xp_progress[skill] = 0.0
+
+func get_skill_level(skill: String) -> int:
+	return int(_skill_levels.get(skill, 1))
+
+func get_skill_xp_progress(skill: String) -> float:
+	return float(_skill_xp_progress.get(skill, 0.0))
+
+func set_skill_state(skill: String, level: int, progress: float) -> void:
+	var prev: int = int(_skill_levels.get(skill, 1))
+	_skill_levels[skill] = level
+	_skill_xp_progress[skill] = progress
+	if level != prev:
+		skill_level_changed.emit(skill, level)
+
+func get_owned_perks() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	for pid in _owned_perks.keys():
+		out.append(pid)
+	return out
+
+func has_perk(perk_id: String) -> bool:
+	return _owned_perks.has(perk_id)
+
+func add_owned_perk(perk_id: String) -> void:
+	_owned_perks[perk_id] = true
+
+func remove_owned_perk(perk_id: String) -> void:
+	_owned_perks.erase(perk_id)
+
+func get_perk_points_unspent() -> int:
+	return _perk_points_unspent
+
+func set_perk_points_unspent(n: int) -> void:
+	_perk_points_unspent = max(0, n)
+
+func increment_legendary_reset(skill: String) -> int:
+	var c: int = int(_legendary_resets.get(skill, 0)) + 1
+	_legendary_resets[skill] = c
+	return c
+
+func get_legendary_reset_count(skill: String) -> int:
+	return int(_legendary_resets.get(skill, 0))
+
+# Faction disposition (0..100). Pre-game disposition for most factions
+# is in the 30-50 range; trainers gate at >= 75 (Friendly).
+func get_faction_disposition(faction_id: String) -> int:
+	return int(_faction_dispositions.get(faction_id, 30))
+
+func set_faction_disposition(faction_id: String, value: int) -> void:
+	_faction_dispositions[faction_id] = clamp(value, 0, 100)
+
+func modify_faction_disposition(faction_id: String, delta: int) -> int:
+	var cur: int = get_faction_disposition(faction_id)
+	var next: int = clamp(cur + delta, 0, 100)
+	_faction_dispositions[faction_id] = next
+	return next
+
+# Trainer visit cap (per-Act, per-skill, per-trainer).
+func get_trainer_visits(trainer_id: String, skill: String) -> int:
+	var d: Dictionary = _trainer_visits.get(trainer_id, {})
+	return int(d.get(skill, 0))
+
+func increment_trainer_visits(trainer_id: String, skill: String) -> int:
+	var d: Dictionary = _trainer_visits.get(trainer_id, {})
+	var c: int = int(d.get(skill, 0)) + 1
+	d[skill] = c
+	_trainer_visits[trainer_id] = d
+	return c
+
+func reset_trainer_visits_for_new_act() -> void:
+	_trainer_visits.clear()
 
 
 # =============================================================
@@ -246,6 +347,13 @@ func reset_for_new_game() -> void:
 	_flags.clear()
 	_flag_history.clear()
 	_skill_xp.clear()
+	_skill_levels.clear()
+	_skill_xp_progress.clear()
+	_owned_perks.clear()
+	_perk_points_unspent = 0
+	_legendary_resets.clear()
+	_faction_dispositions.clear()
+	_trainer_visits.clear()
 	_companions = {
 		"orion":  false,
 		"dagna":  false,
@@ -485,6 +593,13 @@ func save_game(save_name: String = "", is_autosave: bool = false) -> bool:
 		"flags": _flags.duplicate(),
 		"companions": _companions.duplicate(),
 		"skill_xp": _skill_xp.duplicate(),
+		"skill_levels": _skill_levels.duplicate(),
+		"skill_xp_progress": _skill_xp_progress.duplicate(),
+		"owned_perks": _owned_perks.duplicate(),
+		"perk_points_unspent": _perk_points_unspent,
+		"legendary_resets": _legendary_resets.duplicate(),
+		"faction_dispositions": _faction_dispositions.duplicate(),
+		"trainer_visits": _trainer_visits.duplicate(),
 		"voxel_generator_version": voxel_gen_version,
 	}
 
@@ -609,6 +724,19 @@ func load_save_file(filename: String) -> bool:
 			_companions[key] = data["companions"][key]
 	if data.has("skill_xp"):
 		_skill_xp = data["skill_xp"]
+	# Flat 12-skill state. Pre-skill-PR saves omit these keys; loaders
+	# leave the fields empty and SkillManager initializes defaults on
+	# first XP grant.
+	_skill_levels = data.get("skill_levels", {})
+	_skill_xp_progress = data.get("skill_xp_progress", {})
+	_owned_perks = data.get("owned_perks", {})
+	_perk_points_unspent = int(data.get("perk_points_unspent", 0))
+	_legendary_resets = data.get("legendary_resets", {})
+	_faction_dispositions = data.get("faction_dispositions", {})
+	_trainer_visits = data.get("trainer_visits", {})
+	if get_node_or_null("/root/SkillManager"):
+		# Re-instantiate any owned active perks against the loaded state.
+		SkillManager._rebuild_active_instances()
 	if data.has("inventory") and get_node_or_null("/root/InventoryManager"):
 		InventoryManager.load_save_data(data["inventory"])
 
