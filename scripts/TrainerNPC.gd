@@ -53,14 +53,15 @@ func _open_training_modal() -> void:
 		_close_training_modal()
 	_modal = CanvasLayer.new()
 	_modal.layer = 11   # one above JournalUI (10)
-	get_tree().get_root().add_child(_modal)
 	_modal.process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().get_root().add_child(_modal)
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 	var backdrop := ColorRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.color = Color(0, 0, 0, 0.65)
+	backdrop.process_mode = Node.PROCESS_MODE_ALWAYS
 	_modal.add_child(backdrop)
 
 	_modal_root = Panel.new()
@@ -88,11 +89,11 @@ func _open_training_modal() -> void:
 	vbox.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Faction: %s   |   Disposition: %s (%d)   |   Your gold: %d" % [
+	sub.text = "Faction: %s   |   Disposition: %s (%d)   |   Your coin: %d" % [
 		String(npc_data.faction).capitalize(),
 		FactionManager.disposition_label(FactionManager.get_disposition(String(npc_data.faction))),
 		FactionManager.get_disposition(String(npc_data.faction)),
-		InventoryManager.get_gold() if InventoryManager.has_method("get_gold") else 0,
+		InventoryManager.get_coin_balance(),
 	]
 	UIStyles.apply_muted_label(sub, 14)
 	vbox.add_child(sub)
@@ -198,22 +199,10 @@ func _compute_cost(skill: String) -> int:
 func _player_has_gold(cost: int) -> bool:
 	if not get_node_or_null("/root/InventoryManager"):
 		return false
-	if InventoryManager.has_method("get_gold"):
-		return int(InventoryManager.call("get_gold")) >= cost
-	# Fallback: count "gold" items in inventory.
-	if InventoryManager.has_method("count_item"):
-		return int(InventoryManager.call("count_item", "gold")) >= cost
-	return cost <= 0
+	return InventoryManager.get_coin_balance() >= cost
 
 
 func _spend_gold(cost: int) -> bool:
-	if not _player_has_gold(cost):
+	if not get_node_or_null("/root/InventoryManager"):
 		return false
-	if InventoryManager.has_method("spend_gold"):
-		return bool(InventoryManager.call("spend_gold", cost))
-	if InventoryManager.has_method("remove_item"):
-		return bool(InventoryManager.call("remove_item", "gold", cost))
-	# Last-resort silent permit so the system stays usable even if
-	# InventoryManager hasn't been wired with a gold API.
-	push_warning("[TrainerNPC] No gold API on InventoryManager; training granted free.")
-	return true
+	return InventoryManager.spend_coin(cost)

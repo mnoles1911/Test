@@ -376,12 +376,15 @@ func _attach_sync_node() -> void:
 func _attach_combat_xp_router() -> void:
 	# CombatXPRouter listens for Enemy3D died/damaged signals and routes
 	# kill/hit XP to Sword / Bow / Throwables based on which weapon was
-	# last used. Added as a child so it shares lifecycle with the player.
-	if get_node_or_null("CombatXPRouter") != null:
-		return
-	var router: Node = CombatXPRouter.new()
-	router.name = "CombatXPRouter"
-	add_child(router)
+	# last used. VitalityXPRouter ticks alongside it for swim-time XP.
+	if get_node_or_null("CombatXPRouter") == null:
+		var router: Node = CombatXPRouter.new()
+		router.name = "CombatXPRouter"
+		add_child(router)
+	if get_node_or_null("VitalityXPRouter") == null:
+		var vr: Node = VitalityXPRouter.new()
+		vr.name = "VitalityXPRouter"
+		add_child(vr)
 
 
 # =============================================================

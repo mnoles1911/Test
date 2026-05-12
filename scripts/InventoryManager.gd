@@ -103,6 +103,41 @@ const ITEM_REGISTRY: Dictionary = {
 	# Fine picks add +1.5 s to the hold timer at any skill tier.
 	"lockpick_standard": {"name": "Lockpick",       "type": "misc", "description": "A simple steel pick. Snaps under careless hands, but a steady Roland can open most locks."},
 	"lockpick_fine":     {"name": "Fine Lockpick",  "type": "misc", "description": "Master-filed tolerances. Adds 1.5 seconds to the hold window — the difference between a snap and a set on Hard locks."},
+
+	# --- Alchemy potions (representative sample — full library in
+	# design/ITEM_LIBRARY.md "Alchemy Recipes"). Authored to give the
+	# alchemy crafting service something to produce in v1.
+	"potion_healing":       {"name": "Healing Potion",      "type": "potion", "description": "Restores 50 HP over 5 s.", "consumable_type": "potion", "potion_effect": "heal", "potion_value": 50.0},
+	"potion_healing_major": {"name": "Major Healing Potion","type": "potion", "description": "Restores 120 HP over 5 s.", "consumable_type": "potion", "potion_effect": "heal", "potion_value": 120.0},
+	"potion_stamina":       {"name": "Stamina Tonic",       "type": "potion", "description": "Restores 60 endurance instantly.", "consumable_type": "potion", "potion_effect": "stamina", "potion_value": 60.0},
+	"potion_swift":         {"name": "Swiftness Tonic",     "type": "potion", "description": "+15% movement speed for 60 s.", "consumable_type": "potion", "potion_effect": "speed", "potion_value": 0.15},
+	"potion_iron_skin":     {"name": "Iron Skin Brew",      "type": "potion", "description": "-25% damage taken for 30 s.", "consumable_type": "potion", "potion_effect": "armor", "potion_value": 0.25},
+	"potion_keen_eye":      {"name": "Keen Eye Draught",    "type": "potion", "description": "+30% critical chance for 30 s.", "consumable_type": "potion", "potion_effect": "crit", "potion_value": 0.30},
+	"potion_clarity":       {"name": "Mind's Eye",          "type": "potion", "description": "Reveal enemies through walls for 15 s.", "consumable_type": "potion", "potion_effect": "vision", "potion_value": 15.0},
+	"potion_warmth":        {"name": "Hearthfire Draught",  "type": "potion", "description": "Immune to cold damage for 5 min.", "consumable_type": "potion", "potion_effect": "cold_immune", "potion_value": 300.0},
+	"oil_blade":            {"name": "Blade Oil",           "type": "potion", "description": "Coats sword with poison: +10 damage per hit for 60 s.", "consumable_type": "oil", "potion_effect": "weapon_damage", "potion_value": 10.0},
+	"oil_lockpick":         {"name": "Pick Oil",            "type": "potion", "description": "Lockpicks last 2x longer for 5 min.", "consumable_type": "oil", "potion_effect": "pick_durability", "potion_value": 2.0},
+	"poison_paralysis":     {"name": "Paralysis Poison",    "type": "potion", "description": "Coats blade: 10% paralyze on hit for 60 s.", "consumable_type": "poison", "potion_effect": "paralyze", "potion_value": 0.10},
+	"poison_burn":          {"name": "Burn Poison",         "type": "potion", "description": "Coats blade: target burns for 2 dmg/s, 5 s.", "consumable_type": "poison", "potion_effect": "burn", "potion_value": 2.0},
+
+	# --- Smithing products (representative sample). Tier-1 (iron),
+	# tier-2 (silver), tier-3 (ashsteel) shown for each item slot.
+	"iron_dagger":          {"name": "Iron Dagger",         "type": "weapon", "description": "Short, fast iron dagger.", "combat_damage": 18, "smithing_tier": 1},
+	"silver_dagger":        {"name": "Silver Dagger",       "type": "weapon", "description": "Finer balance, sharper edge.", "combat_damage": 26, "smithing_tier": 2},
+	"iron_longsword":       {"name": "Iron Longsword",      "type": "weapon", "description": "Standard one-handed sword.", "combat_damage": 30, "smithing_tier": 1},
+	"silver_longsword":     {"name": "Silver Longsword",    "type": "weapon", "description": "Brightmoor-forged silver blade.", "combat_damage": 40, "smithing_tier": 2},
+	"ashsteel_longsword":   {"name": "Ashsteel Longsword",  "type": "weapon", "description": "The edge never dulls.", "combat_damage": 60, "smithing_tier": 3},
+	"iron_helm":            {"name": "Iron Helm",           "type": "armor",  "description": "Beaten iron over leather padding.", "armor_value": 10, "smithing_tier": 1},
+	"silver_helm":          {"name": "Silver Helm",         "type": "armor",  "description": "Lighter and more rust-resistant.", "armor_value": 16, "smithing_tier": 2},
+	"iron_cuirass":         {"name": "Iron Cuirass",        "type": "armor",  "description": "Standard Brotherhood chest plate.", "armor_value": 30, "smithing_tier": 1},
+	"silver_cuirass":       {"name": "Silver Cuirass",      "type": "armor",  "description": "Better articulation, same protection.", "armor_value": 36, "smithing_tier": 2},
+	"ashsteel_cuirass":     {"name": "Ashsteel Cuirass",    "type": "armor",  "description": "Half the weight of iron, twice the protection.", "armor_value": 60, "smithing_tier": 3},
+
+	# --- Herbs (raw alchemy ingredients).
+	"herb_kingsfoil":       {"name": "Kingsfoil",           "type": "crafting_mat", "description": "Roadside weed. Common but potent in the right mix."},
+	"herb_silverleaf":      {"name": "Silverleaf",          "type": "crafting_mat", "description": "Pale leaves that grow in shade."},
+	"herb_emberbloom":      {"name": "Emberbloom",          "type": "crafting_mat", "description": "Red blossoms that warm the hand."},
+	"herb_nightshade":      {"name": "Nightshade",          "type": "crafting_mat", "description": "Black berries. Poisonous raw."},
 }
 
 

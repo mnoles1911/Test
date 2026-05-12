@@ -176,6 +176,16 @@ func _on_lock_opened(lock_id: String) -> void:
 		"LockObject3D — '%s' picked successfully." % lock_id
 	)
 
+	# Grant Lockpicking XP scaled by lock tier (Easy=1 .. Very Hard=4).
+	# Dispatch on_lock_opened so perks like Double Loot can react.
+	if get_node_or_null("/root/SkillManager"):
+		var tier_mult: int = max(1, int(lock_data.tier) + 1)
+		SkillManager.add_xp("lockpicking", 10.0 * float(tier_mult))
+		SkillManager.dispatch("on_lock_opened", {
+			"lock_id": lock_id,
+			"tier": lock_data.tier,
+		})
+
 	# Re-show prompt so player knows the state changed.
 	_show_prompt("Unlocked", "lock_icon", 1.5)
 

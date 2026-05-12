@@ -381,7 +381,7 @@ Do not write shell commands that try to run Godot headlessly — there is no suc
 
 ## Critical GDScript patterns
 
-**Player input MUST go through `_can_take_input()` once MP-2 has landed:**
+**Player input MUST go through `_can_take_input()` (MP-2):**
 ```gdscript
 # WRONG — remote replicas of other players will consume our local
 # keyboard. Every Input.* read in Player3D, EditToolHandler, and
@@ -396,7 +396,7 @@ if _can_take_input():
 ```
 `_can_take_input()` is `true` when `MultiplayerManager.is_offline()` OR `get_multiplayer_authority() == multiplayer.get_unique_id()`. Reference impl: `Player3D._can_take_input()` and every `Input.*` site below it.
 
-**Voxel edits MP-route automatically — never bypass `VoxelEditManager`:**
+**Voxel edits MP-route automatically — never bypass `VoxelEditManager` (MP-3):**
 ```gdscript
 # WRONG — direct VoxelTool calls skip MP routing entirely. Any guest
 # call goes nowhere; any host call doesn't reach guests.
@@ -409,6 +409,28 @@ tool.do_sphere(world_pos, radius)
 VoxelEditManager.queue_edit_sphere(world_pos, radius, voxel_value)
 ```
 The MP layer lives in scripts/VoxelEditManager.gd → "MP-3 — multiplayer routing" (3 RPCs + helpers at the bottom of the file).
+
+**Skill XP MUST go through `SkillManager.add_xp(skill_name, amount)` — never write to `GameState._skill_levels` or `GameState._owned_perks` directly:**
+```gdscript
+# WRONG — bypasses level-up math, perk-point grants, active-perk
+# event dispatch, and the level_up signal that the JournalUI watches.
+GameState._skill_levels["sword"] = 50
+
+# WRONG — the legacy domain-prefixed shim still exists for backward
+# compatibility but is deprecated. New callers should not use it.
+GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, "mining", 5)
+
+# RIGHT — single entry point. Handles level-up, perk-point grants,
+# active-perk event dispatch (on_xp_gained hook), and signal emit.
+SkillManager.add_xp("mining", 5.0)
+
+# When firing an event that perks may want to mutate, dispatch
+# explicitly so active perks owned by the player can react.
+SkillManager.dispatch("on_voxel_broken", {"skill": "mining", "tool_id": "iron_pickaxe"})
+```
+Canonical skill names live in `SkillManager.SKILLS`. The 12 are:
+`sword`, `throwables`, `bow`, `mining`, `felling`, `excavation`,
+`demolition`, `lockpicking`, `alchemy`, `smithing`, `vitality`, `speech`.
 
 **UI buttons / sliders need MANUAL `_input` dispatch — do NOT rely on `Button.pressed` or `HSlider` drag:**
 ```gdscript
@@ -747,10 +769,22 @@ bark *"This place doesn't yield to me."*
 Registered in `project.godot` (active now), in load order:
 `GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
 `NetTransport`, `MultiplayerManager`,
-`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `VoxelMaterialRegistry`,
+`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`,
+`FactionManager`, `VoxelMaterialRegistry`, `SkillManager`,
 `JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
-`VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `BarkManager`, `WorldClock`,
-`WeatherManager`, `BloodVFX`
+`VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`,
+`BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`
+
+`PerkRegistry`, `FactionManager`, `SkillManager`, and `SpeechCheckBroker`
+landed with the skill PR. `PerkRegistry` walks `assets/skills/perks/`
+at startup and loads all 300 PerkData resources; `SkillManager` is the
+single entry point for XP grants (`SkillManager.add_xp(skill, amount)`),
+perk picks, Legendary resets, and active-perk event dispatch.
+`FactionManager` is a minimal wrapper around
+`GameState._faction_dispositions` exposing `is_friendly(faction)` (the
+`>= 75` gate trainers use). `SpeechCheckBroker` presents the KCD2
+visible-but-greyed Speech check modal — both as a direct API and as a
+Dialogic Signal-event handler (`speech_check:DC:success:fail`).
 
 `NetTransport` and `MultiplayerManager` are the multiplayer transport
 seam (landed in MP-1). `NetTransport` picks one of three backends at

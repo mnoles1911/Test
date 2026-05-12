@@ -72,6 +72,7 @@ func present(dc: int, success_label: String = "Convince", fail_label: String = "
 	var backdrop := ColorRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.color = Color(0, 0, 0, 0.6)
+	backdrop.process_mode = Node.PROCESS_MODE_ALWAYS
 	_modal.add_child(backdrop)
 
 	var panel := Panel.new()

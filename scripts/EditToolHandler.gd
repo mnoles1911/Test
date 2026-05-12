@@ -878,14 +878,21 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 			material.yield_quantity,
 		)
 
-	# --- Award Crafting sub-skill XP ---
-	# Each tool maps to its corresponding sub-skill (mining/felling/
-	# excavation). XP rolls up to the Crafting domain tier.
-	if get_node_or_null("/root/GameState"):
-		var sub_skill: String = TOOL_SUB_SKILLS.get(equipped_id, "")
+	# --- Award flat-skill XP through SkillManager ---
+	# Each tool maps to its corresponding skill (mining / felling /
+	# excavation). The sub_skill name in TOOL_SUB_SKILLS happens to
+	# match the canonical skill name 1:1, so no translation table is
+	# needed. Also dispatch on_voxel_broken so any active perks (Vein
+	# Sense, Swing Through, Lucky Strike, etc) can react.
+	if get_node_or_null("/root/SkillManager"):
+		var skill: String = TOOL_SUB_SKILLS.get(equipped_id, "")
 		var xp_amount: int = TOOL_XP_PER_EDIT.get(equipped_id, 0)
-		if sub_skill != "" and xp_amount > 0:
-			GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, sub_skill, xp_amount)
+		if skill != "" and xp_amount > 0:
+			SkillManager.add_xp(skill, float(xp_amount))
+			SkillManager.dispatch("on_voxel_broken", {
+				"skill": skill,
+				"tool_id": equipped_id,
+			})
 
 
 func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, count: int) -> void:

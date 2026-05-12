@@ -149,10 +149,10 @@ func _detonate() -> void:
 			carve_center.x, carve_center.y, carve_center.z, aoe_radius_meters
 		])
 
-	# --- Crafting/Demolition sub-skill XP ---
+	# --- Demolition skill XP ---
 	# Per design/SKILLS_AND_PROGRESSION.md — explosive_detonated = 15.
-	if get_node_or_null("/root/GameState"):
-		GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, "demolition", 15)
+	if get_node_or_null("/root/SkillManager"):
+		SkillManager.add_xp("demolition", 15.0)
 
 	# --- Damage enemies in the AOE ---
 	# TODO: iterate over enemy nodes within aoe_radius_meters and
