@@ -611,6 +611,40 @@ ever becomes a recurring bottleneck.
 
 ---
 
+## 2026-05-11 — Generic bake controller upgrades (C++ port era)
+
+Three generator-agnostic optimizations landed when the C++ generator port
+exposed how much bake wall-clock was overhead rather than generator work.
+All apply to Copper Isles bakes unchanged; tune per scene.
+
+- **`wait_per_position_s` `@export` (default 6.0)** — previously a hardcoded
+  `WAIT_PER_POSITION_S = 6.0`. Each scene now overrides on the BakeWorld
+  node (BakeWorld3D.tscn = 1.0; BakeWorld.tscn keeps 6.0 until measured as
+  safe to lower). Drop only as far as the resulting SQLite stays gap-free.
+- **`bake_y_min_voxels` / `bake_y_max_voxels` `@export`s (defaults -100 /
+  30000) → `terrain.voxel_bounds` Y-clip during bake.** Walker stops with
+  view_distance=8000 vox would otherwise stream chunks far above sky and
+  below world floor; setting `voxel_bounds` makes Zylann skip them so the
+  generator never runs there. Default +30000 covers Copper Isles' 15000-vox
+  peak ceiling with margin.
+- **LAND single stop** (`STOP_LAND_OFFSETS = [0.0]`). Was 2 stops at -9 /
+  +33; with Y-clip in place the second stop is redundant. Cuts every LAND
+  tile's wait in half. Restore the two-element array if you ever need the
+  wider dig/sky margin back.
+
+Plus two adapter-aware fixes for the C++ adapter path:
+- **`_estimate_label()` dynamic button labels.** Hardcoded "~110 min /
+  ~7 hr / ~47 hr" became misleading once `wait_per_position_s` was tunable.
+  Labels now compute `(extent/TILE_SIZE)² × 1.1 × wait_per_position_s` at
+  _ready time and show "(~N s/min/hr)".
+- **`cpp_impl` drill-through in `_classify_tiles`.** `sea_level_voxels` and
+  `beach_y_threshold` live on `adapter.cpp_impl`, not the VoxelGeneratorScript
+  wrapper. The classifier falls through to `generator.get("cpp_impl").get(prop)`
+  when the direct lookup misses. Backwards-compatible with Copper Isles (still
+  exposes those properties on its own GD generator).
+
+---
+
 ## Open questions for future passes
 
 - Does Zylann respect the same chunk size at LOD>0, or do higher LODs use larger blocks? Affects walker step size for the LOD pyramid.
