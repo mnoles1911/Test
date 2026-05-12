@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Fire Arrows
-# Skill: bow   |   Milestone: L44
+# Fire Arrows  (bow L44, milestone 10)
 # Bow hits ignite for 2 dmg/s, 4 s.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Apply 2 dmg/s burn for 4 s on bow hit.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "bow":
+		return
+	var tgt: Node = ctx.get("target", null)
+	if tgt != null and tgt.has_method("apply_dot"):
+		tgt.call("apply_dot", "burn", 2.0, 4.0)

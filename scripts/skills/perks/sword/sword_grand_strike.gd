@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Grand Strike
-# Skill: sword   |   Milestone: L84
+# Grand Strike  (sword L84, milestone 20)
 # +50% damage on first sword hit after entering combat.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# +50% damage on first sword hit after entering combat. Combat system marks ctx.first_hit on the opening swing.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "sword":
+		return
+	if not ctx.get("first_hit", false):
+		return
+	ctx["damage"] = int(ctx.get("damage", 0) * 1.50)

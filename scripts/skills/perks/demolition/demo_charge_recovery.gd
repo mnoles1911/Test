@@ -1,17 +1,24 @@
 extends Perk
 
-# Active perk: Charge Recovery
-# Skill: demolition   |   Milestone: L72
+# Charge Recovery  (demolition L72, milestone 17)
 # 10% chance an unexploded charge can be recovered.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# 10% recovery chance when a charge fails to detonate. PowderCharge currently never marks duds, so this is wired but dormant.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("detonation_source", "") != "powder_charge":
+		return
+	if not ctx.get("is_dud", false):
+		return
+	if randf() > 0.10:
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var inv: Node = Engine.get_main_loop().root.get_node_or_null("InventoryManager")
+	if inv != null and inv.has_method("add_item"):
+		inv.call("add_item", "powder_charge", 1)

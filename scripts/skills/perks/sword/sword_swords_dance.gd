@@ -1,17 +1,19 @@
 extends Perk
 
-# Active perk: Sword's Dance
-# Skill: sword   |   Milestone: L80
+# Sword's Dance  (sword L80, milestone 19)
 # +10% damage and -10% endurance cost while moving with sword.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Conditional damage + stamina mult while moving with sword drawn. Pattern C.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if not ctx.get("moving", false):
+		return
+	if ctx.get("skill", "") != "sword":
+		return
+	ctx["damage"] = int(ctx.get("damage", 0) * 1.10)
+	ctx["stamina_cost_mult"] = float(ctx.get("stamina_cost_mult", 1.0)) * 0.90

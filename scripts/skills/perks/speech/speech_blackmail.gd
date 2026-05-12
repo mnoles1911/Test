@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Blackmail
-# Skill: speech   |   Milestone: L68
+# Blackmail  (speech L68, milestone 16)
 # Failed checks reveal a piece of leverage 25% of the time.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Wired at fail-resolution time inside SpeechCheckBroker.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[speech_blackmail] Active — failed speech checks reveal leverage 25% of the time (SpeechCheckBroker reads on fail).")

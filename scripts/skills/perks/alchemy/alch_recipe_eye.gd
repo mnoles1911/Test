@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Recipe Eye
-# Skill: alchemy   |   Milestone: L48
+# Recipe Eye  (alchemy L48, milestone 11)
 # Reveal recipe matches when 2 ingredients in cauldron.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Recipe UI not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[alch_recipe_eye] Active — recipe matches highlight in cauldron UI (UI pending).")

@@ -95,7 +95,12 @@ func present(dc: int, success_label: String = "Convince", fail_label: String = "
 	panel.add_child(vbox)
 
 	var speech_level: int = SkillManager.get_level("speech")
-	var passes: bool = speech_level >= dc
+	# Oratorical perk lets persuasion succeed at DC 5 above your Speech.
+	# The cushion is queried via PerkQuery so any future perks adding to
+	# dc_cushion (e.g. faction-specific bonuses) stack automatically.
+	var cushion: int = int(PerkQuery.sum("dc_cushion", "speech", {"passive": true}))
+	var effective_level: int = speech_level + cushion
+	var passes: bool = effective_level >= dc
 
 	var title := Label.new()
 	title.text = "Speech Check"
@@ -103,8 +108,9 @@ func present(dc: int, success_label: String = "Convince", fail_label: String = "
 	vbox.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Your Speech: %d   |   Required: %d   |   %s" % [
-		speech_level, dc, "PASS" if passes else "FAIL",
+	var cushion_note: String = "" if cushion == 0 else "  (+%d perk)" % cushion
+	sub.text = "Your Speech: %d%s   |   Required: %d   |   %s" % [
+		speech_level, cushion_note, dc, "PASS" if passes else "FAIL",
 	]
 	UIStyles.apply_muted_label(sub, 14)
 	vbox.add_child(sub)

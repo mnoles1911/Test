@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Hidden Caches
-# Skill: lockpicking   |   Milestone: L48
+# Hidden Caches  (lockpicking L48, milestone 11)
 # Reveal hidden cache markers within 16 m.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Cache discovery system not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[lock_hidden_caches] Active — hidden cache markers within 16 m (cache system pending).")

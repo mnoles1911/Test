@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Bleed Arrows
-# Skill: bow   |   Milestone: L40
+# Bleed Arrows  (bow L40, milestone 9)
 # Bow hits apply 1 dmg/s bleed for 6 s.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Apply 1 dmg/s bleed for 6 s on bow hit.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "bow":
+		return
+	var tgt: Node = ctx.get("target", null)
+	if tgt != null and tgt.has_method("apply_dot"):
+		tgt.call("apply_dot", "bleed", 1.0, 6.0)

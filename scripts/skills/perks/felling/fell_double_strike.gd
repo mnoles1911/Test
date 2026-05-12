@@ -1,17 +1,17 @@
 extends Perk
 
-# Active perk: Double Strike
-# Skill: felling   |   Milestone: L44
+# Double Strike  (felling L44, milestone 10)
 # 10% chance per swing to hit twice.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# 10% proc: caller fires an extra hit. EditToolHandler reads ctx.double_strike.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "felling":
+		return
+	if randf() < 0.10:
+		ctx["double_strike"] = true

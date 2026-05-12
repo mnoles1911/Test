@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Bard
-# Skill: speech   |   Milestone: L24
+# Bard  (speech L24, milestone 5)
 # Singing in taverns grants +10 disposition to all nearby for 1 day.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Tavern song trigger not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[speech_bard] Active — tavern song grants +10 disposition to nearby NPCs (tavern-song trigger pending).")

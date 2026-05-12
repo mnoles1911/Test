@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Poisoner
-# Skill: alchemy   |   Milestone: L36
+# Poisoner  (alchemy L36, milestone 8)
 # Coat blade poison on swords for 30 s.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Blade-coat UI not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[alch_poisoner] Active — apply blade poison from inventory (oil-coat UI pending).")

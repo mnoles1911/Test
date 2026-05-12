@@ -1,17 +1,16 @@
 extends Perk
 
-# Active perk: Bury
-# Skill: excavation   |   Milestone: L32
+# Bury  (excavation L32, milestone 7)
 # Spawn 1 dirt at every shovel strike to bury bodies.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Flag for EditToolHandler to place a dirt voxel at the player's feet after a shovel swing (TODO: place-voxel path not in production for this trigger).
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "excavation":
+		return
+	ctx["spawn_dirt_at_player"] = true

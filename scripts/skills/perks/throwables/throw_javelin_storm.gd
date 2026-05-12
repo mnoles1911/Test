@@ -1,17 +1,22 @@
 extends Perk
 
-# Active perk: Javelin Storm
-# Skill: throwables   |   Milestone: L92
+# Javelin Storm  (throwables L92, milestone 22)
 # Killing with a spear refunds 50% chance to find the spear at the corpse.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# 50% chance to refund a spear on thrown kill (the spear may stay stuck in the corpse anyway; this is bonus on top).
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_kill(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "throwables":
+		return
+	if randf() > 0.50:
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var inv: Node = Engine.get_main_loop().root.get_node_or_null("InventoryManager")
+	if inv != null and inv.has_method("add_item"):
+		inv.call("add_item", "spear", 1)

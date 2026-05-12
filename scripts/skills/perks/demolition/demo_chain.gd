@@ -1,17 +1,17 @@
 extends Perk
 
-# Active perk: Chain Reaction
-# Skill: demolition   |   Milestone: L24
+# Chain Reaction  (demolition L24, milestone 5)
 # +50% chance a nearby charge chains on detonation.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# PowderCharge dispatches on_attack with detonation_source set; perk flags chain_explode for the engine to detonate neighbors.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("detonation_source", "") != "powder_charge":
+		return
+	if randf() < 0.50:
+		ctx["chain_explode"] = true

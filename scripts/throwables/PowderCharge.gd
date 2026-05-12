@@ -84,6 +84,8 @@ func _ready() -> void:
 	_lifetime_remaining = lifetime_seconds
 	# Detonate on collision with any solid body.
 	body_entered.connect(_on_body_entered)
+	# Join group so the Chain Reaction perk can find neighbors.
+	add_to_group("powder_charge")
 
 
 func _physics_process(delta: float) -> void:
@@ -149,10 +151,24 @@ func _detonate() -> void:
 			carve_center.x, carve_center.y, carve_center.z, aoe_radius_meters
 		])
 
-	# --- Demolition skill XP ---
+	# --- Demolition skill XP + active-perk dispatch ---
 	# Per design/SKILLS_AND_PROGRESSION.md — explosive_detonated = 15.
+	# The ctx is shared with active demo perks (chain, focused_blast,
+	# smoker, concussion, charge_recovery) which read/mutate it.
 	if get_node_or_null("/root/SkillManager"):
 		SkillManager.add_xp("demolition", 15.0)
+		var det_ctx: Dictionary = {
+			"skill": "demolition",
+			"detonation_source": "powder_charge",
+			"world_pos": carve_center,
+			"damage": combat_damage,
+			"aoe_radius": aoe_radius_meters,
+			"is_dud": false,
+		}
+		SkillManager.dispatch("on_attack", det_ctx)
+		# If a perk flagged chain_explode, detonate nearby charges too.
+		if det_ctx.get("chain_explode", false):
+			_chain_detonate_nearby()
 
 	# --- Damage enemies in the AOE ---
 	# TODO: iterate over enemy nodes within aoe_radius_meters and
@@ -163,6 +179,21 @@ func _detonate() -> void:
 	# removal to the end of the frame so any in-flight signal
 	# handling completes safely.
 	queue_free()
+
+
+func _chain_detonate_nearby() -> void:
+	# Wake any other PowderCharge instances within 2 × aoe_radius so
+	# they detonate too. Used by the Chain Reaction perk; harmless
+	# when the perk is not owned (no flag set, function never called).
+	var chain_radius: float = aoe_radius_meters * 2.0
+	for body in get_tree().get_nodes_in_group("powder_charge"):
+		if body == self or not is_instance_valid(body):
+			continue
+		if not (body is RigidBody3D):
+			continue
+		if body.global_position.distance_to(global_position) <= chain_radius:
+			if body.has_method("_detonate"):
+				body.call_deferred("_detonate")
 
 
 func _spawn_detonation_effect(at_position: Vector3) -> void:

@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Double Brew
-# Skill: alchemy   |   Milestone: L44
+# Double Brew  (alchemy L44, milestone 10)
 # +25% chance to craft 2 potions instead of 1.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Wired at craft-time, not consumption-time. Hook here is a no-op intentionally.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_potion_drunk(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	pass  # AlchemyStation reads PerkQuery.sum('proc_chance', 'potion', {'on_craft': true}) at craft time.

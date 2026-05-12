@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Diplomat
-# Skill: speech   |   Milestone: L40
+# Diplomat  (speech L40, milestone 9)
 # +10 disposition with all NPCs of one faction.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Faction-pick UI not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[speech_diplomat] Active — +10 disposition with a chosen faction (UI to pick faction pending).")

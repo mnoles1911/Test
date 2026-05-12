@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Oratorical
-# Skill: speech   |   Milestone: L52
+# Oratorical  (speech L52, milestone 12)
 # Persuade checks succeed at DC 5 above your Speech.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Wired at check time in SpeechCheckBroker.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[speech_oratorical] Active — persuade checks succeed at DC 5 above your Speech (SpeechCheckBroker reads PerkQuery at check time).")

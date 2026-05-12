@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Decoy
-# Skill: lockpicking   |   Milestone: L64
+# Decoy  (lockpicking L64, milestone 15)
 # Drop a fake pick to distract patrolling NPCs for 5 s.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# NPC distraction system not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[lock_decoy] Active — drop fake pick distracts patrolling NPCs (AI system pending).")

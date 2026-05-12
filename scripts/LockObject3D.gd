@@ -135,9 +135,35 @@ func _on_interact_pressed() -> void:
 		)
 		return
 
+	# Lockpicking perk auto-opens. silver_pick auto-resolves tier-1
+	# locks; lock_perfect_pick auto-resolves first tier-≤2 lock per day
+	# (the perk script tracks its own once-per-day state).
+	if _try_perk_auto_open():
+		return
+
 	# Full examine (no picks required, press E without picks for flavour text).
 	# For now, opening always goes straight to the minigame.
 	_open_lockpicking_ui()
+
+
+func _try_perk_auto_open() -> bool:
+	# Returns true if a perk fired and the lock is now open (or about
+	# to be), false to fall through to the standard minigame path.
+	var tier: int = int(lock_data.tier)
+	# Silver Pick: tier-1 locks open in one attempt.
+	if tier == 0 and PerkQuery.has_flag("lock", "tier_1"):
+		_on_lock_opened(lock_data.lock_id)
+		return true
+	# Perfect Pick: first tier-≤2 lock of the day auto-resolves. The
+	# perk's own script tracks the daily flag so we just dispatch and
+	# observe whether it sets ctx.perfect_pick_fired.
+	if tier <= 1 and SkillManager != null:
+		var ctx: Dictionary = {"tier": tier, "first_per_day": true}
+		SkillManager.dispatch("on_lock_opened", ctx)
+		if ctx.get("perfect_pick_fired", false):
+			_on_lock_opened(lock_data.lock_id)
+			return true
+	return false
 
 
 func _use_key() -> void:

@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Recipe Eye
-# Skill: smithing   |   Milestone: L52
+# Recipe Eye  (smithing L52, milestone 12)
 # Forge UI highlights ingredients that match a known recipe.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Forge UI not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[smith_recipe_eye] Active — forge UI highlights recipe-matching ingredients (UI pending).")

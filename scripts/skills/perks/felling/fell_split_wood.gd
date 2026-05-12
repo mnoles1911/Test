@@ -1,17 +1,20 @@
 extends Perk
 
-# Active perk: Split Wood
-# Skill: felling   |   Milestone: L100
+# Split Wood  (felling L100, milestone 24)
 # Killing an enemy with an axe drops kindling.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Axe-killing an enemy drops kindling.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_kill(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "sword" and ctx.get("weapon", "") != "axe":
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var inv: Node = Engine.get_main_loop().root.get_node_or_null("InventoryManager")
+	if inv != null and inv.has_method("add_item"):
+		inv.call("add_item", "raw_leaves", 1)

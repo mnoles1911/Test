@@ -1,17 +1,24 @@
 extends Perk
 
-# Active perk: Concussion
-# Skill: demolition   |   Milestone: L84
+# Concussion  (demolition L84, milestone 20)
 # Stuns enemies within 4 m for 1 s on detonation.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Stun enemies within 4 m of detonation for 1 s. Calls Enemy3D.apply_status if present.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("detonation_source", "") != "powder_charge":
+		return
+	var pos: Vector3 = ctx.get("world_pos", Vector3.ZERO)
+	if Engine.get_main_loop() == null:
+		return
+	for n in Engine.get_main_loop().get_nodes_in_group("enemy"):
+		if not is_instance_valid(n):
+			continue
+		if n.global_position.distance_to(pos) <= 4.0:
+			if n.has_method("apply_status"):
+				n.call("apply_status", "stunned", 1.0)

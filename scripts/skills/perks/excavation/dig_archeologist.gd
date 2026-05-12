@@ -1,17 +1,24 @@
 extends Perk
 
-# Active perk: Archeologist
-# Skill: excavation   |   Milestone: L40
+# Archeologist  (excavation L40, milestone 9)
 # 5% chance to unearth a small treasure when digging.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# 5% per dig: unearth a small treasure (5 coin).
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "excavation":
+		return
+	if randf() > 0.05:
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var inv: Node = Engine.get_main_loop().root.get_node_or_null("InventoryManager")
+	if inv == null:
+		return
+	if inv.has_method("add_coin"):
+		inv.call("add_coin", 5)

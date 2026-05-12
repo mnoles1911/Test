@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Third Eye
-# Skill: bow   |   Milestone: L88
+# Third Eye  (bow L88, milestone 21)
 # On a hit, briefly outline the target through walls.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Bow hit outlines target through walls for 5 s. TODO: x-ray outline shader pass not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "bow":
+		return
+	var tgt: Node = ctx.get("target", null)
+	if tgt != null and tgt.has_method("set_xray_outline"):
+		tgt.call("set_xray_outline", true, 5.0)

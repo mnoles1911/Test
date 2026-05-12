@@ -1,22 +1,25 @@
 extends Perk
 
-# Active perk: Riposte
-# Skill: sword   |   Milestone: L24
+# Riposte  (sword L24, milestone 5)
 # After a successful parry, your next sword hit within 2 s deals +50% damage.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Pattern A: post-parry window (2 s). on_parry opens it, the next sword attack consumes it for +50% damage.
+
+var _parry_window_open_until: float = 0.0
 
 func _init() -> void:
-    pass
+	pass
 
 func on_parry(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	_parry_window_open_until = (Time.get_ticks_msec() / 1000.0) + 2.0
 
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	var t: float = Time.get_ticks_msec() / 1000.0
+	if ctx.get("skill", "") != "sword":
+		return
+	if t > _parry_window_open_until:
+		return
+	ctx["damage"] = int(ctx.get("damage", 0) * 1.50)
+	ctx["riposte_active"] = true
+	_parry_window_open_until = 0.0

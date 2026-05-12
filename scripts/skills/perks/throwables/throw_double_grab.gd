@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Double Grab
-# Skill: throwables   |   Milestone: L32
+# Double Grab  (throwables L32, milestone 7)
 # Drawing a spear pulls 2 into hand (if 2+ in inventory).
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Pure flag perk; ThrowableHandler queries PerkQuery.has_flag("spear") at draw time.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[throw_double_grab] Active — drawing a spear pulls 2 (UI surfaces via ThrowableHandler).")

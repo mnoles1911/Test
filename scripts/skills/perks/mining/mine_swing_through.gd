@@ -1,17 +1,16 @@
 extends Perk
 
-# Active perk: Swing Through
-# Skill: mining   |   Milestone: L56
+# Swing Through  (mining L56, milestone 13)
 # Pickaxe hits can break 2 adjacent voxels of the same type.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# EditToolHandler reads extra_adjacent_breaks after the primary break to fire additional carves on same-material neighbors.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "mining":
+		return
+	ctx["extra_adjacent_breaks"] = max(int(ctx.get("extra_adjacent_breaks", 0)), 1)

@@ -44,10 +44,9 @@ func _try_connect_enemy(n: Node) -> void:
 	if n.has_signal("damaged") and not n.damaged.is_connected(_on_enemy_damaged):
 		n.damaged.connect(_on_enemy_damaged.bind(n))
 
-func _on_enemy_damaged(_amount: int, _hit_point: Vector3, enemy: Node) -> void:
+func _on_enemy_damaged(amount: int, hit_point: Vector3, enemy: Node) -> void:
 	# Read the attributing skill off the enemy if the damage call left
-	# one there (Enemy3D.take_damage will set `last_hit_skill` when the
-	# combat router pull request lands), else fall back to current weapon.
+	# one there, else fall back to current weapon.
 	var skill: String = current_weapon_skill
 	if enemy != null and "last_hit_skill" in enemy:
 		var tag: String = String(enemy.get("last_hit_skill"))
@@ -56,8 +55,17 @@ func _on_enemy_damaged(_amount: int, _hit_point: Vector3, enemy: Node) -> void:
 	var amt: int = XP_HIT.get(skill, 0)
 	if amt > 0:
 		SkillManager.add_xp(skill, float(amt))
+	# Active-perk on_attack hook. Perks that stack damage by hit
+	# (battle_rhythm, volley, pincushion) or apply DoTs (bleed, fire,
+	# poison) read/mutate the ctx here.
+	SkillManager.dispatch("on_attack", {
+		"skill": skill,
+		"target": enemy,
+		"damage": amount,
+		"hit_point": hit_point,
+	})
 
-func _on_enemy_died(_damage_at_kill: int, enemy: Node) -> void:
+func _on_enemy_died(damage_at_kill: int, enemy: Node) -> void:
 	var skill: String = current_weapon_skill
 	if enemy != null and "last_hit_skill" in enemy:
 		var tag: String = String(enemy.get("last_hit_skill"))
@@ -66,10 +74,31 @@ func _on_enemy_died(_damage_at_kill: int, enemy: Node) -> void:
 	var amt: int = XP_KILL.get(skill, 0)
 	if amt > 0:
 		SkillManager.add_xp(skill, float(amt))
+	# Active-perk on_kill hook. Dread Blade / Blood Arrow / Javelin
+	# Storm / Split Wood all listen here.
+	SkillManager.dispatch("on_kill", {
+		"skill": skill,
+		"target": enemy,
+		"damage_at_kill": damage_at_kill,
+	})
 
-func report_parry_success() -> void:
+func report_parry_success(attacker: Node = null) -> void:
 	# Called by Player3D parry hook when (and if) parry lands.
 	SkillManager.add_xp("sword", float(XP_PARRY))
+	SkillManager.dispatch("on_parry", {"attacker": attacker})
+
+func report_player_damaged(amount: int, source: Node = null) -> void:
+	# Called by Player3D when the player takes damage (any source).
+	# Perks like sword_undying / vit_second_chance / sword_second_wind
+	# react here. Returning ctx lets the caller read mutated values
+	# (e.g. damage reduced or absorbed).
+	SkillManager.dispatch("on_take_damage", {
+		"amount": amount,
+		"source": source,
+	})
+
+func report_potion_drunk(potion_id: String) -> void:
+	SkillManager.dispatch("on_potion_drunk", {"potion_id": potion_id})
 
 # External setters used by tool handlers.
 func set_weapon_skill(skill_tag: String) -> void:

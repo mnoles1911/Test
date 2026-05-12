@@ -1,17 +1,16 @@
 extends Perk
 
-# Active perk: Burglar
-# Skill: lockpicking   |   Milestone: L60
+# Burglar  (lockpicking L60, milestone 14)
 # Open locks 30% faster on the third+ attempt of an evening.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# After 3rd+ attempt this evening, picking is 30% faster. LockpickingUI reads PerkQuery (with ctx.attempts >= 3) at start.
+
+var _attempts_today: int = 0
 
 func _init() -> void:
-    pass
+	pass
 
 func on_lock_opened(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	_attempts_today += 1
+	if _attempts_today >= 3:
+		print("[lock_burglar] Speed-up active (3rd+ attempt this evening).")

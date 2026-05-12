@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Whirlwind
-# Skill: sword   |   Milestone: L40
+# Whirlwind  (sword L40, milestone 9)
 # Power attacks hit all enemies within 1.5 m.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Power attacks gain a 1.5 m AoE. Caller (combat system) reads ctx.aoe_radius to apply to all enemies in range.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if not ctx.get("power_attack", false):
+		return
+	if ctx.get("skill", "") != "sword":
+		return
+	ctx["aoe_radius"] = max(float(ctx.get("aoe_radius", 0.0)), 1.5)

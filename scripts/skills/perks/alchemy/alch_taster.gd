@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Taster
-# Skill: alchemy   |   Milestone: L28
+# Taster  (alchemy L28, milestone 6)
 # Reveal first effect of unknown ingredients by tasting.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Ingredient taste flow not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[alch_taster] Active — taste an unknown ingredient to reveal first effect (UI pending).")

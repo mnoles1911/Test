@@ -1,17 +1,22 @@
 extends Perk
 
-# Active perk: Relentless
-# Skill: mining   |   Milestone: L96
+# Relentless  (mining L96, milestone 23)
 # Mining swings never tire (endurance regen 100% while mining).
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Refill stamina to full on every mining break — equivalent to 100% regen while actively mining.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "mining":
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var player: Node = Engine.get_main_loop().root.get_node_or_null("World3D/Player3D")
+	if player == null or not "endurance" in player:
+		return
+	var mx: float = float(player.get("max_endurance")) if "max_endurance" in player else 100.0
+	player.set("endurance", mx)

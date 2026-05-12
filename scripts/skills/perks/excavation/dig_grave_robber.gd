@@ -1,17 +1,23 @@
 extends Perk
 
-# Active perk: Grave Robber
-# Skill: excavation   |   Milestone: L36
+# Grave Robber  (excavation L36, milestone 8)
 # Excavating dropped corpses yields +1 random crafting mat.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Digging on a corpse yields a random crafting mat.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "excavation":
+		return
+	if not ctx.get("on_corpse", false):
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var inv: Node = Engine.get_main_loop().root.get_node_or_null("InventoryManager")
+	if inv != null and inv.has_method("add_item"):
+		var candidates: PackedStringArray = ["raw_clay", "raw_gravel", "copper_ore"]
+		inv.call("add_item", candidates[randi() % candidates.size()], 1)

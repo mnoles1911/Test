@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Proximity
-# Skill: demolition   |   Milestone: L20
+# Proximity  (demolition L20, milestone 4)
 # Charges detonate on enemy contact instead of timer.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Flag for PowderCharge — body_entered already exists; the trigger check (any solid body) already detonates on enemy contact too, so this perk is effectively already 'on' once PowderCharge reads the flag.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[demo_proximity] Active — PowderCharge reads PerkQuery.has_flag('explosives','') to detonate on enemy contact.")

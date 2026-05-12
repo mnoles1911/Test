@@ -1,17 +1,24 @@
 extends Perk
 
-# Active perk: Select Cut
-# Skill: felling   |   Milestone: L60
+# Select Cut  (felling L60, milestone 14)
 # Each tree felled grants +10% XP to other crafting skills.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Each tree felled grants a small XP nudge to other crafting skills.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "felling":
+		return
+	if not ctx.get("on_tree_break", false):
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var sm: Node = Engine.get_main_loop().root.get_node_or_null("SkillManager")
+	if sm == null:
+		return
+	for s in ["mining", "excavation", "smithing", "alchemy"]:
+		sm.call("add_xp", s, 1.0)

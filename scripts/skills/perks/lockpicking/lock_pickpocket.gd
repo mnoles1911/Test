@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Pickpocket
-# Skill: lockpicking   |   Milestone: L32
+# Pickpocket  (lockpicking L32, milestone 7)
 # Begin pickpocketing without alerting NPCs.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Pickpocket system not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[lock_pickpocket] Active — pickpocket without alerting NPCs (pickpocket system pending).")

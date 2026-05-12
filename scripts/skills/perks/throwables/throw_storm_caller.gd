@@ -1,17 +1,17 @@
 extends Perk
 
-# Active perk: Storm Caller
-# Skill: throwables   |   Milestone: L88
+# Storm Caller  (throwables L88, milestone 21)
 # Detonating a powder charge near another causes both to chain.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Powder charges flag chain_explode in ctx so PowderCharge.gd can detect neighboring charges and trigger them. TODO: PowderCharge chain-detect not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "throwables":
+		return
+	if ctx.get("detonation_source", "") == "powder_charge":
+		ctx["chain_explode"] = true

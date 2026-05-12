@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Ricochet
-# Skill: throwables   |   Milestone: L36
+# Ricochet  (throwables L36, milestone 8)
 # Thrown spears bounce once off terrain.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# First terrain hit on a thrown spear flips request_ricochet so ThrowableSpear can spawn a follow-up. TODO: ThrowableSpear ricochet path not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "throwables":
+		return
+	if ctx.get("surface_hit", false) and not ctx.get("ricochet_used", false):
+		ctx["ricochet_used"] = true
+		ctx["request_ricochet"] = true

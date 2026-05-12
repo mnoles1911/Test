@@ -1,17 +1,24 @@
 extends Perk
 
-# Active perk: Blood Arrow
-# Skill: throwables   |   Milestone: L64
+# Blood Arrow  (throwables L64, milestone 15)
 # Thrown kills heal 5 HP.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Thrown kill heals player +5 HP. Reads Player3D.hp / max_hp.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_kill(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "throwables":
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var player: Node = Engine.get_main_loop().root.get_node_or_null("World3D/Player3D")
+	if player == null:
+		return
+	if "hp" in player:
+		var cur: float = float(player.get("hp"))
+		var mx: float = float(player.get("max_hp")) if "max_hp" in player else 100.0
+		player.set("hp", minf(cur + 5.0, mx))

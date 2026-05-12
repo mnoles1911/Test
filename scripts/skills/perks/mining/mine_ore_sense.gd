@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Ore Sense
-# Skill: mining   |   Milestone: L52
+# Ore Sense  (mining L52, milestone 12)
 # Minimap pings within 16 m when ore veins are near.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Minimap system not in production; perk registers as active so it shows owned.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[mine_ore_sense] Active — minimap pings ore within 16 m (minimap pending).")

@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Tree Sense
-# Skill: felling   |   Milestone: L28
+# Tree Sense  (felling L28, milestone 6)
 # Outlines the felling-direction line on a tree trunk.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Visual TODO.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[fell_tree_sense] Active — tree felling-line highlight when axe drawn (renderer hook pending).")

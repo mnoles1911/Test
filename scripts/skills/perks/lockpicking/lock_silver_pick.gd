@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Silver Pick
-# Skill: lockpicking   |   Milestone: L24
+# Silver Pick  (lockpicking L24, milestone 5)
 # Tier-1 locks open in one attempt.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Flag perk — LockObject3D reads PerkQuery.has_flag('lock','tier_1') and auto-opens tier-1 locks. Hook fires after the open is granted.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_lock_opened(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	pass  # Logged by LockObject3D when the perk auto-resolves the lock (gate handled at lock-open time via PerkQuery.has_flag).

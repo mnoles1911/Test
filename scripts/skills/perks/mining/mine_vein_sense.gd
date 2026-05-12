@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Vein Sense
-# Skill: mining   |   Milestone: L16
+# Vein Sense  (mining L16, milestone 3)
 # Briefly outlines ore veins within 8 m when a pickaxe is drawn.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Visual perk. EditToolHandler queries PerkQuery.has_flag("ore", "while_pickaxe") to enable highlight.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[mine_vein_sense] Active — ore-vein highlights when pickaxe drawn (renderer hook pending).")

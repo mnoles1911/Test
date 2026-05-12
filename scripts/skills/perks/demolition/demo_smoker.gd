@@ -1,17 +1,16 @@
 extends Perk
 
-# Active perk: Smoker
-# Skill: demolition   |   Milestone: L52
+# Smoker  (demolition L52, milestone 12)
 # Explosions leave a 5 s smoke cloud blinding enemies.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Sets a flag for PowderCharge to spawn a 5-s smoke cloud (TODO: smoke particle scene not in production).
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("detonation_source", "") != "powder_charge":
+		return
+	ctx["leave_smoke_seconds"] = 5.0

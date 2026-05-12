@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Keen Eye
-# Skill: lockpicking   |   Milestone: L52
+# Keen Eye  (lockpicking L52, milestone 12)
 # Reveal pick sweet spot for 1 s on entry.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Flag for LockpickingUI hint.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_lock_opened(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	pass  # LockpickingUI reads PerkQuery.has_flag('lock','on_enter') at open time to flash sweet spot.

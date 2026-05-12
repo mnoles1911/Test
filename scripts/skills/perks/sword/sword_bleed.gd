@@ -1,17 +1,22 @@
 extends Perk
 
-# Active perk: Bleed
-# Skill: sword   |   Milestone: L32
+# Bleed  (sword L32, milestone 7)
 # Sword hits apply a bleed dealing 1 dmg/s for 6 s.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Apply 1 dmg/s bleed for 6 s. Uses Enemy3D.apply_dot if present, else stashes the DoT request in ctx for whoever wires DoT next.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "sword":
+		return
+	var tgt: Node = ctx.get("target", null)
+	if tgt == null:
+		return
+	if tgt.has_method("apply_dot"):
+		tgt.call("apply_dot", "bleed", 1.0, 6.0)
+	else:
+		ctx["pending_dot"] = {"type": "bleed", "dps": 1.0, "duration": 6.0}

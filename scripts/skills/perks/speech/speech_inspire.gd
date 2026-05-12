@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Inspire
-# Skill: speech   |   Milestone: L80
+# Inspire  (speech L80, milestone 19)
 # Companions deal +10% damage for 30 s after a speech.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Companion buff system not in production.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[speech_inspire] Active — companion damage +10% for 30 s after a speech (companion buff system pending).")

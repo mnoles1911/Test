@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Silent Kill
-# Skill: bow   |   Milestone: L28
+# Silent Kill  (bow L28, milestone 6)
 # Bow kills outside combat do not alert nearby enemies.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Out-of-combat bow kills don't alert nearby enemies. Sets ctx.suppress_alert flag. TODO: stealth/aggro broadcast not wired yet.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_kill(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "bow":
+		return
+	if not ctx.get("stealth", false):
+		return
+	ctx["suppress_alert"] = true  # combat / AI systems suppress aggro alert

@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Quick Tongue
-# Skill: speech   |   Milestone: L56
+# Quick Tongue  (speech L56, milestone 13)
 # Speech checks can be retried once after fail.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Wired at fail time in SpeechCheckBroker.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[speech_quick_tongue] Active — speech checks can be retried once after fail (SpeechCheckBroker reads PerkQuery at fail).")

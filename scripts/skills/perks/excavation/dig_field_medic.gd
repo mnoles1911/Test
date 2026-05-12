@@ -1,17 +1,25 @@
 extends Perk
 
-# Active perk: Field Medic
-# Skill: excavation   |   Milestone: L72
+# Field Medic  (excavation L72, milestone 17)
 # Excavating a corpse heals you for 5 HP.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Heal +5 HP per corpse excavation tick.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_voxel_broken(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("skill", "") != "excavation":
+		return
+	if not ctx.get("on_corpse", false):
+		return
+	if Engine.get_main_loop() == null:
+		return
+	var p: Node = Engine.get_main_loop().root.get_node_or_null("World3D/Player3D")
+	if p == null or not "hp" in p:
+		return
+	var cur: float = float(p.get("hp"))
+	var mx: float = float(p.get("max_hp")) if "max_hp" in p else 100.0
+	p.set("hp", minf(cur + 5.0, mx))

@@ -1,17 +1,18 @@
 extends Perk
 
-# Active perk: Focused Blast
-# Skill: demolition   |   Milestone: L44
+# Focused Blast  (demolition L44, milestone 10)
 # Explosions deal +30% damage in a 30° forward cone.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Demo system sets ctx.cone_forward for enemies in a 30° forward cone.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
 func on_attack(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+	if ctx.get("detonation_source", "") != "powder_charge":
+		return
+	if not ctx.get("cone_forward", false):
+		return
+	ctx["damage"] = int(ctx.get("damage", 0) * 1.30)

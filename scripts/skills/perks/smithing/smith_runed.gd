@@ -1,17 +1,14 @@
 extends Perk
 
-# Active perk: Runed
-# Skill: smithing   |   Milestone: L64
+# Runed  (smithing L64, milestone 15)
 # 1 in 5 crafts produces a +1 quality result.
 #
-# Hooks below are stubs; the gameplay system that fires the hook is
-# the source of truth for what this perk actually does at runtime.
-# Effect-table inspection lets passive logic + UI also reflect this
-# perk where it matters.
+# Wired at craft-time in SmithingForge.
+
+
 
 func _init() -> void:
-    pass
+	pass
 
-func on_picked(ctx: Dictionary) -> void:
-    # TODO: implement
-    pass
+func on_picked() -> void:
+	print("[smith_runed] Active — 1/5 forge crafts produce +1 quality result (SmithingForge reads PerkQuery on craft).")
