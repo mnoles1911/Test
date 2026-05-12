@@ -1,15 +1,23 @@
 // GDExtension entry point for the voxel_gen module.
 //
 // Active classes:
-//   CubicHeightmapGeneratorCpp — World3D terrain generator (Mira). Used via
-//       CubicHeightmapGeneratorAdapter.gd as the VoxelLodTerrain's generator.
+//   HeightmapGeneratorBase — abstract shared base for the two heightmap
+//       generators (registered as abstract so the editor doesn't offer
+//       "New Resource" for it).
+//   CubicHeightmapGeneratorCpp — World3D terrain generator (Mira). Used
+//       via CubicHeightmapGeneratorAdapter.gd as the VoxelLodTerrain's
+//       generator.
+//   CopperIslesHeightmapGeneratorCpp — Copper Isles demo. Used via
+//       CopperIslesHeightmapGeneratorAdapter.gd.
 //   ParityProbe — bit-exact verification shim for voxel_gen_math (hash3,
-//       cliff_threshold_for_angle_voxels). Retained between ports so each new
-//       C++ port can extend a parity harness against the GDScript original.
+//       cliff_threshold_for_angle_voxels). Retained between ports so each
+//       new C++ port can extend a parity harness against the GDScript
+//       original.
 
 #include "register_types.h"
 #include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
+#include "heightmap_generator_base.h"
 #include "parity_probe.h"
 
 #include <gdextension_interface.h>
@@ -24,6 +32,11 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
         return;
     }
     ClassDB::register_class<ParityProbe>();
+    // The base class must register BEFORE its subclasses so godot-cpp
+    // can resolve the inheritance chain. Abstract so the editor doesn't
+    // let users instantiate it directly (compute_ground_y is pure
+    // virtual; instantiation would crash on first generate_block call).
+    ClassDB::register_abstract_class<HeightmapGeneratorBase>();
     ClassDB::register_class<CubicHeightmapGeneratorCpp>();
     ClassDB::register_class<CopperIslesHeightmapGeneratorCpp>();
 }
