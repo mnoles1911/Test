@@ -10,8 +10,16 @@
 
 using namespace godot;
 
-// Zylann VoxelBuffer channel index for CHANNEL_TYPE (material id).
+// Zylann VoxelBuffer channel indices.
+// CHANNEL_TYPE = 0 (material id), CHANNEL_DATA5 = 5 (first user channel,
+// used here for the Minecraft-style water byte).
 static constexpr int CHANNEL_TYPE = 0;
+static constexpr int CHANNEL_DATA5 = 5;
+
+// Canonical water source byte. Mirrors WaterByteCodec.SOURCE_BYTE
+// (MAX_LEVEL=8 | SOURCE_BIT=0x10 = 0x18 = 24). Worker-thread-safe to
+// hardcode because the codec layout is locked.
+static constexpr int WATER_SOURCE_BYTE = 0x18;
 
 // Material IDs match the .tres files under assets/voxels/materials/.
 // Hardcoded for Phase 2-3; Phase 4 will refactor to read from
@@ -76,6 +84,16 @@ double CubicHeightmapGeneratorCpp::get_marble_dark_threshold() const { return _m
 
 void CubicHeightmapGeneratorCpp::set_marble_jitter_max_lod(int p_value) { _marble_jitter_max_lod = p_value; }
 int CubicHeightmapGeneratorCpp::get_marble_jitter_max_lod() const { return _marble_jitter_max_lod; }
+
+// Phase 4a setters/getters
+void CubicHeightmapGeneratorCpp::set_bedrock_material_id(int p_value) { _bedrock_material_id = p_value; }
+int CubicHeightmapGeneratorCpp::get_bedrock_material_id() const { return _bedrock_material_id; }
+
+void CubicHeightmapGeneratorCpp::set_world_floor_voxel_y(int p_value) { _world_floor_voxel_y = p_value; }
+int CubicHeightmapGeneratorCpp::get_world_floor_voxel_y() const { return _world_floor_voxel_y; }
+
+void CubicHeightmapGeneratorCpp::set_sea_level_voxels(int p_value) { _sea_level_voxels = p_value; }
+int CubicHeightmapGeneratorCpp::get_sea_level_voxels() const { return _sea_level_voxels; }
 
 // ----- Core: ground_y at a world (x, z) column ---------------------------
 //
@@ -171,6 +189,16 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
     const double jitter_dark = _marble_dark_threshold;
     const bool run_marble_jitter = _marble_jitter_max_lod >= 0 && lod <= _marble_jitter_max_lod;
 
+    // Phase 4a caches — bedrock + water emission.
+    // Water emission is LOD0-only (matches GD `write_water = (lod == 0)`).
+    // NoEditZone-water-AABB suppression from the GD generator is
+    // deliberately omitted here — that feature is no longer used in the
+    // project and dropping it keeps the C++ port simple and fast.
+    const int world_floor_y = _world_floor_voxel_y;
+    const int bedrock_id = _bedrock_material_id;
+    const int sea_level_v = _sea_level_voxels;
+    const bool write_water = (lod == 0);
+
     // Walk every (x, z) column. For each, compute ground_y once; pick the
     // top-band material (grass or sand); then walk Y selecting band by
     // depth from ground_y. Phase 3 implements GD's plan-Tier 1 (bands) +
@@ -190,10 +218,34 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
                 top_id = SAND_MATERIAL_ID;
             }
 
+            // Phase 4a: per-column water-emission gate. Three conditions
+            // must hold: LOD=0 (water is LOD0-only), this column's
+            // ground dips below sea level (above-water columns stay dry).
+            const bool emit_water_here = write_water && ground_y < sea_level_v;
+
             for (int y = 0; y < size.y; ++y) {
                 const int world_y = origin_in_voxels.y + y * stride;
                 if (world_y > ground_y) {
-                    // Air. Skip — buffer default is 0.
+                    // Air above terrain. If this air voxel sits at or
+                    // below sea level and the column emits water, write
+                    // a water source byte into CHANNEL_DATA5. The cube
+                    // mesher ignores DATA5, so this voxel still renders
+                    // as air — WaterChunkMesher emits the transparent
+                    // surface from this byte.
+                    if (emit_water_here && world_y <= sea_level_v) {
+                        out_buffer.call("set_voxel", WATER_SOURCE_BYTE, x, y, z, CHANNEL_DATA5);
+                    }
+                    continue;
+                }
+                // World floor enforcement (Phase 4a):
+                //   world_y <  world_floor_y → air (no voxel written)
+                //   world_y == world_floor_y → bedrock row (unmineable)
+                //   world_y >  world_floor_y → normal band selection below
+                if (world_y < world_floor_y) {
+                    continue;
+                }
+                if (world_y == world_floor_y && bedrock_id != 0) {
+                    out_buffer.call("set_voxel", bedrock_id, x, y, z, CHANNEL_TYPE);
                     continue;
                 }
                 // Depth measured DOWN from ground_y. depth=0 is top voxel.
@@ -351,6 +403,28 @@ void CubicHeightmapGeneratorCpp::_bind_methods() {
                          &CubicHeightmapGeneratorCpp::get_marble_jitter_max_lod);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "marble_jitter_max_lod"),
                  "set_marble_jitter_max_lod", "get_marble_jitter_max_lod");
+
+    // Phase 4a bindings
+    ClassDB::bind_method(D_METHOD("set_bedrock_material_id", "value"),
+                         &CubicHeightmapGeneratorCpp::set_bedrock_material_id);
+    ClassDB::bind_method(D_METHOD("get_bedrock_material_id"),
+                         &CubicHeightmapGeneratorCpp::get_bedrock_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "bedrock_material_id"),
+                 "set_bedrock_material_id", "get_bedrock_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_world_floor_voxel_y", "value"),
+                         &CubicHeightmapGeneratorCpp::set_world_floor_voxel_y);
+    ClassDB::bind_method(D_METHOD("get_world_floor_voxel_y"),
+                         &CubicHeightmapGeneratorCpp::get_world_floor_voxel_y);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "world_floor_voxel_y"),
+                 "set_world_floor_voxel_y", "get_world_floor_voxel_y");
+
+    ClassDB::bind_method(D_METHOD("set_sea_level_voxels", "value"),
+                         &CubicHeightmapGeneratorCpp::set_sea_level_voxels);
+    ClassDB::bind_method(D_METHOD("get_sea_level_voxels"),
+                         &CubicHeightmapGeneratorCpp::get_sea_level_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "sea_level_voxels"),
+                 "set_sea_level_voxels", "get_sea_level_voxels");
 
     // Core API
     ClassDB::bind_method(D_METHOD("compute_ground_y", "world_x", "world_z"),

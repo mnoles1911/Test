@@ -98,6 +98,24 @@ public:
     void set_marble_jitter_max_lod(int p_value);
     int get_marble_jitter_max_lod() const;
 
+    // --- Phase 4a: bedrock + water byte ---
+
+    // Material id written at exactly world_y == world_floor_voxel_y.
+    // 0 disables the bedrock row entirely.
+    void set_bedrock_material_id(int p_value);
+    int get_bedrock_material_id() const;
+
+    // Y voxel coord of the unbreakable bedrock floor. Below this,
+    // the generator writes nothing (air); at exactly this Y it writes
+    // bedrock; above this, normal heightmap rules apply.
+    void set_world_floor_voxel_y(int p_value);
+    int get_world_floor_voxel_y() const;
+
+    // Y voxel coord of the global sea level. Water bytes fill columns
+    // whose ground_y < sea_level_voxels up through this Y at LOD=0.
+    void set_sea_level_voxels(int p_value);
+    int get_sea_level_voxels() const;
+
     // --- Core API (used by tests + by the adapter) ---
     // Mirrors the GD generator's _ground_y_at. Returns the voxel-Y at
     // which solid ground ends and air begins for the column (world_x, world_z).
@@ -137,4 +155,9 @@ private:
     double _marble_rare_threshold = 0.92;
     double _marble_dark_threshold = 0.75;
     int _marble_jitter_max_lod = 1;
+
+    // Phase 4a (bedrock + water)
+    int _bedrock_material_id = 0;       // 0 = bedrock row disabled
+    int _world_floor_voxel_y = -300;    // matches GD WORLD_FLOOR_VOXEL_Y
+    int _sea_level_voxels = 72;         // matches GD SEA_LEVEL_VOXELS
 };
