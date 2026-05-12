@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_swift_recovery"
+skill = "excavation"
+level_required = 80
+milestone_index = 19
+display_name = "Swift Recovery"
+description = "Recover endurance 15% faster."
+exclusive_group = ""
+is_active = false
+effect_type = "stamina_regen"
+effect_value = 0.15
+effect_target = "self"
+condition = ""

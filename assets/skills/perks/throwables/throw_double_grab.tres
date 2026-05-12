@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "throw_double_grab"
+skill = "throwables"
+level_required = 32
+milestone_index = 7
+display_name = "Double Grab"
+description = "Drawing a spear pulls 2 into hand (if 2+ in inventory)."
+exclusive_group = ""
+is_active = true
+effect_type = "flag"
+effect_value = 1.0
+effect_target = "spear"
+condition = ""

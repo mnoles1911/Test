@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_quick_strike"
+skill = "smithing"
+level_required = 84
+milestone_index = 20
+display_name = "Quick Strike"
+description = "Forge hammer swings 20% faster."
+exclusive_group = ""
+is_active = false
+effect_type = "speed_mult"
+effect_value = 0.2
+effect_target = "smithing"
+condition = ""

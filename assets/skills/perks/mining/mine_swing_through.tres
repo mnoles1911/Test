@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "mine_swing_through"
+skill = "mining"
+level_required = 56
+milestone_index = 13
+display_name = "Swing Through"
+description = "Pickaxe hits can break 2 adjacent voxels of the same type."
+exclusive_group = "mine_finisher"
+is_active = true
+effect_type = "aoe_voxel_count"
+effect_value = 1.0
+effect_target = "pickaxe"
+condition = ""

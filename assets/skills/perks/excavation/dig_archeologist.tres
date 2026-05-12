@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_archeologist"
+skill = "excavation"
+level_required = 40
+milestone_index = 9
+display_name = "Archeologist"
+description = "5% chance to unearth a small treasure when digging."
+exclusive_group = ""
+is_active = true
+effect_type = "proc_chance"
+effect_value = 0.05
+effect_target = "shovel"
+condition = "on_break"

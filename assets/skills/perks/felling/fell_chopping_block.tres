@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "fell_chopping_block"
+skill = "felling"
+level_required = 68
+milestone_index = 16
+display_name = "Chopping Block"
+description = "+15% damage on stationary axe swings."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_mult"
+effect_value = 0.15
+effect_target = "axe"
+condition = "standing_still"

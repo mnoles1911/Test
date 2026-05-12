@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "lock_smith_friend"
+skill = "lockpicking"
+level_required = 68
+milestone_index = 16
+display_name = "Smith's Friend"
+description = "Smithing-crafted picks have +50% durability."
+exclusive_group = ""
+is_active = false
+effect_type = "durability_mult"
+effect_value = 0.5
+effect_target = "lock"
+condition = ""

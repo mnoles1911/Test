@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "lock_treasure_hunter"
+skill = "lockpicking"
+level_required = 92
+milestone_index = 22
+display_name = "Treasure Hunter"
+description = "Locked containers have +10% rare loot chance."
+exclusive_group = ""
+is_active = false
+effect_type = "rare_chance"
+effect_value = 0.1
+effect_target = "lock"
+condition = ""

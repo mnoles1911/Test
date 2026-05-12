@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "speech_reputation"
+skill = "speech"
+level_required = 72
+milestone_index = 17
+display_name = "Reputation"
+description = "+5 disposition with all factions per Act."
+exclusive_group = ""
+is_active = false
+effect_type = "disposition_flat"
+effect_value = 5.0
+effect_target = "speech"
+condition = "passive_per_act"

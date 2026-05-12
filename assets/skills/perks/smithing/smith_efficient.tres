@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_efficient"
+skill = "smithing"
+level_required = 76
+milestone_index = 18
+display_name = "Efficient"
+description = "Recipes use 1 less ingot (min 1)."
+exclusive_group = ""
+is_active = false
+effect_type = "cost_flat"
+effect_value = -1.0
+effect_target = "smithing"
+condition = "on_craft"

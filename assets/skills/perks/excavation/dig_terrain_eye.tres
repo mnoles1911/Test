@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_terrain_eye"
+skill = "excavation"
+level_required = 44
+milestone_index = 10
+display_name = "Terrain Eye"
+description = "Outline buried objects within 4 m."
+exclusive_group = ""
+is_active = true
+effect_type = "vision"
+effect_value = 1.0
+effect_target = "shovel"
+condition = "while_shovel"

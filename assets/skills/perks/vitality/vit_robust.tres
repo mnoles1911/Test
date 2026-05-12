@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "vit_robust"
+skill = "vitality"
+level_required = 4
+milestone_index = 0
+display_name = "Robust"
+description = "+10 max HP."
+exclusive_group = ""
+is_active = false
+effect_type = "max_hp_flat"
+effect_value = 10.0
+effect_target = "self"
+condition = ""

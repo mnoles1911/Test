@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_loose_earth"
+skill = "excavation"
+level_required = 76
+milestone_index = 18
+display_name = "Loose Earth"
+description = "Dirt voxels broken trigger gravity scans more aggressively."
+exclusive_group = ""
+is_active = false
+effect_type = "flag"
+effect_value = 1.0
+effect_target = "dirt"
+condition = ""

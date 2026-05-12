@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "demo_focused_blast"
+skill = "demolition"
+level_required = 44
+milestone_index = 10
+display_name = "Focused Blast"
+description = "Explosions deal +30% damage in a 30° forward cone."
+exclusive_group = "demo_path_b"
+is_active = true
+effect_type = "damage_mult"
+effect_value = 0.3
+effect_target = "explosives"
+condition = "cone_forward"

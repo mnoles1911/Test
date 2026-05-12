@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="NPCData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/NPCData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+npc_id = "trainer_thessa"
+display_name = "Thessa Longshot"
+tier = 2
+portrait_path = ""
+voice_profile = ""
+faction = "shroud_circle"
+home_scene = ""
+base_disposition = 75
+bark_triggers = {}
+dialogue_timeline = ""
+schedule = []
+service_type = "TRAINER"
+quest_hooks = []
+skills_taught = PackedStringArray("bow", "throwables")
+gold_per_level = 50
+max_levels_per_act = 5

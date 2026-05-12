@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "speech_inspire"
+skill = "speech"
+level_required = 80
+milestone_index = 19
+display_name = "Inspire"
+description = "Companions deal +10% damage for 30 s after a speech."
+exclusive_group = ""
+is_active = true
+effect_type = "buff_mult"
+effect_value = 0.1
+effect_target = "companions"
+condition = "active_ability"

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "demo_concussion"
+skill = "demolition"
+level_required = 84
+milestone_index = 20
+display_name = "Concussion"
+description = "Stuns enemies within 4 m for 1 s on detonation."
+exclusive_group = ""
+is_active = true
+effect_type = "apply_debuff"
+effect_value = 1.0
+effect_target = "explosives"
+condition = "on_detonate"

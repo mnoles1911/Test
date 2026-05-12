@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "speech_diplomat"
+skill = "speech"
+level_required = 40
+milestone_index = 9
+display_name = "Diplomat"
+description = "+10 disposition with all NPCs of one faction."
+exclusive_group = ""
+is_active = true
+effect_type = "disposition_flat"
+effect_value = 10.0
+effect_target = "speech"
+condition = "active_ability"

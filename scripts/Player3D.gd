@@ -345,6 +345,7 @@ func _ready() -> void:
 		if local_id != 0:
 			set_multiplayer_authority(local_id)
 	_attach_sync_node()
+	_attach_combat_xp_router()
 
 
 func _attach_sync_node() -> void:
@@ -364,16 +365,26 @@ func _attach_sync_node() -> void:
 	cfg.add_property(NodePath(".:rotation:y"))
 	cfg.property_set_spawn(NodePath(".:rotation:y"), true)
 	cfg.property_set_replication_mode(NodePath(".:rotation:y"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
-	# _is_sprinting / _is_crouching are exported via has_property checks
-	# in RemotePlayer; not required for movement replication but useful
-	# downstream for animation state. Added at the same level as pos so
-	# RemotePlayer can read them without an extra RPC.
 	cfg.add_property(NodePath(".:_is_sprinting"))
 	cfg.property_set_replication_mode(NodePath(".:_is_sprinting"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	cfg.add_property(NodePath(".:_is_crouching"))
 	cfg.property_set_replication_mode(NodePath(".:_is_crouching"), SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE)
 	sync.replication_config = cfg
 	add_child(sync)
+
+
+func _attach_combat_xp_router() -> void:
+	# CombatXPRouter listens for Enemy3D died/damaged signals and routes
+	# kill/hit XP to Sword / Bow / Throwables based on which weapon was
+	# last used. VitalityXPRouter ticks alongside it for swim-time XP.
+	if get_node_or_null("CombatXPRouter") == null:
+		var router: Node = CombatXPRouter.new()
+		router.name = "CombatXPRouter"
+		add_child(router)
+	if get_node_or_null("VitalityXPRouter") == null:
+		var vr: Node = VitalityXPRouter.new()
+		vr.name = "VitalityXPRouter"
+		add_child(vr)
 
 
 # =============================================================

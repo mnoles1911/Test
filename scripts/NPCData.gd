@@ -95,10 +95,28 @@ enum Tier {
 # Only relevant for NPCs that provide a service to the player.
 
 ## What service this NPC offers, if any.
-## Valid values: "SHOP", "INN", "SMITH", "HEALER", "TRANSPORT", ""
+## Valid values: "SHOP", "INN", "SMITH", "HEALER", "TRANSPORT", "TRAINER", ""
 ## Empty string means no service — this NPC is conversation-only.
 @export var service_type: String = ""
 
 ## Quest IDs this NPC can hand out. Checked against GameState flags at dialogue start.
 ## Example: ["quest_lost_shipment", "quest_archive_key"]
 @export var quest_hooks: Array[String] = []
+
+# ── Trainer Configuration (service_type == "TRAINER") ───────────────────────
+# Trainer NPCs accept gold in exchange for direct skill levels. Access is
+# gated by FactionManager.is_friendly(faction) — disposition < 75 refuses.
+# Per-Act / per-trainer / per-skill cap prevents grinding past a sensible
+# wall in any one location.
+
+## Canonical skill names this trainer teaches (e.g. ["sword", "throwables"]).
+## Must match entries in SkillManager.SKILLS.
+@export var skills_taught: PackedStringArray = PackedStringArray()
+
+## Gold cost per level taught (flat). Scales with the player's current level
+## inside TrainerNPC._compute_cost so high levels cost meaningfully more.
+@export var gold_per_level: int = 50
+
+## Max levels this trainer can grant per Act per skill. Default 5 per the
+## design plan. The counter resets via GameState.reset_trainer_visits_for_new_act.
+@export var max_levels_per_act: int = 5

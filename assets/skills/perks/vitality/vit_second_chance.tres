@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "vit_second_chance"
+skill = "vitality"
+level_required = 64
+milestone_index = 15
+display_name = "Second Chance"
+description = "Once per day, the next lethal blow leaves you at 1 HP."
+exclusive_group = ""
+is_active = true
+effect_type = "proc_once"
+effect_value = 1.0
+effect_target = "self"
+condition = "lethal_damage"

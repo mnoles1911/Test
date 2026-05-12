@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "vit_endurance"
+skill = "vitality"
+level_required = 56
+milestone_index = 13
+display_name = "Endurance"
+description = "+15% max endurance."
+exclusive_group = ""
+is_active = false
+effect_type = "max_stam_mult"
+effect_value = 0.15
+effect_target = "self"
+condition = ""

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_master_digger"
+skill = "excavation"
+level_required = 100
+milestone_index = 24
+display_name = "Master Digger"
+description = "+25% excavation damage, +25% dirt drops."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_mult"
+effect_value = 0.25
+effect_target = "shovel"
+condition = ""

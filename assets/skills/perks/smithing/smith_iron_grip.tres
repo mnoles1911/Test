@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_iron_grip"
+skill = "smithing"
+level_required = 12
+milestone_index = 2
+display_name = "Iron Grip"
+description = "Smithing iron items takes -15% strikes."
+exclusive_group = "smith_form_a"
+is_active = false
+effect_type = "strike_mult"
+effect_value = -0.15
+effect_target = "smithing_iron"
+condition = ""

@@ -133,6 +133,12 @@ signal damaged(amount: int, hit_point: Vector3)
 ## cluster, and Enemy3D.die() itself uses it to pick topple vs. explosion.
 signal died(damage_at_kill: int)
 
+## Set by damage sources (sword swing, spear hit, bow shot) before they
+## call take_damage(). CombatXPRouter reads this to attribute the
+## damaged/died events to the right combat skill. Empty string means
+## "unknown source"; the router falls back to its current_weapon_skill.
+var last_hit_skill: String = ""
+
 
 # =============================================================
 # REFERENCES
