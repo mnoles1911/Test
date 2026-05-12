@@ -172,6 +172,15 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# MP-3: water flow simulation runs HOST-ONLY. Guests receive every
+	# CHANNEL_DATA byte change as a normal voxel edit broadcast via
+	# VoxelEditManager._rpc_replicate_edit, so the visible water state
+	# stays in sync without each client running its own simulator.
+	# In OFFLINE mode MultiplayerManager.is_host() returns true so
+	# single-player path is unchanged.
+	if get_node_or_null("/root/MultiplayerManager"):
+		if not MultiplayerManager.is_host():
+			return
 	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner()

@@ -1,9 +1,13 @@
 extends Node3D
 
-# MP-2 acceptance test scene. Two Godot instances of the project
-# can connect via ENet on 127.0.0.1, each spawn a local Player3D
-# with full input, and see the OTHER peer as a RemotePlayer capsule
-# walking around in real time.
+# MP-2 + MP-3 acceptance test scene. Two Godot instances of the
+# project can connect via ENet on 127.0.0.1, each spawn a local
+# Player3D with full input, see the OTHER peer as a RemotePlayer
+# capsule walking around in real time (MP-2), AND see voxel edits
+# carved by either peer reflected on both sides within ~200 ms
+# (MP-3). The "Carve hole at me" button issues a 1.5 m sphere edit
+# at the local player's feet via VoxelEditManager — clients
+# automatically forward to the host.
 #
 # Layout built programmatically:
 #   - Flat 40 m × 40 m floor at Y = 0
@@ -32,10 +36,13 @@ var _spawner: PlayerSpawner = null
 var _ui_root: CanvasLayer = null
 var _status_label: Label = null
 var _peer_count_label: Label = null
+var _edit_status_label: Label = null
 var _host_btn: Button = null
 var _join_btn: Button = null
 var _leave_btn: Button = null
+var _carve_btn: Button = null
 var _join_target_edit: LineEdit = null
+var _last_edit_event: String = "(none)"
 
 
 func _ready() -> void:
@@ -45,6 +52,11 @@ func _ready() -> void:
 	_attach_spawner()
 	_build_ui()
 	_refresh()
+	# MP-3: surface every applied edit (local + replica) in the dev
+	# panel so we can see two-way carve replication land in real time.
+	if get_node_or_null("/root/VoxelEditManager"):
+		VoxelEditManager.edit_applied.connect(_on_edit_applied)
+		VoxelEditManager.edit_rejected_no_edit_zone.connect(_on_edit_rejected)
 	# Refresh on MultiplayerManager state changes.
 	var mp: Node = get_node_or_null("/root/MultiplayerManager")
 	if mp != null:
@@ -167,6 +179,16 @@ func _build_ui() -> void:
 	_leave_btn.text = "Leave"
 	vbox.add_child(_leave_btn)
 
+	_carve_btn = Button.new()
+	_carve_btn.text = "Carve hole at me (MP-3)"
+	vbox.add_child(_carve_btn)
+
+	_edit_status_label = Label.new()
+	_edit_status_label.text = "Last edit: (none)"
+	_edit_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_edit_status_label.custom_minimum_size = Vector2(260, 0)
+	vbox.add_child(_edit_status_label)
+
 
 # =============================================================
 # INPUT — manual click dispatch per CLAUDE.md
@@ -184,6 +206,8 @@ func _input(event: InputEvent) -> void:
 		_on_join_pressed()
 	elif _hits(_leave_btn, mb.position):
 		_on_leave_pressed()
+	elif _hits(_carve_btn, mb.position):
+		_on_carve_pressed()
 
 
 func _hits(ctrl: Control, pos: Vector2) -> bool:
@@ -242,3 +266,38 @@ func _refresh() -> void:
 	_status_label.text = "Mode: %s   Local: %d" % [mode, local]
 	var remotes: int = _spawner.get_remote_player_count() if _spawner != null else 0
 	_peer_count_label.text = "Remote peers: %d" % remotes
+
+
+# =============================================================
+# MP-3 carve demo
+# =============================================================
+
+func _on_carve_pressed() -> void:
+	# Issue a 1.5 m sphere carve at the local player's feet. On the
+	# host this enqueues + broadcasts; on a client it forwards to the
+	# host via _rpc_request_edit and returns optimistically.
+	if _player == null or not get_node_or_null("/root/VoxelEditManager"):
+		return
+	var pos: Vector3 = Vector3.ZERO
+	if "global_position" in _player:
+		pos = _player.get("global_position")
+	# Carve below the player's feet so the hole opens DOWN, not into
+	# the air above. (No actual voxel terrain in this dev scene — the
+	# acceptance test is the dispatch round-trip, not visual carving.
+	# The flat StaticBody3D floor here is not VoxelLodTerrain.)
+	var ok: bool = VoxelEditManager.queue_edit_sphere(pos + Vector3(0, -0.5, 0), 1.5, 0)
+	_last_edit_event = "Sent sphere edit @ %s   ok=%s" % [pos, ok]
+	if _edit_status_label != null:
+		_edit_status_label.text = "Last edit: " + _last_edit_event
+
+
+func _on_edit_applied(world_pos: Vector3, _chunk_coords: Vector3i, _aabb: AABB) -> void:
+	_last_edit_event = "APPLIED @ (%.1f, %.1f, %.1f)" % [world_pos.x, world_pos.y, world_pos.z]
+	if _edit_status_label != null:
+		_edit_status_label.text = "Last edit: " + _last_edit_event
+
+
+func _on_edit_rejected(world_pos: Vector3) -> void:
+	_last_edit_event = "REJECTED @ (%.1f, %.1f, %.1f) — NoEditZone or bedrock" % [world_pos.x, world_pos.y, world_pos.z]
+	if _edit_status_label != null:
+		_edit_status_label.text = "Last edit: " + _last_edit_event
