@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "speech_haggler"
+skill = "speech"
+level_required = 20
+milestone_index = 4
+display_name = "Haggler"
+description = "-10% buy price."
+exclusive_group = ""
+is_active = false
+effect_type = "buy_mult"
+effect_value = -0.1
+effect_target = "trade"
+condition = ""

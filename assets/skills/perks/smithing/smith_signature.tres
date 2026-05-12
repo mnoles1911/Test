@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_signature"
+skill = "smithing"
+level_required = 80
+milestone_index = 19
+display_name = "Signature"
+description = "Your name appears on crafted items (+10% sell value)."
+exclusive_group = ""
+is_active = false
+effect_type = "value_mult"
+effect_value = 0.1
+effect_target = "smithing"
+condition = "self_made"

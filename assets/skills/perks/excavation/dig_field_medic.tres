@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_field_medic"
+skill = "excavation"
+level_required = 72
+milestone_index = 17
+display_name = "Field Medic"
+description = "Excavating a corpse heals you for 5 HP."
+exclusive_group = ""
+is_active = true
+effect_type = "heal_on_use"
+effect_value = 5.0
+effect_target = "shovel"
+condition = "on_corpse"

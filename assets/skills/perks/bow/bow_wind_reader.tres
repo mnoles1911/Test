@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "bow_wind_reader"
+skill = "bow"
+level_required = 92
+milestone_index = 22
+display_name = "Wind Reader"
+description = "Wind and gravity drop are halved."
+exclusive_group = ""
+is_active = false
+effect_type = "ballistic_mult"
+effect_value = -0.5
+effect_target = "bow"
+condition = ""

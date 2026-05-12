@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "speech_charm"
+skill = "speech"
+level_required = 4
+milestone_index = 0
+display_name = "Charm"
+description = "+5 effective Speech in friendly checks."
+exclusive_group = ""
+is_active = false
+effect_type = "speech_bonus"
+effect_value = 5.0
+effect_target = "speech"
+condition = "friendly"

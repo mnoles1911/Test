@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "sword_bleed"
+skill = "sword"
+level_required = 32
+milestone_index = 7
+display_name = "Bleed"
+description = "Sword hits apply a bleed dealing 1 dmg/s for 6 s."
+exclusive_group = "sword_finisher"
+is_active = true
+effect_type = "dot_apply"
+effect_value = 1.0
+effect_target = "sword"
+condition = "on_hit"

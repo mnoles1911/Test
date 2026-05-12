@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "mine_lucky_strike"
+skill = "mining"
+level_required = 72
+milestone_index = 17
+display_name = "Lucky Strike"
+description = "5% chance per break to drop a gem."
+exclusive_group = ""
+is_active = true
+effect_type = "proc_chance"
+effect_value = 0.05
+effect_target = "ore"
+condition = "on_break"

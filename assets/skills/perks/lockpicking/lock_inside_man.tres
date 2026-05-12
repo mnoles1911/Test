@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "lock_inside_man"
+skill = "lockpicking"
+level_required = 80
+milestone_index = 19
+display_name = "Inside Man"
+description = "Failed attempts no longer count toward guard suspicion."
+exclusive_group = ""
+is_active = false
+effect_type = "flag"
+effect_value = 1.0
+effect_target = "lock"
+condition = ""

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_dwarven_grip"
+skill = "smithing"
+level_required = 88
+milestone_index = 21
+display_name = "Dwarven Grip"
+description = "Smithing dwarven-style items unlocks improved quality."
+exclusive_group = ""
+is_active = false
+effect_type = "flag"
+effect_value = 1.0
+effect_target = "smithing"
+condition = ""

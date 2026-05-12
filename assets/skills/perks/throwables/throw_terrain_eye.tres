@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "throw_terrain_eye"
+skill = "throwables"
+level_required = 56
+milestone_index = 13
+display_name = "Terrain Eye"
+description = "Powder charges break +25% more voxels."
+exclusive_group = ""
+is_active = false
+effect_type = "voxel_count_mult"
+effect_value = 0.25
+effect_target = "powder_charge"
+condition = ""

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "lock_save_picks"
+skill = "lockpicking"
+level_required = 12
+milestone_index = 2
+display_name = "Save Picks"
+description = "Picks 25% less likely to break."
+exclusive_group = ""
+is_active = false
+effect_type = "break_mult"
+effect_value = -0.25
+effect_target = "lock"
+condition = ""

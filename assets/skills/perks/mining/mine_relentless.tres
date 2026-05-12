@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "mine_relentless"
+skill = "mining"
+level_required = 96
+milestone_index = 23
+display_name = "Relentless"
+description = "Mining swings never tire (endurance regen 100% while mining)."
+exclusive_group = ""
+is_active = true
+effect_type = "stamina_regen"
+effect_value = 1.0
+effect_target = "pickaxe"
+condition = "while_mining"

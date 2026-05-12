@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "sword_riposte"
+skill = "sword"
+level_required = 24
+milestone_index = 5
+display_name = "Riposte"
+description = "After a successful parry, your next sword hit within 2 s deals +50% damage."
+exclusive_group = ""
+is_active = true
+effect_type = "damage_mult"
+effect_value = 0.5
+effect_target = "sword"
+condition = "post_parry_2s"

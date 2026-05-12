@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "speech_lie"
+skill = "speech"
+level_required = 28
+milestone_index = 6
+display_name = "Practiced Lie"
+description = "+10 effective Speech when telling falsehoods."
+exclusive_group = ""
+is_active = false
+effect_type = "speech_bonus"
+effect_value = 10.0
+effect_target = "speech"
+condition = "deception"

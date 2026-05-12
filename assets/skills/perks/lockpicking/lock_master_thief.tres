@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "lock_master_thief"
+skill = "lockpicking"
+level_required = 44
+milestone_index = 10
+display_name = "Master Thief"
+description = "+25% gold from locked containers."
+exclusive_group = ""
+is_active = false
+effect_type = "gold_mult"
+effect_value = 0.25
+effect_target = "lock"
+condition = ""
