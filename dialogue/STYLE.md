@@ -175,3 +175,71 @@ For each major dialogue beat:
 2. Strip to the **TTS script** in `scripts/` following sections 1–4 of this file.
 3. Keep both. Drafts are the design source-of-truth; scripts are the build artifact.
 4. Revise drafts first, then regenerate scripts. Never edit a script for narrative reasons.
+
+---
+
+## 8. Speech checks
+
+Speech checks are the KCD2 visible-but-greyed model: when Roland's Speech
+skill meets or exceeds the DC, the persuasive option appears as a
+gold-prefixed clickable choice (`[Speech 40 ✓] ...`). When it falls short,
+the same option **still appears** but greyed and prefixed with
+`[Speech 40 ✗] ...` so the player can see what they could have done.
+The greyed option is unclickable; only the fallback "back down" choice
+resolves the moment.
+
+### 8.1 DC ladder
+
+| Band | DC | When to use |
+|---|---|---|
+| Trivial | 10 | Get a name out of a wary stranger. |
+| Easy | 25 | Talk past a city guard. |
+| Moderate | 40 | Negotiate price; defuse a tense argument. |
+| Hard | 60 | Convince a faction officer to break protocol. |
+| Heroic | 80 | Talk a fanatic out of an oath. |
+| Mythic | 95 | One-line resolutions to multi-act conflicts. Use sparingly. |
+
+A check failed at DC 80 should hurt more than a check failed at DC 25 — author the fail branch accordingly.
+
+### 8.2 Authoring in a Dialogic timeline
+
+Insert a Dialogic **Signal** event with the argument:
+
+    speech_check:<DC>:<success_timeline>:<fail_timeline>
+
+Example:
+
+    [signal arg="speech_check:40:archive_persuaded:archive_refused"]
+
+`SpeechCheckBroker` (autoload) picks up the signal, presents the modal
+with both branches visible, and calls `Dialogic.start(success_timeline)`
+or `Dialogic.start(fail_timeline)` on resolution. A successful check
+grants Speech XP automatically (`20 × DC/10`, so DC 40 → 80 XP).
+
+### 8.3 Outside Dialogic
+
+For non-timeline contexts (trainer dialogue, lockpick UI, ambient
+encounters), call the broker directly:
+
+    SpeechCheckBroker.present(40, "Convince him", "Walk away")
+    var ok = await SpeechCheckBroker.resolved
+    if ok:
+        # success branch
+    else:
+        # fail branch
+
+### 8.4 When to hide vs grey
+
+Default is **greyed-and-visible** (KCD2). Use `locked_visible = false`
+on `present()` for *secret-knowledge* checks where the player shouldn't
+even know the option exists (e.g., naming a hidden cult fact you'd only
+know from a side-quest book). 95% of checks should stay visible — it's
+the entire point of the system.
+
+### 8.5 Pair every check with a fail-state line
+
+The greyed option is information; the fail branch is content. A speech
+check that fails should still produce **a scene** — Roland looks
+foolish, the NPC pushes back with a memorable line, the world reacts.
+Don't write the fail branch as a flat refusal. The system is most fun
+when failure is a story, not a wall.

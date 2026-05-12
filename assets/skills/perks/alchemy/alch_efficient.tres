@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "alch_efficient"
+skill = "alchemy"
+level_required = 56
+milestone_index = 13
+display_name = "Efficient"
+description = "Ingredients used per brew -1 (min 1)."
+exclusive_group = ""
+is_active = false
+effect_type = "cost_flat"
+effect_value = -1.0
+effect_target = "alchemy"
+condition = "on_craft"

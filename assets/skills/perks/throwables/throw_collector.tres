@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "throw_collector"
+skill = "throwables"
+level_required = 60
+milestone_index = 14
+display_name = "Collector"
+description = "Auto-collect range for thrown weapons +50%."
+exclusive_group = ""
+is_active = false
+effect_type = "pickup_radius_mult"
+effect_value = 0.5
+effect_target = "throwables"
+condition = ""

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "dig_no_traps"
+skill = "excavation"
+level_required = 96
+milestone_index = 23
+display_name = "Tripwise"
+description = "Reveal pressure plates within 4 m while a shovel is drawn."
+exclusive_group = ""
+is_active = true
+effect_type = "vision"
+effect_value = 1.0
+effect_target = "traps"
+condition = "while_shovel"

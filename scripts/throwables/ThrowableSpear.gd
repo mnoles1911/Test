@@ -167,6 +167,10 @@ func _impact_enemy(enemy: Node, travel_dir: Vector3) -> void:
 	# Hit point: the spear's current position is approximately at
 	# the contact, since body_entered fires the same frame as collision.
 	var hit_point: Vector3 = global_position
+	# Tag the enemy with the attributing skill so CombatXPRouter can
+	# credit Throwables rather than Sword on its damaged/died signal.
+	if "last_hit_skill" in enemy:
+		enemy.set("last_hit_skill", "throwables")
 	if enemy.has_method("take_damage"):
 		enemy.call("take_damage", combat_damage, travel_dir, hit_point)
 

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "bow_volley"
+skill = "bow"
+level_required = 68
+milestone_index = 16
+display_name = "Volley"
+description = "Each consecutive hit within 3 s adds +5% damage (cap +30%)."
+exclusive_group = ""
+is_active = true
+effect_type = "damage_mult"
+effect_value = 0.05
+effect_target = "bow"
+condition = "rhythm_stack"

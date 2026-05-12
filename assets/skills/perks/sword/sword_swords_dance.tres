@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "sword_swords_dance"
+skill = "sword"
+level_required = 80
+milestone_index = 19
+display_name = "Sword's Dance"
+description = "+10% damage and -10% endurance cost while moving with sword."
+exclusive_group = ""
+is_active = true
+effect_type = "damage_mult"
+effect_value = 0.1
+effect_target = "while_sword"
+condition = "while_moving"

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_double_yield"
+skill = "smithing"
+level_required = 32
+milestone_index = 7
+display_name = "Double Yield"
+description = "Crafting tier-1 items yields +1 result."
+exclusive_group = ""
+is_active = false
+effect_type = "yield_flat"
+effect_value = 1.0
+effect_target = "smithing_t1"
+condition = "on_craft"

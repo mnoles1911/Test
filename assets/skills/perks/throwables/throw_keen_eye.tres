@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "throw_keen_eye"
+skill = "throwables"
+level_required = 8
+milestone_index = 1
+display_name = "Keen Eye"
+description = "+10% throw damage at point-blank range (<5 m)."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_mult"
+effect_value = 0.1
+effect_target = "throwables"
+condition = "short_range"

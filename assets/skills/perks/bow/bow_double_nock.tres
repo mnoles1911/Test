@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "bow_double_nock"
+skill = "bow"
+level_required = 36
+milestone_index = 8
+display_name = "Double Nock"
+description = "10% chance to fire a free second arrow per shot."
+exclusive_group = ""
+is_active = true
+effect_type = "proc_chance"
+effect_value = 0.1
+effect_target = "bow"
+condition = ""

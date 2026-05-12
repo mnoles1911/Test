@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_weaponsmith"
+skill = "smithing"
+level_required = 24
+milestone_index = 5
+display_name = "Weaponsmith"
+description = "Crafted weapons deal +5% damage."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_mult"
+effect_value = 0.05
+effect_target = "weapon"
+condition = ""

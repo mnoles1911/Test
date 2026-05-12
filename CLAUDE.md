@@ -55,6 +55,11 @@ One-line history; see git log for detail. The autoload + voxel-systems sections 
 - **Voxel Combat v1 (2026-05-10 → 05-11):** `Enemy3D` base + `Goblin` (IDLE/ALERT/COMBAT eye-glow); `ThrowableSpear` (sticks on impact, pivots with corpse, auto-collects); `BloodVFX` autoload (burst/dust/drip/pool — `PlaneMesh` not `Decal` because gl_compatibility); `CombatTest.tscn` dev arena with F1 menu. Phase 3 (charge) + Phase 5 (gibs + time-slow) deferred — see `design/COMBAT_NEXT_PHASES.md`.
 - **C++ generator port — Cubic (2026-05-11):** `CubicHeightmapGenerator.gd` ported to `extensions/voxel_gen/` C++ GDExtension. All 6 tiers + bedrock + water-byte emission bit-exact verified (389k voxel comparisons). `World3D.tscn` uses `CubicHeightmapGeneratorAdapter` → `CubicHeightmapGeneratorCpp`; adapter forwards `set_ore_materials`/`set_disk_materials`. NoEditZone water-gen suppression dropped. Bake controller gained `wait_per_position_s` / `bake_y_min_voxels` / `bake_y_max_voxels` `@export`s + dynamic time-estimate labels + `cpp_impl` drill-through.
 - **C++ generator port — Copper Isles (2026-05-12):** `CopperIslesHeightmapGenerator.gd` ported to `CopperIslesHeightmapGeneratorCpp`. Same tier set as Cubic; `compute_ground_y` reads a Gaea EXR via `Image::get_pixel` (bilinear or nearest) instead of FastNoiseLite. Adapter `CopperIslesHeightmapGeneratorAdapter.gd` mirrors the Cubic adapter; `assets/voxel/copper_isles_generator.tres` rewritten to use the adapter→cpp_impl chain so `CopperIslesTest.tscn` and `scenes/_dev/BakeWorld.tscn` pick up the C++ path without scene edits. ~193k voxel comparisons bit-exact via the (now-retired) `CopperIslesGeneratorParityHarness.gd`; deep parity harness re-verified at LOD 0–7 (262k voxels) during the bring-up. Phase 6 also cleaned up the cubic-era GD generator + SpikeStone scaffolding. **Late bring-up fix**: `_ensure_image()` heightmap cache needed `std::mutex` + flag-flip-last ordering because Zylann's worker threads raced the lazy load (GDScript's interpreter scheduling masked it; C++ exposed it as floating chunks in the LOD pyramid). See LESSONS_LEARNED.md 2026-05-12. **Known cleanup debt:** ~500 lines of the inner loop are duplicated between `cubic_heightmap_generator.cpp` and `copper_isles_heightmap_generator.cpp`. Future PR: extract `HeightmapGeneratorBase` and reduce both to ~150 lines of generator-specific code each.
+- **Skill system (2026-05-12, PR #201 — parallel branch off main):** Flat 12-skill, 1–100 level, Skyrim XP curve (`xp_to_next = 25 × level^1.95`). 300 perks across 25 milestones per skill (every 4 levels), hybrid authored: 85 active `.gd` extending `Perk`, 215 passive `.tres` data. `SkillManager` autoload is the single entry point for `add_xp(skill, amount)`, perk picks, Legendary reset; `PerkRegistry` autoload loads all 300 perks at startup; `PerkQuery` static helper for passive-condition lookups by gameplay code. `CombatXPRouter` (Player3D child) dispatches `on_attack` / `on_kill` / `on_take_damage` / `on_parry` hooks. JournalUI Skills tab rebuilt as interactive grid + 25-row perk ladder + two-step Legendary confirm. `FactionManager` autoload (minimal — disposition track + `is_friendly()` gate at ≥ 75). Six trainer NPCs across factions teach skills for gold (scaling cost; per-Act per-skill cap). `SpeechCheckBroker` autoload presents KCD2 visible-but-greyed Speech-check modal (Dialogic Signal event `speech_check:DC:success:fail`). 85 active perk hook bodies wired (Pattern A once-per-thing, Pattern B stacking with time decay, Pattern C conditional ctx mutation, Pattern D visual TODO, Pattern E loot/drop). Dispatch enrichment: PowderCharge fires `on_attack` with `detonation_source`; LockObject3D honors silver_pick / perfect_pick auto-open via `PerkQuery.has_flag`; SpeechCheckBroker consults `PerkQuery.sum("dc_cushion")` for Oratorical. Skill state lives on `GameState` (transitional — MP-6's CharacterRecord will own it). Next steps in `design/SKILLS_NEXT_STEPS.md`.
+
+- **MP-1 transport + session lifecycle (2026-05-11, PR #180):** `NetTransport` autoload + `NetBackend` interface + `ENetBackend` / `SteamP2PBackend` (defensive — parses without GodotSteam) + `MultiplayerManager` autoload with `MP_MODE { OFFLINE, HOST, CLIENT }` + LIFECYCLE state machine. **OFFLINE-is-host policy:** in OFFLINE mode `MultiplayerManager.is_host()` returns true so existing single-player authority gates work without modification. Acceptance scene: `scenes/_dev/NetTest.tscn` (two ENet instances connect on 127.0.0.1).
+- **MP-2 player presence (2026-05-12, PR #180):** `RemotePlayer.gd` + `scenes/player/RemotePlayer.tscn` (lightweight CharacterBody3D, runtime-built MultiplayerSynchronizer @ 20 Hz replicating pos/rot.y/sprint/crouch). `PlayerSpawner.gd` listens to MultiplayerManager peer events and parents one RemotePlayer per non-local peer with correct authority. **Player3D._can_take_input() helper** gates every Input.* read in the script; remote replicas of other players never consume our local keyboard. `set_multiplayer_authority(local_peer_id)` set in `_ready()`. Runtime-built `MPSync` child replicates state. Acceptance scene: `scenes/_dev/MP2Test.tscn` (two-peer walking on a flat floor).
+- **MP-3 voxel edit replication (2026-05-12, PR #180):** `VoxelEditManager` gains an additive MP routing layer (3 RPCs at the bottom of the file + thin gates inserted into each public `queue_*` function). **Client → host:** packs args into a Dictionary, `rpc_id(1, _rpc_request_edit)`, returns true OPTIMISTICALLY. **Host:** re-runs the public path (same NoEditZone gate, bedrock, queue capacity), broadcasts `_rpc_replicate_edit` on success, `rpc_id(sender, _rpc_edit_rejected)` on failure. **Guest receiving replica:** `_mp_apply_replica` enqueues with NoEditZone bypass (host already validated). Per-peer rate limit (60 req/s sliding 1-s window) on the request RPC. `WaterFlowManager._physics_process` early-returns if not host (sim runs host-only; per-cell byte changes ride VoxelEditManager replication). All seven edit verbs covered: sphere, box, box_voxels, set, water_set, water_box, bulk.
 
 Outstanding content pickups: low-poly Blender Roland model, MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio, region-boundary profile auto-swap. See `DESIGNER_TODO.md`.
 
@@ -386,6 +391,57 @@ Do not write shell commands that try to run Godot headlessly — there is no suc
 ---
 
 ## Critical GDScript patterns
+
+**Player input MUST go through `_can_take_input()` (MP-2):**
+```gdscript
+# WRONG — remote replicas of other players will consume our local
+# keyboard. Every Input.* read in Player3D, EditToolHandler, and
+# ThrowableHandler must guard.
+var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+
+# RIGHT — gate first. In OFFLINE mode _can_take_input() returns true
+# unconditionally so single-player paths are unchanged.
+var input_dir: Vector2 = Vector2.ZERO
+if _can_take_input():
+    input_dir = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+```
+`_can_take_input()` is `true` when `MultiplayerManager.is_offline()` OR `get_multiplayer_authority() == multiplayer.get_unique_id()`. Reference impl: `Player3D._can_take_input()` and every `Input.*` site below it.
+
+**Voxel edits MP-route automatically — never bypass `VoxelEditManager` (MP-3):**
+```gdscript
+# WRONG — direct VoxelTool calls skip MP routing entirely. Any guest
+# call goes nowhere; any host call doesn't reach guests.
+var tool := voxel_terrain.get_voxel_tool()
+tool.do_sphere(world_pos, radius)
+
+# RIGHT — public queue_* functions MP-route at the top (clients
+# forward to host) and at the bottom (host broadcasts to guests).
+# In OFFLINE mode all gates short-circuit and the existing path runs.
+VoxelEditManager.queue_edit_sphere(world_pos, radius, voxel_value)
+```
+The MP layer lives in scripts/VoxelEditManager.gd → "MP-3 — multiplayer routing" (3 RPCs + helpers at the bottom of the file).
+
+**Skill XP MUST go through `SkillManager.add_xp(skill_name, amount)` — never write to `GameState._skill_levels` or `GameState._owned_perks` directly:**
+```gdscript
+# WRONG — bypasses level-up math, perk-point grants, active-perk
+# event dispatch, and the level_up signal that the JournalUI watches.
+GameState._skill_levels["sword"] = 50
+
+# WRONG — the legacy domain-prefixed shim still exists for backward
+# compatibility but is deprecated. New callers should not use it.
+GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, "mining", 5)
+
+# RIGHT — single entry point. Handles level-up, perk-point grants,
+# active-perk event dispatch (on_xp_gained hook), and signal emit.
+SkillManager.add_xp("mining", 5.0)
+
+# When firing an event that perks may want to mutate, dispatch
+# explicitly so active perks owned by the player can react.
+SkillManager.dispatch("on_voxel_broken", {"skill": "mining", "tool_id": "iron_pickaxe"})
+```
+Canonical skill names live in `SkillManager.SKILLS`. The 12 are:
+`sword`, `throwables`, `bow`, `mining`, `felling`, `excavation`,
+`demolition`, `lockpicking`, `alchemy`, `smithing`, `vitality`, `speech`.
 
 **UI buttons / sliders need MANUAL `_input` dispatch — do NOT rely on `Button.pressed` or `HSlider` drag:**
 ```gdscript
@@ -723,10 +779,54 @@ bark *"This place doesn't yield to me."*
 
 Registered in `project.godot` (active now), in load order:
 `GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`,
-`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `VoxelMaterialRegistry`,
+`NetTransport`, `MultiplayerManager`,
+`DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`,
+`FactionManager`, `VoxelMaterialRegistry`, `SkillManager`,
 `JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
-`VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `BarkManager`, `WorldClock`,
-`WeatherManager`, `BloodVFX`
+`VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`,
+`BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`
+
+`PerkRegistry`, `FactionManager`, `SkillManager`, and `SpeechCheckBroker`
+landed with the skill PR. `PerkRegistry` walks `assets/skills/perks/`
+at startup and loads all 300 PerkData resources; `SkillManager` is the
+single entry point for XP grants (`SkillManager.add_xp(skill, amount)`),
+perk picks, Legendary resets, and active-perk event dispatch.
+`FactionManager` is a minimal wrapper around
+`GameState._faction_dispositions` exposing `is_friendly(faction)` (the
+`>= 75` gate trainers use). `SpeechCheckBroker` presents the KCD2
+visible-but-greyed Speech check modal — both as a direct API and as a
+Dialogic Signal-event handler (`speech_check:DC:success:fail`).
+
+`NetTransport` and `MultiplayerManager` are the multiplayer transport
+seam (landed in MP-1). `NetTransport` picks one of three backends at
+startup based on the `multiplayer/backend` project setting (`"enet"` /
+`"steam"` / future `"dedicated"`); `MultiplayerManager` owns the
+SceneTree's `multiplayer_peer`, exposes `is_offline()` / `is_host()` /
+`is_client()` / `local_peer_id()` plus `peer_joined` / `peer_left` /
+`session_started` / `session_ended` signals. **In OFFLINE mode (no
+session active), `MultiplayerManager.is_host()` returns true** so
+existing single-player authority gates work without modification —
+the MP-aware behavior only kicks in once `_mode != OFFLINE`. Acceptance
+dev scenes: `scenes/_dev/NetTest.tscn` (MP-1) and
+`scenes/_dev/MP2Test.tscn` (MP-2 + MP-3 carve dispatch test).
+
+`PlayerSpawner` (not autoloaded — attached to dev/world scenes) listens
+to MultiplayerManager peer events and parents one `RemotePlayer.tscn`
+(scripts/net/RemotePlayer.gd) per non-local peer. Each RemotePlayer
+runs only a MultiplayerSynchronizer @ 20 Hz replicating pos/rot.y/
+sprint/crouch — no camera, no input, no XP routers. The local Player3D
+remains the full-fat scene with input gated through `_can_take_input()`.
+
+`VoxelEditManager` and `WaterFlowManager` became MP-aware in MP-3:
+- `VoxelEditManager` public `queue_*` functions are unchanged at the
+  call site but route through 3 RPCs (`_rpc_request_edit` /
+  `_rpc_replicate_edit` / `_rpc_edit_rejected`). Clients forward to
+  the host; host validates + broadcasts; guests apply replicas with
+  NoEditZone bypass. Per-peer rate limit at 60 req/s.
+- `WaterFlowManager._physics_process` early-returns if not host.
+  Per-cell water byte changes ride the same VoxelEditManager
+  replication path so guests stay in sync without each running
+  their own simulator.
 
 `Colors` (`assets/ui/Colors.gd`) is the single source of truth for the Voxelmark
 UI palette (oak / parchment / iron / gold / HP / STAM, plus 5 rarity tiers).
@@ -739,6 +839,8 @@ Every programmatic UI scene (`HUDOverlay`, `PauseMenu`, `MainMenu`,
 both. CSS source-of-truth: `assets/ui/css/menus_shared.css`.
 
 Load-order rules to preserve:
+- `NetTransport` MUST load before `MultiplayerManager` (MM resolves `/root/NetTransport` and connects to its signals in `_ready`).
+- `MultiplayerManager` MUST load before any gameplay autoload that reads its API in `_ready`. Today `WaterFlowManager` does this (MP-3 host gate). The current ordering already satisfies this — `VoxelEditManager` only reads `MultiplayerManager` lazily inside its public queue functions, so its load order vs MM is flexible.
 - `Colors` MUST load before any UI autoload (`PauseMenu`, `HUDOverlay`, `JournalUI`) — those scripts reference `Colors.PANEL_OAK_1` / `Colors.HP` / etc. directly in `_ready()`.
 - `InventoryManager` MUST load before `VoxelMaterialRegistry` (the registry validates `yield_item_id` against `ITEM_REGISTRY` at startup).
 - `VoxelMaterialRegistry` MUST load before `VoxelEditManager` (`EditToolHandler` queries the registry on every swing for material lookup).

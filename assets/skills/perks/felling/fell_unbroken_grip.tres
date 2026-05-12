@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "fell_unbroken_grip"
+skill = "felling"
+level_required = 64
+milestone_index = 15
+display_name = "Unbroken Grip"
+description = "Axe swings cannot be staggered."
+exclusive_group = ""
+is_active = false
+effect_type = "flag"
+effect_value = 1.0
+effect_target = "axe"
+condition = ""

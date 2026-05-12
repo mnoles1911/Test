@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "demo_clear_air"
+skill = "demolition"
+level_required = 80
+milestone_index = 19
+display_name = "Clear Air"
+description = "Smoke and dust clears 50% faster around you."
+exclusive_group = ""
+is_active = false
+effect_type = "vfx_mult"
+effect_value = -0.5
+effect_target = "self"
+condition = ""

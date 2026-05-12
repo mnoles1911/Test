@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "throw_storm_caller"
+skill = "throwables"
+level_required = 88
+milestone_index = 21
+display_name = "Storm Caller"
+description = "Detonating a powder charge near another causes both to chain."
+exclusive_group = ""
+is_active = true
+effect_type = "chain_explode"
+effect_value = 1.0
+effect_target = "powder_charge"
+condition = ""

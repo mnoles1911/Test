@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "throw_blood_arrow"
+skill = "throwables"
+level_required = 64
+milestone_index = 15
+display_name = "Blood Arrow"
+description = "Thrown kills heal 5 HP."
+exclusive_group = ""
+is_active = true
+effect_type = "heal_on_kill"
+effect_value = 5.0
+effect_target = "throwables"
+condition = "on_kill"

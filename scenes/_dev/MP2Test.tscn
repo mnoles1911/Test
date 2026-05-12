@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://dmp2test1mp2"]
+
+; MP2Test.tscn — MP-2 acceptance scene. The whole world (lighting,
+; floor, local Player3D, RemotePlayer spawner, UI panel) is built
+; programmatically in scripts/net/dev/MP2Test.gd. This .tscn is just
+; the root Node3D + script attachment.
+;
+; Run two Godot instances, F6 on this scene in each. Window 1: click
+; Host (ENet). Window 2: click Join (ENet) with 127.0.0.1 in the
+; field. Both should see a blue capsule (the other peer's
+; RemotePlayer) walking on a flat 40 m × 40 m floor.
+
+[ext_resource type="Script" path="res://scripts/net/dev/MP2Test.gd" id="1_mp2"]
+
+[node name="MP2Test" type="Node3D"]
+script = ExtResource("1_mp2")

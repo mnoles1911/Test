@@ -253,6 +253,16 @@ func flush_pending_edits() -> void:
 # ============================================================
 
 func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> bool:
+	# MP-3: clients forward to host and return optimistically. Host
+	# validates + broadcasts at the end of this function. See the
+	# "MP-3 — multiplayer routing" section at the bottom of the file.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "sphere", "pos": world_pos,
+			"radius": radius, "value": voxel_value,
+		})
+		return true
+
 	# Queue a spherical voxel edit centered at world_pos with the given
 	# radius (in meters).
 	#
@@ -292,10 +302,22 @@ func queue_edit_sphere(world_pos: Vector3, radius: float, voxel_value: int) -> b
 		print("[VoxelEditManager] queued sphere r=%.1f at %s; queue=%d" % [
 			radius, world_pos, _edit_queue.size()
 		])
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "sphere", "pos": world_pos,
+			"radius": radius, "value": voxel_value,
+		})
 	return true
 
 
 func queue_edit_box(min_pos: Vector3, max_pos: Vector3, voxel_value: int) -> bool:
+	# MP-3 routing — see queue_edit_sphere for the pattern.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "box", "min": min_pos, "max": max_pos, "value": voxel_value,
+		})
+		return true
+
 	# Queue a box-shaped voxel edit. min_pos and max_pos are world-space
 	# corners (min on each axis < max on each axis).
 	#
@@ -321,10 +343,21 @@ func queue_edit_box(min_pos: Vector3, max_pos: Vector3, voxel_value: int) -> boo
 		"max": max_pos,
 		"value": voxel_value,
 	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "box", "min": min_pos, "max": max_pos, "value": voxel_value,
+		})
 	return true
 
 
 func queue_edit_box_voxels(voxel_min: Vector3i, voxel_max: Vector3i, voxel_value: int) -> bool:
+	# MP-3 routing — see queue_edit_sphere for the pattern.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "box_voxels", "min": voxel_min, "max": voxel_max, "value": voxel_value,
+		})
+		return true
+
 	# Box edit using integer voxel-grid coordinates directly. Avoids the
 	# floating-point rounding that collapses 3×3×3 carves to 1×1×1 when
 	# queue_edit_box converts via _terrain.to_local() (which can return
@@ -350,10 +383,21 @@ func queue_edit_box_voxels(voxel_min: Vector3i, voxel_max: Vector3i, voxel_value
 		"max": voxel_max,
 		"value": voxel_value,
 	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "box_voxels", "min": voxel_min, "max": voxel_max, "value": voxel_value,
+		})
 	return true
 
 
 func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
+	# MP-3 routing — see queue_edit_sphere for the pattern.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "set", "pos": world_pos, "value": voxel_value,
+		})
+		return true
+
 	# Single-voxel write. Used for per-block placement in Build Mode →
 	# Detail submode (design/CRAFTING.md → "Per-Voxel Placement"), and
 	# for any fine-grained edit that touches exactly one voxel.
@@ -371,10 +415,21 @@ func queue_set_voxel(world_pos: Vector3, voxel_value: int) -> bool:
 		"pos": world_pos,
 		"value": voxel_value,
 	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "set", "pos": world_pos, "value": voxel_value,
+		})
 	return true
 
 
 func queue_set_water_voxel(voxel_pos: Vector3i, water_byte: int) -> bool:
+	# MP-3 routing — see queue_edit_sphere for the pattern.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "water_set", "voxel_pos": voxel_pos, "water_byte": water_byte,
+		})
+		return true
+
 	# Write a single CHANNEL_DATA byte at the given voxel grid position.
 	# Used by player buckets, river headwater authoring, and the flow
 	# simulator for occasional out-of-band single-cell writes (most flow
@@ -401,10 +456,22 @@ func queue_set_water_voxel(voxel_pos: Vector3i, water_byte: int) -> bool:
 		"voxel_pos": voxel_pos,
 		"water_byte": water_byte & 0xFF,
 	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "water_set", "voxel_pos": voxel_pos, "water_byte": water_byte & 0xFF,
+		})
 	return true
 
 
 func queue_set_water_box(voxel_min: Vector3i, voxel_max: Vector3i, water_byte: int) -> bool:
+	# MP-3 routing — see queue_edit_sphere for the pattern.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "water_box", "voxel_min": voxel_min,
+			"voxel_max": voxel_max, "water_byte": water_byte,
+		})
+		return true
+
 	# Bulk water write: fill a voxel-grid box with the same water byte.
 	# Used by World3DBootstrap to seed the test pond after Phase 5
 	# (replaces the legacy add_source_region path), and by future
@@ -430,10 +497,22 @@ func queue_set_water_box(voxel_min: Vector3i, voxel_max: Vector3i, water_byte: i
 		"voxel_max": voxel_max,
 		"water_byte": water_byte & 0xFF,
 	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "water_box", "voxel_min": voxel_min,
+			"voxel_max": voxel_max, "water_byte": water_byte & 0xFF,
+		})
 	return true
 
 
 func queue_set_voxels_bulk(voxel_writes: Array, label: String = "bulk") -> bool:
+	# MP-3 routing — see queue_edit_sphere for the pattern.
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "bulk", "writes": voxel_writes, "label": label,
+		})
+		return true
+
 	# Bulk single-voxel writes — used for falling-voxel cluster re-deposits
 	# where many voxels need to be written at exact grid positions in a
 	# single operation. Each entry in voxel_writes is a Dictionary:
@@ -457,6 +536,10 @@ func queue_set_voxels_bulk(voxel_writes: Array, label: String = "bulk") -> bool:
 		"writes": voxel_writes,
 		"label": label,
 	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "bulk", "writes": voxel_writes, "label": label,
+		})
 	return true
 
 
@@ -1005,3 +1088,258 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 #    mark_chunk_loaded_with_deltas() for every chunk that
 #    VoxelStreamSQLite reports as having deltas. Wire this in when
 #    the save-load path is built.
+
+
+# ============================================================
+# MP-3 — multiplayer routing
+# ============================================================
+#
+# Design (per the approved plan):
+#   - OFFLINE / HOST: existing public queue_* functions enqueue and
+#     execute locally exactly as before. After the local enqueue,
+#     HOST also broadcasts the same command to every connected peer
+#     so their client VoxelEditManager re-runs the edit on their
+#     local terrain.
+#   - CLIENT: public queue_* functions short-circuit at the top —
+#     they pack the args into a Dictionary and rpc-send it to the
+#     host. The host validates (NoEditZone, queue capacity, bedrock)
+#     and either applies+broadcasts or rejects. The client returns
+#     true OPTIMISTICALLY so caller code (Roland's tools) doesn't
+#     stall waiting for a network round-trip.
+#
+# NoEditZone enforcement:
+#   - Host validates on the request RPC. If rejected, host fires
+#     _rpc_edit_rejected back to the originating peer so the client
+#     can play Roland's "doesn't yield" bark.
+#   - Replica edits on clients (received via _rpc_replicate_edit)
+#     SKIP the NoEditZone check — the host already authorized; the
+#     client's NoEditZone registry may be transiently out of sync
+#     during settlement-load and we trust the host's decision.
+#
+# WaterFlowManager interaction:
+#   - Water byte writes (queue_set_water_voxel / queue_set_water_box)
+#     route through the same RPC path. WaterFlowManager itself only
+#     simulates flow on the HOST (gated in its _physics_process); the
+#     simulator's per-tick byte writes go through this manager's MP
+#     path so guests receive every cell change as a normal edit.
+
+const _MP_RPC_RELIABLE_REQUEST: String = "_rpc_request_edit"
+const _MP_RPC_RELIABLE_REPLICATE: String = "_rpc_replicate_edit"
+const _MP_RPC_RELIABLE_REJECTED: String = "_rpc_edit_rejected"
+
+# Per-peer rate limit: max requests/second a single guest can send.
+# Prevents accidental flood from a misbehaving client tool. Host
+# tracks per-sender request timestamps in a sliding window.
+const _MP_RATE_LIMIT_PER_SECOND: int = 60
+var _mp_request_window: Dictionary = {}   # peer_id -> Array[float] (timestamps)
+
+
+func _mp_is_active() -> bool:
+	# True when a multiplayer session is live. In OFFLINE mode the rest
+	# of the MP routing collapses to no-ops.
+	if not get_node_or_null("/root/MultiplayerManager"):
+		return false
+	return not MultiplayerManager.is_offline()
+
+
+func _mp_is_client() -> bool:
+	return _mp_is_active() and MultiplayerManager.is_client()
+
+
+func _mp_is_host_with_peers() -> bool:
+	# Host with at least one connected guest. No point broadcasting if
+	# nobody's listening. In OFFLINE mode is_host() returns true but
+	# _mp_is_active() returns false, so this collapses cleanly.
+	if not _mp_is_active():
+		return false
+	if not MultiplayerManager.is_host():
+		return false
+	if "peers" in MultiplayerManager:
+		var peers: Dictionary = MultiplayerManager.peers
+		# peers includes the host itself; >1 means at least one guest.
+		return peers.size() > 1
+	return false
+
+
+func _mp_send_request_to_host(cmd: Dictionary) -> void:
+	# Client → host. Reliable so a dropped packet doesn't silently
+	# lose Roland's swing.
+	rpc_id(1, _MP_RPC_RELIABLE_REQUEST, cmd)
+
+
+func _mp_broadcast_replica(cmd: Dictionary) -> void:
+	# Host → all clients (excluding self via call_remote in @rpc).
+	rpc(_MP_RPC_RELIABLE_REPLICATE, cmd)
+
+
+func _mp_check_rate_limit(peer_id: int) -> bool:
+	# Sliding-window rate limit. Returns false if this peer has hit
+	# the cap in the last second; true otherwise. Sender's window is
+	# trimmed to the last 1 s on every check.
+	var now: float = Time.get_ticks_msec() / 1000.0
+	var window: Array = _mp_request_window.get(peer_id, [])
+	# Drop entries older than 1 s.
+	while window.size() > 0 and (now - float(window[0])) > 1.0:
+		window.pop_front()
+	if window.size() >= _MP_RATE_LIMIT_PER_SECOND:
+		_mp_request_window[peer_id] = window
+		return false
+	window.append(now)
+	_mp_request_window[peer_id] = window
+	return true
+
+
+func _mp_apply_replica(cmd: Dictionary) -> void:
+	# A host-authoritative edit just arrived. Apply it WITHOUT the
+	# NoEditZone gate (host already approved). Other guards (bedrock,
+	# queue capacity) still apply — if our queue is full we drop the
+	# replica and rely on visual reconciliation when the chunk
+	# eventually re-syncs from the host's saved deltas.
+	var t: String = String(cmd.get("type", ""))
+	match t:
+		"sphere":
+			var p: Vector3 = cmd.get("pos", Vector3.ZERO)
+			var r: float = float(cmd.get("radius", 0.0))
+			if (p.y - r) <= WORLD_FLOOR_WORLD_Y:
+				return
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "sphere",
+					"pos": p,
+					"radius": r,
+					"value": int(cmd.get("value", 0)),
+				})
+		"box":
+			var mn: Vector3 = cmd.get("min", Vector3.ZERO)
+			var mx: Vector3 = cmd.get("max", Vector3.ZERO)
+			if mn.y <= WORLD_FLOOR_WORLD_Y:
+				return
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "box",
+					"min": mn,
+					"max": mx,
+					"value": int(cmd.get("value", 0)),
+				})
+		"box_voxels":
+			var vmn: Vector3i = cmd.get("min", Vector3i.ZERO)
+			var vmx: Vector3i = cmd.get("max", Vector3i.ZERO)
+			if vmn.y <= WORLD_FLOOR_VOXEL_Y:
+				return
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "box_voxels",
+					"min": vmn,
+					"max": vmx,
+					"value": int(cmd.get("value", 0)),
+				})
+		"set":
+			var sp: Vector3 = cmd.get("pos", Vector3.ZERO)
+			if sp.y <= WORLD_FLOOR_WORLD_Y:
+				return
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "set",
+					"pos": sp,
+					"value": int(cmd.get("value", 0)),
+				})
+		"water_set":
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "water_set",
+					"voxel_pos": cmd.get("voxel_pos", Vector3i.ZERO),
+					"water_byte": int(cmd.get("water_byte", 0)) & 0xFF,
+				})
+		"water_box":
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "water_box",
+					"voxel_min": cmd.get("voxel_min", Vector3i.ZERO),
+					"voxel_max": cmd.get("voxel_max", Vector3i.ZERO),
+					"water_byte": int(cmd.get("water_byte", 0)) & 0xFF,
+				})
+		"bulk":
+			# Replica bulk writes are trusted whole — no per-voxel
+			# NoEditZone re-check.
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "bulk",
+					"writes": cmd.get("writes", []),
+					"label": "replica:" + String(cmd.get("label", "bulk")),
+				})
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_edit(cmd: Dictionary) -> void:
+	# Client → host. Re-runs the public queue_* path on the host so
+	# every guard (NoEditZone, bedrock, queue capacity) executes
+	# identically to a host-local edit. On success the same path
+	# broadcasts to peers via _mp_broadcast_replica; on failure the
+	# host pings the originator with a rejection.
+	if not get_node_or_null("/root/MultiplayerManager"):
+		return
+	if not MultiplayerManager.is_host():
+		return  # only host accepts requests
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not _mp_check_rate_limit(sender):
+		push_warning("[VoxelEditManager] Rate-limit drop from peer %d" % sender)
+		return
+	var t: String = String(cmd.get("type", ""))
+	var ok: bool = false
+	match t:
+		"sphere":
+			ok = queue_edit_sphere(
+				cmd.get("pos", Vector3.ZERO),
+				float(cmd.get("radius", 0.0)),
+				int(cmd.get("value", 0)),
+			)
+		"box":
+			ok = queue_edit_box(
+				cmd.get("min", Vector3.ZERO),
+				cmd.get("max", Vector3.ZERO),
+				int(cmd.get("value", 0)),
+			)
+		"box_voxels":
+			ok = queue_edit_box_voxels(
+				cmd.get("min", Vector3i.ZERO),
+				cmd.get("max", Vector3i.ZERO),
+				int(cmd.get("value", 0)),
+			)
+		"set":
+			ok = queue_set_voxel(
+				cmd.get("pos", Vector3.ZERO),
+				int(cmd.get("value", 0)),
+			)
+		"water_set":
+			ok = queue_set_water_voxel(
+				cmd.get("voxel_pos", Vector3i.ZERO),
+				int(cmd.get("water_byte", 0)),
+			)
+		"water_box":
+			ok = queue_set_water_box(
+				cmd.get("voxel_min", Vector3i.ZERO),
+				cmd.get("voxel_max", Vector3i.ZERO),
+				int(cmd.get("water_byte", 0)),
+			)
+		"bulk":
+			ok = queue_set_voxels_bulk(cmd.get("writes", []), String(cmd.get("label", "bulk")))
+	if not ok:
+		# Host-side validation failed (NoEditZone, bedrock, queue full).
+		# Tell the originator so it can play Roland's bark.
+		var rej_pos: Vector3 = cmd.get("pos", Vector3.ZERO)
+		rpc_id(sender, _MP_RPC_RELIABLE_REJECTED, rej_pos)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_replicate_edit(cmd: Dictionary) -> void:
+	# Host → all clients. Apply the trusted edit locally without
+	# re-validating NoEditZone.
+	_mp_apply_replica(cmd)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_edit_rejected(world_pos: Vector3) -> void:
+	# Host → originating client. Surface as the existing rejection
+	# signal so listeners (Roland's "doesn't yield" bark) fire on the
+	# client too.
+	edit_rejected_no_edit_zone.emit(world_pos)

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "bow_pincushion"
+skill = "bow"
+level_required = 76
+milestone_index = 18
+display_name = "Pincushion"
+description = "Each arrow lodged in an enemy adds +5% damage from your next hit (cap +25%)."
+exclusive_group = ""
+is_active = true
+effect_type = "damage_mult"
+effect_value = 0.05
+effect_target = "bow"
+condition = "stacking_arrows"

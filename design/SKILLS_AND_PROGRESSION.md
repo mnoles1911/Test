@@ -5,6 +5,40 @@
 
 ---
 
+## Implementation status (skill PR)
+
+The system shipped with the skill PR uses a **flat 12-skill, 1–100
+level, Skyrim XP curve, 25-perk-per-skill** model. This supersedes
+the four-domain tier system described in earlier revisions of this
+document.
+
+- **12 skills**: Sword, Throwables, Bow, Mining, Felling, Excavation,
+  Demolition, Lockpicking, Alchemy, Smithing, Vitality, Speech.
+- **XP curve**: `xp_to_next_level = 25 × current_level ^ 1.95` (Skyrim).
+  Cap = 100. Total to cap ≈ 430,000 XP per skill.
+- **Perks**: 25 per skill, one milestone every 4 levels (L4, L8, …,
+  L100). 300 total. Source-of-truth doc: `design/PERK_LIBRARY.md`.
+- **Legendary reset**: any skill at 100 can be reset to 15 from the
+  Journal Skills tab, refunding every perk point spent in that tree.
+- **Trainers**: 6 trainer NPCs across factions teach skills for gold.
+  Cost scales with current level. Gated at faction disposition ≥ 75
+  (Friendly).
+- **Speech checks**: KCD2 visible-but-greyed pattern via
+  `SpeechCheckBroker`. Authoring guide: `dialogue/STYLE.md` § 8.
+
+Code entry points: `scripts/skills/SkillManager.gd` (autoload, XP +
+level math + perk picks); `scripts/skills/PerkRegistry.gd` (autoload,
+loads 300 perks); `scripts/skills/SkillCurve.gd` (XP math);
+`scripts/JournalUI.gd` (Skills tab grid + perk ladder UI);
+`scripts/TrainerNPC.gd` (gold-for-levels); `scripts/SpeechCheckBroker.gd`.
+
+The earlier four-domain tier writing below remains valid for **design
+intent** (learn-by-doing, no XP pool, no level-up screen) but the
+numerical model is now flat. Domain headings persist as UI grouping
+in the Skills tab (Combat / Crafting / Survival / Subterfuge / Social).
+
+---
+
 ## Design Philosophy
 
 **You improve what you actually do.** There is no XP pool. There is no level-up screen. Roland does not gain a sword skill by defeating enemies — he gains it by swinging a sword, successfully parrying, and surviving fights. He gains crafting skill by crafting things. He gains endurance by running and fighting through exhaustion.

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "sword_perfect_form"
+skill = "sword"
+level_required = 100
+milestone_index = 24
+display_name = "Perfect Form"
+description = "+10% damage and +10% parry window with swords."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_mult"
+effect_value = 0.1
+effect_target = "sword"
+condition = ""

@@ -46,6 +46,9 @@ const TAB_NAMES: Array = ["QUESTS", "MAP", "ITEMS", "CRAFTING", "CODEX", "SKILLS
 var _root: Control
 var _tab_buttons: Array = []
 var _content_label: Label
+var _scroll: ScrollContainer
+var _skills_root: Control = null         # populated lazily on first SKILLS view
+var _skills_focused: String = ""         # "" = grid view; non-empty = single-skill perk ladder
 var _current_tab: Tab = Tab.QUESTS
 
 
@@ -147,15 +150,15 @@ func _build_ui() -> void:
 	vbox.add_child(div2)
 
 	# --- Scrollable content area (fills remaining vertical space) ---
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scroll)
+	_scroll = ScrollContainer.new()
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(_scroll)
 
 	_content_label = Label.new()
 	_content_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UIStyles.apply_body_label(_content_label, 18)
 	_content_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	scroll.add_child(_content_label)
+	_scroll.add_child(_content_label)
 
 
 # =============================================================
@@ -243,13 +246,22 @@ func _refresh() -> void:
 	for i in range(_tab_buttons.size()):
 		UIStyles.apply_tab_button(_tab_buttons[i], i == _current_tab)
 
+	# Skills uses a custom interactive control instead of the text label.
+	# Show/hide as the tab changes.
+	var skills_active: bool = _current_tab == Tab.SKILLS
+	_content_label.visible = not skills_active
+	if _skills_root != null:
+		_skills_root.visible = skills_active
+
 	match _current_tab:
 		Tab.QUESTS:   _content_label.text = _build_quests_text()
 		Tab.MAP:      _content_label.text = _build_map_text()
 		Tab.ITEMS:    _content_label.text = _build_items_text()
 		Tab.CRAFTING: _content_label.text = _build_crafting_text()
 		Tab.CODEX:    _content_label.text = _build_codex_text()
-		Tab.SKILLS:   _content_label.text = _build_skills_text()
+		Tab.SKILLS:
+			_ensure_skills_root()
+			_rebuild_skills_view()
 
 
 # =============================================================
@@ -459,20 +471,299 @@ func _build_codex_text() -> String:
 
 
 # =============================================================
-# SKILLS
-# Placeholder until GameState tracks skill XP and perk points.
-# Build out in Phase 9-3D per design/SKILLS_AND_PROGRESSION.md.
+# SKILLS — interactive grid + per-skill perk ladder
 # =============================================================
+#
+# Two-mode view inside the SKILLS tab:
+#   - GRID MODE (_skills_focused == ""): one row per skill, grouped
+#     by domain. Shows level, XP progress bar, [Perks ▶] button, and
+#     [Make Legendary] for any skill at the cap.
+#   - PERK LADDER MODE (_skills_focused == "<skill>"): 25 perk
+#     milestones for the selected skill, each row showing the perk's
+#     name, description, lock state, and a [Pick] button when
+#     available.
+#
+# All buttons use Button.pressed.connect — same pattern the tab
+# buttons use, which works inside the journal overlay because the
+# tree is paused (no Dialogic timeline running to consume input).
 
-func _build_skills_text() -> String:
-	var lines: Array = []
-	lines.append("═══ SKILLS ═══\n")
-	lines.append("Skill tracking is not yet implemented.\n")
-	lines.append("Roland's skill domains, sub-skills, earned perks, and\n")
-	lines.append("available perk points will appear here once the progression\n")
-	lines.append("system is built in Phase 9-3D.\n\n")
-	lines.append("Reference: design/SKILLS_AND_PROGRESSION.md")
-	return "\n".join(lines)
+func _ensure_skills_root() -> void:
+	if _skills_root != null:
+		return
+	_skills_root = VBoxContainer.new()
+	_skills_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_skills_root.add_theme_constant_override("separation", 6)
+	_skills_root.visible = false
+	_scroll.add_child(_skills_root)
+
+
+func _rebuild_skills_view() -> void:
+	# Tear down + rebuild on every refresh. The skills tab is rebuilt
+	# infrequently (on tab open, on perk pick, on level-up notification)
+	# so a full clear-and-rebuild is simpler than tracking dirty rows.
+	for child in _skills_root.get_children():
+		child.queue_free()
+	if _skills_focused == "":
+		_build_skills_grid()
+	else:
+		_build_perk_ladder(_skills_focused)
+
+
+# ----- GRID MODE -----
+
+func _build_skills_grid() -> void:
+	var header := Label.new()
+	header.text = "═══ SKILLS ═══     Unspent perk points: %d" % GameState.get_perk_points_unspent()
+	UIStyles.apply_title_label(header, 22)
+	_skills_root.add_child(header)
+
+	var hint := Label.new()
+	hint.text = "Skills advance by use. Perk milestone every 4 levels (L4, L8, ..., L100)."
+	UIStyles.apply_muted_label(hint, 14)
+	_skills_root.add_child(hint)
+
+	for group_name in SkillManager.SKILL_GROUPS.keys():
+		var section := Label.new()
+		section.text = "  " + String(group_name).to_upper()
+		UIStyles.apply_title_label(section, 16)
+		_skills_root.add_child(section)
+
+		var skills: Array = SkillManager.SKILL_GROUPS[group_name]
+		for s in skills:
+			_skills_root.add_child(_build_skill_row(String(s)))
+
+
+func _build_skill_row(skill: String) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var name_lbl := Label.new()
+	name_lbl.text = skill.capitalize()
+	name_lbl.custom_minimum_size = Vector2(140, 0)
+	UIStyles.apply_body_label(name_lbl, 16)
+	row.add_child(name_lbl)
+
+	var lvl: int = SkillManager.get_level(skill)
+	var lvl_lbl := Label.new()
+	lvl_lbl.text = "L%d" % lvl
+	lvl_lbl.custom_minimum_size = Vector2(50, 0)
+	UIStyles.apply_body_label(lvl_lbl, 16)
+	row.add_child(lvl_lbl)
+
+	var prog := ProgressBar.new()
+	prog.custom_minimum_size = Vector2(260, 14)
+	prog.show_percentage = false
+	if lvl >= SkillCurve.MAX_LEVEL:
+		prog.value = 100
+		prog.max_value = 100
+	else:
+		var to_next: float = max(SkillCurve.xp_to_next_level(lvl), 1.0)
+		prog.max_value = to_next
+		prog.value = SkillManager.get_xp_progress(skill)
+	row.add_child(prog)
+
+	var legendary_count: int = GameState.get_legendary_reset_count(skill)
+	if legendary_count > 0:
+		var stars := Label.new()
+		stars.text = "★".repeat(min(legendary_count, 5))
+		UIStyles.apply_body_label(stars, 14)
+		row.add_child(stars)
+
+	var perks_btn := Button.new()
+	perks_btn.text = "Perks ▶"
+	perks_btn.custom_minimum_size = Vector2(110, 30)
+	perks_btn.focus_mode = Control.FOCUS_NONE
+	UIStyles.apply_menu_button(perks_btn)
+	perks_btn.pressed.connect(_on_skill_perks_pressed.bind(skill))
+	row.add_child(perks_btn)
+
+	if lvl >= SkillCurve.MAX_LEVEL:
+		var leg_btn := Button.new()
+		leg_btn.text = "Make Legendary"
+		leg_btn.custom_minimum_size = Vector2(150, 30)
+		leg_btn.focus_mode = Control.FOCUS_NONE
+		UIStyles.apply_menu_button(leg_btn)
+		leg_btn.pressed.connect(_on_legendary_pressed.bind(skill))
+		row.add_child(leg_btn)
+
+	return row
+
+
+func _on_skill_perks_pressed(skill: String) -> void:
+	_skills_focused = skill
+	_rebuild_skills_view()
+
+
+# ----- PERK LADDER MODE -----
+
+func _build_perk_ladder(skill: String) -> void:
+	var header := HBoxContainer.new()
+	_skills_root.add_child(header)
+
+	var back := Button.new()
+	back.text = "◀ Back"
+	back.custom_minimum_size = Vector2(90, 30)
+	back.focus_mode = Control.FOCUS_NONE
+	UIStyles.apply_menu_button(back)
+	back.pressed.connect(_on_skill_back_pressed)
+	header.add_child(back)
+
+	var title := Label.new()
+	title.text = "  %s   L%d   (Perk points: %d)" % [
+		skill.capitalize(),
+		SkillManager.get_level(skill),
+		GameState.get_perk_points_unspent(),
+	]
+	UIStyles.apply_title_label(title, 22)
+	header.add_child(title)
+
+	var perks: Array = PerkRegistry.get_perks_for_skill(skill)
+	if perks.is_empty():
+		var empty := Label.new()
+		empty.text = "\n(No perks authored for this skill yet.)"
+		UIStyles.apply_muted_label(empty, 14)
+		_skills_root.add_child(empty)
+		return
+
+	# Group perks by milestone_index so exclusive choices render in
+	# the same row block.
+	var by_milestone: Dictionary = {}
+	for pd in perks:
+		var m: int = pd.milestone_index
+		if not by_milestone.has(m):
+			by_milestone[m] = []
+		(by_milestone[m] as Array).append(pd)
+
+	var milestone_keys: Array = by_milestone.keys()
+	milestone_keys.sort()
+	for m in milestone_keys:
+		_skills_root.add_child(_build_milestone_block(skill, m, by_milestone[m]))
+
+
+func _build_milestone_block(skill: String, milestone_index: int, perks: Array) -> Control:
+	var block := VBoxContainer.new()
+	block.add_theme_constant_override("separation", 2)
+
+	var level_required: int = (milestone_index + 1) * SkillCurve.PERK_MILESTONE_INTERVAL
+	var unlocked: bool = SkillManager.get_level(skill) >= level_required
+
+	var header := Label.new()
+	header.text = "  L%d milestone" % level_required
+	UIStyles.apply_title_label(header, 14)
+	block.add_child(header)
+
+	for pd in perks:
+		block.add_child(_build_perk_row(pd, unlocked))
+
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 6)
+	block.add_child(spacer)
+	return block
+
+
+func _build_perk_row(pd: PerkData, milestone_unlocked: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var owned: bool = GameState.has_perk(pd.perk_id)
+	var pickable: bool = SkillManager.can_pick_perk(pd.perk_id)
+
+	var name_lbl := Label.new()
+	name_lbl.text = "%s%s" % [pd.display_name, "  ✓" if owned else ""]
+	name_lbl.custom_minimum_size = Vector2(220, 0)
+	UIStyles.apply_body_label(name_lbl, 14)
+	row.add_child(name_lbl)
+
+	var desc := Label.new()
+	desc.text = pd.description
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	UIStyles.apply_body_label(desc, 13)
+	row.add_child(desc)
+
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(90, 28)
+	btn.focus_mode = Control.FOCUS_NONE
+	if owned:
+		btn.text = "Owned"
+		btn.disabled = true
+	elif not milestone_unlocked:
+		btn.text = "L%d" % pd.level_required
+		btn.disabled = true
+	elif pickable:
+		btn.text = "Pick"
+		btn.pressed.connect(_on_perk_pick_pressed.bind(pd.perk_id))
+	else:
+		btn.text = "—"
+		btn.disabled = true
+	UIStyles.apply_menu_button(btn)
+	row.add_child(btn)
+	return row
+
+
+func _on_perk_pick_pressed(perk_id: String) -> void:
+	if SkillManager.pick_perk(perk_id):
+		_rebuild_skills_view()
+
+
+func _on_skill_back_pressed() -> void:
+	_skills_focused = ""
+	_rebuild_skills_view()
+
+
+func _on_legendary_pressed(skill: String) -> void:
+	# One-click confirm: the next press flips skills_focused to a
+	# dedicated confirmation block. Two-step pattern avoids needing a
+	# modal dialog while still preventing accidental cap-resets.
+	_skills_focused = "__legendary_confirm:" + skill
+	_rebuild_skills_view_legendary_confirm(skill)
+
+
+func _rebuild_skills_view_legendary_confirm(skill: String) -> void:
+	for child in _skills_root.get_children():
+		child.queue_free()
+	var header := Label.new()
+	header.text = "Make %s Legendary?" % skill.capitalize()
+	UIStyles.apply_title_label(header, 22)
+	_skills_root.add_child(header)
+
+	var body := Label.new()
+	var owned_in_skill: int = SkillManager.owned_perks(skill).size()
+	body.text = "Resets %s to L%d and refunds the %d perk point%s spent on its tree. Other skills are untouched. The reset counter shows in the skills list." % [
+		skill.capitalize(),
+		SkillCurve.LEGENDARY_RESET_LEVEL,
+		owned_in_skill,
+		"" if owned_in_skill == 1 else "s",
+	]
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	UIStyles.apply_body_label(body, 14)
+	_skills_root.add_child(body)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_skills_root.add_child(row)
+
+	var yes := Button.new()
+	yes.text = "Confirm Legendary"
+	yes.custom_minimum_size = Vector2(180, 32)
+	yes.focus_mode = Control.FOCUS_NONE
+	UIStyles.apply_menu_button(yes)
+	yes.pressed.connect(_on_legendary_confirmed.bind(skill))
+	row.add_child(yes)
+
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.custom_minimum_size = Vector2(120, 32)
+	cancel.focus_mode = Control.FOCUS_NONE
+	UIStyles.apply_menu_button(cancel)
+	cancel.pressed.connect(_on_skill_back_pressed)
+	row.add_child(cancel)
+
+
+func _on_legendary_confirmed(skill: String) -> void:
+	SkillManager.make_legendary(skill)
+	_skills_focused = ""
+	_rebuild_skills_view()
 
 
 # =============================================================

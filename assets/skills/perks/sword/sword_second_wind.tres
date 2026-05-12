@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "sword_second_wind"
+skill = "sword"
+level_required = 76
+milestone_index = 18
+display_name = "Second Wind"
+description = "Once per fight, regain 30% endurance when it hits 0."
+exclusive_group = ""
+is_active = true
+effect_type = "proc_once"
+effect_value = 0.3
+effect_target = "stamina"
+condition = "stamina_zero"

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "alch_sober_mind"
+skill = "alchemy"
+level_required = 92
+milestone_index = 22
+display_name = "Sober Mind"
+description = "Negative effects from drunkenness or bad brews halved."
+exclusive_group = ""
+is_active = false
+effect_type = "effect_mult"
+effect_value = -0.5
+effect_target = "self"
+condition = "negative"

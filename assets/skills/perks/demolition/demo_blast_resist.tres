@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "demo_blast_resist"
+skill = "demolition"
+level_required = 32
+milestone_index = 7
+display_name = "Blast Resist"
+description = "Take 40% less damage from your own explosions."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_taken"
+effect_value = -0.4
+effect_target = "self"
+condition = "self_explosion"

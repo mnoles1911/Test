@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "mine_blastproof"
+skill = "mining"
+level_required = 40
+milestone_index = 9
+display_name = "Blastproof"
+description = "Take 30% less damage from falling voxels."
+exclusive_group = ""
+is_active = false
+effect_type = "damage_taken"
+effect_value = -0.3
+effect_target = "self"
+condition = "from_voxel"

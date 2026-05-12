@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PerkData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/PerkData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+perk_id = "smith_silver_master"
+skill = "smithing"
+level_required = 60
+milestone_index = 14
+display_name = "Silver Master"
+description = "Silver items +15% damage / +15% armor."
+exclusive_group = ""
+is_active = false
+effect_type = "stat_mult"
+effect_value = 0.15
+effect_target = "smithing_silver"
+condition = ""
