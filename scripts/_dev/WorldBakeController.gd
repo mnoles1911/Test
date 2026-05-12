@@ -377,15 +377,15 @@ func _build_ui() -> void:
 	_btn_diagnostics.pressed.connect(_on_run_diagnostics)
 	vbox.add_child(_btn_diagnostics)
 
-	_btn_bake_1km = _make_button("2a. Bake 1 km central  (validation; ~110 min)")
+	_btn_bake_1km = _make_button("2a. Bake 1 km central  %s" % _estimate_label(1000.0))
 	_btn_bake_1km.pressed.connect(_on_bake_1km)
 	vbox.add_child(_btn_bake_1km)
 
-	_btn_bake_2km = _make_button("2b. Bake 2 km central  (working dev bake; ~7 hr)")
+	_btn_bake_2km = _make_button("2b. Bake 2 km central  %s" % _estimate_label(2000.0))
 	_btn_bake_2km.pressed.connect(_on_bake_2km)
 	vbox.add_child(_btn_bake_2km)
 
-	_btn_bake_5km = _make_button("2c. Bake full 5 km  (overnight; ~47 hr / ~14 hr land-only+3s)")
+	_btn_bake_5km = _make_button("2c. Bake full 5 km  %s" % _estimate_label(5000.0))
 	_btn_bake_5km.pressed.connect(_on_bake_5km)
 	vbox.add_child(_btn_bake_5km)
 
@@ -621,6 +621,29 @@ func _on_run_diagnostics() -> void:
 # =============================================================
 # BAKE — region presets
 # =============================================================
+
+func _estimate_label(extent_m: float) -> String:
+	# Format a "~N min / ~N hr" suffix for the bake buttons based on the
+	# tile count this extent produces and the current wait_per_position_s.
+	#   tiles      = (extent_m / TILE_SIZE_M)^2  (the square XZ walk grid)
+	#   visits     = tiles × 1.8                 (avg vertical stops; LAND/COAST=2,
+	#                                             SHALLOW=1, DEEP=0; 1.8 is a
+	#                                             defensible mid-point for World3D's
+	#                                             noise terrain, Copper Isles tilts
+	#                                             lower because more tiles classify
+	#                                             DEEP).
+	#   wall_s     = visits × wait_per_position_s
+	# Per-tile overhead (viewer move, save flush, etc.) adds <10 %; ignored
+	# in the label — the wait dominates by orders of magnitude.
+	var tiles: float = pow(extent_m / TILE_SIZE_M, 2.0)
+	var visits: float = tiles * 1.8
+	var wall_s: float = visits * wait_per_position_s
+	if wall_s < 90.0:
+		return "(~%d s)" % int(round(wall_s))
+	if wall_s < 5400.0:
+		return "(~%d min)" % int(round(wall_s / 60.0))
+	return "(~%.1f hr)" % (wall_s / 3600.0)
+
 
 func _on_bake_1km() -> void:
 	# Quick validation pass — 1 km × 1 km centred on world (0, 0).
