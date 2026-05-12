@@ -441,17 +441,30 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
+	#
+	# Sub-instrumented (2026-05-12): time `_update_viewer_lookahead` and
+	# `_physics_process_inner` separately. Inside `_physics_process_inner`
+	# the `move_and_slide()` calls are themselves wrapped so the jump-
+	# correlated spike can be attributed (move_and_slide vs auto-step
+	# vs water-state checks vs the rest). The outer Player3D total is
+	# also retained so the Overview can still rank by "total physics".
+	#
 	# get_node_or_null guards for the case Player3D runs outside the main
 	# game (e.g. test harness without the autoloads registered).
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner(delta)
+
+	var _t_view_start: int = Time.get_ticks_usec()
 	_update_viewer_lookahead()
+	var _t_view_us: int = Time.get_ticks_usec() - _t_view_start
+
 	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
 	if get_node_or_null("/root/HUDOverlay"):
 		HUDOverlay.profile_record("Player3D_phys", _elapsed)
 	var prof := get_node_or_null("/root/Profiler")
 	if prof != null:
 		prof.record("PHYS", "Player3D", _elapsed)
+		prof.record("PHYS", "Player3D_viewer_lookahead", _t_view_us)
 
 
 func _update_viewer_lookahead() -> void:
@@ -666,7 +679,16 @@ func _physics_process_inner(delta: float) -> void:
 	var pre_slide_pos: Vector3 = global_position
 	var intended_h: Vector3 = Vector3(velocity.x, 0.0, velocity.z) * delta
 
+	# Wrap move_and_slide() so the Profiler can isolate Godot's
+	# CharacterBody3D collision work from the rest of our logic. The
+	# 10ms jump-frame spike observed in early captures is suspected to
+	# live here; sub-instrumentation pins it down.
+	var _t_ms_start: int = Time.get_ticks_usec()
 	move_and_slide()
+	var _t_ms_us: int = Time.get_ticks_usec() - _t_ms_start
+	var _prof_ms := get_node_or_null("/root/Profiler")
+	if _prof_ms != null:
+		_prof_ms.record("PHYS", "Player3D_move_and_slide", _t_ms_us)
 
 	# --- Auto-step over small voxel ledges ---
 	# Walking forward into a 1-voxel cube (16.7 cm at 6 vox/m, since
@@ -849,7 +871,13 @@ func _physics_process_flying(_delta: float) -> void:
 	# Direct velocity assignment — no acceleration ramp. Flying
 	# should feel responsive, not weighty.
 	velocity = dir * fly_speed
+	# Profiler-instrumented (same pattern as the grounded path).
+	var _t_ms_fly_start: int = Time.get_ticks_usec()
 	move_and_slide()
+	var _t_ms_fly_us: int = Time.get_ticks_usec() - _t_ms_fly_start
+	var _prof_ms_fly := get_node_or_null("/root/Profiler")
+	if _prof_ms_fly != null:
+		_prof_ms_fly.record("PHYS", "Player3D_move_and_slide", _t_ms_fly_us)
 
 
 func toggle_fly_mode() -> bool:

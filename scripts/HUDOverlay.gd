@@ -1264,17 +1264,16 @@ func _find_player() -> Node:
 func profile_record(label: String, usec: int) -> void:
 	# Called by other autoloads to report time spent in their _process /
 	# _physics_process. Accumulates per second; _perf_diag_tick clears.
-	# Also forwards to Profiler autoload (if registered) so its overlay
-	# has full attribution coverage. The Profiler is the canonical source
-	# of truth going forward; this in-HUD aggregator stays for the
-	# always-on [PERF] log line.
+	#
+	# As of 2026-05-12, this only feeds the always-on [PERF] log line.
+	# The Profiler autoload is fed directly by each wrapper site (one
+	# explicit prof.record call per wrap), categorized properly. The
+	# old forwarder here (record(label, usec) → Profiler.record("OTHER",
+	# label, usec)) was double-counting because every wrapper called
+	# BOTH paths — so the Overview showed each system twice (once as
+	# OTHER.X and once as PROPER.X with identical data). Dropping the
+	# forwarder leaves single, categorized entries.
 	_profile_buckets[label] = _profile_buckets.get(label, 0) + usec
-	var prof := get_node_or_null("/root/Profiler")
-	if prof != null:
-		# Legacy callers passed bare labels (e.g. "WaterChunkMesher").
-		# Map to OTHER category by default; wrapped sites that want better
-		# attribution call Profiler.record() directly with their category.
-		prof.record("OTHER", label, usec)
 
 
 func _perf_diag_tick(delta: float) -> void:

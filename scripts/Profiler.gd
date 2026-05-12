@@ -167,13 +167,55 @@ func frame_finalize() -> void:
 	if frame_total_ms > SPIKE_MS_THRESHOLD:
 		_record_spike(frame_total)
 
-	# Capture: if active, snapshot the frame.
+	# Capture: if active, snapshot the frame INCLUDING engine + Zylann
+	# telemetry so the JSON tells the full story (not just wrapped GD).
+	#
+	# Engine fields:
+	#   proc_us / phys_us  — Performance.TIME_PROCESS / TIME_PHYSICS_PROCESS,
+	#                        converted to microseconds. These cover ALL
+	#                        _process / _physics_process bodies in the
+	#                        scene tree, including non-wrapped code +
+	#                        engine-internal work.
+	#   draws / prims      — last-frame rendering counters. High prims +
+	#                        spike → mesh upload-bound.
+	#   vram_mb            — used video memory. Rises during chunk
+	#                        streaming; flat during steady-state.
+	#
+	# Zylann fields (only when a VoxelLodTerrain is in scene):
+	#   z_detect_us / z_io_us / z_mesh_us / z_update_us — main-thread
+	#                        budgets from VoxelLodTerrain.get_statistics().
+	#   z_blocked_lods       — count of LOD slots blocked by save IO
+	#   z_dropped_loads      — chunks the streamer gave up on this frame.
+	#
+	# Capture cost is small (one Performance.get_monitor call per field
+	# + one Variant::call to Zylann), only paid during capture mode.
 	if _capture_active:
-		_capture_buffer.append({
+		var proc_us: int = int(Performance.get_monitor(Performance.TIME_PROCESS) * 1_000_000.0)
+		var phys_us: int = int(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1_000_000.0)
+		var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+		var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+		var vram_mb: int = int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / (1024 * 1024))
+
+		var record: Dictionary = {
 			"frame": _frame_count_total,
 			"total_us": frame_total,
 			"attribution": _frame_samples.duplicate(),
-		})
+			"engine": {
+				"proc_us": proc_us,
+				"phys_us": phys_us,
+				"draws": draws,
+				"prims": prims,
+				"vram_mb": vram_mb,
+			},
+		}
+		# Zylann main-thread budgets. Pull from the live VoxelLodTerrain
+		# via the lazy-cached _zylann_terrain reference (populated by
+		# _find_voxel_terrain). Skipped silently when no terrain is in
+		# the scene (title screen, dev scenes that join "dev_scene").
+		var zstats: Dictionary = _read_zylann_stats()
+		if not zstats.is_empty():
+			record["zylann"] = zstats
+		_capture_buffer.append(record)
 
 	# Roll the 1s window if it's elapsed.
 	var now_msec: int = Time.get_ticks_msec()
@@ -253,6 +295,54 @@ func get_last_spike() -> Dictionary:
 
 
 # --- Capture API --------------------------------------------------------
+
+# --- Zylann main-thread budget capture ---------------------------------
+#
+# Lazily resolves the active VoxelLodTerrain in the scene tree (refreshed
+# when the cached node becomes invalid, e.g. scene change). Reads
+# get_statistics() — Zylann exposes time_detect_required_blocks,
+# time_io_requests, time_mesh_requests, time_update_task, blocked_lods,
+# dropped_block_loads, dropped_block_meshs. Same data the [DIAG] log
+# line surfaces; pulling it per-frame into the JSON capture lets a
+# post-mortem correlate Zylann main-thread spikes with frame totals.
+
+var _zylann_terrain: Node = null
+
+func _read_zylann_stats() -> Dictionary:
+	if _zylann_terrain == null or not is_instance_valid(_zylann_terrain):
+		_zylann_terrain = _find_voxel_terrain()
+	if _zylann_terrain == null:
+		return {}
+	if not _zylann_terrain.has_method("get_statistics"):
+		return {}
+	var s: Dictionary = _zylann_terrain.call("get_statistics")
+	# Rename to short keys + namespace under z_* so the JSON record is
+	# greppable without ambiguity vs. Performance.* fields.
+	return {
+		"detect_us": int(s.get("time_detect_required_blocks", 0)),
+		"io_us": int(s.get("time_io_requests", 0)),
+		"mesh_us": int(s.get("time_mesh_requests", 0)),
+		"update_us": int(s.get("time_update_task", 0)),
+		"blocked_lods": int(s.get("blocked_lods", 0)),
+		"dropped_loads": int(s.get("dropped_block_loads", 0)),
+		"dropped_meshs": int(s.get("dropped_block_meshs", 0)),
+	}
+
+
+func _find_voxel_terrain() -> Node:
+	var root: Node = Engine.get_main_loop().root
+	return _walk_for_terrain(root)
+
+
+func _walk_for_terrain(node: Node) -> Node:
+	if node.get_class() == "VoxelLodTerrain":
+		return node
+	for child in node.get_children():
+		var found := _walk_for_terrain(child)
+		if found != null:
+			return found
+	return null
+
 
 func capture_start() -> void:
 	# Drop any in-progress capture and start fresh.

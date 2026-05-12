@@ -104,6 +104,22 @@ func _ready() -> void:
 	if "lod_distance" in terrain:
 		terrain.set("lod_distance", 128.0)
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
+	# Streaming system: 0 = LEGACY_OCTREE (default), 1 = CLIPBOX.
+	# CLIPBOX walks a clipped box of chunks rather than a full octree
+	# per viewer — typically 2-5× faster main-thread cost than the
+	# legacy octree path. Probe-confirmed via BakeWorld's diagnostics.
+	# Enforced here in addition to the .tscn property so Godot's editor
+	# silently reverting to default-0 doesn't regress the perf win.
+	if "streaming_system" in terrain:
+		terrain.set("streaming_system", 1)
+		print("[World3D] terrain.streaming_system set to 1 CLIPBOX (actual=%s)" % terrain.get("streaming_system"))
+	# LOD fade duration: extends the cross-fade between LOD levels from
+	# 1s to 2s. Smoother visual transitions + spreads the mesh upload
+	# cost over twice as many frames, mitigating the chunk-stream-in
+	# spike phenomenon.
+	if "lod_fade_duration" in terrain:
+		terrain.set("lod_fade_duration", 2.0)
+		print("[World3D] terrain.lod_fade_duration set to 2.0 (actual=%s)" % terrain.get("lod_fade_duration"))
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
