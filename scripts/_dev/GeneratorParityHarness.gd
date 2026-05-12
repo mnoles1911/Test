@@ -47,6 +47,12 @@ const SEED_RANGE: int = 1_000
 # How many mismatches to dump in detail before stopping verbose logging.
 const VERBOSE_MISMATCH_CAP: int = 5
 
+# Phase 2 ground_y sweep — grid resolution + extent. A 50×50 grid at
+# 200-voxel step covers ±5000 voxels in X/Z, which is plenty to exercise
+# noise variance + the realistic playable area.
+const GROUND_Y_GRID_HALF_EXTENT: int = 5000   # ±5000 voxels around origin
+const GROUND_Y_GRID_STEP: int = 200            # one sample every 200 voxels
+
 
 func _run() -> void:
 	print("[Parity] ===== GeneratorParityHarness start =====")
@@ -55,14 +61,17 @@ func _run() -> void:
 
 	var hash3_mismatches: int = _test_hash3(probe)
 	var cliff_mismatches: int = _test_cliff_threshold(probe)
-	var total: int = hash3_mismatches + cliff_mismatches
+	var ground_y_mismatches: int = _test_ground_y()
+	var total: int = hash3_mismatches + cliff_mismatches + ground_y_mismatches
 
 	print("[Parity] =====")
 	if total == 0:
-		print("[Parity] PASS — all checks bit-exact (hash3 over %d tuples + cliff_threshold sweep)." % HASH3_TUPLE_COUNT)
-		print("[Parity] Phase 1 gate satisfied. Safe to proceed to Phase 2.")
+		print("[Parity] PASS — all checks bit-exact (hash3 + cliff_threshold + ground_y).")
+		print("[Parity] Phase 2 gate satisfied. Safe to proceed to Phase 3.")
 	else:
-		printerr("[Parity] FAIL — %d mismatches total (hash3=%d, cliff=%d). Phase 1 gate NOT satisfied." % [total, hash3_mismatches, cliff_mismatches])
+		printerr("[Parity] FAIL — %d mismatches total (hash3=%d, cliff=%d, ground_y=%d). Gate NOT satisfied." % [
+			total, hash3_mismatches, cliff_mismatches, ground_y_mismatches
+		])
 
 
 func _test_hash3(probe: ParityProbe) -> int:
@@ -121,5 +130,97 @@ func _test_cliff_threshold(probe: ParityProbe) -> int:
 		print("[Parity] cliff_threshold: %d / %d (angle, sample_distance) pairs match." % [checked, checked])
 	else:
 		printerr("[Parity] cliff_threshold: %d / %d pairs mismatched." % [mismatches, checked])
+
+	return mismatches
+
+
+# Phase 2 — ground_y per-column parity.
+#
+# Builds two generators (GD + C++) sharing IDENTICAL configuration: same
+# FastNoiseLite resource (so all underlying noise samples are bit-identical)
+# and same height params. Then walks a grid of (world_x, world_z) and
+# compares the integer ground_y each side reports for that column.
+#
+# Both implementations are pure functions of their config + (x, z), so
+# bit-exact integer equality is the right gate.
+func _test_ground_y() -> int:
+	# Shared noise resource — both generators reference the SAME instance,
+	# so we don't have to worry about whether two FastNoiseLite resources
+	# with the same seed produce identical outputs.
+	var noise := FastNoiseLite.new()
+	noise.seed = 0xC0FFEE
+	noise.frequency = 0.005  # macro-scale by default
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+
+	# GDScript generator.
+	var gd_gen := CubicHeightmapGenerator.new()
+	gd_gen.noise = noise
+	gd_gen.height_range_voxels = 900.0
+	gd_gen.height_offset_voxels = 60
+	gd_gen.quantize_to_meters = false
+	gd_gen.mid_amplitude_voxels = 10
+	gd_gen.mid_frequency_multiplier = 3.0
+	gd_gen.detail_amplitude_voxels = 2
+	gd_gen.detail_frequency_multiplier = 12.0
+
+	# C++ generator. Same params; same noise reference.
+	var cpp_gen := CubicHeightmapGeneratorCpp.new()
+	cpp_gen.noise = noise
+	cpp_gen.height_range_voxels = 900.0
+	cpp_gen.height_offset_voxels = 60
+	cpp_gen.quantize_to_meters = false
+	cpp_gen.mid_amplitude_voxels = 10
+	cpp_gen.mid_frequency_multiplier = 3.0
+	cpp_gen.detail_amplitude_voxels = 2
+	cpp_gen.detail_frequency_multiplier = 12.0
+
+	var mismatches: int = 0
+	var checked: int = 0
+	var dumped: int = 0
+
+	var x := -GROUND_Y_GRID_HALF_EXTENT
+	while x <= GROUND_Y_GRID_HALF_EXTENT:
+		var z := -GROUND_Y_GRID_HALF_EXTENT
+		while z <= GROUND_Y_GRID_HALF_EXTENT:
+			var gd_v: int = gd_gen._ground_y_at(x, z)
+			var cpp_v: int = cpp_gen.compute_ground_y(x, z)
+			checked += 1
+			if gd_v != cpp_v:
+				mismatches += 1
+				if dumped < VERBOSE_MISMATCH_CAP:
+					printerr("[Parity] ground_y mismatch at (x=%d, z=%d): gd=%d cpp=%d" % [x, z, gd_v, cpp_v])
+					dumped += 1
+			z += GROUND_Y_GRID_STEP
+		x += GROUND_Y_GRID_STEP
+
+	# Also sweep quantize_to_meters=true (different code path inside _ground_y_at).
+	gd_gen.quantize_to_meters = true
+	cpp_gen.quantize_to_meters = true
+	var quantize_mismatches: int = 0
+	var quantize_checked: int = 0
+	# Smaller grid for the quantize sweep — main job is to exercise the
+	# roundi-vs-lround agreement, not to re-cover the whole map.
+	var qx := -2000
+	while qx <= 2000:
+		var qz := -2000
+		while qz <= 2000:
+			var qgd: int = gd_gen._ground_y_at(qx, qz)
+			var qcpp: int = cpp_gen.compute_ground_y(qx, qz)
+			quantize_checked += 1
+			if qgd != qcpp:
+				quantize_mismatches += 1
+				if dumped < VERBOSE_MISMATCH_CAP:
+					printerr("[Parity] ground_y mismatch (quantized) at (x=%d, z=%d): gd=%d cpp=%d" % [qx, qz, qgd, qcpp])
+					dumped += 1
+			qz += GROUND_Y_GRID_STEP
+		qx += GROUND_Y_GRID_STEP
+	mismatches += quantize_mismatches
+
+	if mismatches == 0:
+		print("[Parity] ground_y: %d unquantized + %d quantized samples match bit-for-bit." % [checked, quantize_checked])
+	else:
+		printerr("[Parity] ground_y: %d / %d total mismatches (%d unquantized, %d quantized)." % [
+			mismatches, checked + quantize_checked, mismatches - quantize_mismatches, quantize_mismatches
+		])
 
 	return mismatches

@@ -7,6 +7,7 @@
 // has its _generate_block called from the worker pool.
 
 #include "register_types.h"
+#include "cubic_heightmap_generator.h"
 #include "parity_probe.h"
 #include "spike_stone_generator.h"
 
@@ -23,6 +24,7 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     }
     ClassDB::register_class<SpikeStoneGenerator>();
     ClassDB::register_class<ParityProbe>();
+    ClassDB::register_class<CubicHeightmapGeneratorCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
