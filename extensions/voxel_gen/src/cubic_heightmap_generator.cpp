@@ -114,6 +114,36 @@ int CubicHeightmapGeneratorCpp::get_snow_line_seed() const { return _snow_line_s
 void CubicHeightmapGeneratorCpp::set_snow_line_max_lod(int p_value) { _snow_line_max_lod = p_value; }
 int CubicHeightmapGeneratorCpp::get_snow_line_max_lod() const { return _snow_line_max_lod; }
 
+// Phase 4c setters/getters
+void CubicHeightmapGeneratorCpp::set_cliff_slope_sample_distance_voxels(int p_value) { _cliff_slope_sample_distance_voxels = p_value; }
+int CubicHeightmapGeneratorCpp::get_cliff_slope_sample_distance_voxels() const { return _cliff_slope_sample_distance_voxels; }
+
+void CubicHeightmapGeneratorCpp::set_cliff_slope_threshold_voxels(int p_value) { _cliff_slope_threshold_voxels = p_value; }
+int CubicHeightmapGeneratorCpp::get_cliff_slope_threshold_voxels() const { return _cliff_slope_threshold_voxels; }
+
+void CubicHeightmapGeneratorCpp::set_cliff_rule_max_lod(int p_value) { _cliff_rule_max_lod = p_value; }
+int CubicHeightmapGeneratorCpp::get_cliff_rule_max_lod() const { return _cliff_rule_max_lod; }
+
+// Tier 1 helper. Mirrors scripts/CubicHeightmapGenerator.gd:599 _column_is_cliff.
+// Worker-thread safe — only reads instance config + calls compute_ground_y
+// (which is itself pure).
+bool CubicHeightmapGeneratorCpp::column_is_cliff(int world_x, int world_z, int this_ground_y) const {
+    const int step = _cliff_slope_sample_distance_voxels;
+    if (step <= 0 || _cliff_slope_threshold_voxels <= 0) {
+        return false;
+    }
+    int max_drop = 0;
+    const int dn = this_ground_y - compute_ground_y(world_x - step, world_z);
+    if (dn > max_drop) max_drop = dn;
+    const int dp = this_ground_y - compute_ground_y(world_x + step, world_z);
+    if (dp > max_drop) max_drop = dp;
+    const int dzn = this_ground_y - compute_ground_y(world_x, world_z - step);
+    if (dzn > max_drop) max_drop = dzn;
+    const int dzp = this_ground_y - compute_ground_y(world_x, world_z + step);
+    if (dzp > max_drop) max_drop = dzp;
+    return max_drop >= _cliff_slope_threshold_voxels;
+}
+
 // ----- Core: ground_y at a world (x, z) column ---------------------------
 //
 // Mirror of scripts/CubicHeightmapGenerator.gd _ground_y_at (line 572).
@@ -230,6 +260,10 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
             && _snow_line_max_lod >= 0
             && lod <= _snow_line_max_lod;
 
+    // Phase 4c — cliff slope (Tier 1). LOD-gated to skip the 4× per-column
+    // ground_y resamples at distant LODs.
+    const bool run_cliff_rule = _cliff_rule_max_lod >= 0 && lod <= _cliff_rule_max_lod;
+
     // Walk every (x, z) column. For each, compute ground_y once; pick the
     // top-band material (grass or sand); then walk Y selecting band by
     // depth from ground_y. Phase 3 implements GD's plan-Tier 1 (bands) +
@@ -249,13 +283,26 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
                 top_id = SAND_MATERIAL_ID;
             }
 
+            // Phase 4c — Tier 1 cliff slope. When a column has a steep
+            // drop to any 4-neighbour, collapse top + dirt to bare stone.
+            // The col_dirt_band_end local mirrors GD's per-column override:
+            // dirt_band_end normally, grass_thick on cliffs (so depth >= 1
+            // lands straight in the stone band — no dirt sandwich on
+            // exposed rock faces).
+            int col_dirt_band_end = dirt_band_end;
+            const bool col_is_cliff = run_cliff_rule
+                    && column_is_cliff(world_x, world_z, ground_y);
+            if (col_is_cliff) {
+                top_id = STONE_MATERIAL_ID;
+                col_dirt_band_end = grass_thick;
+                // Tier 6 (rare ore outcrops) lands in 4g; nothing here yet.
+            }
+
             // Phase 4b — Tier 2 snow line. Mirrors the GD inner-loop
             // override: non-cliff columns above (snow_alt + jitter) get
-            // their top voxel turned to snow. Cliff slope (Tier 1) isn't
-            // ported yet, so `column_is_cliff = false` is implicit here;
-            // the parity harness keeps GD's cliff_rule_max_lod = -1 so
-            // both sides agree.
-            if (run_snow_line && ground_y >= snow_alt_voxels) {
+            // their top voxel turned to snow. Cliff faces poke through
+            // snowcaps because col_is_cliff blocks the override.
+            if (run_snow_line && !col_is_cliff && ground_y >= snow_alt_voxels) {
                 // GD uses integer-division: world_{x,z} / snow_block.
                 // GDScript / on ints truncates toward zero; C++ / on
                 // signed ints also truncates toward zero in C++11+.
@@ -308,7 +355,10 @@ void CubicHeightmapGeneratorCpp::generate_block_into_buffer(Variant out_buffer,
                 int mat_id;
                 if (depth < grass_thick) {
                     mat_id = top_id;
-                } else if (depth < dirt_band_end) {
+                } else if (depth < col_dirt_band_end) {
+                    // col_dirt_band_end collapses to grass_thick on cliff
+                    // columns (Tier 1), so depth>=1 there falls straight
+                    // through to the stone branch below.
                     mat_id = DIRT_MATERIAL_ID;
                 } else {
                     // Stone band. Apply marble jitter (Tier 3) if enabled
@@ -522,6 +572,31 @@ void CubicHeightmapGeneratorCpp::_bind_methods() {
                          &CubicHeightmapGeneratorCpp::get_snow_line_max_lod);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "snow_line_max_lod"),
                  "set_snow_line_max_lod", "get_snow_line_max_lod");
+
+    // Phase 4c bindings — cliff slope
+    ClassDB::bind_method(D_METHOD("set_cliff_slope_sample_distance_voxels", "value"),
+                         &CubicHeightmapGeneratorCpp::set_cliff_slope_sample_distance_voxels);
+    ClassDB::bind_method(D_METHOD("get_cliff_slope_sample_distance_voxels"),
+                         &CubicHeightmapGeneratorCpp::get_cliff_slope_sample_distance_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "cliff_slope_sample_distance_voxels"),
+                 "set_cliff_slope_sample_distance_voxels", "get_cliff_slope_sample_distance_voxels");
+
+    ClassDB::bind_method(D_METHOD("set_cliff_slope_threshold_voxels", "value"),
+                         &CubicHeightmapGeneratorCpp::set_cliff_slope_threshold_voxels);
+    ClassDB::bind_method(D_METHOD("get_cliff_slope_threshold_voxels"),
+                         &CubicHeightmapGeneratorCpp::get_cliff_slope_threshold_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "cliff_slope_threshold_voxels"),
+                 "set_cliff_slope_threshold_voxels", "get_cliff_slope_threshold_voxels");
+
+    ClassDB::bind_method(D_METHOD("set_cliff_rule_max_lod", "value"),
+                         &CubicHeightmapGeneratorCpp::set_cliff_rule_max_lod);
+    ClassDB::bind_method(D_METHOD("get_cliff_rule_max_lod"),
+                         &CubicHeightmapGeneratorCpp::get_cliff_rule_max_lod);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "cliff_rule_max_lod"),
+                 "set_cliff_rule_max_lod", "get_cliff_rule_max_lod");
+
+    ClassDB::bind_method(D_METHOD("column_is_cliff", "world_x", "world_z", "this_ground_y"),
+                         &CubicHeightmapGeneratorCpp::column_is_cliff);
 
     // Core API
     ClassDB::bind_method(D_METHOD("compute_ground_y", "world_x", "world_z"),

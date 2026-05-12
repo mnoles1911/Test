@@ -141,6 +141,21 @@ public:
     void set_snow_line_max_lod(int p_value);
     int get_snow_line_max_lod() const;
 
+    // --- Phase 4c: cliff slope rule (Tier 1) ---
+    //
+    // Sample 4 neighbour columns at ± cliff_slope_sample_distance_voxels;
+    // if the largest Y drop is >= cliff_slope_threshold_voxels, the
+    // column is a cliff: top + dirt collapse to bare stone. LOD-gated
+    // by cliff_rule_max_lod (set to -1 to disable).
+    void set_cliff_slope_sample_distance_voxels(int p_value);
+    int get_cliff_slope_sample_distance_voxels() const;
+
+    void set_cliff_slope_threshold_voxels(int p_value);
+    int get_cliff_slope_threshold_voxels() const;
+
+    void set_cliff_rule_max_lod(int p_value);
+    int get_cliff_rule_max_lod() const;
+
     // --- Core API (used by tests + by the adapter) ---
     // Mirrors the GD generator's _ground_y_at. Returns the voxel-Y at
     // which solid ground ends and air begins for the column (world_x, world_z).
@@ -193,4 +208,15 @@ private:
     int _snow_line_jitter_block_size = 8;
     int _snow_line_seed = 2;
     int _snow_line_max_lod = 2;
+
+    // Phase 4c (cliff slope — Tier 1)
+    int _cliff_slope_sample_distance_voxels = 6;
+    int _cliff_slope_threshold_voxels = 10;
+    int _cliff_rule_max_lod = 2;
+
+    // True when the column at (world_x, world_z) has a drop >=
+    // cliff_slope_threshold_voxels to any of its 4-neighbour columns
+    // at ± cliff_slope_sample_distance_voxels away. Pure function of
+    // ground_y at the 5 sample points — worker-thread safe.
+    bool column_is_cliff(int world_x, int world_z, int this_ground_y) const;
 };
