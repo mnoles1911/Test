@@ -2,6 +2,12 @@
 
 How factions work, how Roland's standing with them changes, and how that affects what the world offers him.
 
+> **Implementation status (skill PR):** `scripts/FactionManager.gd` exists
+> with the minimal API (`get_disposition`, `is_friendly`, `modify_disposition`,
+> `disposition_label`) backed by `GameState._faction_dispositions`. The
+> "Friendly" gate (disposition ≥ 75) is what trainer NPCs check before
+> teaching. The deeper alliance bookkeeping described below is still spec.
+
 > Cross-reference: `design/ECONOMY_AND_VENDORS.md` for how faction disposition affects vendor prices.
 > `design/CONVERSATION_SYSTEM.md` for faction-gated dialogue branches.
 > `design/QUEST_SYSTEM.md` for faction quest chains and alliance building.
