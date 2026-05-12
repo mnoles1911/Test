@@ -62,3 +62,10 @@ assets/heightmaps/copper_isles_heightmap.exr
 # revisions of the baseline so future channel/format migrations don't
 # need to touch this file.
 assets/voxel/copper_isles_baseline*.sqlite
+
+# C++ GDExtension build outputs. The source (extensions/*/src/) +
+# SConstruct + godot-cpp submodule pointer ARE tracked; the compiled
+# .dll / .so / .dylib / .a per-platform binaries are reproducible
+# from source via `scons` and shouldn't bloat the repo. Mirrors the
+# pattern used for Zylann + GodotSteam binaries above.
+extensions/*/bin/
