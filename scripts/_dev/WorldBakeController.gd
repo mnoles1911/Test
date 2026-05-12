@@ -25,6 +25,14 @@ extends Node3D
 
 @export var voxel_terrain_path: NodePath = "VoxelLodTerrain"
 
+# Per-walker-stop wait, in seconds. Conservative default of 6.0 was
+# tuned for the EXR-sampling Copper Isles GD generator. The C++ port
+# finishes a tile's chunks in well under a second, so set this to ~1.0
+# in BakeWorld3D.tscn (or any scene wired to the C++ adapter) to get
+# the real generator-bound wall-clock. If you see ungenerated chunks
+# / artifacts in the resulting SQLite, bump it back up.
+@export_range(0.1, 30.0, 0.1) var wait_per_position_s: float = 6.0
+
 ## When true, the walker's pre-pass scans the EXR for tiles with land
 ## and skips pure-ocean tiles (faster bake, but the runtime cache
 ## won't contain water voxels — player will see only grey skirt over
@@ -790,7 +798,10 @@ func _bake_region(min_xz: Vector2, max_xz: Vector2) -> void:
 			(_viewer as Node3D).global_position = Vector3(tile_center.x, y_world, tile_center.y)
 			# Wait for Zylann to stream + persist. Conservative fixed wait;
 			# can be replaced with a real idle signal if Phase 0 finds one.
-			await _wait_seconds(WAIT_PER_POSITION_S)
+			# wait_per_position_s is inspector-tunable per scene (see the
+			# @export); WAIT_PER_POSITION_S constant kept as the default
+			# the @export falls back to.
+			await _wait_seconds(wait_per_position_s)
 
 		_tiles_done += 1
 		var dur: int = Time.get_ticks_msec() - tile_start_ms

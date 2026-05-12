@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://dbw3dworld3dbake"]
+[gd_scene format=3 uid="uid://b7pbbm0w255e"]
 
 [ext_resource type="Script" uid="uid://c432iyfcck57v" path="res://scripts/_dev/WorldBakeController.gd" id="1_controller"]
 [ext_resource type="Script" uid="uid://c4a2pa4ujvv7e" path="res://scripts/_dev/CubicHeightmapGeneratorAdapter.gd" id="2_cpp_adapter"]
@@ -24,9 +24,6 @@ ambient_light_energy = 0.6
 database_path = "user://baked_baseline_world3d.sqlite"
 save_generator_output = true
 
-[sub_resource type="VoxelMesherBlocky" id="VoxelMesher_1"]
-library = ExtResource("3_blocky_library")
-
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
 seed = 8
 frequency = 0.0005
@@ -43,8 +40,12 @@ snow_material_id = 13
 script = ExtResource("2_cpp_adapter")
 cpp_impl = SubResource("VoxelGen_Cpp")
 
+[sub_resource type="VoxelMesherBlocky" id="VoxelMesher_1"]
+library = ExtResource("3_blocky_library")
+
 [node name="BakeWorld3D" type="Node3D" unique_id=798012112]
 script = ExtResource("1_controller")
+wait_per_position_s = 1.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1580842735]
 environment = SubResource("Env_1")
