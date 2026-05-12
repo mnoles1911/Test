@@ -53,7 +53,8 @@ One-line history; see git log for detail. The autoload + voxel-systems sections 
 - **Copper Isles demo + textured tileset (2026-05-06 → 05-10):** `CopperIslesHeightmapGenerator.gd` reads a 5 km Gaea EXR; bake pipeline at `scenes/_dev/BakeWorld.tscn` writes the SQLite baseline; `HorizonSkirt.gd` covers distant peaks. Mesher migrated `VoxelMesherCubes` → `VoxelMesherBlocky` (material id in `CHANNEL_TYPE` + `VoxelBlockyLibrary`); 12 textured materials via `tools/build_texture_atlas.py`. World-scale refactor: sea level Y=125, spawn (-61, 185, 732). Bootstraps re-apply per-cube `tile_*` + `material_override_0` at runtime (Zylann gdextension drops them on `.tres` load). Caches bumped to `*_v13.sqlite`. **Caveat:** delivered EXR is a single continent, not the lore-spec archipelago — re-source pending.
 - **Tiered voxel-generation rules (2026-05-10 → 05-11):** Six tiers on top of the depth-only band rule, all driven by `VoxelMaterial.gd` per-material fields + `VoxelGenerationMath.hash3`. Order: T1 cliff slope (4-neighbour `ground_y` drop ≥ threshold → bare stone), T2 snow line (altitude + jitter, id 13), T3 marble/stone_dark jitter on plain stone, T4 ore veins (per-ore 3D-noise gate, parent-material match), T5 clay/gravel disks (Worley anchor grid near water), T6 cliff outcrops (composes T1 + T4 ore list). `VoxelMaterialRegistry` pre-builds filtered ore/disk arrays; bootstraps push them to the generator on the main thread. Cache paths bumped to `*_v14.sqlite`.
 - **Voxel Combat v1 (2026-05-10 → 05-11):** `Enemy3D` base + `Goblin` (IDLE/ALERT/COMBAT eye-glow); `ThrowableSpear` (sticks on impact, pivots with corpse, auto-collects); `BloodVFX` autoload (burst/dust/drip/pool — `PlaneMesh` not `Decal` because gl_compatibility); `CombatTest.tscn` dev arena with F1 menu. Phase 3 (charge) + Phase 5 (gibs + time-slow) deferred — see `design/COMBAT_NEXT_PHASES.md`.
-- **C++ generator port (2026-05-11):** `CubicHeightmapGenerator.gd` ported to a C++ GDExtension under `extensions/voxel_gen/`. All 6 tiers + bedrock + water-byte emission bit-exact verified by `scripts/_dev/GeneratorParityHarness.gd` (389k voxel comparisons). `World3D.tscn` uses `CubicHeightmapGeneratorAdapter` (GD VoxelGeneratorScript) → `CubicHeightmapGeneratorCpp` (godot::Resource); the adapter forwards `set_ore_materials`/`set_disk_materials` so the existing bootstrap call sites work unchanged. NoEditZone water-generation suppression dropped. Bake controller (`WorldBakeController.gd`) gained `wait_per_position_s` / `bake_y_min_voxels` / `bake_y_max_voxels` `@export`s, dynamic time-estimate labels, and a `cpp_impl` drill-through for sea_level reads. `CopperIslesHeightmapGenerator.gd` is **not** ported. See "C++ perf opportunities" section below for next targets.
+- **C++ generator port — Cubic (2026-05-11):** `CubicHeightmapGenerator.gd` ported to `extensions/voxel_gen/` C++ GDExtension. All 6 tiers + bedrock + water-byte emission bit-exact verified (389k voxel comparisons). `World3D.tscn` uses `CubicHeightmapGeneratorAdapter` → `CubicHeightmapGeneratorCpp`; adapter forwards `set_ore_materials`/`set_disk_materials`. NoEditZone water-gen suppression dropped. Bake controller gained `wait_per_position_s` / `bake_y_min_voxels` / `bake_y_max_voxels` `@export`s + dynamic time-estimate labels + `cpp_impl` drill-through.
+- **C++ generator port — Copper Isles (2026-05-12):** `CopperIslesHeightmapGenerator.gd` ported to `CopperIslesHeightmapGeneratorCpp`. Same tier set as Cubic; `compute_ground_y` reads a Gaea EXR via `Image::get_pixel` (bilinear or nearest) instead of FastNoiseLite. Adapter `CopperIslesHeightmapGeneratorAdapter.gd` mirrors the Cubic adapter; `assets/voxel/copper_isles_generator.tres` rewritten to use the adapter→cpp_impl chain so `CopperIslesTest.tscn` and `scenes/_dev/BakeWorld.tscn` pick up the C++ path without scene edits. ~193k voxel comparisons bit-exact via the (now-retired) `CopperIslesGeneratorParityHarness.gd`. Phase 6 also cleaned up the cubic-era GD generator + SpikeStone scaffolding. **Known cleanup debt:** ~500 lines of the inner loop are duplicated between `cubic_heightmap_generator.cpp` and `copper_isles_heightmap_generator.cpp`. Future PR: extract `HeightmapGeneratorBase` and reduce both to ~150 lines of generator-specific code each.
 
 Outstanding content pickups: low-poly Blender Roland model, MagicaVoxel prop exports (campfire, cave walls), surface decoration pass, ambient weather audio, region-boundary profile auto-swap. See `DESIGNER_TODO.md`.
 
@@ -284,16 +285,22 @@ call. Mirror this for any future port.
 
 **Done:**
 - `CubicHeightmapGeneratorCpp` — all 6 tier rules + bedrock + water byte +
-  ore/disk POD snapshots. Was parity-verified by a cubic-era `GeneratorParityHarness.gd`
-  that has since been retired (Phase 6); the C++ class is the canonical source now.
+  ore/disk POD snapshots. Was parity-verified by a cubic-era harness that
+  has since been retired; the C++ class is the canonical source now.
+- `CopperIslesHeightmapGeneratorCpp` — same tier set on top of an EXR
+  heightmap (`Image::get_pixel` bilinear/nearest) instead of FastNoiseLite.
+  Parity-verified before retiring `CopperIslesHeightmapGenerator.gd`.
+  **Cleanup debt:** ~500 lines of inner loop duplicated with the cubic
+  class — extract `HeightmapGeneratorBase` as a follow-up PR.
 
 **Likely-worthwhile next targets**, in rough order of payoff vs. effort:
 
-1. **`CopperIslesHeightmapGenerator.gd`** (M, big win if Copper Isles bakes stay
-   in the loop). Reads an EXR `Image`, samples bilinearly, layers the same Tier
-   1-6 rules. Port pattern transfers verbatim from cubic; only difference is the
-   noise sample becomes an `Image::get_pixel` lookup. Without this, the
-   Copper Isles bake still runs the GD inner loop.
+1. **Extract `HeightmapGeneratorBase`** (S-M, debt cleanup). `cubic_heightmap_generator.cpp`
+   and `copper_isles_heightmap_generator.cpp` duplicate ~500 lines of inner-loop
+   code; the only true differences are `compute_ground_y` and a handful of
+   generator-specific properties. Pull the shared parts into a base class +
+   virtual `compute_ground_y`. Verify each generator visually post-refactor
+   (run World3D + CopperIslesTest).
 
 2. **`WaterChunkMesher.gd`** (M). Greedy 2D run-merge across `CHANNEL_DATA5`
    columns per chunk, ArrayMesh build. Currently runs in GDScript on the main
