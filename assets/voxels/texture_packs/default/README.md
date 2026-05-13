@@ -28,19 +28,22 @@ matter of pointing the `VoxelBlockyLibrary` at a different folder's
    ```
 
    This requires `pip install Pillow`. The builder:
-   - reads each source PNG and downscales to 32×32
+   - reads each source PNG and **nearest-neighbour-downscales** to 16×16
+     (NEAREST, not LANCZOS — the source images are upscaled pixel art,
+     so averaging would blur the grid; see `tools/build_texture_atlas.py`)
    - composites `grass_side.png` automatically from `dirt_all.png` and
-     `grass_top.png` (don't generate `grass_side` manually)
+     `grass_top.png` using a 2-row solid green band plus a 1-row
+     dirt+green scatter (don't generate `grass_side` manually)
    - copies `log_top.png` into the bottom slot
    - leaves the water slot empty (water rendering is handled separately by
      `WaterChunkMesher`)
-   - writes `atlas.png` (2048×2048) and `manifest.json`
+   - writes `atlas.png` (1024×1024) and `manifest.json`
 
 5. In Godot, open `assets/voxels/blocky_library.tres`. The atlas texture is
    referenced by the library's material — when `atlas.png` updates on disk,
    the library picks up the change after a re-import.
 
-## Tile coordinates (atlas grid, 32×32 px per tile)
+## Tile coordinates (atlas grid, 16×16 px per tile)
 
 Use these when filling out the `VoxelBlockyLibrary` model entries in
 the Godot Inspector. Coordinates are **(column, row)** with (0, 0) in the
@@ -71,7 +74,7 @@ iron_ore → copper_ore). Paint proper 512×512 PNGs over
 `source/{snow_all,stone_dark_all,iron_ore_all}.png` whenever convenient
 and re-run the atlas + library builders to ship final art.
 
-In atlas pixel coordinates: `(column × 32, row × 32)` is the top-left
+In atlas pixel coordinates: `(column × 16, row × 16)` is the top-left
 corner of each tile.
 
 ## Building a new pack
