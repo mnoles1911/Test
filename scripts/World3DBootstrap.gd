@@ -699,32 +699,36 @@ func _pre_snap_player_to_generator_ground() -> void:
 	])
 
 
-func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
-	# On first call: ask the generator analytically where the ground
-	# is and teleport the player close to it. The scene's default
-	# Player3D Y is 120; ground on cubic-noise terrain is ~10-30m
-	# world. At collision_lod_count=0 + view_distance=85m, no LOD0
-	# collision ever streams from a 100m-elevated spawn — raycast
-	# always misses, retries time out, player falls forever
-	# (regression seen 2026-05-12).
+func _snap_spawn_to_ground(retries_remaining: int = 50) -> void:
+	# Two-phase spawn:
 	#
-	# Analytical lookup goes through terrain.generator (the C++
-	# adapter), which exposes get_ground_voxel_y_at(world_x, world_z).
-	# Returns voxel-Y; multiply by terrain transform scale (1/6) to
-	# get world-Y. After teleport, the existing raycast retry still
-	# runs to confirm collision has streamed before clearing the
-	# spawn-freeze — but now the LOD0 sphere covers the ground, so
-	# the raycast succeeds in 1-3 retries instead of timing out.
-	if retries_remaining == 25:  # first call
+	#   Phase 1 (first call): analytical pre-snap via the generator's
+	#     get_ground_voxel_y_at(). Teleports the player from the .tscn
+	#     default Y=120 down to ground+3m (~Y=23-31 on the cubic noise).
+	#     This puts the player inside the LOD0 view-distance sphere
+	#     where collision actually streams.
+	#
+	#   Phase 2 (retry loop): wait for collision to confirm via a
+	#     downward raycast. Retry every 0.2 s up to 50 × = 10 s budget.
+	#     On hit, snap the final placement and clear _spawn_freeze.
+	#
+	# Budget bumped 25→50 (5s→10s) on 2026-05-12 — first attempt
+	# timed out at 5s on the user's machine despite analytical
+	# pre-snap working correctly. Zylann's collision shape generation
+	# evidently takes longer than 5s for fresh-launch with a cold
+	# user://voxel_deltas.sqlite cache. 10s is comfortably above the
+	# observed worst case.
+	#
+	# Failsafe: when the retry budget exhausts without a raycast hit,
+	# we still clear the freeze BUT we trust the pre-snap placement —
+	# player is at ground+3m, so they'll either land cleanly on the
+	# collision that arrives over the next 1-2 seconds, or drop a
+	# few metres before catching. Either is far better than falling
+	# from Y=120 through unloaded space.
+	if retries_remaining == 50:  # first call
 		_pre_snap_player_to_generator_ground()
-	# Raycast straight down from a high point above the player and
-	# place the player on whatever solid surface we hit. If the
-	# raycast misses (terrain chunks not yet loaded), retry after
-	# a short delay until either a hit lands or we run out of retries.
-	#
-	# `retries_remaining` defaults to 25 (× 0.2 s = 5 s total budget).
-	# After that we give up — the player will fall from the scene's
-	# default Y, which is ugly but never permanently stuck.
+	# Raycast straight down through the player's X,Z. If the cast
+	# misses (terrain collision still streaming), retry after 0.2s.
 	var players: Array = get_tree().get_nodes_in_group("player")
 	if players.is_empty():
 		return
@@ -732,32 +736,33 @@ func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
 	if player == null:
 		return
 
-	# Cast from a high origin DOWN through the player's X,Z. Origin
-	# above the scene's spawn Y (120) by another 100 m so we cover
-	# any terrain peak. Cast down to Y = -200 (well below valley
-	# floors) so we cover any depth.
-	var origin: Vector3 = Vector3(player.global_position.x, 250.0, player.global_position.z)
-	var dest: Vector3 = Vector3(player.global_position.x, -200.0, player.global_position.z)
+	# Cast bracket: from 100m above player down to 200m below. After
+	# pre-snap this is roughly (Y+100) → (Y-200), covering any
+	# plausible ground depth + the 3m margin we sit on top of.
+	var origin: Vector3 = Vector3(player.global_position.x, player.global_position.y + 100.0, player.global_position.z)
+	var dest: Vector3 = Vector3(player.global_position.x, player.global_position.y - 200.0, player.global_position.z)
 	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
 	var params := PhysicsRayQueryParameters3D.create(origin, dest)
-	# Exclude the player's own collision shape so we don't hit it.
 	params.exclude = [player.get_rid()]
 	var hit: Dictionary = space.intersect_ray(params)
 
 	if hit.is_empty():
-		# No terrain under spawn yet. Voxel chunks still streaming.
+		# No collision under spawn yet. Voxel chunks still streaming.
 		if retries_remaining <= 0:
-			# Out of retries — clear _spawn_freeze so the player isn't
-			# permanently locked in place. Falling from default Y is
-			# uglier than infinite hover but recoverable.
+			# Out of retries — clear _spawn_freeze and trust pre-snap.
+			# Pre-snap put the player 3m above analytical ground; if
+			# collision arrives in the next 1-2 seconds the player
+			# lands cleanly. If it takes longer, they fall a few more
+			# metres but the gap is small (vs. the original
+			# Y=120-down-through-100m fall).
 			if "_spawn_freeze" in player:
 				player.set("_spawn_freeze", false)
-			print("[World3D] Spawn-snap gave up after retries; unfreezing player (will fall from default Y).")
+			print("[World3D] Spawn raycast retries exhausted; unfreezing player at pre-snap position Y=%.2f (collision still streaming — short drop expected)." % player.global_position.y)
+			_mark_world_ready_when_settled()
 			return
-		# Retry after a short delay using a SceneTreeTimer (no scene
-		# changes / signals needed). _spawn_freeze stays true during
-		# the retry window — _physics_process is gated so the player
-		# hovers at the default Y while we keep looking for ground.
+		# Retry after a short delay using a SceneTreeTimer. The freeze
+		# stays true during the retry window so the player hovers in
+		# place while we keep checking.
 		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
 		timer.timeout.connect(_snap_spawn_to_ground.bind(retries_remaining - 1))
 		return
