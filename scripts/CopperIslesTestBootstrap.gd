@@ -34,7 +34,13 @@ extends Node3D
 ## When true, immediately enable Player3D's fly mode after spawn so
 ## the camera doesn't fall off the peak. Player3D.gd exposes
 ## toggle_fly_mode(); we call it once at startup if requested.
-@export var start_in_fly_mode: bool = true
+##
+## Default flipped to false 2026-05-12 — the Copper Isles scene now
+## starts in normal walking mode. When false, the spawn path engages
+## Player3D._spawn_freeze and runs the wait-for-ground raycast retry
+## (mirror of the World3D bootstrap pattern) so the player doesn't
+## fall through unloaded chunks during the loading window.
+@export var start_in_fly_mode: bool = false
 
 ## Optional per-scene spawn override. When this Vector3 is anything
 ## other than (0, 0, 0), it OVERRIDES Player3D.SPAWN_POSITION for the
@@ -672,6 +678,17 @@ func _snap_player_above_terrain() -> void:
 		player.global_position = spawn_pos
 		if player is CharacterBody3D:
 			(player as CharacterBody3D).velocity = Vector3.ZERO
+
+		# Spawn-freeze + wait-for-ground (mirrors World3DBootstrap pattern,
+		# 2026-05-12). Fly mode bypasses gravity so the freeze isn't
+		# needed there; in walking mode (start_in_fly_mode=false) the
+		# player would otherwise fall straight through unloaded chunks
+		# during the loading window. Freeze stops physics; the retry
+		# loop unfreezes the moment a downward raycast finds collider.
+		if not start_in_fly_mode and "_spawn_freeze" in player:
+			player.set("_spawn_freeze", true)
+			_wait_for_ground_under_player()
+
 		# Spawn placed — kick off the loading-screen close negotiation.
 		# Polls Zylann's blocked_lods + a dense LOD0 probe ring around
 		# the spawn point, then tells TransitionManager when the area
@@ -701,8 +718,66 @@ func _snap_player_above_terrain() -> void:
 	player.global_position = Vector3(0.0, spawn_y, 0.0)
 	if player is CharacterBody3D:
 		(player as CharacterBody3D).velocity = Vector3.ZERO
+	# Same spawn-freeze + ground-wait as the override path. Dynamic
+	# spawn always uses walking mode (no fly override here), so the
+	# freeze is unconditional.
+	if "_spawn_freeze" in player:
+		player.set("_spawn_freeze", true)
+		_wait_for_ground_under_player()
 	# Same readiness handoff as the override path — see comment there.
 	_mark_world_ready_when_settled()
+
+
+# =============================================================
+# SPAWN-FREEZE + GROUND-WAIT (port of World3DBootstrap pattern)
+# =============================================================
+#
+# Mirrors World3DBootstrap._wait_for_ground_under_player. Stops the
+# player from falling through unloaded chunks during the loading
+# window by gating gravity behind a downward raycast that confirms a
+# voxel collider exists below.
+#
+# Retry budget: 25 × 0.2 s = 5 s. If still no ground after that, we
+# clear the freeze flag anyway so the player isn't permanently stuck
+# in place. Better to fall into the void with gravity than be locked.
+#
+# TODO: extract this into Player3D as a method
+# (player.freeze_until_grounded()) so both bootstraps share one
+# implementation. Low priority — the code is short enough that the
+# duplicate cost is small.
+
+func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+
+	# Origin 1 m above player centre (clears the capsule's own
+	# collider); ray spans 100 m downward (covers tall caves +
+	# sea-floor depths).
+	var origin: Vector3 = player.global_position + Vector3(0, 1.0, 0)
+	var dest: Vector3 = player.global_position + Vector3(0, -100.0, 0)
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(origin, dest)
+	params.exclude = [player.get_rid()]
+	var hit: Dictionary = space.intersect_ray(params)
+
+	if hit.is_empty():
+		if retries_remaining <= 0:
+			print("[CopperIslesTest] spawn-freeze ground check timed out; unfreezing player.")
+			if "_spawn_freeze" in player:
+				player.set("_spawn_freeze", false)
+			return
+		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
+		timer.timeout.connect(_wait_for_ground_under_player.bind(retries_remaining - 1))
+		return
+
+	# Ground confirmed — let gravity take over from here.
+	if "_spawn_freeze" in player:
+		player.set("_spawn_freeze", false)
+	print("[CopperIslesTest] spawn-freeze cleared, ground at Y=%.2f" % hit["position"].y)
 
 
 # =============================================================

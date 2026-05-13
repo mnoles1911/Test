@@ -962,9 +962,16 @@ func _physics_process_flying(_delta: float) -> void:
 			v_input -= 1.0
 	# Forward = -Z, right = +X. Use the camera's basis directly so
 	# pitch carries — if the camera looks down 30°, W flies 30° down.
+	#
+	# Input.get_vector("ui_left","ui_right","ui_up","ui_down") returns
+	# y = ui_down - ui_up, so W → y=-1 and S → y=+1. To get W=forward
+	# we negate input_dir.y when multiplying by forward (so W=-1 * -1
+	# = +forward = away from camera). X axis is unchanged: D → +right,
+	# A → -right. Pre-2026-05-12 this missed the negation, so flight
+	# moved W=backward and S=forward — fixed now.
 	var forward: Vector3 = -cam_basis.z
 	var right:   Vector3 = cam_basis.x
-	var dir: Vector3 = (right * input_dir.x) + (forward * input_dir.y)
+	var dir: Vector3 = (right * input_dir.x) + (forward * -input_dir.y)
 	dir.y += v_input
 
 	if dir.length_squared() > 0.0001:
