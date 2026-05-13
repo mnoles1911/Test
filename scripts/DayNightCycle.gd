@@ -119,6 +119,14 @@ var _sky_mat: ShaderMaterial = null
 # rather than spamming the console every frame from _process.
 var _warned_missing_panoramas: bool = false
 
+# _apply() updates sun/moon orbit, light energy/color, sky tint, and
+# fog from WorldClock state. With WorldClock running at 240 real-s
+# per game-hour, the sun moves 0.0625°/real-second — totally invisible
+# between adjacent render frames. Tick this at 10 Hz instead of every
+# frame (was ~13 µs/frame × 100 % hit rate ≈ 4.9 ms/sec steady cost).
+const STATE_TICK_INTERVAL_S: float = 0.1
+var _state_tick_accumulator: float = 0.0
+
 # Weather fog override. While WeatherManager wants to drive fog, it calls
 # set_fog_override(color, density). _apply() then writes those values instead
 # of the time-of-day-driven palette every frame. WeatherManager interpolates
@@ -175,7 +183,16 @@ func _ready() -> void:
 	_apply()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# Gate _apply() to 10 Hz. Sun motion at 0.0625°/real-second is well
+	# below the per-frame visible-change threshold, and the lerps for
+	# sun energy / color / sky tint span minutes of game time — none of
+	# them suffer at 100 ms granularity.
+	_state_tick_accumulator += delta
+	if _state_tick_accumulator < STATE_TICK_INTERVAL_S:
+		return
+	_state_tick_accumulator = 0.0
+
 	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_apply()

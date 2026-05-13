@@ -122,6 +122,13 @@ const STATE_PROFILES: Dictionary = {
 # the change happening, slow enough that it never feels jarring.
 const TRANSITION_DURATION_S: float = 30.0
 
+# Heavy interpolation work in _process_inner is gated to 10 Hz so the
+# manager stops eating ~22 µs every render frame. With weather
+# transitions spanning 30 s and wind drift in degrees-per-second, a
+# 100 ms tick is well below the visible-change threshold. Accumulated
+# delta is passed through so timer-driven logic stays correct.
+const STATE_TICK_INTERVAL_S: float = 0.1
+
 # Wind direction drift (decoupled from state changes). Direction lerps
 # toward _wind_target_direction at this many degrees per second. At
 # TURN_RATE 3°/s, a 180° heading change takes 60 s to complete.
@@ -152,6 +159,7 @@ const SCHEDULE_TRANSITION_HOURS: Array[int] = [6, 12, 18]
 # Active location profile. When null, _roll_random_state falls back to
 # DEFAULT_RANDOM_DISTRIBUTION and SCHEDULE_TRANSITION_HOURS.
 var _location_profile: WeatherLocationProfile = null
+var _state_tick_accumulator: float = 0.0
 
 
 # ============================================================
@@ -336,9 +344,19 @@ func _snapshot_blend_origins() -> void:
 
 
 func _process(delta: float) -> void:
+	# Accumulate delta; only run the heavy interpolation body at 10 Hz.
+	# All deltas-based logic inside _process_inner receives the
+	# accumulated delta, so transition progress / wind drift / lightning
+	# countdown remain frame-rate-independent.
+	_state_tick_accumulator += delta
+	if _state_tick_accumulator < STATE_TICK_INTERVAL_S:
+		return
+	var ticked_delta: float = _state_tick_accumulator
+	_state_tick_accumulator = 0.0
+
 	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
 	var _t0_prof: int = Time.get_ticks_usec()
-	_process_inner(delta)
+	_process_inner(ticked_delta)
 	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
 	HUDOverlay.profile_record("WeatherManager", _elapsed)
 	var prof := get_node_or_null("/root/Profiler")
