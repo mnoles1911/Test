@@ -376,12 +376,20 @@ underground.)*
 > A 16x16 pixel art tile of grey stone with veins and flecks of
 > iron mineral, rendered at 512x512 as a 32x upscale with hard
 > square pixels. Designed to repeat invisibly across a cave wall.
-> Cool grey stone palette of 4 tones forming the base, with
-> scattered raw silvery-grey iron pixels and dark rust-red oxidized
-> iron pixels distributed across the tile. Ore veins broken into
+> The stone base is an irregular natural-looking mottle of 4 cool
+> grey tones, with each grey tone forming small organic clusters of
+> 2 to 5 pixels at random positions across the tile. The stone
+> base must NOT be a checkerboard pattern, must NOT alternate two
+> tones every pixel, must NOT form any regular two-tone grid — a
+> checkerboard would read as a transparency-grid artifact rather
+> than as natural rock and is a failure. Adjacent stone pixels are
+> usually the same tone; tone changes happen at the boundaries
+> between clusters, not at every pixel. On top of that mottled
+> stone base, place scattered raw silvery-grey iron pixels and
+> dark rust-red oxidized iron pixels as ore. Ore veins broken into
 > short irregular 1 to 2 pixel branching segments scattered
-> uniformly. Flat matte even lighting throughout. Tiles seamlessly
-> with no edge seams.
+> uniformly across the tile. Flat matte even lighting throughout.
+> Tiles seamlessly with no edge seams.
 
 ---
 
