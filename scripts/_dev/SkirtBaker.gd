@@ -21,12 +21,25 @@ extends RefCounted
 # Used by `WorldBakeController` (button in the BakeWorld UI) and at
 # runtime via `scripts/HorizonSkirt.gd` which loads the saved mesh.
 
-const QUAD_SIZE_M: float = 8.0
-# 8 m quads give noticeably crisper distant silhouettes than the
-# previous 12 m. At 8 km × 8 km = 1000² = 1M quads = ~2M tris — a
-# one-time bake and a static draw, so the GPU laughs. If perf hurts
-# later we can mix-resolution (8 m inner, 24 m outer ring) or drop
-# back to 12 m.
+const QUAD_SIZE_M: float = 12.0
+# Reverted from 8.0 -> 12.0 on 2026-05-13. The 2026-05-13 Copper
+# Isles capture showed 14-19 M primitives per frame; the 2 M-tri
+# 8 m skirt was a meaningful slice of that (the original 8 m setting
+# generated ~1 M quads = ~2 M tris static-drawn every frame).
+# Backing off to 12 m gives ~444 K quads = ~890 K tris -- still
+# tight enough that distant peaks read with crisp silhouettes (12 m
+# is well within Mira's voxel scale for visual coherence at distance),
+# but cuts the skirt's GPU contribution by ~55 %. To go finer-grained
+# again (mix-resolution: e.g. 8 m inner ring + 24 m outer ring),
+# split the bake_mesh inner loop on radius — non-trivial, do only
+# if 12 m silhouettes don't read as crisp enough at peak elevations.
+#
+# REQUIRES RE-BAKE: changing this constant alone doesn't regenerate
+# the skirt -- the .res file at assets/voxel/copper_isles_skirt.res
+# was built with the old constant and continues to ship 2 M tris
+# until you run the bake. In Godot: F6 scenes/_dev/BakeWorld.tscn,
+# click "4. Bake horizon skirt → assets/voxel/copper_isles_skirt.res",
+# wait a few seconds, then commit the regenerated .res file.
 
 const Y_OFFSET_DOWN_M: float = 1.5
 # Larger offset 2026-05-08 because the previous 0.1 m was insufficient.

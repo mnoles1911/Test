@@ -373,6 +373,49 @@ Future Claude should:
 See CLAUDE.md "Voxel loading / LOD performance paths" for the full
 roadmap.
 
+## Voxel-streaming perf — anti-patterns (DO NOT DO)
+
+When `zylann.detect_us` spikes or `dropped_loads` explodes (see the
+Copper Isles capture below for a textbook example), the temptation
+is to shrink the streaming radius so Zylann has less work per scan.
+**Resist this — every option in the family destroys core game pillars:**
+
+- **`terrain.lod_count` reduction** — fewer LODs means terrain ends
+  abruptly at the streaming boundary. The world looks small. Mira's
+  trilogy-scale open-world brief requires distant landmark visibility;
+  cutting LODs sacrifices that.
+- **`terrain.view_distance` reduction** — same problem at the visual
+  layer. Distant peaks pop in late. The horizon-vista photography
+  Copper Isles is designed around (5 km × 5 km archipelago, named
+  islands visible from each other) breaks.
+- **`terrain.mesh_block_size` increase** — fewer, larger chunks means
+  longer mesh-build times per chunk AND coarser collision granularity.
+  Trades a CPU spike pattern for a different CPU spike pattern AND
+  loses geometric detail.
+
+**`terrain.collision_lod_count` is already `0`** (LOD0-only collision)
+in `World3DBootstrap.gd:868` and `CopperIslesTestBootstrap.gd:857`.
+Cannot be tightened further. The Player3D physics-tick spike during
+chunk streaming is the unavoidable cost of integrating new LOD0
+collision shapes — fundamental to a streaming voxel game.
+
+**Acceptable directions when chunk-streaming hurts:**
+
+1. **Reduce per-chunk GPU prim count** (HorizonSkirt density, atlas
+   tile-size tweaks) — same view distance, less work per frame.
+2. **Cap player run/sprint speed in oversized worlds** (Copper Isles
+   specifically) — the streamer can keep up at walking speeds.
+3. **Defer collision shape generation** (would require Zylann fork
+   or careful scene-tree hack — out of scope until streaming is the
+   actual gating factor, not a transient spike).
+4. **Pre-cache the LOD0 set around known spawn / hub locations** at
+   game-load time so the player never crosses unstreamed terrain.
+5. **Threadpool tuning** (`threads/count/minimum` in project.godot)
+   if the bottleneck is Zylann's worker-thread starvation rather
+   than main-thread `detect`.
+
+See "Voxel loading / LOD performance paths" in CLAUDE.md.
+
 ## 2026-05-13 baseline capture — findings & follow-ups
 
 First clean capture using the new `engine.real_us` measurement (PR
