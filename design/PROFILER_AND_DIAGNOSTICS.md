@@ -353,8 +353,16 @@ Future Claude should:
 
 - **Forward+/Vulkan renderer migration:** estimated 30-60% reduction
   in chunk-stream-in spikes. Single biggest renderer-side win.
+  **DONE 2026-05-13 (PR #207).** Migration shipped; the apparent p99
+  "regression" we initially saw was a `TIME_PROCESS` plateau artifact,
+  fixed by adding `engine.real_us` to capture records.
 - **WaterChunkMesher C++ port:** consistently appears in `[PERF]`
   top-3. Greedy run-merge is pure buffer iteration; clean port.
+  **Partial 2026-05-13:** GD time-budget throttle replaces the
+  count-based throttle (caps single-frame spike at ~3 ms vs 9.2 ms
+  observed in baseline). Full C++ port still wanted — eliminates the
+  per-chunk variance entirely. See `scripts/WaterChunkMesher.gd`
+  constants `MESH_BUILD_FRAME_BUDGET_US` / `MESH_BUILD_MIN_BUDGET_US`.
 - **Distant-Horizons-style baked far-LOD atlas:** decouple visual
   far-distance terrain from gameplay simulation chunks. Path to
   5km+ vistas without Zylann's main thread melting.
@@ -364,3 +372,94 @@ Future Claude should:
 
 See CLAUDE.md "Voxel loading / LOD performance paths" for the full
 roadmap.
+
+## 2026-05-13 baseline capture — findings & follow-ups
+
+First clean capture using the new `engine.real_us` measurement (PR
+#207 fixed `TIME_PROCESS`'s frame-plateau bug). 60 s World3D walk,
+Forward+ + shadow_q=2 on AMD RX 7800 XT, 22 789 frames.
+
+**Real frame-time distribution** (the now-trustworthy number):
+
+| metric | value |
+|---|---:|
+| median | 2.20 ms (≈ 455 fps) |
+| p95 | 6.11 ms |
+| p99 | 12.25 ms |
+| p99.9 | 21.30 ms |
+| max | 37.86 ms |
+| frames > 16 ms / min | 68 (0.34 %) |
+| frames > 33 ms / min | 2 (0.01 %) |
+| frames > 100 ms / min | 0 |
+
+**Top per-category CPU (wrapped GD only — about ~20 % of total CPU):**
+
+| category | total over 60 s | max single frame | frames > 1 ms |
+|---|---:|---:|---:|
+| PHYS | 7.22 s (84.4 %) | 9.3 ms | 2287 |
+| WEATHER | 846 ms (9.9 %) | 0.56 ms | 0 |
+| WATER | 412 ms (4.8 %) | 9.2 ms | 142 |
+| WORLD | 75 ms (0.9 %) | 0.08 ms | 0 |
+
+### Item B — WeatherManager + DayNightCycle 10 Hz state gates
+
+**Landed 2026-05-13.** Both autoloads ran their full body every render
+frame (22 µs + 13 µs avg, 100 % hit rate). Sun moves at 0.0625°/real-s
+under WorldClock's 240-real-s/game-hour rate; weather transitions span
+30 s. 100 ms tick granularity is invisible at these timescales.
+
+Implementation: accumulate delta, only call `_process_inner()` /
+`_apply()` when accumulator ≥ `STATE_TICK_INTERVAL_S` (0.1 s). Delta
+passed through so timer-based logic (lightning, wind resample,
+story override countdown) stays frame-rate-independent.
+
+Expected: WeatherManager 9.2 ms/sec → ~0.24 ms/sec (97 %),
+DayNightCycle 4.9 ms/sec → ~0.13 ms/sec (97 %). Combined: ~13.7 ms/sec
+of free CPU = 1.3 % wall-clock headroom.
+
+### Item C — Player3D 6.5 ms physics tick at f12682
+
+**Diagnosed, not yet fixed.** The worst single physics tick (3298 µs
+Player3D + 3221 µs move_and_slide) is NOT a CharacterBody3D bug. It's
+clustered between two chunk-streaming events:
+
+```
+f12680: zylann.detect_us=6299µs + io_us=1213µs  ← chunk-stream begins
+f12682: PHYS.Player3D=3298µs + move_and_slide=3221µs ← physics integrates new collision shapes
+f12683: zylann.detect_us=17390µs (worker thread, not main)
+```
+
+Zylann generates per-block StaticBody3D collision shapes when chunks
+load. Adding many new collision shapes in one physics tick spikes
+move_and_slide because the physics step has to integrate them all.
+
+**Real fix would be on the chunk-streaming side**: stagger collision-
+shape add operations across frames, OR reduce `terrain.collision_lod_count`
+(currently 0 = all LODs get collision), OR defer collision generation
+for distant LODs. Not a Player3D bug — out of scope until the chunk-
+streaming path is touched anyway.
+
+### Item A — WaterChunkMesher time-budget throttle
+
+**Landed 2026-05-13.** Direct fix for the 9.2 ms single-frame spike
+visible in the baseline. The old count-based throttle (`MESH_BUILDS_PER_FRAME_MAX = 6`)
+allowed 6 × ~1.5 ms chunks to pile up in one render frame.
+
+New approach: TIME-based throttle. Build chunks one at a time, measure
+elapsed µs after each, stop when the per-frame budget is spent. Always
+allow at least one chunk per frame so forward progress is guaranteed.
+
+Constants in `scripts/WaterChunkMesher.gd`:
+- `MESH_BUILD_FRAME_BUDGET_US = 3000` (3 ms / frame in fast mode)
+- `MESH_BUILD_MIN_BUDGET_US = 500` (0.5 ms / frame under load)
+- Lerp between by frame-delta as before.
+
+Expected: caps WaterChunkMesher contribution at ~3-4 ms/frame even
+on burst frames (vs 9.2 ms observed). Avg cost basically unchanged
+because non-burst frames stay at 2 µs. The 142-frames-over-1ms count
+should drop to roughly half.
+
+Full C++ port is still the canonical long-term fix — moves the
+per-chunk scan + ArrayMesh construction off the main thread entirely,
+not just caps the spike. See the C++ perf opportunities section in
+CLAUDE.md.
