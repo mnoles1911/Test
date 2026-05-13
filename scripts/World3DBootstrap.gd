@@ -289,6 +289,15 @@ func _ready() -> void:
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
 
+	# --- Snap the campfire OmniLight onto the terrain surface ---
+	# The .tscn hard-codes Campfire to world Y=0.5, which assumes
+	# ground_y == 0. The C++ cubic generator places real ground anywhere
+	# from ~20-50 m depending on noise at the campfire's X,Z, so without
+	# this snap the campfire either floats above terrain or is buried.
+	# Uses the same generator.get_ground_voxel_y_at() path as the player
+	# spawn pre-snap, so the two stay consistent.
+	_snap_campfire_to_ground()
+
 	# --- Apply saved player position ---
 	# When the world scene loads after a load_save_file() call,
 	# GameState.player_position holds Roland's saved 3D position.
@@ -622,6 +631,57 @@ func _configure_voxel_format(terrain: Object) -> void:
 	# may be needed for the depth to apply across the world.
 	terrain.set("format", fmt)
 	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
+
+
+func _snap_campfire_to_ground() -> void:
+	# Lift the Campfire OmniLight3D so its mesh rests on the generated
+	# terrain surface at its authored X,Z. The .tscn places it at world
+	# Y=0.5, which is correct only if ground_y happens to be 0.
+	#
+	# CampfireMesh local layout (from World3D.tscn):
+	#   - OmniLight3D root transform.origin.y is what we set here.
+	#   - CampfireMesh child local Y = -0.4 (mesh center below the light).
+	#   - BoxMesh size = (0.5, 0.3, 0.5), so mesh half-height = 0.15.
+	# Bottom of mesh in world space = root_y + (-0.4) - 0.15 = root_y - 0.55.
+	# To park the mesh's bottom on the ground, set root_y = ground_y + 0.55.
+	var campfire := get_node_or_null("Campfire") as Node3D
+	if campfire == null:
+		return
+	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
+	if terrain == null:
+		return
+	var terrain_scale: float = terrain.transform.basis.get_scale().y
+	if absf(terrain_scale) < 0.00001:
+		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+	var voxels_per_m: float = 1.0 / terrain_scale
+	var generator = terrain.get("generator") if "generator" in terrain else null
+	if generator == null:
+		return
+	var c_local: Vector3 = campfire.transform.origin
+	var vx: int = int(roundf(c_local.x * voxels_per_m))
+	var vz: int = int(roundf(c_local.z * voxels_per_m))
+	# Drill through adapter → cpp_impl if the method isn't on the
+	# generator directly (mirrors _pre_snap_player_to_generator_ground).
+	var ground_voxel_y: int = 0
+	var found: bool = false
+	if generator.has_method("get_ground_voxel_y_at"):
+		ground_voxel_y = int(generator.call("get_ground_voxel_y_at", vx, vz))
+		found = true
+	elif "cpp_impl" in generator:
+		var cpp = generator.get("cpp_impl")
+		if cpp != null and cpp.has_method("get_ground_voxel_y_at"):
+			ground_voxel_y = int(cpp.call("get_ground_voxel_y_at", vx, vz))
+			found = true
+	if not found:
+		print("[World3D] campfire snap: generator has no get_ground_voxel_y_at; leaving Y as authored.")
+		return
+	const CAMPFIRE_GROUND_OFFSET_M: float = 0.55
+	var new_y: float = float(ground_voxel_y) * terrain_scale + CAMPFIRE_GROUND_OFFSET_M
+	var old_y: float = c_local.y
+	campfire.transform.origin = Vector3(c_local.x, new_y, c_local.z)
+	print("[World3D] Campfire snapped Y %.2f → %.2f (ground vox=%d, scale=%.4f)" % [
+		old_y, new_y, ground_voxel_y, terrain_scale,
+	])
 
 
 func _pre_snap_player_to_generator_ground() -> void:
