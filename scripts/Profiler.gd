@@ -131,6 +131,29 @@ func _start_startup_capture() -> void:
 	print("[Profiler] startup auto-capture armed; will stop in %.0f s" % startup_capture_seconds)
 
 
+# Notification hook — Godot calls this when the window's close button is
+# pressed, when the app receives a quit request, OR when the SceneTree is
+# being torn down. We catch all three and flush any in-progress capture
+# so a user closing the game mid-capture doesn't lose the data.
+#
+# Without this hook (failure observed 2026-05-12): capture_on_startup=true,
+# user F6'd a scene, walked around for ~14s, closed the game. The 30s
+# auto-stop never fired and capture_stop() never ran, so the in-memory
+# buffer was discarded. Now NOTIFICATION_WM_CLOSE_REQUEST /
+# NOTIFICATION_PREDELETE / NOTIFICATION_EXIT_TREE all force a flush.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE \
+			or what == NOTIFICATION_EXIT_TREE:
+		if _capture_active and _capture_buffer.size() > 0:
+			# Snapshot the frame count BEFORE capture_stop() — it clears
+			# _capture_buffer as part of the write path.
+			var frame_count: int = _capture_buffer.size()
+			var path: String = capture_stop()
+			print("[Profiler] flushed in-progress capture on exit → %s (%d frames)" % [
+				path, frame_count,
+			])
+
+
 # --- Public recording API ------------------------------------------------
 
 func record(category: String, name: String, usec: int) -> void:
