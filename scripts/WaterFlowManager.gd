@@ -662,7 +662,7 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 	# simulation. Applied at the end via tool.do_box once per write.
 	var data5_writes: Array = []
 
-	# ---- 1. Decay pass (unchanged) ----
+	# ---- 1. Decay pass ----
 	var prev_tick: int = (_tick_count - 1) & 0xFF
 	var to_remove: Array = []
 	var to_decrement: Array = []
@@ -675,6 +675,34 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 			continue
 		var packed_cell: int = _cells[cell_pos]
 		if _is_source_packed(packed_cell):
+			continue
+		# GRAVITY FEED: cells with water directly above are being
+		# gravity-fed. Refresh fed_tick in-memory and skip decay.
+		# Without this check, a flow cell sitting under a source byte
+		# decays 8→0 over 8 ticks, gets removed, then gravity-drop
+		# refills it at level 8 next tick, perpetually — the dominant
+		# cause of the WaterFlowManager runaway after coastal mining
+		# (observed 2026-05-13: _cells grew to 13k+ entries from ~7
+		# mined voxels because every cell was on the create/decay
+		# treadmill). Buffer read only — no byte write.
+		var clx: int = cell_pos.x - voxel_min.x
+		var cly: int = cell_pos.y - voxel_min.y
+		var clz: int = cell_pos.z - voxel_min.z
+		var above_byte_for_feed: int
+		if cly < CHUNK_SIZE_VOXELS - 1:
+			above_byte_for_feed = data_buf.get_voxel(
+				clx, cly + 1, clz, VoxelBuffer.CHANNEL_DATA5
+			)
+		else:
+			above_byte_for_feed = data_above_buf.get_voxel(
+				clx, 0, clz, VoxelBuffer.CHANNEL_DATA5
+			)
+		if WaterByteCodec.is_water(above_byte_for_feed):
+			# Water above → keep this cell alive at its current level.
+			# Update _cells tick in-memory only (no data5_writes).
+			_cells[cell_pos] = _pack(
+				_level_of(packed_cell), false, _tick_count
+			)
 			continue
 		var fed_tick: int = _last_fed_tick(packed_cell)
 		if fed_tick == prev_tick or fed_tick == _tick_count:
