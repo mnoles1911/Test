@@ -161,6 +161,14 @@ const SCHEDULE_TRANSITION_HOURS: Array[int] = [6, 12, 18]
 var _location_profile: WeatherLocationProfile = null
 var _state_tick_accumulator: float = 0.0
 
+# Default state lock — when true, _roll_state_for_today always returns
+# CLEAR, bypassing both authored sequences and weighted random rolls.
+# set_weather_override() and proximity zones still work for manually-
+# driven non-CLEAR states. Defaults true so the dev/test environment
+# stays predictable; flip to false when shipping a scene that wants
+# the scheduled weather system live (or call disable_clear_default()).
+@export var force_clear_default: bool = true
+
 
 # ============================================================
 # State
@@ -632,6 +640,11 @@ func _on_hour_changed(new_hour: int) -> void:
 
 
 func _roll_state_for_today() -> int:
+	# Default-lock: when force_clear_default is true, the schedule
+	# always picks CLEAR. Manual overrides (set_weather_override,
+	# proximity zones) still resolve normally on top of this.
+	if force_clear_default:
+		return State.CLEAR
 	# If a profile is set and today (1-indexed) falls inside its
 	# authored_sequence, use the authored entry deterministically.
 	# Otherwise fall through to weighted random.
