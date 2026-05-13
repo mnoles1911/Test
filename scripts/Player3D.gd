@@ -286,6 +286,58 @@ const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
 # get_node_or_null guards against custom Player3D instances that don't
 # include one (e.g. headless tests).
 
+@onready var _camera_target: Node3D = get_node_or_null("CameraTarget") as Node3D
+# Cached at _ready. Used by _smooth_camera_y to apply a Y offset that
+# damps the small per-frame Y bobbing the body undergoes while walking
+# over voxel ledges (auto-step + slope adjustments). See
+# _smooth_camera_y below for the gating + math.
+
+# Baseline Y of CameraTarget in local space (matches the .tscn value).
+# The smoothing system applies offsets RELATIVE to this baseline so a
+# return-to-zero offset always re-centres the camera at chest height.
+const CAMERA_TARGET_BASE_Y: float = 1.5
+
+# Half-life of the Y smoothing — every CAMERA_Y_SMOOTH_HALFLIFE_S the
+# offset between smoothed and real body Y halves. 0.08 s ≈ 5 frames at
+# 60 fps; small enough that the lag isn't perceptible, large enough
+# that single-voxel auto-step bumps (≈ 0.167 m at 6 vox/m) get
+# noticeably smoothed.
+const CAMERA_Y_SMOOTH_HALFLIFE_S: float = 0.08
+
+# Hard cap on how far the smoothed Y is allowed to lag behind the real
+# Y. Stops the camera from drifting away during a long slope climb;
+# also caps the snap-back distance if the gate suddenly flips off.
+# 0.5 m ≈ 3 voxels — comfortably bounded.
+const CAMERA_Y_SMOOTH_MAX_OFFSET: float = 0.5
+
+# Smoothing state — _camera_smoothed_y is the camera's "memory" of
+# where the body was, lerped toward the body's actual Y. Difference
+# between the two is applied as a CameraTarget.position.y offset.
+var _camera_smoothed_y: float = 0.0
+var _camera_smoothed_initialized: bool = false
+
+# Jump-cooldown gate. Set to JUMP_DISABLE_SMOOTHING_S when the player
+# presses jump (dodge action) so the camera tracks the jump arc 1:1.
+# Decays in _smooth_camera_y each frame. Crucially this is ONLY set by
+# the explicit jump button — auto-step's velocity kick (~3.46 m/s up)
+# does NOT trigger it, so walking up a 1-voxel slope keeps smoothing
+# active and the camera glides over the small auto-step arc.
+var _camera_jump_cooldown_s: float = 0.0
+
+# Camera Y smoothing tunables (continued from CAMERA_* block above).
+#
+# Free-fall snap threshold. Camera tracks 1:1 during a real fall so the
+# player feels air-time, but a brief off-floor frame during a downward
+# step (gravity only pulls ~0.7 m/s in that single frame) should NOT
+# snap. -5.0 m/s is "definitely falling, not a 1-voxel step transition".
+const CAMERA_Y_FREEFALL_VEL: float = -5.0
+
+# Jump cooldown duration. JUMP_VELOCITY=7 with GRAVITY=20 → arc time
+# ≈ 0.7 s up + 0.7 s down ≈ 1.4 s in the air at worst case. Use 1.0 s
+# as the smoothing-disabled window — covers a normal jump comfortably,
+# is_on_floor() takes over after the cooldown decays.
+const JUMP_DISABLE_SMOOTHING_S: float = 1.0
+
 
 const FLY_SPEED_MULT: float = 10.0
 # Multiplier on walk speed while flying. 10x means ~50 m/s — fast
@@ -440,14 +492,41 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================
 
 func _physics_process(delta: float) -> void:
-	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
-	# get_node_or_null guard for the case Player3D runs outside the main
-	# game (e.g. test harness without the autoload registered).
+	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
+	#
+	# Sub-instrumented (2026-05-12): time `_update_viewer_lookahead` and
+	# `_physics_process_inner` separately. Inside `_physics_process_inner`
+	# the `move_and_slide()` calls are themselves wrapped so the jump-
+	# correlated spike can be attributed (move_and_slide vs auto-step
+	# vs water-state checks vs the rest). The outer Player3D total is
+	# also retained so the Overview can still rank by "total physics".
+	#
+	# get_node_or_null guards for the case Player3D runs outside the main
+	# game (e.g. test harness without the autoloads registered).
 	var _t0_prof: int = Time.get_ticks_usec()
 	_physics_process_inner(delta)
+
+	# Camera Y smoothing — applies a small offset to CameraTarget so the
+	# camera glides over the body's per-frame Y bobs while walking. Gated
+	# off during jumps / falls so air-time response stays 1:1. Cheap,
+	# called every physics frame regardless. Profiled so the new cost is
+	# visible in the F3 overlay.
+	var _t_cam_start: int = Time.get_ticks_usec()
+	_smooth_camera_y(delta)
+	var _t_cam_us: int = Time.get_ticks_usec() - _t_cam_start
+
+	var _t_view_start: int = Time.get_ticks_usec()
 	_update_viewer_lookahead()
+	var _t_view_us: int = Time.get_ticks_usec() - _t_view_start
+
+	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
 	if get_node_or_null("/root/HUDOverlay"):
-		HUDOverlay.profile_record("Player3D_phys", Time.get_ticks_usec() - _t0_prof)
+		HUDOverlay.profile_record("Player3D_phys", _elapsed)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("PHYS", "Player3D", _elapsed)
+		prof.record("PHYS", "Player3D_camera_smooth", _t_cam_us)
+		prof.record("PHYS", "Player3D_viewer_lookahead", _t_view_us)
 
 
 func _update_viewer_lookahead() -> void:
@@ -500,6 +579,76 @@ func _update_viewer_lookahead() -> void:
 		offset *= VIEWER_LOOKAHEAD_MAX_OFFSET_M / offset_len
 
 	_voxel_viewer.position = offset
+
+
+func _smooth_camera_y(delta: float) -> void:
+	# Damps the per-frame Y bobbing the body undergoes walking over
+	# voxel ledges (auto-step + slope adjustments). The camera "lags"
+	# slightly behind the body's Y so the eye sees a smooth curve
+	# instead of single-voxel steps.
+	#
+	# Math: maintain `_camera_smoothed_y`, a value that lerps toward the
+	# real body Y with a half-life of CAMERA_Y_SMOOTH_HALFLIFE_S. The
+	# offset between the two (smoothed - real) is applied as the
+	# CameraTarget's local Y adjustment, so the camera's global Y =
+	# body_y + (BASE + offset) = body_y + BASE + (smoothed - body_y) =
+	# smoothed + BASE. In other words the camera renders at chest
+	# height above the SMOOTHED body Y, not the raw one.
+	#
+	# Gates (snap to body, no smoothing) — REVISED 2026-05-12 because
+	# the original |velocity.y| gate disabled smoothing during auto-step
+	# (which uses a 3.46 m/s velocity kick to arc over 1-voxel ledges).
+	# That made walking up slopes feel bumpy when the goal was to
+	# smooth them. New gate:
+	#   * _camera_jump_cooldown_s > 0 — player pressed jump. Set
+	#     ONLY in the dodge-action handler (line ~745); auto-step
+	#     does not touch it. So walking up a 1-voxel ledge keeps
+	#     smoothing active even though vel.y briefly spikes.
+	#   * velocity.y < CAMERA_Y_FREEFALL_VEL — clear free-fall.
+	#     -5 m/s is well past the brief downward-step transition
+	#     where gravity pulls only ~0.7 m/s in a single frame.
+	#
+	# is_on_floor() is NOT used as a gate anymore — it returns false
+	# during the 1-2 frames a 1-voxel downward step takes, which used
+	# to disable smoothing exactly when we wanted it most.
+	#
+	# Cheap (~1 µs/frame). No allocations.
+	if _camera_target == null:
+		return
+
+	# Always decay the jump cooldown so it doesn't pin the gate open.
+	_camera_jump_cooldown_s = maxf(0.0, _camera_jump_cooldown_s - delta)
+
+	var raw_y: float = global_position.y
+	if not _camera_smoothed_initialized:
+		_camera_smoothed_y = raw_y
+		_camera_smoothed_initialized = true
+		_camera_target.position.y = CAMERA_TARGET_BASE_Y
+		return
+
+	var is_player_jumping: bool = _camera_jump_cooldown_s > 0.0
+	var is_clear_freefall: bool = (not is_on_floor()) and velocity.y < CAMERA_Y_FREEFALL_VEL
+	var is_flying_now: bool = is_flying
+	if is_player_jumping or is_clear_freefall or is_flying_now:
+		# Player-initiated jump / real fall / fly mode — snap so the
+		# camera response is fully 1:1 (player needs to feel the
+		# air-time, the fall, or the fly-mode movement).
+		_camera_smoothed_y = raw_y
+		_camera_target.position.y = CAMERA_TARGET_BASE_Y
+		return
+
+	# Frame-rate-independent exponential lerp toward the real body Y.
+	# alpha = 1 - 0.5 ^ (delta / halflife) gives the fraction to lerp
+	# this frame so the half-life is exact regardless of frame rate.
+	var alpha: float = 1.0 - pow(0.5, delta / CAMERA_Y_SMOOTH_HALFLIFE_S)
+	_camera_smoothed_y = lerp(_camera_smoothed_y, raw_y, alpha)
+
+	# Apply the lag as a local Y offset on CameraTarget. Clamped so a
+	# long climb (smoothed never catches up) can't push the camera
+	# below the player's feet or above their head.
+	var offset_y: float = _camera_smoothed_y - raw_y
+	offset_y = clampf(offset_y, -CAMERA_Y_SMOOTH_MAX_OFFSET, CAMERA_Y_SMOOTH_MAX_OFFSET)
+	_camera_target.position.y = CAMERA_TARGET_BASE_Y + offset_y
 
 
 func _physics_process_inner(delta: float) -> void:
@@ -621,8 +770,15 @@ func _physics_process_inner(delta: float) -> void:
 		# jump or air-hop. Reuses the dodge action because there's no
 		# combat dodge yet; when combat lands and dodge becomes a roll,
 		# this can split into a dedicated `jump` Input Map action.
+		#
+		# Set the camera-smoothing jump cooldown HERE (not in the
+		# smoother). This is the only path that should disable Y
+		# smoothing — auto-step's velocity kick goes through
+		# _try_step_up and does NOT touch this cooldown, so walking up
+		# 1-voxel slopes keeps smoothing active.
 		elif _can_take_input() and Input.is_action_just_pressed("dodge"):
 			velocity.y = JUMP_VELOCITY
+			_camera_jump_cooldown_s = JUMP_DISABLE_SMOOTHING_S
 
 	# --- Breath / drowning ---
 	if _is_submerged:
@@ -662,7 +818,16 @@ func _physics_process_inner(delta: float) -> void:
 	var pre_slide_pos: Vector3 = global_position
 	var intended_h: Vector3 = Vector3(velocity.x, 0.0, velocity.z) * delta
 
+	# Wrap move_and_slide() so the Profiler can isolate Godot's
+	# CharacterBody3D collision work from the rest of our logic. The
+	# 10ms jump-frame spike observed in early captures is suspected to
+	# live here; sub-instrumentation pins it down.
+	var _t_ms_start: int = Time.get_ticks_usec()
 	move_and_slide()
+	var _t_ms_us: int = Time.get_ticks_usec() - _t_ms_start
+	var _prof_ms := get_node_or_null("/root/Profiler")
+	if _prof_ms != null:
+		_prof_ms.record("PHYS", "Player3D_move_and_slide", _t_ms_us)
 
 	# --- Auto-step over small voxel ledges ---
 	# Walking forward into a 1-voxel cube (16.7 cm at 6 vox/m, since
@@ -833,9 +998,16 @@ func _physics_process_flying(_delta: float) -> void:
 			v_input -= 1.0
 	# Forward = -Z, right = +X. Use the camera's basis directly so
 	# pitch carries — if the camera looks down 30°, W flies 30° down.
+	#
+	# Input.get_vector("ui_left","ui_right","ui_up","ui_down") returns
+	# y = ui_down - ui_up, so W → y=-1 and S → y=+1. To get W=forward
+	# we negate input_dir.y when multiplying by forward (so W=-1 * -1
+	# = +forward = away from camera). X axis is unchanged: D → +right,
+	# A → -right. Pre-2026-05-12 this missed the negation, so flight
+	# moved W=backward and S=forward — fixed now.
 	var forward: Vector3 = -cam_basis.z
 	var right:   Vector3 = cam_basis.x
-	var dir: Vector3 = (right * input_dir.x) + (forward * input_dir.y)
+	var dir: Vector3 = (right * input_dir.x) + (forward * -input_dir.y)
 	dir.y += v_input
 
 	if dir.length_squared() > 0.0001:
@@ -845,7 +1017,13 @@ func _physics_process_flying(_delta: float) -> void:
 	# Direct velocity assignment — no acceleration ramp. Flying
 	# should feel responsive, not weighty.
 	velocity = dir * fly_speed
+	# Profiler-instrumented (same pattern as the grounded path).
+	var _t_ms_fly_start: int = Time.get_ticks_usec()
 	move_and_slide()
+	var _t_ms_fly_us: int = Time.get_ticks_usec() - _t_ms_fly_start
+	var _prof_ms_fly := get_node_or_null("/root/Profiler")
+	if _prof_ms_fly != null:
+		_prof_ms_fly.record("PHYS", "Player3D_move_and_slide", _t_ms_fly_us)
 
 
 func toggle_fly_mode() -> bool:

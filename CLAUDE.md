@@ -111,6 +111,7 @@ These files go stale as lore and game design evolve. Review and update them when
 | design/COPPER_ISLES_BAKE_NOTES.md | Zylann GDExtension probe results change, new bake-pipeline decisions, or bake controller `@export`s added |
 | design/COPPER_ISLES_DEMO_HEIGHTMAP.md | Copper Isles island layout, heightmap spec, or import notes change |
 | extensions/voxel_gen/ + memory/project_voxel_gen_cpp_port.md | New tier ported, new POD snapshot field added, new C++ Resource registered, parity harness extended |
+| design/PROFILER_AND_DIAGNOSTICS.md | New autoload wrapped with Profiler.record, new category added, new diagnostic pattern observed during a perf investigation, capture-JSON schema changes |
 | CLAUDE.md (this file) | Milestone completed; new canonical naming contradictions found; new systems or design docs added |
 
 ---
@@ -188,6 +189,7 @@ Game implementation docs live in /design. When lore and design conflict, lore wi
 - design/DIALOGIC_SETUP.md — step-by-step Dialogic 2 installation and character setup
 - design/TTS_PIPELINE.md — AI-assisted draft → ElevenLabs render → Dialogic handoff (bulk vs craft pipelines, filename + manifest contract)
 - design/LESSONS_LEARNED.md — running log of bugs and fixes
+- design/PROFILER_AND_DIAGNOSTICS.md — in-game Profiler usage, JSON schema, capture analysis recipes, observed patterns (Zylann saturation, mesh upload spikes), spawn-wiggle pattern. **Read this before guessing at perf issues** — the answer is usually in a recent capture.
 - design/COPPER_ISLES_DEMO_HEIGHTMAP.md — AI prompt + per-island terrain spec for the 5 km × 5 km Copper Isles heightmap (specifies an archipelago; current EXR delivers a single continent — see "Heightmap divergence from lore" in milestone history); Godot import notes
 - design/COPPER_ISLES_BAKE_NOTES.md — Zylann GDExtension probe results (API behaviors verified at runtime), bake-pipeline design decisions and gotchas
 
@@ -639,28 +641,82 @@ programmatically, always read the value back. The bootstrap scripts
 (`World3DBootstrap.gd`, `CopperIslesTestBootstrap.gd`, `WorldBakeController.gd`)
 print readback values as a matter of policy.
 
-**Per-autoload performance attribution via `HUDOverlay.profile_record`:**
+**Per-autoload performance attribution via `Profiler.record` (+ `HUDOverlay.profile_record`):**
 ```gdscript
-# When you need to know which script is eating frame time, wrap the
-# autoload's _process / _physics_process body in a renamed _inner
-# function and time around it. HUDOverlay accumulates per-second and
-# the [PERF] line dumps the top 3 contributors. Pattern handles early
-# returns naturally (the inner can `return` anywhere; the outer wrapper
-# always records the elapsed time).
+# Two consumers: the always-on `[PERF]` log line (HUDOverlay, top-3 per
+# second) and the F3 Profiler overlay (Profiler autoload, full sortable
+# attribution + last-120-frame timeline + GPU/Zylann panel + JSON
+# capture). New wrappers call BOTH; legacy wrappers calling only
+# HUDOverlay get auto-forwarded to Profiler as category "OTHER".
+#
+# Wrap the autoload's _process / _physics_process body in a renamed
+# _inner function and time around it:
 func _process(delta: float) -> void:
     var _t0 := Time.get_ticks_usec()
     _process_inner(delta)
-    HUDOverlay.profile_record("AutoloadName", Time.get_ticks_usec() - _t0)
+    var _elapsed: int = Time.get_ticks_usec() - _t0
+    HUDOverlay.profile_record("AutoloadName", _elapsed)
+    var prof := get_node_or_null("/root/Profiler")
+    if prof != null:
+        prof.record("CATEGORY", "AutoloadName", _elapsed)
 
 func _process_inner(delta: float) -> void:
     # original body, unchanged
     ...
 ```
-Wrappers add ~1 µs per call. Flip `HUDOverlay.PERF_DIAG` to `false` to
-silence the per-second print without removing the wrappers. Note:
-`Performance.TIME_PROCESS` / `TIME_PHYSICS_PROCESS` are per-frame
+Categories used so far: `WORLD`, `WATER`, `WEATHER`, `PHYS`, `OTHER`.
+Wrappers add ~1 µs per call. Flip `Profiler.enabled = false` (or press
+P in the overlay) to silence Profiler bookkeeping without removing the
+wrappers; flip `HUDOverlay.PERF_DIAG` to silence the per-second log.
+
+Note: `Performance.TIME_PROCESS` / `TIME_PHYSICS_PROCESS` are per-frame
 snapshots, NOT script attribution — they correlate with `worst_ms` but
 don't tell you which autoload is slow.
+
+**Profiler overlay controls (F3 toggle):** `Tab` cycle pages (Overview /
+Timeline / GPU), `P` pause/resume sampling, `C` start/stop a JSON
+capture written to `user://profile_capture_*.json`, `S` save in-progress
+capture, `Q` clear stats, `← →` move the timeline inspect cursor. The
+overlay uses keyboard-only nav because `Button.pressed` doesn't fire in
+this project (see Dialogic input rule above).
+
+**Profiler capture files — fast-path diagnosis for future sessions:**
+
+Captures land at a known absolute path on Windows:
+```
+C:\Users\Matt Noles\AppData\Roaming\Godot\app_userdata\Game One\profile_capture_<msec>.json
+```
+The Profiler auto-wipes prior captures when `capture_start()` runs, so
+the folder holds AT MOST ONE `profile_capture_*.json` after any test.
+No need to guess which is latest.
+
+The JSON includes per-frame `attribution` (wrapped GD scripts), `engine`
+(Performance.TIME_PROCESS / TIME_PHYSICS_PROCESS / draws / prims /
+vram_mb), and `zylann` (detect_us / io_us / mesh_us / blocked_lods /
+dropped_loads / dropped_meshs from VoxelLodTerrain.get_statistics()).
+That's the FULL frame picture, not just wrapped scripts.
+
+To capture from the very first frame of a scene (the spawn handoff
+window where you can't press F3 in time), edit `scripts/Profiler.gd`:
+```gdscript
+@export var capture_on_startup: bool = true   # flip to true before F6
+@export_range(5.0, 120.0, 1.0) var startup_capture_seconds: float = 30.0
+```
+Auto-stops after the configured window. **Flip back to false after** —
+every F6 fires a fresh capture (and auto-wipes prior ones) otherwise.
+
+Categories used in attribution keys: `WORLD`, `WATER`, `WEATHER`,
+`PHYS`, `OTHER`.
+
+**Workflow for future Claude:** if the user pastes a capture JSON path
+plus `[PERF]` / `[DIAG]` log lines from the same session, that's a
+complete diagnostic packet. Read the JSON via `Bash python -c` with
+the recipes in `design/PROFILER_AND_DIAGNOSTICS.md` ("Analyzing
+captures — Python recipes"), correlate JSON spikes with `[PERF] worst=`
+and `[DIAG] time_detect_required_blocks=` from the same window, propose
+ONE specific change. The reference doc also catalogs known patterns
+(Zylann saturation, mesh upload spikes, etc.) so future-Claude doesn't
+re-discover them.
 
 >**Zylann blocky-library properties: use the methods, not `.set()`, AND re-apply at runtime:**
 ```gdscript
@@ -782,9 +838,9 @@ Registered in `project.godot` (active now), in load order:
 `NetTransport`, `MultiplayerManager`,
 `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`,
 `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`,
-`JournalUI`, `HUDOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`,
-`VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`,
-`BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`
+`JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `NoEditZoneRegistry`,
+`VoxelEditManager`, `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`,
+`SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`
 
 `PerkRegistry`, `FactionManager`, `SkillManager`, and `SpeechCheckBroker`
 landed with the skill PR. `PerkRegistry` walks `assets/skills/perks/`

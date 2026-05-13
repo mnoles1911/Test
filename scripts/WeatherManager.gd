@@ -336,10 +336,14 @@ func _snapshot_blend_origins() -> void:
 
 
 func _process(delta: float) -> void:
-	# Profiling wrapper — see HUDOverlay.profile_record. Inner does the work.
+	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_process_inner(delta)
-	HUDOverlay.profile_record("WeatherManager", Time.get_ticks_usec() - _t0_prof)
+	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
+	HUDOverlay.profile_record("WeatherManager", _elapsed)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WEATHER", "WeatherManager", _elapsed)
 
 
 func _process_inner(delta: float) -> void:

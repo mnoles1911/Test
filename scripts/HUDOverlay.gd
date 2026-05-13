@@ -1034,6 +1034,13 @@ func _process(delta: float) -> void:
 	if PERF_DIAG:
 		_perf_diag_tick(delta)
 
+	# Profiler autoload — roll per-frame samples into rolling-window stats
+	# and the spike ring buffer. Cheap (clears a dict) but must run every
+	# frame regardless of PERF_DIAG so the F3 overlay stays live.
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.frame_finalize()
+
 	# Quick-slot number-key dispatch. Polls the four input actions
 	# directly each frame; on just_pressed we equip that slot's bound
 	# item. Polling (not _input event handling) keeps it simple and
@@ -1257,6 +1264,15 @@ func _find_player() -> Node:
 func profile_record(label: String, usec: int) -> void:
 	# Called by other autoloads to report time spent in their _process /
 	# _physics_process. Accumulates per second; _perf_diag_tick clears.
+	#
+	# As of 2026-05-12, this only feeds the always-on [PERF] log line.
+	# The Profiler autoload is fed directly by each wrapper site (one
+	# explicit prof.record call per wrap), categorized properly. The
+	# old forwarder here (record(label, usec) → Profiler.record("OTHER",
+	# label, usec)) was double-counting because every wrapper called
+	# BOTH paths — so the Overview showed each system twice (once as
+	# OTHER.X and once as PROPER.X with identical data). Dropping the
+	# forwarder leaves single, categorized entries.
 	_profile_buckets[label] = _profile_buckets.get(label, 0) + usec
 
 

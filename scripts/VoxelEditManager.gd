@@ -588,6 +588,17 @@ func world_to_voxel(world_pos: Vector3) -> Vector3i:
 # ============================================================
 
 func _physics_process(_delta: float) -> void:
+	# Profiling wrapper — see CLAUDE.md "Per-autoload performance
+	# attribution" pattern. Inner does the work; wrapper times it so the
+	# Profiler overlay shows VoxelEditManager when edit traffic is heavy.
+	var _t0_prof := Time.get_ticks_usec()
+	_physics_process_inner()
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WORLD", "VoxelEditManager", Time.get_ticks_usec() - _t0_prof)
+
+
+func _physics_process_inner() -> void:
 	# Drain the edit queue, voxel-budget at a time, every physics
 	# frame. We use _physics_process (not _process) because edits
 	# affect collision/navigation that downstream physics should see

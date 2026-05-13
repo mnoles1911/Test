@@ -183,6 +183,17 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# Profiling wrapper — see CLAUDE.md "Per-autoload performance
+	# attribution" pattern. Gravity scans are bursty (only after an edit),
+	# so attribution helps confirm they're not a long-tail cost.
+	var _t0_prof := Time.get_ticks_usec()
+	_physics_process_inner()
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WORLD", "VoxelGravityManager", Time.get_ticks_usec() - _t0_prof)
+
+
+func _physics_process_inner() -> void:
 	if not enabled:
 		return
 	# Drain pending drop spawns regardless of scan-queue state — they

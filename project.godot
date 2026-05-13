@@ -38,6 +38,8 @@ VoxelMaterialRegistry="*res://scripts/VoxelMaterialRegistry.gd"
 SkillManager="*res://scripts/skills/SkillManager.gd"
 JournalUI="*res://scenes/ui/Journal.tscn"
 HUDOverlay="*res://scripts/HUDOverlay.gd"
+Profiler="*res://scripts/Profiler.gd"
+ProfilerOverlay="*res://scripts/ProfilerOverlay.gd"
 NoEditZoneRegistry="*res://scripts/NoEditZoneRegistry.gd"
 VoxelEditManager="*res://scripts/VoxelEditManager.gd"
 VoxelGravityManager="*res://scripts/VoxelGravityManager.gd"
@@ -259,10 +261,6 @@ quick_slot_4={
 
 [multiplayer]
 
-; Active transport backend chosen at startup by NetTransport.
-; Values: "enet" (LAN dev, default), "steam" (GodotSteam P2P).
-; A future "dedicated" backend slots in the same way.
-; Override at runtime via NetTransport.select_backend(<id>).
 backend="enet"
 
 [rendering]

@@ -104,6 +104,23 @@ func _ready() -> void:
 	if "lod_distance" in terrain:
 		terrain.set("lod_distance", 128.0)
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
+	# Streaming system: 0 = LEGACY_OCTREE (default), 1 = CLIPBOX.
+	# CLIPBOX walks a clipped box of chunks rather than a full octree
+	# per viewer — typically 2-5× faster main-thread cost than the
+	# legacy octree path. Probe-confirmed via BakeWorld's diagnostics.
+	# Enforced here in addition to the .tscn property so Godot's editor
+	# silently reverting to default-0 doesn't regress the perf win.
+	if "streaming_system" in terrain:
+		terrain.set("streaming_system", 1)
+		print("[World3D] terrain.streaming_system set to 1 CLIPBOX (actual=%s)" % terrain.get("streaming_system"))
+	# LOD fade duration: tried 2.0 to smooth cross-fade + spread mesh
+	# upload, but this Zylann build silently rejects values > 1.0 (the
+	# `actual=` readback returned 1.0). Reverted to 1.0 to match what
+	# Zylann actually applies — keeps the .tscn / bootstrap state and
+	# the engine state in sync so the property dump isn't misleading.
+	if "lod_fade_duration" in terrain:
+		terrain.set("lod_fade_duration", 1.0)
+		print("[World3D] terrain.lod_fade_duration set to 1.0 (actual=%s)" % terrain.get("lod_fade_duration"))
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
@@ -295,6 +312,22 @@ func _ready() -> void:
 			# Falling 100+ m through unloaded chunks looks bad and
 			# wastes the first few seconds of play. Retry every
 			# 0.2 s for up to 5 s while terrain streams in.
+			#
+			# CRITICAL: set _spawn_freeze BEFORE deferring the snap.
+			# Without this, the player's _physics_process runs gravity
+			# while _snap_spawn_to_ground is still searching, so the
+			# player falls past the raycast dest (Y=-200) before a hit
+			# can register and ends up falling forever. The freeze is
+			# cleared by _snap_spawn_to_ground on both success and
+			# retry-exhausted paths so the player is never permanently
+			# locked. Set synchronously here (not deferred) because
+			# player._ready already ran (children _ready before parent
+			# _ready in Godot's tree traversal) so the player exists.
+			var players: Array = get_tree().get_nodes_in_group("player")
+			if not players.is_empty():
+				var player: Node = players[0]
+				if "_spawn_freeze" in player:
+					player.set("_spawn_freeze", true)
 			call_deferred("_snap_spawn_to_ground")
 
 
@@ -591,15 +624,24 @@ func _configure_voxel_format(terrain: Object) -> void:
 	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
 
 
-func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
-	# Raycast straight down from a high point above the player and
-	# place the player on whatever solid surface we hit. If the
-	# raycast misses (terrain chunks not yet loaded), retry after
-	# a short delay until either a hit lands or we run out of retries.
+func _pre_snap_player_to_generator_ground() -> void:
+	# Analytical ground lookup so the player doesn't spawn 100m above
+	# terrain and fall through the LOD0 collision gap.
 	#
-	# `retries_remaining` defaults to 25 (× 0.2 s = 5 s total budget).
-	# After that we give up — the player will fall from the scene's
-	# default Y, which is ugly but never permanently stuck.
+	# Sequence:
+	#   1. Find player + terrain in tree
+	#   2. Read terrain transform scale (1/6 → 6 vox/m)
+	#   3. Convert player world X,Z to voxel coords
+	#   4. Call generator.get_ground_voxel_y_at(vx, vz) — for the
+	#      adapter pattern, drill through to cpp_impl if needed
+	#   5. Convert voxel-Y back to world-Y, add a small margin
+	#   6. Teleport the player; zero velocity so accumulated gravity
+	#      doesn't punch through after unfreeze
+	#
+	# Caller is responsible for spawn-freeze + the raycast retry that
+	# confirms collision has streamed. This function only handles the
+	# "put the player in the right neighbourhood" part.
+
 	var players: Array = get_tree().get_nodes_in_group("player")
 	if players.is_empty():
 		return
@@ -607,45 +649,180 @@ func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
 	if player == null:
 		return
 
-	# Cast from a high origin DOWN through the player's X,Z. Origin
-	# above the scene's spawn Y (120) by another 100 m so we cover
-	# any terrain peak. Cast down to Y = -200 (well below valley
-	# floors) so we cover any depth.
-	var origin: Vector3 = Vector3(player.global_position.x, 250.0, player.global_position.z)
-	var dest: Vector3 = Vector3(player.global_position.x, -200.0, player.global_position.z)
+	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
+	if terrain == null:
+		return
+
+	var terrain_scale: float = terrain.transform.basis.get_scale().y
+	if absf(terrain_scale) < 0.00001:
+		terrain_scale = 0.166667  # fall-through safety: assume 6 vox/m
+	var voxels_per_m: float = 1.0 / terrain_scale
+
+	var generator = terrain.get("generator") if "generator" in terrain else null
+	if generator == null:
+		return
+
+	var vx: int = int(roundf(player.global_position.x * voxels_per_m))
+	var vz: int = int(roundf(player.global_position.z * voxels_per_m))
+
+	# Drill through adapter → cpp_impl if the method isn't on the
+	# generator directly (same pattern as WorldBakeController).
+	var ground_voxel_y: int = 0
+	var found: bool = false
+	if generator.has_method("get_ground_voxel_y_at"):
+		ground_voxel_y = int(generator.call("get_ground_voxel_y_at", vx, vz))
+		found = true
+	elif "cpp_impl" in generator:
+		var cpp = generator.get("cpp_impl")
+		if cpp != null and cpp.has_method("get_ground_voxel_y_at"):
+			ground_voxel_y = int(cpp.call("get_ground_voxel_y_at", vx, vz))
+			found = true
+	if not found:
+		print("[World3D] pre-snap: generator has no get_ground_voxel_y_at; skipping analytical ground lookup.")
+		return
+
+	# Margin above ground: 3m world. Gives capsule clearance + a
+	# little air-time so any leftover gravity from the freeze frame
+	# settles cleanly when the freeze clears.
+	const GROUND_MARGIN_M: float = 3.0
+	var new_y: float = float(ground_voxel_y) * terrain_scale + GROUND_MARGIN_M
+
+	var old_y: float = player.global_position.y
+	player.global_position = Vector3(
+		player.global_position.x,
+		new_y,
+		player.global_position.z,
+	)
+	if "velocity" in player:
+		player.velocity = Vector3.ZERO
+	print("[World3D] pre-snap: Y %.1f → %.1f (ground vox=%d, scale=%.4f)" % [
+		old_y, new_y, ground_voxel_y, terrain_scale,
+	])
+
+
+# State for the per-physics-frame wiggle + raycast loop. See
+# _physics_process below for the rationale (user-observed:
+# Zylann CLIPBOX doesn't stream chunks for a STATIONARY viewer).
+var _spawn_wiggle_active: bool = false
+var _spawn_wiggle_start_msec: int = 0
+var _spawn_wiggle_frame: int = 0
+const SPAWN_WIGGLE_MAX_S: float = 15.0
+# Wiggle amplitude — REVERTED to 0.001 (1 mm) on 2026-05-12 after a
+# 10mm × dual-axis tune blew up. Zylann started doing 200ms/frame of
+# detect work and dropped 16k chunk loads per second — the wiggle
+# was invalidating the chunk box faster than Zylann could process
+# each batch, causing churn. 1mm × single-axis is the proven config.
+const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.001   # 1 mm per-frame nudge
+
+# Wiggle cadence — only fire the nudge every N physics frames. At
+# 60Hz physics this means N=6 → 10 nudges/sec, giving Zylann ~6
+# frames to process each chunk batch before the next nudge
+# invalidates again. Eliminates the saturate-and-drop thrash that
+# 60Hz nudging caused. Raycast still runs every frame regardless.
+const SPAWN_WIGGLE_FRAME_INTERVAL: int = 6
+
+
+func _snap_spawn_to_ground(_retries_remaining: int = 0) -> void:
+	# Three-phase spawn:
+	#
+	#   Phase 1: analytical pre-snap via the generator's
+	#     get_ground_voxel_y_at(). Teleports the player from the .tscn
+	#     default Y=120 down to ground+3m (~Y=23-31 on cubic noise) so
+	#     they're inside the LOD0 view-distance sphere.
+	#
+	#   Phase 2: per-physics-frame WIGGLE + raycast (in _physics_process
+	#     below, gated by _spawn_wiggle_active). The wiggle is a
+	#     ±1mm position nudge each frame — user observation 2026-05-12:
+	#     Zylann's CLIPBOX (and likely the legacy octree too) only
+	#     re-evaluates the chunk set when the viewer's position
+	#     changes. A frozen viewer == no chunks stream, no collision
+	#     ever builds, raycast never hits, freeze times out, player
+	#     falls. The mm-scale nudge forces Zylann to keep re-scanning
+	#     each frame; chunks stream normally; collision builds; raycast
+	#     succeeds. Visually invisible.
+	#
+	#   Phase 3: on raycast hit, snap to ground+1m and clear freeze.
+	#     If no hit by SPAWN_WIGGLE_MAX_S (12s safety net), clear
+	#     freeze anyway so the player isn't permanently locked. The
+	#     pre-snap left them at ground+3m so the worst-case fall is
+	#     small even on a complete failure.
+	#
+	# _retries_remaining parameter retained for call-site compat but
+	# unused — the wiggle loop self-times via SPAWN_WIGGLE_MAX_S.
+	_pre_snap_player_to_generator_ground()
+	_spawn_wiggle_active = true
+	_spawn_wiggle_frame = 0
+	_spawn_wiggle_start_msec = Time.get_ticks_msec()
+
+
+func _physics_process(_delta: float) -> void:
+	# Spawn wiggle loop. Only active during the freeze window.
+	if not _spawn_wiggle_active:
+		return
+
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+
+	# Step 1: nudge X by ±SPAWN_WIGGLE_AMPLITUDE_M every Nth frame.
+	# Zylann's CLIPBOX only re-evaluates chunks when the viewer's
+	# transform changes — but if it changes EVERY frame, Zylann
+	# saturates: it queues a chunk batch, the next frame's nudge
+	# invalidates the box, the batch is canceled before any load
+	# completes, and dropped_block_loads explodes (16k+ observed
+	# 2026-05-12 with 60Hz nudging). Per-N-frame gating gives Zylann
+	# breathing room to actually finish each batch.
+	#
+	# Single-axis (just X) is the proven config from the first
+	# successful test. Dual-axis (X+Z) made the thrash worse.
+	_spawn_wiggle_frame += 1
+	if _spawn_wiggle_frame % SPAWN_WIGGLE_FRAME_INTERVAL == 0:
+		var sign_x: float = 1.0 if ((_spawn_wiggle_frame / SPAWN_WIGGLE_FRAME_INTERVAL) % 2 == 0) else -1.0
+		player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_x
+
+	# Step 2: raycast for collision. As soon as Zylann builds a
+	# collider below the player, this hits and we snap + unfreeze.
+	var origin: Vector3 = Vector3(player.global_position.x, player.global_position.y + 100.0, player.global_position.z)
+	var dest: Vector3 = Vector3(player.global_position.x, player.global_position.y - 200.0, player.global_position.z)
 	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
 	var params := PhysicsRayQueryParameters3D.create(origin, dest)
-	# Exclude the player's own collision shape so we don't hit it.
 	params.exclude = [player.get_rid()]
 	var hit: Dictionary = space.intersect_ray(params)
 
-	if hit.is_empty():
-		# No terrain under spawn yet. Voxel chunks still streaming.
-		if retries_remaining <= 0:
-			print("[World3D] Spawn-snap gave up after retries; falling from default Y.")
-			return
-		# Retry after a short delay using a SceneTreeTimer (no scene
-		# changes / signals needed).
-		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
-		timer.timeout.connect(_snap_spawn_to_ground.bind(retries_remaining - 1))
+	if not hit.is_empty():
+		# Got ground. Final placement = ground + 1 m capsule clearance.
+		var ground_y: float = hit["position"].y
+		player.global_position = Vector3(
+			player.global_position.x,
+			ground_y + 1.0,
+			player.global_position.z,
+		)
+		if "velocity" in player:
+			player.velocity = Vector3.ZERO
+		if "_spawn_freeze" in player:
+			player.set("_spawn_freeze", false)
+		_spawn_wiggle_active = false
+		var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
+		print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f, %.1fs wiggle); spawn-freeze cleared." % [
+			player.global_position.y, ground_y, elapsed_s,
+		])
+		_mark_world_ready_when_settled()
 		return
 
-	# Hit something. Place player just above the hit point — capsule
-	# is offset by 0.9 m (half-height) so we add a small margin to
-	# avoid clipping into terrain on landing.
-	var ground_y: float = hit["position"].y
-	player.global_position = Vector3(
-		player.global_position.x,
-		ground_y + 1.0,  # 1 m above ground = capsule clears the surface
-		player.global_position.z,
-	)
-	# Zero the player's vertical velocity so any momentum from the
-	# previous-frame fall doesn't punch them back through the surface.
-	if "velocity" in player:
-		player.velocity = Vector3.ZERO
-	print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f)." % [
-		player.global_position.y, ground_y,
-	])
+	# Step 3: timeout check. SPAWN_WIGGLE_MAX_S safety net.
+	var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
+	if elapsed_s > SPAWN_WIGGLE_MAX_S:
+		if "_spawn_freeze" in player:
+			player.set("_spawn_freeze", false)
+		_spawn_wiggle_active = false
+		print("[World3D] Spawn wiggle timed out at %.1fs; unfreezing at pre-snap Y=%.2f (small drop expected)." % [
+			elapsed_s, player.global_position.y,
+		])
+		_mark_world_ready_when_settled()
+		return
 
 	# Spawn ground confirmed — kick off the loading-screen close
 	# negotiation. The helper polls Zylann's blocked_lods until the

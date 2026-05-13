@@ -176,10 +176,14 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	# Profiling wrapper — see HUDOverlay.profile_record.
+	# Profiling wrapper — feeds the in-HUD [PERF] log + F3 Profiler overlay.
 	var _t0_prof: int = Time.get_ticks_usec()
 	_apply()
-	HUDOverlay.profile_record("DayNightCycle", Time.get_ticks_usec() - _t0_prof)
+	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
+	HUDOverlay.profile_record("DayNightCycle", _elapsed)
+	var prof := get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WEATHER", "DayNightCycle", _elapsed)
 
 
 func _apply() -> void:
