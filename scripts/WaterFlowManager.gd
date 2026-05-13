@@ -881,6 +881,30 @@ func _gather_lateral_sources_buffered(
 		return _gather_lateral_sources_buffered_cells_only(voxel_min, voxel_max, data_buf)
 
 	# Pass 1: water voxels in the chunk's data buffer.
+	#
+	# A water voxel is "edge" — and therefore a candidate lateral source —
+	# if at least one IN-CHUNK horizontal neighbour is dry. Cross-chunk
+	# neighbours are conservatively treated as WATER and skipped, NOT
+	# as dry.
+	#
+	# Why this asymmetry: the previous "treat cross-chunk as dry" rule
+	# auto-classified every chunk-boundary water voxel as a source. For
+	# the sea-level row chunks (Y=4 in Mira, water in lower half + air
+	# in upper half), that meant ~576 spurious sources per chunk × 4
+	# cross-chunk tool.get_voxel calls each in the spread loop → the
+	# 800-1000 µs/frame WaterFlowManager runaway observed 2026-05-13
+	# while mining at the coast. The uniform-water short-circuit above
+	# catches the fully-water chunks (Y=3 deep ocean), but the mixed
+	# sea-level chunks still fell through to this loop.
+	#
+	# Trade-off: a carved cavity that sits ENTIRELY past a chunk
+	# boundary (no carving in the boundary chunk, only on the other
+	# side) won't be filled on the first tick — the boundary chunk's
+	# source water won't classify against the cross-chunk-only dry
+	# voxels. In practice the 3×3×3 dirty propagation around any edit
+	# marks both chunks anyway, and once water enters the carved chunk
+	# via spread from in-chunk-classified sources nearby, the cavity
+	# fills normally over subsequent ticks. Acceptable for water sim.
 	for lx in range(CHUNK_SIZE_VOXELS):
 		for ly in range(CHUNK_SIZE_VOXELS):
 			for lz in range(CHUNK_SIZE_VOXELS):
@@ -888,11 +912,6 @@ func _gather_lateral_sources_buffered(
 				var lvl: int = WaterByteCodec.level_of(byte)
 				if lvl <= MIN_LEVEL:
 					continue
-				# Edge test: at least one horizontal neighbour is dry
-				# (no water byte in CHANNEL_DATA5). For neighbours
-				# outside the chunk, conservatively assume "dry" so the
-				# spread fires at chunk edges (the spread loop itself
-				# does the actual cross-chunk check).
 				var pos := Vector3i(voxel_min.x + lx, voxel_min.y + ly, voxel_min.z + lz)
 				var is_edge: bool = false
 				for dir in _LATERAL_DIRS:
@@ -902,10 +921,11 @@ func _gather_lateral_sources_buffered(
 					if nlx < 0 or nlx >= CHUNK_SIZE_VOXELS \
 							or nly < 0 or nly >= CHUNK_SIZE_VOXELS \
 							or nlz < 0 or nlz >= CHUNK_SIZE_VOXELS:
-						# Cross-chunk edge — treat as candidate; the
-						# spread loop will check the actual neighbour.
-						is_edge = true
-						break
+						# Cross-chunk: assume the adjacent chunk has the
+						# same content as this one (water). Don't classify
+						# as edge solely because the neighbour is in
+						# another chunk — that's the spurious-source bug.
+						continue
 					var n_byte: int = data_buf.get_voxel(nlx, nly, nlz, VoxelBuffer.CHANNEL_DATA5)
 					if not WaterByteCodec.is_water(n_byte):
 						is_edge = true
