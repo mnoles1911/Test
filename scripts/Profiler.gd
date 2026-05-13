@@ -345,11 +345,39 @@ func _walk_for_terrain(node: Node) -> Node:
 
 
 func capture_start() -> void:
+	# Auto-wipe prior captures so the folder only ever contains the
+	# most recent JSON. Matches the user's routine-wipe workflow
+	# (2026-05-12) — every fresh capture starts a clean slate. If you
+	# ever want to keep an older capture across runs, move it out of
+	# user:// (e.g. drag it onto the desktop) BEFORE pressing C.
+	var deleted: int = _wipe_prior_captures()
+	if deleted > 0:
+		print("[Profiler] capture_start: deleted %d prior capture(s)" % deleted)
+
 	# Drop any in-progress capture and start fresh.
 	_capture_buffer.clear()
 	_capture_active = true
 	_capture_start_msec = Time.get_ticks_msec()
 	print("[Profiler] capture started")
+
+
+func _wipe_prior_captures() -> int:
+	# Scans user:// for profile_capture_*.json and removes each one.
+	# Returns the number of files deleted. Safe to call when none
+	# exist (returns 0). Uses DirAccess.remove_absolute so we can pass
+	# the prefixed res://-style path Godot accepts.
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		return 0
+	var deleted: int = 0
+	for fname in dir.get_files():
+		if fname.begins_with("profile_capture_") and fname.ends_with(".json"):
+			var err: int = DirAccess.remove_absolute("user://" + fname)
+			if err == OK:
+				deleted += 1
+			else:
+				push_warning("[Profiler] failed to delete user://%s (err=%d)" % [fname, err])
+	return deleted
 
 
 func capture_stop(path: String = "") -> String:
