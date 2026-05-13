@@ -140,6 +140,12 @@ var _tick_count: int = 0
 # last_fed_tick byte). Phase 4 uses this; Phase 3 just keeps it
 # advancing.
 
+var _diag_ticks_since_print: int = 0
+# DIAG counter — _run_flow_tick prints a status line every 20 ticks
+# (~5 sec at 4 Hz) when work is happening. Confirms whether _cells
+# and _dirty_chunks are growing without bound (cascade bug) or
+# stable (workload-driven).
+
 const _MAX_FLOW_BUDGET_PER_TICK: int = 4096
 # Cap on cells placed in a single flow tick. Prevents a sudden flood
 # (e.g. a deep mineshaft carved under the ocean) from spiking frame
@@ -531,6 +537,13 @@ func _run_flow_tick() -> void:
 	var snapshot: Dictionary = _dirty_chunks.duplicate()
 	_dirty_chunks.clear()
 
+	# DIAG counters scoped to this tick. Surfaces what's actually
+	# growing during a perf-runaway capture — without this, captures
+	# only show total WFM frame cost, not chunks-touched or _cells size.
+	var _diag_chunks_in_radius: int = 0
+	var _diag_chunks_out_radius: int = 0
+	var _diag_total_modified: int = 0
+
 	# Cache terrain + tool ONCE per tick. Previous code re-fetched
 	# both per chunk per voxel — a 100× perf regression vs caching.
 	# If the autoload/terrain isn't ready yet, drop the tick.
@@ -552,8 +565,12 @@ func _run_flow_tick() -> void:
 		# _dirty_chunks if the player ever flooded an area then walked
 		# away.
 		if not _chunk_in_active_radius(chunk):
+			_diag_chunks_out_radius += 1
 			continue
+		_diag_chunks_in_radius += 1
+		var before_budget: int = budget
 		budget -= _simulate_chunk_gravity(chunk, budget, terrain, tool)
+		_diag_total_modified += (before_budget - budget)
 		if budget <= 0:
 			# Spilled the budget. Re-queue ONLY in-radius unprocessed
 			# chunks for the next tick.
@@ -566,6 +583,20 @@ func _run_flow_tick() -> void:
 					continue
 				_dirty_chunks[remaining] = true
 			break
+
+	# Diagnostic — fires every ~5 sec when work is happening. The
+	# next perf capture will surface whether _cells/_dirty_chunks
+	# are growing (cascade-feedback bug) or stable (workload-driven).
+	# Cheap when no work: this whole branch is skipped because
+	# _run_flow_tick only fires when _dirty_chunks is non-empty.
+	_diag_ticks_since_print += 1
+	if _diag_ticks_since_print >= 20:
+		_diag_ticks_since_print = 0
+		if _diag_chunks_in_radius > 0 or not _cells.is_empty():
+			print("[WFM-DIAG] chunks_in=%d chunks_out=%d modified=%d _cells=%d _dirty=%d snapshot=%d" % [
+				_diag_chunks_in_radius, _diag_chunks_out_radius, _diag_total_modified,
+				_cells.size(), _dirty_chunks.size(), snapshot.size(),
+			])
 
 
 func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTerrain, tool: VoxelTool) -> int:
@@ -736,15 +767,27 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				and neighbor.z >= voxel_min.z and neighbor.z < voxel_max.z
 			)
 			# Already in _cells — refresh tick if applicable.
+			#
+			# CRITICAL: do NOT write the byte to CHANNEL_DATA5 in this
+			# branch. The byte's tick bits (WaterByteCodec.tick_of) are
+			# never read anywhere — only `_cells` carries the tick used
+			# by the decay rule, and the level/source bits we'd be
+			# writing haven't changed (same `n_lvl`). Writing the byte
+			# anyway burned ~one tool.do_box per adjacent flow cell per
+			# tick (4× per source × every boundary cell), which is the
+			# dominant cost of the WaterFlowManager runaway observed
+			# 2026-05-13 when mining at the coast — the cavity fills
+			# with flow cells, every cell adjacent to a source gets a
+			# pointless refresh write each 4 Hz tick forever.
 			if _cells.has(neighbor):
 				var n_packed: int = _cells[neighbor]
 				if _is_source_packed(n_packed):
 					continue
 				var n_lvl: int = _level_of(n_packed)
 				if n_lvl >= target_level:
+					# Only update the in-memory tick. Skip data5_writes.
 					var refreshed_pack: int = _pack(n_lvl, false, _tick_count)
 					_cells[neighbor] = refreshed_pack
-					data5_writes.append({"pos": neighbor, "byte": refreshed_pack & 0xFF})
 				continue
 			# Already water in CHANNEL_DATA5? Skip.
 			var n_water_byte: int
