@@ -183,12 +183,17 @@ func start_drip(target: Node3D, socket_name: String = "ChestSocket") -> void:
 	if target == null or _active_drips.has(target):
 		return
 	var socket: Node3D = target.get_node_or_null(socket_name) as Node3D
+	var socket_label: String = socket_name
 	if socket == null:
 		socket = target
+		socket_label = "<target root (no %s found)>" % socket_name
 	var drip := _DRIP_SCENE.instantiate() as GPUParticles3D
 	socket.add_child(drip)
 	drip.emitting = true
 	_active_drips[target] = drip
+	print("[BloodVFX] start_drip fired: target=%s socket=%s drip_global=%s" % [
+		target.name, socket_label, drip.global_position
+	])
 	# Auto-cleanup if the target is freed before stop_drip is called
 	# (enemy dies mid-bleed). CONNECT_ONE_SHOT so we don't need to
 	# disconnect manually.
@@ -235,13 +240,29 @@ func _on_drip_target_freed(target: Node3D) -> void:
 ## but flat quads don't conform to sloped terrain. Now that Forward+
 ## is the active renderer, the proper Decal is back.)
 func spawn_pool(world_pos: Vector3, max_size_meters: float = 1.5, grow_seconds: float = 8.0) -> void:
+	# Find the actual ground beneath world_pos via a downward raycast.
+	# world_pos is usually the killed enemy's global_position which sits
+	# at FEET level, but Decal projection only works on surfaces that
+	# fall STRICTLY INSIDE the decal box -- a floor exactly at the
+	# bottom plane misses. Anchor the box CENTER 0.3 m above the
+	# detected ground so the surface sits well inside the projection
+	# volume (box extends 0.75 m up and 0.75 m down from center).
+	var space: PhysicsDirectSpaceState3D = get_tree().root.world_3d.direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(
+		world_pos + Vector3(0, 1.0, 0),
+		world_pos + Vector3(0, -4.0, 0)
+	)
+	var hit: Dictionary = space.intersect_ray(query)
+	var ground_pos: Vector3 = world_pos
+	if hit.has("position"):
+		ground_pos = hit["position"]
+
 	var decal := Decal.new()
 	decal.texture_albedo = _pool_texture
-	# Modulate tints the projected texture (replaces the StandardMaterial3D
-	# albedo_color the PlaneMesh used). Decal lighting defaults to
-	# unshaded-ish modulation against the lit surface, which gives us
-	# a dark-red wash that reads well under any lighting.
-	decal.modulate = Color(0.5, 0.05, 0.05, 1.0)
+	# Modulate tints the projected texture. Bright saturated red to
+	# match the voxel-blood cube particles fired by spawn_burst /
+	# spawn_drip — they're vivid red, the pool should be the same.
+	decal.modulate = Color(0.95, 0.08, 0.08, 1.0)
 	# albedo_mix = 1 means the Decal fully overrides the surface albedo
 	# under the projection; the texture's alpha channel still controls
 	# the radial fade so the pool's edges blend back to terrain.
@@ -249,17 +270,19 @@ func spawn_pool(world_pos: Vector3, max_size_meters: float = 1.5, grow_seconds: 
 
 	var scene_root: Node = get_tree().current_scene
 	if scene_root == null:
-		# Fallback: parent to the autoload itself. Pool will follow the
-		# autoload (always at origin) which is wrong, but better than
-		# crashing during scene transitions.
 		scene_root = self
 	scene_root.add_child(decal)
 
-	# Position the Decal box such that world_pos sits at the top face,
-	# projecting 1.5 m downward. That covers the worst-case slope and
-	# any small terrain bumps without bleeding through nearby walls.
+	# Position: 0.3 m above the ground hit, box extends 0.75 m up/down
+	# from there. That puts the actual ground ~0.45 m below the box
+	# center -- well inside the projection volume on flat ground and
+	# still inside on moderate slopes.
 	const PROJECTION_DEPTH_M: float = 1.5
-	decal.global_position = world_pos + Vector3(0, PROJECTION_DEPTH_M * 0.5, 0)
+	decal.global_position = ground_pos + Vector3(0, 0.3, 0)
+
+	print("[BloodVFX] spawn_pool fired: world_pos=%s ground_pos=%s decal_pos=%s scene=%s" % [
+		world_pos, ground_pos, decal.global_position, scene_root.name
+	])
 
 	# Tween Decal.size (Vector3) from 20 % footprint at start to full
 	# size over grow_seconds. Y stays at PROJECTION_DEPTH_M throughout

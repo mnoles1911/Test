@@ -206,8 +206,11 @@ func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> vo
 		BloodVFX.stop_drip(self)
 		# Pool grows larger and faster on overkill — a charged-spear
 		# kill (60+ dmg) leaves more visible mess than a finishing tap.
-		var size: float = 1.5 if damage_at_kill >= 50 else 1.0
-		var grow: float = 5.0 if damage_at_kill >= 50 else 8.0
+		# Dialed up 2026-05-13 for the "aggressive blood" goal: pools
+		# are now 3-4.5 m across, growing to full size in 1.5-2.5 s
+		# so the kill instantly reads as gory rather than a slow stain.
+		var size: float = 4.5 if damage_at_kill >= 50 else 3.0
+		var grow: float = 1.5 if damage_at_kill >= 50 else 2.5
 		BloodVFX.spawn_pool(global_position, size, grow)
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Goblin %s killed (%d dmg)" % [name, damage_at_kill])

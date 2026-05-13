@@ -25,17 +25,17 @@ gradient = SubResource("Gradient_drip")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_drip"]
 emission_shape = 1
-emission_sphere_radius = 0.05
+emission_sphere_radius = 0.12
 direction = Vector3(0, -1, 0)
-spread = 12.0
+spread = 25.0
 flatness = 0.0
-initial_velocity_min = 0.3
-initial_velocity_max = 0.8
+initial_velocity_min = 0.5
+initial_velocity_max = 1.2
 gravity = Vector3(0, -3.5, 0)
-angular_velocity_min = -90.0
-angular_velocity_max = 90.0
-scale_min = 1.0
-scale_max = 1.6
+angular_velocity_min = -120.0
+angular_velocity_max = 120.0
+scale_min = 1.8
+scale_max = 3.2
 color_ramp = SubResource("GradientTexture1D_drip")
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_drip_mat"]
@@ -47,15 +47,17 @@ transparency = 1
 albedo_color = Color(1, 1, 1, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_drip_cube"]
-; Slightly smaller than the burst cubes — a wound drip is finer
-; than an arterial spray.
-size = Vector3(0.025, 0.025, 0.025)
+; Dialed up 2026-05-13 for the "aggressive blood" goal. Base voxel
+; cube is 5 cm; combined with scale_min/max 1.8-3.2 from the process
+; material, in-flight particles are 9-16 cm — clearly readable as
+; chunky voxel blood from third-person distance.
+size = Vector3(0.05, 0.05, 0.05)
 material = SubResource("StandardMaterial3D_drip_mat")
 
 [node name="BloodDrip" type="GPUParticles3D"]
 emitting = false
-amount = 24
-lifetime = 1.6
+amount = 80
+lifetime = 2.5
 one_shot = false
 explosiveness = 0.0
 ; local_coords = false keeps in-flight particles in world space.
