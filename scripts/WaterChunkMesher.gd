@@ -225,16 +225,27 @@ func _ready() -> void:
 	if get_node_or_null("/root/VoxelEditManager") != null \
 			and VoxelEditManager.has_signal("water_changed_at"):
 		VoxelEditManager.water_changed_at.connect(_on_water_changed_at)
-	# DEBUG (2026-05-06): wave shader temporarily disabled so the player
-	# can see flat water surfaces while diagnosing the per-voxel ocean
-	# rewrite. The wave shader (assets/shaders/water_material.tres +
-	# water.gdshader) is unchanged on disk — flip _build_debug_water_material
-	# back to `load("res://assets/shaders/water_material.tres")` to
-	# restore the sine-sum surface displacement once the mechanics
-	# are confirmed.
-	_shader_material = _build_debug_water_material(false)
-	_horizon_material = _build_debug_water_material(true)
-	print("[WaterChunkMesher] DEBUG flat-water material in use (wave shader bypassed).")
+	# Wave shader re-enabled 2026-05-13: the per-voxel ocean mechanics
+	# are verified working, and the 2026-05-13 Copper Isles capture
+	# confirmed the water mesher's CPU cost is well-behaved (median
+	# 31 µs, max 3.85 ms — comfortably under the new 3 ms time-budget
+	# throttle). The wave shader adds ~1-2 ms of GPU vertex displacement
+	# work, which is negligible next to the ~15 M prims the horizon
+	# skirt is already pushing.
+	#
+	# To temporarily revert to the flat debug material (e.g. during a
+	# water-mechanics regression hunt), swap the two assignments below
+	# back to _build_debug_water_material(false / true).
+	var wave_mat: Material = load("res://assets/shaders/water_material.tres") as Material
+	if wave_mat != null:
+		_shader_material = wave_mat
+		_horizon_material = wave_mat
+		print("[WaterChunkMesher] wave shader material loaded.")
+	else:
+		# Fallback if the .tres failed to load — never ship without water.
+		_shader_material = _build_debug_water_material(false)
+		_horizon_material = _build_debug_water_material(true)
+		push_warning("[WaterChunkMesher] water_material.tres failed to load; falling back to flat debug material.")
 
 	# Build the follow-player horizon plane. The chunked mesher only
 	# renders water within MESH_RENDER_RADIUS_M (96 m); past that the
