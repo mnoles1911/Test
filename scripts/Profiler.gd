@@ -62,7 +62,7 @@ const WINDOW_MS: int = 1000         # 1-second rolling window for avg/max
 
 ## How long the startup auto-capture runs before stopping itself.
 ## 30 s comfortably covers spawn-freeze + post-spawn handoff window.
-@export_range(5.0, 120.0, 1.0) var startup_capture_seconds: float = 30.0
+@export_range(5.0, 120.0, 1.0) var startup_capture_seconds: float = 60.0
 
 # Set when the startup capture is running so frame_finalize knows to
 # auto-stop when the wall-clock budget elapses.
@@ -86,6 +86,14 @@ var _stats: Dictionary = {}             # full_name → Dictionary
 var _frame_totals_us: PackedInt32Array = PackedInt32Array()
 var _frame_index: int = 0               # write head into the ring
 var _frame_count_total: int = 0         # monotonic frame counter
+
+# Real per-frame wall-clock time. frame_finalize() is called once per render
+# frame from HUDOverlay._process, so the delta between calls IS the real
+# frame time — independent of Performance.TIME_PROCESS which caches the last
+# sample and reports stale values for many frames (observed 2026-05-13:
+# proc_us plateaued at 60ms across 15+ consecutive frames during walking,
+# polluting p99 with artifact data). Emit as engine.real_us in capture JSON.
+var _last_finalize_usec: int = 0
 
 # Rolling window bookkeeping: at start of each frame we check the wall clock;
 # if a window has elapsed, we snapshot _stats into _window_snapshot for the
@@ -206,6 +214,16 @@ func frame_finalize() -> void:
 	# samples into the rolling-window stats and the spike ring buffer.
 	_frame_count_total += 1
 
+	# Real wall-clock frame time. First call has no previous timestamp;
+	# emit 0 so the analyzer can skip it. Otherwise this is the actual
+	# microseconds between consecutive _process tail calls — the true
+	# per-frame cost, unaffected by TIME_PROCESS plateau artifacts.
+	var _now_usec: int = Time.get_ticks_usec()
+	var real_frame_us: int = 0
+	if _last_finalize_usec > 0:
+		real_frame_us = _now_usec - _last_finalize_usec
+	_last_finalize_usec = _now_usec
+
 	var frame_total: int = 0
 	for key in _frame_samples.keys():
 		var us: int = _frame_samples[key]
@@ -268,6 +286,7 @@ func frame_finalize() -> void:
 			"engine": {
 				"proc_us": proc_us,
 				"phys_us": phys_us,
+				"real_us": real_frame_us,
 				"draws": draws,
 				"prims": prims,
 				"vram_mb": vram_mb,
