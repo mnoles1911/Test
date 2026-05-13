@@ -43,35 +43,35 @@ extends Node3D
 # re-enabled).
 const MESH_RENDER_RADIUS_M: float = 32.0
 
-# Per-frame mesh rebuild budget — adaptive. _adaptive_build_budget()
-# scales between MIN and MAX based on the previous frame's delta:
-# - Frame ≤ 18 ms (>= 55 fps): full MAX builds. Fast fill.
-# - Frame ≥ 50 ms (≤ 20 fps): MIN builds. Yield to whatever else is
-#   under load (typically the terrain LOD streamer during initial fill).
-# - Linear lerp between.
+# Per-frame mesh rebuild budget — TIME-based (was count-based until
+# 2026-05-13). The old "build up to N chunks per frame" cap allowed
+# pathological frames where 6 × ~1.5 ms chunks piled up into a single
+# 9.2 ms spike, visible in the 2026-05-13 baseline capture.
 #
-# 2026-05-07 perf cut: MAX from 16 → 6. With the smaller 32 m radius
-# above, fewer chunks need rebuilding per crossing (~24 vs ~73), so
-# we don't need a high per-frame ceiling to keep up. Capping at 6
-# means the mesher uses at most ~6 ms/frame even during burst loads,
-# leaving headroom for Zylann's terrain LOD streamer.
-const MESH_BUILDS_PER_FRAME_MAX: int = 6
-const MESH_BUILDS_PER_FRAME_MIN: int = 1
+# Now we measure elapsed µs and stop as soon as the budget is spent.
+# This caps WaterChunkMesher contribution to ~3 ms/frame under heavy
+# bursts (vs the 9.2 ms peak observed before). One chunk per frame is
+# always allowed so the queue can drain forward-progress on any frame.
+#
+# Adaptive: tighter budget under slow frames so we yield to Zylann's
+# terrain LOD streamer when it's competing for CPU.
+const MESH_BUILD_FRAME_BUDGET_US: int = 3000   # 3 ms / frame in fast mode
+const MESH_BUILD_MIN_BUDGET_US: int = 500      # 0.5 ms / frame under load
 const MESH_THROTTLE_FRAME_MS_FAST: float = 18.0
 const MESH_THROTTLE_FRAME_MS_SLOW: float = 50.0
 
 
-func _adaptive_build_budget(delta: float) -> int:
-	# Maps last frame's delta to a per-frame build budget. Heavier
-	# frames → smaller budget so we yield to the terrain streamer.
+func _adaptive_time_budget(delta: float) -> int:
+	# Maps last frame's delta to a per-frame µs budget. Heavier frames →
+	# smaller budget so we yield to the terrain streamer.
 	var frame_ms: float = delta * 1000.0
 	if frame_ms <= MESH_THROTTLE_FRAME_MS_FAST:
-		return MESH_BUILDS_PER_FRAME_MAX
+		return MESH_BUILD_FRAME_BUDGET_US
 	if frame_ms >= MESH_THROTTLE_FRAME_MS_SLOW:
-		return MESH_BUILDS_PER_FRAME_MIN
+		return MESH_BUILD_MIN_BUDGET_US
 	var t: float = (frame_ms - MESH_THROTTLE_FRAME_MS_FAST) \
 		/ (MESH_THROTTLE_FRAME_MS_SLOW - MESH_THROTTLE_FRAME_MS_FAST)
-	return int(lerpf(float(MESH_BUILDS_PER_FRAME_MAX), float(MESH_BUILDS_PER_FRAME_MIN), t))
+	return int(lerpf(float(MESH_BUILD_FRAME_BUDGET_US), float(MESH_BUILD_MIN_BUDGET_US), t))
 
 # Chunk side length in meters — must match VoxelEditManager constants.
 # Replicated here so this file doesn't need to call into a private
@@ -296,18 +296,24 @@ func _process(delta: float) -> void:
 
 
 func _process_inner(delta: float) -> void:
-	# Drain up to _adaptive_build_budget(delta) chunks from the queue.
+	# Drain the dirty queue under a TIME budget (was a count budget
+	# until 2026-05-13). Build one chunk, measure µs, repeat until the
+	# budget is spent. Always allow at least one chunk per frame so
+	# forward progress is guaranteed even on slow frames.
+	#
 	# Builds are throttled when frame time is high — during the initial
 	# load window the terrain streamer competes for CPU and any cycles
 	# we steal here directly delay terrain LOD streaming. The throttle
 	# yields gracefully back to terrain when frames get heavy.
-	var budget: int = _adaptive_build_budget(delta)
-	var built: int = 0
-	while built < budget and not _dirty_queue.is_empty():
+	var budget_us: int = _adaptive_time_budget(delta)
+	var t0: int = Time.get_ticks_usec()
+	while not _dirty_queue.is_empty():
 		var chunk: Vector3i = _dirty_queue.pop_front()
 		_dirty_set.erase(chunk)
 		_rebuild_chunk(chunk)
-		built += 1
+		var elapsed: int = Time.get_ticks_usec() - t0
+		if elapsed >= budget_us:
+			break
 
 	# Horizon plane removed — the per-frame follow-player update is
 	# a no-op now (no _source_region_planes to position). Kept the
