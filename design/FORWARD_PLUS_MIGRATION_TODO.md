@@ -284,6 +284,35 @@ or beats pre-migration baseline. No content regressions.
   they bleed across tile boundaries. Godot 4.6 supports BPTC without mips
   on Vulkan/Forward+.
 
+**Bugs discovered during Tier 2/3 acceptance:**
+- ✅ **Sun/moon orb rendering through terrain at horizon** — fixed in
+  `DayNightCycle.gd`. SunMat / MoonMat have `no_depth_test = true` so
+  the orb always renders on top; visibility was gated only on light
+  energy which stays positive during DUSK (h=17–20). Added a
+  `basis.z.y > -0.05` gate so the mesh hides once the celestial body
+  drops below the horizon line.
+- 🐢 **WaterFlowManager runaway near coast** — partial fix.
+  `_gather_lateral_sources_buffered` now short-circuits on uniform-water
+  chunks (Zylann's O(1) `is_uniform()` check) so ocean-interior chunks
+  marked dirty by the 3×3×3 dirty-propagation around mining don't run
+  the 4096-voxel scan + ~1000 spurious chunk-boundary-source
+  classifications. Each spurious source previously fired 4 per-voxel
+  cross-chunk `tool.get_voxel` calls in the spread loop — the dominant
+  cost in the 800–1000 µs/frame peak observed 2026-05-13. Expect
+  WaterFlowManager to drop back into the low µs/frame range after this.
+- 🐛 **Visible water elevation rises during mining at the coast** —
+  NOT YET FIXED. Distinct from the perf bug above. User reported the
+  whole pond surface visually rose. Mechanically, the simulator only
+  writes water DOWN (gravity) or sideways (lateral) — never UP — so
+  the cause is likely either in `WaterChunkMesher._gather_surface_quads`
+  (mistaken top-water-Y per column after a flow cell is placed) or a
+  truncation bug where the stored 8-bit water byte loses tick bits 8+
+  on writeback (the in-memory `_cells` carries 8 bits of tick, the
+  byte carries 3, so `fed_tick` round-trips wrong after tick 7). Needs
+  reproduction with `Profiler.gd capture_on_startup = true` and the
+  capture JSON inspected for any flow byte written at a Y above the
+  source row.
+
 **Acceptance status:**
 - Tier 1 (vol fog / glow / AGX / TAA): **verified visually 2026-05-13** —
   user confirmed the look is good, no tuning needed.
@@ -349,6 +378,24 @@ All captures from the World3D scene running the same scenario: spawn → walk
 forward ~20 s → idle ~10 s. Analysis recipes in
 `design/PROFILER_AND_DIAGNOSTICS.md` ("Analyzing captures — Python
 recipes").
+
+---
+
+## Generator note — rock overhangs / arches not produced
+
+Heightmap generators (cubic + copper isles) emit a strict 2D heightmap
+per XZ column — no negative-Y features, no overhangs, no arches. SDFGI
+landed in PR #213 has very little non-trivial GI to bounce through as a
+result; caves are confirmed bouncing light, but rock overhangs (which
+would give the most dramatic visual return from SDFGI) don't exist in
+the world.
+
+Future tier (T7? T8?) for the generators: a 3D Worley/perlin pass that
+removes voxels in plausible arch / overhang shapes, gated on slope and
+material so we don't carve random holes in flat ground. Most natural
+for stone material above a certain elevation.
+
+Documented 2026-05-13 during Tier 2 acceptance check.
 
 ---
 

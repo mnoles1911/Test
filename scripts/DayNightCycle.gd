@@ -266,12 +266,21 @@ func _apply() -> void:
 	# Same technique as MoonMesh: position the sphere MOON_DISTANCE metres
 	# from the active camera in the sun's sky direction (+Z of the sun node)
 	# so it always appears in the correct part of the sky.
+	#
+	# Visibility gate: BOTH the energy threshold AND a positive Y on the
+	# sky-direction vector. The energy alone isn't enough — during DUSK
+	# (h 17→20) the sun has positive energy (~1.0 at 18:30) but the orbit
+	# already has it below the western horizon, and SunMat.no_depth_test
+	# makes the orb render through the terrain when not hidden explicitly.
+	# A small -0.05 threshold gives a soft fade right at the horizon line.
 	if _sun_mesh != null:
-		_sun_mesh.visible = sun_energy > 0.05
 		var cam: Camera3D = get_viewport().get_camera_3d()
 		if cam != null:
 			var sun_dir: Vector3 = _sun.global_transform.basis.z
+			_sun_mesh.visible = sun_energy > 0.05 and sun_dir.y > -0.05
 			_sun_mesh.global_position = cam.global_position + sun_dir * MOON_DISTANCE
+		else:
+			_sun_mesh.visible = false
 
 	# --- Moon energy + color ---
 	# Moon active 20:00 → 05:00 (NIGHT + DEEP_NIGHT), with crossfade
@@ -308,13 +317,17 @@ func _apply() -> void:
 	# player is standing. no_depth_test on the material means fog and terrain
 	# depth don't hide it.
 	if _moon_mesh != null:
-		_moon_mesh.visible = moon_energy > 0.05
 		var cam: Camera3D = get_viewport().get_camera_3d()
 		if cam != null:
 			# The DirectionalLight3D shines along its local -Z axis, so the
-			# body it represents appears at +Z in world space.
+			# body it represents appears at +Z in world space. Same horizon
+			# gate as the sun — MoonMat.no_depth_test would otherwise punch
+			# the moon orb through terrain at dawn/dusk transitions.
 			var moon_dir: Vector3 = _moon.global_transform.basis.z
+			_moon_mesh.visible = moon_energy > 0.05 and moon_dir.y > -0.05
 			_moon_mesh.global_position = cam.global_position + moon_dir * MOON_DISTANCE
+		else:
+			_moon_mesh.visible = false
 
 	# --- Sky + fog ---
 	var _sky_top: Color

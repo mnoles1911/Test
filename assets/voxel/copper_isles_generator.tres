@@ -3,9 +3,9 @@
 [ext_resource type="Script" uid="uid://3sp0db3l8bao" path="res://scripts/_dev/CopperIslesHeightmapGeneratorAdapter.gd" id="1_adapter"]
 
 [sub_resource type="CopperIslesHeightmapGeneratorCpp" id="cpp_impl"]
-sea_level_voxels = 1440
 beach_y_threshold = 1452
 bedrock_material_id = 6
+sea_level_voxels = 1440
 snow_material_id = 13
 
 [resource]

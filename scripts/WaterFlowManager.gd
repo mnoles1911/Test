@@ -854,6 +854,32 @@ func _gather_lateral_sources_buffered(
 	# step so the simulator catches both source bytes and in-flight
 	# flow cells.
 	var sources: Array = []
+
+	# ---- O(1) fast path: uniform-water or uniform-dry chunks ----
+	# When the whole chunk's CHANNEL_DATA5 is one value, every interior
+	# voxel has the same lateral neighbours. There can be no in-chunk
+	# "water adjacent to dry" pattern, so no sources to enumerate.
+	#
+	# This is the common case after mining near the ocean: _on_edit_applied
+	# dirties a 3×3×3 neighborhood, including chunks that are entirely
+	# water (ocean interior) or entirely dry (above sea level). Without
+	# this short-circuit, the inner triple loop runs 4096 reads on each
+	# of those chunks, then auto-classifies every chunk-boundary water
+	# voxel as a source (out-of-chunk lateral lookups fall through to the
+	# `is_edge = true` branch below), spawning ~1000 spurious sources per
+	# ocean chunk. Each spurious source then issues 4 slow per-voxel
+	# cross-chunk tool.get_voxel calls in _simulate_chunk_gravity's
+	# spread loop — the dominant cost in the WaterFlowManager runaway
+	# observed 2026-05-13 (peak ~1000 µs/frame after mining at the coast).
+	#
+	# Cross-chunk spread isn't lost because the *boundary* chunks that
+	# mix water and dry (coastline, mined cavities) still go through the
+	# Pass 1 + Pass 2 path below and find their own sources. Uniform-water
+	# chunks have nothing useful to contribute to that anyway.
+	if data_buf.has_method("is_uniform") and data_buf.call("is_uniform", VoxelBuffer.CHANNEL_DATA5):
+		# Pass 2 still runs for transient _cells inside this chunk.
+		return _gather_lateral_sources_buffered_cells_only(voxel_min, voxel_max, data_buf)
+
 	# Pass 1: water voxels in the chunk's data buffer.
 	for lx in range(CHUNK_SIZE_VOXELS):
 		for ly in range(CHUNK_SIZE_VOXELS):
@@ -889,6 +915,25 @@ func _gather_lateral_sources_buffered(
 	# Pass 2: _cells flow entries inside the chunk that aren't already
 	# covered by the buffer scan above (some flow cells may not have
 	# been written back to CHANNEL_DATA5 yet on the current tick).
+	_append_transient_cells_in_chunk(sources, voxel_min, voxel_max, data_buf)
+	return sources
+
+
+func _gather_lateral_sources_buffered_cells_only(
+	voxel_min: Vector3i, voxel_max: Vector3i, data_buf: VoxelBuffer,
+) -> Array:
+	# Fast-path variant used when the chunk's CHANNEL_DATA5 is uniform
+	# (see the short-circuit at the top of _gather_lateral_sources_buffered).
+	# Skips the 4096-voxel buffer walk entirely; only collects transient
+	# in-memory _cells entries that fall inside the chunk's bounds.
+	var sources: Array = []
+	_append_transient_cells_in_chunk(sources, voxel_min, voxel_max, data_buf)
+	return sources
+
+
+func _append_transient_cells_in_chunk(
+	sources: Array, voxel_min: Vector3i, voxel_max: Vector3i, data_buf: VoxelBuffer,
+) -> void:
 	for cell_pos in _cells.keys():
 		if cell_pos.x < voxel_min.x or cell_pos.x >= voxel_max.x:
 			continue
@@ -900,16 +945,14 @@ func _gather_lateral_sources_buffered(
 		var lvl_cell: int = _level_of(packed)
 		if lvl_cell <= MIN_LEVEL:
 			continue
-		# Already in sources from Pass 1? Skip dedupe by checking the
-		# buffer byte — if the buffer already has this cell as water,
-		# Pass 1 covered it.
+		# Already covered by the buffer scan? If the buffer says this cell
+		# is water, Pass 1 above (in the full path) already added it.
 		var lx: int = cell_pos.x - voxel_min.x
 		var ly: int = cell_pos.y - voxel_min.y
 		var lz: int = cell_pos.z - voxel_min.z
 		if WaterByteCodec.is_water(data_buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_DATA5)):
 			continue
 		sources.append({"pos": cell_pos, "level": lvl_cell})
-	return sources
 
 
 # ---- Helpers used by the simulation pass ----
