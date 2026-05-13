@@ -90,7 +90,7 @@ downscale enforces the grid.
 clean pixel input:
 
 1. **Gemini Nano Banana 2** with the SYSTEM PROMPT below — works
-   well enough for our 14 source images and is already wired into
+   well enough for our 15 source images and is already wired into
    the rest of the asset pipeline (`design/ASSET_PIPELINE_AI.md`).
    Expect 1-3 regenerations per material to get a usable result.
 2. **DALL-E 3 / Midjourney v6** — similar quality, sometimes
@@ -434,7 +434,7 @@ underground.)*
 - [ ] **Filename matches exactly?** `gravel_all.png`, not
   `Gravel.png` or `gravel.PNG` — the builder is case-sensitive.
 
-When all 14 source PNGs are in place (15 minus the auto-built
-`grass_side`), run the builder, then reload Godot and re-run
-`tools/build_blocky_library.gd` to bake the library against the
-new atlas.
+When all 15 source PNGs are in place (16 atlas slots minus the
+auto-built `grass_side`), run the builder, then reload Godot and
+re-run `tools/build_blocky_library.gd` to bake the library against
+the new atlas.
