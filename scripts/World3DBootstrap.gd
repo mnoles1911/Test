@@ -113,13 +113,14 @@ func _ready() -> void:
 	if "streaming_system" in terrain:
 		terrain.set("streaming_system", 1)
 		print("[World3D] terrain.streaming_system set to 1 CLIPBOX (actual=%s)" % terrain.get("streaming_system"))
-	# LOD fade duration: extends the cross-fade between LOD levels from
-	# 1s to 2s. Smoother visual transitions + spreads the mesh upload
-	# cost over twice as many frames, mitigating the chunk-stream-in
-	# spike phenomenon.
+	# LOD fade duration: tried 2.0 to smooth cross-fade + spread mesh
+	# upload, but this Zylann build silently rejects values > 1.0 (the
+	# `actual=` readback returned 1.0). Reverted to 1.0 to match what
+	# Zylann actually applies — keeps the .tscn / bootstrap state and
+	# the engine state in sync so the property dump isn't misleading.
 	if "lod_fade_duration" in terrain:
-		terrain.set("lod_fade_duration", 2.0)
-		print("[World3D] terrain.lod_fade_duration set to 2.0 (actual=%s)" % terrain.get("lod_fade_duration"))
+		terrain.set("lod_fade_duration", 1.0)
+		print("[World3D] terrain.lod_fade_duration set to 1.0 (actual=%s)" % terrain.get("lod_fade_duration"))
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
@@ -706,7 +707,13 @@ var _spawn_wiggle_active: bool = false
 var _spawn_wiggle_start_msec: int = 0
 var _spawn_wiggle_frame: int = 0
 const SPAWN_WIGGLE_MAX_S: float = 12.0
-const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.001   # 1 mm per-frame nudge
+# Wiggle amplitude — bumped 0.001 → 0.010 (1mm → 10mm) on 2026-05-12
+# after first test showed 9.5s spawn time. 10mm is still invisible
+# to the eye but should exceed any internal change-detection threshold
+# Zylann uses, prodding chunk re-evaluation more aggressively.
+# If even 10mm proves slow, escalate to 50-100mm before considering
+# alternative strategies (fixed-duration freeze, terrain.notify_*).
+const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.010   # 10 mm per-frame nudge
 
 
 func _snap_spawn_to_ground(_retries_remaining: int = 0) -> void:
@@ -754,16 +761,23 @@ func _physics_process(_delta: float) -> void:
 	if player == null:
 		return
 
-	# Step 1: nudge X by ±1 mm each frame. This is the critical
-	# behaviour change: Zylann's CLIPBOX only re-evaluates chunks
-	# when the viewer's transform changes. With the freeze gating
-	# the player's _physics_process_inner, the viewer would otherwise
-	# be perfectly stationary. mm-scale wiggle is below visual
-	# threshold but enough to keep Zylann's per-frame detect loop
-	# producing new chunk requests.
+	# Step 1: nudge X AND Z by ±SPAWN_WIGGLE_AMPLITUDE_M each frame.
+	# The critical behaviour: Zylann's CLIPBOX only re-evaluates chunks
+	# when the viewer's transform changes. With the freeze gating the
+	# player's _physics_process_inner, the viewer is otherwise
+	# perfectly stationary. cm-scale wiggle is below visual threshold
+	# but enough to keep Zylann's per-frame detect loop producing
+	# new chunk requests.
+	#
+	# Multi-axis: nudging X+Z (not just X) doubles the chance of
+	# crossing whatever chunk-box boundary Zylann uses internally to
+	# decide "viewer moved enough, re-scan chunks." On 2026-05-12
+	# single-axis 1mm wiggle took 9.5s to find ground; bigger
+	# multi-axis should land much faster.
 	_spawn_wiggle_frame += 1
-	var sign_x: float = 1.0 if (_spawn_wiggle_frame % 2 == 0) else -1.0
-	player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_x
+	var sign_xz: float = 1.0 if (_spawn_wiggle_frame % 2 == 0) else -1.0
+	player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
+	player.global_position.z += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
 
 	# Step 2: raycast for collision. As soon as Zylann builds a
 	# collider below the player, this hits and we snap + unfreeze.

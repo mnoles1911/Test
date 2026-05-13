@@ -729,24 +729,46 @@ func _snap_player_above_terrain() -> void:
 
 
 # =============================================================
-# SPAWN-FREEZE + GROUND-WAIT (port of World3DBootstrap pattern)
+# SPAWN-FREEZE + PER-FRAME WIGGLE + RAYCAST (matches World3DBootstrap)
 # =============================================================
 #
-# Mirrors World3DBootstrap._wait_for_ground_under_player. Stops the
-# player from falling through unloaded chunks during the loading
-# window by gating gravity behind a downward raycast that confirms a
-# voxel collider exists below.
+# User observation 2026-05-12: Zylann's CLIPBOX (and likely legacy
+# octree) only re-evaluates the chunk set when the viewer's transform
+# CHANGES. A stationary frozen viewer never triggers new chunk
+# streaming, so collision never builds, the raycast always misses,
+# the freeze times out, and the player falls through.
 #
-# Retry budget: 25 × 0.2 s = 5 s. If still no ground after that, we
-# clear the freeze flag anyway so the player isn't permanently stuck
-# in place. Better to fall into the void with gravity than be locked.
+# Fix (ported from World3DBootstrap 3d47216): per-physics-frame
+# wiggle by SPAWN_WIGGLE_AMPLITUDE_M (10mm) on both X and Z, run
+# the raycast each frame, clear the freeze the moment a hit lands
+# (or after SPAWN_WIGGLE_MAX_S as failsafe).
 #
-# TODO: extract this into Player3D as a method
-# (player.freeze_until_grounded()) so both bootstraps share one
-# implementation. Low priority — the code is short enough that the
-# duplicate cost is small.
+# TODO: extract into a shared helper. Both bootstraps now run
+# nearly-identical wiggle loops; a Player3D.freeze_until_grounded()
+# helper would dedupe both. Low priority while the implementations
+# stay this small.
 
-func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
+const SPAWN_WIGGLE_MAX_S: float = 12.0
+const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.010   # 10 mm per-frame nudge
+
+var _spawn_wiggle_active: bool = false
+var _spawn_wiggle_start_msec: int = 0
+var _spawn_wiggle_frame: int = 0
+
+
+func _wait_for_ground_under_player(_retries_remaining: int = 0) -> void:
+	# Kicks off the wiggle loop (the actual work runs in
+	# _physics_process below). Parameter retained for call-site
+	# compatibility but unused — the loop self-times via
+	# SPAWN_WIGGLE_MAX_S.
+	_spawn_wiggle_active = true
+	_spawn_wiggle_frame = 0
+	_spawn_wiggle_start_msec = Time.get_ticks_msec()
+
+
+func _physics_process(_delta: float) -> void:
+	if not _spawn_wiggle_active:
+		return
 	var players: Array = get_tree().get_nodes_in_group("player")
 	if players.is_empty():
 		return
@@ -754,30 +776,50 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 	if player == null:
 		return
 
-	# Origin 1 m above player centre (clears the capsule's own
-	# collider); ray spans 100 m downward (covers tall caves +
-	# sea-floor depths).
-	var origin: Vector3 = player.global_position + Vector3(0, 1.0, 0)
-	var dest: Vector3 = player.global_position + Vector3(0, -100.0, 0)
+	# Step 1: wiggle X+Z to keep Zylann's CLIPBOX scanning chunks.
+	# See World3DBootstrap 3d47216 for the full rationale.
+	_spawn_wiggle_frame += 1
+	var sign_xz: float = 1.0 if (_spawn_wiggle_frame % 2 == 0) else -1.0
+	player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
+	player.global_position.z += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
+
+	# Step 2: raycast for collision below. Brackets the player's
+	# current Y because Copper Isles spawn altitude varies wildly
+	# depending on which island the player lands on.
+	var origin: Vector3 = Vector3(player.global_position.x, player.global_position.y + 100.0, player.global_position.z)
+	var dest: Vector3 = Vector3(player.global_position.x, player.global_position.y - 200.0, player.global_position.z)
 	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
 	var params := PhysicsRayQueryParameters3D.create(origin, dest)
 	params.exclude = [player.get_rid()]
 	var hit: Dictionary = space.intersect_ray(params)
 
-	if hit.is_empty():
-		if retries_remaining <= 0:
-			print("[CopperIslesTest] spawn-freeze ground check timed out; unfreezing player.")
-			if "_spawn_freeze" in player:
-				player.set("_spawn_freeze", false)
-			return
-		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
-		timer.timeout.connect(_wait_for_ground_under_player.bind(retries_remaining - 1))
+	if not hit.is_empty():
+		var ground_y: float = hit["position"].y
+		player.global_position = Vector3(
+			player.global_position.x,
+			ground_y + 1.0,
+			player.global_position.z,
+		)
+		if "velocity" in player:
+			player.velocity = Vector3.ZERO
+		if "_spawn_freeze" in player:
+			player.set("_spawn_freeze", false)
+		_spawn_wiggle_active = false
+		var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
+		print("[CopperIslesTest] spawn-freeze cleared, ground at Y=%.2f (%.1fs wiggle)" % [
+			ground_y, elapsed_s,
+		])
 		return
 
-	# Ground confirmed — let gravity take over from here.
-	if "_spawn_freeze" in player:
-		player.set("_spawn_freeze", false)
-	print("[CopperIslesTest] spawn-freeze cleared, ground at Y=%.2f" % hit["position"].y)
+	# Step 3: timeout failsafe.
+	var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
+	if elapsed_s > SPAWN_WIGGLE_MAX_S:
+		if "_spawn_freeze" in player:
+			player.set("_spawn_freeze", false)
+		_spawn_wiggle_active = false
+		print("[CopperIslesTest] spawn-freeze wiggle timed out at %.1fs; unfreezing at Y=%.2f." % [
+			elapsed_s, player.global_position.y,
+		])
 
 
 # =============================================================

@@ -44,7 +44,30 @@ const RING_FRAMES: int = 120        # 2 seconds @ 60fps — spike context window
 const SPIKE_MS_THRESHOLD: float = 33.0
 const WINDOW_MS: int = 1000         # 1-second rolling window for avg/max
 
-# --- State ---------------------------------------------------------------
+# --- Capture-on-startup (capture the spawn sequence) --------------------
+#
+# When true, capture_start() runs in _ready() so the JSON covers from
+# the moment the scene loads through whatever happens next. Useful for
+# profiling spawn-handoff spikes that occur BEFORE the user has a
+# chance to press F3 + C.
+#
+# Captures run until either:
+#   * STARTUP_CAPTURE_MAX_S elapses (auto-stops, JSON written to disk)
+#   * User presses C in the F3 overlay (manual stop, JSON written)
+#
+# Disabled by default — set this true in the editor before F6'ing a
+# scene whose loading sequence you want to profile. Auto-wipe still
+# clears any prior captures at capture_start time.
+@export var capture_on_startup: bool = false
+
+## How long the startup auto-capture runs before stopping itself.
+## 30 s comfortably covers spawn-freeze + post-spawn handoff window.
+@export_range(5.0, 120.0, 1.0) var startup_capture_seconds: float = 30.0
+
+# Set when the startup capture is running so frame_finalize knows to
+# auto-stop when the wall-clock budget elapses.
+var _startup_capture_stop_msec: int = 0
+
 
 var enabled: bool = true
 
@@ -87,6 +110,25 @@ func _ready() -> void:
 	for i in RING_FRAMES:
 		_frame_totals_us[i] = 0
 	_window_start_msec = Time.get_ticks_msec()
+
+	# Capture-on-startup. When the @export bool is true (set in the
+	# editor before F6), kick off a capture immediately so the JSON
+	# covers from scene-load through the spawn handoff window. Stops
+	# automatically after startup_capture_seconds OR when the user
+	# presses C manually in the F3 overlay.
+	#
+	# Deferred one frame so HUDOverlay's frame_finalize call gets
+	# wired in before we start recording (and so the autoload load
+	# order doesn't matter — by the time the deferred fires, all
+	# autoloads are ready).
+	if capture_on_startup:
+		call_deferred("_start_startup_capture")
+
+
+func _start_startup_capture() -> void:
+	capture_start()
+	_startup_capture_stop_msec = Time.get_ticks_msec() + int(startup_capture_seconds * 1000.0)
+	print("[Profiler] startup auto-capture armed; will stop in %.0f s" % startup_capture_seconds)
 
 
 # --- Public recording API ------------------------------------------------
@@ -222,6 +264,15 @@ func frame_finalize() -> void:
 	if now_msec - _window_start_msec >= WINDOW_MS:
 		_snapshot_window()
 		_window_start_msec = now_msec
+
+	# Startup-capture auto-stop. Set by _start_startup_capture when
+	# capture_on_startup is true; non-zero means an auto-stop is
+	# armed. Once the deadline passes, write the JSON and clear the
+	# deadline so the check costs nothing in subsequent frames.
+	if _startup_capture_stop_msec > 0 and now_msec >= _startup_capture_stop_msec:
+		_startup_capture_stop_msec = 0
+		var out: String = capture_stop()
+		print("[Profiler] startup auto-capture stopped → %s" % out)
 
 	# Clear current-frame samples for the next frame.
 	_frame_samples.clear()
