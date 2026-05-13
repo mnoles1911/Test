@@ -706,14 +706,20 @@ func _pre_snap_player_to_generator_ground() -> void:
 var _spawn_wiggle_active: bool = false
 var _spawn_wiggle_start_msec: int = 0
 var _spawn_wiggle_frame: int = 0
-const SPAWN_WIGGLE_MAX_S: float = 12.0
-# Wiggle amplitude — bumped 0.001 → 0.010 (1mm → 10mm) on 2026-05-12
-# after first test showed 9.5s spawn time. 10mm is still invisible
-# to the eye but should exceed any internal change-detection threshold
-# Zylann uses, prodding chunk re-evaluation more aggressively.
-# If even 10mm proves slow, escalate to 50-100mm before considering
-# alternative strategies (fixed-duration freeze, terrain.notify_*).
-const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.010   # 10 mm per-frame nudge
+const SPAWN_WIGGLE_MAX_S: float = 15.0
+# Wiggle amplitude — REVERTED to 0.001 (1 mm) on 2026-05-12 after a
+# 10mm × dual-axis tune blew up. Zylann started doing 200ms/frame of
+# detect work and dropped 16k chunk loads per second — the wiggle
+# was invalidating the chunk box faster than Zylann could process
+# each batch, causing churn. 1mm × single-axis is the proven config.
+const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.001   # 1 mm per-frame nudge
+
+# Wiggle cadence — only fire the nudge every N physics frames. At
+# 60Hz physics this means N=6 → 10 nudges/sec, giving Zylann ~6
+# frames to process each chunk batch before the next nudge
+# invalidates again. Eliminates the saturate-and-drop thrash that
+# 60Hz nudging caused. Raycast still runs every frame regardless.
+const SPAWN_WIGGLE_FRAME_INTERVAL: int = 6
 
 
 func _snap_spawn_to_ground(_retries_remaining: int = 0) -> void:
@@ -761,23 +767,21 @@ func _physics_process(_delta: float) -> void:
 	if player == null:
 		return
 
-	# Step 1: nudge X AND Z by ±SPAWN_WIGGLE_AMPLITUDE_M each frame.
-	# The critical behaviour: Zylann's CLIPBOX only re-evaluates chunks
-	# when the viewer's transform changes. With the freeze gating the
-	# player's _physics_process_inner, the viewer is otherwise
-	# perfectly stationary. cm-scale wiggle is below visual threshold
-	# but enough to keep Zylann's per-frame detect loop producing
-	# new chunk requests.
+	# Step 1: nudge X by ±SPAWN_WIGGLE_AMPLITUDE_M every Nth frame.
+	# Zylann's CLIPBOX only re-evaluates chunks when the viewer's
+	# transform changes — but if it changes EVERY frame, Zylann
+	# saturates: it queues a chunk batch, the next frame's nudge
+	# invalidates the box, the batch is canceled before any load
+	# completes, and dropped_block_loads explodes (16k+ observed
+	# 2026-05-12 with 60Hz nudging). Per-N-frame gating gives Zylann
+	# breathing room to actually finish each batch.
 	#
-	# Multi-axis: nudging X+Z (not just X) doubles the chance of
-	# crossing whatever chunk-box boundary Zylann uses internally to
-	# decide "viewer moved enough, re-scan chunks." On 2026-05-12
-	# single-axis 1mm wiggle took 9.5s to find ground; bigger
-	# multi-axis should land much faster.
+	# Single-axis (just X) is the proven config from the first
+	# successful test. Dual-axis (X+Z) made the thrash worse.
 	_spawn_wiggle_frame += 1
-	var sign_xz: float = 1.0 if (_spawn_wiggle_frame % 2 == 0) else -1.0
-	player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
-	player.global_position.z += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
+	if _spawn_wiggle_frame % SPAWN_WIGGLE_FRAME_INTERVAL == 0:
+		var sign_x: float = 1.0 if ((_spawn_wiggle_frame / SPAWN_WIGGLE_FRAME_INTERVAL) % 2 == 0) else -1.0
+		player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_x
 
 	# Step 2: raycast for collision. As soon as Zylann builds a
 	# collider below the player, this hits and we snap + unfreeze.

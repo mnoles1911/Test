@@ -748,8 +748,12 @@ func _snap_player_above_terrain() -> void:
 # helper would dedupe both. Low priority while the implementations
 # stay this small.
 
-const SPAWN_WIGGLE_MAX_S: float = 12.0
-const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.010   # 10 mm per-frame nudge
+const SPAWN_WIGGLE_MAX_S: float = 15.0
+# Aligned with World3DBootstrap 2026-05-12 revert: 10mm × dual-axis
+# at 60Hz overwhelmed Zylann (200ms/frame detect, 16k dropped loads).
+# 1mm × single-axis × every 6 frames is the stable config.
+const SPAWN_WIGGLE_AMPLITUDE_M: float = 0.001
+const SPAWN_WIGGLE_FRAME_INTERVAL: int = 6
 
 var _spawn_wiggle_active: bool = false
 var _spawn_wiggle_start_msec: int = 0
@@ -776,12 +780,13 @@ func _physics_process(_delta: float) -> void:
 	if player == null:
 		return
 
-	# Step 1: wiggle X+Z to keep Zylann's CLIPBOX scanning chunks.
-	# See World3DBootstrap 3d47216 for the full rationale.
+	# Step 1: wiggle X every Nth frame to keep Zylann's CLIPBOX
+	# scanning chunks WITHOUT saturating it. See World3DBootstrap
+	# for the full rationale on amplitude + cadence.
 	_spawn_wiggle_frame += 1
-	var sign_xz: float = 1.0 if (_spawn_wiggle_frame % 2 == 0) else -1.0
-	player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
-	player.global_position.z += SPAWN_WIGGLE_AMPLITUDE_M * sign_xz
+	if _spawn_wiggle_frame % SPAWN_WIGGLE_FRAME_INTERVAL == 0:
+		var sign_x: float = 1.0 if ((_spawn_wiggle_frame / SPAWN_WIGGLE_FRAME_INTERVAL) % 2 == 0) else -1.0
+		player.global_position.x += SPAWN_WIGGLE_AMPLITUDE_M * sign_x
 
 	# Step 2: raycast for collision below. Brackets the player's
 	# current Y because Copper Isles spawn altitude varies wildly
