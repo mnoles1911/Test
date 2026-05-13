@@ -623,7 +623,100 @@ func _configure_voxel_format(terrain: Object) -> void:
 	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
 
 
+func _pre_snap_player_to_generator_ground() -> void:
+	# Analytical ground lookup so the player doesn't spawn 100m above
+	# terrain and fall through the LOD0 collision gap.
+	#
+	# Sequence:
+	#   1. Find player + terrain in tree
+	#   2. Read terrain transform scale (1/6 → 6 vox/m)
+	#   3. Convert player world X,Z to voxel coords
+	#   4. Call generator.get_ground_voxel_y_at(vx, vz) — for the
+	#      adapter pattern, drill through to cpp_impl if needed
+	#   5. Convert voxel-Y back to world-Y, add a small margin
+	#   6. Teleport the player; zero velocity so accumulated gravity
+	#      doesn't punch through after unfreeze
+	#
+	# Caller is responsible for spawn-freeze + the raycast retry that
+	# confirms collision has streamed. This function only handles the
+	# "put the player in the right neighbourhood" part.
+
+	var players: Array = get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return
+	var player: Node3D = players[0] as Node3D
+	if player == null:
+		return
+
+	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
+	if terrain == null:
+		return
+
+	var terrain_scale: float = terrain.transform.basis.get_scale().y
+	if absf(terrain_scale) < 0.00001:
+		terrain_scale = 0.166667  # fall-through safety: assume 6 vox/m
+	var voxels_per_m: float = 1.0 / terrain_scale
+
+	var generator = terrain.get("generator") if "generator" in terrain else null
+	if generator == null:
+		return
+
+	var vx: int = int(roundf(player.global_position.x * voxels_per_m))
+	var vz: int = int(roundf(player.global_position.z * voxels_per_m))
+
+	# Drill through adapter → cpp_impl if the method isn't on the
+	# generator directly (same pattern as WorldBakeController).
+	var ground_voxel_y: int = 0
+	var found: bool = false
+	if generator.has_method("get_ground_voxel_y_at"):
+		ground_voxel_y = int(generator.call("get_ground_voxel_y_at", vx, vz))
+		found = true
+	elif "cpp_impl" in generator:
+		var cpp = generator.get("cpp_impl")
+		if cpp != null and cpp.has_method("get_ground_voxel_y_at"):
+			ground_voxel_y = int(cpp.call("get_ground_voxel_y_at", vx, vz))
+			found = true
+	if not found:
+		print("[World3D] pre-snap: generator has no get_ground_voxel_y_at; skipping analytical ground lookup.")
+		return
+
+	# Margin above ground: 3m world. Gives capsule clearance + a
+	# little air-time so any leftover gravity from the freeze frame
+	# settles cleanly when the freeze clears.
+	const GROUND_MARGIN_M: float = 3.0
+	var new_y: float = float(ground_voxel_y) * terrain_scale + GROUND_MARGIN_M
+
+	var old_y: float = player.global_position.y
+	player.global_position = Vector3(
+		player.global_position.x,
+		new_y,
+		player.global_position.z,
+	)
+	if "velocity" in player:
+		player.velocity = Vector3.ZERO
+	print("[World3D] pre-snap: Y %.1f → %.1f (ground vox=%d, scale=%.4f)" % [
+		old_y, new_y, ground_voxel_y, terrain_scale,
+	])
+
+
 func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
+	# On first call: ask the generator analytically where the ground
+	# is and teleport the player close to it. The scene's default
+	# Player3D Y is 120; ground on cubic-noise terrain is ~10-30m
+	# world. At collision_lod_count=0 + view_distance=85m, no LOD0
+	# collision ever streams from a 100m-elevated spawn — raycast
+	# always misses, retries time out, player falls forever
+	# (regression seen 2026-05-12).
+	#
+	# Analytical lookup goes through terrain.generator (the C++
+	# adapter), which exposes get_ground_voxel_y_at(world_x, world_z).
+	# Returns voxel-Y; multiply by terrain transform scale (1/6) to
+	# get world-Y. After teleport, the existing raycast retry still
+	# runs to confirm collision has streamed before clearing the
+	# spawn-freeze — but now the LOD0 sphere covers the ground, so
+	# the raycast succeeds in 1-3 retries instead of timing out.
+	if retries_remaining == 25:  # first call
+		_pre_snap_player_to_generator_ground()
 	# Raycast straight down from a high point above the player and
 	# place the player on whatever solid surface we hit. If the
 	# raycast misses (terrain chunks not yet loaded), retry after
