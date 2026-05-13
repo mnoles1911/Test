@@ -80,6 +80,7 @@ amount = 80
 lifetime = 1.5
 one_shot = true
 explosiveness = 1.0
+visibility_range_end = 50.0
 process_material = SubResource("ParticleProcessMaterial_burst")
 draw_pass_1 = SubResource("BoxMesh_blood_cube")
 metadata/base_amount = 80

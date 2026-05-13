@@ -48,6 +48,7 @@ script = ExtResource("1_goblin")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 ; Box origin sits at its center; raise by half-height (0.9) so the
 ; bottom touches Y=0, matching the capsule footprint.
+visibility_range_end = 80.0
 mesh = SubResource("BoxMesh_body")
 material_override = SubResource("StandardMaterial3D_body")
 
@@ -69,5 +70,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, -0.2)
 ; the eyes on the goblin's actual face. (Was at +Z 0.2 prior, which
 ; placed eyes on the BACK of the goblin — visible only when the
 ; player walked away.)
+visibility_range_end = 50.0
 mesh = SubResource("BoxMesh_eyes")
 material_override = SubResource("StandardMaterial3D_eyes")

@@ -16,6 +16,7 @@ contact_monitor = true
 max_contacts_reported = 8
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
+visibility_range_end = 80.0
 
 [node name="Collision" type="CollisionShape3D" parent="."]
 shape = SubResource("PlaceholderBox")
