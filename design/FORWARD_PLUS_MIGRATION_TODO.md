@@ -10,6 +10,21 @@ gives the cleanest follow-up. Each entry includes the files involved, the
 goal, the risk, and the acceptance check so a future session can land it
 without re-discovery.
 
+**Status post-investigation (2026-05-13):** items 1 and 2 below are
+MOOT — the apparent proc_us regression they were chasing turned out
+to be a `Performance.TIME_PROCESS` plateau artifact, fixed by the
+`engine.real_us` measurement added in the migration PR. The actual
+Forward+ frame time is healthy (1.88 ms median / 10.88 ms p99). Keep
+items 3–9 as real follow-up work; items 1–2 can be deleted.
+
+**Forward+ feature payoff (items 7–9 below) is the highest-value
+remaining work.** With `engine.real_us` now telling the truth, you
+can A/B SSIL / SSR / SDFGI / volumetric_fog one at a time and ship
+whichever passes the visual-vs-cost bar. SDFGI is the most likely
+visual win for a voxel world (bounced light into caves + onto
+building undersides). BPTC textures (item 8) reclaim the +42 % VRAM
+the migration costs.
+
 ---
 
 ## Tonight's investigation (2026-05-12 / 13) — TL;DR

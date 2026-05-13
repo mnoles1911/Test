@@ -290,6 +290,11 @@ subclassed directly, so the port pattern is **C++ extends `godot::Resource` +
 thin GDScript adapter extends `VoxelGeneratorScript`** and forwards by Variant
 call. Mirror this for any future port.
 
+**Profiler measurement now reliable (2026-05-13).** `engine.real_us` from
+the PR #207 Profiler fix is the true per-frame wall-clock time; the old
+`engine.proc_us` (Performance.TIME_PROCESS) plateaus across many frames
+and is unreliable for p99 work. Use `real_us` when A/B-testing any port.
+
 **Done:**
 - `CubicHeightmapGeneratorCpp` — all 6 tier rules + bedrock + water byte +
   ore/disk POD snapshots. Was parity-verified by a cubic-era harness that
@@ -297,38 +302,34 @@ call. Mirror this for any future port.
 - `CopperIslesHeightmapGeneratorCpp` — same tier set on top of an EXR
   heightmap (`Image::get_pixel` bilinear/nearest) instead of FastNoiseLite.
   Parity-verified before retiring `CopperIslesHeightmapGenerator.gd`.
-  **Cleanup debt:** ~500 lines of inner loop duplicated with the cubic
-  class — extract `HeightmapGeneratorBase` as a follow-up PR.
+- `HeightmapGeneratorBase` (PR #203, commit 32b9573) — extracted the ~500
+  shared inner-loop lines from cubic + copper-isles generators. Base is
+  `src/heightmap_generator_base.{h,cpp}` (233 + 699 lines); subclasses are
+  166 (cubic) + 201 (copper-isles) lines of generator-specific code each.
+  Verified visually in World3D + CopperIslesTest after the refactor.
 
 **Likely-worthwhile next targets**, in rough order of payoff vs. effort:
 
-1. **Extract `HeightmapGeneratorBase`** (S-M, debt cleanup). `cubic_heightmap_generator.cpp`
-   and `copper_isles_heightmap_generator.cpp` duplicate ~500 lines of inner-loop
-   code; the only true differences are `compute_ground_y` and a handful of
-   generator-specific properties. Pull the shared parts into a base class +
-   virtual `compute_ground_y`. Verify each generator visually post-refactor
-   (run World3D + CopperIslesTest).
-
-2. **`WaterChunkMesher.gd`** (M). Greedy 2D run-merge across `CHANNEL_DATA5`
+1. **`WaterChunkMesher.gd`** (M). Greedy 2D run-merge across `CHANNEL_DATA5`
    columns per chunk, ArrayMesh build. Currently runs in GDScript on the main
    thread with an adaptive frame budget that throttles to 1 chunk/frame under
    load — visible as water mesh pop when terrain is streaming. Porting moves
    the per-chunk scan + ArrayMesh construction off the main thread (or at
    least into native code) and removes the throttle pressure.
 
-3. **`WaterFlowManager.gd`** flow tick (M). 4 Hz scan over chunks within 20 m
+2. **`WaterFlowManager.gd`** flow tick (M). 4 Hz scan over chunks within 20 m
    of the player, per-voxel level/source/tick byte reads and writes. Currently
    sits in the per-second `[PERF]` top-3 contributors. The `WaterByteCodec`
    layout is already a pure POD (`level | source_bit | tick`) so the port is
    mostly buffer iteration. Pushing this to C++ would let the tick rate climb
    without main-thread cost.
 
-4. **`VoxelGravityManager.gd`** flood-fill (S-M). Subscribes to `edit_applied`,
+3. **`VoxelGravityManager.gd`** flood-fill (S-M). Subscribes to `edit_applied`,
    does a 16 m local BFS for unsupported voxels, spawns `FallingVoxelCluster`.
    The BFS itself is pure neighbour walking; a clean port. Worth doing only if
    gravity scans start showing up in PERF — currently not load-bearing.
 
-5. **Generic chunk-bytes scratch buffers** (S). Several GD systems
+4. **Generic chunk-bytes scratch buffers** (S). Several GD systems
    (`WaterFlowManager`, `WaterChunkMesher`, `VoxelGravityManager`) each do their
    own per-chunk `VoxelBuffer.get_voxel` × N copy into a `PackedByteArray`
    before scanning. A shared C++ "snapshot a chunk's CHANNEL_TYPE + DATA5 into
