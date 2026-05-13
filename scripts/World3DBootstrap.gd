@@ -311,6 +311,22 @@ func _ready() -> void:
 			# Falling 100+ m through unloaded chunks looks bad and
 			# wastes the first few seconds of play. Retry every
 			# 0.2 s for up to 5 s while terrain streams in.
+			#
+			# CRITICAL: set _spawn_freeze BEFORE deferring the snap.
+			# Without this, the player's _physics_process runs gravity
+			# while _snap_spawn_to_ground is still searching, so the
+			# player falls past the raycast dest (Y=-200) before a hit
+			# can register and ends up falling forever. The freeze is
+			# cleared by _snap_spawn_to_ground on both success and
+			# retry-exhausted paths so the player is never permanently
+			# locked. Set synchronously here (not deferred) because
+			# player._ready already ran (children _ready before parent
+			# _ready in Godot's tree traversal) so the player exists.
+			var players: Array = get_tree().get_nodes_in_group("player")
+			if not players.is_empty():
+				var player: Node = players[0]
+				if "_spawn_freeze" in player:
+					player.set("_spawn_freeze", true)
 			call_deferred("_snap_spawn_to_ground")
 
 
@@ -638,10 +654,17 @@ func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
 	if hit.is_empty():
 		# No terrain under spawn yet. Voxel chunks still streaming.
 		if retries_remaining <= 0:
-			print("[World3D] Spawn-snap gave up after retries; falling from default Y.")
+			# Out of retries — clear _spawn_freeze so the player isn't
+			# permanently locked in place. Falling from default Y is
+			# uglier than infinite hover but recoverable.
+			if "_spawn_freeze" in player:
+				player.set("_spawn_freeze", false)
+			print("[World3D] Spawn-snap gave up after retries; unfreezing player (will fall from default Y).")
 			return
 		# Retry after a short delay using a SceneTreeTimer (no scene
-		# changes / signals needed).
+		# changes / signals needed). _spawn_freeze stays true during
+		# the retry window — _physics_process is gated so the player
+		# hovers at the default Y while we keep looking for ground.
 		var timer: SceneTreeTimer = get_tree().create_timer(0.2)
 		timer.timeout.connect(_snap_spawn_to_ground.bind(retries_remaining - 1))
 		return
@@ -659,7 +682,10 @@ func _snap_spawn_to_ground(retries_remaining: int = 25) -> void:
 	# previous-frame fall doesn't punch them back through the surface.
 	if "velocity" in player:
 		player.velocity = Vector3.ZERO
-	print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f)." % [
+	# Ground found — let gravity take over from here.
+	if "_spawn_freeze" in player:
+		player.set("_spawn_freeze", false)
+	print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f); spawn-freeze cleared." % [
 		player.global_position.y, ground_y,
 	])
 
