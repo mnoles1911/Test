@@ -310,18 +310,33 @@ const CAMERA_Y_SMOOTH_HALFLIFE_S: float = 0.08
 # 0.5 m ≈ 3 voxels — comfortably bounded.
 const CAMERA_Y_SMOOTH_MAX_OFFSET: float = 0.5
 
-# |velocity.y| above this disables smoothing — jumps and falls need
-# 1:1 camera response so the player feels the air-time clearly. The
-# is_on_floor() gate handles the obvious cases; this threshold catches
-# the frame the jump initiates (player still touches floor but vel.y
-# is already + JUMP_VELOCITY).
-const CAMERA_Y_JUMP_GATE_VEL: float = 1.0
-
 # Smoothing state — _camera_smoothed_y is the camera's "memory" of
 # where the body was, lerped toward the body's actual Y. Difference
 # between the two is applied as a CameraTarget.position.y offset.
 var _camera_smoothed_y: float = 0.0
 var _camera_smoothed_initialized: bool = false
+
+# Jump-cooldown gate. Set to JUMP_DISABLE_SMOOTHING_S when the player
+# presses jump (dodge action) so the camera tracks the jump arc 1:1.
+# Decays in _smooth_camera_y each frame. Crucially this is ONLY set by
+# the explicit jump button — auto-step's velocity kick (~3.46 m/s up)
+# does NOT trigger it, so walking up a 1-voxel slope keeps smoothing
+# active and the camera glides over the small auto-step arc.
+var _camera_jump_cooldown_s: float = 0.0
+
+# Camera Y smoothing tunables (continued from CAMERA_* block above).
+#
+# Free-fall snap threshold. Camera tracks 1:1 during a real fall so the
+# player feels air-time, but a brief off-floor frame during a downward
+# step (gravity only pulls ~0.7 m/s in that single frame) should NOT
+# snap. -5.0 m/s is "definitely falling, not a 1-voxel step transition".
+const CAMERA_Y_FREEFALL_VEL: float = -5.0
+
+# Jump cooldown duration. JUMP_VELOCITY=7 with GRAVITY=20 → arc time
+# ≈ 0.7 s up + 0.7 s down ≈ 1.4 s in the air at worst case. Use 1.0 s
+# as the smoothing-disabled window — covers a normal jump comfortably,
+# is_on_floor() takes over after the cooldown decays.
+const JUMP_DISABLE_SMOOTHING_S: float = 1.0
 
 
 const FLY_SPEED_MULT: float = 10.0
@@ -580,19 +595,30 @@ func _smooth_camera_y(delta: float) -> void:
 	# smoothed + BASE. In other words the camera renders at chest
 	# height above the SMOOTHED body Y, not the raw one.
 	#
-	# Gates:
-	#   * not on floor: snap, no smoothing (player is falling/jumping
-	#     and needs 1:1 camera feedback for air time)
-	#   * |velocity.y| > CAMERA_Y_JUMP_GATE_VEL: same — catches the
-	#     frame the jump initiates where is_on_floor() may still be
-	#     true but vel.y is already up
-	#   * fly mode (handled implicitly: _physics_process_flying does
-	#     its own move_and_slide; is_on_floor() returns false because
-	#     CharacterBody3D's floor detection runs in move_and_slide)
+	# Gates (snap to body, no smoothing) — REVISED 2026-05-12 because
+	# the original |velocity.y| gate disabled smoothing during auto-step
+	# (which uses a 3.46 m/s velocity kick to arc over 1-voxel ledges).
+	# That made walking up slopes feel bumpy when the goal was to
+	# smooth them. New gate:
+	#   * _camera_jump_cooldown_s > 0 — player pressed jump. Set
+	#     ONLY in the dodge-action handler (line ~745); auto-step
+	#     does not touch it. So walking up a 1-voxel ledge keeps
+	#     smoothing active even though vel.y briefly spikes.
+	#   * velocity.y < CAMERA_Y_FREEFALL_VEL — clear free-fall.
+	#     -5 m/s is well past the brief downward-step transition
+	#     where gravity pulls only ~0.7 m/s in a single frame.
+	#
+	# is_on_floor() is NOT used as a gate anymore — it returns false
+	# during the 1-2 frames a 1-voxel downward step takes, which used
+	# to disable smoothing exactly when we wanted it most.
 	#
 	# Cheap (~1 µs/frame). No allocations.
 	if _camera_target == null:
 		return
+
+	# Always decay the jump cooldown so it doesn't pin the gate open.
+	_camera_jump_cooldown_s = maxf(0.0, _camera_jump_cooldown_s - delta)
+
 	var raw_y: float = global_position.y
 	if not _camera_smoothed_initialized:
 		_camera_smoothed_y = raw_y
@@ -600,10 +626,13 @@ func _smooth_camera_y(delta: float) -> void:
 		_camera_target.position.y = CAMERA_TARGET_BASE_Y
 		return
 
-	var smoothing_active: bool = is_on_floor() and absf(velocity.y) < CAMERA_Y_JUMP_GATE_VEL
-	if not smoothing_active:
-		# Jumping / falling / launched — snap to body so the camera
-		# response is fully responsive.
+	var is_player_jumping: bool = _camera_jump_cooldown_s > 0.0
+	var is_clear_freefall: bool = (not is_on_floor()) and velocity.y < CAMERA_Y_FREEFALL_VEL
+	var is_flying_now: bool = is_flying
+	if is_player_jumping or is_clear_freefall or is_flying_now:
+		# Player-initiated jump / real fall / fly mode — snap so the
+		# camera response is fully 1:1 (player needs to feel the
+		# air-time, the fall, or the fly-mode movement).
 		_camera_smoothed_y = raw_y
 		_camera_target.position.y = CAMERA_TARGET_BASE_Y
 		return
@@ -741,8 +770,15 @@ func _physics_process_inner(delta: float) -> void:
 		# jump or air-hop. Reuses the dodge action because there's no
 		# combat dodge yet; when combat lands and dodge becomes a roll,
 		# this can split into a dedicated `jump` Input Map action.
+		#
+		# Set the camera-smoothing jump cooldown HERE (not in the
+		# smoother). This is the only path that should disable Y
+		# smoothing — auto-step's velocity kick goes through
+		# _try_step_up and does NOT touch this cooldown, so walking up
+		# 1-voxel slopes keeps smoothing active.
 		elif _can_take_input() and Input.is_action_just_pressed("dodge"):
 			velocity.y = JUMP_VELOCITY
+			_camera_jump_cooldown_s = JUMP_DISABLE_SMOOTHING_S
 
 	# --- Breath / drowning ---
 	if _is_submerged:
