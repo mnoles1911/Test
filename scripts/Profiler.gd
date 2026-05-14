@@ -58,7 +58,7 @@ const WINDOW_MS: int = 1000         # 1-second rolling window for avg/max
 # Disabled by default — set this true in the editor before F6'ing a
 # scene whose loading sequence you want to profile. Auto-wipe still
 # clears any prior captures at capture_start time.
-@export var capture_on_startup: bool = true
+@export var capture_on_startup: bool = false
 
 ## How long the startup auto-capture runs before stopping itself.
 ## 30 s comfortably covers spawn-freeze + post-spawn handoff window.
