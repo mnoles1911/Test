@@ -792,6 +792,35 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 		var src_level: int = src["level"]
 		if src_level <= MIN_LEVEL:
 			continue
+		# Determine whether this source is a PERMANENT source byte (sea
+		# water or other generator/designer-placed source) at or below
+		# sea level. Such sources spread permanent source-bytes laterally
+		# instead of transient flow cells. Without this, mining into a
+		# beach (or any in-sea cavity) generated thousands of transient
+		# flow cells per tick because every coastline source had
+		# air-lateral-neighbour edge candidates that got Minecraft-style
+		# decaying spread (level 8 → 7 → 6 → ... refreshed every tick
+		# forever). With permanent lateral cascade, carved cavities fill
+		# with source bytes and the simulator quiesces.
+		#
+		# The sea_level gate prevents source-spread from climbing above
+		# the configured water surface — important for player-placed
+		# buckets above sea level, which should still produce Minecraft-
+		# style decaying puddles via the normal flow-cell path below.
+		var src_is_permanent_sea: bool = false
+		if src_pos.y <= _sea_level_voxel_y:
+			var src_lx: int = src_pos.x - voxel_min.x
+			var src_ly: int = src_pos.y - voxel_min.y
+			var src_lz: int = src_pos.z - voxel_min.z
+			if (
+				src_lx >= 0 and src_lx < CHUNK_SIZE_VOXELS
+				and src_ly >= 0 and src_ly < CHUNK_SIZE_VOXELS
+				and src_lz >= 0 and src_lz < CHUNK_SIZE_VOXELS
+			):
+				var src_byte: int = data_buf.get_voxel(
+					src_lx, src_ly, src_lz, VoxelBuffer.CHANNEL_DATA5
+				)
+				src_is_permanent_sea = WaterByteCodec.is_source(src_byte)
 		var target_level: int = src_level - 1
 		for dir in _LATERAL_DIRS:
 			if modified >= budget:
@@ -873,9 +902,21 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 					below_water = _is_water_at_voxel(below)
 			if not (below_solid or below_water):
 				continue
-			var spread_pack: int = _pack(target_level, false, _tick_count)
-			_cells[neighbor] = spread_pack
-			data5_writes.append({"pos": neighbor, "byte": spread_pack & 0xFF})
+			# Permanent sea source → permanent source-byte at neighbour.
+			# Keeps _cells empty for sea-cavity-fill scenarios (which is
+			# what dominated the 11k+ flow cell runaway). Transient
+			# Minecraft-style spread is preserved for non-source water
+			# and for sources above sea level.
+			if src_is_permanent_sea:
+				data5_writes.append({
+					"pos": neighbor, "byte": WaterByteCodec.SOURCE_BYTE
+				})
+			else:
+				var spread_pack: int = _pack(target_level, false, _tick_count)
+				_cells[neighbor] = spread_pack
+				data5_writes.append({
+					"pos": neighbor, "byte": spread_pack & 0xFF
+				})
 			modified += 1
 			dirty_neighbors[_voxel_to_chunk(neighbor)] = true
 
