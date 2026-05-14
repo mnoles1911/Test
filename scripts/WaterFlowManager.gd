@@ -737,31 +737,22 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				var pos: Vector3i = voxel_min + Vector3i(lx, ly, lz)
 				if _is_water_blocked_at_voxel(pos):
 					continue
-				# SOURCE CASCADE: if the voxel above is a permanent
-				# source (e.g. generator-emitted ocean water, or a
-				# player-placed source), the gravity-filled voxel here
-				# becomes permanent too. Write a SOURCE byte directly
-				# to CHANNEL_DATA5 — do NOT add to _cells. This is the
-				# correct semantic for carved cavities below sea level:
-				# the sea is permanent, so a carve into the seabed
-				# permanently fills with water. Crucially, source bytes
-				# don't enter _cells, so the per-chunk decay scan stays
-				# O(real flow cells) instead of O(cavity volume).
+				# SUB-SEA INVARIANT: any water at or below sea level is
+				# permanent. Write SOURCE byte, never a flow cell. This
+				# eliminates the Minecraft-style transient propagation
+				# that was generating thousands of cells along the
+				# coastline during mining (each cell would refresh-spread-
+				# decay in a treadmill, _cells grew to 11k+ in seconds).
+				# Sea = connected permanent volume, full stop.
 				#
-				# Without this rule, every gravity-filled voxel became a
-				# transient flow cell. After coastal mining _cells grew
-				# to 70k+ entries because the cavity fill expanded into
-				# every air voxel within active radius, and the per-chunk
-				# decay loop iterated all 70k cells per dirty chunk —
-				# quadratic blow-up dragging the game to 2-7 fps.
-				if WaterByteCodec.is_source(above_byte):
+				# Above sea level (player-placed buckets etc.), preserve
+				# the Minecraft-style decay path so finite sources still
+				# behave correctly.
+				if pos.y <= _sea_level_voxel_y or WaterByteCodec.is_source(above_byte):
 					data5_writes.append({
 						"pos": pos, "byte": WaterByteCodec.SOURCE_BYTE
 					})
 				else:
-					# Above is a flow cell (transient water). Write a
-					# transient flow cell here — it'll decay when the
-					# upstream source is removed.
 					var grav_pack: int = _pack(
 						MAX_LEVEL, false, _tick_count
 					)
@@ -902,12 +893,18 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 					below_water = _is_water_at_voxel(below)
 			if not (below_solid or below_water):
 				continue
-			# Permanent sea source → permanent source-byte at neighbour.
-			# Keeps _cells empty for sea-cavity-fill scenarios (which is
-			# what dominated the 11k+ flow cell runaway). Transient
-			# Minecraft-style spread is preserved for non-source water
-			# and for sources above sea level.
-			if src_is_permanent_sea:
+			# SUB-SEA INVARIANT (mirrors gravity drop above): any water
+			# at or below sea level is permanent — write SOURCE byte,
+			# never a flow cell. This catches the case where Pass 2
+			# in _gather_lateral_sources_buffered picks up a _cells
+			# flow entry (src_is_permanent_sea = false) but the
+			# neighbour we're about to write to is sub-sea — that write
+			# should still produce a SOURCE byte to keep the volume
+			# permanent and stop the spread-decay treadmill.
+			#
+			# Above sea level, transient flow cells preserved for
+			# Minecraft-style decay from finite sources.
+			if neighbor.y <= _sea_level_voxel_y or src_is_permanent_sea:
 				data5_writes.append({
 					"pos": neighbor, "byte": WaterByteCodec.SOURCE_BYTE
 				})
