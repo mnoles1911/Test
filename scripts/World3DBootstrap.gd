@@ -766,7 +766,12 @@ func _pre_snap_player_to_generator_ground() -> void:
 var _spawn_wiggle_active: bool = false
 var _spawn_wiggle_start_msec: int = 0
 var _spawn_wiggle_frame: int = 0
-const SPAWN_WIGGLE_MAX_S: float = 15.0
+const SPAWN_WIGGLE_MAX_S: float = 45.0
+# Bumped 15 → 45s on 2026-05-13 after user reported falling through the
+# world when voxel_deltas.sqlite was deleted. Cold-cache regen (no
+# pre-baked chunks) needs more time for Zylann to stream + generate
+# chunks around the player before terrain collision exists. 15s was
+# fine for warm-cache loads but timed out during cold regen.
 # Wiggle amplitude — REVERTED to 0.001 (1 mm) on 2026-05-12 after a
 # 10mm × dual-axis tune blew up. Zylann started doing 200ms/frame of
 # detect work and dropped 16k chunk loads per second — the wiggle
