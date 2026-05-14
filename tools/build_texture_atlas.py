@@ -50,6 +50,19 @@ PACKS_DIR = "assets/voxels/texture_packs"
 CHROMA_KEY_MATERIALS = {"leaves_all"}
 
 
+# Filename aliases. If an AI generator (or the artist) saves a source
+# PNG under a "close but wrong" filename, the builder would silently
+# skip it and leave that slot blank. The aliases below map common
+# typos to the canonical slot name so the build still picks the file
+# up — with a loud warning so the artist can rename it for next time.
+#
+# Add new aliases here when you catch a recurring naming mistake.
+FILENAME_ALIASES = {
+    "dark_ore_all":   "stone_dark_all",   # stone variant, not an ore
+    "dark_stone_all": "stone_dark_all",   # word order swap
+}
+
+
 # --------------------------------------------------------------
 # Atlas grid layout
 # --------------------------------------------------------------
@@ -208,8 +221,31 @@ def load_source_images(source_dir, tile_size):
             continue
         path = os.path.join(source_dir, name + ".png")
         if not os.path.exists(path):
-            print(f"  MISSING source PNG: {path} (slot will be blank)")
-            continue
+            # Try filename aliases (common typos) before giving up.
+            # If we find one, rename it in place so the next build is
+            # clean and the artist gets a loud warning to rename at
+            # generation time.
+            aliased_name = None
+            for alias, canonical in FILENAME_ALIASES.items():
+                if canonical != name:
+                    continue
+                alias_path = os.path.join(source_dir, alias + ".png")
+                if os.path.exists(alias_path):
+                    aliased_name = alias
+                    print(f"  WARN: found {alias}.png but slot is {name}.png "
+                          f"-- renaming. Save future generations as "
+                          f"{name}.png to avoid this warning.")
+                    os.replace(alias_path, path)
+                    # The .import file Godot generated for the alias
+                    # is now orphaned; remove it so Godot reimports
+                    # under the canonical name on next editor load.
+                    alias_import = alias_path + ".import"
+                    if os.path.exists(alias_import):
+                        os.remove(alias_import)
+                    break
+            if aliased_name is None:
+                print(f"  MISSING source PNG: {path} (slot will be blank)")
+                continue
         img = Image.open(path).convert("RGBA")
         if name in CHROMA_KEY_MATERIALS:
             img = chroma_key_white(img)

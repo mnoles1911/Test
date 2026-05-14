@@ -181,6 +181,12 @@ recitation filter accepts.*
 
 ### `stone_dark_all.png`
 
+**SAVE AS EXACTLY:** `stone_dark_all.png` — NOT `dark_stone_all.png`,
+NOT `dark_ore_all.png`. This material is a darker variant of stone
+(Tier 3 jitter inside the stone band), not an ore. The slot in
+`ATLAS_LAYOUT` is `stone_dark_all`; any other filename is silently
+ignored by the builder.
+
 *(Sibling of `stone_all`. The Tier 3 generator rule mixes this in
 as ~17% darker patches inside the stone band so cliff faces and
 underground walls show three-tone variety — plain stone, dark
