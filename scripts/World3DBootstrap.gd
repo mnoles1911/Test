@@ -766,6 +766,7 @@ func _pre_snap_player_to_generator_ground() -> void:
 var _spawn_wiggle_active: bool = false
 var _spawn_wiggle_start_msec: int = 0
 var _spawn_wiggle_frame: int = 0
+var _spawn_timeout_warned: bool = false
 const SPAWN_WIGGLE_MAX_S: float = 45.0
 # Bumped 15 → 45s on 2026-05-13 after user reported falling through the
 # world when voxel_deltas.sqlite was deleted. Cold-cache regen (no
@@ -877,17 +878,36 @@ func _physics_process(_delta: float) -> void:
 		_mark_world_ready_when_settled()
 		return
 
-	# Step 3: timeout check. SPAWN_WIGGLE_MAX_S safety net.
+	# Step 3: log progress on the soft timeout, but DO NOT unfreeze.
+	# Previously this gave up at SPAWN_WIGGLE_MAX_S and unfroze the
+	# player even when raycast still hit nothing. On cold-cache regen
+	# (no SQLite present), Zylann can need several minutes to generate
+	# enough chunks for collision below the player — unfreezing early
+	# drops them through the world into the void (observed 2026-05-13,
+	# player Y went from 30 → -8000 over a few seconds).
+	#
+	# Now we stay frozen as long as the raycast keeps missing. The
+	# player is in a controlled hover at the analytical pre-snap Y;
+	# eventually Zylann finishes a chunk under them and the hit-above
+	# branch fires. If this never happens, the user should quit and
+	# run scenes/_dev/BakeWorld3D.tscn to pre-populate the SQLite —
+	# print a hint so they know what to do.
 	var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
-	if elapsed_s > SPAWN_WIGGLE_MAX_S:
-		if "_spawn_freeze" in player:
-			player.set("_spawn_freeze", false)
-		_spawn_wiggle_active = false
-		print("[World3D] Spawn wiggle timed out at %.1fs; unfreezing at pre-snap Y=%.2f (small drop expected)." % [
-			elapsed_s, player.global_position.y,
-		])
-		_mark_world_ready_when_settled()
-		return
+	if elapsed_s > SPAWN_WIGGLE_MAX_S and not _spawn_timeout_warned:
+		_spawn_timeout_warned = true
+		print(
+			"[World3D] Spawn still waiting for ground after %.1fs."
+			% elapsed_s
+		)
+		print(
+			"[World3D]   Cold-cache regen can take several minutes."
+			+ " If this hangs forever, quit and run"
+			+ " scenes/_dev/BakeWorld3D.tscn to pre-bake the SQLite."
+		)
+		print(
+			"[World3D]   Or restore the previous voxel_deltas.sqlite"
+			+ " from a backup."
+		)
 
 	# Spawn ground confirmed — kick off the loading-screen close
 	# negotiation. The helper polls Zylann's blocked_lods until the
