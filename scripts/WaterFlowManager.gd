@@ -152,6 +152,16 @@ const _MAX_FLOW_BUDGET_PER_TICK: int = 4096
 # time. Excess work spills to the next tick via _dirty_chunks
 # remaining populated.
 
+var _edit_cell_ttl: Dictionary = {}
+# Vector3i (voxel coord) → int (ticks remaining). Cells inside a recent
+# VoxelEditManager edit aabb. Lateral spread can only write source
+# bytes into cells that appear in this dictionary — so mining at water
+# level fills the carved void from the adjacent sea source, but the
+# new source can't propagate further onto natural beach-air cells
+# (which were never edited and don't appear in this map). TTL counts
+# down once per flow tick.
+const EDIT_CELL_TTL: int = 4  # ~1 sec at 4 Hz
+
 
 # ============================================================
 # Lifecycle
@@ -537,6 +547,21 @@ func _run_flow_tick() -> void:
 	var snapshot: Dictionary = _dirty_chunks.duplicate()
 	_dirty_chunks.clear()
 
+	# Decrement edit-cell TTLs. Cells whose TTL drops to 0 fall out of
+	# the "lateral spread target" set, so any further spread into them
+	# is blocked. This is what stops the post-carve cascade from
+	# climbing onto the beach.
+	if not _edit_cell_ttl.is_empty():
+		var expired: Array = []
+		for ep in _edit_cell_ttl.keys():
+			var nttl: int = (_edit_cell_ttl[ep] as int) - 1
+			if nttl <= 0:
+				expired.append(ep)
+			else:
+				_edit_cell_ttl[ep] = nttl
+		for ep in expired:
+			_edit_cell_ttl.erase(ep)
+
 	# DIAG counters scoped to this tick. Surfaces what's actually
 	# growing during a perf-runaway capture — without this, captures
 	# only show total WFM frame cost, not chunks-touched or _cells size.
@@ -737,8 +762,16 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				var pos: Vector3i = voxel_min + Vector3i(lx, ly, lz)
 				if _is_water_blocked_at_voxel(pos):
 					continue
-				# ALL-SOURCE INVARIANT: gravity drop always writes a
-				# permanent SOURCE byte, never a transient flow cell.
+				# EDIT-CELL GATE: gravity drop only fills cells the
+				# player recently carved. Without this, gen-side gaps
+				# (sub-sea air cells the generator missed) get
+				# auto-backfilled in cascading ticks — produces the
+				# same modified=694 storm even when no climbing
+				# happens. Carved cells are still filled correctly
+				# because _on_edit_applied marks the edit aabb voxels.
+				if not _edit_cell_ttl.has(pos):
+					continue
+				# Permanent SOURCE byte; never a transient flow cell.
 				#
 				# History: the previous "above-sea flow cell" path
 				# generated thousands of cells per mining strike at the
@@ -769,11 +802,25 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 		if modified >= budget:
 			break
 
-	# ---- 3. Lateral spread pass (buffer-based source gather) ----
-	# Build the source list from the pre-copied data buffer rather than
-	# re-copying it inside _gather_lateral_sources. Then spread, using
-	# buffer reads for in-chunk neighbours and the slow path for
-	# cross-chunk edge neighbours.
+	# ---- 3. Lateral spread pass ----
+	# Per design rule (2026-05-13): lateral spread is allowed at the
+	# SAME Y or BELOW the source (lateral never moves water up), but
+	# the spread can only WRITE to cells that the player recently
+	# carved (tracked via _edit_cell_ttl). Natural air-above-beach
+	# cells outside any edit aabb stay dry no matter how many adjacent
+	# sea sources they have.
+	#
+	# This combination satisfies the constraints:
+	#  - Mining sub-sea: carved cells are edit-flagged, adjacent
+	#    sources fill them, sub-sea cavity fills correctly.
+	#  - Mining AT water level: same — carved Y=72 void fills from
+	#    adjacent sea source, but the new source can't spread into
+	#    neighboring natural beach cells (not edit-flagged).
+	#  - Mining above water level: no flooding — no source is adjacent
+	#    to spread from, and even if one were, the target isn't
+	#    edit-flagged unless the player carved it.
+	#  - Beach climb bug: eliminated because climb required cascading
+	#    through non-edited cells.
 	var spread_sources: Array = _gather_lateral_sources_buffered(
 		voxel_min, voxel_max, data_buf,
 	)
@@ -784,26 +831,12 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 		var src_level: int = src["level"]
 		if src_level <= MIN_LEVEL:
 			continue
-		# STRICT SUB-SEA SPREAD: only sources strictly BELOW sea level
-		# spread laterally. Sources AT sea level (Y == _sea_level_voxel_y,
-		# the visible water surface) and above cannot lateral-spread.
-		#
-		# Why: with the all-source rule (commit 841ad49), Y == sea_level
-		# air cells above the BEACH (where ground_y < sea_level locally
-		# but air-with-solid-floor exists at the surface) become valid
-		# spread targets indistinguishable from carved cells. A single
-		# Y == sea_level mining strike triggered a wavefront across the
-		# entire beach interior — modified=694 cells/tick from a 2-block
-		# carve, WFM=455 µs/frame, "tiles climb higher" symptom.
-		#
-		# Strictly-sub-sea spread eliminates this: gravity drop still
-		# fills carved cells at Y < sea_level from the Y == sea_level
-		# source above, and Y < sea_level sources spread laterally to
-		# fill cavities. Mining a single Y == sea_level cell adjacent to
-		# the sea leaves a tiny air pocket — acceptable trade-off given
-		# the alternative is uncontrolled beach flooding.
-		if src_pos.y >= _sea_level_voxel_y:
-			continue
+		# RULE: lateral spread target must be at neighbor.y <= src.y.
+		# _LATERAL_DIRS are all horizontal so neighbor.y == src.y by
+		# construction — this preserves the "no upward movement" rule.
+		# The y-condition is restated here as documentation so future
+		# refactors that add diagonal-downward spread vectors stay
+		# consistent.
 		var target_level: int = src_level - 1
 		for dir in _LATERAL_DIRS:
 			if modified >= budget:
@@ -815,14 +848,17 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 				and neighbor.y >= voxel_min.y and neighbor.y < voxel_max.y
 				and neighbor.z >= voxel_min.z and neighbor.z < voxel_max.z
 			)
-			# Neighbour already in _cells. ALL-SOURCE: if it's a permanent
+			# EDIT-CELL GATE: only allow source writes into cells the
+			# player recently carved. Without this, lateral spread
+			# cascades across natural air-above-beach cells.
+			if not _edit_cell_ttl.has(neighbor):
+				continue
+
+			# Neighbour already in _cells. If it's a permanent
 			# source-marker (add_source API), leave it alone. If it's a
 			# transient flow cell (legacy cache, or already-decaying),
 			# promote it to a permanent SOURCE byte by erasing the _cells
-			# entry and queueing a SOURCE write. This was the refresh-tick
-			# treadmill: adjacent flow cells re-fed each other every 4 Hz
-			# tick so decay never fired, _cells grew unbounded, WFM hit
-			# 500+ µs/frame after a few coastal mining strikes.
+			# entry and queueing a SOURCE write.
 			if _cells.has(neighbor):
 				var n_packed: int = _cells[neighbor]
 				if _is_source_packed(n_packed):
@@ -1249,7 +1285,7 @@ func _voxel_center_world(voxel_pos: Vector3i) -> Vector3:
 # Edit subscription — dirty chunk tracking
 # ============================================================
 
-func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i, _edit_aabb: AABB) -> void:
+func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i, edit_aabb: AABB) -> void:
 	# Voxel terrain changed. Mark the chunk + 1-chunk neighborhood
 	# dirty so the flow tick (Phase 3+) rescans the area and the
 	# surface mesher (Phase 2) rebuilds affected meshes.
@@ -1263,6 +1299,30 @@ func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i, _edit_aabb: AA
 				var c := chunk_coord + Vector3i(dx, dy, dz)
 				_dirty_chunks[c] = true
 				water_changed.emit(c)
+
+	# Mark every voxel inside the edit aabb as "recently edited" so the
+	# lateral spread pass can write source bytes there. This is the
+	# only path by which a new water source byte can appear at or above
+	# sea level — natural air-above-beach cells outside any edit aabb
+	# stay dry no matter how many sea-source neighbors they have. TTL
+	# decrements once per flow tick, so the flag clears after ~1 sec.
+	#
+	# The aabb arrives in world-space metres; convert to voxel coords
+	# via the local helper (matches VoxelEditManager.world_to_voxel).
+	var vmin: Vector3i = _world_to_voxel(edit_aabb.position)
+	var vmax: Vector3i = _world_to_voxel(edit_aabb.position + edit_aabb.size)
+	# Cap aabb cell-marking to keep huge edits (eventual nuke/explosion
+	# verbs) from blowing the dictionary. 343 voxels = 7^3 ≈ a typical
+	# pickaxe/shovel sphere radius.
+	var dx_n: int = vmax.x - vmin.x + 1
+	var dy_n: int = vmax.y - vmin.y + 1
+	var dz_n: int = vmax.z - vmin.z + 1
+	if dx_n * dy_n * dz_n > 4096:
+		return
+	for x in range(vmin.x, vmax.x + 1):
+		for y in range(vmin.y, vmax.y + 1):
+			for z in range(vmin.z, vmax.z + 1):
+				_edit_cell_ttl[Vector3i(x, y, z)] = EDIT_CELL_TTL
 
 
 # ============================================================
