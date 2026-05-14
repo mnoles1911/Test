@@ -12,9 +12,17 @@ Defaults to pack_name="default". Requires Pillow:
 
 The script reads source PNGs from
   assets/voxels/texture_packs/<pack_name>/source/
-downscales each to the pack's tile_size, packs them into a single
-atlas.png, and emits a manifest.json mapping material_id -> face tile
-coordinates that the Godot side reads at startup.
+nearest-neighbour-downscales each to the pack's tile_size, packs them
+into a single atlas.png, and emits a manifest.json mapping
+material_id -> face tile coordinates that the Godot side reads at
+startup.
+
+We use NEAREST (not LANCZOS) because the target is pixel art: the AI
+source images are generated as upscaled pixel-art renders (clean
+square pixels on a 32x grid in a 512x512 canvas, per
+tools/AI_TEXTURE_PROMPTS.md), so the only correct downscale is the
+one that preserves the existing pixel grid. LANCZOS would average
+adjacent source pixels and produce blurry mush at 16x16.
 
 Two faces are auto-built and do NOT need to exist in source/:
   - grass_side.png is composited from dirt_all + grass_top (top-edge
@@ -40,6 +48,19 @@ PACKS_DIR = "assets/voxels/texture_packs"
 # so we convert that white to alpha here to keep the artist workflow
 # simple — drop in a PNG, re-run the builder, done.
 CHROMA_KEY_MATERIALS = {"leaves_all"}
+
+
+# Filename aliases. If an AI generator (or the artist) saves a source
+# PNG under a "close but wrong" filename, the builder would silently
+# skip it and leave that slot blank. The aliases below map common
+# typos to the canonical slot name so the build still picks the file
+# up — with a loud warning so the artist can rename it for next time.
+#
+# Add new aliases here when you catch a recurring naming mistake.
+FILENAME_ALIASES = {
+    "dark_ore_all":   "stone_dark_all",   # stone variant, not an ore
+    "dark_stone_all": "stone_dark_all",   # word order swap
+}
 
 
 # --------------------------------------------------------------
@@ -107,12 +128,19 @@ MATERIAL_FACES = {
 
 def composite_grass_side(dirt_img, grass_top_img, tile_size):
     """
-    Build the grass-block side face: a dirt base with a green strip
-    along the top edge that fades into the dirt below.
+    Build the grass-block side face: a dirt base with a green band
+    along the top edge. The band uses two discrete tones so it reads
+    as crisp pixel art at 16 px (a linear sub-pixel fade looked
+    anti-aliased once we dropped to a 16 px atlas).
 
-    Strip height = max(4, tile_size // 5). The green's color is the
-    average of the central band of grass_top (so it stays in tone with
-    the top face even if the user edits one and not the other).
+    For tile_size >= 12: 2-row solid green + 1-row mixed dirt+green
+    "messy edge" row that imitates the classic Minecraft scatter
+    without producing AA gradients. For smaller tiles we fall back to
+    1 + 1.
+
+    The green's color is the average of the central band of grass_top
+    so it stays in tone with the top face even if the user edits one
+    and not the other.
     """
     result = dirt_img.copy().convert("RGBA")
     # Sample the average green from the central horizontal band of the
@@ -122,24 +150,29 @@ def composite_grass_side(dirt_img, grass_top_img, tile_size):
         (0, tile_size // 3, tile_size, 2 * tile_size // 3)
     )
     avg = ImageStat.Stat(crop).mean[:3]
-    avg = (int(avg[0]), int(avg[1]), int(avg[2]))
-    strip_h = max(4, tile_size // 5)
+    green = (int(avg[0]), int(avg[1]), int(avg[2]))
+
+    # Band heights. The "messy" row is a scatter of grass pixels among
+    # dirt pixels — no per-pixel blending, so every pixel reads as
+    # either fully green or fully dirt (pixel-art-correct).
+    solid_h = max(1, tile_size // 8)            # 2 rows at 16 px
+    messy_h = 1 if tile_size >= 12 else 0       # 1 row at 16 px, 0 at 8 px
 
     pixels = result.load()
-    for y in range(strip_h):
-        # Linear fade from full green at the top to full dirt at strip_h.
-        # The 0.6 multiplier prevents a hard-edge transition — even at
-        # the bottom of the strip we keep a hint of green creeping into
-        # the dirt for the classic Minecraft "messy edge" look.
-        fade = 1.0 - (y / strip_h) * 0.6
+    for y in range(solid_h):
         for x in range(tile_size):
-            base = pixels[x, y]
-            r, g, b = base[0], base[1], base[2]
-            a = base[3] if len(base) > 3 else 255
-            nr = int(r * (1.0 - fade) + avg[0] * fade)
-            ng = int(g * (1.0 - fade) + avg[1] * fade)
-            nb = int(b * (1.0 - fade) + avg[2] * fade)
-            pixels[x, y] = (nr, ng, nb, a)
+            a = pixels[x, y][3] if len(pixels[x, y]) > 3 else 255
+            pixels[x, y] = (green[0], green[1], green[2], a)
+
+    # Messy row: deterministic scatter (alternate pixels, offset by row)
+    # so the result is stable across builds and tiles seamlessly.
+    for y in range(solid_h, solid_h + messy_h):
+        for x in range(tile_size):
+            if (x + y) % 2 == 0:
+                a = pixels[x, y][3] if len(pixels[x, y]) > 3 else 255
+                pixels[x, y] = (green[0], green[1], green[2], a)
+            # else: leave the dirt pixel as-is
+
     return result
 
 
@@ -188,14 +221,37 @@ def load_source_images(source_dir, tile_size):
             continue
         path = os.path.join(source_dir, name + ".png")
         if not os.path.exists(path):
-            print(f"  MISSING source PNG: {path} (slot will be blank)")
-            continue
+            # Try filename aliases (common typos) before giving up.
+            # If we find one, rename it in place so the next build is
+            # clean and the artist gets a loud warning to rename at
+            # generation time.
+            aliased_name = None
+            for alias, canonical in FILENAME_ALIASES.items():
+                if canonical != name:
+                    continue
+                alias_path = os.path.join(source_dir, alias + ".png")
+                if os.path.exists(alias_path):
+                    aliased_name = alias
+                    print(f"  WARN: found {alias}.png but slot is {name}.png "
+                          f"-- renaming. Save future generations as "
+                          f"{name}.png to avoid this warning.")
+                    os.replace(alias_path, path)
+                    # The .import file Godot generated for the alias
+                    # is now orphaned; remove it so Godot reimports
+                    # under the canonical name on next editor load.
+                    alias_import = alias_path + ".import"
+                    if os.path.exists(alias_import):
+                        os.remove(alias_import)
+                    break
+            if aliased_name is None:
+                print(f"  MISSING source PNG: {path} (slot will be blank)")
+                continue
         img = Image.open(path).convert("RGBA")
         if name in CHROMA_KEY_MATERIALS:
             img = chroma_key_white(img)
             print(f"  {name}: white background -> alpha (chroma key applied)")
         if img.size != (tile_size, tile_size):
-            img = img.resize((tile_size, tile_size), Image.LANCZOS)
+            img = img.resize((tile_size, tile_size), Image.NEAREST)
         loaded[name] = img
     return loaded
 

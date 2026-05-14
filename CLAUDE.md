@@ -65,7 +65,7 @@ Outstanding content pickups: low-poly Blender Roland model, MagicaVoxel prop exp
 
 ## Art specification (3D VOXEL)
 - **Voxel scale**: 6 voxels/m (locked 2026-05-03; ~16.7 cm/block, player ~11 voxels tall).
-- **Terrain**: `VoxelLodTerrain` + `VoxelMesherBlocky` reading `CHANNEL_TYPE` (8-bit material id), backed by `VoxelBlockyLibrary` (per-cube atlas tiles + alpha-scissor `StandardMaterial3D`). Procedural baseline from `CubicHeightmapGenerator`. Default texture pack lives in `assets/voxels/texture_packs/default/` — atlas at 32 px tile × 64 cols/rows. **Destructible by default** — `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`, persist forever.
+- **Terrain**: `VoxelLodTerrain` + `VoxelMesherBlocky` reading `CHANNEL_TYPE` (8-bit material id), backed by `VoxelBlockyLibrary` (per-cube atlas tiles + alpha-scissor `StandardMaterial3D`). Procedural baseline from `CubicHeightmapGenerator`. Default texture pack lives in `assets/voxels/texture_packs/default/` — atlas at 16 px tile × 64 cols/rows (1024×1024 atlas, pixel-art style; see `tools/AI_TEXTURE_PROMPTS.md`). **Destructible by default** — `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`, persist forever.
 - **World scale**: Playable Mira 12 km × 10 km (compression 125:1). Thal ~7 km × 5.5 km.
 - **Props/buildings**: MagicaVoxel → .glb. Narratively load-bearing structures sit inside NoEditZones, never carved.
 - **Player-built**: schematic props (Carpentry Bench) + per-voxel detailing (Build Mode).

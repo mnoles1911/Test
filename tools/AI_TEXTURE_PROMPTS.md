@@ -1,8 +1,8 @@
-# AI Texture Prompts — Default Pack
+# AI Texture Prompts — Default Pack (16x16 Pixel Art)
 
 Use these prompts to generate the source images for the default voxel
-texture pack. Each prompt produces one face texture. Save the output to
-the **exact filename** indicated under each prompt into:
+texture pack. Each prompt produces one face texture. Save the output
+to the **exact filename** indicated under each prompt into:
 
     assets/voxels/texture_packs/default/source/
 
@@ -10,41 +10,109 @@ After generating all the textures, run from the repo root:
 
     python tools/build_texture_atlas.py default
 
-That packs the source PNGs into `atlas.png` and writes a manifest the
-game can load.
+That nearest-neighbour-downscales the source PNGs to 16x16 each,
+packs them into `atlas.png`, and writes the manifest the game loads.
 
 ## Generation settings
 
-- **Output size**: 512×512 (the builder downscales to 32×32 for the atlas)
+- **Output size**: 512x512 (the builder downscales to 16x16 for the
+  atlas). The 512 figure is **not arbitrary** — it is 16 x 32, which
+  means every 32x32 block of pixels in the source becomes a single
+  pixel after NEAREST downscale. The whole prompt strategy hinges on
+  that 32x upscale being clean.
 - **File format**: PNG. RGB is fine for everything — for `leaves_all`,
   the atlas builder color-keys the white background to alpha at build
-  time, so you don't need a generator that outputs true RGBA.
-- **Seamless tiling**: required for everything except `log_top`. Tiling
-  is requested in the per-material prompts below.
+  time, so you don't need an RGBA-capable generator.
+- **Seamless tiling**: required for everything except `log_top`.
+  Tiling is requested in the per-material prompts below.
 
 ## How to use these prompts
 
 This file is split into two parts:
 
 1. **SYSTEM PROMPT** — paste once into the system / style / context
-   field of your image generator. Carries all the shared style, tiling
-   rules, and game context.
-2. **Per-material prompts** — short, pure-descriptive blocks. Paste one
-   into the main prompt field for each texture you generate.
+   field of your image generator. Carries all the shared style,
+   pixel-grid rules, tiling rules, and game context.
+2. **Per-material prompts** — short, pure-descriptive blocks. Paste
+   one into the main prompt field for each texture you generate.
 
 ### Why split
 
-When the system instructions and the per-material details were combined
-into one prompt, Gemini Nano Banana 2's recitation filter rejected
-every prompt. The filter trips when one prompt block stacks too many
-specific signals at once (named genre + hex codes + heavy negations +
-imperative voice + game-asset framing). Splitting the load — system
-field carries the meta, main prompt carries pure visual description —
-is what actually works in practice. This pairing has been tested
-working with Gemini Nano Banana 2.
+When the system instructions and the per-material details were
+combined into one prompt, Gemini Nano Banana 2's recitation filter
+rejected every prompt. The filter trips when one prompt block stacks
+too many specific signals at once (named genre + hex codes + heavy
+negations + imperative voice + game-asset framing). Splitting the
+load — system field carries the meta, main prompt carries pure visual
+description — is what actually works in practice. This pairing has
+been tested working with Gemini Nano Banana 2.
 
 If your generator has no separate system field, paste the SYSTEM
 PROMPT first then the per-material prompt as one continuous block.
+
+---
+
+## Will Nano Banana actually output pixel art?
+
+**Honest answer: not reliably on its own.** Diffusion image models
+(Gemini Nano Banana 2, DALL-E, Midjourney, Stable Diffusion in default
+modes) are trained on photographs and digital paintings, not pixel
+art. Asked for "pixel art," they typically produce *fake pixel art* —
+soft, anti-aliased imagery with gradients between pixels, a
+ghost-pixel grid that drifts across the image, occasional sub-pixel
+detail. Looks pixel-ish at thumbnail size; falls apart on close
+inspection.
+
+**Why our pipeline still gets crisp pixels out of it:**
+
+1. The builder downscales 512 -> 16 using **nearest-neighbour**, not
+   LANCZOS. That collapses 32x32 source pixels into a single output
+   pixel — picking one source pixel, throwing away the other 1023.
+   Any sub-pixel softness, anti-aliasing, or drift in the source is
+   simply discarded. The output is mathematically pixel-perfect even
+   if the input was mush.
+2. The in-game atlas material uses `TEXTURE_FILTER_NEAREST`
+   (`tools/build_blocky_library.gd:135`), so the GPU never blurs the
+   16 px tile when sampling it onto a voxel face. The pixels stay
+   crisp at any draw size.
+
+**What we're really asking the AI to do** is be a *color and
+composition machine*. The prompt asks for a 16x16 image upscaled to
+512x512 with clean square pixels and a limited palette — the AI tries
+to honor that, fails to honor it perfectly, but gets close enough
+that the nearest-neighbour downscale recovers a clean 16 px image
+with the right colors and the right large-scale shapes (vein
+direction, leaf-cluster spacing, sand-grain density). It's a
+denoising-by-downsampling trick: the AI provides intent, the
+downscale enforces the grid.
+
+**Recommended generators**, in order of how reliably they produce
+clean pixel input:
+
+1. **Gemini Nano Banana 2** with the SYSTEM PROMPT below — works
+   well enough for our 15 source images and is already wired into
+   the rest of the asset pipeline (`design/ASSET_PIPELINE_AI.md`).
+   Expect 1-3 regenerations per material to get a usable result.
+2. **DALL-E 3 / Midjourney v6** — similar quality, sometimes
+   cleaner pixel grids, sometimes worse. Worth a shot if Gemini
+   keeps producing mush on a specific material.
+3. **Aseprite or Pixilart by hand** — if you want a truly authored
+   look. Make 16x16 PNGs directly, name them per the layout below,
+   set the builder's NEAREST downscale will leave them untouched
+   (no resize happens when input size already matches target).
+4. **Retrodiffusion / PixelLab.ai** — dedicated pixel-art diffusion
+   services. They produce real pixel art at the target resolution
+   directly. Output is usually 32x32 or 64x64; the NEAREST downscale
+   to 16 will still work but you lose some detail. Recommended only
+   if Gemini keeps failing on a particular material.
+
+**Cheap quality check before saving:** the AI output will look "soft"
+at 512x512. That's fine — what matters is what falls out of the
+downscale. The builder prints `[atlas]` summary at the end of every
+run, and you can sanity-check by zooming in on `atlas.png` afterward
+to see if each 16x16 tile reads as the material you wanted. If a tile
+looks like grey noise rather than stone-with-cracks, that prompt
+needs another roll.
 
 ---
 
@@ -52,27 +120,41 @@ PROMPT first then the per-material prompt as one continuous block.
 
 *Paste this once into the system / style / context field.*
 
-> You are generating seamlessly tiling cubic voxel game block face
-> textures for a painterly medieval fantasy RPG. Output size: 512×512.
+> You are generating seamlessly tiling 16x16 pixel art block face
+> textures for a medieval fantasy voxel RPG. Output size: 512x512,
+> rendered as a 32x nearest-neighbor upscale of an underlying 16x16
+> pixel-art tile.
 >
-> Art style: Painterly medieval fantasy. Rich internal color variation
-> spread uniformly across the face. Visible material surface grain and
-> texture. Warm saturated palette. Pure matte albedo — no baked
-> directional lighting anywhere on the face, no cast shadows, no
-> specular highlights. Character: the surface quality of a hand-crafted
-> medieval RPG voxel world — Minecraft elevated with painterly detail
-> and warm material authenticity.
+> Pixel grid rule: The image must read as exactly 16x16 large square
+> pixels arranged in a 16x16 grid. Each pixel is a flat 32x32 block of
+> solid uniform color. No gradients between pixels, no anti-aliasing,
+> no soft edges, no blur, no dithering across pixel boundaries.
+> Adjacent pixels meet at hard square edges. The pixel grid must be
+> axis-aligned: every pixel boundary falls on multiples of 32px.
+>
+> Palette rule: Limited 6 to 10 color palette per tile. Solid flat
+> colors only. No color ramps, no smooth shading, no painted
+> highlights, no soft shadows. Variation comes from placing different
+> palette colors in adjacent pixels, never from blending.
+>
+> Style: 16-bit era pixel art block tile, the surface quality of a
+> hand-pixeled SNES or PC RPG world. Minecraft-style face textures
+> done as crisp pixel art rather than painterly. Warm saturated
+> palette, readable material identity at small size, pure matte
+> albedo. No baked directional lighting anywhere on the face, no
+> cast shadows, no specular highlights.
 >
 > Tiling requirement: Every texture must tile seamlessly with no
-> visible seams at any edge. This game runs at 6 voxels per meter —
-> each voxel face is ~16.7 cm — so a single 10-meter stone wall repeats
-> the tile 60+ times. Any dominant feature (a single bright pebble, a
-> long crack, an off-color patch, a tonal island) becomes a visible
-> repeating grid the player cannot unsee. Color variation must be
-> balanced and distributed uniformly at fine scale across the entire
-> face: no single element dramatically brighter, darker, or more
-> distinctive than its neighbors. No corner or edge artifacts that
-> create banding when tiled.
+> visible seams at any edge. This game runs at 6 voxels per meter
+> (each voxel face is about 16.7 cm), so a single 10-meter stone
+> wall repeats the tile 60+ times. Any dominant feature (a single
+> bright pixel, a long crack, an off-color pixel) becomes a visible
+> repeating grid the player cannot unsee. Detail must be balanced
+> and distributed uniformly: no single pixel dramatically brighter,
+> darker, or more distinctive than its neighbors. No corner or edge
+> pixels that create banding when tiled. The leftmost column and
+> rightmost column should look like they could sit next to each
+> other; same for the top and bottom rows.
 
 ---
 
@@ -86,118 +168,123 @@ recitation filter accepts.*
 
 ### `stone_all.png`
 
-> A square seamless tileable texture of warm grey granite stone,
-> designed to repeat invisibly across a cliff face. Rough angular
-> surface spread evenly across the whole face with balanced color
-> across all areas. Warm grey tones with subtle brownish undertones,
-> ancient heavy stone character. Many fine short micro-fractures
-> scattered uniformly across the surface, all of similar weight, with
-> no single long crack standing out. Flat view, matte even lighting
-> throughout. Hand-painted painterly art style. Tiles seamlessly with
-> no edge seams.
+> A 16x16 pixel art tile of warm grey granite stone, rendered at
+> 512x512 as a 32x upscale with hard square pixels. Designed to
+> repeat invisibly across a cliff face. Warm grey palette of 6 tones
+> from dark charcoal to pale highlight, with subtle brownish
+> undertones. Many short 1 to 2 pixel micro-fractures scattered
+> uniformly across the tile, all of similar weight, no single long
+> crack standing out. Flat matte even lighting throughout. Tiles
+> seamlessly with no edge seams.
 
 ---
 
 ### `stone_dark_all.png`
 
+**SAVE AS EXACTLY:** `stone_dark_all.png` — NOT `dark_stone_all.png`,
+NOT `dark_ore_all.png`. This material is a darker variant of stone
+(Tier 3 jitter inside the stone band), not an ore. The slot in
+`ATLAS_LAYOUT` is `stone_dark_all`; any other filename is silently
+ignored by the builder.
+
 *(Sibling of `stone_all`. The Tier 3 generator rule mixes this in
-as ~17 % darker patches inside the stone band so cliff faces and
+as ~17% darker patches inside the stone band so cliff faces and
 underground walls show three-tone variety — plain stone, dark
 stone, rare marble — rather than uniform grey.)*
 
-> A square seamless tileable texture of cool dark grey basalt stone,
-> designed to repeat invisibly across a deep cave wall. Rough angular
-> surface spread evenly across the whole face with balanced color
-> across all areas. Deep charcoal grey tones with subtle cool
-> blue-grey undertones, the heavy dense character of dark volcanic
-> rock that contrasts visibly against ordinary warm granite. Many
-> fine short micro-fractures and tiny scattered mineral specks at
-> uniform density, all of similar weight, with no single feature
-> standing out. Flat view, matte even lighting throughout. Hand-painted
-> painterly art style. Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of cool dark grey basalt stone, rendered
+> at 512x512 as a 32x upscale with hard square pixels. Designed to
+> repeat invisibly across a deep cave wall. Approximately 80 percent
+> of the pixels are a single uniform deep charcoal grey base color
+> with subtle cool blue-grey undertones — this dominant color fills
+> the tile as the natural rock surface, the heavy dense character
+> of dark volcanic rock. Approximately 12 percent of the pixels are
+> slightly darker near-black charcoal forming irregular natural
+> rock noise — these darker pixels appear in random scattered
+> clusters of 2 to 4 pixels each, never as isolated single pixels
+> and never as alternating pairs. Approximately 8 percent of the
+> pixels are slightly lighter cool grey crystalline mineral specks,
+> placed as 1 to 2 pixel highlights at scattered positions. Most of
+> any given row should be the dominant base charcoal, with variation
+> appearing only at the cluster and speck positions. Flat matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `dirt_all.png`
 
-> A square seamless tileable texture of dark rich brown loam soil,
-> designed to repeat invisibly across an underground wall. Compact
-> compressed earth with fine soil grain spread evenly across the whole
-> surface with balanced color across all areas. Deep dark warm brown
-> tones, the layer found under grass rather than topsoil. Tiny
-> scattered micro-pebbles and faint root fibres at uniform density,
-> all of similar size. Flat view, matte even lighting throughout.
-> Hand-painted painterly art style. Tiles seamlessly with no edge
-> seams.
+> A 16x16 pixel art tile of dark rich brown loam soil, rendered at
+> 512x512 as a 32x upscale with hard square pixels. Designed to
+> repeat invisibly across an underground wall. Deep warm brown
+> palette of 6 tones, the layer found under grass rather than
+> topsoil. Tiny scattered micro-pebbles and faint root flecks at
+> uniform density, each occupying 1 to 2 pixels. Flat matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `grass_top.png`
 
-> A square seamless tileable texture of dense short-cropped grass
-> viewed from directly above, designed to repeat invisibly across an
-> open field. Uniform carpet of fine grass blade tips spread evenly
-> across the whole surface with balanced color across all areas.
-> Vivid saturated green tones, olive green blending softly into bright
-> spring green in many tiny clusters of similar size. Flat top-down
-> view, matte even lighting throughout. Hand-painted painterly art
-> style. Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of dense short-cropped grass viewed from
+> directly above, rendered at 512x512 as a 32x upscale with hard
+> square pixels. Designed to repeat invisibly across an open field.
+> Vivid saturated green palette of 5 to 7 tones from olive green to
+> bright spring green, distributed in many tiny clusters of similar
+> size each occupying 1 to 2 pixels. Flat top-down view, matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
-> **NOTE:** `grass_side.png` and `grass_bottom.png` are auto-built by
-> the atlas tool. **Do not generate these.**
+> **NOTE:** `grass_side.png` and `grass_bottom.png` are auto-built
+> by the atlas tool. **Do not generate these.**
 
 ---
 
 ### `sand_all.png`
 
-> A square seamless tileable texture of fine pale golden beach sand,
-> designed to repeat invisibly across a beach surface. Uniform fine
-> grain spread evenly across the whole surface with balanced color
-> across all areas. Warm bright tan and cream tones, soft golden
-> highlights blending into pale warm beige. Flat top-down view, matte
-> even lighting throughout. Hand-painted painterly art style. Tiles
-> seamlessly with no edge seams.
+> A 16x16 pixel art tile of fine pale golden beach sand, rendered
+> at 512x512 as a 32x upscale with hard square pixels. Designed to
+> repeat invisibly across a beach surface. Warm tan and cream
+> palette of 5 tones, soft golden highlights blending into pale
+> warm beige across the pixel grid. Single-pixel grain variation
+> uniformly distributed. Flat top-down view, matte even lighting
+> throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `gravel_all.png`
 
-> A square seamless tileable texture of mixed grey and warm-brown
-> river shingle pebbles, designed to repeat invisibly across a
-> riverbed surface. Small to mid-sized pebbles packed tightly and
-> spread evenly across the whole surface with balanced color across
-> all areas. Cool grey stones with warm earth-tone undertones,
-> irregular pebble shapes all of similar visual weight. Flat top-down
-> view, matte even lighting throughout. Hand-painted painterly art
-> style. Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of mixed grey and warm-brown river shingle
+> pebbles, rendered at 512x512 as a 32x upscale with hard square
+> pixels. Designed to repeat invisibly across a riverbed surface.
+> Cool grey palette with warm earth-tone undertones, 7 tones total.
+> Small pebbles each occupying a 1 to 2 pixel cluster, packed
+> tightly with hard-edged pixel boundaries between adjacent stones,
+> all of similar visual weight. Flat top-down view, matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `clay_all.png`
 
-> A square seamless tileable texture of smooth blue-grey coastal clay,
-> designed to repeat invisibly across a tidal mudflat surface. Flat
-> compressed surface with a fine drying-crack network spread evenly
-> across the whole surface with balanced color across all areas. Cool
-> blue-grey tones with subtle moisture variation. Many short thin
-> irregular hairline cracks scattered uniformly, all of similar
-> weight. Flat top-down view, matte even lighting throughout.
-> Hand-painted painterly art style. Tiles seamlessly with no edge
-> seams.
+> A 16x16 pixel art tile of smooth blue-grey coastal clay, rendered
+> at 512x512 as a 32x upscale with hard square pixels. Designed to
+> repeat invisibly across a tidal mudflat surface. Cool blue-grey
+> palette of 5 tones with subtle moisture variation. Many short 1
+> to 2 pixel hairline crack lines scattered uniformly, all of
+> similar weight. Flat top-down view, matte even lighting
+> throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `marble_all.png`
 
-> A square seamless tileable texture of weathered white-grey coastal
-> marble, designed to repeat invisibly across a sea-battered cliff
-> face. Roughened pitted surface spread evenly across the whole face
-> with balanced color across all areas. Pale cream and soft grey tones
-> with subtle warm undertones, the bare rock of an ocean pinnacle
-> rather than polished interior marble. Natural grey veining broken
-> into many short irregular segments scattered uniformly. Flat view,
-> matte even lighting throughout. Hand-painted painterly art style.
-> Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of weathered white-grey coastal marble,
+> rendered at 512x512 as a 32x upscale with hard square pixels.
+> Designed to repeat invisibly across a sea-battered cliff face.
+> Pale cream and soft grey palette of 6 tones with subtle warm
+> undertones. Natural grey vein lines broken into short irregular
+> 1 to 3 pixel segments scattered uniformly across the tile. Flat
+> matte even lighting throughout. Tiles seamlessly with no edge
+> seams.
 
 ---
 
@@ -209,89 +296,91 @@ upper 500 m of peaks. Should read as bright but not pure white so
 it has internal variation under sunlight; cliff faces still poke
 through as bare stone.)*
 
-> A square seamless tileable texture of fresh dry mountain snow
-> viewed from directly above, designed to repeat invisibly across a
-> high alpine peak. Powdery undisturbed surface spread evenly across
-> the whole face with balanced color across all areas. Bright cool
-> white tones with very subtle pale blue and faint warm cream
-> undertones from low-angle light, the soft granular texture of
-> recently fallen snow rather than packed ice or slush. Many tiny
-> scattered crystalline glints and faint shadow pockets at micro
-> scale only, all of similar weight, with no single bright sparkle
-> standing out. Flat top-down view, matte even lighting throughout.
-> Hand-painted painterly art style. Tiles seamlessly with no edge
-> seams.
+> A 16x16 pixel art tile of fresh dry mountain snow viewed from
+> directly above, rendered at 512x512 as a 32x upscale with hard
+> square pixels. Designed to repeat invisibly across a high alpine
+> peak. Approximately 85 percent of the pixels are a single uniform
+> bright cool white base color — this dominant color fills the tile
+> as undisturbed powdery snow, the soft granular texture of recently
+> fallen snow rather than packed ice or slush. Approximately 10
+> percent of the pixels are pale blue-grey shadow pockets between
+> snow drifts, appearing in random scattered clusters of 2 to 3
+> pixels each, never as isolated single pixels and never as
+> alternating pairs. Approximately 5 percent of the pixels are
+> brighter near-pure-white sparkle highlights as single 1 pixel
+> glints at scattered positions across the tile. Most of any given
+> row should be the dominant base white, with variation appearing
+> only at the shadow-pocket and sparkle positions. Flat top-down
+> view, matte even lighting throughout. Tiles seamlessly with no
+> edge seams.
 
 ---
 
 ### `log_top.png`
 
 *(Used for the top and bottom face of the log block. Must tile
-seamlessly -- a wide tree trunk or horizontal beam spans multiple
-adjacent blocks, each showing this face. Do NOT generate a circular
-log-slice illustration with a white background. The grain must fill
-the entire square face to all four corners.)*
+seamlessly — a wide tree trunk or horizontal beam spans multiple
+adjacent blocks, each showing this face. Do NOT generate a
+circular log-slice illustration with a white background. The grain
+must fill the entire square tile to all four corners.)*
 
-> A square seamless tileable texture of wood end-grain filling the
-> full square face corner to corner, designed to repeat invisibly
-> across the top of a multi-block tree trunk or timber beam. Curved
-> annual growth lines flowing gently across the entire face, reaching
-> all four edges, warm honey-brown tones with subtle variation from
-> lighter sapwood to slightly richer areas. No circular silhouette,
-> no white or empty corners -- the grain covers the full square. Many
-> softly curved grain lines spread evenly across the whole surface
-> with balanced color across all areas. Flat top-down view, matte
-> even lighting throughout. Hand-painted painterly art style. Tiles
-> seamlessly with no edge seams.
+> A 16x16 pixel art tile of wood end-grain filling the full square
+> tile corner to corner, rendered at 512x512 as a 32x upscale with
+> hard square pixels. Designed to repeat invisibly across the top
+> of a multi-block tree trunk or timber beam. Curved annual growth
+> lines flowing gently across the entire tile in 1 to 2 pixel arcs
+> that reach all four edges. Warm honey-brown palette of 6 tones
+> from lighter sapwood to slightly richer areas. No circular
+> silhouette, no white or empty corners — the grain covers the
+> full square. Flat top-down view, matte even lighting throughout.
+> Tiles seamlessly with no edge seams.
 
 ---
 
 ### `log_side.png`
 
-> A square seamless tileable texture of weathered tree bark, designed
-> to repeat invisibly up a tall tree trunk. Deep vertical furrows with
-> raised ridges spread evenly across the whole face with balanced
-> color across all areas. Dark warm brown tones with slightly lighter
-> ridge tops worn smooth by weather, strong vertical grain direction.
-> Furrow depth and ridge width vary subtly along their length so no
-> horizontal band stands out when stacked. Flat view, matte even
-> lighting throughout. Hand-painted painterly art style. Tiles
-> seamlessly with no edge seams.
+> A 16x16 pixel art tile of weathered tree bark, rendered at
+> 512x512 as a 32x upscale with hard square pixels. Designed to
+> repeat invisibly up a tall tree trunk. Vertical 1 to 2 pixel
+> furrow columns alternating with raised ridges across the tile.
+> Dark warm brown palette of 6 tones with slightly lighter ridge
+> tops worn smooth by weather. Strong vertical grain direction,
+> with furrow widths varying subtly along their length so no
+> horizontal band stands out when stacked. Flat matte even lighting
+> throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `leaves_all.png`
 
 *(Generate with a pure white background between leaves. The atlas
-builder color-keys white to alpha automatically — you don't need an
-RGBA-capable generator.)*
+builder color-keys white to alpha automatically — you don't need
+an RGBA-capable generator.)*
 
-> A square seamless tileable texture of dense small rounded forest
-> leaves on a pure white background, designed to repeat invisibly
-> across a forest canopy. Many small leaf clusters of similar size and
-> density spread evenly across the whole surface with balanced color
-> across all areas. Deep emerald and forest green tones with individual
-> leaf variation from dark emerald to lighter olive, leaves small and
-> tough rather than lush tropical or sparse pine needles. Roughly 60
-> percent leaf coverage with white gaps spread uniformly between
-> clusters. Flat top-down view, matte even lighting throughout.
-> Hand-painted painterly art style. Tiles seamlessly with no edge
-> seams.
+> A 16x16 pixel art tile of dense small rounded forest leaves on a
+> pure white background, rendered at 512x512 as a 32x upscale with
+> hard square pixels. Designed to repeat invisibly across a forest
+> canopy. Many small leaf clusters each occupying 1 to 3 pixels,
+> spread evenly across the tile with white gap pixels between
+> clusters. Deep emerald and forest green palette of 5 tones from
+> dark emerald to lighter olive. Roughly 60 percent leaf-pixel
+> coverage with white gap pixels uniformly distributed. Flat
+> top-down view, matte even lighting throughout. Tiles seamlessly
+> with no edge seams.
 
 ---
 
 ### `copper_ore_all.png`
 
-> A square seamless tileable texture of grey stone with veins and
-> flecks of copper mineral, designed to repeat invisibly across a
-> cave wall. Stone base with scattered copper deposits spread evenly
-> across the whole face with balanced color across all areas. Warm
-> grey stone tones with raw orange-bronze copper and oxidized
-> blue-green patina mineral. Ore veins broken into many short
-> irregular branching segments scattered uniformly across the face,
-> with copper fleck clusters of similar size at even density. Flat
-> view, matte even lighting throughout. Hand-painted painterly art
-> style. Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of grey stone with veins and flecks of
+> copper mineral, rendered at 512x512 as a 32x upscale with hard
+> square pixels. Designed to repeat invisibly across a cave wall.
+> Warm grey stone palette of 4 tones forming the base, with
+> scattered raw orange-bronze copper pixels and oxidized blue-green
+> patina pixels distributed across the tile. Ore veins broken into
+> short irregular 1 to 2 pixel branching segments scattered
+> uniformly. Flat matte even lighting throughout. Tiles seamlessly
+> with no edge seams.
 
 ---
 
@@ -302,50 +391,71 @@ veins in the shallow band (-50 to 100 m) and copper higher up
 (0 to 250 m), so the player digs into one or the other depending
 on altitude. Keep the visual clearly distinct from copper — iron's
 silvery / rust-red palette vs copper's orange-bronze / green
-patina — so the player can tell them apart at a glance underground.)*
+patina — so the player can tell them apart at a glance
+underground.)*
 
-> A square seamless tileable texture of grey stone with veins and
-> flecks of iron mineral, designed to repeat invisibly across a cave
-> wall. Stone base with scattered iron deposits spread evenly across
-> the whole face with balanced color across all areas. Cool grey
-> stone tones with raw silvery-grey iron and dark rust-red oxidized
-> iron mineral. Ore veins broken into many short irregular branching
-> segments scattered uniformly across the face, with iron fleck
-> clusters of similar size at even density. Flat view, matte even
-> lighting throughout. Hand-painted painterly art style. Tiles
-> seamlessly with no edge seams.
+> A 16x16 pixel art tile of grey stone with embedded iron mineral
+> deposits, rendered at 512x512 as a 32x upscale with hard square
+> pixels. Designed to repeat invisibly across a cave wall.
+> Approximately 75 percent of the pixels are a single uniform
+> medium cool grey base color — this dominant color fills the tile
+> as the natural rock surface, like the base color of Minecraft
+> stone. Approximately 15 percent of the pixels are slightly darker
+> cool grey forming irregular natural rock noise — these darker
+> pixels appear in random scattered clusters of 2 to 4 pixels each,
+> never as isolated single pixels and never as alternating pairs.
+> Approximately 5 percent of the pixels are bright silvery-white
+> iron flecks, placed in short irregular vein segments of 1 to 2
+> pixels. Approximately 5 percent of the pixels are dark rust-red
+> oxidized iron, also in short 1 to 2 pixel vein segments. Most of
+> any given row should be the dominant base grey, with variation
+> appearing only at the cluster and vein positions. Flat matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
 ---
 
 ### `bedrock_all.png`
 
-> A square seamless tileable texture of near-black dense igneous
-> stone, designed to repeat invisibly across an underground floor.
-> Heavy ancient dark surface with very subtle dark-grey mottling
-> spread evenly across the whole face with balanced color across all
-> areas. Almost no color variation, primarily value variation only
-> with a very narrow contrast range. Faint crystalline grain structure
-> at micro scale only, all of similar weight. Flat top-down view,
-> matte even lighting throughout. Hand-painted painterly art style.
-> Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of near-black dense igneous stone,
+> rendered at 512x512 as a 32x upscale with hard square pixels.
+> Designed to repeat invisibly across an underground floor. Heavy
+> ancient dark surface with very subtle dark-grey mottling. Tight
+> 4-tone palette across a narrow contrast range, almost no color
+> variation, primarily value variation only. Faint single-pixel
+> crystalline specks at uniform density, all of similar weight.
+> Flat top-down view, matte even lighting throughout. Tiles
+> seamlessly with no edge seams.
 
 ---
 
 ## Quality checklist (per texture, before saving)
 
-- [ ] **Tiles seamlessly?** Place 4 copies in a 2×2 grid — no visible
-  seam at any edge.
-- [ ] **Tiles at 60× without a visible pattern?** Place 8×8 copies and
-  scan for any element the eye locks onto — a single bright pebble, a
-  distinctive crack, an off-color patch. If you see it, regenerate.
-- [ ] **No dominant feature?** No single stone, vein, gap, or tonal
-  island dramatically different from its neighbors.
-- [ ] **No baked lighting?** No bright highlight in any one corner, no
-  cast shadow from an implied light source. Even illumination.
-- [ ] **Color in the right zone?** Stone is warm grey-brown, not blue;
-  leaves are deep emerald, not lime; clay is cool blue-grey, not muddy
-  brown.
-- [ ] **Filename matches exactly?** `gravel_all.png`, not `Gravel.png`
-  or `gravel.PNG` — the builder is case-sensitive.
+- [ ] **Pixel grid honored?** Zoom in on the 512x512 output. Each
+  visual "pixel" should be a flat 32x32 block of one solid color
+  with hard edges. If you see gradients within a pixel block, soft
+  edges between blocks, or the grid drifting off the 32px lattice,
+  regenerate. (Some softness is fine — the NEAREST downscale will
+  clean it up — but heavy mush means the AI ignored the grid rule.)
+- [ ] **Tiles seamlessly?** Place 4 copies of the 512px source in a
+  2x2 grid — no visible seam at any edge.
+- [ ] **Tiles at 60x without a visible pattern?** Place 8x8 copies
+  and scan for any pixel the eye locks onto. If you see a single
+  bright pixel, a distinctive vein segment, or an off-color cluster,
+  regenerate.
+- [ ] **No dominant feature?** No single pixel dramatically
+  different from its neighbors.
+- [ ] **Limited palette?** 4 to 10 distinct colors per tile. If you
+  see dozens of shades, the AI fell back to painterly mode —
+  regenerate.
+- [ ] **No baked lighting?** No bright highlight in any one corner,
+  no cast shadow from an implied light source.
+- [ ] **Color in the right zone?** Stone is warm grey-brown, not
+  blue; leaves are deep emerald, not lime; clay is cool blue-grey,
+  not muddy brown.
+- [ ] **Filename matches exactly?** `gravel_all.png`, not
+  `Gravel.png` or `gravel.PNG` — the builder is case-sensitive.
 
-When all 15 source PNGs are in place, run the builder.
+When all 15 source PNGs are in place (16 atlas slots minus the
+auto-built `grass_side`), run the builder, then reload Godot and
+re-run `tools/build_blocky_library.gd` to bake the library against
+the new atlas.
