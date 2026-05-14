@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bq7o5t14nb013"
-path.s3tc="res://.godot/imported/atlas.png-c4c333ab28109b26421d7019736fd721.s3tc.ctex"
+uid="uid://b47m1qgrie0ld"
+path="res://.godot/imported/stone_dark_all.png-bea07a142ea937cb99c1c40cfa8feb33.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/voxels/texture_packs/default/atlas.png"
-dest_files=["res://.godot/imported/atlas.png-c4c333ab28109b26421d7019736fd721.s3tc.ctex"]
+source_file="res://assets/voxels/texture_packs/default/source/stone_dark_all.png"
+dest_files=["res://.godot/imported/stone_dark_all.png-bea07a142ea937cb99c1c40cfa8feb33.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

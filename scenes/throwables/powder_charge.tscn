@@ -28,6 +28,7 @@ combat_damage = 40
 fuse_seconds = 3.0
 
 [node name="Visual" type="MeshInstance3D" parent="."]
+visibility_range_end = 50.0
 mesh = SubResource("ChargeMesh")
 surface_material_override/0 = SubResource("ChargeMat")
 

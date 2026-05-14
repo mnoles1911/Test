@@ -224,67 +224,143 @@ or beats pre-migration baseline. No content regressions.
 
 ## 7. Enable Forward+-exclusive environment features
 
-**File:** `scenes/World3D.tscn` WorldEnvironment node.
+**File:** `scenes/World3D.tscn` and `scenes/CopperIslesTest.tscn` WorldEnvironment nodes.
 
-**Currently enabled:** SSAO, fog. **Available post-migration:** SSIL, SSR,
-SDFGI, volumetric_fog.
+**Update 2026-05-13 — Tier 1 + 2 + 3 all landed in one PR** (branch
+`feat/forward-plus-tier-1-2-3`).
 
-**Goal:** try each in isolation and compare cost against
-`design/captures/baseline_forward_plus_shadowq4.json` (or whatever the
-post-#1 baseline ends up being). Roughly ranked by likely value:
+**Tier 1 — atmosphere + AA** (both World3D + CopperIslesTest envs):
+- `tonemap_mode = 3` (AGX) — proper HDR rolloff replaces linear clip
+- `glow_enabled = true` (intensity 0.6, bloom 0.1, blend 1 / SOFTLIGHT) —
+  natural bloom on sun disc, campfire OmniLight, goblin eye-glow
+- `volumetric_fog_enabled = true` — density 0.015 / 0.012, length 80 m /
+  120 m, anisotropy 0.2 (slight forward scatter), ambient_inject 1.0
+- `anti_aliasing/quality/use_taa = true` + `use_debanding = true` in
+  project.godot — Forward+ proper TAA cleans up voxel-edge aliasing,
+  debanding smooths the new volumetric-fog gradients.
 
-1. **SDFGI** — best visual win for a voxel world. Adds bounced light into
-   caves and onto building undersides. Cost: moderate (~2–4 ms/frame on
-   AMD RX 7800 XT).
-2. **Volumetric fog** — pairs naturally with the existing fog config.
-   Especially good for the Mira atmosphere brief.
-3. **SSR** — limited payoff (no large reflective surfaces except water,
-   and water already uses a custom shader).
-4. **SSIL** — incremental quality bump over SSAO; not load-bearing.
+**Tier 2 — GI + reflections + VRAM reclaim:**
+- `sdfgi_enabled = true` on both envs. World3D: 4 cascades + min cell
+  0.2 m (~50 m range, cave-tuned). CopperIslesTest: 6 cascades + min
+  cell 0.3 m (~200 m range, archipelago-tuned). Both: `use_occlusion`
+  + `read_sky_light = true` + `bounce_feedback = 0.5` so sky light
+  bounces into caves and building undersides without going runaway.
+- `ssr_enabled = true` on both envs (max_steps 48, defaults
+  otherwise). Most visible payoff is the water surface — should now
+  reflect terrain + sky on top of the existing custom-shader waves.
+- Atlas BPTC: `assets/voxels/texture_packs/default/atlas.png.import`
+  flipped to `compress/mode = 2` + `metadata.vram_texture = true`.
+  Source-tile PNGs left at lossless — they're build inputs for
+  `tools/build_texture_atlas.py`, not runtime assets.
 
-**Caveat:** with shadow_q=4 already showing as expensive, layer these in
-one at a time and capture the delta. Don't enable everything at once.
+**Tier 3 — per-instance culling + LOD survey:**
+- `meshes/generate_lods = true` already set by Godot 4.6 default on
+  every imported FBX (`assets/models/goblin.fbx` + 4 animation files).
+  Nothing to flip — confirmed during survey.
+- `visibility_range_end` on ephemeral world entities (hard-cull, no
+  fade because voxel-clean look is better with hard pop than dithered
+  stipple at distance):
+  - `scenes/enemies/Goblin.tscn` — Visual mesh 80 m, EyeGlow 50 m
+  - `scenes/throwables/throwable_spear.tscn` — Shaft/Head/ButtCap 60 m
+  - `scenes/throwables/powder_charge.tscn` — Visual 50 m
+  - `scenes/voxel/FallingVoxelCluster.tscn` — Mesh 80 m
+  - `scenes/vfx/BloodBurst.tscn` — particle node 50 m
+  - `scenes/vfx/BloodDrip.tscn` — particle node 40 m
+  - `scenes/vfx/DustBurst.tscn` — particle node 40 m
+- Reflection probes deferred. No interior hub scenes (shrines,
+  cathedrals, settlements) exist on disk yet; revisit when the first
+  one is authored.
 
-**Acceptance:** capture a profile with each feature enabled, document the
-frame-time delta in this file, ship whichever passes the visual-vs-cost
-bar.
+**Interaction notes for future-Claude:**
+- WeatherManager's `set_fog_override` only writes `fog_density` /
+  `fog_light_color` (height fog). It does NOT fight `volumetric_fog_density`.
+  Future polish: have weather states scale `volumetric_fog_density` during
+  HEAVY_RAIN / FOG for dramatic light shafts.
+- SDFGI runs on the screen-space SDF buffer, so VoxelLodTerrain's edits
+  ARE visible to it — newly carved caves get GI updates automatically as
+  the chunks remesh.
+- BPTC atlas import skips mipmap generation (the existing `mipmaps/generate
+  = false` setting is preserved). Voxel atlases must not generate mips —
+  they bleed across tile boundaries. Godot 4.6 supports BPTC without mips
+  on Vulkan/Forward+.
+
+**Bugs discovered during Tier 2/3 acceptance:**
+- ✅ **Sun/moon orb rendering through terrain at horizon** — fixed in
+  `DayNightCycle.gd`. SunMat / MoonMat have `no_depth_test = true` so
+  the orb always renders on top; visibility was gated only on light
+  energy which stays positive during DUSK (h=17–20). Added a
+  `basis.z.y > -0.05` gate so the mesh hides once the celestial body
+  drops below the horizon line.
+- 🐢 **WaterFlowManager runaway near coast** — partial fix.
+  `_gather_lateral_sources_buffered` now short-circuits on uniform-water
+  chunks (Zylann's O(1) `is_uniform()` check) so ocean-interior chunks
+  marked dirty by the 3×3×3 dirty-propagation around mining don't run
+  the 4096-voxel scan + ~1000 spurious chunk-boundary-source
+  classifications. Each spurious source previously fired 4 per-voxel
+  cross-chunk `tool.get_voxel` calls in the spread loop — the dominant
+  cost in the 800–1000 µs/frame peak observed 2026-05-13. Expect
+  WaterFlowManager to drop back into the low µs/frame range after this.
+- 🐛 **Visible water elevation rises during mining at the coast** —
+  NOT YET FIXED. Distinct from the perf bug above. User reported the
+  whole pond surface visually rose. Mechanically, the simulator only
+  writes water DOWN (gravity) or sideways (lateral) — never UP — so
+  the cause is likely either in `WaterChunkMesher._gather_surface_quads`
+  (mistaken top-water-Y per column after a flow cell is placed) or a
+  truncation bug where the stored 8-bit water byte loses tick bits 8+
+  on writeback (the in-memory `_cells` carries 8 bits of tick, the
+  byte carries 3, so `fed_tick` round-trips wrong after tick 7). Needs
+  reproduction with `Profiler.gd capture_on_startup = true` and the
+  capture JSON inspected for any flow byte written at a Y above the
+  source row.
+
+**Acceptance status:**
+- Tier 1 (vol fog / glow / AGX / TAA): **verified visually 2026-05-13** —
+  user confirmed the look is good, no tuning needed.
+- Tier 2 / 3 (SDFGI / SSR / BPTC / visibility ranges): visual + perf
+  capture still pending. Run a 60 s World3D walk and compare against
+  `baseline_forward_plus_shadowq4.json`. Expect +3–6 ms p99 from
+  SDFGI (~2–4 ms) + SSR (~1–2 ms) on top of the Tier 1 baseline. If
+  worse, dials in order of cheapest revert:
+  1. `sdfgi_cascades = 4 → 2` (halves SDFGI cost on World3D)
+  2. `ssr_enabled = false` (water alone usually doesn't justify SSR)
+  3. Last resort: `sdfgi_enabled = false`.
 
 ---
 
-## 8. Texture import — BPTC over raw RGBA
+## 8. Texture import — BPTC over raw RGBA  ✅ done (Tier 2)
 
-**Files:** `assets/voxels/texture_packs/default/source/*.png.import`,
-`assets/voxels/texture_packs/default/atlas.png.import`.
+`atlas.png.import` flipped to `compress/mode = 2` on 2026-05-13.
+Godot's reimport produced `imported_formats: ["s3tc_bptc"]`, confirming
+BPTC was selected on Vulkan/Forward+.
 
-**Why it was set this way:** `compress/mode=0` (raw RGBA) is renderer-agnostic
-and was the safe choice under gl_compatibility.
+Source-tile PNGs (`source/*.png.import`) intentionally left at lossless —
+they're build inputs for `tools/build_texture_atlas.py`, never loaded
+into VRAM at runtime, so converting them is wasted work.
 
-**Goal:** Forward+/Vulkan supports BPTC on the RX 7800 XT. Switching could
-cut atlas VRAM by ~4× with minimal quality loss — and the migration already
-ate +54% VRAM, so reclaiming it matters.
-
-**Risk:** BPTC can introduce subtle banding on smooth gradients. The voxel
-atlas has hard-edged tiles, so this is likely fine, but verify on the dirt
-and grass tiles which have the smoothest variation.
-
-**Acceptance:** atlas VRAM in `engine.vram_mb` drops; no visible banding or
-color shift on terrain tiles at any LOD.
+**Acceptance check pending:** capture vram_mb in `engine.*` and compare
+against the pre-BPTC baseline. Visual verification needed: walk the
+terrain and watch for banding on dirt and grass tiles (smoothest
+gradients in the atlas).
 
 ---
 
-## 9. Decal blood pool follow-up (depends on #7)
+## 9. Decal blood pool follow-up — newly load-bearing (SDFGI now on)
 
-**File:** `scripts/BloodVFX.gd` (`spawn_pool`, post-revert).
+**File:** `scripts/BloodVFX.gd` (`spawn_pool`).
 
-**Why this exists:** the BloodVFX revert in the migration PR uses default
-Decal lighting. If SDFGI (#7) is enabled, Decals may read incorrectly
-against GI-lit surfaces.
+SDFGI landed in the Tier-2 batch above, so this is now a live concern
+rather than hypothetical. Decals may read incorrectly against GI-lit
+surfaces — sky bounce can blow out the red, or shadow caves can crush
+it to black.
 
-**Goal:** verify Decal blood pools still look right with SDFGI on. Tune
-`Decal.modulate_albedo` or `Decal.albedo_mix` if needed.
+**Goal:** kill a goblin in `CombatTest.tscn` outdoors (sky bounce) and
+again inside the campfire alcove in `World3D.tscn` (occluded GI). Pool
+color should read as dark red in both. If it doesn't, tune
+`Decal.modulate_albedo` or `Decal.albedo_mix` — the API is on the
+Decal node BloodVFX builds in `spawn_pool`.
 
-**Acceptance:** kill a goblin in shadow and in sunlight under SDFGI; pool
-color reads correctly in both.
+**Acceptance:** pool color reads correctly in shadow and sunlight under
+SDFGI.
 
 ---
 
@@ -302,6 +378,24 @@ All captures from the World3D scene running the same scenario: spawn → walk
 forward ~20 s → idle ~10 s. Analysis recipes in
 `design/PROFILER_AND_DIAGNOSTICS.md` ("Analyzing captures — Python
 recipes").
+
+---
+
+## Generator note — rock overhangs / arches not produced
+
+Heightmap generators (cubic + copper isles) emit a strict 2D heightmap
+per XZ column — no negative-Y features, no overhangs, no arches. SDFGI
+landed in PR #213 has very little non-trivial GI to bounce through as a
+result; caves are confirmed bouncing light, but rock overhangs (which
+would give the most dramatic visual return from SDFGI) don't exist in
+the world.
+
+Future tier (T7? T8?) for the generators: a 3D Worley/perlin pass that
+removes voxels in plausible arch / overhang shapes, gated on slope and
+material so we don't carve random holes in flat ground. Most natural
+for stone material above a certain elevation.
+
+Documented 2026-05-13 during Tier 2 acceptance check.
 
 ---
 

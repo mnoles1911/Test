@@ -58,5 +58,6 @@ amount = 30
 lifetime = 0.8
 one_shot = true
 explosiveness = 1.0
+visibility_range_end = 40.0
 process_material = SubResource("ParticleProcessMaterial_dust")
 draw_pass_1 = SubResource("BoxMesh_dust_cube")

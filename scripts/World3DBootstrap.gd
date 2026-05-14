@@ -49,7 +49,27 @@ var _diag_last_player_pos_valid: bool = false
 var _diag_debug_draw_on: bool = false
 
 
+const WORKING_SQLITE_PATH: String = "user://voxel_deltas.sqlite"
+# The working SQLite that VoxelStreamSQLite on World3D.tscn reads from
+# and writes edits back to. Must match the database_path on the .tscn's
+# VoxelStreamSQLite sub-resource.
+
+const BAKED_BASELINE_PATH: String = "user://baked_baseline_world3d.sqlite"
+# Output of scenes/_dev/BakeWorld3D.tscn. If this file exists at world
+# load AND the working file doesn't, we copy baseline → working so the
+# player drops into a pre-populated world. Without this seed step the
+# C++ generator has to regen every chunk on first load, which (with
+# Forward+ Tier 1/2/3 rendering on) can take many minutes and timed
+# the spawn freeze out (observed 2026-05-13).
+
+
 func _ready() -> void:
+	# Seed the working SQLite from the baked baseline if needed. Runs
+	# BEFORE the terrain.stream initialises, so VoxelStreamSQLite opens
+	# the populated file on its first read. Mirrors the pattern in
+	# CopperIslesTestBootstrap._seed_from_baseline_if_needed.
+	_seed_from_baseline_if_needed()
+
 	# --- Hand the voxel terrain to the edit manager ---
 	# Without this call, VoxelEditManager has no terrain to write to
 	# and silently rejects every queue_edit_* call (returns false).
@@ -288,6 +308,15 @@ func _ready() -> void:
 		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
+
+	# --- Snap the campfire OmniLight onto the terrain surface ---
+	# The .tscn hard-codes Campfire to world Y=0.5, which assumes
+	# ground_y == 0. The C++ cubic generator places real ground anywhere
+	# from ~20-50 m depending on noise at the campfire's X,Z, so without
+	# this snap the campfire either floats above terrain or is buried.
+	# Uses the same generator.get_ground_voxel_y_at() path as the player
+	# spawn pre-snap, so the two stay consistent.
+	_snap_campfire_to_ground()
 
 	# --- Apply saved player position ---
 	# When the world scene loads after a load_save_file() call,
@@ -535,6 +564,47 @@ func _diag_resolve_refs() -> void:
 		_diag_viewer = _diag_player.get_node_or_null("VoxelViewer") as Node3D
 
 
+func _seed_from_baseline_if_needed() -> void:
+	# If the working DB already exists, leave it alone — the player has
+	# an in-progress world and their edits live there. Stomping it would
+	# wipe their progress.
+	if FileAccess.file_exists(WORKING_SQLITE_PATH):
+		return
+	# No baseline shipped/baked yet? Silent fall through to live
+	# regeneration. This is expected the very first time you run the
+	# project before any bake has happened.
+	if not FileAccess.file_exists(BAKED_BASELINE_PATH):
+		print(
+			"[World3D] No baked baseline at %s — falling through to live regen."
+			% BAKED_BASELINE_PATH
+		)
+		print(
+			"[World3D]   To pre-populate, run scenes/_dev/BakeWorld3D.tscn."
+		)
+		return
+	# Resolve to OS-absolute paths so DirAccess.copy_absolute can bridge
+	# the user:// prefix (the high-level .copy() refuses cross-prefix
+	# copies in some Godot versions).
+	var src_abs: String = ProjectSettings.globalize_path(BAKED_BASELINE_PATH)
+	var dst_abs: String = ProjectSettings.globalize_path(WORKING_SQLITE_PATH)
+	var user_dir := DirAccess.open("user://")
+	if user_dir == null:
+		push_warning("[World3D] user:// not accessible; skipping baseline seed.")
+		return
+	var err: int = DirAccess.copy_absolute(src_abs, dst_abs)
+	if err == OK:
+		var size_bytes: int = 0
+		var f: FileAccess = FileAccess.open(WORKING_SQLITE_PATH, FileAccess.READ)
+		if f != null:
+			size_bytes = f.get_length()
+			f.close()
+		print("[World3D] Seeded %s from baseline (%.1f MB)." % [
+			WORKING_SQLITE_PATH, float(size_bytes) / (1024.0 * 1024.0),
+		])
+	else:
+		push_warning("[World3D] Failed to copy baseline (err=%d)." % err)
+
+
 func _configure_voxel_format(terrain: Object) -> void:
 	# Set CHANNEL_TYPE depth to 8-bit. After the v13 migration to
 	# VoxelMesherBlocky we store the material_id directly in TYPE,
@@ -624,6 +694,57 @@ func _configure_voxel_format(terrain: Object) -> void:
 	print("[World3D] terrain.format assigned (CHANNEL_TYPE 8-bit).")
 
 
+func _snap_campfire_to_ground() -> void:
+	# Lift the Campfire OmniLight3D so its mesh rests on the generated
+	# terrain surface at its authored X,Z. The .tscn places it at world
+	# Y=0.5, which is correct only if ground_y happens to be 0.
+	#
+	# CampfireMesh local layout (from World3D.tscn):
+	#   - OmniLight3D root transform.origin.y is what we set here.
+	#   - CampfireMesh child local Y = -0.4 (mesh center below the light).
+	#   - BoxMesh size = (0.5, 0.3, 0.5), so mesh half-height = 0.15.
+	# Bottom of mesh in world space = root_y + (-0.4) - 0.15 = root_y - 0.55.
+	# To park the mesh's bottom on the ground, set root_y = ground_y + 0.55.
+	var campfire := get_node_or_null("Campfire") as Node3D
+	if campfire == null:
+		return
+	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
+	if terrain == null:
+		return
+	var terrain_scale: float = terrain.transform.basis.get_scale().y
+	if absf(terrain_scale) < 0.00001:
+		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+	var voxels_per_m: float = 1.0 / terrain_scale
+	var generator = terrain.get("generator") if "generator" in terrain else null
+	if generator == null:
+		return
+	var c_local: Vector3 = campfire.transform.origin
+	var vx: int = int(roundf(c_local.x * voxels_per_m))
+	var vz: int = int(roundf(c_local.z * voxels_per_m))
+	# Drill through adapter → cpp_impl if the method isn't on the
+	# generator directly (mirrors _pre_snap_player_to_generator_ground).
+	var ground_voxel_y: int = 0
+	var found: bool = false
+	if generator.has_method("get_ground_voxel_y_at"):
+		ground_voxel_y = int(generator.call("get_ground_voxel_y_at", vx, vz))
+		found = true
+	elif "cpp_impl" in generator:
+		var cpp = generator.get("cpp_impl")
+		if cpp != null and cpp.has_method("get_ground_voxel_y_at"):
+			ground_voxel_y = int(cpp.call("get_ground_voxel_y_at", vx, vz))
+			found = true
+	if not found:
+		print("[World3D] campfire snap: generator has no get_ground_voxel_y_at; leaving Y as authored.")
+		return
+	const CAMPFIRE_GROUND_OFFSET_M: float = 0.55
+	var new_y: float = float(ground_voxel_y) * terrain_scale + CAMPFIRE_GROUND_OFFSET_M
+	var old_y: float = c_local.y
+	campfire.transform.origin = Vector3(c_local.x, new_y, c_local.z)
+	print("[World3D] Campfire snapped Y %.2f → %.2f (ground vox=%d, scale=%.4f)" % [
+		old_y, new_y, ground_voxel_y, terrain_scale,
+	])
+
+
 func _pre_snap_player_to_generator_ground() -> void:
 	# Analytical ground lookup so the player doesn't spawn 100m above
 	# terrain and fall through the LOD0 collision gap.
@@ -706,7 +827,24 @@ func _pre_snap_player_to_generator_ground() -> void:
 var _spawn_wiggle_active: bool = false
 var _spawn_wiggle_start_msec: int = 0
 var _spawn_wiggle_frame: int = 0
-const SPAWN_WIGGLE_MAX_S: float = 15.0
+var _spawn_timeout_warned: bool = false
+
+# Saved terrain.view_distance during spawn. Default 512 voxels = ~85 m
+# means Zylann has to build a ~1700-chunk pyramid before the player is
+# safe. We shrink to 96 voxels (~16 m, just past the player's view of
+# their feet) during spawn so Zylann only has to load ~30 chunks before
+# the raycast hits ground. After ground hit we restore the full 512 so
+# the rest of the world streams in as normal (LOD pyramid expands
+# outward, respecting the existing PrefetchViewer).
+var _suspend_terrain: Object = null
+var _suspend_view_distance: int = -1
+const SPAWN_VIEW_DISTANCE_VOX: int = 96
+const SPAWN_WIGGLE_MAX_S: float = 45.0
+# Bumped 15 → 45s on 2026-05-13 after user reported falling through the
+# world when voxel_deltas.sqlite was deleted. Cold-cache regen (no
+# pre-baked chunks) needs more time for Zylann to stream + generate
+# chunks around the player before terrain collision exists. 15s was
+# fine for warm-cache loads but timed out during cold regen.
 # Wiggle amplitude — REVERTED to 0.001 (1 mm) on 2026-05-12 after a
 # 10mm × dual-axis tune blew up. Zylann started doing 200ms/frame of
 # detect work and dropped 16k chunk loads per second — the wiggle
@@ -750,9 +888,46 @@ func _snap_spawn_to_ground(_retries_remaining: int = 0) -> void:
 	# _retries_remaining parameter retained for call-site compat but
 	# unused — the wiggle loop self-times via SPAWN_WIGGLE_MAX_S.
 	_pre_snap_player_to_generator_ground()
+	_suspend_expensive_rendering_for_spawn()
 	_spawn_wiggle_active = true
 	_spawn_wiggle_frame = 0
 	_spawn_wiggle_start_msec = Time.get_ticks_msec()
+
+
+func _suspend_expensive_rendering_for_spawn() -> void:
+	# Shrink terrain.view_distance to SPAWN_VIEW_DISTANCE_VOX so Zylann
+	# only has to stream a small bubble around the player before
+	# collision exists. Restored on raycast-hit, then the rest of the
+	# world streams in progressively (LOD pyramid expands outward,
+	# respecting the existing PrefetchViewer).
+	#
+	# Note: SDFGI + volumetric fog are intentionally NOT auto-disabled
+	# here (user preference 2026-05-13). They're heavy during cold-cache
+	# regen, but the supported workaround is to pre-bake the world via
+	# scenes/_dev/BakeWorld3D.tscn so the SQLite has all chunks ready
+	# before the gameplay scene loads.
+	var terrain: Object = get_node_or_null(voxel_terrain_path)
+	if terrain != null and "view_distance" in terrain:
+		_suspend_terrain = terrain
+		_suspend_view_distance = terrain.get("view_distance") as int
+		terrain.set("view_distance", SPAWN_VIEW_DISTANCE_VOX)
+		print(
+			"[World3D] Shrunk view_distance %d → %d for spawn-load."
+			% [_suspend_view_distance, SPAWN_VIEW_DISTANCE_VOX]
+		)
+
+
+func _resume_expensive_rendering_after_spawn() -> void:
+	# Mirror of the suspension. Called from the wiggle's raycast-hit
+	# branch (after we know the player has ground under them).
+	if _suspend_terrain != null and _suspend_view_distance > 0:
+		_suspend_terrain.set("view_distance", _suspend_view_distance)
+		print(
+			"[World3D] Restored view_distance to %d."
+			% _suspend_view_distance
+		)
+		_suspend_terrain = null
+		_suspend_view_distance = -1
 
 
 func _physics_process(_delta: float) -> void:
@@ -805,6 +980,10 @@ func _physics_process(_delta: float) -> void:
 		if "_spawn_freeze" in player:
 			player.set("_spawn_freeze", false)
 		_spawn_wiggle_active = false
+		# Restore SDFGI / volumetric fog / view_distance now that the
+		# player is grounded. Rest of the world streams in outward
+		# behind these settings.
+		_resume_expensive_rendering_after_spawn()
 		var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
 		print("[World3D] Spawn snapped to ground at Y=%.2f (hit at %.2f, %.1fs wiggle); spawn-freeze cleared." % [
 			player.global_position.y, ground_y, elapsed_s,
@@ -812,17 +991,36 @@ func _physics_process(_delta: float) -> void:
 		_mark_world_ready_when_settled()
 		return
 
-	# Step 3: timeout check. SPAWN_WIGGLE_MAX_S safety net.
+	# Step 3: log progress on the soft timeout, but DO NOT unfreeze.
+	# Previously this gave up at SPAWN_WIGGLE_MAX_S and unfroze the
+	# player even when raycast still hit nothing. On cold-cache regen
+	# (no SQLite present), Zylann can need several minutes to generate
+	# enough chunks for collision below the player — unfreezing early
+	# drops them through the world into the void (observed 2026-05-13,
+	# player Y went from 30 → -8000 over a few seconds).
+	#
+	# Now we stay frozen as long as the raycast keeps missing. The
+	# player is in a controlled hover at the analytical pre-snap Y;
+	# eventually Zylann finishes a chunk under them and the hit-above
+	# branch fires. If this never happens, the user should quit and
+	# run scenes/_dev/BakeWorld3D.tscn to pre-populate the SQLite —
+	# print a hint so they know what to do.
 	var elapsed_s: float = (Time.get_ticks_msec() - _spawn_wiggle_start_msec) / 1000.0
-	if elapsed_s > SPAWN_WIGGLE_MAX_S:
-		if "_spawn_freeze" in player:
-			player.set("_spawn_freeze", false)
-		_spawn_wiggle_active = false
-		print("[World3D] Spawn wiggle timed out at %.1fs; unfreezing at pre-snap Y=%.2f (small drop expected)." % [
-			elapsed_s, player.global_position.y,
-		])
-		_mark_world_ready_when_settled()
-		return
+	if elapsed_s > SPAWN_WIGGLE_MAX_S and not _spawn_timeout_warned:
+		_spawn_timeout_warned = true
+		print(
+			"[World3D] Spawn still waiting for ground after %.1fs."
+			% elapsed_s
+		)
+		print(
+			"[World3D]   Cold-cache regen can take several minutes."
+			+ " If this hangs forever, quit and run"
+			+ " scenes/_dev/BakeWorld3D.tscn to pre-bake the SQLite."
+		)
+		print(
+			"[World3D]   Or restore the previous voxel_deltas.sqlite"
+			+ " from a backup."
+		)
 
 	# Spawn ground confirmed — kick off the loading-screen close
 	# negotiation. The helper polls Zylann's blocked_lods until the

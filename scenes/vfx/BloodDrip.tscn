@@ -70,5 +70,6 @@ explosiveness = 0.0
 ; beside the body, always visible regardless of whether the goblin
 ; is moving or stationary.
 local_coords = false
+visibility_range_end = 40.0
 process_material = SubResource("ParticleProcessMaterial_drip")
 draw_pass_1 = SubResource("BoxMesh_drip_cube")
