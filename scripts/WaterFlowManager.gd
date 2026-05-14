@@ -784,13 +784,26 @@ func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTer
 		var src_level: int = src["level"]
 		if src_level <= MIN_LEVEL:
 			continue
-		# ALL-SOURCE: every lateral spread now writes a SOURCE byte, so
-		# the previous src_is_permanent_sea / target_level decay machinery
-		# is gone. target_level is retained only because the original
-		# Minecraft-style "source must have level > 1 to spread" gate is
-		# still useful for transient legacy flow cells loaded from old
-		# caches — those decay one level per spread and stop propagating
-		# once they hit MIN_LEVEL.
+		# STRICT SUB-SEA SPREAD: only sources strictly BELOW sea level
+		# spread laterally. Sources AT sea level (Y == _sea_level_voxel_y,
+		# the visible water surface) and above cannot lateral-spread.
+		#
+		# Why: with the all-source rule (commit 841ad49), Y == sea_level
+		# air cells above the BEACH (where ground_y < sea_level locally
+		# but air-with-solid-floor exists at the surface) become valid
+		# spread targets indistinguishable from carved cells. A single
+		# Y == sea_level mining strike triggered a wavefront across the
+		# entire beach interior — modified=694 cells/tick from a 2-block
+		# carve, WFM=455 µs/frame, "tiles climb higher" symptom.
+		#
+		# Strictly-sub-sea spread eliminates this: gravity drop still
+		# fills carved cells at Y < sea_level from the Y == sea_level
+		# source above, and Y < sea_level sources spread laterally to
+		# fill cavities. Mining a single Y == sea_level cell adjacent to
+		# the sea leaves a tiny air pocket — acceptable trade-off given
+		# the alternative is uncontrolled beach flooding.
+		if src_pos.y >= _sea_level_voxel_y:
+			continue
 		var target_level: int = src_level - 1
 		for dir in _LATERAL_DIRS:
 			if modified >= budget:
