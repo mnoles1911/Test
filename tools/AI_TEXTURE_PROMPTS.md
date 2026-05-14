@@ -188,13 +188,20 @@ stone, rare marble — rather than uniform grey.)*
 
 > A 16x16 pixel art tile of cool dark grey basalt stone, rendered
 > at 512x512 as a 32x upscale with hard square pixels. Designed to
-> repeat invisibly across a deep cave wall. Deep charcoal grey
-> palette of 6 tones with subtle cool blue-grey undertones, the
-> heavy dense character of dark volcanic rock that contrasts
-> visibly against ordinary warm granite. Many short 1 to 2 pixel
-> micro-fractures and tiny scattered mineral specks at uniform
-> density, all of similar weight. Flat matte even lighting
-> throughout. Tiles seamlessly with no edge seams.
+> repeat invisibly across a deep cave wall. Approximately 80 percent
+> of the pixels are a single uniform deep charcoal grey base color
+> with subtle cool blue-grey undertones — this dominant color fills
+> the tile as the natural rock surface, the heavy dense character
+> of dark volcanic rock. Approximately 12 percent of the pixels are
+> slightly darker near-black charcoal forming irregular natural
+> rock noise — these darker pixels appear in random scattered
+> clusters of 2 to 4 pixels each, never as isolated single pixels
+> and never as alternating pairs. Approximately 8 percent of the
+> pixels are slightly lighter cool grey crystalline mineral specks,
+> placed as 1 to 2 pixel highlights at scattered positions. Most of
+> any given row should be the dominant base charcoal, with variation
+> appearing only at the cluster and speck positions. Flat matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
 ---
 
@@ -286,10 +293,18 @@ through as bare stone.)*
 > A 16x16 pixel art tile of fresh dry mountain snow viewed from
 > directly above, rendered at 512x512 as a 32x upscale with hard
 > square pixels. Designed to repeat invisibly across a high alpine
-> peak. Cool white palette of 4 tones with very subtle pale blue
-> and faint warm cream undertones from low-angle light. Tiny
-> single-pixel sparkle highlights and faint single-pixel shadow
-> pockets scattered uniformly, all of similar weight. Flat top-down
+> peak. Approximately 85 percent of the pixels are a single uniform
+> bright cool white base color — this dominant color fills the tile
+> as undisturbed powdery snow, the soft granular texture of recently
+> fallen snow rather than packed ice or slush. Approximately 10
+> percent of the pixels are pale blue-grey shadow pockets between
+> snow drifts, appearing in random scattered clusters of 2 to 3
+> pixels each, never as isolated single pixels and never as
+> alternating pairs. Approximately 5 percent of the pixels are
+> brighter near-pure-white sparkle highlights as single 1 pixel
+> glints at scattered positions across the tile. Most of any given
+> row should be the dominant base white, with variation appearing
+> only at the shadow-pocket and sparkle positions. Flat top-down
 > view, matte even lighting throughout. Tiles seamlessly with no
 > edge seams.
 
@@ -373,23 +388,23 @@ silvery / rust-red palette vs copper's orange-bronze / green
 patina — so the player can tell them apart at a glance
 underground.)*
 
-> A 16x16 pixel art tile of grey stone with veins and flecks of
-> iron mineral, rendered at 512x512 as a 32x upscale with hard
-> square pixels. Designed to repeat invisibly across a cave wall.
-> The stone base is an irregular natural-looking mottle of 4 cool
-> grey tones, with each grey tone forming small organic clusters of
-> 2 to 5 pixels at random positions across the tile. The stone
-> base must NOT be a checkerboard pattern, must NOT alternate two
-> tones every pixel, must NOT form any regular two-tone grid — a
-> checkerboard would read as a transparency-grid artifact rather
-> than as natural rock and is a failure. Adjacent stone pixels are
-> usually the same tone; tone changes happen at the boundaries
-> between clusters, not at every pixel. On top of that mottled
-> stone base, place scattered raw silvery-grey iron pixels and
-> dark rust-red oxidized iron pixels as ore. Ore veins broken into
-> short irregular 1 to 2 pixel branching segments scattered
-> uniformly across the tile. Flat matte even lighting throughout.
-> Tiles seamlessly with no edge seams.
+> A 16x16 pixel art tile of grey stone with embedded iron mineral
+> deposits, rendered at 512x512 as a 32x upscale with hard square
+> pixels. Designed to repeat invisibly across a cave wall.
+> Approximately 75 percent of the pixels are a single uniform
+> medium cool grey base color — this dominant color fills the tile
+> as the natural rock surface, like the base color of Minecraft
+> stone. Approximately 15 percent of the pixels are slightly darker
+> cool grey forming irregular natural rock noise — these darker
+> pixels appear in random scattered clusters of 2 to 4 pixels each,
+> never as isolated single pixels and never as alternating pairs.
+> Approximately 5 percent of the pixels are bright silvery-white
+> iron flecks, placed in short irregular vein segments of 1 to 2
+> pixels. Approximately 5 percent of the pixels are dark rust-red
+> oxidized iron, also in short 1 to 2 pixel vein segments. Most of
+> any given row should be the dominant base grey, with variation
+> appearing only at the cluster and vein positions. Flat matte even
+> lighting throughout. Tiles seamlessly with no edge seams.
 
 ---
 
