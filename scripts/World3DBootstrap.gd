@@ -49,7 +49,27 @@ var _diag_last_player_pos_valid: bool = false
 var _diag_debug_draw_on: bool = false
 
 
+const WORKING_SQLITE_PATH: String = "user://voxel_deltas.sqlite"
+# The working SQLite that VoxelStreamSQLite on World3D.tscn reads from
+# and writes edits back to. Must match the database_path on the .tscn's
+# VoxelStreamSQLite sub-resource.
+
+const BAKED_BASELINE_PATH: String = "user://baked_baseline_world3d.sqlite"
+# Output of scenes/_dev/BakeWorld3D.tscn. If this file exists at world
+# load AND the working file doesn't, we copy baseline → working so the
+# player drops into a pre-populated world. Without this seed step the
+# C++ generator has to regen every chunk on first load, which (with
+# Forward+ Tier 1/2/3 rendering on) can take many minutes and timed
+# the spawn freeze out (observed 2026-05-13).
+
+
 func _ready() -> void:
+	# Seed the working SQLite from the baked baseline if needed. Runs
+	# BEFORE the terrain.stream initialises, so VoxelStreamSQLite opens
+	# the populated file on its first read. Mirrors the pattern in
+	# CopperIslesTestBootstrap._seed_from_baseline_if_needed.
+	_seed_from_baseline_if_needed()
+
 	# --- Hand the voxel terrain to the edit manager ---
 	# Without this call, VoxelEditManager has no terrain to write to
 	# and silently rejects every queue_edit_* call (returns false).
@@ -542,6 +562,47 @@ func _diag_resolve_refs() -> void:
 	if _diag_viewer == null and _diag_player != null:
 		# VoxelViewer lives as a direct child of Player3D (see Player3D.tscn).
 		_diag_viewer = _diag_player.get_node_or_null("VoxelViewer") as Node3D
+
+
+func _seed_from_baseline_if_needed() -> void:
+	# If the working DB already exists, leave it alone — the player has
+	# an in-progress world and their edits live there. Stomping it would
+	# wipe their progress.
+	if FileAccess.file_exists(WORKING_SQLITE_PATH):
+		return
+	# No baseline shipped/baked yet? Silent fall through to live
+	# regeneration. This is expected the very first time you run the
+	# project before any bake has happened.
+	if not FileAccess.file_exists(BAKED_BASELINE_PATH):
+		print(
+			"[World3D] No baked baseline at %s — falling through to live regen."
+			% BAKED_BASELINE_PATH
+		)
+		print(
+			"[World3D]   To pre-populate, run scenes/_dev/BakeWorld3D.tscn."
+		)
+		return
+	# Resolve to OS-absolute paths so DirAccess.copy_absolute can bridge
+	# the user:// prefix (the high-level .copy() refuses cross-prefix
+	# copies in some Godot versions).
+	var src_abs: String = ProjectSettings.globalize_path(BAKED_BASELINE_PATH)
+	var dst_abs: String = ProjectSettings.globalize_path(WORKING_SQLITE_PATH)
+	var user_dir := DirAccess.open("user://")
+	if user_dir == null:
+		push_warning("[World3D] user:// not accessible; skipping baseline seed.")
+		return
+	var err: int = DirAccess.copy_absolute(src_abs, dst_abs)
+	if err == OK:
+		var size_bytes: int = 0
+		var f: FileAccess = FileAccess.open(WORKING_SQLITE_PATH, FileAccess.READ)
+		if f != null:
+			size_bytes = f.get_length()
+			f.close()
+		print("[World3D] Seeded %s from baseline (%.1f MB)." % [
+			WORKING_SQLITE_PATH, float(size_bytes) / (1024.0 * 1024.0),
+		])
+	else:
+		push_warning("[World3D] Failed to copy baseline (err=%d)." % err)
 
 
 func _configure_voxel_format(terrain: Object) -> void:
