@@ -768,28 +768,16 @@ var _spawn_wiggle_start_msec: int = 0
 var _spawn_wiggle_frame: int = 0
 var _spawn_timeout_warned: bool = false
 
-# Saved Environment state during spawn-load suspension. Restored when
-# the wiggle raycast hits ground. SDFGI updates its cascade voxelization
-# every frame as scene geometry changes — during cold-cache regen the
-# scene is changing constantly, so SDFGI alone can drag main-thread
-# frame time to 80–120 ms, which throttles Zylann's mesh-apply queue
-# and stalls the chunk pipeline. User-verified 2026-05-13: manually
-# toggling sdfgi_enabled + volumetric_fog_enabled OFF dropped cold
-# regen from "never finishes in 45 s" to ~18 s.
-var _suspend_env: Environment = null
-var _suspend_sdfgi_was_on: bool = false
-var _suspend_volfog_was_on: bool = false
-
 # Saved terrain.view_distance during spawn. Default 512 voxels = ~85 m
 # means Zylann has to build a ~1700-chunk pyramid before the player is
 # safe. We shrink to 96 voxels (~16 m, just past the player's view of
 # their feet) during spawn so Zylann only has to load ~30 chunks before
 # the raycast hits ground. After ground hit we restore the full 512 so
-# the rest of the world streams in as normal.
+# the rest of the world streams in as normal (LOD pyramid expands
+# outward, respecting the existing PrefetchViewer).
 var _suspend_terrain: Object = null
 var _suspend_view_distance: int = -1
 const SPAWN_VIEW_DISTANCE_VOX: int = 96
-const NORMAL_VIEW_DISTANCE_VOX: int = 512
 const SPAWN_WIGGLE_MAX_S: float = 45.0
 # Bumped 15 → 45s on 2026-05-13 after user reported falling through the
 # world when voxel_deltas.sqlite was deleted. Cold-cache regen (no
@@ -846,31 +834,17 @@ func _snap_spawn_to_ground(_retries_remaining: int = 0) -> void:
 
 
 func _suspend_expensive_rendering_for_spawn() -> void:
-	# Two-pronged main-thread relief during cold-cache regen:
-	#   1. Disable SDFGI + volumetric fog on the active Environment.
-	#      Both run every frame as the scene changes; during spawn the
-	#      scene is changing constantly, so they cost dramatically more
-	#      than at idle. Restored on raycast hit.
-	#   2. Shrink terrain.view_distance to SPAWN_VIEW_DISTANCE_VOX so
-	#      Zylann only has to stream a small bubble around the player
-	#      before collision exists. Restored to NORMAL_VIEW_DISTANCE_VOX
-	#      after raycast hit, then the rest of the world streams in
-	#      progressively (LOD pyramid expands outward naturally).
-	var env_owner: WorldEnvironment = (
-		get_node_or_null("WorldEnvironment") as WorldEnvironment
-	)
-	if env_owner != null and env_owner.environment != null:
-		_suspend_env = env_owner.environment
-		_suspend_sdfgi_was_on = _suspend_env.sdfgi_enabled
-		_suspend_volfog_was_on = _suspend_env.volumetric_fog_enabled
-		if _suspend_sdfgi_was_on:
-			_suspend_env.sdfgi_enabled = false
-		if _suspend_volfog_was_on:
-			_suspend_env.volumetric_fog_enabled = false
-		print(
-			"[World3D] Suspended SDFGI=%s volfog=%s for spawn-load."
-			% [str(_suspend_sdfgi_was_on), str(_suspend_volfog_was_on)]
-		)
+	# Shrink terrain.view_distance to SPAWN_VIEW_DISTANCE_VOX so Zylann
+	# only has to stream a small bubble around the player before
+	# collision exists. Restored on raycast-hit, then the rest of the
+	# world streams in progressively (LOD pyramid expands outward,
+	# respecting the existing PrefetchViewer).
+	#
+	# Note: SDFGI + volumetric fog are intentionally NOT auto-disabled
+	# here (user preference 2026-05-13). They're heavy during cold-cache
+	# regen, but the supported workaround is to pre-bake the world via
+	# scenes/_dev/BakeWorld3D.tscn so the SQLite has all chunks ready
+	# before the gameplay scene loads.
 	var terrain: Object = get_node_or_null(voxel_terrain_path)
 	if terrain != null and "view_distance" in terrain:
 		_suspend_terrain = terrain
@@ -885,13 +859,6 @@ func _suspend_expensive_rendering_for_spawn() -> void:
 func _resume_expensive_rendering_after_spawn() -> void:
 	# Mirror of the suspension. Called from the wiggle's raycast-hit
 	# branch (after we know the player has ground under them).
-	if _suspend_env != null:
-		if _suspend_sdfgi_was_on:
-			_suspend_env.sdfgi_enabled = true
-		if _suspend_volfog_was_on:
-			_suspend_env.volumetric_fog_enabled = true
-		print("[World3D] Restored SDFGI + volumetric fog.")
-		_suspend_env = null
 	if _suspend_terrain != null and _suspend_view_distance > 0:
 		_suspend_terrain.set("view_distance", _suspend_view_distance)
 		print(
