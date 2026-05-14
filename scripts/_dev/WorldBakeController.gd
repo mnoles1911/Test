@@ -175,6 +175,12 @@ const VERTICAL_STEP_M: float = 200.0
 ## radius. Mira's procedural noise terrain doesn't use a skirt.
 @export var show_skirt_button: bool = true
 
+## Path printed in the diagnostics "Update X with these findings"
+## footer. Each scene points this at its own bake-notes doc so the
+## diag output stays accurate. BakeWorld.tscn (Copper Isles) keeps the
+## default; BakeWorld3D.tscn (Mira) overrides to its own notes.
+@export var diagnostics_notes_path: String = "design/COPPER_ISLES_BAKE_NOTES.md"
+
 # Legacy const names kept for any external reference; @exports above are
 # the runtime source of truth. Do not read these from new code.
 const BAKE_DB_PATH: String = "user://baked_baseline_v14.sqlite"
@@ -674,7 +680,7 @@ func _on_run_diagnostics() -> void:
 			_diag_print("[4] terrain.stream is null.")
 
 	_diag_print("=== End probe ===")
-	_diag_print("Update design/COPPER_ISLES_BAKE_NOTES.md with these findings.")
+	_diag_print("Update %s with these findings." % diagnostics_notes_path)
 
 
 # =============================================================

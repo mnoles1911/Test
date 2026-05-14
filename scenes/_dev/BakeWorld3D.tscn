@@ -51,6 +51,7 @@ bake_db_path = "user://baked_baseline_world3d.sqlite"
 final_baseline_path = ""
 show_copy_button = false
 show_skirt_button = false
+diagnostics_notes_path = "design/MIRA_BAKE_NOTES.md"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1580842735]
 environment = SubResource("Env_1")
