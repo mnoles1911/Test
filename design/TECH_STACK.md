@@ -2,7 +2,7 @@
 
 Reference for every tool, plugin, and software in the pipeline. Covers what each tool does, why it was chosen, and how it connects to everything else.
 
-> **STALE-IN-PLACES NOTE (2026-05-09):** Several mesher / channel references below describe the pre-2026-05-09 `VoxelMesherCubes` + `CHANNEL_COLOR` setup. The current pipeline uses `VoxelMesherBlocky` reading `CHANNEL_TYPE`, with a `VoxelBlockyLibrary` of textured cube models and a 32 px-tile atlas under `assets/voxels/texture_packs/default/`. Texture pack pipeline: `tools/build_texture_atlas.py` (Pillow, downscale + chroma-key white-to-alpha) → `tools/build_blocky_library.gd` EditorScript → `assets/voxels/blocky_library.tres`. Tile coords + materials are re-applied at runtime by `World3DBootstrap._inject_atlas_materials_into_library` (Zylann gdextension serialization round-trip bug). `WORLD_GENERATOR_VERSION = 13`. See `design/3D_VOXEL_MIGRATION.md` for the canonical mesher description and `design/LESSONS_LEARNED.md` 2026-05-09 entries for the gotchas. Specific stale lines flagged inline below.
+**Voxel mesher:** `VoxelMesherBlocky` reading `CHANNEL_TYPE` (8-bit material id), backed by a `VoxelBlockyLibrary` of textured cube models + a 32 px-tile atlas under `assets/voxels/texture_packs/default/`. Texture pack pipeline: `tools/build_texture_atlas.py` (Pillow, downscale + chroma-key white-to-alpha) → `tools/build_blocky_library.gd` EditorScript → `assets/voxels/blocky_library.tres`. Tile coords + per-cube materials are re-applied at runtime by `World3DBootstrap._inject_atlas_materials_into_library` (Zylann gdextension drops them on `.tres` load — see `design/LESSONS_LEARNED.md` 2026-05-09). `WORLD_GENERATOR_VERSION` is currently 14.
 
 ---
 
@@ -128,10 +128,10 @@ The only voxel terrain system for Godot 4 with production-ready LOD streaming at
 
 **What is NOT used:**
 - `VoxelMesherTransvoxel` — smooths geometry; eliminates the blocky aesthetic. Do not use.
-- `VoxelMesherBlocky` — model-library based; we use Cubes (per-voxel RGBA) instead.
-- `VoxelTerrain` (non-LOD variant) — for small finite worlds only; not suitable for 12km extent
-- `VoxelGeneratorGraph` + Gaea EXR — was the original plan; replaced by the GDScript generator above. The Gaea pipeline may return for the v1 Mira terrain authoring pass; for now noise-driven generation is sufficient.
-- `VoxelGeneratorScript` GDScript subclass — too slow; use VoxelGeneratorGraph instead
+- `VoxelMesherCubes` — retired 2026-05-08 in favor of `VoxelMesherBlocky` (atlas tiles via VoxelBlockyLibrary, see line 5).
+- `VoxelTerrain` (non-LOD variant) — for small finite worlds only; not suitable for 12 km extent.
+- `VoxelGeneratorGraph` + Gaea EXR — was the original plan; replaced by `CubicHeightmapGeneratorCpp` (C++ GDExtension). The Gaea pipeline may return for v1 Mira authoring.
+- Pure `VoxelGeneratorScript` GDScript subclass — too slow in GDScript; we keep a thin `VoxelGeneratorScript` adapter on top of a C++ `Resource` for the inner loop.
 
 **Voxel scale:** 6 voxels per meter (each block ≈ 16.7 cm) — locked 2026-05-03. Chunky enough to read as cubic, finer than Minecraft's 1 m blocks. All assets (MagicaVoxel props, building exports) are authored at this scale. `VoxelLodTerrain.transform.scale = 0.166667`.
 
@@ -259,26 +259,16 @@ In the Godot scene inspector on the `VoxelLodTerrain` node:
 |---|---|---|
 | `lod_count` | 7 | Good balance for 12km extent |
 | `lod_distance` | 60 | LOD0 full-detail radius in meters |
-| `mesher` | `VoxelMesherCubes` | Blocky stepped faces |
-| `generator` | VoxelGeneratorGraph child | Assign the graph node |
+| `mesher` | `VoxelMesherBlocky` | Atlas-textured stepped faces via `VoxelBlockyLibrary` |
+| `generator` | `CubicHeightmapGeneratorAdapter` → `CubicHeightmapGeneratorCpp` | C++ GDExtension; see `extensions/voxel_gen/` |
 | `collision_lod_count` | 3 | Physics only needs detail near player |
 | `streaming_system` | `STREAMING_SYSTEM_CLIPBOX` | Required for co-op multi-viewer |
 
 ---
 
-### Step 5 — Material Painting
+### Step 5 — Material painting
 
-`VoxelMesherCubes` reads `CHANNEL_INDICES` from the voxel buffer. Each index maps to a slot in a `VoxelBlockyLibrary`. Create one library entry per biome type:
-
-| Index | Material | Splatmap channel |
-|---|---|---|
-| 0 | Grassland (green-brown) | R |
-| 1 | Forest floor (dark, mossy) | G |
-| 2 | Rock / cliff face (grey) | B = 0 |
-| 3 | Ash / Ashfields (pale grey-white) | B = 1 |
-| 4 | Underground stone (dark grey) | Below surface threshold |
-
-Each material entry in the library is a `StandardMaterial3D` with a small hand-painted 4×4 color tile — no large textures needed at voxel scale.
+`VoxelMesherBlocky` reads `CHANNEL_TYPE` (8-bit material id, 1–254) and consults `VoxelBlockyLibrary` for per-face atlas tile coords + alpha-scissor `StandardMaterial3D`. Materials are authored as `VoxelMaterial.tres` resources in `assets/voxels/materials/` and loaded at startup by `VoxelMaterialRegistry`. Atlas tiles + per-cube material_override_0 are re-applied at runtime by `World3DBootstrap` (Zylann gdextension drops them on `.tres` load). See `CLAUDE.md` for the full material-authoring contract.
 
 ---
 
