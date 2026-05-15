@@ -281,6 +281,24 @@ const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
 # the 128 m LOD0 ring — comfortably inside the safety margin.
 # Set to 0.0 to disable the entire lookahead system.
 
+const VIEWER_OFFSET_SMOOTH_HALFLIFE_S: float = 0.20
+# Exponential half-life for VoxelViewer offset transitions. Without
+# this, the offset SNAPS frame-to-frame:
+#   - player stops → offset jumps to Vector3.ZERO
+#   - player turns → offset flips sign in one frame
+#   - speed crosses LOW_SPEED → lookahead_s jumps in one frame
+# Each snap forces Zylann's CLIPBOX to recompute the required-blocks
+# set and drop in-flight chunk loads. A single direction flip on
+# 2026-05-14 produced 3262 dropped_block_loads + 9.2 ms detect_us in
+# one frame (see design/captures/profile_capture_96300.json frame
+# context, [DIAG] log "lag_xz=0.6 m"). Smoothing turns that into a
+# ~150 ms ramp so Zylann sees gradual viewer drift instead of a
+# discontinuity. 0.20 s half-life ≈ 0.6 s to reach 87% of new target.
+# Tightened from 0.35 s on 2026-05-14 to reduce trailing during
+# direction changes; verified post-fix capture showed sprint had
+# already gone to 0 drops, so the budget for snap protection
+# could be relaxed.
+
 @onready var _voxel_viewer: Node = get_node_or_null("VoxelViewer")
 # Cached on first frame. The VoxelViewer node is added by Player3D.tscn;
 # get_node_or_null guards against custom Player3D instances that don't
@@ -296,6 +314,12 @@ const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
 # The smoothing system applies offsets RELATIVE to this baseline so a
 # return-to-zero offset always re-centres the camera at chest height.
 const CAMERA_TARGET_BASE_Y: float = 1.5
+
+# Persistent state for the exponential smoother on the viewer offset.
+# Initialised to Vector3.ZERO so the first frame's smoothing pulls
+# *toward* the velocity-scaled target rather than jumping straight to
+# it. See VIEWER_OFFSET_SMOOTH_HALFLIFE_S above.
+var _viewer_offset_smoothed: Vector3 = Vector3.ZERO
 
 # Half-life of the Y smoothing — every CAMERA_Y_SMOOTH_HALFLIFE_S the
 # offset between smoothed and real body Y halves. 0.08 s ≈ 5 frames at
@@ -516,7 +540,7 @@ func _physics_process(delta: float) -> void:
 	var _t_cam_us: int = Time.get_ticks_usec() - _t_cam_start
 
 	var _t_view_start: int = Time.get_ticks_usec()
-	_update_viewer_lookahead()
+	_update_viewer_lookahead(delta)
 	var _t_view_us: int = Time.get_ticks_usec() - _t_view_start
 
 	var _elapsed: int = Time.get_ticks_usec() - _t0_prof
@@ -529,7 +553,7 @@ func _physics_process(delta: float) -> void:
 		prof.record("PHYS", "Player3D_viewer_lookahead", _t_view_us)
 
 
-func _update_viewer_lookahead() -> void:
+func _update_viewer_lookahead(delta: float) -> void:
 	# Velocity-scaled VoxelViewer offset — see the constants block above
 	# for full design rationale. Two-stage scaling:
 	#   1. Lookahead seconds ramps from MIN_SECONDS to MAX_SECONDS as
@@ -539,46 +563,57 @@ func _update_viewer_lookahead() -> void:
 	# Final offset is then clamped to MAX_OFFSET_METERS to keep the
 	# viewer inside the LOD0 ring at any speed (incl. fly mode).
 	#
+	# Final write is then EXPONENTIALLY SMOOTHED toward the target
+	# offset — see VIEWER_OFFSET_SMOOTH_HALFLIFE_S. Snapping the offset
+	# (player stops, turns, crosses the speed threshold) was causing
+	# Zylann's CLIPBOX detector to drop thousands of in-flight chunk
+	# requests in single frames.
+	#
 	# Runs every physics frame from _physics_process. Cost: a length
 	# call + one lerp + one position write. Effectively free.
 	if _voxel_viewer == null:
 		return
 	if VIEWER_LOOKAHEAD_MAX_OFFSET_M <= 0.0:
 		# Lookahead disabled — keep viewer at player origin (symmetric).
+		_viewer_offset_smoothed = Vector3.ZERO
 		_voxel_viewer.position = Vector3.ZERO
 		return
 
+	# Compute the target offset (the previous direct-write value).
+	var target_offset: Vector3 = Vector3.ZERO
 	var horiz: Vector3 = Vector3(velocity.x, 0.0, velocity.z)
 	var speed: float = horiz.length()
-	if speed < 0.05:
-		# Effectively idle. Snap to symmetric so the streaming budget
-		# spreads evenly while the player decides where to go next.
-		_voxel_viewer.position = Vector3.ZERO
-		return
+	if speed >= 0.05:
+		# Stage 1 — pick a lookahead-seconds value scaled by speed.
+		# remap clamps the input to [LOW_SPEED, HIGH_SPEED] before lerping,
+		# so speeds outside that band peg at MIN_SECONDS or MAX_SECONDS.
+		var t: float = clampf(
+			(speed - VIEWER_LOOKAHEAD_LOW_SPEED_MPS) \
+				/ max(0.001, VIEWER_LOOKAHEAD_HIGH_SPEED_MPS - VIEWER_LOOKAHEAD_LOW_SPEED_MPS),
+			0.0,
+			1.0,
+		)
+		var lookahead_s: float = lerpf(VIEWER_LOOKAHEAD_MIN_SECONDS, VIEWER_LOOKAHEAD_MAX_SECONDS, t)
 
-	# Stage 1 — pick a lookahead-seconds value scaled by speed.
-	# remap clamps the input to [LOW_SPEED, HIGH_SPEED] before lerping,
-	# so speeds outside that band peg at MIN_SECONDS or MAX_SECONDS.
-	var t: float = clampf(
-		(speed - VIEWER_LOOKAHEAD_LOW_SPEED_MPS) \
-			/ max(0.001, VIEWER_LOOKAHEAD_HIGH_SPEED_MPS - VIEWER_LOOKAHEAD_LOW_SPEED_MPS),
-		0.0,
-		1.0,
-	)
-	var lookahead_s: float = lerpf(VIEWER_LOOKAHEAD_MIN_SECONDS, VIEWER_LOOKAHEAD_MAX_SECONDS, t)
+		# Stage 2 — offset = velocity vector * lookahead seconds. Direction
+		# inherent in the vector, magnitude is speed * seconds.
+		target_offset = horiz * lookahead_s
 
-	# Stage 2 — offset = velocity vector * lookahead seconds. Direction
-	# inherent in the vector, magnitude is speed * seconds. No need to
-	# normalise then re-multiply.
-	var offset: Vector3 = horiz * lookahead_s
+		# Distance cap — fly mode at 45 m/s with seconds=4 would request a
+		# 180 m offset, way past the LOD0 ring. Clamp into the safe band.
+		var offset_len: float = target_offset.length()
+		if offset_len > VIEWER_LOOKAHEAD_MAX_OFFSET_M:
+			target_offset *= VIEWER_LOOKAHEAD_MAX_OFFSET_M / offset_len
+	# else: idle — target stays Vector3.ZERO, smoother decays toward symmetric.
 
-	# Distance cap — fly mode at 45 m/s with seconds=4 would request a
-	# 180 m offset, way past the LOD0 ring. Clamp into the safe band.
-	var offset_len: float = offset.length()
-	if offset_len > VIEWER_LOOKAHEAD_MAX_OFFSET_M:
-		offset *= VIEWER_LOOKAHEAD_MAX_OFFSET_M / offset_len
-
-	_voxel_viewer.position = offset
+	# Exponential smoothing: alpha = 1 - 2^(-delta / halflife). At
+	# delta=1/60 s and halflife=0.35 s, alpha ≈ 0.032 — each frame
+	# pulls 3.2% toward the new target. Direction reversals and
+	# speed-threshold crossings stretch over ~250 ms instead of one
+	# frame, eliminating the dropped_block_loads bursts.
+	var alpha: float = 1.0 - pow(2.0, -delta / VIEWER_OFFSET_SMOOTH_HALFLIFE_S)
+	_viewer_offset_smoothed = _viewer_offset_smoothed.lerp(target_offset, alpha)
+	_voxel_viewer.position = _viewer_offset_smoothed
 
 
 func _smooth_camera_y(delta: float) -> void:

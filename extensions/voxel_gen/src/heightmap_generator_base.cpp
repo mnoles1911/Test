@@ -260,6 +260,11 @@ const DiskMaterialPOD *HeightmapGeneratorBase::disk_at_column(int world_x, int w
 void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                                                         Vector3i origin_in_voxels,
                                                         int lod) {
+    // Cache-miss telemetry: Zylann only calls into _generate_block when
+    // a chunk isn't already in the VoxelStream (SQLite). One call =
+    // one cache miss. Worker-thread safe via atomic.
+    _generated_block_count.fetch_add(1, std::memory_order_relaxed);
+
     Variant size_v = out_buffer.call("get_size");
     if (size_v.get_type() != Variant::VECTOR3I) {
         UtilityFunctions::printerr(
@@ -696,4 +701,10 @@ void HeightmapGeneratorBase::_bind_methods() {
     ClassDB::bind_method(
             D_METHOD("generate_block_into_buffer", "out_buffer", "origin_in_voxels", "lod"),
             &HeightmapGeneratorBase::generate_block_into_buffer);
+
+    // Cache-miss telemetry — see heightmap_generator_base.h.
+    ClassDB::bind_method(D_METHOD("get_generated_block_count"),
+                         &HeightmapGeneratorBase::get_generated_block_count);
+    ClassDB::bind_method(D_METHOD("reset_generated_block_count"),
+                         &HeightmapGeneratorBase::reset_generated_block_count);
 }

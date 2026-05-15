@@ -54,6 +54,8 @@ const SETTINGS_PATH: String = "user://settings.json"
 @onready var sfx_slider: HSlider           = $Root/VBox/SFXRow/SFXSlider
 @onready var fullscreen_check: CheckBox    = $Root/VBox/FullscreenCheck
 @onready var mining_anchor_btn: Button     = $Root/VBox/MiningAnchorRow/MiningAnchorBtn
+@onready var streaming_threads_slider: HSlider = $Root/VBox/StreamingThreadsRow/StreamingThreadsSlider
+@onready var streaming_threads_value: Label = $Root/VBox/StreamingThreadsRow/StreamingThreadsValue
 @onready var back_btn: Button              = $Root/VBox/ButtonRow/BackBtn
 @onready var apply_btn: Button             = $Root/VBox/ButtonRow/ApplyBtn
 
@@ -71,6 +73,25 @@ const SETTINGS_PATH: String = "user://settings.json"
 const MINING_ANCHOR_DEPTH_BIASED: int = 0
 const MINING_ANCHOR_CENTERED: int = 1
 var mining_volume_anchor: int = MINING_ANCHOR_DEPTH_BIASED
+
+# Streaming-threads ceiling reachable from this UI. The runtime cap is
+# OS.get_processor_count() — we floor-clamp the slider's max_value to
+# that on _ready so the user can't request more workers than the CPU
+# has cores. 32 is a defensive upper bound on the .tscn slider.
+const STREAMING_THREADS_MIN: int = 1
+const STREAMING_THREADS_MAX: int = 32
+# Default fraction of CPU cores assigned to voxel streaming when no
+# settings file exists yet. 0.75 = 75% — leaves headroom for the game
+# loop + render thread + audio + main thread. Floors at 2 so single-
+# and dual-core CPUs still get parallelism.
+const STREAMING_THREADS_DEFAULT_FRACTION: float = 0.75
+const STREAMING_THREADS_DEFAULT_FLOOR: int = 2
+var voxel_streaming_threads: int = STREAMING_THREADS_DEFAULT_FLOOR
+# Cache of the last value we actually pushed into VoxelEngine. Prevents
+# the apply/save spam that fires when the mouse drags across the slider
+# without crossing an integer boundary. -1 means "never applied yet,"
+# so the first real call always fires.
+var _last_applied_streaming_threads: int = -1
 
 
 # =============================================================
@@ -98,10 +119,18 @@ func _ready() -> void:
 	# — the Controls inside would still block mouse events while "invisible".
 	_content_root.visible = false
 
+	# Clamp the streaming-threads slider's max to the actual CPU core
+	# count BEFORE _load_settings so the loaded value gets clamped to a
+	# reachable bound. Higher than CPU cores has no benefit and can hurt
+	# (thread contention).
+	var cpu_cores: int = OS.get_processor_count()
+	streaming_threads_slider.max_value = float(clampi(cpu_cores, STREAMING_THREADS_MIN, STREAMING_THREADS_MAX))
+
 	# Apply saved settings immediately so the audio buses are at the right
 	# volume before any scene plays audio.
 	_load_settings()
 	_apply_to_audio()
+	_apply_streaming_threads()
 	_refresh_mining_anchor_button()
 	_apply_voxelmark_styles()
 
@@ -241,11 +270,18 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_lmb_press(pos: Vector2) -> void:
 	# Check sliders first — a press on a slider starts a drag.
-	for s in [master_slider, music_slider, sfx_slider]:
+	for s in [master_slider, music_slider, sfx_slider, streaming_threads_slider]:
 		var slider := s as HSlider
 		if slider.get_global_rect().has_point(pos):
 			_drag_slider = slider
 			_set_slider_from_pos(slider, pos)
+			# Streaming-threads slider: snap to int, refresh label, and
+			# apply live so the user sees the effect immediately while
+			# adjusting. Audio sliders apply on each move via
+			# _apply_to_audio at _on_apply time, but Zylann's worker
+			# pool re-sizes instantly so we don't need to wait.
+			if slider == streaming_threads_slider:
+				_on_streaming_threads_changed()
 			return
 
 	# SAVE & LEAVE button.
@@ -282,6 +318,8 @@ func _update_slider_drag(global_pos: Vector2) -> void:
 	if _drag_slider == null:
 		return
 	_set_slider_from_pos(_drag_slider, global_pos)
+	if _drag_slider == streaming_threads_slider:
+		_on_streaming_threads_changed()
 
 
 func _set_slider_from_pos(slider: HSlider, global_pos: Vector2) -> void:
@@ -360,6 +398,52 @@ func _refresh_mining_anchor_button() -> void:
 
 
 # =============================================================
+# STREAMING THREADS APPLICATION
+# =============================================================
+
+func _on_streaming_threads_changed() -> void:
+	# Called every mouse-motion frame while the slider drags. The slider
+	# value is a float but we round to int — most drag-frames don't
+	# cross an integer boundary, so dedupe against the last applied
+	# value to avoid spamming Zylann's set_thread_count and the
+	# settings.json file with no-op writes.
+	var new_threads: int = int(streaming_threads_slider.value)
+	if new_threads == _last_applied_streaming_threads:
+		return
+	voxel_streaming_threads = new_threads
+	_refresh_streaming_threads_value_label()
+	_apply_streaming_threads()
+	_save_settings()
+	_last_applied_streaming_threads = new_threads
+
+
+func _refresh_streaming_threads_value_label() -> void:
+	# Update the small number label next to the slider so the user can
+	# see the current value at a glance (sliders alone are imprecise).
+	if streaming_threads_value != null:
+		streaming_threads_value.text = str(voxel_streaming_threads)
+
+
+func _apply_streaming_threads() -> void:
+	# Push the value into Zylann's worker pool. The VoxelEngine singleton
+	# exposes set_thread_count(N) — discovered via the [ZylannProbe]
+	# dump on 2026-05-14. Resizing is instant and safe at runtime; the
+	# pool drains and re-spawns workers transparently.
+	if not Engine.has_singleton("VoxelEngine"):
+		# Zylann not loaded (e.g. in a headless test). Silent.
+		return
+	var ve: Object = Engine.get_singleton("VoxelEngine")
+	if ve == null or not ve.has_method("set_thread_count"):
+		return
+	var requested: int = clampi(voxel_streaming_threads, STREAMING_THREADS_MIN, OS.get_processor_count())
+	ve.call("set_thread_count", requested)
+	# Read back and log so the user can confirm Zylann accepted the
+	# value (some properties get silently clamped — verify in the log).
+	var actual: int = int(ve.call("get_thread_count"))
+	print("[Settings] VoxelEngine streaming threads set to %d (actual=%d)." % [requested, actual])
+
+
+# =============================================================
 # AUDIO APPLICATION
 # =============================================================
 
@@ -383,11 +467,12 @@ func _apply_to_audio() -> void:
 
 func _save_settings() -> void:
 	var data: Dictionary = {
-		"master_volume":         master_slider.value,
-		"music_volume":          music_slider.value,
-		"sfx_volume":            sfx_slider.value,
-		"fullscreen":            fullscreen_check.button_pressed,
-		"mining_volume_anchor":  mining_volume_anchor,
+		"master_volume":           master_slider.value,
+		"music_volume":            music_slider.value,
+		"sfx_volume":              sfx_slider.value,
+		"fullscreen":              fullscreen_check.button_pressed,
+		"mining_volume_anchor":    mining_volume_anchor,
+		"voxel_streaming_threads": voxel_streaming_threads,
 	}
 	var file = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file:
@@ -397,12 +482,25 @@ func _save_settings() -> void:
 
 
 func _load_settings() -> void:
+	# Compute the streaming-threads default once — used both when no
+	# settings.json exists yet and as the fallback when the saved value
+	# can't be parsed.
+	var cpu_cores: int = OS.get_processor_count()
+	var default_threads: int = clampi(
+		int(float(cpu_cores) * STREAMING_THREADS_DEFAULT_FRACTION),
+		STREAMING_THREADS_DEFAULT_FLOOR,
+		cpu_cores,
+	)
+
 	if not FileAccess.file_exists(SETTINGS_PATH):
 		master_slider.value = 0.8
 		music_slider.value  = 0.7
 		sfx_slider.value    = 1.0
 		fullscreen_check.button_pressed = false
 		mining_volume_anchor = MINING_ANCHOR_DEPTH_BIASED
+		voxel_streaming_threads = default_threads
+		streaming_threads_slider.value = float(default_threads)
+		_refresh_streaming_threads_value_label()
 		return
 
 	var file = FileAccess.open(SETTINGS_PATH, FileAccess.READ)
@@ -422,6 +520,13 @@ func _load_settings() -> void:
 		MINING_ANCHOR_DEPTH_BIASED,
 		MINING_ANCHOR_CENTERED,
 	)
+	voxel_streaming_threads = clampi(
+		int(result.get("voxel_streaming_threads", default_threads)),
+		STREAMING_THREADS_MIN,
+		cpu_cores,
+	)
+	streaming_threads_slider.value = float(voxel_streaming_threads)
+	_refresh_streaming_threads_value_label()
 
 	if fullscreen_check.button_pressed:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)

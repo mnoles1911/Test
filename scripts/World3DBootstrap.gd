@@ -48,6 +48,15 @@ var _diag_last_player_pos: Vector3 = Vector3.ZERO
 var _diag_last_player_pos_valid: bool = false
 var _diag_debug_draw_on: bool = false
 
+# Cache-miss telemetry — see HeightmapGeneratorBase.get_generated_block_count().
+# The adapter exposes this method via the cpp_impl Resource. Drill through
+# adapter → cpp_impl in _ready; poll the counter once per [DIAG] tick.
+# Each generator call corresponds to a Zylann CACHE MISS. A LOW miss rate
+# while walking means we're hitting the SQLite cache; a HIGH miss rate
+# means Zylann is regenerating chunks on the fly.
+var _diag_gen_counter_source: Object = null
+var _diag_last_gen_count: int = 0
+
 
 const WORKING_SQLITE_PATH: String = "user://voxel_deltas.sqlite"
 # The working SQLite that VoxelStreamSQLite on World3D.tscn reads from
@@ -62,14 +71,36 @@ const BAKED_BASELINE_PATH: String = "user://baked_baseline_world3d.sqlite"
 # Forward+ Tier 1/2/3 rendering on) can take many minutes and timed
 # the spawn freeze out (observed 2026-05-13).
 
+## ⚠ TESTING TOGGLE — re-seeds the working SQLite from the baked baseline
+## on EVERY launch (matches the CopperIslesTestBootstrap pattern). This
+## verifies the "World3D streaming is slow because the cache is sparse"
+## hypothesis: if you flip this ON and the LOD-pop feel disappears, the
+## bake coverage is sufficient and we just weren't re-using it. If it
+## DOESN'T help, the bake area is too small and needs to be re-run wider.
+##
+## WIPES PLAYER EDITS each launch — mining, water placement, gravity
+## settling — everything outside the baseline gets reset to generator
+## output. Flip OFF before real play sessions.
+##
+## CAVEAT (2026-05-14): the current baked_baseline_world3d.sqlite is
+## SMALLER than typical accumulated voxel_deltas.sqlite (582 MB vs
+## ~687 MB), and the bake didn't cover the (0, 0) spawn area. Flipping
+## this ON regressed cache coverage. Re-bake World3D wider before
+## relying on this toggle in earnest.
+@export var force_reseed_on_launch: bool = false
 
-func _ready() -> void:
-	# Seed the working SQLite from the baked baseline if needed. Runs
-	# BEFORE the terrain.stream initialises, so VoxelStreamSQLite opens
-	# the populated file on its first read. Mirrors the pattern in
-	# CopperIslesTestBootstrap._seed_from_baseline_if_needed.
+
+func _enter_tree() -> void:
+	# Seed copy MUST happen before VoxelLodTerrain's child opens its
+	# SQLite stream. Godot's _enter_tree fires top-down (parent before
+	# children); _ready fires bottom-up. If we did the copy in _ready,
+	# Zylann would have already opened the working file with stale
+	# contents and ignored our new copy. This is the same constraint
+	# CopperIslesTestBootstrap calls out in its own _enter_tree.
 	_seed_from_baseline_if_needed()
 
+
+func _ready() -> void:
 	# --- Hand the voxel terrain to the edit manager ---
 	# Without this call, VoxelEditManager has no terrain to write to
 	# and silently rejects every queue_edit_* call (returns false).
@@ -266,6 +297,17 @@ func _ready() -> void:
 			var snapshot: Array[AABB] = NoEditZoneRegistry.get_water_blocking_aabbs_snapshot()
 			gen.set_no_edit_water_aabbs(snapshot)
 			print("[World3D] Pushed %d NoEditZone water-blocking AABB(s) to generator." % snapshot.size())
+		# Resolve the cache-miss counter source. The adapter forwards
+		# to its cpp_impl Resource (the actual HeightmapGeneratorBase
+		# subclass). The C++ base bound get_generated_block_count().
+		_diag_gen_counter_source = _resolve_gen_counter_source(gen)
+		if _diag_gen_counter_source != null:
+			# Reset to zero so the first poll reports new misses cleanly.
+			if _diag_gen_counter_source.has_method("reset_generated_block_count"):
+				_diag_gen_counter_source.call("reset_generated_block_count")
+			print("[World3D] Cache-miss telemetry armed on %s." % _diag_gen_counter_source)
+		else:
+			print("[World3D] Cache-miss telemetry unavailable (no get_generated_block_count method found).")
 		# Tier 4: push the registry's pre-filtered ore list into the
 		# generator on the main thread. Worker threads then iterate
 		# the local Array reference without touching the SceneTree.
@@ -511,10 +553,22 @@ func _process(delta: float) -> void:
 			# whatever the dict contains.
 			for k in s.keys():
 				stats += " %s=%s" % [k, s[k]]
-	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m%s" % [
+	# Cache-miss rate: chunks the generator was actually called on
+	# since the previous DIAG tick. High = Zylann is regenerating
+	# new territory; low (or zero) = SQLite cache is serving requests.
+	# Caps at 9999/s in the format string so the line stays readable
+	# during initial spawn-load when 1000s of chunks generate at once.
+	var miss_per_s: String = "?"
+	if _diag_gen_counter_source != null \
+			and _diag_gen_counter_source.has_method("get_generated_block_count"):
+		var cur: int = _diag_gen_counter_source.call("get_generated_block_count")
+		var delta_count: int = cur - _diag_last_gen_count
+		_diag_last_gen_count = cur
+		miss_per_s = "%d" % int(float(delta_count) / dt) if dt > 0.0 else "0"
+	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m  cache_miss=%s/s%s" % [
 		p_pos.x, p_pos.y, p_pos.z, speed,
 		v_pos.x, v_pos.y, v_pos.z, lag_xz,
-		stats,
+		miss_per_s, stats,
 	])
 
 
@@ -568,8 +622,12 @@ func _seed_from_baseline_if_needed() -> void:
 	# If the working DB already exists, leave it alone — the player has
 	# an in-progress world and their edits live there. Stomping it would
 	# wipe their progress.
-	if FileAccess.file_exists(WORKING_SQLITE_PATH):
+	# EXCEPTION: when force_reseed_on_launch is on (testing toggle), we
+	# proceed to copy regardless. See the @export comment up top.
+	if FileAccess.file_exists(WORKING_SQLITE_PATH) and not force_reseed_on_launch:
 		return
+	if force_reseed_on_launch and FileAccess.file_exists(WORKING_SQLITE_PATH):
+		print("[World3D] force_reseed_on_launch=true — overwriting working SQLite with baseline.")
 	# No baseline shipped/baked yet? Silent fall through to live
 	# regeneration. This is expected the very first time you run the
 	# project before any bake has happened.
@@ -1276,3 +1334,23 @@ func _seed_test_pond() -> void:
 		print("[World3D] Test pond water-box queued (%s..%s)." % [voxel_min, voxel_max])
 	else:
 		push_warning("[World3D] Test pond seed failed (queue full or NoEditZone reject).")
+
+
+
+func _resolve_gen_counter_source(gen: Resource) -> Object:
+	# The adapter (CubicHeightmapGeneratorAdapter / CopperIslesHeightmap-
+	# GeneratorAdapter) extends VoxelGeneratorScript but forwards to a
+	# cpp_impl Resource (the actual HeightmapGeneratorBase subclass).
+	# The counter method lives on the base, so try the adapter first
+	# then drill through cpp_impl.
+	if gen == null:
+		return null
+	if gen.has_method("get_generated_block_count"):
+		return gen
+	if "cpp_impl" in gen:
+		var impl = gen.get("cpp_impl")
+		if impl != null and impl.has_method("get_generated_block_count"):
+			return impl
+	return null
+
+

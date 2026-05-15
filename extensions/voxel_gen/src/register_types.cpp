@@ -13,12 +13,16 @@
 //       cliff_threshold_for_angle_voxels). Retained between ports so each
 //       new C++ port can extend a parity harness against the GDScript
 //       original.
+//   WaterChunkMesherCpp — per-chunk water surface mesh builder. Used by
+//       scripts/WaterChunkMesher.gd to crunch each chunk's CHANNEL_DATA5
+//       contents into an ArrayMesh off the GDScript hot path.
 
 #include "register_types.h"
 #include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
 #include "heightmap_generator_base.h"
 #include "parity_probe.h"
+#include "water_chunk_mesher.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -39,6 +43,7 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     ClassDB::register_abstract_class<HeightmapGeneratorBase>();
     ClassDB::register_class<CubicHeightmapGeneratorCpp>();
     ClassDB::register_class<CopperIslesHeightmapGeneratorCpp>();
+    ClassDB::register_class<WaterChunkMesherCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
