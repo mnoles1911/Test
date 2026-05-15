@@ -10,20 +10,13 @@ gives the cleanest follow-up. Each entry includes the files involved, the
 goal, the risk, and the acceptance check so a future session can land it
 without re-discovery.
 
-**Status post-investigation (2026-05-13):** items 1 and 2 below are
-MOOT — the apparent proc_us regression they were chasing turned out
-to be a `Performance.TIME_PROCESS` plateau artifact, fixed by the
+**Status post-investigation (2026-05-13):** the items that chased a
+`proc_us` regression were dropped (2026-05-14) — that "regression"
+was a `Performance.TIME_PROCESS` plateau artifact, fixed by the
 `engine.real_us` measurement added in the migration PR. The actual
-Forward+ frame time is healthy (1.88 ms median / 10.88 ms p99). Keep
-items 3–9 as real follow-up work; items 1–2 can be deleted.
-
-**Forward+ feature payoff (items 7–9 below) is the highest-value
-remaining work.** With `engine.real_us` now telling the truth, you
-can A/B SSIL / SSR / SDFGI / volumetric_fog one at a time and ship
-whichever passes the visual-vs-cost bar. SDFGI is the most likely
-visual win for a voxel world (bounced light into caves + onto
-building undersides). BPTC textures (item 8) reclaim the +42 % VRAM
-the migration costs.
+Forward+ frame time is healthy (1.88 ms median / 10.88 ms p99).
+Tier 1 / 2 / 3 environment work (item 5 below, formerly item 7) is
+the highest-value remaining payoff.
 
 ---
 
@@ -88,51 +81,7 @@ and a real-shadow pipeline.
 
 ---
 
-## 1. Verify shadow-filter tuning closed the gap
-
-**File:** `project.godot` line ~270, `lights_and_shadows/directional_shadow/soft_shadow_filter_quality`.
-
-**Why this exists:** the migration PR dropped this from 4 → 2 on the
-guess that Forward+ executes the high-quality PCF for real where
-gl_compat approximated it cheaply. Whether 2 is enough to recover the
-proc_us p99 regression, or whether SSAO / clustered-light overhead is
-the bigger contributor, is still open.
-
-**Goal:** capture a 30 s World3D run at `quality = 2`; compare against
-`baseline_forward_plus_shadowq4.json`. If draws drop substantially and
-proc_us p99 improves, the migration's net perf claim is back on track.
-
-**Risk:** sharper / blockier shadow edges. Visual-only — easy to revert
-to `3` if `2` looks bad.
-
-**Acceptance:** new capture's median draws drop toward the gl_compat
-baseline (589); proc_us p99 drops below the gl_compat value (42 ms).
-
----
-
-## 2. Investigate `detect_us +178%` regression
-
-**File:** Zylann `VoxelLodTerrain` integration (`scripts/World3DBootstrap.gd`).
-
-**Why this is surprising:** `detect_us` is Zylann's CPU-side octree walk
-deciding which chunks need loading. Renderer choice should not affect
-it. Yet the mean went from 176 µs to 489 µs. Hypothesis: with Forward+
-pulling more LOD detail into view (clustered renderer effects), the
-octree refinement runs more nodes per frame.
-
-**Goal:** confirm or rule out by capturing with `terrain.view_distance`
-explicitly clamped to the same value gl_compat naturally hit. If
-`detect_us` normalizes, the regression is downstream of LOD selection.
-
-**Risk:** none — pure investigation.
-
-**Acceptance:** writeup added back to this file explaining the cause
-and the fix (or "no fix needed, it's noise from the lost gl_compat
-baseline").
-
----
-
-## 3. Water shader `cull_disabled` → `cull_back` revisit
+## 1. Water shader `cull_disabled` → `cull_back` revisit
 
 **Files:** `assets/shaders/water.gdshader` (lines 17–24),
 `scripts/WaterChunkMesher.gd` (`_build_debug_water_material`, lines 250–282).
@@ -156,7 +105,7 @@ correctly behind the foreground water.
 
 ---
 
-## 4. Particle material simplification
+## 2. Particle material simplification
 
 **Files:** `scenes/vfx/BloodBurst.tscn` (lines 42–69),
 `scenes/vfx/DustBurst.tscn` (lines 42–48). Optionally
@@ -180,7 +129,7 @@ red→dark gradient with alpha fade. Same for dust impact on terrain hits.
 
 ---
 
-## 5. Loading-screen `visible = false` hack revisit
+## 3. Loading-screen `visible = false` hack revisit
 
 **File:** `scripts/TransitionManager.gd`.
 
@@ -205,7 +154,7 @@ remains responsive (≥30 FPS, worst-frame <50 ms) without the explicit
 
 ---
 
-## 6. LOD0 culling tuning in `MainMenu.gd`
+## 4. LOD0 culling tuning in `MainMenu.gd`
 
 **File:** `scripts/MainMenu.gd`.
 
@@ -222,7 +171,7 @@ or beats pre-migration baseline. No content regressions.
 
 ---
 
-## 7. Enable Forward+-exclusive environment features
+## 5. Enable Forward+-exclusive environment features
 
 **File:** `scenes/World3D.tscn` and `scenes/CopperIslesTest.tscn` WorldEnvironment nodes.
 
@@ -327,7 +276,7 @@ or beats pre-migration baseline. No content regressions.
 
 ---
 
-## 8. Texture import — BPTC over raw RGBA  ✅ done (Tier 2)
+## 6. Texture import — BPTC over raw RGBA  ✅ done (Tier 2)
 
 `atlas.png.import` flipped to `compress/mode = 2` on 2026-05-13.
 Godot's reimport produced `imported_formats: ["s3tc_bptc"]`, confirming
@@ -344,7 +293,7 @@ gradients in the atlas).
 
 ---
 
-## 9. Decal blood pool follow-up — newly load-bearing (SDFGI now on)
+## 7. Decal blood pool follow-up — newly load-bearing (SDFGI now on)
 
 **File:** `scripts/BloodVFX.gd` (`spawn_pool`).
 
