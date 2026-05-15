@@ -33,6 +33,7 @@
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -181,6 +182,22 @@ public:
                                     godot::Vector3i origin_in_voxels,
                                     int lod);
 
+    // --- Cache-miss telemetry ---------------------------------------------
+    // generate_block_into_buffer atomically increments this counter on
+    // every call. Each call corresponds to a Zylann CACHE MISS — Zylann
+    // only runs the generator for blocks that aren't in the VoxelStream
+    // (no SQLite row + save_generator_output didn't fire yet). Subtract
+    // consecutive readings to get the cache-miss rate per second; if
+    // most chunks in an area are coming from the SQLite cache, this
+    // counter should stay near-flat as the player walks through them.
+    // Worker-thread safe (atomic counter, no locks).
+    int get_generated_block_count() const {
+        return int(_generated_block_count.load(std::memory_order_relaxed));
+    }
+    void reset_generated_block_count() {
+        _generated_block_count.store(0, std::memory_order_relaxed);
+    }
+
 protected:
     static void _bind_methods();
 
@@ -230,4 +247,7 @@ protected:
     int _disk_anchor_grid_voxels = 24;
     double _cliff_ore_outcrop_chance = 0.03;
     int _cliff_ore_seed = 5;
+
+private:
+    mutable std::atomic<int> _generated_block_count{0};
 };

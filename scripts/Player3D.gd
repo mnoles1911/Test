@@ -251,7 +251,7 @@ var _spawn_freeze: bool = false
 # VIEWER_LOOKAHEAD_MAX_OFFSET_M = 0.0 to disable the lookahead entirely
 # (viewer stays at the player's origin, original symmetric behaviour).
 
-const VIEWER_LOOKAHEAD_MIN_SECONDS: float = 2.0
+const VIEWER_LOOKAHEAD_MIN_SECONDS: float = 1.5
 # Lookahead time at and below VIEWER_LOOKAHEAD_LOW_SPEED_MPS.
 # Smaller value → less bias when moving slowly. 1.5 s × 4.5 m/s walk
 # = 6.75 m. Past this, seconds ramps up linearly with speed.

@@ -73,6 +73,13 @@ var _diag_last_player_pos: Vector3 = Vector3.ZERO
 var _diag_last_player_pos_valid: bool = false
 var _diag_debug_draw_on: bool = false
 
+# Cache-miss telemetry — see HeightmapGeneratorBase.get_generated_block_count().
+# Mirror of the World3DBootstrap counter. Each generator call corresponds
+# to a Zylann CACHE MISS; a LOW miss rate while walking means we're hitting
+# the SQLite baseline cache, a HIGH miss rate means new territory.
+var _diag_gen_counter_source: Object = null
+var _diag_last_gen_count: int = 0
+
 
 func _enter_tree() -> void:
 	# CRITICAL ordering: this seed copy MUST happen before the
@@ -184,6 +191,16 @@ func _ready() -> void:
 		# returns the cached image.
 		if gen != null and gen.has_method("_ensure_image"):
 			gen.call("_ensure_image")
+		# Resolve the cache-miss counter source. The adapter forwards to
+		# its cpp_impl Resource (the actual HeightmapGeneratorBase
+		# subclass). The C++ base bound get_generated_block_count().
+		_diag_gen_counter_source = _resolve_gen_counter_source(gen)
+		if _diag_gen_counter_source != null:
+			if _diag_gen_counter_source.has_method("reset_generated_block_count"):
+				_diag_gen_counter_source.call("reset_generated_block_count")
+			print("[CopperIslesTest] Cache-miss telemetry armed on %s." % _diag_gen_counter_source)
+		else:
+			print("[CopperIslesTest] Cache-miss telemetry unavailable (no get_generated_block_count method found).")
 
 	# Move per-edit voxel-block updates off the main thread; defer
 	# collision-shape rebuilds so they batch instead of firing on every
@@ -297,10 +314,21 @@ func _process(delta: float) -> void:
 		if s is Dictionary:
 			for k in s.keys():
 				stats += " %s=%s" % [k, s[k]]
-	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m%s" % [
+	# Cache-miss rate: chunks the generator was called on since last tick.
+	# High = Zylann is regenerating new territory; low = SQLite cache is
+	# serving requests. On Copper Isles this should stay near zero inside
+	# the baseline footprint and spike only at map edges.
+	var miss_per_s: String = "?"
+	if _diag_gen_counter_source != null \
+			and _diag_gen_counter_source.has_method("get_generated_block_count"):
+		var cur: int = _diag_gen_counter_source.call("get_generated_block_count")
+		var delta_count: int = cur - _diag_last_gen_count
+		_diag_last_gen_count = cur
+		miss_per_s = "%d" % int(float(delta_count) / dt) if dt > 0.0 else "0"
+	print("[DIAG] player=(%.1f, %.1f, %.1f)  speed=%.2f m/s  viewer=(%.1f, %.1f, %.1f)  lag_xz=%.1f m  cache_miss=%s/s%s" % [
 		p_pos.x, p_pos.y, p_pos.z, speed,
 		v_pos.x, v_pos.y, v_pos.z, lag_xz,
-		stats,
+		miss_per_s, stats,
 	])
 
 
@@ -1006,3 +1034,20 @@ func apply_terrain_scale(new_scale: float) -> void:
 	terrain.transform = Transform3D(Basis().scaled(Vector3.ONE * new_scale), origin)
 	_reseed_water_for_scale(new_scale)
 	_snap_player_above_terrain()
+
+
+func _resolve_gen_counter_source(gen: Resource) -> Object:
+	# Mirror of World3DBootstrap._resolve_gen_counter_source. The adapter
+	# (CopperIslesHeightmapGeneratorAdapter) extends VoxelGeneratorScript
+	# but forwards to a cpp_impl Resource (HeightmapGeneratorBase subclass).
+	# The counter method lives on the base, so try the adapter first then
+	# drill through cpp_impl.
+	if gen == null:
+		return null
+	if gen.has_method("get_generated_block_count"):
+		return gen
+	if "cpp_impl" in gen:
+		var impl = gen.get("cpp_impl")
+		if impl != null and impl.has_method("get_generated_block_count"):
+			return impl
+	return null
