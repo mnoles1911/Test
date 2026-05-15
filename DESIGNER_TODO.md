@@ -128,18 +128,7 @@ These are settings and installs that survive across all future work. Do them onc
   Project Settings → Autoload → path: `res://scripts/SchematicLibrary.gd` → node name: `SchematicLibrary`.
   Loads `.tres` schematic resources from `assets/voxel/schematics/`; maps schematic IDs to `.glb` props with placement metadata. Reference: `design/CRAFTING.md` → Carpentry Bench.
 
-- [ ] **Set up VoxelLodTerrain in `World3D.tscn`**
-  Add `VoxelLodTerrain` node to `World3D.tscn`. Add `VoxelGeneratorGraph` as a child (this is `WorldGenerator` — wired in the editor, not GDScript). Add `VoxelStreamSQLite` as a child with stream path `user://saves/slot_{N}/voxel_deltas.sqlite` (the path is set in code at save-load time).
-  Configure: `lod_count` 6–8, mandatory LOD0 radius 32m, default edit-detail radius 64m, mesher = `VoxelMesherCubes` (NOT Transvoxel), `streaming_system` = `STREAMING_SYSTEM_CLIPBOX`.
-  Reference: `design/ART_PIPELINE.md` → Tool 2, `design/3D_VOXEL_MIGRATION.md` → "Destructible Terrain", `design/TECH_STACK.md` → Voxel Terrain.
-
-- [ ] **Wire WorldGenerator (VoxelGeneratorGraph)**
-  Open the VoxelGeneratorGraph node → wire it visually:
-  - Heightmap EXR → `Image` input → `Remap` (0–1 → 0–200m) → `SdfPlane` → base SDF
-  - 3D `FastNoiseLite` node → `SdfSmoothSubtract` (carves caves where Y < surface − 8m)
-  - Splatmap EXR → `Image` input → `OutputType: CHANNEL_INDICES` (biome material assignment)
-  - Connect to `OutputSDF`.
-  This produces the procedural baseline only. Player edits live as deltas in `VoxelStreamSQLite`. Stamp a `WORLD_GENERATOR_VERSION` constant in code so save loads can detect mismatches.
+- [x] **VoxelLodTerrain set up in `World3D.tscn`** (done — adapter → C++ `CubicHeightmapGeneratorCpp` generator, `VoxelStreamSQLite` stream, `VoxelMesherBlocky` mesher with `VoxelBlockyLibrary`. The early-pivot plan to use `VoxelGeneratorGraph` + Gaea EXR was replaced by the C++ generator. See `CLAUDE.md` → "Voxel + world systems".)
 
 - [x] **Set up the audio bus layout per `design/AUDIO_DESIGN.md`** (done — `default_bus_layout.tres` committed in PR #94)
   All 8 buses configured with correct routing: Master / Music / SFX (with Combat + Ambient children) / Voice (with NPC + Roland children) / UI.
@@ -549,78 +538,23 @@ Organized by development phase. Build within each phase in the order listed.
 
 ---
 
-### Phase 4-3D — Camera, Movement, Health/Endurance, HUD, UI (complete)
+### Phase 4-3D — Camera, Movement, Health/Endurance, HUD, UI ✅ COMPLETE
 
-- [x] **Update `CameraRig.gd`** — Third-person over-shoulder camera, fully implemented.
-  Two modes: standard (mouse H rotates the CharacterBody3D so Roland faces the camera direction)
-  and freelook (F2 hold: mouse H orbits the camera arm without rotating Roland; release re-centers both axes).
-  Scroll wheel zoom (2m–10m). Arrow key fallbacks. Dialogue mode (tween arm length to 3.5m).
-  Lock-on tracking API (`set_lock_on_target`). Mouse mode managed: CAPTURED during play,
-  VISIBLE when any menu opens.
-  Reference: `design/CAMERA_AND_PERSPECTIVE.md`
-
-- [x] **Rewrite `Player3D.gd`** — Sprint (Left Shift, drains endurance, locks on exhaustion until recovery),
-  crouch (C toggle, blocks sprint, reduces speed to ~2 m/s), mass-based physics scaling
-  (all movement stats — walk speed, sprint speed, accel, decel — scale via fractional-exponent
-  ratio against `REF_MASS = 70 kg`). DECEL intentionally lower than ACCEL for natural momentum.
-  Health (100 HP) and endurance (100) with drain/regen rates. `status_text` computed property
-  returns "CROUCHING" / "EXHAUSTED" / "" for HUD display.
-
-- [x] **New `HUDOverlay.gd` autoload** — Layer 5 CanvasLayer. HP bar (red, 26px tall) and
-  endurance bar (green, 22px tall) in a 540×110px panel anchored bottom-center, 36px from bottom.
-  Status label above bars (orange). Finds player by "player" group with cached reference.
-  Hides itself cleanly when no player node exists. Registered in `project.godot`.
-
-- [x] **Rewrite `JournalUI.gd` + strip `Journal.tscn`** — Programmatic 6-tab overlay
-  (Quests, Map, Items, Crafting, Codex, Skills). Tab key cycles tabs; clicking tab headers
-  switches tabs. J opens to Quests, I opens to Items. Escape/J/I closes. Mouse becomes
-  visible when open; restores CAPTURED on close. Tree paused while open.
-
-- [x] **Fix `PauseMenu.gd` for 1080p** — Panel 440×400px, title 28px, buttons 22px/44px.
-  Resume button closes menu and resumes game. JournalUI coordination: PauseMenu checks
-  `JournalUI.is_overlay_visible()` before opening; JournalUI handles Escape before PauseMenu.
-
-- [x] **Fix `DebugOverlay.gd` for 1080p** — Tab label 18px, content 15px, scroll offset corrected.
-
-- [x] **Fix `SaveNotification.gd` for 1080p** — Toast label 20px, position updated.
-
-- [x] **Add `mass` export to `NPC.gd`** — Typical values: courier ~55 kg, villager ~72 kg,
-  armoured guard ~110 kg. Documented for use when NPC movement systems are built.
+CameraRig (standard + freelook + scroll zoom + lock-on API), Player3D (sprint/crouch/mass-scaled movement/HP/endurance/status_text), HUDOverlay autoload, JournalUI 6-tab programmatic overlay, PauseMenu, DebugOverlay, SaveNotification, NPC.gd `mass` export. See `CLAUDE.md` → "3D core in place".
 
 ---
 
-### Phase 5-3D — Open World Foundation (Editable Terrain) ✅ LARGELY COMPLETE (2026-05-03)
+### Phase 5-3D — Open World Foundation (Editable Terrain) ✅ COMPLETE (2026-05-03)
 
-- [x] **`CubicHeightmapGenerator` (custom GDScript)** — replaces the originally-planned VoxelGeneratorGraph + Gaea EXR pipeline. `VoxelGeneratorScript` subclass in `scripts/CubicHeightmapGenerator.gd`, attached to the `VoxelLodTerrain` node in `World3D.tscn`. Writes `CHANNEL_COLOR` per voxel via macro + mid + detail noise layers + per-voxel colour jitter. Live-tunable in the Inspector via `@export_range` sliders + `Preset` enum (LAY_OF_THE_LAND / MINECRAFT_BLOCKY / SMOOTH_GRADIENT / CUSTOM). The Gaea pipeline may return for v1 Mira authoring; for now this generator is sufficient.
+C++ `CubicHeightmapGeneratorCpp` generator (was GDScript, ported 2026-05-11), `VoxelEditManager` + `NoEditZoneRegistry` autoloads, pickaxe edit verb via `EditToolHandler`, `PowderCharge` + `ThrowableHandler`, save/load with `WORLD_GENERATOR_VERSION` validation, swim/drown state machine, `DayNightCycle`, jump + F1 fly. See `CLAUDE.md` → "Voxel + world systems".
 
-- [x] **`VoxelEditManager.gd` autoload** — registered in `project.godot`. Async edit queue (per-frame voxel budget 200000), `EditedChunkRegistry` (`Dictionary<Vector3i, bool>`), NoEditZone enforcement, world→voxel coord conversion (`terrain.to_local()` + `1/scale.x` for radii), `WORLD_GENERATOR_VERSION = 7` stamped into saves. Public API: `queue_edit_sphere(pos, radius, voxel_value) -> bool`, `queue_edit_box(...)`, `queue_set_voxel(...)`. Returns false on NoEditZone rejection.
-
-- [x] **`NoEditZoneRegistry.gd` autoload** — registered in `project.godot`. Provides `is_point_inside_no_edit_zone(world_pos: Vector3) -> bool`. Queried by `VoxelEditManager` before every voxel write.
-
-- [x] **First edit verb (pickaxe) wired in** — `EditToolHandler.gd` (child of Player3D). Camera raycast → `VoxelEditManager.queue_set_voxel` (carves a 0.5 m bite) → material yield to InventoryManager (`raw_stone` etc.) → Mining sub-skill XP via `GameState.add_skill_xp`.
-
-- [x] **Test NoEditZone in `World3D.tscn`** — 10×10×10 m Area3D at world (8, 5, 0) registered to `no_edit_zone` group. Pickaxe + explosive carves inside it are silently rejected.
-
-- [x] **Explosive throwables wired in** — `PowderCharge.gd` + `ThrowableHandler.gd`. Camera-aimed (carries pitch), inventory-driven AOE (`voxel_aoe_radius` in `ITEM_REGISTRY`), visible OmniLight3D + emissive sphere flash on detonation.
-
-- [x] **Save / load wiring for editable terrain** — `GameState.save_game()` calls `VoxelEditManager.flush_pending_edits()` then writes JSON state including `WORLD_GENERATOR_VERSION` stamp + `WorldClock` time + `_skill_xp` + `InventoryManager` save data. Load validates the version stamp (hard error on mismatch).
-
-- [x] **Swimming + drowning state machine** — `Player3D._update_water_state` polls `water_volume` group. `WaterVolume.gd` exposes `surface_y` (world-space) and `get_current_velocity()`. Ocean raised to Y=6 so water is accessible at average terrain elevation. Drowning ticks at 5 HP/s after 30 s submerged.
-
-- [x] **Day/night cycle** — `DayNightCycle.gd` on `World3D` rotates Sun/Moon `DirectionalLight3D` and lerps sky/fog colours each frame from `WorldClock`'s continuous hour float.
-
-- [x] **Movement mechanics** — Jump on Space (when grounded, 7 m/s velocity, ~1.22 m peak), debug fly mode (F1 toggle, teleports to 100 m, 10× walk speed, no gravity).
-
-- [ ] **`EntityStreamer.gd` stub** — Node in `World3D.tscn`. Phase 5 version just prints
-  chunk coordinates to Output as player moves. Full entity loading in Phase 6. **Not yet
-  needed** — current world has no streamed entities beyond Player3D.
-
-#### Outstanding for Phase 5-3D polish (defer to next batch):
-- [ ] **Roland low-poly Blender model** — currently a 0.4×1.7×0.25 m green box placeholder.
-- [ ] **MagicaVoxel exports** — campfire prop, cave wall props.
-- [ ] **Surface decoration pass** — scatter 1-3 voxel vertical pillars (grass / stone / flowers, color-varied) on terrain top during generation. Biggest remaining visual gap vs. the Lay-of-the-Land reference look.
-- [ ] **LOD-bake-on-eviction caching** — `user://saves/slot_{N}/mesh_cache/`. Render optimization, not correctness gate. Defer until perf becomes an issue.
-- [ ] **Multi-slot voxel save directories** — currently `user://voxel_deltas.sqlite` is shared. Refactor to `user://saves/slot_{N}/voxel_deltas.sqlite` once save-slot UI is exercised.
+**Outstanding Phase 5-3D polish (defer to next batch):**
+- [ ] Roland low-poly Blender model (currently green box placeholder).
+- [ ] MagicaVoxel exports — campfire, cave wall props.
+- [ ] Surface decoration pass — 1-3 voxel vertical pillars (grass / flowers) on terrain top during generation.
+- [ ] LOD-bake-on-eviction caching at `user://saves/slot_{N}/mesh_cache/` — deferred until perf demands.
+- [ ] Multi-slot voxel save dirs — refactor `user://voxel_deltas.sqlite` → per-slot path when save-slot UI is exercised.
+- [ ] `EntityStreamer.gd` full implementation (stub on disk only prints chunk-enter events).
 
 ---
 
@@ -945,38 +879,7 @@ a short pitch; promote to a real section when scope is committed.
   Reference for technique: search "Godot 4 triplanar shader" or
   Catlike Coding's "Triplanar Mapping" tutorial.
 
-- ~~**EditToolHandler: mining carve collapses to 1×1×1 on some voxels (FP bug, 2026-05-05).**~~
-  **Fixed 2026-05-05.** Added `VoxelEditManager.queue_edit_box_voxels(min: Vector3i,
-  max: Vector3i, value: int)` and updated `EditToolHandler._carve` to use it.
-  Integer voxel-grid coords bypass `_terrain.to_local()` FP rounding entirely.
-
-- ~~**EditToolHandler: right-click smooth fails on untouched terrain at first load (2026-05-05).**~~
-  **Fixed 2026-05-05.** `_tick_held_action` now allows the smooth verb to proceed when
-  material is null (Zylann first-load streaming gap). Falls back to 0.5 s hold time
-  and "terrain" display label. `_do_smooth` reads its own cell data independently.
-
-- ~~**CRITICAL: Voxel-color byte-order encoding mismatch — terrain renders
-  nearly black instead of per-material colors (diagnosed 2026-05-05).**~~
-  **Misdiagnosed and fixed differently 2026-05-05.** The actual bug was NOT
-  byte order — the original `(c.to_rgba32() & 0xFFFFFF00) | mat_id` encoding
-  was correct (Zylann reads bytes in the same order Godot's `to_rgba32`
-  emits: R high, A low). The real bug was that
-  `VoxelBuffer.CHANNEL_COLOR` defaults to **8-bit depth** (1 byte per
-  voxel), which truncates 32-bit packed values down to just the low byte
-  (the mat_id slot). The mesher then sees only the mat_id (1-4) as a tiny
-  R value, producing the near-black render. The byte-order rewrite was
-  reverted; the real fix sets `VoxelLodTerrain.format` to a `VoxelFormat`
-  resource with `set_channel_depth(CHANNEL_COLOR, DEPTH_32_BIT)` —
-  see `scripts/World3DBootstrap._configure_voxel_format`.
-
-  **How we found it:** the `[ReadMat]` diagnostic showed
-  `tool.get_voxel(...) → 0x00000061` (just the R byte) instead of the full
-  `0x03388C61`. The `[World3D]` terrain dump revealed the format property
-  and the available API on it. After turning the format depth to 32-bit, a
-  bright-blue terrain confirmed the byte order was correct in the original
-  encoding (the byte-order rewrite was emitting bytes such that mat_id
-  ended up where the mesher reads R, which is what the test ruled out).
-
+(Three 2026-05-05 bug entries removed: EditToolHandler 1×1×1 carve, right-click smooth on untouched terrain, voxel-color encoding mismatch — all fixed. The CHANNEL_COLOR 32-bit lesson is captured in CLAUDE.md "Critical GDScript patterns" and `design/LESSONS_LEARNED.md`.)
 
 ## Section 10 — Verification Checklist (after each Godot session)
 
@@ -1002,252 +905,32 @@ Run these after any session where you change scenes or scripts:
 - [ ] No "Bus not found" errors when audio plays (means the audio bus layout from Section 1 is missing)
 - [ ] No "InputMap action not found" errors (means an action from Section 1 isn't configured)
 
-### Voxel gravity system (PR #127 — one-time)
+### Voxel gravity system (PR #127) — verified 2026-05-03
 
-Walks the gravity-system scenarios end-to-end. Run once after the
-plugin is installed and the project launches without parse errors.
-If any test fails, the first diagnostic is the Output panel — every
-gravity-related script logs with a `[VoxelGravityManager]` /
-`[FallingVoxelCluster]` / `[VoxelEditManager]` prefix.
+Single-voxel collapse, cliff overhang, powder-charge ceiling drop, NoEditZone respect, tipping, boulder drop, L-shape true-centroid rotation, stress test, save/load round-trip — all passed at PR landing. Re-run only if `VoxelGravityManager.gd` or `FallingVoxelCluster.gd` change materially.
 
-- [ ] **Single-voxel collapse**: pickaxe a voxel out of a flat surface, then pickaxe the voxel directly above it. The exposed voxel above falls and re-deposits.
-- [ ] **Cliff overhang collapse**: fly mode (F1 toggle in DebugOverlay) up to a cliff edge, carve the supporting wall with the pickaxe. Overhang detaches as one cluster, falls, lands, becomes terrain again.
-- [ ] **Powder charge ceiling drop**: dig a small tunnel under flat terrain, throw a powder charge at the ceiling support. Disconnected ceiling chunk falls on Roland and deals damage proportional to size + fall height.
-- [ ] **NoEditZone respect**: place a NoEditZone near a cliff. Carve under the cliff. Cluster falls but does NOT re-deposit any voxels inside the NoEditZone (boundary voxels vanish silently).
-- [ ] **Tipping**: build a tall thin voxel column (1×8×1, ~1.3 m), carve the bottom from one side. Column tips toward the cut and re-deposits as a horizontal log. NOT a vertical column dropped one voxel down.
-- [ ] **Boulder drop**: build a 4×4×4 voxel cube, remove its support. Drops more or less straight with minor wobble.
-- [ ] **L-shaped overhang**: build an L-shape supported only at one end, carve the support. Rotates around its TRUE centroid (not its bounding box centre) as it falls.
-- [ ] **Performance under stress**: detonate 5 powder charges in quick succession against a stepped cliff. Frame time stays under 33 ms; check Output for queue depth logs.
-- [ ] **Save/load round-trip**: trigger a collapse, save (campfire interaction or Wanderer's Seal), quit, reload. Re-deposited voxels are present in their landing positions.
+### Voxel material system (PR #129) — verified 2026-05-04
 
-### Voxel material system (PR #129 — one-time)
+Registry load + ID collision, per-material mining time / yield / tool gating, LOOSE column-fall (sand), per-material gravity & damage, save/load — all passed. Re-run only if `VoxelMaterial.gd` schema or `VoxelMaterialRegistry.gd` change.
 
-Validates the type system end-to-end. Run once after PR #129 merges
-and the project relaunches. The material system replaces a lot of the
-generator + mining flow, so this list is more thorough than usual.
+**Adding a new material (target: under 15 min — reusable recipe):**
+1. FileSystem dock → `assets/voxels/materials/` → Right-click → New Resource → `VoxelMaterial` → save as `<name>.tres`.
+2. Pick an unused `material_id` between 1 and 254 (Output panel prints used IDs at startup).
+3. Fill in: `id_string`, `display_name`, color palette, `mining_time_seconds`, `allowed_tools`, `yield_item_id`, `yield_quantity`, `fall_behavior` (NEVER/SOLID/LOOSE), `gravity_scale`, `damage_multiplier`.
+4. If `yield_item_id` is new, add it to `InventoryManager.ITEM_REGISTRY`.
+5. Restart Godot. Output should show `loaded N+1 materials: ...`.
 
-**Startup**
+### Water systems (Area3D upgrade + voxel-water refactor) — verified 2026-05-05
 
-- [ ] **Registry load**: launch the project. Output panel shows `[VoxelMaterialRegistry] loaded 4 materials: stone(1), dirt(2), grass(3), sand(4)`. If you see "loaded 0 materials" the .tres files aren't in `assets/voxels/materials/` (check the FileSystem dock).
-- [ ] **No autoload errors**: no `[VoxelMaterialRegistry]` push_error or push_warning lines on launch (other than the expected "InventoryManager not available" warning if InventoryManager loaded after — should NOT happen given the load order; flag if it does).
-- [ ] **ID collision detection**: temporarily edit `dirt.tres` and set `material_id = 1` (collision with stone). Relaunch. Expect a loud `push_error` mentioning both `dirt.tres` and `stone.tres` and refusing to register the duplicate. Revert dirt.tres back to material_id=2.
+Wave shader, vertical swim, breath/drowning, underwater filter, NoEditZone water gating, bucket tool, river currents, save/load — all passed during the May refactor. The Area3D `WaterVolume` design was retired and replaced by `WaterFlowManager` (host-only sim) + `WaterChunkMesher` (C++ since PR #214). Re-run only if `WaterByteCodec` layout or `WaterFlowManager` rules change.
 
-**Visuals**
+### WeatherManager (PR #132) — verified 2026-05-04
 
-- [ ] **Surface colour bands**: open `World3D.tscn`. Surface should be visibly green (grass), beaches near the test water volume tan (sand), exposed cliff faces and underground grey (stone). Brown dirt visible as a thin layer between grass and stone wherever you cut into a hillside.
-- [ ] **No uniform colouring**: each material has subtle per-voxel jitter — individual cubes should be readable as separate cubes, not a flat painted wall.
+Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZone + save/load — all passed. Re-run only if state machine or trigger priorities change.
 
-**Mining time per material**
-
-- [ ] **Stone is slow**: equip iron_pickaxe, hold attack on a stone voxel. ~0.8 s should pass before the voxel breaks.
-- [ ] **Dirt is fast**: equip iron_shovel, hold attack on a dirt voxel. ~0.3 s before break.
-- [ ] **Grass is fast**: shovel on a grass voxel — also ~0.3 s.
-- [ ] **Sand is fastest**: shovel on a sand voxel — ~0.2 s.
-- [ ] **Held timer resets on target switch**: hold attack on a stone voxel for 0.5 s, then look at a different voxel before the first one breaks. The new voxel should require its FULL mining time from zero (the old swing time doesn't transfer).
-
-**Yield per material**
-
-- [ ] **Stone yield**: pickaxe a stone voxel → `raw_stone` count in inventory increments by 1.
-- [ ] **Dirt yield**: shovel a dirt voxel → `raw_dirt` increments.
-- [ ] **Grass yields dirt** (intentional): shovel a grass voxel → `raw_dirt` increments (NOT a separate "raw_grass").
-- [ ] **Sand yield**: shovel a sand voxel → `raw_sand` increments.
-
-**Tool gating**
-
-- [ ] **Pickaxe on sand fails**: equip iron_pickaxe, hold attack on sand. Nothing breaks (sand's `allowed_tools = [iron_shovel]`).
-- [ ] **Shovel on stone fails**: equip iron_shovel, hold attack on stone. Nothing breaks.
-- [ ] **Right tool works**: equip iron_pickaxe on stone OR iron_shovel on dirt/grass/sand. Mining proceeds normally.
-
-**LOOSE column-fall (sand)**
-
-- [ ] **Single sand voxel falls**: dig out a single voxel from under a sand patch. The sand voxel directly above falls into the hole instantly (no rigid-body cluster, no tumble, just a one-voxel snap).
-- [ ] **Sand stack pours**: stack 4–5 sand voxels above an air gap. Carve out the column underneath. The whole stack pours down to fill the gap.
-- [ ] **Sand stops on solid**: dig out the support of a sand stack but leave a stone voxel underneath. Sand lands on the stone and stops there.
-
-**Per-material gravity (rigid-body clusters)**
-
-- [ ] **Stone falls slightly faster than dirt**: build a stone column and a dirt column side-by-side, both 4 voxels tall, both unsupported. Carve their supports. Stone (`gravity_scale = 1.0`) hits the ground slightly faster than dirt (`gravity_scale = 0.9`). Subtle but observable.
-- [ ] **Stone hurts more than dirt**: stand under a stone ceiling and a dirt ceiling of the same size and fall height. The stone collapse deals more damage (`damage_multiplier = 1.2` vs `0.7`).
-
-**Save / load**
-
-- [ ] **Save preserves materials**: trigger a few edits (carve different materials), save, quit, reload. The world looks identical — every voxel still has the right material colour and you can still mine each one with the right tool. Yields are unchanged.
-- [ ] **Old-save rejection**: launch with a save written before the version bump (any save file from PR #127 or earlier). Expect a `WORLD_GENERATOR_VERSION` mismatch error per documented policy. The error should be visible to the player, not a silent crash.
-
-**Designer ergonomics (the headline test)**
-
-- [ ] **Adding a new material under 15 minutes**: stop the project. In the FileSystem dock, navigate to `assets/voxels/materials/`. Right-click → New Resource → search for `VoxelMaterial` → save as `snow.tres`. In the Inspector, fill in:
-  - id_string = "snow"
-  - material_id = 5 (free per the registry's startup print)
-  - display_name = "Snow"
-  - color_low = white-tinted blue, color_high = pure white, color_jitter ≈ 0.05
-  - mining_time_seconds = 0.2
-  - allowed_tools = [iron_shovel]
-  - yield_item_id = "raw_snow"
-  - yield_quantity = 1
-  - fall_behavior = LOOSE
-  - damage_multiplier = 0.3
-
-  Add `raw_snow` to `InventoryManager.ITEM_REGISTRY` (one line, follow the existing pattern). Restart Godot. Output panel should show `loaded 5 materials: stone(1), dirt(2), grass(3), sand(4), snow(5)`. **Total time goal: under 15 minutes from "decide to add snow" to "snow is in the registry."** If it takes longer, the system needs UX work — file a follow-up.
-
-**Performance**
-
-- [ ] **No frame stutter on common edits**: pickaxe rapidly through a hillside (mixed grass/dirt/stone). Frame time stays under 16 ms (60 FPS) on the dev machine.
-- [ ] **No frame stutter on collapse**: detonate a powder charge against a cliff face (mixed materials, includes some sand for LOOSE-fall testing). Frame time stays under 33 ms.
-
-### Water system upgrade (PR — one-time)
-
-Validates the new wave shader, vertical swim, breath delay, and underwater filter end-to-end. Run once after PR merges.
-
-**Visuals**
-
-- [ ] **Animated waves**: open `World3D.tscn`, run. Both the test pond and the ocean surface show animated wave displacement (not flat planes). Crests visibly lighter than troughs.
-- [ ] **No seam between adjacent water bodies**: if two volumes overlap or sit edge-to-edge, the wave pattern lines up (world-space XZ as wave domain ensures phase alignment).
-- [ ] **Wave inspector tuning live**: while running, click the test `WaterVolume` in the editor. Drag `wind_strength` from 0 to 3 — waves grow taller in real time. Drag `wind_direction` from `(1, 0, 0)` to `(0, 0, 1)` — wave roll direction shifts.
-
-**Vertical swim**
-
-- [ ] **Ascend on Space**: walk into the test pond. Press and hold Space. Roland climbs at ~3 m/s.
-- [ ] **Descend on Crouch**: in water, press and hold Crouch. Roland dives at ~3 m/s.
-- [ ] **Float on release**: in water, release both. Vertical velocity decays to zero — Roland holds depth.
-- [ ] **Crouch toggle suppressed in water**: pressing Crouch underwater does NOT toggle the standing crouch state. Surface, walk to dry land — Roland is upright (status text not "CROUCHING").
-
-**Breath system**
-
-- [ ] **Submerged drains breath**: dive head-fully under, watch HUD status text. Counts down `BREATH: 30s` → 0 over 30 seconds.
-- [ ] **Drowning damage starts at 0 breath**: hold under for 35+ seconds. Status flips to "DROWNING", HP starts dropping at ~5 HP/s.
-- [ ] **2 s recovery delay**: drain breath to ~10s, surface fully (status flips to "SWIMMING"). For ~2 seconds breath stays at 10s. Then it climbs back up at 8/s.
-- [ ] **Recovery delay resets on re-submerge**: surface for 1 s (less than the 2 s delay), dive again. Submerge → resurface — the delay still pauses 2 s before refill, not 1 s.
-
-**Underwater filter**
-
-- [ ] **Tint visible when submerged**: dive head-fully under. Screen takes on a translucent blue-green tint.
-- [ ] **Tint clears on surface**: surface — tint disappears immediately.
-- [ ] **No tint when waist-deep but head dry**: walk in until waist is wet but head is above the surface. No tint.
-- [ ] **Tint clears on fly mode**: dive, toggle fly mode (F1 debug overlay → TOGGLE FLY MODE). Tint clears.
-
-**Designer ergonomics — adding a new water body**
-
-- [ ] **Under 5 minutes from idea to swim**: stop the project. In the FileSystem dock, duplicate `scenes/water/water_volume.tscn` as `scenes/water/swamp_pool.tscn`. Drop one instance into World3D at a new location. Set `surface_y` and (optionally) `wind_direction` / `wind_strength` in the inspector. Run. Pool animates with its own wind values, swim physics works, breath/drowning gate as expected. Goal: under 5 minutes from "decide to add water" to "swimming in it." If longer, file a follow-up.
-
-**Future WeatherManager smoke test**
-
-- [ ] **set_wind() works at runtime**: from the editor's Remote inspector while running, call `WaterVolume_Test.set_wind(Vector3(0, 0, 1), 3.0)`. Waves shift direction and grow taller without restarting the scene.
-
-### Voxel water refactor (PR — one-time)
-
-Validates the voxel-based water sim that replaced the Area3D `WaterVolume` model. Run once after the PR merges. Supersedes most of the "Water system upgrade" checklist above — the underwater filter and breath system are unchanged, but everything else (wave shader, swim physics, water authoring) is now driven by `WaterFlowManager`.
-
-**Sources & static water (Phase 1–2)**
-
-- [ ] **Test pond appears**: load `World3D.tscn`. The `World3DBootstrap.add_source_region` call in the script seeds a 10×3×10m AABB at world (-18, 0, 4). A wavy animated water surface should render there (Phase 2 emits the top-plane mesh).
-- [ ] **Ocean appears at sea level**: a 200×200m water surface should render at world Y=8. Walk the camera around — chunks within 64m of the player have meshes; beyond that they're culled.
-- [ ] **Walk into pond → swim physics activate**: motion mode flips to FLOATING, status text "SWIMMING", vertical swim controls work.
-- [ ] **Submerge head**: status text "BREATH: 30s" counts down. Underwater filter (blue-green tint) visible.
-- [ ] **Bare shovel on bank does nothing visible**: we removed the WaterVolume Area3Ds; there's no scene-Tree water node to delete or move.
-
-**Gravity drop (Phase 3)**
-
-- [ ] **Pickaxe under the pond**: equip iron_pickaxe, swing at a stone voxel directly under the pond bank. Within 4 ticks (~1 s), water drops into the new air voxel. Continue carving downward — water cascades down the column.
-- [ ] **Side-tunnel from the pond**: carve a horizontal tunnel out from the pond at sea level. Water doesn't flow yet (gravity-only Phase 3), but the air voxels stay dry. (Lateral spread is Phase 4 below.)
-
-**Lateral spread + decay (Phase 4)**
-
-- [ ] **Horizontal channel fills**: with the side-tunnel from the previous step, water now flows along it. Cells visibly thinner (lower level) the further from the source. Stops 7 cells out from the source (level 8 → 1 → 0).
-- [ ] **Channel evaporates when source removed**: dig out the source-region edge so the channel no longer connects to the pond AABB. Within ~10 seconds the entire channel evaporates as monotone-decay drains it.
-- [ ] **NoEditZone blocks water**: place a NoEditZone Area3D (with attached `NoEditZone.gd` script, `blocks_water_flow=true`) across a player-dug channel. Water dams against the boundary — no cells inside the zone.
-- [ ] **NoEditZone with blocks_water_flow=false lets water through**: toggle the same zone to false. Water flows in.
-
-**Save/load (Phase 5)**
-
-- [ ] **Bucket placement persists**: equip the bucket, fill at the pond, place a water source on a hill. Save (`F5` or campfire). Quit. Reload. The placed source is still there; its downhill cascade is still flowing within a few ticks.
-- [ ] **Pre-v11 saves invalidate**: try to load a save from before the refactor. Should log a version mismatch or refuse to load (per the existing `voxel_generator_version` gate in `GameState.load_save_file`).
-
-**River currents (Phase 6)**
-
-- [ ] **No current in still water**: float in the middle of the pond — no horizontal drift.
-- [ ] **River pushes player downstream**: place a chain of bucket sources stepping down a slope (a river headwater above, terrain channel leading down). Swim into the channel — Roland drifts toward the lower end. Stronger drift where the level gradient is steeper.
-- [ ] **Ocean interior calm**: swim into the middle of the ocean source region. No drift in any direction (every neighbor is also level 8).
-
-**Bucket tool (Phase 7)**
-
-- [ ] **Empty bucket fills at water**: equip the bucket. Click while in the pond (or aimed at any water cell within 2.5m). Bucket → bucket_filled. Inventory shows the swap.
-- [ ] **Filled bucket places water**: equip bucket_filled. Aim at empty space (in air). Click. A water source appears at that voxel. Bucket → bucket. The source begins cascading downward.
-- [ ] **Bucket place rejected by NoEditZone**: aim into a NoEditZone with `blocks_water_flow=true`. Click. Output panel logs "Bucket place rejected: NoEditZone." Bucket stays filled.
-- [ ] **Bucket place rejected by solid voxel**: aim into a stone voxel. Click. Output logs "Bucket place rejected: voxel solid." Bucket stays filled.
-
-**Performance**
-
-- [ ] **No frame stutter on edits near water**: pickaxe rapidly through the pond bank for 10+ seconds. Frame time stays under 16 ms (60 FPS) on the dev machine. WaterFlowManager flow tick costs visible in the profiler — should be < 2 ms per 4 Hz tick.
-- [ ] **Out-of-radius dirty chunks don't burn frames**: build a deep mineshaft 50m+ from any water. Dig rapidly. Flow tick should NOT process those chunks (they're outside ACTIVE_RADIUS_M=20m around the player).
-
----
-
-## Section 11 — Verification: WeatherManager (2026-05-04)
-
-### Audio assets needed (system runs silent without these)
-
-WeatherManager logs a one-time warning per missing OGG and continues — it never crashes. Drop these files at the listed paths to unlock the corresponding audio bed.
-
-- [ ] `assets/audio/ambient/wind_low.ogg` — quiet wind for FOG / SNOW
-- [ ] `assets/audio/ambient/wind_med.ogg` — moderate wind for OVERCAST
-- [ ] `assets/audio/ambient/rain_light.ogg` — gentle rain for LIGHT_RAIN
-- [ ] `assets/audio/ambient/rain_heavy.ogg` — heavy rain for HEAVY_RAIN
-- [ ] `assets/audio/ambient/thunder_distant.ogg` — single rumble, ~3 s, used per lightning strike
-
-### In-Godot verification
-
-**State machine**
-
-- [ ] **Initial state**: open `World3D.tscn` → run. Sky / fog / ambient match a CLEAR or OVERCAST baseline (depends on whether a profile is set).
-- [ ] **Force-set via debug overlay**: F1 → COMMANDS → WEATHER... → click each of the six state buttons. Within 30 s, fog density, sky tint, ambient brightness, and wind strength all transition smoothly to the new state.
-- [ ] **Live readouts update**: while submenu open, `Current:` updates as the transition completes; `Wind:` updates every frame.
-- [ ] **CLEAR OVERRIDE**: click during a forced state. Override clears; weather returns to schedule-driven state.
-
-**Wind**
-
-- [ ] **Direction is gradual**: open WEATHER submenu and watch the `Wind:` line for ~2 minutes. The (x, z) values lerp slowly — never snap, even when forcing rapid state changes.
-- [ ] **Strength tracks state**: HEAVY_RAIN drives ocean wave amplitude visibly higher than CLEAR. Switch back to CLEAR — waves calm within 30 s.
-
-**Particles**
-
-- [ ] **Rain follows the camera**: HEAVY_RAIN, walk forward 30 m. Rain particles stay above and around the camera the whole time.
-- [ ] **Rain slants in wind**: HEAVY_RAIN, watch the falling streaks. They slant in the current wind direction; angle shifts gradually as wind direction drifts.
-- [ ] **Snow drifts slowly**: SNOW state. White flakes fall at ~1.5 m/s², visibly slower than rain.
-- [ ] **CLEAR has no particles**: switch to CLEAR. No emission.
-
-**Wet-terrain visual**
-
-- [ ] **Layer A overlay**: HEAVY_RAIN. Screen has a subtle blue-grey tint (alpha ~0.18). Tint fades to transparent within 30 s when switching to CLEAR.
-- [ ] **Layer B specular sheen**: walk to a stone outcrop during HEAVY_RAIN. Surface visibly darker; sun catches a wet sheen on highlights.
-- [ ] **Layer B disengages**: switch to CLEAR. Terrain returns to dry vertex-color rendering within 30 s.
-- [ ] **Phase 8 graceful fallback**: if your Zylann build doesn't expose `material_override` on `VoxelLodTerrain`, Layer A still shows. No crash.
-
-**Lightning**
-
-- [ ] **Random strikes during HEAVY_RAIN**: stay in the state for 30+ seconds. At least one strike fires.
-- [ ] **Force lightning**: click `FORCE LIGHTNING` in WEATHER submenu. Strike fires immediately. Repeat 5+ times — strike position (and thus directional flash) varies.
-- [ ] **Directional cue**: when a strike fires, the side of the world facing the strike brightens noticeably more than the opposite side.
-- [ ] **Thunder spatial**: thunder rumble comes from the strike's direction (3D audio panning). Far strikes have a longer flash → thunder gap than near strikes.
-
-**Story override**
-
-- [ ] **Override lasts duration**: in the editor remote inspector, call `WeatherManager.set_weather_override("heavy_rain", 0.01)` (≈ 36 real seconds). After ~36 s, weather returns to schedule.
-
-**Schedule rolls**
-
-- [ ] **Hourly rolls only at scheduled hours**: F1 → ADVANCE TIME... → step through several days. Weather rolls happen at hours 6 / 12 / 18, not other hours.
-- [ ] **Authored Mira-temperate sequence**: load mira_temperate.tres via `WeatherManager.set_location_profile()`. Days 1–4 follow the authored opener (overcast / clear / overcast / light rain) at hour 6.
-
-**WeatherZone**
-
-- [ ] **Place a test zone**: in `World3D.tscn`, drop an Area3D with `WeatherZone.gd`, `weather_state="fog"`, BoxShape3D ~10 m extents near the campfire. Walk in. State swaps to FOG within 30 s. Walk out — state returns to scheduled.
-
-**Save / load**
-
-- [ ] **Round-trip current state**: enter HEAVY_RAIN. Save. Quit Godot. Reopen the save. Weather is still HEAVY_RAIN.
-- [ ] **Round-trip override timer**: set a 1-hour override. Save. Reload. Override timer has the remaining hours intact.
-
-**Performance**
-
-- [ ] **No frame stutter on state change**: cycle through all 6 states rapidly. Frame time stays under 16 ms.
+**Audio assets still needed** (system runs silent without these — drop OGGs at the listed paths):
+- [ ] `assets/audio/ambient/wind_low.ogg` (FOG / SNOW)
+- [ ] `assets/audio/ambient/wind_med.ogg` (OVERCAST)
+- [ ] `assets/audio/ambient/rain_light.ogg` (LIGHT_RAIN)
+- [ ] `assets/audio/ambient/rain_heavy.ogg` (HEAVY_RAIN)
+- [ ] `assets/audio/ambient/thunder_distant.ogg` (per-strike rumble, ~3 s)
