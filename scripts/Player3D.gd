@@ -251,7 +251,7 @@ var _spawn_freeze: bool = false
 # VIEWER_LOOKAHEAD_MAX_OFFSET_M = 0.0 to disable the lookahead entirely
 # (viewer stays at the player's origin, original symmetric behaviour).
 
-const VIEWER_LOOKAHEAD_MIN_SECONDS: float = 1.5
+const VIEWER_LOOKAHEAD_MIN_SECONDS: float = 2.0
 # Lookahead time at and below VIEWER_LOOKAHEAD_LOW_SPEED_MPS.
 # Smaller value → less bias when moving slowly. 1.5 s × 4.5 m/s walk
 # = 6.75 m. Past this, seconds ramps up linearly with speed.
@@ -281,7 +281,7 @@ const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
 # the 128 m LOD0 ring — comfortably inside the safety margin.
 # Set to 0.0 to disable the entire lookahead system.
 
-const VIEWER_OFFSET_SMOOTH_HALFLIFE_S: float = 0.35
+const VIEWER_OFFSET_SMOOTH_HALFLIFE_S: float = 0.20
 # Exponential half-life for VoxelViewer offset transitions. Without
 # this, the offset SNAPS frame-to-frame:
 #   - player stops → offset jumps to Vector3.ZERO
@@ -292,8 +292,12 @@ const VIEWER_OFFSET_SMOOTH_HALFLIFE_S: float = 0.35
 # 2026-05-14 produced 3262 dropped_block_loads + 9.2 ms detect_us in
 # one frame (see design/captures/profile_capture_96300.json frame
 # context, [DIAG] log "lag_xz=0.6 m"). Smoothing turns that into a
-# ~250 ms ramp so Zylann sees gradual viewer drift instead of a
-# discontinuity. 0.35 s half-life ≈ 1 s to reach 87% of new target.
+# ~150 ms ramp so Zylann sees gradual viewer drift instead of a
+# discontinuity. 0.20 s half-life ≈ 0.6 s to reach 87% of new target.
+# Tightened from 0.35 s on 2026-05-14 to reduce trailing during
+# direction changes; verified post-fix capture showed sprint had
+# already gone to 0 drops, so the budget for snap protection
+# could be relaxed.
 
 @onready var _voxel_viewer: Node = get_node_or_null("VoxelViewer")
 # Cached on first frame. The VoxelViewer node is added by Player3D.tscn;
