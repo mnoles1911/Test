@@ -109,6 +109,12 @@ var _player_chunk: Vector3i = Vector3i.ZERO
 var _shader_material: Material = null
 # Cached water_material.tres reference. Loaded lazily on first build.
 
+var _cpp_mesher: Resource = null
+# C++ WaterChunkMesherCpp instance (extensions/voxel_gen/). Crunches
+# per-chunk CHANNEL_DATA5 → ArrayMesh natively. Resolved in _ready;
+# nil falls back to the GDScript implementation below so the editor
+# stays runnable even if the extension didn't load.
+
 var _horizon_material: Material = null
 # Same shader, but render_priority = -1 so the legacy follow-player
 # horizon plane draws BEHIND the Phase 2 chunked mesh wherever they
@@ -256,6 +262,19 @@ func _ready() -> void:
 	# overdraws the plane wherever they overlap, and render_priority
 	# = -1 on the horizon material loses ties at the same Y.
 	_rebuild_horizon_plane()
+
+	# Resolve the C++ mesher. The extension registers
+	# WaterChunkMesherCpp at MODULE_INITIALIZATION_LEVEL_SCENE; if the
+	# DLL failed to load (missing build, version mismatch, etc.) the
+	# class lookup returns false and we keep using the GDScript path.
+	if ClassDB.class_exists("WaterChunkMesherCpp"):
+		_cpp_mesher = ClassDB.instantiate("WaterChunkMesherCpp")
+		if _cpp_mesher != null:
+			print("[WaterChunkMesher] C++ mesher resolved.")
+		else:
+			push_warning("[WaterChunkMesher] WaterChunkMesherCpp class exists but instantiate returned null; using GDScript path.")
+	else:
+		push_warning("[WaterChunkMesher] WaterChunkMesherCpp not registered; using GDScript path.")
 
 
 func _build_debug_water_material(is_horizon: bool) -> StandardMaterial3D:
@@ -528,17 +547,26 @@ func _rebuild_chunk(chunk: Vector3i) -> void:
 	# overlap. Per-cell water ignored for v1 — Phase 2 only handles
 	# source regions, which covers the test pond + ocean visually.
 	# Phases 4+ extend this to per-cell partial-height surfaces.
-	var quads: Array = _gather_surface_quads(chunk)
-	var existing: MeshInstance3D = _meshes.get(chunk, null)
+	#
+	# When WaterChunkMesherCpp is available we hand the chunk's
+	# CHANNEL_DATA5 buffer straight to C++ and receive a built
+	# ArrayMesh (or null for a dry chunk). Falls back to the
+	# GDScript path when the extension didn't load.
+	var mesh: ArrayMesh = null
+	if _cpp_mesher != null:
+		mesh = _build_chunk_mesh_cpp(chunk)
+	else:
+		var quads: Array = _gather_surface_quads(chunk)
+		if not quads.is_empty():
+			mesh = _build_array_mesh(quads)
 
-	if quads.is_empty():
+	var existing: MeshInstance3D = _meshes.get(chunk, null)
+	if mesh == null:
 		# No water — free the mesh if it exists, otherwise nothing to do.
 		if existing != null:
 			existing.queue_free()
 			_meshes.erase(chunk)
 		return
-
-	var mesh: ArrayMesh = _build_array_mesh(quads)
 	if existing == null:
 		existing = MeshInstance3D.new()
 		existing.material_override = _shader_material
@@ -579,6 +607,48 @@ var _diag_chunks_meshed: int = 0
 var _diag_chunks_with_quads: int = 0
 var _diag_first_water_chunk_logged: bool = false
 var _diag_first_quads_logged: bool = false
+
+
+func _build_chunk_mesh_cpp(chunk: Vector3i) -> ArrayMesh:
+	# Acquire the chunk's CHANNEL_DATA5 buffer and hand it to the C++
+	# mesher. Mirrors the bail-fast-on-unstreamed pattern from
+	# _gather_surface_quads — tool.copy on an unloaded chunk blocks
+	# waiting for Zylann's worker thread, which we never want on the
+	# main thread. Returns null on dry chunk or unloaded chunk; the
+	# caller treats null as "free the existing mesh if any".
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return null
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return null
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return null
+	var voxel_origin := Vector3i(
+		chunk.x * CHUNK_SIZE_VOXELS,
+		chunk.y * CHUNK_SIZE_VOXELS,
+		chunk.z * CHUNK_SIZE_VOXELS,
+	)
+	if tool.has_method("is_area_editable"):
+		var probe_aabb := AABB(Vector3(voxel_origin), Vector3.ONE * float(CHUNK_SIZE_VOXELS))
+		if not tool.call("is_area_editable", probe_aabb):
+			return null
+	var buf := VoxelBuffer.new()
+	buf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	var data_mask: int = 1 << VoxelBuffer.CHANNEL_DATA5
+	tool.copy(voxel_origin, buf, data_mask)
+	_diag_chunks_scanned += 1
+	# C++ returns Ref<ArrayMesh>; an empty ref converts to null on
+	# the GD side, which is exactly the "no water" signal we want.
+	var result: Variant = _cpp_mesher.call("build_chunk_mesh", buf, chunk)
+	if result == null:
+		return null
+	var mesh: ArrayMesh = result as ArrayMesh
+	if mesh == null:
+		return null
+	_diag_chunks_with_water += 1
+	_diag_chunks_with_quads += 1
+	return mesh
 
 
 func _gather_surface_quads(chunk: Vector3i) -> Array:
