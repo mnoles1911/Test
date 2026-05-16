@@ -15,21 +15,24 @@ prompt + a structure prompt** pair.
 
 ## 1. Reference anchor: the Main Theme
 
-The Main Theme (track **02**) is canonical and unchanged — its exact style and
-lyrics are preserved in §7 as the user authored them. It is **D minor
-(Aeolian), 84 BPM**, with the Latin choir intact. Everything else in the
-soundtrack branches *off* it but must not sound like it transposed. Two rules
-follow from that:
+The Main Theme (track **02**) is the score's identity anchor. Its core
+**D-minor heroic-melancholic theme** and its **Lux per umbram** Latin identity
+are kept, but it has been **reworked in place**: the choir is cut way down to a
+single brief, distant, light statement (no grand choral anthem, no "Vocat"
+battle shout), the references lean to Soule's *Oblivion*, and the flute is
+constrained to steady stepwise lines. It is **D minor (Aeolian), 84 BPM**.
+Everything else branches *off* it but must not sound like it transposed. Two
+rules follow:
 
 - **Key variety.** The Main Theme owns D minor. Every other cue is in a
   deliberately different key and/or mode (see the **Key** column in §5) so the
   portfolio reads as a varied score, not one piece moved around the keyboard.
   The only D-centred exceptions are three *intentional* thematic callbacks
   (37, 51, 57) — flagged where they occur.
-- **Choir is rare.** The Main Theme keeps its full Latin choir because it's
-  canonical and it works. The *rest* of the soundtrack leans hard
-  instrumental: choir appears on only **six** cues total, always brief, light,
-  and explicitly optional (each can be rendered choir-free). See §3.
+- **Choir is rare.** Even the Main Theme now uses only one brief light Latin
+  statement. The rest of the soundtrack leans hard instrumental: choir appears
+  on only **six** cues total (02 plus five), always brief, light, and on the
+  other five explicitly optional/omittable. See §3.
 
 ---
 
@@ -73,10 +76,10 @@ two tracks in the same category may share more than three lever values.**
 5. **Percussion family** — none / soft frame drum / hand percussion / timpani
    & field drums / taiko & dhol battery / anvils & stomps / arrhythmic stone.
 6. **Vocal treatment** — **instrumental (default — 53 of 59)**. Choir appears
-   on **only these six**, brief, light, optional, never solo, never lead
-   melody: **02** (canonical, full), **24, 34, 41, 45, 47** (brief texture
-   only — each style box says "choir optional, may be omitted for fully
-   instrumental"). No solo voices, no sung verses, no spoken word anywhere.
+   on **only these six**, brief, light, never solo, never lead melody: **02**
+   (one brief light distant Latin statement, sung once), **24, 34, 41, 45, 47**
+   (brief texture only — each style box says "choir optional, may be omitted
+   for fully instrumental"). No solo voices, no sung verses, no spoken word.
 7. **Recording space** — dry chamber / intimate close / open field / great
    stone hall / cathedral / cavern / storm-air / "music box".
 8. **Structural arc** — vary section count/order; 6–9 sections to reach length.
@@ -134,7 +137,7 @@ others fully instrumental.
 | # | Title | Category | Palette | Key | BPM | Lead | Choir | Len |
 |---|---|---|---|---|---|---|---|---|
 | 01 | Prelude _ The Eighth Star | Identity | Aelorin | F Lydian | 54 | glass harmonica | — | 3:00 |
-| 02 | Main Theme | Identity | Human | D minor (Aeolian) | 84 | strings/horns | canonical | 4:30 |
+| 02 | Main Theme | Identity | Human | D minor (Aeolian) | 84 | strings/horns | 1 brief | 4:30 |
 | 03 | End Credits _ The Long Twilight | Identity | suite | B♭ Aeolian → mod. | 76 | solo cello | — | 5:00 |
 | 04 | Open Road _ The Central Plains | Exploration | Human | G Mixolydian | 92 | oboe | — | 4:00 |
 | 05 | The Greatwood _ Under Old Leaves | Exploration | Aelorin | A Lydian | 60 | harp + high strings | — | 4:30 |
@@ -196,8 +199,9 @@ others fully instrumental.
 `*` = the three intentional D-tonic callbacks to the Main Theme: **37** the
 exhausted Endurance in D Aeolian, **51** joy as the parallel **D major**, **57**
 the Main Theme's D transformed to **D Lydian** for the trilogy's resolution.
-Existing on disk → **02 keeps `Main Theme`** (canonical), **32 / 30 supersede
-`Sea _ Sailing`**; regenerate a `World Map _ Travel` replacement from #04.
+Existing on disk → **02 replaces `Main Theme`** (reworked in place), **32 / 30
+supersede `Sea _ Sailing`**; regenerate a `World Map _ Travel` replacement
+from #04.
 
 ---
 
@@ -219,9 +223,10 @@ stepwise lines in a fixed register* and every negative list bans *flute
 glissando / pitch sweeps / portamento / octave runs / whistle effects*. Do not
 remove that language — it is what prevents the high-to-low flute artifact.
 
-**Choir.** Only 02 (canonical, full) and 24/34/41/45/47 (brief, optional).
-Those five say "choir optional — may be omitted for fully instrumental." If in
-doubt, render them instrumental; the soundtrack is instrumental-first.
+**Choir.** Only 02 (one brief light distant Latin statement, sung once) and
+24/34/41/45/47 (brief, optional). Those five say "choir optional — may be
+omitted for fully instrumental." If in doubt, render them instrumental; the
+soundtrack is instrumental-first.
 
 **Reference lean.** Lead with *Oblivion* (Soule's lush pastoral orchestral),
 then *Morrowind* (sparse contemplative, "Nerevar Rising" horn/lute), then
@@ -265,49 +270,37 @@ Structure prompt:
 
 ---
 
-**02 — Main Theme** *[canonical — preserved exactly as authored]*
-*Key D minor (Aeolian) · 84 BPM · Human · strings/horns · full Latin choir · 4:30*
+**02 — Main Theme** *[reworked in place — D-minor theme + Lux per umbram kept, choir cut way down, Oblivion lean, flute fixed]*
+*Key D minor (Aeolian) · 84 BPM · Human · strings/horns · one brief light Latin statement · 4:30*
 
 Style prompt:
 ```
-Cinematic medieval fantasy orchestral score, epic and melancholic, D minor, 84 BPM, 4/4 time, in the tradition of Skyrim and Morrowind film scores, Sweeping legato strings, four French horns in open fifths, solo cello with warm vibrato, soaring solo violin, mixed Latin choir with prominent tenors and basses, frame drums and hand percussion, distant wooden flute, Modal harmony Aeolian and Dorian, never harmonic minor, Building from hushed ambient intro through heroic main theme, intimate cello response, grand choral anthem, climactic battle with taiko drums, returning to quiet solo cello outro, Cathedral reverb on choir and strings, Wide dynamic range, pianissimo to fortissimo, Film score production quality, No drum kit, no electric guitar, no synth, no modern percussion, no English vocals, no rock elements, no EDM, no autotune
+Lush cinematic fantasy orchestral score, epic and melancholic, D minor, 84 BPM, 4/4, in the tradition of Jeremy Soule's Oblivion and Morrowind. Sweeping legato strings, four French horns in open fifths, solo cello with warm vibrato, soaring solo violin, harp, oboe, soft frame drums and hand percussion. One brief, distant, light Latin choir statement only — far-off and mezzo-piano, never a battle chant or grand anthem. Distant wooden flute playing simple steady stepwise lines in a fixed register. Modal Aeolian and Dorian, never harmonic minor. Builds from a hushed ambient intro through the heroic main theme and an intimate cello response to an Oblivion-grand orchestral climax, then a quiet solo cello outro. Cathedral reverb on strings, wide dynamic range pianissimo to fortissimo, film-score quality. Full-length cue, developed and through-composed, no early fade, long outro. No drum kit, no electric guitar, no synth, no modern percussion, no English vocals, no solo vocals, no flute glissando, no pitch sweeps, no portamento, no taiko battle chant, no rock, no EDM, no autotune.
 ```
 Lyrics/structure prompt:
 ```
-[Intro - quiet ambient, solo wooden flute, distant frame drum heartbeat]
+[Instrumental Intro - quiet ambient, distant wooden flute on steady stepwise notes, soft frame-drum heartbeat]
 
-[Instrumental Build - frame drums establish 4/4 pulse, low strings ostinato in open fifths, French horns enter with sustained pedal D]
+[Instrumental Build - frame drums establish a gentle 4/4, low strings ostinato in open fifths, French horns enter on a sustained pedal D]
 
-[Instrumental Main Theme - violins carry heroic melancholic melody, French horn pad underneath, frame drums steady]
+[Instrumental Main Theme - violins carry the heroic melancholic melody, French horn pad underneath, frame drums steady]
 
-[Instrumental Bridge - solo cello variation, sparse harp accompaniment, briefly 6/8 time, intimate and melancholic]
+[Instrumental Bridge - solo cello variation, sparse harp, briefly 6/8 time, intimate and melancholic]
 
-[Instrumental Solo - heroic solo violin restating the main theme one octave higher, warm string pad underneath]
+[Instrumental Solo - soaring solo violin restates the main theme an octave higher, warm string pad underneath]
 
-[Choir - Latin chant, tenors and basses lead, sopranos and altos enter with harmony in fifths, mezzoforte rising]
-
-Lux per umbram
-ferrum per ignem
-sanguis per saecula
-terra nos vocat
+[Choir - one brief, light, distant Latin statement, mezzo-piano, no battle force, sung once only]
 
 Lux per umbram
 ferrum per ignem
 sanguis per saecula
 terra nos vocat
 
-[Battle Climax - tempo increases to 96 BPM, taiko drums, low strings eighth-note ostinato, trombones, choir chants]
+[Instrumental Climax - Oblivion-grand: full strings and horns restate the main theme, harp and oboe soaring over the top, frame drums lift; no taiko, no choir shout]
 
-Vocat! Vocat! Vocat!
-Terra nos vocat!
-Vocat! Vocat! Vocat!
-Terra nos vocat!
+[Instrumental Lift - brief modulation to D major, trumpets and horns restate the theme warmly]
 
-[Brief modulation to D major, trumpets restate main theme in triumph]
-
-[Sudden cutoff, fading timpani roll]
-
-[Outro - solo cello plays three-note descending motif, distant frame drum heartbeat, fade to silence]
+[Instrumental Outro - solo cello plays a three-note descending motif, distant flute and soft frame-drum heartbeat, long fade to silence]
 ```
 
 ---
@@ -1522,9 +1515,9 @@ Structure prompt:
 - **Key variety is the anti-sameness spine.** The Main Theme owns D minor; the
   only other D-tonic cues are the three deliberate callbacks (37, 51, 57). If a
   new cue is added, give it a key not already heavily used in its category.
-- **Instrumental-first.** Only 02 (canonical, full choir) and 24/34/41/45/47
-  (brief, optional, omittable) use voices. Render any of the five instrumental
-  if unsure.
+- **Instrumental-first.** Only 02 (one brief light Latin statement) and
+  24/34/41/45/47 (brief, optional, omittable) use voices. Render any of the
+  five instrumental if unsure.
 - **Reference order:** Oblivion → Morrowind → Skyrim → Shore. Lead style boxes
   with the instrument/key, name the reference late.
 - **`.ogg`, stereo, 44.1 kHz** per `AUDIO_DESIGN.md`; into `assets/audio/music/`
