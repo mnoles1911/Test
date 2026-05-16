@@ -114,9 +114,9 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
 - `AUDIO_DESIGN.md` — audio bus layout, music/SFX/voice routing, spatial 3D
   audio, settings volume sliders
 - `MUSIC_PROMPTS.md` — the full Suno soundtrack portfolio: 59 instrumental
-  prompt pairs (3:00–5:00 each, light massed choir only on 14 battle cues),
-  the anti-sameness variation matrix, cultural palettes, and the leitmotif
-  system
+  prompt pairs (3:00–5:00 each, Oblivion-first, explicit varied keys, choir
+  only on the canonical Main Theme + 5 optional cues), the anti-sameness
+  variation matrix, cultural palettes, leitmotif system, and flute discipline
 
 ### Planning, ops, and overview
 
