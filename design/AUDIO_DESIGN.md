@@ -2,7 +2,8 @@
 
 How sound and music work in Game One — what the player hears, why it matters, and how it is implemented.
 
-> Cross-reference: `design/CONVERSATION_SYSTEM.md` for TTS voice generation and mixing.
+> Cross-reference: `design/MUSIC_PROMPTS.md` for the full Suno prompt portfolio (the music *content*; this doc is the *system*).
+> `design/CONVERSATION_SYSTEM.md` for TTS voice generation and mixing.
 > `design/NPC_SYSTEM.md` for bark trigger timing and cooldowns.
 > `design/REST_AND_CAMP.md` for camp atmosphere audio.
 > `design/COMBAT_DESIGN_3D.md` for combat hit feedback and timing audio cues.
