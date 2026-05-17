@@ -5,25 +5,49 @@
 [resource]
 render_priority = 0
 shader = ExtResource("1_water_shader")
-shader_parameter/wave_amplitude_a = 0.08
-shader_parameter/wave_frequency_a = 0.5
-shader_parameter/wave_speed_a = 1.0
-shader_parameter/wave_dir_a = Vector2(1, 0)
-shader_parameter/wave_amplitude_b = 0.04
-shader_parameter/wave_frequency_b = 1.3
-shader_parameter/wave_speed_b = 0.8
-shader_parameter/wave_dir_b = Vector2(0.7, 0.7)
+
+; v8 (2026-05-16): proper lit transparent water — surface sheen
+; (Fresnel sky reflection + sun specular) that ALWAYS reads as water,
+; plus real depth-driven alpha (shallow = see bottom, deep = opaque).
+; Replaces the v6/v7 unshaded screen-composite that had no surface.
+
+; --- SHARED LOOK (MUST equal water_horizon_material.tres) ---
+shader_parameter/water_tint_color = Color(0.10, 0.30, 0.42, 1.0)
+; deep_water_color 0.02,0.06,0.12 → 0.05,0.13,0.22. The near-black
+; floor made LOD-seam water-shell slivers at chunk boundaries read as
+; a harsh BLACK grid at distance (depth-fade maxes to this colour on
+; edge-on fragments). A deep-but-not-black blue collapses that grid's
+; contrast (and deep water reads richer). Tune toward darker if deep
+; ocean should still go near-black up close.
+shader_parameter/deep_water_color = Color(0.05, 0.13, 0.22, 1.0)
+shader_parameter/sky_reflection_color = Color(0.55, 0.70, 0.85, 1.0)
+; fresnel 3.0/1.0 → 5.0/0.5: v8 washed the far surface near-white (full
+; sky reflection at grazing). 0.5 strength keeps a sheen without
+; blowing out; power 5 reserves it for the steepest glance.
+shader_parameter/fresnel_power = 5.0
+shader_parameter/fresnel_strength = 0.5
+shader_parameter/metallic_amount = 0.0
+; roughness 0.08 → 0.55: glossy water threw a hard specular glint on
+; every flat voxel face (blocky "bad lighting"). Higher roughness =
+; soft, flatter Minecraft-ish water. Tune to taste.
+shader_parameter/roughness_amount = 0.55
+
+; --- DEPTH-FADE (Water Voxel V2: this is the water-block material) ---
+; depth_fade_distance = headline "how clear is the water" dial: ~metres
+; of water column before it reads fully opaque. SMALLER = murkier / far
+; less see-through. 0.7 → 0.30: tester wanted dramatically less
+; see-through at 1-5 m (shallow water read too glassy). At 0.30 a ~1 m
+; column is ~96% opaque; only sub-meter shallows show the bottom.
+; Raise back toward 1-3 for clearer/tropical water.
+shader_parameter/depth_fade_distance = 0.30
+; shallow_alpha = minimum opacity even for the thinnest water film, so
+; paper-thin edges still read as solid-ish water rather than glass.
+; 0.15 → 0.40 for the "less see-through everywhere" request.
+shader_parameter/shallow_alpha = 0.40
+
+; --- DEBUG (0 normal · 1 depth_t · 2 fresnel · 3 thickness) ---
+shader_parameter/debug_mode = 0
+
+; --- LEGACY (unused, kept for WaterFlowManager / caller compat) ---
 shader_parameter/wind_dir = Vector2(1, 0)
 shader_parameter/wind_strength = 0.5
-; Light-blue near-opaque water surface. Previously
-; (0.16, 0.32, 0.48, 0.78) — dark navy at 78% opacity which read
-; as "translucent layer you can see through" rather than a body
-; of water. New values: bright sky blue at 95% opacity.
-shader_parameter/base_color = Color(0.42, 0.68, 0.88, 0.95)
-; Crest_color highlights wave peaks. Brightened to a near-white
-; pale blue so wave-shader vertex displacement reads as moving
-; foam rather than a uniform sheet.
-shader_parameter/crest_color = Color(0.78, 0.90, 0.98, 0.97)
-shader_parameter/crest_threshold = 0.5
-shader_parameter/metallic_amount = 0.2
-shader_parameter/roughness_amount = 0.25

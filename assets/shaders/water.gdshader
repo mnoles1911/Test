@@ -1,75 +1,186 @@
-// water.gdshader — Sine-sum surface waves for WaterVolume meshes.
+// water.gdshader — v8 (2026-05-16). PROPER REWRITE.
 //
-// Vertex stage displaces VERTEX.y by the sum of two sine waves
-// (different directions, frequencies, speeds, amplitudes). Wind biases
-// the dominant wave direction and scales overall amplitude.
+// WHY THIS REWRITE (plain English):
+//   v6/v7 was an `unshaded` shader that hand-composited "the scene
+//   behind the water" and lerped it toward a tint by depth. It had NO
+//   surface of its own — no sky reflection, no sun glint, no base
+//   sheen. Tuned opaque it was a flat slab; tuned clear it was
+//   invisible glass (you saw straight through to the dry lakebed).
+//   The horizon plane was secretly doing all the "looks like water"
+//   work. Proven by the 2026-05-16 experiment: 250 chunked meshes
+//   present, horizon plane removed → zero visible water.
 //
-// Fragment stage tints crests slightly lighter than troughs by reading
-// the displacement value passed through COLOR.r.
+// WHAT v8 DOES DIFFERENTLY — two layers that always coexist:
 //
-// World-space XZ is used as the wave domain so adjacent water bodies
-// stay phase-aligned (no visible seam if two volumes overlap).
+//   1. A SURFACE that always reads as water, at any depth or angle:
+//        • base water colour,
+//        • Fresnel sheen toward the sky colour (grazing angles go
+//          bright/reflective — the #1 cue your eye uses for "water"),
+//        • real lit sun specular (this shader is NOT unshaded).
 //
-// Driven by WaterVolume.gd — wind_dir / wind_strength uniforms get
-// updated each frame from the script's @export vars, which the future
-// WeatherManager will write via WaterVolume.set_wind(dir, strength).
+//   2. DEPTH-DRIVEN TRANSPARENCY using the real depth texture to
+//      measure how much water the view ray passes through:
+//        • shallow  → low ALPHA → you see the bottom THROUGH a
+//          visible, sheened water film,
+//        • deep      → ALPHA rises → opaque blue→navy,
+//        • grazing   → Fresnel raises ALPHA → reflective sheet.
+//      Godot composites the bottom for us via normal alpha blending
+//      (no manual screen_texture sampling — that path was fragile).
+//
+// UNIFICATION INVARIANT: the shared-look uniforms
+//   deep_water_color / water_tint_color / sky_reflection_color /
+//   fresnel_power / fresnel_strength / metallic_amount /
+//   roughness_amount
+// MUST stay identical to water_horizon_material.tres. The horizon
+// shader runs this same surface with depth forced to "deep", so the
+// near water and the distant horizon plane match seamlessly.
+//
+// debug_mode: 0 normal · 1 depth_t (white=deep) · 2 fresnel ·
+//             3 thickness/​fade as grey. Set in the .tres, stop/run.
+//
+// Reference: design/WATER_SHADER_V2_PLAN.md.
 
 shader_type spatial;
-// cull_disabled (was cull_back): submerged players were seeing nothing
-// where the water surface should be, because the back face of the
-// surface plane (the "underside" you see when diving below it) was
-// culled. Disabling culling makes the surface visible from both sides
-// — looking up through the surface from below now reads as a tinted
-// ceiling, not blank space.
-render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
-// --- WAVE PARAMS (designer-tunable in the inspector via the .tres) ---
-uniform float wave_amplitude_a : hint_range(0.0, 1.0) = 0.08;
-uniform float wave_frequency_a : hint_range(0.05, 5.0) = 0.5;
-uniform float wave_speed_a : hint_range(0.0, 5.0) = 1.0;
-uniform vec2 wave_dir_a = vec2(1.0, 0.0);
+// NOT unshaded (that was the core v6 mistake): we want the lit
+// pipeline so the sun produces a specular glint and the surface reads
+// as water. cull_disabled so a submerged player still sees the
+// underside as a ceiling. blend_mix + depth_draw_opaque: standard
+// transparent-water setup; Godot composites whatever is behind.
+// depth_draw_never (was depth_draw_opaque): the depth-fade samples
+// DEPTH_TEXTURE to find the OPAQUE terrain behind the water. With
+// depth_draw_opaque, distant (opaque) water wrote itself into that
+// depth buffer, so each water chunk read the NEIGHBOUR water chunk as
+// "the surface behind me" → thickness≈0 at every chunk boundary → hard
+// seam lines across distant water. depth_draw_never = water never
+// pollutes the depth texture it reads → the fade always measures down
+// to real terrain, consistently across all chunks → seamless,
+// near-infinite water (standard Godot depth-fade-water setup).
+render_mode blend_mix, depth_draw_never, cull_disabled, specular_schlick_ggx, diffuse_burley;
 
-uniform float wave_amplitude_b : hint_range(0.0, 1.0) = 0.04;
-uniform float wave_frequency_b : hint_range(0.05, 5.0) = 1.3;
-uniform float wave_speed_b : hint_range(0.0, 5.0) = 0.8;
-uniform vec2 wave_dir_b = vec2(0.7, 0.7);
 
-// --- WIND COUPLING (driven by WaterVolume.gd, future WeatherManager) ---
+// ============================================================
+// DEPTH TEXTURE (read-only — for the water-column thickness)
+// ============================================================
+uniform sampler2D depth_texture : hint_depth_texture, filter_linear_mipmap;
+
+
+// ============================================================
+// SHARED LOOK PARAMS — keep identical to water_horizon_material.tres
+// ============================================================
+// Colour of shallow / mid water (the tint you see the bottom through).
+uniform vec3 water_tint_color : source_color = vec3(0.10, 0.30, 0.42);
+// Colour deep water saturates to.
+uniform vec3 deep_water_color : source_color = vec3(0.02, 0.06, 0.12);
+// Approximate sky colour the surface reflects at grazing angles. This
+// is what makes clear water still obviously read as water. Tune toward
+// your sky/horizon tint.
+uniform vec3 sky_reflection_color : source_color = vec3(0.55, 0.70, 0.85);
+// Fresnel curve: higher power = sheen only at the steepest grazing.
+uniform float fresnel_power : hint_range(0.5, 16.0) = 3.0;
+uniform float fresnel_strength : hint_range(0.0, 1.0) = 1.0;
+uniform float metallic_amount : hint_range(0.0, 1.0) = 0.0;
+uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
+
+
+// ============================================================
+// DEPTH-FADE (near-water only; horizon plane forces this to "deep")
+// ============================================================
+// Metres of water the view ray must pass through before the surface
+// is fully opaque. Bigger = clearer water (see deeper). This is the
+// headline "how clear is the water" dial.
+//   3.0  → murky pond     8.0 → lake      15.0 → clear ocean
+uniform float depth_fade_distance : hint_range(0.5, 40.0) = 7.0;
+// Minimum surface alpha even over a paper-thin puddle, so there is
+// always a faint water film + the Fresnel/specular sheen on top.
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.10;
+
+
+// ============================================================
+// LEGACY UNIFORMS (declared, unused — kept so
+// WaterFlowManager.set_global_wind(...) + existing .tres don't error)
+// ============================================================
 uniform vec2 wind_dir = vec2(1.0, 0.0);
 uniform float wind_strength : hint_range(0.0, 5.0) = 0.5;
 
-// --- COLOUR ---
-uniform vec4 base_color : source_color = vec4(0.16, 0.32, 0.48, 0.78);
-uniform vec4 crest_color : source_color = vec4(0.45, 0.65, 0.78, 0.85);
-uniform float crest_threshold : hint_range(0.0, 1.0) = 0.5;
-uniform float metallic_amount : hint_range(0.0, 1.0) = 0.4;
-uniform float roughness_amount : hint_range(0.0, 1.0) = 0.18;
+
+// ============================================================
+// DEBUG
+// ============================================================
+uniform int debug_mode : hint_range(0, 3) = 0;
+
 
 void vertex() {
-	// World-space XZ keeps adjacent bodies phase-aligned.
-	vec3 world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec2 xz = world_pos.xz;
-
-	// Wind biases wave-A direction; wind strength scales total amplitude.
-	vec2 wind = normalize(mix(wave_dir_a, wind_dir, 0.5));
-	float wind_amp = 1.0 + wind_strength * 0.5;
-
-	float wave_a = sin(dot(xz, wind) * wave_frequency_a + TIME * wave_speed_a);
-	float wave_b = sin(dot(xz, wave_dir_b) * wave_frequency_b + TIME * wave_speed_b);
-
-	float displacement = (wave_a * wave_amplitude_a + wave_b * wave_amplitude_b) * wind_amp;
-	VERTEX.y += displacement;
-
-	// Pass normalised displacement (0..1) to fragment for crest tint.
-	float max_disp = max(wave_amplitude_a + wave_amplitude_b, 0.001);
-	COLOR.r = clamp(displacement / max_disp * 0.5 + 0.5, 0.0, 1.0);
+	// Flat voxel water — no vertex displacement (matches the blocky
+	// art direction; waves were intentionally dropped earlier).
 }
 
+
 void fragment() {
-	float crest_t = smoothstep(crest_threshold, 1.0, COLOR.r);
-	vec4 tinted = mix(base_color, crest_color, crest_t);
-	ALBEDO = tinted.rgb;
-	ALPHA = tinted.a;
+	// === 1. WATER-COLUMN THICKNESS (how much water the ray crosses) =
+	// Linear view-space depth of the opaque thing behind this pixel
+	// (lakebed / seafloor / terrain), reconstructed from the depth
+	// texture. Standard Godot 4 / Vulkan reconstruction.
+	float raw_depth = textureLod(depth_texture, SCREEN_UV, 0.0).r;
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, raw_depth);
+	vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+	float scene_dist = -view.z;          // distance camera → bottom
+	float frag_dist  = -VERTEX.z;        // distance camera → this water pixel
+	// How far the ray travels through water before hitting the bottom.
+	float thickness = max(scene_dist - frag_dist, 0.0);
+	// Exponential (Beer-Lambert-style) falloff — NOT a linear clamp.
+	// A linear clamp produced the "clear, then suddenly fully dark past
+	// a hard line" cutoff. exp() ramps smoothly and only *approaches*
+	// 1.0, so there is no threshold edge: shallow → clear, gradually
+	// → opaque, asymptotically deep. depth_fade_distance is now the
+	// 1/e distance (~63% opaque), so larger = clearer/longer gradient.
+	float depth_t = 1.0 - exp(-thickness / max(depth_fade_distance, 0.01));
+
+	// === 2. FRESNEL (angle-accurate, uses the real surface normal) ==
+	// At steep angles (looking straight down) → ~0 (clear, see bottom).
+	// At grazing angles (looking across) → ~1 (bright reflective sheet).
+	vec3 n = normalize(NORMAL);
+	vec3 v = normalize(VIEW);
+	float ndv = clamp(dot(n, v), 0.0, 1.0);
+	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
+
+	// === 3. SURFACE COLOUR ==========================================
+	// Body colour: shallow tint → deep navy by how deep the water is.
+	vec3 body = mix(water_tint_color, deep_water_color, depth_t);
+	// Grazing angles reflect the sky → the surface always reads as
+	// water even when it's crystal clear over a shallow bottom.
+	vec3 surface = mix(body, sky_reflection_color, fresnel);
+
+	// === 4. TRANSPARENCY ============================================
+	// DEPTH drives transparency — NOT Fresnel. A first-person player
+	// walking up to a pond views it at a near-grazing angle almost all
+	// the time; if Fresnel forced opacity (v8's bug) you could never
+	// see into water except by looking straight down. So: shallow water
+	// → low alpha (see the bottom) regardless of view angle; deep water
+	// → opaque. The Fresnel sky-sheen still sells "this is water" via
+	// the COLOUR (step 3) + the lit sun specular (step 5).
+	float alpha = max(depth_t, shallow_alpha);
+
+	// === 5. OUTPUT ==================================================
+	if (debug_mode == 1) {
+		ALBEDO = vec3(depth_t); ALPHA = 1.0;
+	} else if (debug_mode == 2) {
+		ALBEDO = vec3(fresnel); ALPHA = 1.0;
+	} else if (debug_mode == 3) {
+		ALBEDO = vec3(clamp(thickness / max(depth_fade_distance, 0.01), 0.0, 1.0));
+		ALPHA = 1.0;
+	} else {
+		ALBEDO = surface;
+		ALPHA = clamp(alpha, 0.0, 1.0);
+	}
+
 	METALLIC = metallic_amount;
 	ROUGHNESS = roughness_amount;
+	// v8 used SPECULAR 0.5 + roughness 0.08 → a hard mirror glint on
+	// every flat cube face = ugly blocky lighting on voxel water.
+	// Soften it: the depth-fade + Fresnel sky tint already carry the
+	// "this is water" read, so keep specular subtle. Tune via the .tres
+	// (roughness_amount) + this constant.
+	SPECULAR = 0.15;
 }

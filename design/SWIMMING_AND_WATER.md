@@ -8,7 +8,21 @@ Water is a traversable terrain type in the open world. Rivers, lakes, coastal in
 
 ---
 
-## Voxel Water Architecture (canonical, 2026-05-06 — v14)
+## Voxel Water Architecture
+
+> **⚠ SUPERSEDED 2026-05-16 by the Minecraft-model rewrite (Water Voxel
+> V2).** The `CHANNEL_DATA5` side-channel + `WaterChunkMesher` + horizon
+> plane described in this section have been **deleted**. Water is now a
+> normal transparent **`CHANNEL_TYPE` block (id 5)** drawn by the
+> terrain blocky mesher, generated at all LODs. Player queries resolve
+> TYPE-5 = full water. The flow cellular-automaton is temporarily inert
+> (static water + bucket place/scoop work; dynamic spread is a
+> validated follow-up). **Authoritative doc:
+> `design/WATER_VOXEL_V2_PLAN.md`.** This section is kept for historical
+> context and will be rewritten once the V2 implementation is validated
+> in-engine. Everything below describes the OLD (removed) system.
+
+### (historical) DATA5 side-channel model — canonical 2026-05-06, v14
 
 Water lives **per-voxel in `VoxelBuffer.CHANNEL_DATA5`**, one byte per voxel. (DATA0–4 are reserved by Zylann for TYPE/SDF/COLOR/INDICES/WEIGHTS; DATA5 is the first user-defined channel.) The encoding is canonicalised in `scripts/WaterByteCodec.gd`: `level (4 bits) | source_bit (1) | tick (3 bits)`. Air-water = byte 0. `VoxelMesherCubes` reads only `CHANNEL_COLOR` and ignores DATA5, so terrain rendering is unaffected — water voxels are invisible to the cube mesher and get their own transparent surface from `WaterChunkMesher`.
 

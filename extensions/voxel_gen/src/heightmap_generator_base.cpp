@@ -28,6 +28,13 @@ static constexpr int STONE_MATERIAL_ID = 1;
 static constexpr int DIRT_MATERIAL_ID = 2;
 static constexpr int GRASS_MATERIAL_ID = 3;
 static constexpr int SAND_MATERIAL_ID = 4;
+// Water Voxel V2 (Minecraft model, 2026-05-16): water is a normal TYPE
+// block (blocky model id 5 = transparent water cube). Below-sea-level
+// air cells get this written into CHANNEL_TYPE at ALL LODs, replacing
+// the old CHANNEL_DATA5 WATER_SOURCE_BYTE side-channel. The blocky
+// mesher draws it (transparent pass) like every other block — no
+// separate WaterChunkMesher, no horizon plane.
+static constexpr int WATER_MATERIAL_ID = 5;
 static constexpr int MARBLE_MATERIAL_ID = 9;
 static constexpr int STONE_DARK_MATERIAL_ID = 14;
 
@@ -291,14 +298,15 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
     const double jitter_dark = _marble_dark_threshold;
     const bool run_marble_jitter = _marble_jitter_max_lod >= 0 && lod <= _marble_jitter_max_lod;
 
-    // Bedrock + water emission. Water emission is LOD0-only (matches GD
-    // `write_water = (lod == 0)`). NoEditZone-water suppression from the
-    // GD generator is deliberately omitted here — that feature is no
-    // longer used in the project.
+    // Bedrock + water emission. Water Voxel V2: water is a TYPE block
+    // emitted at ALL LODs (was LOD0-only DATA5) so distant ocean meshes
+    // with terrain via the blocky mesher — no horizon plane needed.
+    // NoEditZone-water suppression from the old GD generator is
+    // deliberately omitted — that feature is no longer used.
     const int world_floor_y = _world_floor_voxel_y;
     const int bedrock_id = _bedrock_material_id;
     const int sea_level_v = _sea_level_voxels;
-    const bool write_water = (lod == 0);
+    const bool write_water = true;
 
     // Tier 2 snow line. Gated by snow_material_id != 0 (mirrors the GD
     // `snow_id != 0` check) and snow_line_max_lod.
@@ -397,22 +405,22 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                 }
             }
 
-            // Per-column water-emission gate. Both conditions must hold:
-            // LOD=0 (water is LOD0-only) and this column's ground dips
-            // below sea level.
+            // Per-column water-emission gate: this column's ground dips
+            // below sea level (write_water is now always true — water is
+            // a TYPE block emitted at every LOD).
             const bool emit_water_here = write_water && ground_y < sea_level_v;
 
             for (int y = 0; y < size.y; ++y) {
                 const int world_y = origin_in_voxels.y + y * stride;
                 if (world_y > ground_y) {
                     // Air above terrain. If this air voxel sits at or
-                    // below sea level and the column emits water, write
-                    // a water source byte into CHANNEL_DATA5. The cube
-                    // mesher ignores DATA5, so this voxel still renders
-                    // as air — WaterChunkMesher emits the transparent
-                    // surface from this byte.
+                    // below sea level and the column dips below sea
+                    // level, it becomes a WATER TYPE block (Minecraft
+                    // model). The blocky mesher draws model id 5 (the
+                    // transparent water cube) directly — no DATA5, no
+                    // separate water mesher.
                     if (emit_water_here && world_y <= sea_level_v) {
-                        out_buffer.call("set_voxel", WATER_SOURCE_BYTE, x, y, z, CHANNEL_DATA5);
+                        out_buffer.call("set_voxel", WATER_MATERIAL_ID, x, y, z, CHANNEL_TYPE);
                     }
                     continue;
                 }

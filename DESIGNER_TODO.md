@@ -660,6 +660,14 @@ C++ `CubicHeightmapGeneratorCpp` generator (was GDScript, ported 2026-05-11), `V
   Rest autosave hook, Wanderer's Seal manual save hook, three-deep backup rotation.
   Reference: `design/SAVE_SYSTEM.md`
 
+- [ ] **Water Voxel V2: Minecraft-model water (in progress — plan approved 2026-05-16)**
+  Pivot water from the `CHANNEL_DATA5` side-channel + separate `WaterChunkMesher` + fake horizon plane to a normal transparent TYPE block (id 5) drawn by the terrain blocky mesher — exactly like Minecraft. Deletes WaterChunkMesher, the C++ water mesher, and the horizon plane; keeps the v8 water shader as the block material; reworks the flow sim onto type-blocks. 6 staged steps; save-version bump (old saves hard-rejected). Designer/editor work will land per-stage (blocky model #5 → transparent + water material; bump generator version).
+  Reference: `design/WATER_VOXEL_V2_PLAN.md`
+
+- [ ] **Weather V2: extended profile knobs + elevation modifier**
+  Adds sky_top_color / sky_horizon_color / sun_energy / sun_color / wetness / snow_density / gust_intensity to every state profile, then layers an altitude-zone modifier (LOWLAND / RIDGE / ALPINE) on top so high-elevation play feels distinctly windier + colder + eventually snow-bound regardless of the rolled base state. Includes a new `WINDY` base state. Five implementation phases A–E.
+  Reference: `design/WEATHER_V2_PLAN.md`
+
 ---
 
 ### Post-Act I (Act II+)
@@ -878,6 +886,37 @@ a short pitch; promote to a real section when scope is committed.
   new `assets/textures/terrain/{rock,grass,snow,sand}_*` directories.
   Reference for technique: search "Godot 4 triplanar shader" or
   Catlike Coding's "Triplanar Mapping" tutorial.
+
+- **GPU fluid via compute shaders — real simulated waves + flow.**
+  Explore replacing the current authored-look water (flat voxel
+  surface + Beer-Lambert depth-fade + Fresnel in `water.gdshader` /
+  `water_horizon.gdshader`) with an actual GPU-simulated fluid:
+  height-field / shallow-water sim or FFT ocean run as a Godot
+  `RenderingDevice` compute shader, producing real propagating
+  waves, wakes, and directional flow instead of a static tinted
+  sheet. Captured 2026-05-16 out of the water-shader-v2 work.
+  - This is a *visual/simulation feature*, NOT a performance task —
+    note explicitly: the shader does not move to C++ (GPU work
+    stays on the GPU; C++ is CPU-side). Compute shaders are still
+    GLSL-family, run on the graphics card.
+  - Scope unknowns to investigate before committing: interaction
+    with the per-voxel `WaterFlowManager` sim (does GPU water stay
+    purely cosmetic on top of the gameplay water bytes, or does it
+    feed back?); how it reads against the chunky voxel art
+    direction (real waves may fight the blocky aesthetic — needs an
+    art-direction call); cost of a compute pass every frame vs the
+    current near-zero shader cost; how it behaves on the giant
+    follow-player horizon plane.
+  - Likely starts as a contained spike: FFT or Gerstner-wave ocean
+    on the horizon plane only, leaving near-water and gameplay
+    water untouched, to judge the look before any deeper integration.
+  - Affects (if promoted): `assets/shaders/water*.gdshader`,
+    `scripts/WaterChunkMesher.gd`, `scripts/WaterFlowManager.gd`,
+    `design/SWIMMING_AND_WATER.md`, `design/WATER_SHADER_V2_PLAN.md`,
+    `design/ART_DIRECTION.md` (aesthetic sign-off).
+  - Not blocking anything. Revisit only if the authored look proves
+    insufficient in playtest or after a profiler capture shows
+    headroom we want to spend on water fidelity.
 
 (Three 2026-05-05 bug entries removed: EditToolHandler 1×1×1 carve, right-click smooth on untouched terrain, voxel-color encoding mismatch — all fixed. The CHANNEL_COLOR 32-bit lesson is captured in CLAUDE.md "Critical GDScript patterns" and `design/LESSONS_LEARNED.md`.)
 

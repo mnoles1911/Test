@@ -405,6 +405,14 @@ func _ready() -> void:
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
 const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
 
+# Water Voxel V2 (Minecraft model, 2026-05-16): water is TYPE id 5, a
+# transparent blocky cube whose material is the v8 depth-fade water
+# shader (NOT an atlas tile — the shader IS the water look). Applied at
+# runtime here for the same Zylann .tres-doesn't-restore reason as the
+# atlas materials. See design/WATER_VOXEL_V2_PLAN.md.
+const _WATER_MATERIAL_ID: int = 5
+const _WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
+
 # Zylann Cube SIDE enum (from voxel/util/godot/classes/cube.h):
 const _SIDE_NEG_X: int = 0
 const _SIDE_POS_X: int = 1
@@ -501,6 +509,72 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 		if idx in _NON_CULLING_MATERIALS:
 			m.set("culls_neighbors", false)
 		injected += 1
+
+	# --- Water (id 5): the Minecraft-model water block. ---
+	# Unlike the atlas materials above, water wears the v8 depth-fade
+	# SHADER material — the shader is the water look, there is no atlas
+	# tile. Critical Minecraft behaviour: water must NOT cull the faces
+	# of the opaque blocks it touches, or the lakebed/terrain under and
+	# beside the water becomes invisible (you'd see nothing through it).
+	# transparency_index = 2 (its own class, distinct from leaves' 1) so
+	# the blocky mesher culls water↔water internal faces (only the outer
+	# shell of a body of water renders — no per-cube overdraw) while
+	# still drawing water↔terrain and water↔air faces.
+	if _WATER_MATERIAL_ID >= 0 and _WATER_MATERIAL_ID < models_arr.size():
+		var wm = models_arr[_WATER_MATERIAL_ID]
+		if wm == null:
+			push_warning("[World3D] inject_atlas_materials: water model[%d] is null in blocky_library.tres — water won't render." % _WATER_MATERIAL_ID)
+		else:
+			var water_mat: Material = load(_WATER_MATERIAL_PATH) as Material
+			if water_mat == null:
+				push_warning("[World3D] inject_atlas_materials: failed to load %s — water will be untextured." % _WATER_MATERIAL_PATH)
+			elif wm.has_method("set_material_override"):
+				wm.call("set_material_override", 0, water_mat)
+				# transparency_index = 2 (water's own class) makes the
+				# blocky mesher cull water↔water internal faces — a body
+				# of water meshes as a hollow SHELL, not a solid fill of
+				# millions of internal cube faces (that was a ~10M-prim
+				# perf catastrophe). Because water is transparent, the
+				# single boundary face against terrain is see-through, so
+				# the lakebed is still visible WITHOUT disabling neighbor
+				# culling. (Earlier `culls_neighbors=false` defeated the
+				# water↔water culling and caused the solid fill — removed.)
+				wm.set("transparency_index", 2)
+				# KEYSTONE (2026-05-17): water must be NON-SOLID so the
+				# player falls in and the existing
+				# WaterFlowManager.is_position_in_water / Player3D swim
+				# path takes over. Zylann VoxelBlockyModelCube has TWO
+				# independent collider paths and BOTH must be killed:
+				#   1. Box collision  — `collision_aabbs` (default = one
+				#      full unit cube). Cleared via set_collision_aabbs([]).
+				#   2. Per-surface MESH collision — `collision_enabled_0`
+				#      (the probe showed it = true). This is what was
+				#      STILL generating the floor after path 1 was empty:
+				#      the [WaterProbe] proved on_floor=true with
+				#      collision_aabbs=[] while below_type=5. Disabled via
+				#      set_mesh_collision_enabled(surface_index, enabled)
+				#      — it is a 2-ARG per-surface API (calling it with one
+				#      arg is what crashed an earlier load). A cube model
+				#      has exactly one surface, index 0.
+				# collision_mask=0 is kept as belt-and-suspenders.
+				# Readback strings use str()+ concatenation, NOT
+				# `"%s" % arr` — an emptied array is `[]` and `String % []`
+				# is read as ZERO format args → a runtime error that
+				# previously aborted this function before lib.bake().
+				wm.call("set_collision_aabbs", [])
+				wm.call("set_collision_mask", 0)
+				if wm.has_method("set_mesh_collision_enabled"):
+					# surface 0 = the cube's only surface (collision_enabled_0)
+					wm.call("set_mesh_collision_enabled", 0, false)
+				var _ca = wm.call("get_collision_aabbs")
+				var _cm = wm.call("get_collision_mask")
+				var _mc = "?"
+				if wm.has_method("is_mesh_collision_enabled"):
+					_mc = str(wm.call("is_mesh_collision_enabled", 0))
+				print("[World3D][WaterColl] water model[5] non-solid: collision_aabbs=" + str(_ca) + " collision_mask=" + str(_cm) + " mesh_collision_surf0=" + _mc)
+				print("[World3D] inject_atlas_materials: water model[5] ← depth-fade shader (transparent, shell-meshed, NON-COLLIDING).")
+			else:
+				push_warning("[World3D] inject_atlas_materials: water model lacks set_material_override; water won't render.")
 
 	# Re-bake so Zylann recomputes per-cube UVs from the freshly
 	# written tile coords + atlas_size_in_tiles.
@@ -1352,5 +1426,3 @@ func _resolve_gen_counter_source(gen: Resource) -> Object:
 		if impl != null and impl.has_method("get_generated_block_count"):
 			return impl
 	return null
-
-
