@@ -126,7 +126,7 @@ System design corpus complete (combat, AI, companions, factions, quests, economy
 - `NoEditZoneRegistry` — registers `no_edit_zone` group Area3Ds.
 - `CubicHeightmapGeneratorCpp` + `CubicHeightmapGeneratorAdapter.gd` — C++ generator (Mira) since 2026-05-11; adapter forwards `_generate_block` + `set_ore_materials` / `set_disk_materials` / `get_ground_voxel_y_at`.
 - `WorldClock` — in-game time (240 real s = 1 game hour). Pauses during Dialogic.
-- `BarkManager`, `WaterFlowManager` (4 Hz flow sim, host-only), `WaterChunkMesher` (C++ Resource backend), `WaterByteCodec` (single source of truth for `CHANNEL_DATA5` water byte layout), `UnderwaterFilter`, `NoEditZone.gd` (`blocks_water_flow=true` default), `DayNightCycle`, `EditToolHandler` (pickaxe/axe/shovel), `ThrowableHandler`, `PowderCharge`, `VoxelGravityManager` (16 m flood-fill on `edit_applied`), `FallingVoxelCluster` + `VoxelClusterBuilder`, `VoxelMaterial.gd` + `VoxelMaterialRegistry`, `WeatherManager` (six-state, fog/wind/particles/lightning), `RainOverlay`, `WeatherLocationProfile`, `WeatherZone`.
+- `BarkManager`, `WaterFlowManager` (flow tick **disabled** since Water Voxel V2 — static water only; see below), ~~`WaterChunkMesher`~~ (**DELETED 2026-05-16, Water Voxel V2** — water is now a transparent `CHANNEL_TYPE=5` blocky block drawn by the terrain mesher; no separate water mesher, no horizon plane; see `design/WATER_VOXEL_V2_PLAN.md`), `WaterByteCodec` (legacy DATA5 layout — now only used by the deferred flow rewrite), `UnderwaterFilter`, `NoEditZone.gd` (`blocks_water_flow=true` default), `DayNightCycle`, `EditToolHandler` (pickaxe/axe/shovel), `ThrowableHandler`, `PowderCharge`, `VoxelGravityManager` (16 m flood-fill on `edit_applied`), `FallingVoxelCluster` + `VoxelClusterBuilder`, `VoxelMaterial.gd` + `VoxelMaterialRegistry`, `WeatherManager` (six-state, fog/wind/particles/lightning), `RainOverlay`, `WeatherLocationProfile`, `WeatherZone`.
 
 **Dev tools (`scripts/_dev/`, `scenes/_dev/`):** `WorldBakeController` + `BakeWorld.tscn` (Copper Isles) + `BakeWorld3D.tscn` (Mira); `SkirtBaker`; `ParityProbe` (C++ math primitive parity shim, retained for next port); `CombatTestBootstrap` + `CombatTest.tscn`.
 
@@ -306,11 +306,17 @@ var material: VoxelMaterial = VoxelMaterialRegistry.get_by_id(material_id)
 ```
 Same for writes: `VoxelMaterialRegistry.pack_voxel(mat_id, color)`.
 
-**User-defined voxel channel is `CHANNEL_DATA5`, not `CHANNEL_DATA`:**
+**Water is a `CHANNEL_TYPE` block (id 5), NOT `CHANNEL_DATA5` (since Water Voxel V2, 2026-05-16):**
 ```gdscript
-# Zylann reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS.
-# DATA5 is the first user channel — used for water bytes.
-buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA5)
+# Water is now a normal transparent blocky block: CHANNEL_TYPE == 5.
+# The terrain VoxelMesherBlocky draws it (model 5 = transparent cube
+# wearing water_material.tres). Generator emits it at all LODs.
+# Player water queries go through WaterFlowManager.is_position_in_water
+# / get_water_level_at (these resolve TYPE-5 → full water).
+buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) == 5  # is this water?
+# CHANNEL_DATA5 / WaterByteCodec are LEGACY — only the deferred flow-sim
+# rewrite (WaterFlowManager._FLOW_SIM_ENABLED) will use DATA5 again.
+# Zylann still reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS.
 ```
 
 **`VoxelBuffer CHANNEL_COLOR` must be 32-bit BEFORE chunks stream** — default 8-bit truncates the packed RGBA+mat_id to just the R byte (terrain renders near-black). Done once in `World3DBootstrap._ready()`:
