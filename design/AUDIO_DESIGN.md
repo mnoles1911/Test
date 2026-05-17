@@ -3,7 +3,7 @@
 How sound and music work in Game One — what the player hears, why it matters, and how it is implemented.
 
 > Cross-reference: `design/MUSIC_PROMPTS.md` for the full Suno music prompt portfolio.
-> `design/SFX_LIBRARY.md` for the master sound-effects inventory (~1,574 entries, categorized).
+> `design/SFX_LIBRARY.md` for the master sound-effects inventory (~1,930 entries across 19 categories, incl. weapon-class matrix and magic).
 > `design/CONVERSATION_SYSTEM.md` for TTS voice generation and mixing.
 > `design/NPC_SYSTEM.md` for bark trigger timing and cooldowns.
 > `design/REST_AND_CAMP.md` for camp atmosphere audio.

@@ -129,26 +129,64 @@ one-shots `armor_<tier>_run_clank` ×4 tiers var 3 = 12. = **16**.
 | cmb_lockon_toggle | subtle target-lock tick | cue | 1 | UI |
 | cmb_timeslow_enter / _exit | 0.15 s lethal-hit time-warp wash (pitch-bends with Engine.time_scale) | one-shot | 1 | Combat |
 
-Throwables/ranged (player + Orion): `cmb_spear_windup`,
+**Weapon-class foley matrix.** The universal verbs above are class-agnostic;
+each weapon class needs its own swing/handling foley. Classes from
+`ITEM_LIBRARY.md` (only **ThrowableSpear** is combat-shipped — the rest are
+COMBAT_NEXT_PHASES growth slots, but authored here so the matrix is complete):
+
+Melee classes (8): `dagger` (pierce, fast), `shortsword` (slash, fast),
+`longsword` (slash — Roland's mainline / Chalice Knight / Spine-Forged /
+Ashford), `twohander` (heavy slash — greatsword / Khorumzad waraxe, no combo
+chain), `waraxe` (slash, anti-armor), `mace` (blunt, anti-armor — incl.
+Irontrack Hammer), `flail` (blunt, bypasses block, long recovery), `spear`
+(pierce + the shipped throwable).
+Actions per melee class: `swing_light`(var5), `swing_heavy`(var4),
+`swing_miss_air`(var4), `draw`(var3), `sheathe`(var3),
+`block_hold_loop`(var1), `parry`(var4), `special`(var3 — e.g. flail chain
+whirl, spear thrust, thornback serrated tear, greataxe block-break).
+→ 8 classes × 27 = **216**.
+
+`shield` (Act II+ — Iron Kite / Steel Tower): `cmb_shield_raise`(2),
+`cmb_shield_lower`(2), `cmb_shield_block_absorb`(5), `cmb_shield_bash`(4) = **13**.
+
+`bow` (Orion / ranged — roadmap, no Roland bow in G1, but accommodated):
+`cmb_bow_nock`(3), `cmb_bow_draw_creak`(3), `cmb_bow_release`(4),
+`cmb_bow_arrow_whir`(3), `cmb_bow_dryfire`(1) = **14**.
+
+**Tier/condition timbre layer** (NOT a full re-record per weapon — a layer
+mixed over the base, same approach as the hit-zone pitch layer):
+`cmb_tier_common_layer`, `cmb_tier_quality_layer`,
+`cmb_tier_masterwork_layer`, `cmb_condition_dull_layer`,
+`cmb_condition_break_fail`. = **5**.
+
+Throwables/explosives (player; spear shipped): `cmb_spear_windup`,
 `cmb_spear_throw`, `cmb_spear_inflight_loop`, `cmb_spear_embed_flesh`,
 `cmb_spear_embed_wood`, `cmb_spear_embed_stone`, `cmb_spear_retrieve`,
-`cmb_bow_draw`, `cmb_bow_release`, `cmb_bow_arrow_whir`,
-`cmb_arrow_hit_flesh`, `cmb_arrow_hit_armor`, `cmb_arrow_hit_wood/stone`,
-`cmb_throw_arc`, `cmb_bomb_detonate`, `cmb_oil_splash`, `cmb_smoke_hiss`,
-`cmb_caltrop_scatter`, `cmb_flash_pop`, `cmb_trap_arm`, `cmb_trap_snap`,
-`cmb_tripwire_trigger`. (var 3 each ≈ 60)
+`cmb_throw_arc`, `cmb_bomb_pitch_detonate`, `cmb_oil_splash`,
+`cmb_smoke_hiss`, `cmb_caltrop_scatter`, `cmb_flash_pop`,
+`cmb_ashbane_torch_throw`, `cmb_venomtip_dart`, `cmb_trap_arm`,
+`cmb_trap_snap`, `cmb_tripwire_trigger`. (var 3 each ≈ **55**)
 
-**Section 02 ≈ 95 files.**
+Reserved growth-slot pattern for any future weapon class (polearm, crossbow,
+etc. — not invented here since not in canon): reuse the melee-class action
+set under `cmb_<class>_*`.
+
+**Section 02 ≈ 35 universal + 216 weapon matrix + 13 shield + 14 bow + 5 tier
+layer + 55 throwables = ≈ 338 files.**
 
 ---
 
 ## 5. Category 03 — Combat: Impacts & Enemies
 
-**Impact matrix** (weapon hit reaction by material): targets (6):
-`flesh_unarmored`, `flesh_armored`, `armor_metal`, `shield`, `wood`,
-`stone_terrain`; weapon class (3): `blade`, `blunt/spear`, `arrow`.
-`cmb_hit_<target>_<class>_NN` = 6 × 3 × var 4 = **72**. Plus hit-zone
-timbre tags (head/torso/limb) handled by pitch layer, not new files.
+**Impact matrix** (hit reaction by damage type × what's hit — grounded in the
+armor interactions named in `ITEM_LIBRARY.md`: mail resists cuts, blunt
+crunches through mail, plate deflects). Damage types (5): `slash`, `pierce`,
+`blunt`, `serrated` (bleed/tear), `arrow`. Targets (7): `flesh_unarmored`,
+`flesh_padded`, `mail`, `plate`, `shield`, `wood`, `stone_terrain`.
+`cmb_hit_<dmgtype>_<target>_NN` = 5 × 7 × var 4 = **140**. Hit-zone timbre
+(head 2.0× sharper / torso / limb dampened) handled by a pitch layer, not
+new files. Powder/sapper structural hits route to the voxel ejecta set
+(Cat 04), not here.
 
 **Per-enemy sets** (each: idle, alert, attack ×n, hurt, death, footstep,
 specials). var defaults applied:
@@ -170,7 +208,7 @@ specials). var defaults applied:
 - **Generic future-enemy stubs** (slot for Ashen Hand humans, Naergrim,
   beasts — TBD per `COMBAT_NEXT_PHASES.md`): reserve `cmb_<enemy>_*` family.
 
-**Section 03 ≈ 182 files** (+ growth slots).
+**Section 03 ≈ 140 impact + ≈110 enemy = ≈ 250 files** (+ growth slots).
 
 ---
 
@@ -441,13 +479,59 @@ DIED"), `death_return_load_soft`(1). **Section 16 ≈ 8 files.**
 
 ---
 
-## 21. Count rollup
+## 21. Category 19 — Magic & Spellcraft
+
+**Canon constraint** (`lore/WORLD.md` Magic): magic is rare (~1 in 10,000
+useful), costly, and *never triumphant*. **Game One has no player caster** —
+the party mage (Corvus) joins Game Two; G1 magic is villain-side,
+environmental, and the Aeluvain *referenced, not wielded*. Sound reads as
+strained / austere / wrong — never a "fireball whoosh-boom." Tags: `[G1]`
+shippable now, `[RM]` roadmap (G2/G3).
+
+**Casting foley** (the cost cue is mandatory — every working tolls the caster):
+`mag_charge_gather`(3)[RM], `mag_release_innate`(3)[RM],
+`mag_channel_loop`(1)[RM], `mag_fizzle_fail`(2)[RM],
+`mag_cost_toll`(3, Voice bus — gasp + cranial tinnitus swell + ragged
+breath)[RM], `mag_cost_alteration_sting`(1, permanent-alteration
+threshold)[RM], `mag_ritual_build_loop`(1)[G1 ambient],
+`mag_ritual_against_grain_loop`(1, detuned world-thinning)[G1 ambient].
+≈ **15**
+
+**Spell-effect impacts** (lore-faithful schools only — no elemental laundry
+list): `mag_env_temp_shift`(2), `mag_env_pressure_pop`(2),
+`mag_env_stormcharge_hum`(2)[RM]; `mag_structural_perceive_loop`(1, Corvus)[RM];
+`mag_blight_creep_loop`(1)[G1 — Ashfields/Sorrowmarsh];
+`mag_ward_raise`(2)/`mag_ward_hold_loop`(1)/`mag_ward_break`(3)[RM];
+`mag_aeluvain_hum_loop`(1, pure cold missing-note tone)[G1 referenced];
+`mag_wrongness_pressure_loop`(1, Mordvar/Ashlord proximity dread)[G1 Act IV].
+≈ **16**
+
+**Implements:** `mag_staff_focus_tap`(3), `mag_staff_thrum_loop`(1)[RM];
+`mag_item_activate`(3, enchanted object wakes — Crown piece/relic)[G1];
+`mag_rune_circle_ignite`(2)/`mag_rune_circle_loop`(1)[G1 ritual set-piece];
+`mag_aeluvain_unsheathe`(1)/`mag_aeluvain_strike`(2)/
+`mag_aeluvain_song_complete`(1)[RM G3]. ≈ **14**
+
+**Enemy / villain casters:** `mag_ashfallen_cast`(3, clipped joyless
+cost-bearing)[G1]; `mag_hand_ritual_chant_loop`(1, non-verbal, not TTS)[G1];
+`mag_ashlord_presence_loop`(1, oppressive pressure field)[G1 Act IV];
+`mag_ashlord_unmask_sting`(1)[RM G2]; `mag_mordvar_ambient_loop`(1,
+world-thinning, no discrete cast)[RM G3]. ≈ **7**
+
+Bus: ambient/loop magic → `SFX/Ambient`; cast & impact one-shots →
+`SFX/Combat`; the cost gasp → `Voice`. **Section 19 ≈ 52 files** — but only
+~10 are `[G1]`-shippable (the ritual/blight/wrongness/Ashlord ambient beds,
+the Aeluvain hum reference, enchanted-item activation). The rest are roadmap.
+
+---
+
+## 22. Count rollup
 
 | # | Category | ≈ Files |
 |---|---|---|
 | 01 | Player Locomotion & Foley | 365 |
-| 02 | Combat: Player | 95 |
-| 03 | Combat: Impacts & Enemies | 182 |
+| 02 | Combat: Player (+ weapon-class matrix) | 338 |
+| 03 | Combat: Impacts (damage-type matrix) & Enemies | 250 |
 | 04 | Tools & Voxel Interaction | 313 |
 | 05 | Crafting & Stations | 70 |
 | 06 | Interactive Objects & Items | 146 |
@@ -463,21 +547,25 @@ DIED"), `death_return_load_soft`(1). **Section 16 ≈ 8 files.**
 | 16 | Death & Respawn | 8 |
 | 17 | NPC Non-Verbal & Crowd | 55 |
 | 18 | Economy & Vendor | 9 |
-| | **Grand total** | **≈ 1,574 files** (~20 EXISTING) |
+| 19 | Magic & Spellcraft | 52 (~10 G1, rest roadmap) |
+| | **Grand total** | **≈ 1,930 files** (~20 EXISTING) |
 
-The number is large because of three combinatorial sets — footsteps
-(240), the tool×material voxel matrix (273), and impact/enemy sets (254).
-These can be **phased**: a playable vertical slice needs only the live
-content (4 wired voxel materials, the 4 implemented enemies, the core
-surfaces, combat core, camp/weather basics) ≈ **300–400 files**; the rest
-fills in as systems wire up.
+The number is large because of four combinatorial sets — footsteps (240),
+the tool×material voxel matrix (273), the weapon-class matrix (216), and the
+damage-type impact + enemy sets (~250). These can be **phased**: a playable
+vertical slice needs only the live content (4 wired voxel materials, the 4
+implemented enemies, the shipped spear, core surfaces, combat core,
+camp/weather basics — magic is almost entirely roadmap) ≈ **300–400 files**;
+the rest fills in as systems wire up.
 
 ---
 
-## 22. Suggested generation phases (for the prompt pass)
+## 23. Suggested generation phases (for the prompt pass)
 
-1. **Combat & locomotion core** — Cat 02 + the 4 implemented enemies in 03 +
-   the live surfaces in 01. The game is played here; do this first.
+1. **Combat & locomotion core** — Cat 02 universal verbs + the shipped
+   ThrowableSpear + Roland's longsword class + the 4 implemented enemies in
+   03 + the live surfaces in 01. The game is played here; do this first.
+   (Other weapon classes follow as they're implemented per COMBAT_NEXT_PHASES.)
 2. **Voxel & tools** — Cat 04 for the 4 wired materials (sand/dirt/grass/
    stone) + bedrock, then expand per material as wired.
 3. **Camp, weather, water basics** — Cat 09, the clear/rain/wind of 07, the
@@ -486,7 +574,10 @@ fills in as systems wire up.
    Central Plains, the Archive interior).
 5. **Systems & UI** — Cat 12–18, lockpicking gaps + dice extras first
    (mini-games already partly on disk).
-6. **Long tail** — remaining materials, enemies, mini-games as systems land.
+6. **Long tail** — remaining weapon classes, materials, enemies, mini-games,
+   and the player-side magic set (Cat 19 `[RM]`) as systems land. The G1
+   magic ambient beds (blight/wrongness/Ashlord) ride with Phase 4 region
+   beds since they're environmental.
 
 Gen-source hint for the prompt pass: one-shot foley/impacts (Cat 01–06, 16,
 17 efforts) → **ElevenLabs SFX**; long evolving ambient/weather/region beds
@@ -496,11 +587,11 @@ is the quality ceiling for footsteps/weapon if budget ever allows.
 
 ---
 
-## 23. Maintenance
+## 24. Maintenance
 
-- When a new system, enemy, voxel material, station, mini-game, region, or
-  weather state is designed, add its row/matrix here **before** writing its
-  prompts, and update the §21 rollup.
+- When a new system, enemy, weapon class, voxel material, station, mini-game,
+  magic school, region, or weather state is designed, add its row/matrix here
+  **before** writing its prompts, and update the §22 rollup.
 - Keep naming consistent with the on-disk `lock_*` / `dice_*` precedent.
 - When a file is generated and committed, flip its status to EXISTING here.
 - Cross-update `AUDIO_DESIGN.md` if the bus routing or folder structure
