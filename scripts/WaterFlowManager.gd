@@ -45,6 +45,18 @@ const ACTIVE_RADIUS_M: float = 20.0
 # on every physics tick.
 const TICK_INTERVAL_FRAMES: int = 15
 
+# Water Voxel V2 (2026-05-16): ENABLED. Routes _run_flow_tick to the
+# v2 TYPE-5 sim (_run_flow_tick_v2 / _flow_chunk) — gravity drop +
+# carve-gated flood, writes via VoxelEditManager.queue_set_water_voxel.
+# Set false to fall back to static-water-only (no dig-to-flood) if the
+# sim ever needs disabling for diagnosis.
+const _FLOW_SIM_ENABLED: bool = true
+
+# Water Voxel V2: water is blocky model / CHANNEL_TYPE id 5. All player
+# water queries (is_position_in_water / get_water_level_at / velocity)
+# resolve to "full source water" when the voxel's TYPE == this.
+const WATER_TYPE_ID: int = 5
+
 # Maximum water level. Source cells are always 8; flow cells decay
 # from 8 → 7 → 6 → ... → 1, then evaporate at 0.
 const MAX_LEVEL: int = 8
@@ -175,16 +187,14 @@ func _ready() -> void:
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 
-	# Spawn the surface mesher as a child of this autoload. Doing it
-	# in code (rather than as a sibling autoload) keeps the mesher's
-	# parent guaranteed to be us, and lets the mesher pull source
-	# regions and signals from us via get_parent().
-	var ChunkMesherScript := load("res://scripts/WaterChunkMesher.gd")
-	if ChunkMesherScript != null:
-		_chunk_mesher = Node3D.new()
-		_chunk_mesher.name = "WaterChunkMesher"
-		_chunk_mesher.set_script(ChunkMesherScript)
-		add_child(_chunk_mesher)
+	# Water Voxel V2 (2026-05-16): WaterChunkMesher + the horizon plane
+	# are DELETED. Water is now a normal transparent TYPE block (id 5)
+	# drawn by the terrain blocky mesher — there is no separate water
+	# surface mesher to spawn. `_chunk_mesher` stays null; the few
+	# remaining `if _chunk_mesher != null` call sites below are harmless
+	# no-ops (left in place to keep this change minimal/low-risk for an
+	# untested build; trimmed in a later cleanup).
+	# See design/WATER_VOXEL_V2_PLAN.md.
 
 
 func _physics_process(_delta: float) -> void:
@@ -290,10 +300,12 @@ func get_water_level_at(world_pos: Vector3) -> int:
 
 
 func _read_water_byte_at(world_pos: Vector3) -> int:
-	# One-voxel CHANNEL_DATA read at the voxel containing world_pos.
-	# Returns 0 if the terrain isn't bound or the tool isn't available
-	# (defensive — those conditions shouldn't happen during normal
-	# play but might briefly during world load).
+	# Water Voxel V2: water is a CHANNEL_TYPE=5 block. Read TYPE at the
+	# voxel containing world_pos; if it's the water block, synthesise a
+	# full WaterByteCodec source byte so every existing consumer
+	# (is_position_in_water / get_water_level_at / velocity gradient)
+	# keeps working unchanged. Returns 0 (no water) otherwise, or if
+	# the terrain/tool isn't bound (briefly during world load).
 	if get_node_or_null("/root/VoxelEditManager") == null:
 		return 0
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
@@ -302,9 +314,11 @@ func _read_water_byte_at(world_pos: Vector3) -> int:
 	var tool: VoxelTool = terrain.get_voxel_tool()
 	if tool == null:
 		return 0
-	tool.channel = VoxelBuffer.CHANNEL_DATA5
 	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
-	return tool.get_voxel(voxel_pos)
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	if tool.get_voxel(voxel_pos) == WATER_TYPE_ID:
+		return WaterByteCodec.SOURCE_BYTE
+	return 0
 
 
 func get_flow_velocity_at(world_pos: Vector3) -> Vector3:
@@ -359,11 +373,10 @@ func _level_at_voxel(voxel_pos: Vector3i) -> int:
 		if terrain != null:
 			var tool: VoxelTool = terrain.get_voxel_tool()
 			if tool != null:
-				tool.channel = VoxelBuffer.CHANNEL_DATA5
-				var byte: int = tool.get_voxel(voxel_pos)
-				var lvl: int = WaterByteCodec.level_of(byte)
-				if lvl > 0:
-					return lvl
+				# Water Voxel V2: TYPE-5 block reads as full level 8.
+				tool.channel = VoxelBuffer.CHANNEL_TYPE
+				if tool.get_voxel(voxel_pos) == WATER_TYPE_ID:
+					return MAX_LEVEL
 	if _cells.has(voxel_pos):
 		return (_cells[voxel_pos] as int) & _LEVEL_MASK
 	return 0
@@ -481,11 +494,13 @@ func add_source(voxel_pos: Vector3i) -> void:
 
 
 func remove_source(voxel_pos: Vector3i) -> void:
-	# Remove a per-cell source. The cell becomes air (and any cells
-	# downstream of it will evaporate over the next several flow ticks
-	# once Phase 4 lands).
-	if not _cells.has(voxel_pos):
-		return
+	# Remove a water block (bucket scoop). Water Voxel V2: clear the
+	# CHANNEL_TYPE-5 block back to air via the edit queue so the change
+	# persists and the blocky mesher stops drawing it. (Previously this
+	# only erased the transient _cells entry, which no longer drives
+	# rendering.)
+	if get_node_or_null("/root/VoxelEditManager") != null:
+		VoxelEditManager.queue_set_water_voxel(voxel_pos, WaterByteCodec.AIR_BYTE)
 	_cells.erase(voxel_pos)
 	var chunk: Vector3i = _voxel_to_chunk(voxel_pos)
 	_dirty_chunks[chunk] = true
@@ -537,13 +552,36 @@ func set_global_wind(direction: Vector3, strength: float) -> void:
 # ============================================================
 
 func _run_flow_tick() -> void:
-	# Process every dirty chunk inside the active radius. Phase 3
-	# implements gravity drop only — water in any cell or source
-	# region cascades into air voxels directly below.
-	#
-	# Iterating the snapshot lets _on_edit_applied keep populating
-	# _dirty_chunks during the tick (e.g. a cascade chain dirties
-	# new chunks; those get processed next tick).
+	# Water Voxel V2 (2026-05-16): the legacy cellular automaton below
+	# operates on CHANNEL_DATA5 bytes. In the Minecraft model water is a
+	# CHANNEL_TYPE=5 block — this old algorithm reads water as "solid
+	# terrain" (here_type != 0) and would behave unpredictably on the
+	# new world. Static water (generator ocean/lakes + bucket-placed
+	# TYPE-5) needs NO simulation and renders correctly via the blocky
+	# mesher. Dynamic propagation (dig-to-flood spread, river decay) is
+	# a deliberately-deferred follow-up pass that needs a validated
+	# baseline to test against — it is NOT safe to rewrite this 400-line
+	# automaton blind on an untested build. So the tick is inert for v1:
+	# drain the dirty set (so it can't accumulate) and return.
+	# See design/WATER_VOXEL_V2_PLAN.md (Stage 4) + the morning notes.
+	# Const-gated (not a bare `return`) so the legacy body stays
+	# reachable to the parser — no unreachable-code warning, zero risk
+	# to this autoload compiling. Flip true only when the Stage-4
+	# rewrite is done and validated.
+	if not _FLOW_SIM_ENABLED:
+		_dirty_chunks.clear()
+		return
+	# Water Voxel V2 (2026-05-16): TYPE-5 Minecraft-equivalent gameplay
+	# flow. Delegate to the v2 sim and return. The `if` keeps the legacy
+	# body below reachable to the parser (no unreachable-code risk); it
+	# is dead code, kept only as reference for the deferred level-tracked
+	# river refinement.
+	if _FLOW_SIM_ENABLED:
+		_run_flow_tick_v2()
+		return
+
+	# --- legacy DATA5 flow automaton (disabled; kept for the Stage-4
+	#     follow-up rewrite reference) -----------------------------------
 	var snapshot: Dictionary = _dirty_chunks.duplicate()
 	_dirty_chunks.clear()
 
@@ -622,6 +660,191 @@ func _run_flow_tick() -> void:
 				_diag_chunks_in_radius, _diag_chunks_out_radius, _diag_total_modified,
 				_cells.size(), _dirty_chunks.size(), snapshot.size(),
 			])
+
+
+# ============================================================
+# Water Voxel V2 flow sim (2026-05-16) — Minecraft-equivalent GAMEPLAY
+# flow on CHANNEL_TYPE=5 blocks. Two rules per dirty chunk in the
+# active radius, under the per-tick write budget:
+#   1. GRAVITY  — a water block with air directly below makes the cell
+#                 below water (the source above is NOT consumed →
+#                 infinite ocean/lake, exactly like a Minecraft source).
+#   2. FLOOD    — an air cell the player recently CARVED (edit-cell
+#                 gate), at/below sea level, touching water above or on
+#                 any of 4 sides, becomes water. Flooding refreshes the
+#                 carve-permission of its sub-sea air neighbours so the
+#                 flood front advances through a dug-out volume over
+#                 successive ticks but can never run away into uncarved
+#                 generator air pockets or above sea level.
+# Pure decision layer: one CHANNEL_TYPE buffer read per chunk, all
+# writes enqueued through VoxelEditManager.queue_set_water_voxel (the
+# proven TYPE-5 path — re-meshes, MP-replicated, save-tracked). It
+# never writes voxels/meshes directly, so it cannot desync or brick.
+# Directional flowing-river visuals (partial-height level blocks) are
+# a deliberately-deferred refinement (needs Stage-6 partial models).
+# ============================================================
+
+# Flow-sim diagnostics (2026-05-17). The v2 sim previously logged
+# NOTHING, so "is dig-to-flood working?" was unanswerable. These count
+# gravity-drop + flood enqueues per ~2 s window and print a sample, so
+# the Output panel shows exactly what the sim does when you dig.
+var _diag_flow_flood: int = 0
+var _diag_flow_gravity: int = 0
+var _diag_flow_ticks: int = 0
+var _diag_flow_last: Vector3i = Vector3i.ZERO
+
+
+func _run_flow_tick_v2() -> void:
+	var snapshot: Dictionary = _dirty_chunks.duplicate()
+	_dirty_chunks.clear()
+
+	# Age out edit-cell flood permissions (so flooding can't persist
+	# forever once carving stops).
+	if not _edit_cell_ttl.is_empty():
+		var expired: Array = []
+		for ep in _edit_cell_ttl.keys():
+			var n: int = (_edit_cell_ttl[ep] as int) - 1
+			if n <= 0:
+				expired.append(ep)
+			else:
+				_edit_cell_ttl[ep] = n
+		for ep in expired:
+			_edit_cell_ttl.erase(ep)
+
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+
+	var budget: int = _MAX_FLOW_BUDGET_PER_TICK
+	for chunk in snapshot.keys():
+		if budget <= 0:
+			# Re-queue unprocessed in-radius chunks for next tick.
+			for remaining in snapshot.keys():
+				if remaining == chunk:
+					continue
+				if _dirty_chunks.has(remaining):
+					continue
+				if not _chunk_in_active_radius(remaining):
+					continue
+				_dirty_chunks[remaining] = true
+			break
+		if not _chunk_in_active_radius(chunk):
+			continue
+		budget -= _flow_chunk(chunk, budget, tool)
+
+	# Throttled diagnostic (~every 8 ticks ≈ 2 s) — only when the sim
+	# actually did something, so the Output panel isn't flooded.
+	_diag_flow_ticks += 1
+	if _diag_flow_ticks >= 8:
+		_diag_flow_ticks = 0
+		if _diag_flow_flood > 0 or _diag_flow_gravity > 0 or not snapshot.is_empty():
+			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  player=%s" % [
+				snapshot.size(), _diag_flow_flood, _diag_flow_gravity,
+				_edit_cell_ttl.size(), str(_diag_flow_last),
+				get_sea_level_voxel_y(), str(_world_to_voxel(_player_pos)),
+			])
+		_diag_flow_flood = 0
+		_diag_flow_gravity = 0
+
+
+func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
+	# One CHANNEL_TYPE copy of this chunk + the chunk below (gravity at
+	# y=0) + the chunk above (flood "water directly above" at y=15).
+	# Cheap byte reads thereafter; decisions only.
+	var vmin: Vector3i = chunk * CHUNK_SIZE_VOXELS
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+
+	var tbuf := VoxelBuffer.new()
+	tbuf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(vmin, tbuf, 1 << VoxelBuffer.CHANNEL_TYPE)
+
+	var tbelow := VoxelBuffer.new()
+	tbelow.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(vmin - Vector3i(0, CHUNK_SIZE_VOXELS, 0), tbelow, 1 << VoxelBuffer.CHANNEL_TYPE)
+
+	var tabove := VoxelBuffer.new()
+	tabove.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(vmin + Vector3i(0, CHUNK_SIZE_VOXELS, 0), tabove, 1 << VoxelBuffer.CHANNEL_TYPE)
+
+	var sea_y: int = get_sea_level_voxel_y()
+	var changed: int = 0
+	var n: int = CHUNK_SIZE_VOXELS
+
+	for lx in range(n):
+		for lz in range(n):
+			for ly in range(n):
+				if changed >= budget:
+					return changed
+				var here: int = tbuf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_TYPE)
+				var wpos: Vector3i = vmin + Vector3i(lx, ly, lz)
+
+				if here == WATER_TYPE_ID:
+					# --- GRAVITY: water with air directly below falls. ---
+					var below: int
+					if ly > 0:
+						below = tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE)
+					else:
+						below = tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE)
+					if below == 0:
+						var bpos: Vector3i = wpos - Vector3i(0, 1, 0)
+						if not _is_water_blocked_at_voxel(bpos):
+							VoxelEditManager.queue_set_water_voxel(bpos, WaterByteCodec.SOURCE_BYTE)
+							_dirty_chunks[_voxel_to_chunk(bpos)] = true
+							changed += 1
+							_diag_flow_gravity += 1
+							_diag_flow_last = bpos
+					continue
+
+				if here != 0:
+					continue  # solid terrain (TYPE != 0 and != water)
+
+				# --- FLOOD: air cell. ---
+				if not _edit_cell_ttl.has(wpos):
+					continue  # only fill what the player carved
+				if wpos.y > sea_y:
+					continue  # no source pressure above sea level
+				if _is_water_blocked_at_voxel(wpos):
+					continue
+
+				var fed: bool = false
+				var av: int
+				if ly < n - 1:
+					av = tbuf.get_voxel(lx, ly + 1, lz, VoxelBuffer.CHANNEL_TYPE)
+				else:
+					av = tabove.get_voxel(lx, 0, lz, VoxelBuffer.CHANNEL_TYPE)
+				if av == WATER_TYPE_ID:
+					fed = true
+				if not fed and lx > 0 and tbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					fed = true
+				if not fed and lx < n - 1 and tbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					fed = true
+				if not fed and lz > 0 and tbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					fed = true
+				if not fed and lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					fed = true
+
+				if fed:
+					VoxelEditManager.queue_set_water_voxel(wpos, WaterByteCodec.SOURCE_BYTE)
+					_dirty_chunks[_voxel_to_chunk(wpos)] = true
+					changed += 1
+					_diag_flow_flood += 1
+					_diag_flow_last = wpos
+					# Carry carve-permission to sub-sea air neighbours so
+					# the flood front keeps advancing through the dug-out
+					# volume on later ticks (self-limited: re-checked
+					# against sea_y + edit gate every cell).
+					for d in _LATERAL_DIRS:
+						var npos: Vector3i = wpos + d
+						if npos.y <= sea_y:
+							_edit_cell_ttl[npos] = EDIT_CELL_TTL
+					var down_np: Vector3i = wpos - Vector3i(0, 1, 0)
+					_edit_cell_ttl[down_np] = EDIT_CELL_TTL
+	return changed
 
 
 func _simulate_chunk_gravity(chunk: Vector3i, budget: int, _terrain: VoxelLodTerrain, tool: VoxelTool) -> int:
