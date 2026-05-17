@@ -118,6 +118,10 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
   only as one brief statement in the Main Theme + 5 optional cues), the
   anti-sameness variation matrix, cultural palettes, leitmotif system, and
   flute discipline
+- `SFX_LIBRARY.md` — the master sound-effects inventory: ~1,574 categorized
+  entries (18 categories, combinatorial matrices for footsteps / tool×material
+  / enemies / region beds), naming + folder conventions, phased generation
+  plan. The spec the SFX generation-prompt pass will draw from
 
 ### Planning, ops, and overview
 
