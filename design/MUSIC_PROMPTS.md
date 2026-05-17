@@ -79,7 +79,10 @@ two tracks in the same category may share more than three lever values.**
    on **only these six**, brief, light, never solo, never lead melody: **02**
    (one brief light distant Latin statement, sung once), **24, 34, 41, 45, 47**
    (brief texture only — each style box says "choir optional, may be omitted
-   for fully instrumental"). No solo voices, no sung verses, no spoken word.
+   for fully instrumental"). No solo voices, no sung verses, no spoken word —
+   **except the one authored exception, 49** (a diegetic solo-vocal folk
+   ballad sung the night before battle, "Jenny of Oldstones"-style, with
+   original lyrics).
 7. **Recording space** — dry chamber / intimate close / open field / great
    stone hall / cathedral / cavern / storm-air / "music box".
 8. **Structural arc** — vary section count/order; 6–9 sections to reach length.
@@ -184,7 +187,7 @@ others fully instrumental.
 | 46 | The Fighting Retreat _ The Ashfields | War | Iron Chalice | F# Aeolian | 116 | war horn + strings | — | 4:00 |
 | 47 | The Last Stand _ No Ground Behind | War | Iron Chalice/Human | C Aeolian → C Mixolydian | 84→144 | full orch | brief opt. | 4:30 |
 | 48 | The Muster of the Alliance _ Many Banners | War | mixed (suite) | D Mixolydian (mod.) | 100 | rotating culture leads | — | 5:00 |
-| 49 | The Vigil _ The Night Before | Cinematic | Iron Chalice | A Aeolian | 52 | solo cello + low whistle | — | 4:00 |
+| 49 | The Vigil _ The Night Before | Cinematic | Folk ballad | A Aeolian | 100 (6/8) | solo voice + harp | LEAD VOCAL | 3:45 |
 | 50 | Heroes Reunited _ The Fellowship Whole | Cinematic | mixed (motif weave) | A♭ Mixolydian | 76 | leitmotif weave | — | 4:00 |
 | 51 | A Marriage _ Two Hands Bound | Cinematic | Folk/Human | D major (Ionian)* | 88 | harp + oboe + fiddle | — | 4:00 |
 | 52 | Grief _ What the Archive Lost | Cinematic | Human | E♭ Aeolian | 46 | solo viola | — | 4:00 |
@@ -227,6 +230,11 @@ remove that language — it is what prevents the high-to-low flute artifact.
 24/34/41/45/47 (brief, optional). Those five say "choir optional — may be
 omitted for fully instrumental." If in doubt, render them instrumental; the
 soundtrack is instrumental-first.
+
+**Solo vocal.** Exactly one cue, **49 — The Vigil**, is a full lead-vocal
+folk ballad with sung lyrics ("Jenny of Oldstones"-style, ~100 BPM 6/8). It
+is the deliberate diegetic exception — every other cue stays instrumental
+(or, for the six above, brief massed choir only).
 
 **Reference lean.** Lead with *Oblivion* (Soule's lush pastoral orchestral),
 then *Morrowind* (sparse contemplative, "Nerevar Rising" horn/lute), then
@@ -1275,22 +1283,73 @@ Structure prompt:
 
 ---
 
-**49 — The Vigil _ The Night Before**
-*Key A Aeolian · 52 BPM · Iron Chalice · solo cello + low whistle · instrumental · 4:00*
+**49 — The Vigil _ The Night Before** *[authored exception — the one solo-vocal ballad]*
+*Key A Aeolian · 100 BPM (6/8) · Folk ballad · solo folk voice + harp · LEAD VOCAL · 3:45*
+
+A diegetic folk lament sung around the last fire the night before battle, in
+the spirit of the Game of Thrones song "Jenny of Oldstones" — slow compound
+6/8, fragile unadorned voice, harp, building strings. Original lyrics telling
+this world's history (the fallen star and the forged blade, the three peoples
+marching to the marsh, the enemy who only lay still and gathers still, the
+muster at dawn).
 
 Style prompt:
 ```
-The night before the battle: a solo cello and a far low whistle in A Aeolian, a single field drum like a slow heartbeat (whistle steady stepwise, fixed register, no bends) — dread and resolve held very quietly, no swelling. 52 BPM, rubato, almost still. Cold open-camp reverb, fires and dark. Designed restraint, the calm before. Full-length cue, the Endurance cell questioned, answered from afar, paused, barely restated, no early fade, long outro. Instrumental. No big brass, no choir, no solo vocals, no flute glissando, no pitch sweeps, no taiko, no synth, no electric guitar, no drum kit, no EDM, no climax.
+A slow, plaintive medieval folk ballad in the spirit of the Game of Thrones song "Jenny of Oldstones" — a single fragile, warm, unadorned solo voice (female, or a plain unforced male) over fingered harp, with a slow string section that swells and recedes. A Aeolian, compound 6/8 at ~100 BPM, deeply melancholic and intimate. No percussion, or only a faint distant heartbeat. The song the soldiers hear around the last fire the night before battle — grief and quiet resolve, never triumphant. Builds from solo voice and harp through swelling cellos and violins to a fuller refrain, then strips back to voice and harp for the close. Soft intimate chapel reverb. Diegetic folk lament sung in the common tongue, not orchestral score. Full-length cue, no early fade, long quiet outro. No drum kit, no taiko, no choir wall, no Latin, no synth, no electric guitar, no flute glissando, no pitch sweeps, no portamento, no EDM, no autotune.
 ```
-Structure prompt:
+Lyrics/structure prompt:
 ```
-[Instrumental Intro - one slow field-drum beat like a heart, a solo cello enters A Aeolian]
-[Instrumental A - the Endurance cell played softly, questioning, not heroic]
-[Instrumental B - a low whistle answers the cello from across the camp, lonely]
-[Instrumental Development - the cell varied, the drum-heart steady and slow]
-[Instrumental Hush - cello alone, the drum stops, the longest silence in the cue]
-[Instrumental C - the whistle returns for one faint phrase]
-[Instrumental Outro - the Endurance tag unfinished, the drum-heart once more, long fade to dark]
+[Intro - solo harp, slow 6/8, a few bare falling notes, no voice yet]
+
+[Verse 1 - solo voice, fragile, harp only]
+
+In the old grey year when the star came down,
+the smiths of the wood took its light to the ground,
+and they hammered a song into edge and to name,
+a blade for the hand that would carry the flame.
+
+[Verse 2 - voice and harp, a low cello enters under the last line]
+
+The men raised their banners, the deep-folk their stone,
+the elves left their glades and they marched out alone,
+to the marsh where the wide world held breath in the dark,
+where one man would strike and not live past the mark.
+
+[Refrain - the voice opens, soft strings swell in]
+
+So bank the last embers and lay down your fear,
+for the men and the elves and the deep-folk are here;
+they gave us a morning they would not live to see —
+sing them low, sing them low, to the cold grey sea.
+
+[Verse 3 - strings fuller, the story darkens]
+
+He fell with the crown lying shattered and black,
+and the sea took the towers and gave nothing back,
+but the dark was not ended, it only lay still,
+and it learned, and it waited, and it gathers there still.
+
+[Refrain - fuller, strings at their warmest, the voice stronger]
+
+So bank the last embers and lay down your fear,
+the men and the elves and the deep-folk are here;
+we'll give them a morning we may not live to see —
+sing us low, sing us low, to the cold grey sea.
+
+[Bridge - instrumental, strings swell and ache, then thin away to harp]
+
+[Final Verse - solo voice and harp again, quiet, resolved]
+
+Come dawn we will stand where the old fathers stood,
+with iron, with starlight, with stone and with blood,
+and whatever the long night and the morning may bring,
+let them say that we held, let them say that we could sing.
+
+[Outro Refrain - voice almost a whisper over bare harp, fading]
+
+So bank the last embers... and lay down your fear...
+the three peoples keep watch... and they all of them here...
+(harp alone, one last falling phrase, long fade to dark)
 ```
 
 ---
