@@ -115,6 +115,26 @@ bisection that root-caused the dark grid is the reference recipe: 0
 (confirm) → fade off (is depth-fade the amplifier?) → mode 3 (is it
 geometry vs transparency blend?) → mode 4 (side faces vs stepped tops?).
 
+**`[FlowDiag]` (WaterFlowManager, ~2 s throttle) — the flow-Y measurer.**
+Prints only while the v2 sim does work (`flood`/`gravity` writes or a
+non-empty dirty set), so it's sparse but easy to lose under the per-frame
+`[DIAG]`/`[WaterDiag]` spam — **filter the Output panel for `FlowDiag`.**
+Fields: `dirty_chunks`, `flood`/`gravity` (writes this window),
+`edit_ttl_cells` (carve-permission cells still live; decays ~1 s after
+you stop digging), `last` (last write voxel), `sea_voxY`, and the #3
+trio: **`maxWriteY`** (highest Y any flow write touched — `n/a` if none),
+**`above_sea`** (count of writes strictly above sea level — the bug,
+quantified), **`worst`** (the offending voxel, if any). *Read:* clean run
+= `maxWriteY` == `sea_voxY`, `above_sea=0`. **#3 ("dig near water creates
+water above the start plane") was VERIFIED CLOSED 2026-05-17:** 78
+flood+gravity writes in one window, `maxWriteY=72` (== sea), `above_sea=0`
+— V2's `wpos.y <= sea_y` flood gate + downward-only gravity fixed it by
+construction; the pre-V2 DATA5 automaton was the original cause.
+*Not* #3 and still open: flood **coverage** stalls partway through a
+large multi-chunk dug-out volume (the `edit_ttl_cells` ~1 s window +
+own-chunk-only re-dirty outrun by big digs) — a deferred dynamic-flood
+refinement, a hard waterline not an above-plane error.
+
 **Profiler `WATER` category** groups: `WaterFlowManager` (flow tick,
 wrapped in `_physics_process`), `WaterQuery` (every player
 `is_position_in_water`/`get_water_level_at` — wrapped at the

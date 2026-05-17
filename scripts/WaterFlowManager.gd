@@ -716,6 +716,35 @@ var _diag_flow_gravity: int = 0
 var _diag_flow_ticks: int = 0
 var _diag_flow_last: Vector3i = Vector3i.ZERO
 
+# #3 flow-Y instrumentation (2026-05-17). The historical complaint is
+# "digging next to water creates water ABOVE the start plane". V2's
+# flood rule is gated `wpos.y <= sea_y` and gravity only moves water
+# DOWN, so structurally it shouldn't climb — but #3 is "re-judge now
+# that water is enterable", and the only honest way to close it is to
+# MEASURE every write, not argue from the code. Per ~2 s window these
+# track: the highest Y any flow WRITE landed on, how many writes were
+# strictly above sea level, and the worst offending voxel. A clean run
+# prints maxWriteY == sea_voxY and above_sea=0; a reproduction prints
+# the exact climbing voxel so the fix can target the responsible rule.
+var _diag_flow_max_write_y: int = 0
+var _diag_flow_any_write: bool = false
+var _diag_flow_above_sea: int = 0
+var _diag_flow_worst_above: Vector3i = Vector3i.ZERO
+
+
+func _diag_register_write(pos: Vector3i, sea_y: int) -> void:
+	# Called at every flow write site (gravity drop + flood fill) so the
+	# throttled [FlowDiag] line can report whether water ever climbed
+	# above the sea/start plane during digging. Pure bookkeeping — no
+	# SceneTree, no allocation; safe in the inner flow loop.
+	if not _diag_flow_any_write or pos.y > _diag_flow_max_write_y:
+		_diag_flow_max_write_y = pos.y
+	_diag_flow_any_write = true
+	if pos.y > sea_y:
+		_diag_flow_above_sea += 1
+		if pos.y > _diag_flow_worst_above.y:
+			_diag_flow_worst_above = pos
+
 
 func _run_flow_tick_v2() -> void:
 	var snapshot: Dictionary = _dirty_chunks.duplicate()
@@ -766,13 +795,18 @@ func _run_flow_tick_v2() -> void:
 	if _diag_flow_ticks >= 8:
 		_diag_flow_ticks = 0
 		if _diag_flow_flood > 0 or _diag_flow_gravity > 0 or not snapshot.is_empty():
-			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  player=%s" % [
+			var _mwy_s: String = str(_diag_flow_max_write_y) if _diag_flow_any_write else "n/a"
+			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  player=%s" % [
 				snapshot.size(), _diag_flow_flood, _diag_flow_gravity,
 				_edit_cell_ttl.size(), str(_diag_flow_last),
-				get_sea_level_voxel_y(), str(_world_to_voxel(_player_pos)),
+				get_sea_level_voxel_y(), _mwy_s, _diag_flow_above_sea,
+				str(_diag_flow_worst_above), str(_world_to_voxel(_player_pos)),
 			])
 		_diag_flow_flood = 0
 		_diag_flow_gravity = 0
+		_diag_flow_any_write = false
+		_diag_flow_above_sea = 0
+		_diag_flow_worst_above = Vector3i.ZERO
 
 
 func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
@@ -821,6 +855,7 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 							changed += 1
 							_diag_flow_gravity += 1
 							_diag_flow_last = bpos
+							_diag_register_write(bpos, sea_y)
 					continue
 
 				if here != 0:
@@ -857,6 +892,7 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					changed += 1
 					_diag_flow_flood += 1
 					_diag_flow_last = wpos
+					_diag_register_write(wpos, sea_y)
 					# Carry carve-permission to sub-sea air neighbours so
 					# the flood front keeps advancing through the dug-out
 					# volume on later ticks (self-limited: re-checked
