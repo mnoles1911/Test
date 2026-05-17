@@ -107,7 +107,10 @@ uniform float wind_strength : hint_range(0.0, 5.0) = 0.5;
 // ============================================================
 // DEBUG
 // ============================================================
-uniform int debug_mode : hint_range(0, 3) = 0;
+// 4 = surface facing (white=up-facing water TOP, black=vertical
+//     riser/side sliver) — isolates whether the distant LOD-seam dark
+//     grid sits on side slivers (shader-fixable) or stepped tops.
+uniform int debug_mode : hint_range(0, 4) = 0;
 
 
 void vertex() {
@@ -145,9 +148,33 @@ void fragment() {
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
 
+	// === 2b. LOD-SEAM SIDE-FACE SUPPRESSION (dark-grid fix) =========
+	// Root-caused 2026-05-17 (WaterDiag F5 + debug_mode 4; see
+	// design/PROFILER_AND_DIAGNOSTICS.md). The distant dark grid is NOT
+	// stepped voxel data — F5 WaterInspect proved the water-top is
+	// coplanar (Δ+0, top=72) at LOD0 everywhere. It's Zylann's blocky
+	// mesher DOWNSAMPLING the transparent water block at coarse LOD,
+	// which exposes near-vertical water SIDE faces (n.y≈0, lit up by
+	// debug_mode 4) at every LOD seam. Those edge-on slivers read a
+	// huge through-water `thickness`, so the depth-fade saturates them
+	// to deep_water_color → a black lattice. The water the player
+	// actually reads is the TOP surface (n.y≈1). So weight the
+	// depth-fade by how up-facing the fragment is: tops keep the full
+	// depth gradient; vertical seam slivers collapse to shallow tint +
+	// shallow_alpha (a faint film, not a black wall — the Minecraft
+	// look). Flat voxel water has no legitimate vertical faces (waves
+	// were dropped), so nothing real is lost. Axis-aligned cube faces
+	// give n.y of exactly 1 or 0; the smoothstep band only softens
+	// Zylann's angled LOD-transition normals. debug_mode 1/3/4 below
+	// deliberately keep RAW depth_t/thickness/n.y so the diagnostics
+	// still show ground truth after this fix.
+	float up_face = smoothstep(0.30, 0.72, n.y);
+	float depth_t_eff = depth_t * up_face;
+
 	// === 3. SURFACE COLOUR ==========================================
-	// Body colour: shallow tint → deep navy by how deep the water is.
-	vec3 body = mix(water_tint_color, deep_water_color, depth_t);
+	// Body colour: shallow tint → deep navy by how deep the water is
+	// (effective depth — side slivers stay shallow tint, not navy).
+	vec3 body = mix(water_tint_color, deep_water_color, depth_t_eff);
 	// Grazing angles reflect the sky → the surface always reads as
 	// water even when it's crystal clear over a shallow bottom.
 	vec3 surface = mix(body, sky_reflection_color, fresnel);
@@ -160,7 +187,19 @@ void fragment() {
 	// → low alpha (see the bottom) regardless of view angle; deep water
 	// → opaque. The Fresnel sky-sheen still sells "this is water" via
 	// the COLOUR (step 3) + the lit sun specular (step 5).
-	float alpha = max(depth_t, shallow_alpha);
+	//
+	// SEAM-RESIDUAL POLISH (2026-05-17, designer-approved): the
+	// shallow_alpha FLOOR is the minimum film opacity for thin TOP
+	// water so it doesn't read as invisible glass. But applied flat it
+	// also gave the LOD-seam side slivers a ~0.40 pale film → a faint
+	// light line where the black grid used to be. Scale the floor by
+	// up_face so it only protects real up-facing water: side slivers
+	// (up_face≈0) get a ~0 floor AND depth_t_eff≈0 → alpha≈0 → the
+	// sliver shows the water BEHIND it (slivers are interior to the
+	// body, so that's more water, never terrain) → the seam visually
+	// disappears. Shallow top water (up_face≈1) keeps the full
+	// shallow_alpha floor, unchanged.
+	float alpha = max(depth_t_eff, shallow_alpha * up_face);
 
 	// === 5. OUTPUT ==================================================
 	if (debug_mode == 1) {
@@ -170,6 +209,13 @@ void fragment() {
 	} else if (debug_mode == 3) {
 		ALBEDO = vec3(clamp(thickness / max(depth_fade_distance, 0.01), 0.0, 1.0));
 		ALPHA = 1.0;
+	} else if (debug_mode == 4) {
+		// White = up-facing water TOP (n.y≈1). Black = vertical riser /
+		// side sliver (n.y≈0). If the distant dark grid lines fall on
+		// BLACK fragments → edge-on side slivers → shader normal-weight
+		// fix. If the grid is on uniformly WHITE top → stepped LOD tops
+		// → needs surface-Y / generator fix.
+		ALBEDO = vec3(clamp(n.y, 0.0, 1.0)); ALPHA = 1.0;
 	} else {
 		ALBEDO = surface;
 		ALPHA = clamp(alpha, 0.0, 1.0);

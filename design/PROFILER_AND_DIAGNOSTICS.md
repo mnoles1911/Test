@@ -72,6 +72,55 @@ F6 the target scene. Output shows:
 otherwise, and the auto-wipe will clobber a capture you wanted to
 keep across runs.
 
+## Water diagnostics (`WaterDiag` autoload — F4/F5/F6)
+
+`scripts/WaterDiag.gd` (CanvasLayer autoload, layer 6) is the standing
+surface for **all** water work — the distant dark-grid fix, the flow-Y
+bug, waterline jitter, the deferred flow sim. **Read this before
+hand-bisecting water with throwaway shader tweaks.** All dev-only,
+default OFF, keyboard-toggled, read-only (never mutates water).
+
+| Key | Action |
+|---|---|
+| `F4` | Toggle the on-screen Water panel. While visible, also prints a consolidated `[WaterDiag]` line once/sec (pasteable into a diagnosis). |
+| `F5` | One-shot `[WaterInspect]` dump of the column + 3×3 mesh-block neighbourhood under the camera. |
+| `F6` | Cycle the water shader `debug_mode` 0→1→2→3→4→0 live. |
+
+**Panel / `[WaterDiag]` fields:** `pos`; `in_water` + `submerged`
+(head); `level` 0–8; `surface Y` (world-Y of the topmost water voxel in
+the player column) + `Δ` to the player (the number #3 flow-Y and #4
+waterline-jitter need); `sea level` / `horizon` Y; `flow sim` on/off
+(reads `WaterFlowManager._FLOW_SIM_ENABLED` via the script constant
+map); `shader dbg`; `query us` (smoothed `is_position_in_water` cost);
+`expected LOD @ dist`.
+
+**`[WaterInspect]` (F5) — the dark-grid measurer.** Prints 3×3 sample
+columns spaced one mesh-block (16 vox) apart so adjacent samples land
+in neighbouring mesh blocks. Each cell: `top=` (water-top voxelY),
+`n=` (TYPE-5 count in that block slab — the no-C++-rebuild proxy for
+"what the generator/mesher produced here"), `Δ±` (top vs centre).
+*Read:* equal `top=` across neighbours = water coplanar (good);
+differing `top=` / nonzero `Δ` at the block step = the distant
+**dark-grid LOD-seam mismatch** (root-caused 2026-05-17: per-block
+water slabs whose tops aren't coplanar across LOD boundaries → exposed
+vertical side faces → depth-fade paints them `deep_water_color`).
+
+**Shader `debug_mode` (F6 cycles; also settable in
+`water_material.tres`):** `0` normal · `1` depth_t (white = deep) ·
+`2` fresnel · `3` thickness as opaque grey (no blend/Fresnel — isolates
+geometry from transparency) · `4` surface-facing (white = up-facing
+water top, black = vertical side/riser). **These four are permanent
+diagnostics — do not remove them from `water.gdshader`.** The 2026-05-17
+bisection that root-caused the dark grid is the reference recipe: 0
+(confirm) → fade off (is depth-fade the amplifier?) → mode 3 (is it
+geometry vs transparency blend?) → mode 4 (side faces vs stepped tops?).
+
+**Profiler `WATER` category** groups: `WaterFlowManager` (flow tick,
+wrapped in `_physics_process`), `WaterQuery` (every player
+`is_position_in_water`/`get_water_level_at` — wrapped at the
+`_read_water_byte_at` chokepoint with a cached Profiler ref), and
+`WaterDiag` (the panel poll). Watch these in the F3 overlay's WATER row.
+
 ## File locations
 
 `user://` in Godot maps to `%APPDATA%\Godot\app_userdata\<project-name>\`

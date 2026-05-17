@@ -375,6 +375,11 @@ Categories: `WORLD`, `WATER`, `WEATHER`, `PHYS`, `OTHER`. Wrappers add ~1 µs. `
 
 **Profiler overlay (F3):** `Tab` cycle pages, `P` pause, `C` capture JSON (auto-wipes prior; one file at most in `user://`), `S` save, `Q` clear, `← →` timeline cursor. Keyboard-only because `Button.pressed` doesn't fire.
 
+**Water diagnostics (`WaterDiag` autoload — F4/F5/F6):** the standing tool for all water polish — read it before hand-bisecting water with shader tweaks.
+- **F4** toggles the on-screen Water panel; while visible it also prints a consolidated `[WaterDiag]` line once/sec (pasteable). Reports in_water/submerged, level, queried surface-Y + Δ to player, sea/horizon Y, flow-sim on/off, current shader debug_mode, query µs, expected LOD.
+- **F5** one-shot `[WaterInspect]` dump: 3×3 mesh-block-spaced columns under the camera with water-top voxelY, water count, and **Y-delta vs centre** — equal `top=` across neighbours = coplanar; differing `top=` at the block step = the distant dark-grid LOD-seam mismatch (root-caused 2026-05-17).
+- **F6** cycles the water `water.gdshader` `debug_mode` live: **0** normal · **1** depth_t (white=deep) · **2** fresnel · **3** thickness (opaque grey, no blend) · **4** surface-facing (white=up-facing top, black=vertical side/riser). These four are permanent diagnostics — do not remove them. Full recipes in `design/PROFILER_AND_DIAGNOSTICS.md`.
+
 **Profiler capture path:** `C:\Users\Matt Noles\AppData\Roaming\Godot\app_userdata\Game One\profile_capture_<msec>.json`. JSON includes per-frame `attribution`, `engine` (proc_us/real_us/draws/prims/vram_mb), `zylann` (detect_us/io_us/mesh_us/blocked_lods/dropped_loads/dropped_meshs). Capture-from-frame-1 via `scripts/Profiler.gd` `capture_on_startup: true` + `startup_capture_seconds` — **flip back to false after**.
 
 **Diagnostic workflow:** if the user pastes a capture JSON path + `[PERF]` / `[DIAG]` log lines, that's a complete packet. Use the recipes in `design/PROFILER_AND_DIAGNOSTICS.md` to correlate JSON spikes with `[PERF] worst=` and `[DIAG] time_detect_required_blocks=`, then propose ONE specific change.
@@ -455,7 +460,7 @@ Every settlement, dungeon entrance, and lore landmark sits under a NoEditZone. W
 ## Autoload registration status
 
 Registered in `project.godot`, in load order:
-`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`, `NetTransport`, `MultiplayerManager`, `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`, `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`, `JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`.
+`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`, `NetTransport`, `MultiplayerManager`, `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`, `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`, `JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`, `WaterDiag`.
 
 Key facts:
 - **MultiplayerManager:** owns SceneTree's `multiplayer_peer`. **In OFFLINE mode `is_host()` returns true** so single-player authority gates work without modification. `PlayerSpawner` (not autoloaded; attached to dev/world scenes) parents one `RemotePlayer.tscn` per non-local peer. Local Player3D stays full-fat with `_can_take_input()` gating.

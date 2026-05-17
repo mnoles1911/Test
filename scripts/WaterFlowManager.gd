@@ -174,6 +174,10 @@ var _edit_cell_ttl: Dictionary = {}
 # down once per flow tick.
 const EDIT_CELL_TTL: int = 4  # ~1 sec at 4 Hz
 
+var _prof: Node = null
+# Cached /root/Profiler ref (see _ready) for the per-query WATER
+# attribution wrapper. null when the Profiler autoload is absent.
+
 
 # ============================================================
 # Lifecycle
@@ -186,6 +190,11 @@ func _ready() -> void:
 	# project.godot order guarantees it.
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
+
+	# Cache the Profiler once so the per-query attribution wrapper
+	# (_read_water_byte_at) doesn't do a /root lookup on every call —
+	# the player hits this path ~4×/physics frame.
+	_prof = get_node_or_null("/root/Profiler")
 
 	# Water Voxel V2 (2026-05-16): WaterChunkMesher + the horizon plane
 	# are DELETED. Water is now a normal transparent TYPE block (id 5)
@@ -300,6 +309,20 @@ func get_water_level_at(world_pos: Vector3) -> int:
 
 
 func _read_water_byte_at(world_pos: Vector3) -> int:
+	# Profiler attribution wrapper around the actual read. Every player
+	# water query (is_position_in_water / get_water_level_at) funnels
+	# through here, so timing this single chokepoint attributes the
+	# always-on query cost under the F3 overlay's WATER category
+	# (the flow tick is wrapped separately in _physics_process).
+	if _prof == null:
+		return _read_water_byte_at_impl(world_pos)
+	var _t0 := Time.get_ticks_usec()
+	var _r := _read_water_byte_at_impl(world_pos)
+	_prof.record("WATER", "WaterQuery", Time.get_ticks_usec() - _t0)
+	return _r
+
+
+func _read_water_byte_at_impl(world_pos: Vector3) -> int:
 	# Water Voxel V2: water is a CHANNEL_TYPE=5 block. Read TYPE at the
 	# voxel containing world_pos; if it's the water block, synthesise a
 	# full WaterByteCodec source byte so every existing consumer
