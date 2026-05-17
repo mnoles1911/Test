@@ -617,6 +617,18 @@ func _tick_held_action(delta: float) -> void:
 	var volume_multiplier: float = float(voxel_count) / 8.0
 	var mine_secs: float = slowest_per_voxel * volume_multiplier
 
+	# DEV: instant-mine accelerator (DebugOverlay COMMANDS tab →
+	# TOGGLE INSTANT MINE, default OFF). Zero the per-swing mining
+	# time so one click carves the aimed voxel box immediately —
+	# turns slow multi-chunk test excavations (e.g. validating water
+	# flood coverage) into a few clicks. The post-carve swing cooldown
+	# below still paces held repeats; NoEditZone / bedrock rejection
+	# and the carve path itself are unchanged. No effect unless a dev
+	# explicitly enabled it this session.
+	var _dbg: Node = get_node_or_null("/root/DebugOverlay")
+	if _dbg != null and bool(_dbg.get("instant_mine_enabled")):
+		mine_secs = 0.0
+
 	# --- Target stability + accumulate ---
 	# Compute the integer voxel grid coord and compare. If the
 	# player's looking at a different voxel than last frame, reset.
