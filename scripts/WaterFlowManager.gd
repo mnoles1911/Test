@@ -897,12 +897,28 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					# the flood front keeps advancing through the dug-out
 					# volume on later ticks (self-limited: re-checked
 					# against sea_y + edit gate every cell).
+					#
+					# #5 flood-coverage fix (2026-05-17): ALSO dirty the
+					# chunk each propagation target sits in. Previously
+					# only _voxel_to_chunk(wpos) was dirtied, so when the
+					# front reached a chunk boundary the next cell's chunk
+					# was never in _dirty_chunks → _run_flow_tick_v2 never
+					# processed it → the front stalled at the boundary and
+					# the carried TTL expired before that chunk was ever
+					# re-dirtied (hard waterline, dirty_chunks=1, large
+					# multi-chunk dug-out volumes only partly filled). A
+					# whole dug-out region now fills across chunk seams;
+					# still self-terminating (no air cells left to flood →
+					# no propagation → _dirty_chunks drains → idle) and
+					# still bounded by _chunk_in_active_radius + budget.
 					for d in _LATERAL_DIRS:
 						var npos: Vector3i = wpos + d
 						if npos.y <= sea_y:
 							_edit_cell_ttl[npos] = EDIT_CELL_TTL
+							_dirty_chunks[_voxel_to_chunk(npos)] = true
 					var down_np: Vector3i = wpos - Vector3i(0, 1, 0)
 					_edit_cell_ttl[down_np] = EDIT_CELL_TTL
+					_dirty_chunks[_voxel_to_chunk(down_np)] = true
 	return changed
 
 
