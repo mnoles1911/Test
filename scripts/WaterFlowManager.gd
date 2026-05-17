@@ -731,6 +731,24 @@ var _diag_flow_any_write: bool = false
 var _diag_flow_above_sea: int = 0
 var _diag_flow_worst_above: Vector3i = Vector3i.ZERO
 
+# #5 residual diagnostic (2026-05-17). After the chunk-dirty fix the
+# flood reaches far via powder blasts (flood 200+/window) but a thin
+# hand-dug trench/cave still doesn't fully fill. Two reasons are
+# possible and the write counters above can't tell them apart:
+#   rej_above_sea — an edit-flagged AIR cell skipped purely because
+#                   wpos.y > sea_y. This is CORRECT (water must not
+#                   climb above sea level — the #3 gate). High here =
+#                   the unfilled cave is just an uneven trench whose
+#                   floor rises above voxel sea_y; not a sim bug.
+#   rej_unfed     — an edit-flagged AIR cell at/below sea_y, not
+#                   blocked, that had NO adjacent water this tick so
+#                   it couldn't flood. Persistently high = the real
+#                   front-advance/readback-lag bug (the front can't
+#                   see its own just-queued water, TTL expires).
+# One re-run of the same trench tells us which fix to write.
+var _diag_flow_rej_above_sea: int = 0
+var _diag_flow_rej_unfed: int = 0
+
 
 func _diag_register_write(pos: Vector3i, sea_y: int) -> void:
 	# Called at every flow write site (gravity drop + flood fill) so the
@@ -796,17 +814,20 @@ func _run_flow_tick_v2() -> void:
 		_diag_flow_ticks = 0
 		if _diag_flow_flood > 0 or _diag_flow_gravity > 0 or not snapshot.is_empty():
 			var _mwy_s: String = str(_diag_flow_max_write_y) if _diag_flow_any_write else "n/a"
-			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  player=%s" % [
+			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  rej_above_sea=%d  rej_unfed=%d  player=%s" % [
 				snapshot.size(), _diag_flow_flood, _diag_flow_gravity,
 				_edit_cell_ttl.size(), str(_diag_flow_last),
 				get_sea_level_voxel_y(), _mwy_s, _diag_flow_above_sea,
-				str(_diag_flow_worst_above), str(_world_to_voxel(_player_pos)),
+				str(_diag_flow_worst_above), _diag_flow_rej_above_sea,
+				_diag_flow_rej_unfed, str(_world_to_voxel(_player_pos)),
 			])
 		_diag_flow_flood = 0
 		_diag_flow_gravity = 0
 		_diag_flow_any_write = false
 		_diag_flow_above_sea = 0
 		_diag_flow_worst_above = Vector3i.ZERO
+		_diag_flow_rej_above_sea = 0
+		_diag_flow_rej_unfed = 0
 
 
 func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
@@ -865,6 +886,7 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 				if not _edit_cell_ttl.has(wpos):
 					continue  # only fill what the player carved
 				if wpos.y > sea_y:
+					_diag_flow_rej_above_sea += 1
 					continue  # no source pressure above sea level
 				if _is_water_blocked_at_voxel(wpos):
 					continue
@@ -886,6 +908,10 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 				if not fed and lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
 					fed = true
 
+				if not fed:
+					# Edit-flagged, at/below sea_y, not blocked, yet no
+					# adjacent water this tick → the front-stall signature.
+					_diag_flow_rej_unfed += 1
 				if fed:
 					VoxelEditManager.queue_set_water_voxel(wpos, WaterByteCodec.SOURCE_BYTE)
 					_dirty_chunks[_voxel_to_chunk(wpos)] = true
