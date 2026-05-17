@@ -43,7 +43,7 @@ extends Node
 # Save-format compatibility
 # ============================================================
 
-const WORLD_GENERATOR_VERSION: int = 15
+const WORLD_GENERATOR_VERSION: int = 16
 # Bump this constant whenever the procedural baseline produced by
 # the active generator (currently CubicHeightmapGenerator) changes
 # shape OR encoding — e.g. swap to a new heightmap, change cave
@@ -79,6 +79,13 @@ const WORLD_GENERATOR_VERSION: int = 15
 #         per-face textures via VoxelBlockyLibrary; water continues
 #         to live in CHANNEL_DATA5 (orthogonal). Pre-v15 saves are
 #         invalid — no migration path; the terrain channel changed.
+#   v16 → Water Voxel V2 (Minecraft model, 2026-05-16). Water is now a
+#         normal CHANNEL_TYPE block (id 5, transparent blocky model)
+#         emitted by the generator at ALL LODs — NOT a CHANNEL_DATA5
+#         side-channel byte. WaterChunkMesher + the horizon plane are
+#         deleted; the terrain blocky mesher draws water. Pre-v16 saves
+#         have water in DATA5 / no TYPE-5 — they'd render as dry and
+#         must be hard-rejected. See design/WATER_VOXEL_V2_PLAN.md.
 
 
 # ============================================================
@@ -764,8 +771,12 @@ func _apply_edit(cmd: Dictionary) -> void:
 			# the next command.
 			var ws_voxel_pos: Vector3i = cmd["voxel_pos"]
 			var ws_byte: int = cmd["water_byte"]
-			tool.channel = VoxelBuffer.CHANNEL_DATA5
-			tool.value = ws_byte
+			# Water Voxel V2: water is a TYPE block (id 5), not a DATA5
+			# byte. Callers still pass WaterByteCodec bytes (SOURCE_BYTE
+			# to place, AIR_BYTE/0 to scoop); translate to a CHANNEL_TYPE
+			# write so the blocky mesher draws/removes the water block.
+			tool.channel = VoxelBuffer.CHANNEL_TYPE
+			tool.value = (5 if WaterByteCodec.is_water(ws_byte) else 0)
 			# Editability guard — Zylann's do_box prints "Area not editable"
 			# and silently no-ops if the target chunk hasn't been streamed
 			# in at LOD0 yet. Re-queue with a retry counter rather than
@@ -793,8 +804,9 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var wb_min: Vector3i = cmd["voxel_min"]
 			var wb_max: Vector3i = cmd["voxel_max"]
 			var wb_byte: int = cmd["water_byte"]
-			tool.channel = VoxelBuffer.CHANNEL_DATA5
-			tool.value = wb_byte
+			# Water Voxel V2: TYPE-block water (see "water_set" above).
+			tool.channel = VoxelBuffer.CHANNEL_TYPE
+			tool.value = (5 if WaterByteCodec.is_water(wb_byte) else 0)
 			# Editability guard — see "water_set" above for why.
 			var wb_box := AABB(Vector3(wb_min), Vector3(wb_max - wb_min))
 			if not _try_requeue_if_not_editable(tool, wb_box, cmd):
