@@ -802,6 +802,14 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	if not get_node_or_null("/root/VoxelMaterialRegistry"):
 		return null
 	var material_id: int = packed & 0xFF
+	# Water Voxel V2 (2026-05-17): water is TYPE id 5. Terrain tools
+	# (shovel/pickaxe/axe) must NOT mine water like dirt — water and
+	# terrain "work differently". Returning null here makes the dig
+	# path treat a water-targeted swing as "nothing to mine" (the swing
+	# passes through). Water interaction is bucket-only (which uses
+	# WaterFlowManager.is_position_in_water, not this function).
+	if material_id == 5:
+		return null
 	return VoxelMaterialRegistry.get_by_id(material_id)
 
 
