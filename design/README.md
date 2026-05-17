@@ -123,6 +123,9 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
   / weapon-class / damage-type impacts / region beds, plus a lore-faithful
   Magic & Spellcraft category), naming + folder conventions, phased generation
   plan. The spec the SFX generation-prompt pass will draw from
+- `SFX_PROMPTS.md` — ElevenLabs generation prompts built from the library:
+  Phase 1 core (~167 prompts / ~520 files), batchable table with
+  duration/prompt_influence/loop params; further phases appended after review
 
 ### Planning, ops, and overview
 
