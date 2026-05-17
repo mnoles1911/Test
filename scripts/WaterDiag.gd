@@ -42,6 +42,12 @@ const WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
 # Vertical voxel span the "where is the water surface" probe scans
 # around the player before giving up (≈ ±8 m at 6 vox/m).
 const SURFACE_SCAN_VOXELS: int = 48
+# F5 radial "nearest water near the character" scan. Bounded + one-shot
+# only (NEVER per-frame — that volume scan every tick would be the bad
+# version of this; the F4 panel stays a cheap single player-column
+# query). Disk of RADIUS_M around the player, sampled every STRIDE_M.
+const RADIAL_SCAN_RADIUS_M: float = 32.0
+const RADIAL_SCAN_STRIDE_M: float = 3.0
 
 var _panel_visible: bool = false
 var _root: Control = null
@@ -243,8 +249,14 @@ func _format(d: Dictionary) -> String:
 
 func _dump_inspector() -> void:
 	# Collect every line so it goes to BOTH the Output log (prefixed) and
-	# the on-screen transient overlay (F5 had no in-game feedback before
-	# — felt broken even though it was printing fine).
+	# the on-screen transient overlay.
+	#
+	# Evaluates whatever water is NEAR THE CHARACTER (designer ask
+	# 2026-05-17): a bounded radial scan around the player finds the
+	# nearest water body + an aggregate, instead of only reporting the
+	# single column you happen to stand on. The vertical scan band
+	# centres on the PLAYER's Y, not sea level — elevated ponds (the
+	# test pond sits ~vox 128 vs sea 72) were invisible before.
 	var lines: Array[String] = []
 
 	var tool := _get_tool()
@@ -252,47 +264,102 @@ func _dump_inspector() -> void:
 		_emit(lines, "no VoxelTool yet (terrain still loading) — try again in a moment")
 		_show_inspect(lines)
 		return
+	# Anchor on the PLAYER ("near character"); camera only as fallback.
+	var player := _find_player()
 	var cam := get_viewport().get_camera_3d()
-	var anchor: Vector3 = cam.global_position if cam != null else (_find_player().global_position if _find_player() != null else Vector3.ZERO)
-	var vbase := _world_to_voxel(anchor)
+	var origin: Vector3 = player.global_position if player != null else (cam.global_position if cam != null else Vector3.ZERO)
+	var pv := _world_to_voxel(origin)
+	var cy: int = pv.y
 	tool.channel = VoxelBuffer.CHANNEL_TYPE
 	var sea_y := _sea_voxel_y()
 
-	_emit(lines, "anchor world=%.1f,%.1f,%.1f voxel=%s sea_voxY=%d" % [
-		anchor.x, anchor.y, anchor.z, str(vbase), sea_y])
+	_emit(lines, "player world=%.1f,%.1f,%.1f vox=%s cy=%d sea_voxY=%d" % [
+		origin.x, origin.y, origin.z, str(pv), cy, sea_y])
 
-	# 3×3 grid of sample columns spaced one mesh-block (16 vox) apart, so
-	# adjacent samples land in neighbouring mesh blocks — exactly where
-	# the LOD-seam water-top mismatch (the dark grid) lives.
+	# Water in the player's own column (band around cy).
+	var here_top: int = _water_top_y(tool, pv.x, pv.z, cy)
+	if here_top != -2147483648:
+		_emit(lines, "  AT PLAYER: water-top voxelY=%d (worldY=%.2f) — standing in/over water" % [
+			here_top, float(here_top + 1) / VOXELS_PER_METER])
+	else:
+		_emit(lines, "  AT PLAYER: dry column (no water within ±%d vox of cy)" % SURFACE_SCAN_VOXELS)
+
+	# --- Bounded radial scan: nearest water body near the character ---
+	var steps: int = int(RADIAL_SCAN_RADIUS_M / RADIAL_SCAN_STRIDE_M)
+	var r2_max: float = RADIAL_SCAN_RADIUS_M * RADIAL_SCAN_RADIUS_M
+	var scanned: int = 0
+	var hits: int = 0
+	var min_top: int = 0x7fffffff
+	var max_top: int = -0x7fffffff
+	var best_d2: float = INF
+	var best_world := Vector3.ZERO
+	var best_top: int = -2147483648
+	for ix in range(-steps, steps + 1):
+		for iz in range(-steps, steps + 1):
+			var ox: float = float(ix) * RADIAL_SCAN_STRIDE_M
+			var oz: float = float(iz) * RADIAL_SCAN_STRIDE_M
+			var d2: float = ox * ox + oz * oz
+			if d2 > r2_max:
+				continue
+			scanned += 1
+			var sworld := origin + Vector3(ox, 0.0, oz)
+			var sv := _world_to_voxel(sworld)
+			var t: int = _water_top_y(tool, sv.x, sv.z, cy)
+			if t == -2147483648:
+				continue
+			hits += 1
+			min_top = min(min_top, t)
+			max_top = max(max_top, t)
+			if d2 < best_d2:
+				best_d2 = d2
+				best_world = Vector3(sworld.x, float(t + 1) / VOXELS_PER_METER, sworld.z)
+				best_top = t
+
+	if hits == 0:
+		_emit(lines, "  NEAREST WATER: none within %.0f m of the player." % RADIAL_SCAN_RADIUS_M)
+		_emit(lines, "  scanned %d cols @ %.0fm stride — try moving closer to a sea/lake/pond." % [
+			scanned, RADIAL_SCAN_STRIDE_M])
+		_show_inspect(lines)
+		return
+
+	var dx_m: float = best_world.x - origin.x
+	var dz_m: float = best_world.z - origin.z
+	var dist_m: float = sqrt(best_d2)
+	_emit(lines, "  NEAREST WATER: %.1f m %s → world (%.1f, %.2f, %.1f) surfaceVoxY=%d" % [
+		dist_m, _compass(dx_m, dz_m), best_world.x, best_world.y, best_world.z, best_top])
+	_emit(lines, "  scan: %d cols, %d had water; surfaceVoxY %d..%d (Δ=%d) within %.0f m" % [
+		scanned, hits, min_top, max_top, max_top - min_top, RADIAL_SCAN_RADIUS_M])
+
+	# Detailed 3×3 mesh-block Δ grid at the nearest water (or the player
+	# column if already over water) — keeps the coplanar/LOD-seam read.
+	var gx: int = pv.x if here_top != -2147483648 else _world_to_voxel(best_world).x
+	var gz: int = pv.z if here_top != -2147483648 else _world_to_voxel(best_world).z
+	var gcy: int = cy if here_top != -2147483648 else best_top
 	var step: int = 16
-	var center_top: int = _water_top_y(tool, vbase.x, vbase.z, sea_y)
-	var any_water: bool = center_top != -2147483648
+	var center_top: int = _water_top_y(tool, gx, gz, gcy)
 	for dz: int in [-1, 0, 1]:
 		var row: String = ""
 		for dx: int in [-1, 0, 1]:
-			var sx: int = vbase.x + dx * step
-			var sz: int = vbase.z + dz * step
-			var top := _water_top_y(tool, sx, sz, sea_y)
-			var cnt := _water_count_in_block(tool, sx, sz, sea_y)
-			if top != -2147483648:
-				any_water = true
+			var sx: int = gx + dx * step
+			var sz: int = gz + dz * step
+			var top := _water_top_y(tool, sx, sz, gcy)
+			var cnt := _water_count_in_block(tool, sx, sz, gcy)
 			var delta_txt := "  ----"
 			if top != -2147483648 and center_top != -2147483648:
 				delta_txt = "  Δ%+d" % (top - center_top)
 			row += "[top=%s n=%d%s] " % [
 				("--" if top == -2147483648 else str(top)), cnt, delta_txt]
-		_emit(lines, "  dz=%+d  %s" % [dz, row])
-
-	var exp_lod := _expected_lod(0.0 if cam == null else cam.global_position.distance_to(anchor))
-	_emit(lines, "  center water-top voxelY=%s (world %.2f)  expectedLOD=%d" % [
-		("none" if center_top == -2147483648 else str(center_top)),
-		(NAN if center_top == -2147483648 else float(center_top) / VOXELS_PER_METER),
-		exp_lod])
-	if not any_water:
-		_emit(lines, "  NO WATER in range here — walk to/over a lake or sea and press F5 again.")
-	else:
-		_emit(lines, "  READ: equal 'top=' = coplanar (good). Differing 'top=' / nonzero Δ at a block step = dark-grid LOD-seam mismatch.")
+		_emit(lines, "  grid dz=%+d  %s" % [dz, row])
+	_emit(lines, "  READ: equal 'top=' across the grid = coplanar (good); nonzero Δ at a block step = LOD-seam mismatch.")
 	_show_inspect(lines)
+
+
+func _compass(dx_m: float, dz_m: float) -> String:
+	# World +X = East, world -Z = North (Godot forward = -Z).
+	var ns := ("N" if dz_m < -0.5 else ("S" if dz_m > 0.5 else ""))
+	var ew := ("E" if dx_m > 0.5 else ("W" if dx_m < -0.5 else ""))
+	var s := ns + ew
+	return s if s != "" else "here"
 
 
 func _emit(lines: Array[String], s: String) -> void:
@@ -309,26 +376,29 @@ func _show_inspect(lines: Array[String]) -> void:
 		_inspect_root.visible = true
 
 
-func _water_top_y(tool: Object, vx: int, vz: int, sea_y: int) -> int:
-	# Highest water voxel Y in this column near sea level. Returns
-	# INT_MIN sentinel if the column has no water in the scan band.
-	var hi := sea_y + 4
-	var lo := sea_y - SURFACE_SCAN_VOXELS
+func _water_top_y(tool: Object, vx: int, vz: int, cy: int) -> int:
+	# Highest water voxel Y in this column within ±SURFACE_SCAN_VOXELS of
+	# cy. cy is the PLAYER/anchor voxel Y, NOT sea level — elevated
+	# ponds live well above sea level (the test pond is ~vox 128 vs sea
+	# 72), so a sea-anchored band missed them entirely. Returns INT_MIN
+	# sentinel if no water in the band.
+	var hi := cy + SURFACE_SCAN_VOXELS
+	var lo := cy - SURFACE_SCAN_VOXELS
 	for vy in range(hi, lo - 1, -1):
 		if tool.get_voxel(Vector3i(vx, vy, vz)) == WATER_TYPE_ID:
 			return vy
 	return -2147483648
 
 
-func _water_count_in_block(tool: Object, vx: int, vz: int, sea_y: int) -> int:
-	# Count TYPE-5 voxels in the 16-wide column slab around sea level at
-	# this XZ block. A cheap proxy for "what the generator/mesher
-	# actually produced here per block" (Task #6 — no C++ rebuild).
+func _water_count_in_block(tool: Object, vx: int, vz: int, cy: int) -> int:
+	# Count TYPE-5 voxels in the 16-wide column slab around cy at this XZ
+	# block. Cheap proxy for "what the generator/mesher produced here"
+	# (no C++ rebuild). Band centred on cy (player/anchor Y), not sea.
 	var bx := (vx >> 4) << 4
 	var bz := (vz >> 4) << 4
 	var n := 0
-	var y_lo := sea_y - 20
-	var y_hi := sea_y + 4
+	var y_lo := cy - 20
+	var y_hi := cy + 4
 	for ox in range(0, 16, 4):          # 4-stride sample = 64 reads, fast
 		for oz in range(0, 16, 4):
 			for vy in range(y_lo, y_hi):
@@ -400,15 +470,15 @@ func _sea_voxel_y() -> int:
 
 func _find_surface_y(world_pos: Vector3) -> float:
 	# World-Y of the topmost water voxel in the player's column, scanning
-	# a band around sea level. Drives the surface-Y / Δ readout that #3
+	# a band around the PLAYER's Y (not sea level — elevated ponds were
+	# invisible before). Drives the panel surface-Y / Δ readout that #3
 	# (flow-Y) and #4 (waterline jitter) need.
 	var tool := _get_tool()
 	if tool == null:
 		return NAN
 	tool.channel = VoxelBuffer.CHANNEL_TYPE
 	var v := _world_to_voxel(world_pos)
-	var sea_y := _sea_voxel_y()
-	var top := _water_top_y(tool, v.x, v.z, sea_y)
+	var top := _water_top_y(tool, v.x, v.z, v.y)
 	if top == -2147483648:
 		return NAN
 	# Top of the water block = (voxelY + 1) / vox-per-m in world space.

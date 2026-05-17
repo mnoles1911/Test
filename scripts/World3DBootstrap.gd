@@ -1390,24 +1390,114 @@ func _wait_for_ground_under_player(retries_remaining: int = 25) -> void:
 
 
 func _seed_test_pond() -> void:
-	# Replaces the legacy WaterFlowManager.add_source_region pond seed.
-	# Writes water source bytes into CHANNEL_DATA over the pond's voxel
-	# footprint via VoxelEditManager so the bytes go through the queue,
-	# get the modified-chunk mark for save persistence, and emit
+	# Deterministic test pond for water QA (swim / underwater filter /
+	# dig-near-water / waterline behaviour). Writes TYPE-5 water over a
+	# footprint via VoxelEditManager so it goes through the queue, gets
+	# the modified-chunk mark for save persistence, and emits
 	# water_changed_at so the mesher rebuilds the affected chunks.
 	#
-	# Pond footprint: world (-23, -1.5, -1) to (-13, 1.5, 9). At 6 vox/m
-	# that's voxel (-138, -9, -6) to (-78, 9, 54), with the surface at
-	# voxel Y=9 (= world 1.5). queue_set_water_box uses inclusive-min /
-	# exclusive-max convention so we use one-past on the max side.
+	# RELOCATED + slope-robust 2026-05-17 (backlog #2). The legacy
+	# footprint was world (-23,-1.5,-1)..(-13,1.5,9) — fixed at world
+	# Y≈0, ~70 voxels BELOW sea level (72), buried in rock: unreachable,
+	# never testable. v1 of the relocation anchored the whole footprint
+	# to ONE ground sample at the centre — but the terrain near spawn is
+	# steep (ground vox 172 @ spawn(0,0), 155 @ campfire(-3,0), 128 @
+	# pond(12,0) — ~7 m drop over 12 m). A single-sample box on that
+	# slope is malformed: the uphill side stays roofed by solid rock
+	# (not open to sky), the downhill side has the box bottom floating
+	# in air. v2: sample ground across the WHOLE footprint, EXCAVATE the
+	# cuboid to AIR up to the highest ground in it (so every side opens
+	# to the sky with clean walls), then FILL the lower part with water.
+	# Result: a proper open pool dug into the hillside on any slope,
+	# ~3 m deep, surface ~flush with the LOW (downhill) approach so the
+	# player can walk straight in (wade → swim → fully submerge: tests
+	# the underwater filter + waterline-jitter item). Verify with
+	# WaterDiag F5 standing in it — [WaterInspect] top= should match the
+	# surfaceVoxY printed below; navigate via the F4 panel's player pos
+	# to world X≈12, Z≈0.
 	if get_node_or_null("/root/VoxelEditManager") == null:
 		return
-	var voxel_min := Vector3i(-138, -9, -6)
-	var voxel_max := Vector3i(-78, 9, 54)
-	if VoxelEditManager.queue_set_water_box(voxel_min, voxel_max, WaterByteCodec.SOURCE_BYTE):
-		print("[World3D] Test pond water-box queued (%s..%s)." % [voxel_min, voxel_max])
+
+	var terrain := get_node_or_null(voxel_terrain_path) as Node3D
+	if terrain == null:
+		push_warning("[World3D] Test pond: no terrain; skipped.")
+		return
+	var terrain_scale: float = terrain.transform.basis.get_scale().y
+	if absf(terrain_scale) < 0.00001:
+		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+	var voxels_per_m: float = 1.0 / terrain_scale
+
+	# Pond footprint in WORLD metres, then → voxels. Centred at world
+	# (12, 0); 7 m × 7 m; 3 m deep.
+	const POND_CENTER_X_M: float = 12.0
+	const POND_CENTER_Z_M: float = 0.0
+	const POND_HALF_M: float = 3.5      # → 7 m square footprint
+	const POND_DEPTH_M: float = 3.0     # water depth below the surface
+	const POND_RIM_VOX: int = 4         # extra air cleared above g_max
+	var cx_vox: int = int(roundf(POND_CENTER_X_M * voxels_per_m))
+	var cz_vox: int = int(roundf(POND_CENTER_Z_M * voxels_per_m))
+	var half_vox: int = int(roundf(POND_HALF_M * voxels_per_m))
+	var depth_vox: int = int(roundf(POND_DEPTH_M * voxels_per_m))
+
+	# Resolve the object that answers get_ground_voxel_y_at (generator,
+	# or its cpp_impl behind the adapter) — same path the spawn pre-snap
+	# + campfire snap use, so all anchor consistently.
+	var generator = terrain.get("generator") if "generator" in terrain else null
+	var ground_src: Object = null
+	if generator != null:
+		if generator.has_method("get_ground_voxel_y_at"):
+			ground_src = generator
+		elif "cpp_impl" in generator:
+			var cpp = generator.get("cpp_impl")
+			if cpp != null and cpp.has_method("get_ground_voxel_y_at"):
+				ground_src = cpp
+
+	# Sample ground over a 3×3 grid across the footprint so a sloped
+	# site is handled: g_min drives the water surface (≈flush on the
+	# low/downhill approach), g_max drives how high to clear air (so the
+	# high/uphill side is dug open to the sky, not left roofed).
+	var g_min: int = 0x7fffffff
+	var g_max: int = -0x7fffffff
+	if ground_src != null:
+		for sx in [cx_vox - half_vox, cx_vox, cx_vox + half_vox]:
+			for sz in [cz_vox - half_vox, cz_vox, cz_vox + half_vox]:
+				var g: int = int(ground_src.call("get_ground_voxel_y_at", sx, sz))
+				g_min = min(g_min, g)
+				g_max = max(g_max, g)
 	else:
-		push_warning("[World3D] Test pond seed failed (queue full or NoEditZone reject).")
+		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 72).")
+		g_min = 72
+		g_max = 72
+
+	# Water surface one voxel above the LOWEST ground in the footprint
+	# (≈flush on the downhill approach). Inclusive-min / exclusive-max
+	# (one-past on max), matching queue_set_water_box / box_voxels.
+	var surface_vox_y: int = g_min + 1
+	var floor_vox_y: int = surface_vox_y - depth_vox
+	var x0: int = cx_vox - half_vox
+	var x1: int = cx_vox + half_vox
+	var z0: int = cz_vox - half_vox
+	var z1: int = cz_vox + half_vox
+
+	# 1) Excavate the whole cuboid to AIR from the basin floor up past
+	#    the highest ground (+ a rim) so every side is open to the sky.
+	var air_min := Vector3i(x0, floor_vox_y, z0)
+	var air_max := Vector3i(x1, g_max + POND_RIM_VOX + 1, z1)
+	var air_ok: bool = VoxelEditManager.queue_edit_box_voxels(air_min, air_max, 0)
+
+	# 2) Fill the lower part with water (overwrites the just-cleared air;
+	#    queue is FIFO so this lands after the excavation).
+	var water_min := Vector3i(x0, floor_vox_y, z0)
+	var water_max := Vector3i(x1, surface_vox_y + 1, z1)
+	var water_ok: bool = VoxelEditManager.queue_set_water_box(water_min, water_max, WaterByteCodec.SOURCE_BYTE)
+
+	if air_ok and water_ok:
+		print("[World3D] Test pond queued: world centre (%.1f, %.2f, %.1f) gMinVox=%d gMaxVox=%d surfaceVoxY=%d (worldY=%.2f) air=%s..%s water=%s..%s" % [
+			POND_CENTER_X_M, float(surface_vox_y) * terrain_scale, POND_CENTER_Z_M,
+			g_min, g_max, surface_vox_y, float(surface_vox_y) * terrain_scale,
+			air_min, air_max, water_min, water_max])
+	else:
+		push_warning("[World3D] Test pond seed failed (air_ok=%s water_ok=%s — queue full or NoEditZone reject)." % [air_ok, water_ok])
 
 
 
