@@ -340,6 +340,17 @@ const CAMERA_Y_SMOOTH_MAX_OFFSET: float = 0.5
 var _camera_smoothed_y: float = 0.0
 var _camera_smoothed_initialized: bool = false
 
+# Crouch camera drop (2026-05-17). Standing eye = CAMERA_TARGET_BASE_Y
+# (1.5 m on the 1.8 m capsule). Crouching lowers the first-person
+# camera by this much → ~0.9 m eye height (~60% of standing, a natural
+# crouch). Applied as a smoothed offset layered on top of the existing
+# bob-damping in _smooth_camera_y, so toggling C eases the camera
+# down/up instead of snapping. Camera-only by design — the collision
+# capsule is NOT shrunk here (crouch-under-overhangs was not requested).
+const CROUCH_CAMERA_DROP: float = 0.6
+const CROUCH_CAM_HALFLIFE_S: float = 0.10
+var _crouch_cam_y: float = 0.0
+
 # Jump-cooldown gate. Set to JUMP_DISABLE_SMOOTHING_S when the player
 # presses jump (dodge action) so the camera tracks the jump arc 1:1.
 # Decays in _smooth_camera_y each frame. Crucially this is ONLY set by
@@ -654,11 +665,19 @@ func _smooth_camera_y(delta: float) -> void:
 	# Always decay the jump cooldown so it doesn't pin the gate open.
 	_camera_jump_cooldown_s = maxf(0.0, _camera_jump_cooldown_s - delta)
 
+	# Crouch camera offset — eased toward the crouched/standing target
+	# every frame (frame-rate-independent half-life) so the C toggle
+	# glides the eye down/up. Added to every CameraTarget.y assignment
+	# below so it composes with the bob-damping and the snap cases.
+	var _crouch_target: float = -CROUCH_CAMERA_DROP if _is_crouching else 0.0
+	var _crouch_alpha: float = 1.0 - pow(0.5, delta / CROUCH_CAM_HALFLIFE_S)
+	_crouch_cam_y = lerp(_crouch_cam_y, _crouch_target, _crouch_alpha)
+
 	var raw_y: float = global_position.y
 	if not _camera_smoothed_initialized:
 		_camera_smoothed_y = raw_y
 		_camera_smoothed_initialized = true
-		_camera_target.position.y = CAMERA_TARGET_BASE_Y
+		_camera_target.position.y = CAMERA_TARGET_BASE_Y + _crouch_cam_y
 		return
 
 	var is_player_jumping: bool = _camera_jump_cooldown_s > 0.0
@@ -669,7 +688,7 @@ func _smooth_camera_y(delta: float) -> void:
 		# camera response is fully 1:1 (player needs to feel the
 		# air-time, the fall, or the fly-mode movement).
 		_camera_smoothed_y = raw_y
-		_camera_target.position.y = CAMERA_TARGET_BASE_Y
+		_camera_target.position.y = CAMERA_TARGET_BASE_Y + _crouch_cam_y
 		return
 
 	# Frame-rate-independent exponential lerp toward the real body Y.
@@ -683,7 +702,7 @@ func _smooth_camera_y(delta: float) -> void:
 	# below the player's feet or above their head.
 	var offset_y: float = _camera_smoothed_y - raw_y
 	offset_y = clampf(offset_y, -CAMERA_Y_SMOOTH_MAX_OFFSET, CAMERA_Y_SMOOTH_MAX_OFFSET)
-	_camera_target.position.y = CAMERA_TARGET_BASE_Y + offset_y
+	_camera_target.position.y = CAMERA_TARGET_BASE_Y + offset_y + _crouch_cam_y
 
 
 func _physics_process_inner(delta: float) -> void:
