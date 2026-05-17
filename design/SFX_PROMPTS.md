@@ -59,6 +59,22 @@ shallow_water`) × gaits (`walk, run, sprint, crouch`). Single footstep =
 one shoe contact (engine triggers per step); render as a *single step*, not
 a sequence. `infl` mid (0.4) so takes vary naturally.
 
+**Why footsteps are `loop=N` (incl. sprint) — by design, not an oversight.**
+A footstep file is one foot plant; the walk/run/sprint *cadence* lives in the
+locomotion code, not the audio. The engine fires one `step_*` one-shot per
+foot plant (animation footstep marker or a distance-based emitter that fires
+faster as speed rises), random-picking one of the `var` takes with slight
+pitch/volume jitter (anti-"machine-gun"). Looping would lock the rhythm to a
+fixed tempo (feet de-sync from sound on accel/decel/stop), keep the wrong
+surface when the player crosses materials mid-stride, and pop on start/stop.
+This is the Skyrim/KCD2/Minecraft model. The *continuous* part of locomotion
+is what loops: the `armor_*_move_loop` rustle/jingle bed (played under the
+steps while moving), `water_wade_shallow_loop`, `climb_rock_loop`, and the
+`roland_breath_*_loop` states. Rule across the whole doc: **discrete impact
+= one-shot; continuous texture/state = loop.** Implementation requirement:
+the locomotion system must trigger per foot plant, pick the variation and
+surface per step, and jitter pitch/volume.
+
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
 | step_walk_grass | A single soft footstep on grass and soil, a leather boot pressing down, faint dry grass crunch, dry close mono, no reverb, no music | 0.5 | 0.4 | N | 5 | SFX |
