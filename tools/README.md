@@ -7,6 +7,7 @@ Small Python scripts that implement the TTS pipeline described in
 |---|---|---|
 | `strip_draft.py` | Turns a dialogue draft (`.md`) into a TTS-ready script (`.txt`). Deterministic. | TTS_PIPELINE §4 |
 | `render_bulk.py` | Renders TTS scripts to audio via ElevenLabs. Idempotent, hash-aware, cost-capped. | TTS_PIPELINE §6 |
+| `render_sfx.py` | Renders the SFX prompt tables to ElevenLabs Sound Effects candidates for manual review. Idempotent, hash-aware, cost-capped. | SFX_PROMPTS.md |
 
 ---
 
@@ -124,6 +125,64 @@ natively — this is a deliberate deviation that should be reconciled when
 the doc is next edited. To switch to OGG/Opus output later, change
 `AUDIO_EXT` in `render_bulk.py` and pass an `output_format` query param
 on the API call.
+
+---
+
+## render_sfx.py
+
+Reads `design/SFX_PROMPTS.md`, finds every sound-effect row (the
+`id | prompt | dur | infl | loop | var | bus` tables), and asks the
+ElevenLabs **Sound Effects** API (`POST /v1/sound-generation`) to generate
+several candidate versions per id into a review folder — one subfolder per
+id — so the keepers can be chosen by hand.
+
+Every doc detail is honored per call: `text` = prompt, `duration_seconds`
+= `dur` (`auto` => omitted; numbers clamped to the API's 0.5–22 s),
+`prompt_influence` = `infl`, `loop` = `loop` (Y => seamless `loop:true`).
+Candidates per row = `var + 2` (min 3) unless `--versions N` overrides.
+
+Same discipline as `render_bulk.py`: idempotent (per-row hash of
+prompt+params+versions; re-runs only do new/changed rows), spend estimate
+shown before any call, hard `--cost-cap` (default $15), `--dry-run`,
+`--mock` (placeholder files, no key, no spend — exercises folders +
+manifest + regen logic).
+
+### Usage
+
+```bash
+# Sanity-check parsing — list every row, no calls, no key:
+python3 tools/render_sfx.py --list
+
+# Spend plan for all of Phase 1, no calls:
+python3 tools/render_sfx.py --phase 1 --dry-run
+
+# Test the full pipeline with placeholders (no spend, no key):
+python3 tools/render_sfx.py --category 02 --mock
+
+# Render one category for real (needs ELEVENLABS_API_KEY):
+python3 tools/render_sfx.py --category 02
+
+# Re-render one id after editing its prompt in the doc:
+python3 tools/render_sfx.py --id cmb_bear_rear_roar --force
+```
+
+### Output
+
+Defaults to `C:\Users\Matt Noles\Desktop\SFX` (override `--out` or
+`SFX_OUT_DIR`). Layout: `<OUT>/<category>/<id>/<id>_vNN.mp3`, plus
+`_manifest.json` (idempotency/audit) and `_spend.log` (append-only,
+live runs only). ElevenLabs returns mp3 (Godot imports it). Convert the
+approved keepers to repo format when moving them in:
+`ffmpeg -i in.mp3 -ac 1 -ar 44100 -c:a libvorbis out.ogg`, then drop into
+`assets/audio/sfx/...` and flip the entry to EXISTING in `SFX_LIBRARY.md`.
+
+### Cost discipline
+
+Conservative `~$0.08`/generation estimate (update the constant if pricing
+changes). The PLAN line shows row/generation counts and `~$cost` vs the
+cap; over-cap aborts before any network call; a confirm prompt guards live
+runs unless `--yes`. `--cost-cap`, `--limit`, `--category`, `--id` keep
+batches small while you validate the prompt style.
 
 ---
 

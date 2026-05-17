@@ -39,8 +39,11 @@ one row per library entry.
 - Realistic / grounded, low-fantasy (KCD2/Minecraft reference), not cartoony.
 
 **Batch feed:** the table is API-ready — iterate rows, call ElevenLabs SFX
-with `text=prompt`, `duration_seconds=dur`, `prompt_influence=infl`, request
-`var×2` generations per row.
+with `text=prompt`, `duration_seconds=dur`, `prompt_influence=infl`,
+`loop=(loop==Y)`, request `var×2` generations per row. **`tools/render_sfx.py`
+does exactly this** — it parses these tables and drives the
+`/v1/sound-generation` endpoint into a per-id review folder (idempotent,
+cost-capped, `--dry-run`/`--mock`). See `tools/README.md → render_sfx.py`.
 
 **Phase 1 scope (~165 entries):** Cat 01 live-surface locomotion · Cat 02
 universal combat verbs + Roland's longsword + shipped spear · Cat 03 core
