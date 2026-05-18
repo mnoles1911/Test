@@ -398,7 +398,7 @@ batch is rendered or assets are curated into the repo).
 | 04 Voxel / Terrain (scoped) | ✅ rendered | 133 | dig/mine/place/collapse/explosive/build |
 | **02 Combat / Impacts / Enemies** | ⛔ NOT rendered | 429 | ~9,585 cr — deferred (budget) |
 
-**Update 2026-05-18 — raw renders committed (PR #217).** At the designer's
+**Update 2026-05-18 — raw renders committed (PR #226).** At the designer's
 explicit direction the curate-first step was *skipped*: all **548** raw
 `.mp3` takes were bulk-placed into `assets/audio/sfx/<folder>/` as
 `<id>_NN.mp3` variation sets (mapped by the exact `AudioManager` prefix
@@ -540,7 +540,7 @@ non-code:
      give good source audio (judging cadence on bad samples is misleading).
 Pipeline + wiring are **done**; this is a pure audio-quality pass for later.
 
-**Update 2026-05-18 (PR #217) — raw takes committed in-repo.** The full
+**Update 2026-05-18 (PR #226) — raw takes committed in-repo.** The full
 548-take pool now lives in `assets/audio/sfx/` (was Desktop-only). This
 *improves* perceived variety immediately (real `<id>_NN` sets → genuine
 random rotation, not the 1–2-clip machine-gun) but does **not** fix the
