@@ -116,19 +116,23 @@ const SWIM_VERTICAL_ACCEL: float = 8.0
 # diving. Decoupled from _accel so swim feel can be tuned without
 # affecting walk/sprint.
 
-const SWIM_NATURAL_SINK_SPEED: float = 0.6
-# Default downward drift (m/s) when no swim input is held. Negative
-# Y direction. Models "Roland is heavier than water with his pack
-# and gear" — without active swimming, he slowly sinks. Forces the
-# player to actively press Space to stay afloat in deep water,
-# adding drowning tension. Real humans are slightly buoyant, but
-# slow-sink reads as more game-y and tense.
+const BUOYANT_RISE_SPEED: float = 1.2
+# Buoyancy (2026-05-18, #13). With no swim input while SUBMERGED,
+# Roland is lighter than water and drifts UP toward the surface at
+# this speed (m/s). Slower than SWIM_VERTICAL_SPEED so actively
+# swimming up still feels faster and deliberate. Replaces the old
+# slow-SINK model: real bodies float; *diving* is the thing that
+# takes effort — which the descend input now meaningfully fights.
 
-const SWIM_NATURAL_SINK_ACCEL: float = 2.5
-# How fast the natural sink ramps in. Lower than SWIM_VERTICAL_ACCEL
-# so the moment the player STOPS holding ascend, vertical velocity
-# doesn't snap to negative — it eases down. Feels like buoyancy
-# being lost gradually rather than a harsh "you let go, you sink".
+const BUOYANT_RISE_ACCEL: float = 3.0
+# Ramp toward BUOYANT_RISE_SPEED when the player lets go underwater.
+# Gentle, so surfacing reads as a natural float-up rather than a pop.
+
+const BUOYANT_SETTLE_ACCEL: float = 4.0
+# At the surface (in water but head NOT submerged) with no input,
+# vertical velocity eases toward 0 at this rate — Roland settles and
+# bobs at the waterline instead of sinking back under or launching
+# out. This is the "floats at the surface" feel.
 
 
 # =============================================================
@@ -810,11 +814,17 @@ func _physics_process_inner(delta: float) -> void:
 		elif descend and not ascend:
 			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		else:
-			# No vertical input — Roland slowly sinks. Eases toward
-			# SWIM_NATURAL_SINK_SPEED (a small negative value) rather
-			# than zero, so the player must actively swim up to stay
-			# afloat in deep water. Adds tension to drowning timing.
-			velocity.y = move_toward(velocity.y, -SWIM_NATURAL_SINK_SPEED, SWIM_NATURAL_SINK_ACCEL * delta)
+			# No vertical input — BUOYANCY. Submerged: Roland is lighter
+			# than water and drifts up toward the surface. At the surface
+			# (in water but head clear): ease toward neutral so he settles
+			# and bobs at the waterline instead of sinking back under or
+			# launching out. Diving (descend) above overrides this and
+			# fights the buoyant rise — that is what makes going deep feel
+			# like effort, and lets the player surface just by letting go.
+			if _is_submerged:
+				velocity.y = move_toward(velocity.y, BUOYANT_RISE_SPEED, BUOYANT_RISE_ACCEL * delta)
+			else:
+				velocity.y = move_toward(velocity.y, 0.0, BUOYANT_SETTLE_ACCEL * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally based on the
 		# water level gradient. Active anywhere a flow cell or source
