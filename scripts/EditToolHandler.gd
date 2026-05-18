@@ -845,6 +845,15 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 			print("[EditToolHandler] This place doesn't yield to me.")
 		return
 
+	# Dig SFX — one strike per accepted carve. Tool + material are both
+	# known here. No-op-safe: silent (one notice) until the vox_* .ogg/
+	# .mp3 are curated in, then automatic. (NoEditZone rejects took the
+	# early return above and are handled by AudioManager's subscription
+	# to edit_rejected_no_edit_zone -> vox_bedrock_blocked.)
+	var _am := get_node_or_null("/root/AudioManager")
+	if _am != null:
+		_am.play(_dig_sfx_id(equipped_id, material.id_string), voxel_world_pos)
+
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("Mined %s with %s at (%.1f, %.1f, %.1f)" % [
 			material.id_string, equipped_id, voxel_world_pos.x, voxel_world_pos.y, voxel_world_pos.z
@@ -922,3 +931,30 @@ func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, c
 	drop.setup(drop_item_id, color, count)
 	world_root.add_child(drop)
 	drop.global_position = world_pos
+
+
+# Map (equipped tool item_id, voxel material id_string) -> a Cat-04 vox_*
+# SFX id. Preferred tool+material combos get the dedicated strike; any
+# mismatch (and axe, whose dedicated wood set is a later sub-phase) falls
+# back to the wrong-tool scrape, hard vs soft. See SFX_PROMPTS.md §7b.
+func _dig_sfx_id(equipped_id: String, mat: String) -> String:
+	var hard := mat in [
+		"stone", "marble", "bedrock", "stone_dark", "copper_ore", "iron_ore"
+	]
+	var tool := ""
+	if "pickaxe" in equipped_id:
+		tool = "pick"
+	elif "shovel" in equipped_id:
+		tool = "shovel"
+	elif "axe" in equipped_id:
+		tool = "axe"
+	if tool == "pick" and hard:
+		return "vox_pick_strike_stone"
+	if tool == "shovel" and not hard:
+		if mat == "grass" or mat == "leaves":
+			return "vox_shovel_strike_grass"
+		if mat == "sand" or mat == "gravel":
+			return "vox_shovel_strike_sand"
+		return "vox_shovel_strike_dirt"   # dirt/clay/snow/other soft
+	# Wrong tool for the material (incl. axe until its set is rendered).
+	return "vox_wrongtool_stone" if hard else "vox_wrongtool_soft"

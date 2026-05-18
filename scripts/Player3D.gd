@@ -168,9 +168,13 @@ var max_endurance: float = MAX_ENDURANCE_DEFAULT
 # one-shot every time the player has covered a "stride" of ground (the
 # "cadence lives in code" model from design/SFX_PROMPTS.md §2). Distance-
 # based so it stays in sync at any speed and on accel/decel.
-const STEP_DIST_WALK: float   = 0.85   # metres of ground travel per step
-const STEP_DIST_SPRINT: float = 1.25   # longer stride at a run
-const STEP_DIST_CROUCH: float = 0.70   # short, careful steps
+# Tuned up from the first pass (0.85/1.25/0.70) — the game's "walk" is a
+# fast ~4.5 m/s, so the old stride fired ~5 steps/s (machine-gun). These
+# give ~2.8/s walk, ~4/s sprint, ~1.8/s crouch. Still a feel knob — see
+# SFX_PROMPTS.md §8b.
+const STEP_DIST_WALK: float   = 1.60   # metres of ground travel per step
+const STEP_DIST_SPRINT: float = 2.10   # longer stride at a run
+const STEP_DIST_CROUCH: float = 1.10   # short, careful steps
 const MIN_STEP_SPEED: float   = 0.6    # m/s below this = not really walking
 var _footstep_accum: float = 0.0       # metres travelled since last step
 

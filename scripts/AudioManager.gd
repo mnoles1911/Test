@@ -118,20 +118,30 @@ func _ready() -> void:
 # --- Public API ----------------------------------------------------------
 
 # One-shot. world_pos: Vector3 for a 3D sound, or null for flat/UI.
+# Each play gets a small random pitch + volume wobble so repeated sounds
+# (footsteps, impacts) never machine-gun the identical clip. This is
+# applied to ONE-SHOTS ONLY — loops go through play_loop() and must NOT
+# be detuned. Big perceived-quality win even with a single take.
 func play(id: String, world_pos = null, bus: String = "") -> void:
 	var stream := _pick_stream(id)
 	if stream == null:
 		return
 	var bus_name := _bus_for(id, bus)
+	var pitch: float = randf_range(0.94, 1.06)   # ~ +-6 %
+	var vol_db: float = randf_range(-2.0, 1.5)
 	if world_pos is Vector3:
 		var p := _idle_3d()
 		p.bus = bus_name
 		p.global_position = world_pos
+		p.pitch_scale = pitch
+		p.volume_db = vol_db
 		p.stream = stream
 		p.play()
 	else:
 		var p := _idle_2d()
 		p.bus = bus_name
+		p.pitch_scale = pitch
+		p.volume_db = vol_db
 		p.stream = stream
 		p.play()
 

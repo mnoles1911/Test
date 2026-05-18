@@ -455,13 +455,17 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
   grass/dirt/stone/wood/sand buckets) and `_in_water` → `shallow_water`.
   Gated on-floor + moving; airborne/jump/deep-swim skipped.
 
+- ✅ **Voxel dig/mine** — `EditToolHandler._carve` (post-accept) →
+  `_dig_sfx_id(equipped_id, material.id_string)` → `vox_pick_strike_stone`
+  / `vox_shovel_strike_<grass|sand|dirt>` / `vox_wrongtool_<stone|soft>`.
+  One strike per accepted carve; axe/wood + break/place are a later
+  sub-phase (Cat-04 axe set not rendered yet).
+- ✅ **AudioManager polish** — one-shot `play()` now applies per-trigger
+  pitch (~±6%) + volume (~±2 dB) jitter (loops exempt), and resolves
+  `.mp3` as well as `.ogg`.
+
 **Still to wire** (per-system, when that system is touched — not all at once):
 
-- Voxel dig/mine/place — must hook in **`EditToolHandler`** at the
-  successful-carve site, where tool *and* target material are known.
-  `VoxelEditManager.edit_applied(world_pos, chunk, aabb)` carries position
-  only — not enough for `vox_<tool>_strike_<mat>`. Deliberate edit + editor
-  test required (input script; do carefully).
 - Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` (once Combat
   SFX are rendered next cycle).
 - Weather — `WeatherManager` state change → swap `wx_*` loop beds.
@@ -473,21 +477,20 @@ In-game footstep audio was confirmed working end-to-end but **sounds poor**
 in its current uncurated state. These are polish items, *not* bugs — keep
 the wiring, revisit the quality here:
 
-1. **No variation rotation.** Only a single placeholder take per id is
-   placed; the design needs the full `var` set of distinct curated takes
-   so AudioManager's random-pick stops the "machine-gun" identical-clip
-   repetition (the exact problem `§2` warns about). → curation pass, task #8.
-2. **No pitch/volume jitter.** `AudioManager.play` is dead-flat. Add a
-   small per-trigger random pitch (~±5–8%) and volume (~±2 dB) wobble —
-   cheap, large perceived-quality gain, helps even with one take. Not yet
-   built (AudioManager enhancement).
-3. **Footstep cadence/stride is first-pass.** `STEP_DIST_WALK 0.85 m` at
-   the game's ~4.5 m/s walk ≈ 5 steps/s — likely too rapid. Revisit
-   per-gait stride, or switch to a capped time interval, tuned by feel.
-4. **Takes are unaudited `v01`.** Curation must pick the best of the ~7
-   rendered candidates per sound, not the first.
+1. ✅ **Variation rotation** — addressed for footsteps: all rendered
+   takes (24 step ids × ~7) bulk-copied as `<id>_01..0N.mp3` sets, so
+   AudioManager random-picks across them (no more identical-clip
+   machine-gun). Still **bulk, not auditioned** — see #4.
+2. ✅ **Pitch/volume jitter** — added to `AudioManager.play` (one-shots
+   only; ~±6% pitch, ~±2 dB), so even one take varies per trigger.
+3. ✅ **Cadence** — `STEP_DIST_*` raised to 1.6/2.1/1.1 (~2.8/4/1.8 per
+   sec). Still a feel knob; revisit if it reads fast/slow in play.
+4. ⏳ **Takes unaudited.** The bulk-copied sets include every candidate,
+   not the best. Real curation = listen, prune each id to the strongest
+   takes, optionally convert to `.ogg`. Still task #8.
 
-Owner: revisit with tasks #8 (curation) + an AudioManager jitter pass.
+Net: footsteps should now sound markedly better (varied + jittered);
+remaining work is the listen-and-prune curation, not code.
 
 ---
 
