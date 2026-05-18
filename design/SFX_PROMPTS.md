@@ -438,21 +438,29 @@ routes to the bus by id-prefix, **no-ops with one warning if the file
 isn't placed yet** (so wiring is safe before curation; sounds switch on as
 `.ogg`s land). Needs in-editor verification (no headless Godot here).
 
-**Call sites still to wire** (each: add one `AudioManager.play(...)` at the
-event; do per-system as that system is touched, not all at once):
+**Wired so far** (low-risk, signal/cosmetic; both no-op silently until the
+`.ogg` is curated in — verify in-editor via the one-time Output warning):
 
+- ✅ **Camp/fire** — `CampfireFlicker3D._ready/_exit_tree` →
+  `play_loop("fire_campfire_crackle_loop")` at the fire, stopped on exit.
+- ✅ **NoEditZone reject** — `AudioManager` subscribes to
+  `VoxelEditManager.edit_rejected_no_edit_zone` →
+  `play("vox_bedrock_blocked", pos)`. Done from the audio layer (deferred,
+  guarded) so **no gameplay-script edit**.
+
+**Still to wire** (per-system, when that system is touched — not all at once):
+
+- Voxel dig/mine/place — must hook in **`EditToolHandler`** at the
+  successful-carve site, where tool *and* target material are known.
+  `VoxelEditManager.edit_applied(world_pos, chunk, aabb)` carries position
+  only — not enough for `vox_<tool>_strike_<mat>`. Deliberate edit + editor
+  test required (input script; do carefully).
 - Footsteps — `Player3D` foot-plant (anim event / distance emitter) →
-  `step_<gait>_<surface>` at the player position, with the
-  surface/gait/variation rules in §2.
-- Voxel edits — `EditToolHandler` / `VoxelEditManager.edit_applied` →
-  `vox_<tool>_strike_<mat>` / `_break_` / `vox_place_<mat>` /
-  `vox_bedrock_blocked` / `vox_cluster_*`.
-- Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` swing/parry/
-  impact/enemy vocals (once Combat SFX are rendered).
-- Camp/fire — `CampfireFlicker3D` → `play_loop("fire_campfire_crackle_loop")`.
-- Weather — `WeatherManager` state change → swap `wx_*` loop beds via
-  `play_loop`/`stop_loop`.
-- Water — `WaterFlowManager` / swim state → `water_*` loops + splash one-shots.
+  `step_<gait>_<surface>`, with the surface/gait/variation rules in §2.
+- Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` (once Combat
+  SFX are rendered next cycle).
+- Weather — `WeatherManager` state change → swap `wx_*` loop beds.
+- Water — `WaterFlowManager` / swim state → `water_*` loops + splashes.
 
 ---
 

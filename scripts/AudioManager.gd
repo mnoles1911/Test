@@ -108,6 +108,10 @@ func _ready() -> void:
 		p.bus = "SFX"
 		add_child(p)
 		_pool_2d.append(p)
+	# Subscribe to gameplay signals once every autoload exists. This
+	# autoload loads before VoxelEditManager, so we defer to the end of
+	# this frame, by which point all autoloads are present.
+	call_deferred("_wire_world_signals")
 
 
 # --- Public API ----------------------------------------------------------
@@ -245,3 +249,24 @@ func _idle_2d() -> AudioStreamPlayer:
 	add_child(t)
 	t.finished.connect(t.queue_free)
 	return t
+
+
+# --- Gameplay signal wiring ----------------------------------------------
+#
+# The audio layer subscribes to gameplay signals here rather than editing
+# the gameplay scripts. Low-risk, localized, idempotent, and guarded — if a
+# system is absent the connection is simply skipped.
+
+func _wire_world_signals() -> void:
+	# NoEditZone rejection -> the dull "this place doesn't yield" thunk.
+	var vem := get_node_or_null("/root/VoxelEditManager")
+	if vem != null and vem.has_signal("edit_rejected_no_edit_zone"):
+		if not vem.is_connected(
+				"edit_rejected_no_edit_zone", _on_edit_rejected):
+			vem.connect("edit_rejected_no_edit_zone", _on_edit_rejected)
+
+
+func _on_edit_rejected(world_pos: Vector3) -> void:
+	# Reuses the unbreakable-block thunk for blocked edits (same feel:
+	# "this didn't give"). Silent until vox_bedrock_blocked.ogg is placed.
+	play("vox_bedrock_blocked", world_pos)

@@ -32,10 +32,29 @@ extends OmniLight3D
 
 var _time: float = 0.0
 
+var _fire_loop_handle: int = 0
+# Handle for the looping campfire crackle started in _ready (0 = none/none yet).
+
 
 func _ready() -> void:
 	# Start at the rest energy so the first frame doesn't pop.
 	light_energy = base_energy
+	# Start the looping campfire crackle at this fire's world position.
+	# Safe BEFORE the .ogg is curated into the repo: AudioManager simply
+	# logs one warning and returns 0, so the fire is just silent until
+	# fire_campfire_crackle_loop.ogg is placed — no code change needed then.
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null:
+		_fire_loop_handle = am.play_loop(
+			"fire_campfire_crackle_loop", global_position)
+
+
+func _exit_tree() -> void:
+	# Stop this fire's crackle when the campfire is removed / scene changes,
+	# so the loop doesn't linger or leak a player node.
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null and _fire_loop_handle != 0:
+		am.stop_loop(_fire_loop_handle)
 
 
 func _process(delta: float) -> void:
