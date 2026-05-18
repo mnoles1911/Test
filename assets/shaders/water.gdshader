@@ -169,17 +169,27 @@ void fragment() {
 	// At steep angles (looking straight down) → ~0 (clear, see bottom).
 	// At grazing angles (looking across) → ~1 (bright reflective sheet).
 	vec3 n = normalize(NORMAL);
-	// === 2-alive. Animated micro-ripple (#15) — shading normal only.
-	// Gated to debug_mode==0 (keeps F6 diagnostics pristine) and scaled
-	// by up-ness + a 0.06 cap so side slivers stay ~unchanged (#222).
+	// === 2-alive. Animated surface life (#15). One moving wave field,
+	// used BOTH to break up the shading normal (moving specular when
+	// lit) AND — the part you can actually SEE looking straight down at
+	// dark water — to add drifting bright glints to the surface colour
+	// in §3 (a tiny normal nudge is invisible here because fresnel≈0
+	// top-down; the colour term is what reads as living water). Gated to
+	// debug_mode==0 so F6 stays exact, and scaled by up-facing-ness so
+	// it can NOT re-brighten the #222 LOD-seam side slivers.
+	float alive_glint = 0.0;
 	if (debug_mode == 0 && surface_motion_strength > 0.001) {
 		vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		vec2 sc = wpos.xz * surface_ripple_scale;
 		vec2 scroll = wind_dir * (0.4 + wind_strength) * (TIME * surface_motion_speed);
 		float w1 = sin(sc.x + scroll.x) + cos(sc.y * 0.85 - scroll.y);
 		float w2 = sin((sc.x + sc.y) * 0.6 - scroll.x * 1.3);
-		float amp = 0.06 * surface_motion_strength * clamp(n.y, 0.0, 1.0);
-		n = normalize(n + vec3(w1, 0.0, w2) * amp);
+		float upness = clamp(n.y, 0.0, 1.0);
+		n = normalize(n + vec3(w1, 0.0, w2) * (0.12 * surface_motion_strength * upness));
+		// Sharpen the field into bright crests that scroll across the
+		// surface — distinct moving streaks, not a uniform brighten.
+		float crest = clamp((w1 * 0.5 + w2 * 0.5) * 0.5 + 0.5, 0.0, 1.0);
+		alive_glint = pow(crest, 3.0) * surface_motion_strength * upness;
 	}
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
@@ -228,6 +238,11 @@ void fragment() {
 	// Grazing angles reflect the sky → the surface always reads as
 	// water even when it's crystal clear over a shallow bottom.
 	vec3 surface = mix(body, sky_reflection_color, fresnel);
+	// #15 "look alive": drifting bright glints, additive on the surface
+	// colour so they're visible even straight-down on dark deep water
+	// (where fresnel≈0). pow()-sharpened above into moving streaks; the
+	// 0.22 keeps it a tasteful stylised shimmer, not a white wash.
+	surface += sky_reflection_color * (alive_glint * 0.22);
 
 	// === 4. TRANSPARENCY ============================================
 	// DEPTH drives transparency — NOT Fresnel. A first-person player
