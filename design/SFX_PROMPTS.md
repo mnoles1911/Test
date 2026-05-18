@@ -382,33 +382,77 @@ Render: `python3 tools/render_sfx.py --category 04 --credit-cap 12000`.
 
 ---
 
-## 8. Phase 1 rollup & next
+## 8. Generation progress, spend & remaining work
 
-| Category | Entries | Files (with var) |
-|---|---|---|
-| 01 Locomotion (live) | 49 | ≈ 175 |
-| 02 Combat: Player | 35 | ≈ 110 |
-| 03 Impacts + 4 enemies | 51 | ≈ 165 |
-| 09 Fire & Camp | 11 | ≈ 25 |
-| 07 Weather basics | 12 | ≈ 16 |
-| 08 Water core | 9 | ≈ 28 |
-| **Phase 1 total** | **≈ 167 prompts** | **≈ 520 rendered files** |
+Status record as of the first generation push (kept current — update when a
+batch is rendered or assets are curated into the repo).
 
-**Workflow per row:** call ElevenLabs SFX with `text=prompt`,
-`duration_seconds=dur`, `prompt_influence=infl`; generate `var × 2`
-candidates; audition; keep the `var` best as `<id>_01..0N.ogg`; convert to
-mono 44.1 kHz `.ogg`; place per `AUDIO_DESIGN.md §folder structure`; flip the
-entry to EXISTING in `SFX_LIBRARY.md`.
+### Generated this cycle (candidate `.mp3` on `Desktop\SFX\`, NOT yet curated)
 
-**Loop rows (`loop=Y`):** the prompt forces a consistent no-start/no-end
-texture; trim to a clean zero-crossing and set the AudioStream to loop in
-Godot. If a generated loop has an audible seam, regenerate or crossfade-trim;
-escalate to a Suno bed (per the music doc) only if a category proves
-un-loopable in ElevenLabs.
+| Category | Status | ~Gens | Notes |
+|---|---|---|---|
+| 08 Water core | ✅ rendered | 44 | loops re-rendered with hardened wording, validated seamless |
+| 07 Weather basics | ✅ rendered | 41 | loop-heavy; loops validated seamless |
+| 01 Locomotion (live surfaces) | ✅ rendered | 287 | footsteps/jump/armor/breath/etc. |
+| 09 Fire & Camp | ✅ rendered | 43 | |
+| 04 Voxel / Terrain (scoped) | ✅ rendered | 133 | dig/mine/place/collapse/explosive/build |
+| **02 Combat / Impacts / Enemies** | ⛔ NOT rendered | 429 | ~9,585 cr — deferred (budget) |
 
-**After review, Phase 2** = full voxel tool×material set for the 4 wired
-materials (Cat 04), then weather/region beds (Cat 10), then systems/UI/
-mini-game gaps (Cat 12–18), then the long tail per `SFX_LIBRARY.md §23`.
+All rendered files are **review candidates only**: `.mp3`, on the Desktop,
+labelled by `--annotate`, **not** curated, **not** converted, **not** in the
+repo. Nothing in-game consumes them yet.
+
+### Spend & cost model (calibrated, locked)
+
+- Real ElevenLabs cost from two clean batches (Water 1,697; Cat 04 ~3,000):
+  **≈ 8.2 credits/sec + ≈ 19 credits/generation floor.** `render_sfx.py`
+  uses a slightly conservative **9 cr/s, 20 cr/gen** (estimates run ~6% high
+  so the cap stays protective).
+- This cycle: ~84k → ~118k used; **~12k credits banked**, generation paused.
+- The early "Locomotion 1.9× overrun / 50-credit floor" was a
+  mis-attribution of multi-batch spend, since corrected.
+
+### Remaining work / TODO
+
+1. **Render Combat (Cat 02, ~9,585 cr)** next billing cycle — fits one
+   fresh cycle. `render_sfx.py --category 02 --credit-cap 11000`.
+2. **Continue the master library** per `SFX_LIBRARY.md §22`: remaining
+   weather/water extras, region ambient beds (Cat 10), systems/UI/mini-game
+   gaps (Cat 12–18), then the long tail. Draft each phase's prompt table
+   here first, budget-scoped, same hardened format.
+3. **Curation pass** (no credits, deferred until needed): for each id, use
+   its `0_KEEP` label — loop → keep 1 (seam-checked), `var`≥2 → keep that
+   many, `var`1 → pick 1. Convert keepers `ffmpeg -i in.mp3 -ac 1 -ar 44100
+   -c:a libvorbis out.ogg`, place in `assets/audio/sfx/<folder>/` as
+   `<id>.ogg` / `<id>_01..0N.ogg`, set loop files' Import→Loop=On, flip the
+   entry to EXISTING in `SFX_LIBRARY.md`.
+4. **Wire call sites** (see §8a) — connect game systems to `AudioManager`.
+
+### 8a. Wiring status — `AudioManager` autoload
+
+Built and registered (`scripts/AudioManager.gd`, autoload after
+`ProfilerOverlay`). Single API: `AudioManager.play(id, world_pos)`,
+`play_loop(id, world_pos) -> handle`, `stop_loop(handle)`. Resolves
+`assets/audio/sfx/<folder>/<id>[.ogg|_NN.ogg]`, random-picks variation,
+routes to the bus by id-prefix, **no-ops with one warning if the file
+isn't placed yet** (so wiring is safe before curation; sounds switch on as
+`.ogg`s land). Needs in-editor verification (no headless Godot here).
+
+**Call sites still to wire** (each: add one `AudioManager.play(...)` at the
+event; do per-system as that system is touched, not all at once):
+
+- Footsteps — `Player3D` foot-plant (anim event / distance emitter) →
+  `step_<gait>_<surface>` at the player position, with the
+  surface/gait/variation rules in §2.
+- Voxel edits — `EditToolHandler` / `VoxelEditManager.edit_applied` →
+  `vox_<tool>_strike_<mat>` / `_break_` / `vox_place_<mat>` /
+  `vox_bedrock_blocked` / `vox_cluster_*`.
+- Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` swing/parry/
+  impact/enemy vocals (once Combat SFX are rendered).
+- Camp/fire — `CampfireFlicker3D` → `play_loop("fire_campfire_crackle_loop")`.
+- Weather — `WeatherManager` state change → swap `wx_*` loop beds via
+  `play_loop`/`stop_loop`.
+- Water — `WaterFlowManager` / swim state → `water_*` loops + splash one-shots.
 
 ---
 
