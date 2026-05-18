@@ -166,6 +166,12 @@ var mining_active: bool = false
 var mining_progress: float = 0.0
 var mining_material_label: String = ""
 
+# Continuous dig-loop SFX (see _update_dig_loop). Plays while the player
+# holds the mine button with a manual tool; the per-carve strike (in
+# _carve) is separate. 0 = not playing.
+var _dig_loop_handle: int = 0
+var _dig_loop_id: String = ""
+
 
 # =============================================================
 # REFERENCES (resolved in _ready)
@@ -337,6 +343,11 @@ func _process(delta: float) -> void:
 	# (cheap — one raycast already done elsewhere, plus a
 	# global_position write). Hidden when no manual tool is equipped.
 	_update_aim_outline()
+
+	# Continuous dig-loop SFX. Called every frame BEFORE the early-return
+	# gates below so it always runs and self-corrects (it stops itself
+	# the moment the player isn't holding-to-mine — no stuck loop).
+	_update_dig_loop()
 
 	# Tick the post-carve cooldown.
 	if _swing_cooldown_remaining > 0.0:
@@ -958,3 +969,45 @@ func _dig_sfx_id(equipped_id: String, mat: String) -> String:
 		return "vox_shovel_strike_dirt"   # dirt/clay/snow/other soft
 	# Wrong tool for the material (incl. axe until its set is rendered).
 	return "vox_wrongtool_stone" if hard else "vox_wrongtool_soft"
+
+
+func _update_dig_loop() -> void:
+	# Continuous "I'm digging" loop while the mine button is HELD with a
+	# manual tool (separate from the per-carve strike in _carve). Fully
+	# self-correcting: recomputes the wanted loop every frame and stops
+	# the instant the player isn't mining, so it can never get stuck.
+	var want_id := ""
+	if Input.is_action_pressed("attack") \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+			and get_node_or_null("/root/InventoryManager"):
+		var eq: String = InventoryManager.get_equipped("weapon")
+		if eq in TOOL_SUB_SKILLS:   # a manual tool (pick/shovel/axe)
+			want_id = "vox_dig_loop_hard" if "pickaxe" in eq \
+				else "vox_dig_loop_soft"
+	var am := get_node_or_null("/root/AudioManager")
+	if am == null:
+		return
+	if want_id == "":
+		if _dig_loop_handle != 0:
+			am.stop_loop(_dig_loop_handle)
+			_dig_loop_handle = 0
+			_dig_loop_id = ""
+		return
+	if want_id != _dig_loop_id:
+		if _dig_loop_handle != 0:
+			am.stop_loop(_dig_loop_handle)
+			_dig_loop_handle = 0
+		var h: int = am.play_loop(want_id)
+		# Only latch the id if it actually started — if the file isn't
+		# imported yet (h == 0) leave it unset so we retry next frame
+		# (works with AudioManager's no-cache-on-miss fix).
+		if h != 0:
+			_dig_loop_handle = h
+			_dig_loop_id = want_id
+
+
+func _exit_tree() -> void:
+	# Don't leak the dig loop on scene change / node removal.
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null and _dig_loop_handle != 0:
+		am.stop_loop(_dig_loop_handle)

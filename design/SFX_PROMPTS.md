@@ -460,6 +460,10 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
   / `vox_shovel_strike_<grass|sand|dirt>` / `vox_wrongtool_<stone|soft>`.
   One strike per accepted carve; axe/wood + break/place are a later
   sub-phase (Cat-04 axe set not rendered yet).
+- ✅ **Continuous dig loop** — `EditToolHandler._update_dig_loop` (per
+  frame, self-correcting) → `vox_dig_loop_hard` (pickaxe) /
+  `vox_dig_loop_soft` while the mine button is held with a manual tool;
+  stops the instant mining stops. Addresses "no sound *while* mining".
 - ✅ **AudioManager polish** — one-shot `play()` now applies per-trigger
   pitch (~±6%) + volume (~±2 dB) jitter (loops exempt), and resolves
   `.mp3` as well as `.ogg`.
