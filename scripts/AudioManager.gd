@@ -95,6 +95,24 @@ var _next_handle: int = 1
 var _path_cache: Dictionary = {}     # id -> Array[String] of resource paths
 var _warned: Dictionary = {}         # id -> true (warn once per missing id)
 
+# The single looping weather ambience bed (rain/wind). One at a time; the
+# id swaps when WeatherManager changes state. Handle is 0 when none.
+var _weather_loop_handle: int = 0
+var _weather_loop_id: String = ""
+
+# Weather State -> ambient bed loop id. Keyed by WeatherManager's lowercase
+# state-name strings (STATE_NAMES), not enum ints, so an enum reorder can't
+# silently mis-map. No dedicated fog/snow beds rendered yet: fog reuses the
+# quiet clear bed (calm, muffled); snow reuses the breeze (cold, no rain).
+const WEATHER_BED := {
+	"clear":      "wx_clear_bed_loop",
+	"overcast":   "wx_wind_breeze_loop",
+	"light_rain": "wx_rain_light_soil_loop",
+	"heavy_rain": "wx_rain_heavy_soil_loop",
+	"fog":        "wx_clear_bed_loop",
+	"snow":       "wx_wind_breeze_loop",
+}
+
 
 func _ready() -> void:
 	# Pre-build the reuse pools as children of this autoload node.
@@ -306,8 +324,48 @@ func _wire_world_signals() -> void:
 				"edit_rejected_no_edit_zone", _on_edit_rejected):
 			vem.connect("edit_rejected_no_edit_zone", _on_edit_rejected)
 
+	# Weather ambience bed -> swaps with the weather state. We also prime
+	# the bed for the CURRENT state now, because WeatherManager seeds its
+	# initial state in _ready() WITHOUT emitting weather_state_changed, so
+	# relying on the signal alone would leave silence until the first
+	# weather transition.
+	var wm := get_node_or_null("/root/WeatherManager")
+	if wm != null and wm.has_signal("weather_state_changed"):
+		if not wm.is_connected(
+				"weather_state_changed", _on_weather_state_changed):
+			wm.connect("weather_state_changed", _on_weather_state_changed)
+		if wm.has_method("get_state_name"):
+			_apply_weather_bed(wm.get_state_name())
+
 
 func _on_edit_rejected(world_pos: Vector3) -> void:
 	# Reuses the unbreakable-block thunk for blocked edits (same feel:
 	# "this didn't give"). Silent until vox_bedrock_blocked.ogg is placed.
 	play("vox_bedrock_blocked", world_pos)
+
+
+# WeatherManager emits this AT transition-complete with current_state
+# already updated, so get_state_name() (and thus the new_state arg) is
+# authoritative here.
+func _on_weather_state_changed(_new_state: int, _old_state: int) -> void:
+	var wm := get_node_or_null("/root/WeatherManager")
+	if wm != null and wm.has_method("get_state_name"):
+		_apply_weather_bed(wm.get_state_name())
+
+
+# Swap the looping ambience bed to match the named weather state. Idempotent:
+# if the desired bed is already the one playing, do nothing (no restart
+# pop). No-op-safe like every other call site — silent until the wx_*.ogg
+# is curated in, and self-heals when it lands.
+func _apply_weather_bed(state_name: String) -> void:
+	var want: String = WEATHER_BED.get(state_name, "wx_clear_bed_loop")
+	if want == _weather_loop_id and _weather_loop_handle != 0:
+		return
+	if _weather_loop_handle != 0:
+		stop_loop(_weather_loop_handle)
+		_weather_loop_handle = 0
+	_weather_loop_id = want
+	# Non-positional (world-wide bed): null world_pos -> flat player on the
+	# Ambient bus (wx_ -> Ambient via PREFIX_BUS). 0 if the file isn't
+	# placed yet; we keep _weather_loop_id so a later curate-in still maps.
+	_weather_loop_handle = play_loop(want)

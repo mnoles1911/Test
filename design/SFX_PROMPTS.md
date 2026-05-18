@@ -467,12 +467,19 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
 - ✅ **AudioManager polish** — one-shot `play()` now applies per-trigger
   pitch (~±6%) + volume (~±2 dB) jitter (loops exempt), and resolves
   `.mp3` as well as `.ogg`.
+- ✅ **Weather ambience bed** — `AudioManager` subscribes to
+  `WeatherManager.weather_state_changed` AND primes the current state at
+  wire time (the manager seeds its first state without emitting), then
+  swaps a single ambient loop via `WEATHER_BED` (state-name → `wx_*`):
+  clear/fog → `wx_clear_bed_loop`, overcast/snow → `wx_wind_breeze_loop`,
+  light/heavy rain → `wx_rain_*_soil_loop`. Idempotent (no restart pop if
+  the bed is unchanged); done from the audio layer, **no gameplay edit**.
+  No dedicated fog/snow beds rendered yet — reuse documented in code.
 
 **Still to wire** (per-system, when that system is touched — not all at once):
 
 - Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` (once Combat
   SFX are rendered next cycle).
-- Weather — `WeatherManager` state change → swap `wx_*` loop beds.
 - Water — `WaterFlowManager` / swim state → `water_*` loops + splashes.
 
 ### 8b. Known quality gaps — FUTURE IMPROVEMENT (flagged 2026-05-18)
