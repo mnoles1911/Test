@@ -467,6 +467,28 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
 - Weather — `WeatherManager` state change → swap `wx_*` loop beds.
 - Water — `WaterFlowManager` / swim state → `water_*` loops + splashes.
 
+### 8b. Known quality gaps — FUTURE IMPROVEMENT (flagged 2026-05-18)
+
+In-game footstep audio was confirmed working end-to-end but **sounds poor**
+in its current uncurated state. These are polish items, *not* bugs — keep
+the wiring, revisit the quality here:
+
+1. **No variation rotation.** Only a single placeholder take per id is
+   placed; the design needs the full `var` set of distinct curated takes
+   so AudioManager's random-pick stops the "machine-gun" identical-clip
+   repetition (the exact problem `§2` warns about). → curation pass, task #8.
+2. **No pitch/volume jitter.** `AudioManager.play` is dead-flat. Add a
+   small per-trigger random pitch (~±5–8%) and volume (~±2 dB) wobble —
+   cheap, large perceived-quality gain, helps even with one take. Not yet
+   built (AudioManager enhancement).
+3. **Footstep cadence/stride is first-pass.** `STEP_DIST_WALK 0.85 m` at
+   the game's ~4.5 m/s walk ≈ 5 steps/s — likely too rapid. Revisit
+   per-gait stride, or switch to a capped time interval, tuned by feel.
+4. **Takes are unaudited `v01`.** Curation must pick the best of the ~7
+   rendered candidates per sound, not the first.
+
+Owner: revisit with tasks #8 (curation) + an AudioManager jitter pass.
+
 ---
 
 ## 9. Maintenance
