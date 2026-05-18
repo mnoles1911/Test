@@ -113,20 +113,28 @@ uniform float wind_strength : hint_range(0.0, 5.0) = 0.5;
 
 
 // ============================================================
-// "LOOK ALIVE" (#15) — animated micro-ripple
+// "LOOK ALIVE" (#15) — WIND-DRIVEN FOAM / WHITECAPS
 // ============================================================
-// Fragment-only: no geometry (blocky art direction; waves were
-// intentionally dropped) and no texture. A cheap procedural dual-wave
-// perturbs ONLY the shading normal, so the sky reflection / fresnel
-// glint drifts and shimmers. Scrolls along the live weather wind
-// (wind_dir / wind_strength, pushed by WaterFlowManager every frame)
-// so storms visibly chop the water. Amplitude is tiny and scaled by
-// up-facing-ness, so it can NOT re-brighten the LOD-seam side slivers
-// the #222 work suppressed, and it is skipped entirely when any
-// debug_mode is active so F6 diagnostics stay exact.
-uniform float surface_motion_strength : hint_range(0.0, 1.0) = 0.5;
+// Physically motivated, NOT a fake sun glow: the surface is whipped up
+// by WIND. A cheap procedural dual-octave field scrolls along the live
+// global wind (wind_dir / wind_strength, pushed by WaterFlowManager
+// from WeatherManager every frame). Its crests are thresholded into
+// scattered white FOAM caps; coverage + brightness scale with
+// wind_strength, so CALM water is glassy and dark (zero foam) and a
+// storm visibly chops it white. Fragment-only (no geometry — blocky
+// art direction; no texture). Scaled by up-facing-ness so it can NOT
+// touch the #222 LOD-seam side slivers, and skipped under any
+// debug_mode so F6 diagnostics stay exact.
+//   surface_motion_strength = foam master amount (0 disables)
+//   surface_motion_speed    = drift rate
+//   surface_ripple_scale    = cap size (higher = smaller, choppier)
+uniform float surface_motion_strength : hint_range(0.0, 1.0) = 0.7;
 uniform float surface_motion_speed : hint_range(0.0, 3.0) = 0.6;
 uniform float surface_ripple_scale : hint_range(0.05, 4.0) = 0.7;
+// wind_strength at which foam is fully developed (storm). Below this it
+// ramps in; at/above, max coverage. Designer-tunable for weather feel.
+uniform float foam_wind_ref : hint_range(0.2, 5.0) = 2.0;
+uniform vec3 foam_color : source_color = vec3(0.86, 0.92, 0.96);
 
 
 // ============================================================
@@ -169,27 +177,34 @@ void fragment() {
 	// At steep angles (looking straight down) → ~0 (clear, see bottom).
 	// At grazing angles (looking across) → ~1 (bright reflective sheet).
 	vec3 n = normalize(NORMAL);
-	// === 2-alive. Animated surface life (#15). One moving wave field,
-	// used BOTH to break up the shading normal (moving specular when
-	// lit) AND — the part you can actually SEE looking straight down at
-	// dark water — to add drifting bright glints to the surface colour
-	// in §3 (a tiny normal nudge is invisible here because fresnel≈0
-	// top-down; the colour term is what reads as living water). Gated to
-	// debug_mode==0 so F6 stays exact, and scaled by up-facing-ness so
-	// it can NOT re-brighten the #222 LOD-seam side slivers.
-	float alive_glint = 0.0;
+	// === 2-alive. WIND-DRIVEN FOAM (#15). A dual-octave field scrolls
+	// along the global wind; its crests become scattered white caps
+	// whose coverage AND brightness scale with wind_strength — so calm
+	// water has NO foam (glassy/dark) and a storm chops it white. The
+	// foam mask is consumed in §3 (mixed toward foam_color). A small
+	// normal nudge rides along so lit specular shifts too. Gated to
+	// debug_mode==0 (F6 exact) and up-face-scaled (never touches the
+	// #222 LOD-seam slivers). foam_wind_ref = wind for full foam.
+	float foam = 0.0;
 	if (debug_mode == 0 && surface_motion_strength > 0.001) {
 		vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-		vec2 sc = wpos.xz * surface_ripple_scale;
-		vec2 scroll = wind_dir * (0.4 + wind_strength) * (TIME * surface_motion_speed);
-		float w1 = sin(sc.x + scroll.x) + cos(sc.y * 0.85 - scroll.y);
-		float w2 = sin((sc.x + sc.y) * 0.6 - scroll.x * 1.3);
+		vec2 base = wpos.xz * surface_ripple_scale;
+		vec2 scroll = normalize(wind_dir + vec2(0.001)) * (TIME * surface_motion_speed * (0.6 + wind_strength));
+		// Coarse swell + finer chop (the second octave keeps caps small
+		// and scattered instead of one broad bright blob — the artifact).
+		float w1 = sin(base.x + scroll.x) + cos(base.y * 0.85 - scroll.y);
+		float w2 = sin((base.x + base.y) * 2.3 - scroll.x * 1.7)
+		         + cos((base.x - base.y) * 1.9 + scroll.y * 1.3);
+		float crest = clamp((w1 + w2) * 0.25 + 0.5, 0.0, 1.0);
 		float upness = clamp(n.y, 0.0, 1.0);
-		n = normalize(n + vec3(w1, 0.0, w2) * (0.12 * surface_motion_strength * upness));
-		// Sharpen the field into bright crests that scroll across the
-		// surface — distinct moving streaks, not a uniform brighten.
-		float crest = clamp((w1 * 0.5 + w2 * 0.5) * 0.5 + 0.5, 0.0, 1.0);
-		alive_glint = pow(crest, 3.0) * surface_motion_strength * upness;
+		// Wind 0..1. No wind → windn 0 → foam 0 (no floor: calm = glass).
+		float windn = clamp(wind_strength / max(foam_wind_ref, 0.01), 0.0, 1.0);
+		// Higher wind lowers the crest cutoff → more of the surface caps.
+		float cut = mix(0.86, 0.42, windn);
+		foam = smoothstep(cut, cut + 0.10, crest) * windn
+		     * surface_motion_strength * upness;
+		// Subtle normal break-up so the lit highlight also moves.
+		n = normalize(n + vec3(w1, 0.0, w2) * (0.10 * windn * upness));
 	}
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
@@ -238,11 +253,9 @@ void fragment() {
 	// Grazing angles reflect the sky → the surface always reads as
 	// water even when it's crystal clear over a shallow bottom.
 	vec3 surface = mix(body, sky_reflection_color, fresnel);
-	// #15 "look alive": drifting bright glints, additive on the surface
-	// colour so they're visible even straight-down on dark deep water
-	// (where fresnel≈0). pow()-sharpened above into moving streaks; the
-	// 0.22 keeps it a tasteful stylised shimmer, not a white wash.
-	surface += sky_reflection_color * (alive_glint * 0.22);
+	// #15 wind foam: lerp toward white foam where the wind whipped a cap
+	// up (foam=0 in calm water → unchanged glassy surface).
+	surface = mix(surface, foam_color, clamp(foam, 0.0, 1.0));
 
 	// === 4. TRANSPARENCY ============================================
 	// DEPTH drives transparency — NOT Fresnel. A first-person player
@@ -265,6 +278,10 @@ void fragment() {
 	// disappears. Shallow top water (up_face≈1) keeps the full
 	// shallow_alpha floor, unchanged.
 	float alpha = max(depth_t_eff, shallow_alpha * up_face);
+	// #15: a wind whitecap is spray sitting ON the water — opaque, not
+	// see-through. Lift alpha toward 1 by the foam mask so caps read
+	// solid even over shallow/clear water.
+	alpha = max(alpha, clamp(foam, 0.0, 1.0));
 
 	// === 5. OUTPUT ==================================================
 	if (debug_mode == 1) {
