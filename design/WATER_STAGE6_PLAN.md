@@ -271,3 +271,73 @@ is blocking. Phase 0 (codec) + Phase 1 (sim writes levels) are pure
 sim/data and can start immediately. Phase 2 is the pivot — it begins
 with the spike + STOP-gate in §6/§9.1. I'll proceed on the plan above
 unless you flag something in this doc.
+
+**Status 2026-05-18:** Phase 0 + Phase 1 (codec, parity harness,
+connectivity bottom-up fill, settle/equalize, DATA5 persistence) +
+buoyancy (#13) shipped on `main` via PR #224. Phase 2 spike is the
+next action — defined operationally below.
+
+---
+
+## 11. Phase 2 spike — operational definition (the STOP gate, made falsifiable)
+
+§6/§9.1 say "spike with a STOP gate" but never define the bar. It is
+defined here **before any mesher code is written**, so the gate is an
+honest pass/fail, not a vibe.
+
+**The single question the spike answers:**
+> Can a custom per-chunk water *surface* mesh, rebuilt on the same
+> chunk load / LOD / eviction events `VoxelLodTerrain` already fires,
+> coexist with terrain streaming at acceptable perf and **without
+> visual regression vs. today's V2 transparent-cube water**?
+
+Nothing else. Not slope, not flow, not waterfalls, not animation, not
+save changes — all of those are gated *behind this question passing*.
+
+**Minimal throw-away build (scaffold only, NOT wired into autoloads):**
+a dev-scene bootstrap that, for the LOD0 region around the viewer,
+emits one flat `ArrayMesh` at the water surface Y from the topmost
+`CHANNEL_TYPE==5` cell per column, rebuilt on the same trigger the
+deleted `WaterChunkMesher` used (viewer-centred poll is acceptable for
+the spike). Flat only — a single Y per chunk. It lives in
+`scenes/_dev/` + `scripts/_dev/`, never in `World3DBootstrap`.
+
+**Pre-committed pass bars (all three must hold):**
+1. **Perf.** Measured with the existing Profiler (`engine.real_us`,
+   per CLAUDE.md — not `proc_us`), test pond + a blasted flooded
+   cavern in view at LOD0: added worst-frame cost attributable to the
+   surface mesher **≤ 2 ms** vs. the V2-cube baseline in the same
+   scene, and **no new sustained frame spikes > 16 ms** caused by
+   mesh rebuilds while walking.
+2. **Streaming correctness.** Walk a ~200 m loop through and around
+   the flooded terrain: **0 orphaned water surfaces** left after
+   chunk eviction, no holes at chunk borders worse than current V2,
+   and **no monotonic `[PERF] vram=` climb** (mesh eviction actually
+   frees).
+3. **Visual floor.** The flat surface is **no worse** than V2 cubes
+   at the distance LOD seam (the artifact PR #222 fixed). Better is
+   not required at the spike — slope is Phase 3 — only "not a
+   regression."
+
+**Decision rule (no silent fallback — §5 forbids stair-step):**
+- **All three pass within the timebox →** commit to Phase 2 proper:
+  productionise the mesher, wire it into `World3DBootstrap`, then
+  Phase 3 (slope + flow + animation).
+- **Any bar fails and can't be cheaply fixed inside the timebox →**
+  **STOP.** Discard the throw-away. Re-convene with exactly two named
+  options (there is no third — no stair-step path exists in the tree):
+  (a) **accept V2 transparent-cube water as the shipped look**, and
+  re-scope remaining Stage 6 to flow/animation *on cubes* (shader-only
+  — directional scroll, level-driven depth) + waterfalls as a
+  particle/decal effect rather than meshed sheets; or
+  (b) **re-open §5** (the smooth-only decision) with the spike's
+  measured numbers as new evidence.
+
+**Timebox:** the spike is bounded — if it is not clearly passing or
+clearly failing all three bars within roughly a day of focused work,
+that ambiguity itself trips the STOP gate (re-convene with what was
+learned). A spike that drags is a spike that already failed.
+
+**What success unlocks (only after pass):** Phase 3 slope+flow+anim,
+then Phase 4 waterfalls (#12). #14 source-rules tagging is independent
+and slots in after Stage 6 lands (§8).
