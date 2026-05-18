@@ -25,8 +25,11 @@ It is IDEMPOTENT and COST-CAPPED, exactly like render_bulk.py:
   - Each row hashes (prompt, dur, infl, loop, versions). If the hash is
     unchanged and the candidate files already exist, the row is skipped.
     So a re-run only renders new/changed rows — safe to leave running.
-  - A spend estimate is printed BEFORE any network call. You confirm, or
-    it aborts. A hard --cost-cap (default $15) aborts before spending over.
+  - A CREDIT estimate (vs your monthly plan) is printed BEFORE any network
+    call. You confirm, or it aborts. A hard --credit-cap (default 20000
+    credits) aborts before spending over. The estimate uses CREDITS_PER_
+    SECOND / MIN_CREDITS_PER_GEN — calibrate them from your dashboard after
+    the first small batch (ElevenLabs bills SFX by duration, in credits).
   - --dry-run shows the plan with no API calls.
   - --mock writes tiny placeholder files (no API key, no spend) so you can
     test parsing / folders / idempotency.
@@ -59,7 +62,7 @@ RUN EXAMPLES
   python3 tools/render_sfx.py --category 02
 
   # 5. Render everything in the doc, bigger cap, skip the confirm prompt:
-  python3 tools/render_sfx.py --cost-cap 60 --yes
+  python3 tools/render_sfx.py --credit-cap 90000 --yes
 
   # 6. Re-render just one id after you tweaked its prompt in the doc:
   python3 tools/render_sfx.py --id cmb_bear_rear_roar --force
@@ -72,7 +75,9 @@ USEFUL FLAGS
   --versions N       force exactly N candidates per row (default: var + 2)
   --limit N          stop after N rows (handy for a first taste)
   --out PATH         output root (default: the Desktop\\SFX path above)
-  --cost-cap USD     abort before spending more than this (default 15.00)
+  --credit-cap N     abort if est. exceeds this many credits (default 20000;
+                     --cost-cap is a deprecated alias)
+  --plan-credits N   monthly allowance for the % display (default 131000)
   --yes              don't ask for confirmation before spending
   --force            re-render even if the row hash is unchanged
   --dry-run          plan only, no API calls
@@ -118,14 +123,28 @@ API_RETRIES = 3            # network-error retries with exponential backoff
 
 DUR_MIN, DUR_MAX = 0.5, 22.0   # ElevenLabs Sound Effects duration bounds
 
-# Rough cost discipline. ElevenLabs bills Sound Effects per generation;
-# this is a deliberately conservative per-call estimate so the cap errs
-# safe. Update if pricing changes (it's only used for the PLAN/abort math).
-USD_PER_GENERATION = 0.08
+# Cost discipline — ElevenLabs bills Sound Effects in CREDITS, by the
+# duration of audio generated, with a per-generation minimum. These two
+# constants are best-effort estimates; ElevenLabs pricing varies by plan and
+# changes over time. CALIBRATE them: run a small batch (e.g. --category 09),
+# read your credit balance before/after, and set these to the measured
+# values. The PLAN line is an estimate, not a contract — your dashboard
+# shows the exact credit cost before each generation.
+CREDITS_PER_SECOND = 40        # est.; verify/calibrate against your account
+MIN_CREDITS_PER_GEN = 100      # est. per-generation floor for short clips
+AUTO_DURATION_ASSUMED_S = 5    # only used to price "auto" rows (none today)
+PLAN_CREDITS_DEFAULT = 131000  # your Creator monthly allowance (display only)
 
-DEFAULT_COST_CAP = 15.00
+DEFAULT_CREDIT_CAP = 20000     # abort a run estimated above this many credits
 EXTRA_VERSIONS = 2         # candidates rendered = var + EXTRA_VERSIONS
 MIN_VERSIONS = 3
+
+
+def gen_credits(duration_s):
+    """Estimated credits for one generation of the given duration."""
+    secs = AUTO_DURATION_ASSUMED_S if duration_s is None else duration_s
+    return max(MIN_CREDITS_PER_GEN, int(round(CREDITS_PER_SECOND * secs)))
+
 
 # id-prefix -> review subfolder. Extend as later phases/categories land.
 FOLDER_RULES = [
@@ -280,11 +299,12 @@ def save_manifest(out_root, manifest):
                  encoding="utf-8")
 
 
-def append_spend_log(out_root, line_count, est_usd):
+def append_spend_log(out_root, line_count, est_credits):
     log = out_root / "_spend.log"
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with log.open("a", encoding="utf-8") as f:
-        f.write(f"{stamp}\t{line_count} generations\t~${est_usd:.2f}\n")
+        f.write(f"{stamp}\t{line_count} generations\t"
+                f"~{est_credits} credits (est)\n")
 
 
 # --------------------------------------------------------------------------
@@ -340,7 +360,14 @@ def main():
                     help="single id (repeatable)")
     ap.add_argument("--versions", type=int, default=None)
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--cost-cap", type=float, default=DEFAULT_COST_CAP)
+    ap.add_argument("--credit-cap", type=int, default=DEFAULT_CREDIT_CAP,
+                    help="abort if the run's estimate exceeds this many "
+                         "ElevenLabs credits (default 20000)")
+    ap.add_argument("--cost-cap", type=int, dest="credit_cap",
+                    help="deprecated alias for --credit-cap (credits)")
+    ap.add_argument("--plan-credits", type=int,
+                    default=PLAN_CREDITS_DEFAULT,
+                    help="your monthly credit allowance, for the %% display")
     ap.add_argument("--yes", action="store_true")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -402,7 +429,9 @@ def main():
         plan.append((r, v, h, missing))
 
     total_gens = sum(len(m) for _, _, _, m in plan)
-    est = total_gens * USD_PER_GENERATION
+    est = sum(len(m) * gen_credits(r.duration_value())
+              for r, _, _, m in plan)
+    pct = (100.0 * est / args.plan_credits) if args.plan_credits else 0.0
 
     print("=" * 64)
     print(f"SFX render plan  ({PROMPTS_DOC.relative_to(REPO_ROOT)})")
@@ -410,7 +439,10 @@ def main():
     print(f"  up-to-date (skip) : {skipped}")
     print(f"  rows to render    : {len(plan)}")
     print(f"  generations       : {total_gens}")
-    print(f"  est. cost         : ~${est:.2f}  (cap ${args.cost_cap:.2f})")
+    print(f"  est. credits      : ~{est:,}  (cap {args.credit_cap:,})")
+    print(f"  ~ {pct:.1f}% of a {args.plan_credits:,}-credit monthly plan")
+    print(f"  (ESTIMATE - {CREDITS_PER_SECOND} cr/s, {MIN_CREDITS_PER_GEN} "
+          f"min/gen; calibrate from your dashboard)")
     print(f"  output root       : {out_root}")
     print(f"  mode              : "
           f"{'DRY-RUN' if args.dry_run else 'MOCK' if args.mock else 'LIVE'}")
@@ -425,23 +457,24 @@ def main():
         print("\nDRY-RUN: no API calls made.")
         return
 
-    if not args.mock and est > args.cost_cap:
-        sys.exit(f"\nABORT: estimate ${est:.2f} exceeds cap "
-                 f"${args.cost_cap:.2f}. Narrow with --category/--id/"
-                 f"--limit or raise --cost-cap.")
+    if not args.mock and est > args.credit_cap:
+        sys.exit(f"\nABORT: estimate ~{est:,} credits exceeds cap "
+                 f"{args.credit_cap:,}. Narrow with --category/--id/"
+                 f"--limit, or raise --credit-cap.")
 
     api_key = os.environ.get("ELEVENLABS_API_KEY")
     if not args.mock and not api_key:
         sys.exit("\nERROR: ELEVENLABS_API_KEY not set (use --mock to test).")
 
     if not args.yes and not args.mock:
-        ans = input(f"\nRender {total_gens} generations (~${est:.2f})? "
-                    f"[y/N] ").strip().lower()
+        ans = input(f"\nRender {total_gens} generations "
+                    f"(~{est:,} credits est)? [y/N] ").strip().lower()
         if ans != "y":
             sys.exit("Aborted.")
 
     out_root.mkdir(parents=True, exist_ok=True)
     done_gens = 0
+    done_credits = 0
     for r, v, h, missing in plan:
         folder = out_root / r.folder() / r.id
         duration = r.duration_value()
@@ -454,6 +487,8 @@ def main():
             else:
                 ok, err = render_one(api_key, r, duration, mp3)
             done_gens += 1
+            if ok:
+                done_credits += gen_credits(duration)
             tag = "ok " if ok else "ERR"
             print(f"[{done_gens}/{total_gens}] {tag} {r.id}_v{i:02d}"
                   + ("" if ok else f"  -- {err}"))
@@ -475,7 +510,7 @@ def main():
 
     save_manifest(out_root, manifest)
     if not args.mock:
-        append_spend_log(out_root, done_gens, done_gens * USD_PER_GENERATION)
+        append_spend_log(out_root, done_gens, done_credits)
 
     print("\nDone.")
     print(f"  rendered : {done_gens} files")

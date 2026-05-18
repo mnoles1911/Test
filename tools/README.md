@@ -142,10 +142,10 @@ Every doc detail is honored per call: `text` = prompt, `duration_seconds`
 Candidates per row = `var + 2` (min 3) unless `--versions N` overrides.
 
 Same discipline as `render_bulk.py`: idempotent (per-row hash of
-prompt+params+versions; re-runs only do new/changed rows), spend estimate
-shown before any call, hard `--cost-cap` (default $15), `--dry-run`,
-`--mock` (placeholder files, no key, no spend — exercises folders +
-manifest + regen logic).
+prompt+params+versions; re-runs only do new/changed rows), a **credit**
+estimate (vs your monthly plan) shown before any call, hard `--credit-cap`
+(default 20000 credits), `--dry-run`, `--mock` (placeholder files, no key,
+no spend — exercises folders + manifest + regen logic).
 
 ### Usage
 
@@ -178,11 +178,17 @@ approved keepers to repo format when moving them in:
 
 ### Cost discipline
 
-Conservative `~$0.08`/generation estimate (update the constant if pricing
-changes). The PLAN line shows row/generation counts and `~$cost` vs the
-cap; over-cap aborts before any network call; a confirm prompt guards live
-runs unless `--yes`. `--cost-cap`, `--limit`, `--category`, `--id` keep
-batches small while you validate the prompt style.
+ElevenLabs bills Sound Effects in **credits, by audio duration**. The PLAN
+line estimates credits via `CREDITS_PER_SECOND` (≈40) and
+`MIN_CREDITS_PER_GEN` (≈100) and shows them as a **% of your monthly plan**
+(`--plan-credits`, default 131000). These constants are estimates —
+**calibrate them**: note your credit balance, run a small batch
+(`--category 09` ≈ 9k credits), check the delta, set the constants to the
+measured values. Over `--credit-cap` (default 20000) aborts before any
+network call; a confirm prompt guards live runs unless `--yes`. For scale:
+all of Phase 1 (~844 generations) is ≈ a full month of a 131k plan, so
+batch by `--category` and measure as you go. `--limit`/`--id` keep test
+batches tiny while validating prompt style.
 
 ---
 
