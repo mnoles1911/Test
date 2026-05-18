@@ -130,8 +130,12 @@ DUR_MIN, DUR_MAX = 0.5, 22.0   # ElevenLabs Sound Effects duration bounds
 # read your credit balance before/after, and set these to the measured
 # values. The PLAN line is an estimate, not a contract — your dashboard
 # shows the exact credit cost before each generation.
-CREDITS_PER_SECOND = 40        # est.; verify/calibrate against your account
-MIN_CREDITS_PER_GEN = 100      # est. per-generation floor for short clips
+CREDITS_PER_SECOND = 11        # CALIBRATED from the 44-gen Water batch:
+                               # ~1,697 credits / 156 s audio ≈ 10.9, rounded
+                               # up to 11 for a slightly conservative estimate.
+MIN_CREDITS_PER_GEN = 5        # CALIBRATED: no real per-gen floor — 35 short
+                               # clips would have cost >3,500 at a 100 floor
+                               # but the whole batch was ~1,697, so ~linear.
 AUTO_DURATION_ASSUMED_S = 5    # only used to price "auto" rows (none today)
 PLAN_CREDITS_DEFAULT = 131000  # your Creator monthly allowance (display only)
 
