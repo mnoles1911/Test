@@ -121,20 +121,20 @@ Armor-weight movement loops (mixed over steps by equipped weight) + traversal
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| armor_cloth_move_loop | Seamless loop of soft cloth and leather garment rustle from a walking body, steady consistent texture, no beginning or end, dry close mono, no reverb, no music | 14 | 0.3 | Y | 1 | SFX |
-| armor_leather_move_loop | Seamless loop of creaking leather armor flexing on a moving body, steady consistent, no start or end, dry close mono, no reverb, no music | 14 | 0.35 | Y | 1 | SFX |
-| armor_mail_move_loop | Seamless loop of chainmail rings shifting and jingling on a walking body, steady consistent metallic rustle, no start or end, dry close mono, no reverb, no music | 14 | 0.4 | Y | 1 | SFX |
-| armor_plate_move_loop | Seamless loop of plate armor clanking and leather straps creaking on a moving body, steady heavy consistent, no start or end, dry close mono, no reverb, no music | 14 | 0.45 | Y | 1 | SFX |
-| water_wade_shallow_loop | Seamless loop of a person wading steadily through shallow water, continuous rhythmic sloshing, no start or end, dry close mono, no reverb, no music | 12 | 0.35 | Y | 1 | SFX |
+| armor_cloth_move_loop | Perfectly seamless loop of soft cloth and leather garment rustle from a walking body, steady consistent texture, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 14 | 0.3 | Y | 1 | SFX |
+| armor_leather_move_loop | Perfectly seamless loop of creaking leather armor flexing on a moving body, steady consistent, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 14 | 0.35 | Y | 1 | SFX |
+| armor_mail_move_loop | Perfectly seamless loop of chainmail rings shifting and jingling on a walking body, steady consistent metallic rustle, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 14 | 0.4 | Y | 1 | SFX |
+| armor_plate_move_loop | Perfectly seamless loop of plate armor clanking and leather straps creaking on a moving body, steady heavy consistent, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 14 | 0.45 | Y | 1 | SFX |
+| water_wade_shallow_loop | Perfectly seamless loop of a person wading steadily through shallow water, continuous rhythmic sloshing, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 12 | 0.35 | Y | 1 | SFX |
 | water_entry_walk | A person walking into water from shore, steps turning to wading splashes, dry close mono, no reverb, no music | 1.5 | 0.4 | N | 3 | SFX |
 | water_entry_run_plunge | A person running and plunging into deep water, a big heavy splash and churn, dry close mono, no reverb, no music | 1.5 | 0.45 | N | 3 | SFX |
-| climb_rock_loop | Seamless loop of hands and boots scrabbling and gripping on rock while climbing, grit and cloth strain, steady, no start or end, dry close mono, no reverb, no music | 12 | 0.35 | Y | 1 | SFX |
+| climb_rock_loop | Perfectly seamless loop of hands and boots scrabbling and gripping on rock while climbing, grit and cloth strain, steady, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 12 | 0.35 | Y | 1 | SFX |
 | climb_grunt | A short strained male effort grunt while pulling up a climb, no words, dry close mono, no reverb, no music | 0.7 | 0.35 | N | 3 | Voice |
 | vault_ledge | A quick body vault over a ledge, a hand slap on stone, cloth scuff and a light landing, dry close mono, no reverb, no music | 0.9 | 0.4 | N | 3 | SFX |
-| roland_breath_idle_loop | Seamless loop of calm quiet steady human breathing at rest, relaxed, no start or end, dry close mono, no reverb, no music | 10 | 0.3 | Y | 1 | Voice |
-| roland_breath_exert_loop | Seamless loop of heavy winded human breathing after exertion, fast and laboured but controlled, steady, no start or end, dry close mono, no reverb, no music | 10 | 0.35 | Y | 1 | Voice |
-| roland_breath_lowhp_loop | Seamless loop of pained laboured human breathing, strained and uneven, hurt but not theatrical, no start or end, dry close mono, no reverb, no music | 10 | 0.35 | Y | 1 | Voice |
-| roland_breath_critical_loop | Seamless loop of ragged desperate shallow human breathing, badly wounded, gasping, no start or end, dry close mono, no reverb, no music | 10 | 0.4 | Y | 1 | Voice |
+| roland_breath_idle_loop | Perfectly seamless loop of calm quiet steady human breathing at rest, relaxed, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 10 | 0.3 | Y | 1 | Voice |
+| roland_breath_exert_loop | Perfectly seamless loop of heavy winded human breathing after exertion, fast and laboured but controlled, steady, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 10 | 0.35 | Y | 1 | Voice |
+| roland_breath_lowhp_loop | Perfectly seamless loop of pained laboured human breathing, strained and uneven, hurt but not theatrical, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 10 | 0.35 | Y | 1 | Voice |
+| roland_breath_critical_loop | Perfectly seamless loop of ragged desperate shallow human breathing, badly wounded, gasping, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 10 | 0.4 | Y | 1 | Voice |
 | roland_effort_grunt | A short sharp male combat effort grunt, exertion, no words, dry close mono, no reverb, no music | 0.5 | 0.35 | N | 5 | Voice |
 | roland_jump_exhale | A short sharp breath exhale on physical effort, no words, dry close mono, no reverb, no music | 0.4 | 0.35 | N | 3 | Voice |
 
@@ -147,7 +147,7 @@ enemy's stance, not UI beeps** — keep them physical, per `AUDIO_DESIGN.md`):
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| cmb_block_hold_loop | Seamless loop of a sword blade braced under continuous pressure, a low metallic resonant strain with faint scrape, no start or end, dry close mono, no reverb, no music | 6 | 0.4 | Y | 1 | Combat |
+| cmb_block_hold_loop | Perfectly seamless loop of a sword blade braced under continuous pressure, a low metallic resonant strain with faint scrape, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 6 | 0.4 | Y | 1 | Combat |
 | cmb_block_impact | A heavy blow caught on a raised steel sword, a hard resonant clang with a scrape, dry close mono, no reverb, no music | 0.8 | 0.55 | N | 5 | Combat |
 | cmb_parry_success | A clean sharp steel-on-steel parry, a bright high ringing deflection, satisfying and precise, dry close mono, no reverb, no music | 0.7 | 0.6 | N | 4 | Combat |
 | cmb_riposte_strike | A fast follow-up sword strike biting into a body, a quick whoosh and wet armored hit, dry close mono, no reverb, no music | 0.7 | 0.5 | N | 3 | Combat |
@@ -171,7 +171,7 @@ Longsword class (Roland's mainline weapon):
 | cmb_longsword_swing_miss_air | A sword swung hard and missing, a wide hollow air-displacement whoosh, dry close mono, no reverb, no music | 0.7 | 0.5 | N | 4 | Combat |
 | cmb_longsword_draw | A longsword drawn from a leather scabbard, a smooth metallic scrape ending in a light ring, dry close mono, no reverb, no music | 0.9 | 0.5 | N | 3 | Combat |
 | cmb_longsword_sheathe | A longsword sliding into a leather scabbard, a metallic scrape ending in a soft seat, dry close mono, no reverb, no music | 0.9 | 0.5 | N | 3 | Combat |
-| cmb_longsword_block_hold_loop | Seamless loop of a longsword held braced under pressure, low metallic strain and faint grind, no start or end, dry close mono, no reverb, no music | 6 | 0.4 | Y | 1 | Combat |
+| cmb_longsword_block_hold_loop | Perfectly seamless loop of a longsword held braced under pressure, low metallic strain and faint grind, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 6 | 0.4 | Y | 1 | Combat |
 | cmb_longsword_parry | A longsword deflecting an incoming blade, a sharp bright clean ring, dry close mono, no reverb, no music | 0.6 | 0.6 | N | 4 | Combat |
 | cmb_longsword_special | A powerful committed longsword thrust and finisher, a hard whoosh into a heavy armored impact, dry close mono, no reverb, no music | 0.9 | 0.5 | N | 3 | Combat |
 
@@ -191,7 +191,7 @@ Shipped ThrowableSpear set:
 |---|---|---|---|---|---|---|
 | cmb_spear_windup | A spear drawn back and braced to throw, cloth and arm tension with a faint shaft creak, dry close mono, no reverb, no music | 0.7 | 0.4 | N | 3 | Combat |
 | cmb_spear_throw | A spear thrown hard, a sharp whoosh of a wooden shaft cutting air, dry close mono, no reverb, no music | 0.6 | 0.5 | N | 3 | Combat |
-| cmb_spear_inflight_loop | Seamless loop of a spear shaft spinning and whirring through the air, steady consistent whir, no start or end, dry close mono, no reverb, no music | 4 | 0.4 | Y | 1 | Combat |
+| cmb_spear_inflight_loop | Perfectly seamless loop of a spear shaft spinning and whirring through the air, steady consistent whir, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 4 | 0.4 | Y | 1 | Combat |
 | cmb_spear_embed_flesh | A spear point striking and sinking into a body, a hard wet meaty impact and shaft quiver, dry close mono, no reverb, no music | 0.7 | 0.55 | N | 3 | Combat |
 | cmb_spear_embed_wood | A spear point striking and sticking into wood, a sharp solid thunk and shaft vibration, dry close mono, no reverb, no music | 0.7 | 0.55 | N | 3 | Combat |
 | cmb_spear_embed_stone | A spear point striking stone and skittering off, a hard sharp clang and clatter, dry close mono, no reverb, no music | 0.7 | 0.55 | N | 3 | Combat |
@@ -236,7 +236,7 @@ non-human, never words):
 | cmb_goblin_death | A goblin killed, a choked guttural death cry collapsing to a small body fall, dry close mono, no reverb, no music | 1.2 | 0.45 | N | 4 | Combat |
 | cmb_goblin_gib_overkill | A goblin destroyed by a massive overkill blow, a wet violent burst and spatter, grounded, dry close mono, no reverb, no music | 0.9 | 0.5 | N | 2 | Combat |
 | cmb_goblin_flee | A goblin panicking and fleeing, frightened gibbering and scrambling, non-verbal, dry close mono, no reverb, no music | 1.2 | 0.4 | N | 3 | Combat |
-| cmb_goblin_footstep_loop | Seamless loop of a small light creature's scrabbling running footsteps on dirt, quick and erratic, no start or end, dry close mono, no reverb, no music | 6 | 0.35 | Y | 1 | Combat |
+| cmb_goblin_footstep_loop | Perfectly seamless loop of a small light creature's scrabbling running footsteps on dirt, quick and erratic, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 6 | 0.35 | Y | 1 | Combat |
 
 **Ashfallen** (elite, faceless, heavy armor — **no voice**; identity is armor
 foley and breath behind a helm):
@@ -244,7 +244,7 @@ foley and breath behind a helm):
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
 | cmb_ashfallen_footstep_heavy | A single slow heavy armored footstep, a steel boot and plate weight pressing down with a strap creak, dry close mono, no reverb, no music | 0.7 | 0.45 | N | 5 | Combat |
-| cmb_ashfallen_armor_creak_idle_loop | Seamless loop of heavy plate armor and leather straps creaking with slow breathing behind a helm, steady, no start or end, dry close mono, no reverb, no music | 10 | 0.4 | Y | 1 | Combat |
+| cmb_ashfallen_armor_creak_idle_loop | Perfectly seamless loop of heavy plate armor and leather straps creaking with slow breathing behind a helm, steady, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 10 | 0.4 | Y | 1 | Combat |
 | cmb_ashfallen_telegraph_measured | A measured heavy sword raised to strike, a slow deliberate armored shift and blade lift, physical tell, dry close mono, no reverb, no music | 0.8 | 0.5 | N | 2 | Combat |
 | cmb_ashfallen_telegraph_heavy | A big heavy blow winding up, armor straining and a deep gathering shift of force, physical tell, dry close mono, no reverb, no music | 0.9 | 0.5 | N | 2 | Combat |
 | cmb_ashfallen_telegraph_thrust_red | A short sharp committed armored lunge wind-up for an unblockable thrust, a hard exhale behind a helm, dry close mono, no reverb, no music | 0.7 | 0.5 | N | 2 | Combat |
@@ -257,20 +257,20 @@ foley and breath behind a helm):
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| cmb_wolf_breath_pant_loop | Seamless loop of a large wolf panting and breathing low, steady, slightly threatening, no start or end, dry close mono, no reverb, no music | 8 | 0.35 | Y | 1 | Combat |
+| cmb_wolf_breath_pant_loop | Perfectly seamless loop of a large wolf panting and breathing low, steady, slightly threatening, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 8 | 0.35 | Y | 1 | Combat |
 | cmb_wolf_undergrowth_move | A wolf moving fast through brush and undergrowth, rustling leaves and paws, dry close mono, no reverb, no music | 1.0 | 0.35 | N | 4 | Combat |
 | cmb_wolf_alert_growl | A low rising menacing wolf growl as it locks on, dry close mono, no reverb, no music | 1.0 | 0.45 | N | 3 | Combat |
 | cmb_wolf_lunge_windup | A wolf snarling and coiling to lunge, a fast aggressive bark-snarl, dry close mono, no reverb, no music | 0.7 | 0.45 | N | 3 | Combat |
 | cmb_wolf_bite | A wolf's fast snapping bite, jaws clashing with a wet snap, dry close mono, no reverb, no music | 0.5 | 0.5 | N | 4 | Combat |
 | cmb_wolf_yelp_hurt | A wolf hit and yelping in pain, a sharp canine cry, dry close mono, no reverb, no music | 0.6 | 0.45 | N | 4 | Combat |
 | cmb_wolf_death | A wolf killed, a final pained snarl-whine cut short, body drop, dry close mono, no reverb, no music | 1.0 | 0.45 | N | 3 | Combat |
-| cmb_wolf_paw_steps_loop | Seamless loop of a four-legged animal trotting fast on soil and leaves, soft rapid paw pattern, no start or end, dry close mono, no reverb, no music | 6 | 0.35 | Y | 1 | Combat |
+| cmb_wolf_paw_steps_loop | Perfectly seamless loop of a four-legged animal trotting fast on soil and leaves, soft rapid paw pattern, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 6 | 0.35 | Y | 1 | Combat |
 
 **Bear** (solo mini-boss, heavy and slow):
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| cmb_bear_growl_idle_loop | Seamless loop of a huge bear breathing and low rumbling growls, slow and massive, no start or end, dry close mono, no reverb, no music | 9 | 0.4 | Y | 1 | Combat |
+| cmb_bear_growl_idle_loop | Perfectly seamless loop of a huge bear breathing and low rumbling growls, slow and massive, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 9 | 0.4 | Y | 1 | Combat |
 | cmb_bear_charge_telegraph | A bear rearing into a charge with a deep explosive roar, dry close mono, no reverb, no music | 1.2 | 0.5 | N | 2 | Combat |
 | cmb_bear_run_thunder | A massive bear running, thunderous heavy four-legged ground impacts, dry close mono, no reverb, no music | 1.5 | 0.45 | N | 3 | Combat |
 | cmb_bear_claw_swipe | A bear's wide heavy claw swipe, a huge whoosh of force, dry close mono, no reverb, no music | 0.8 | 0.5 | N | 4 | Combat |
@@ -287,15 +287,15 @@ foley and breath behind a helm):
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| fire_campfire_crackle_loop | Seamless loop of a steady campfire, continuous wood crackle and soft flame whoosh, consistent, no start or end, dry close mono, no reverb, no music | 18 | 0.3 | Y | 1 | Ambient |
+| fire_campfire_crackle_loop | Perfectly seamless loop of a steady campfire, continuous wood crackle and soft flame whoosh, consistent, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 18 | 0.3 | Y | 1 | Ambient |
 | fire_ember_pop | A single sharp pop and spark snap from a fire ember, dry close mono, no reverb, no music | 0.4 | 0.4 | N | 5 | Ambient |
 | fire_log_settle | A burning log shifting and collapsing in a fire with a soft crumble and spark burst, dry close mono, no reverb, no music | 1.0 | 0.35 | N | 3 | Ambient |
 | fire_ignite_whoosh | A fire catching and flaring up, a soft whoomph of flame taking hold, dry close mono, no reverb, no music | 1.0 | 0.45 | N | 3 | Ambient |
 | fire_tinder_kindle | Tinder and small twigs catching, faint crackle building from a struck spark, dry close mono, no reverb, no music | 1.5 | 0.35 | N | 2 | Ambient |
 | fire_extinguish_hiss | A fire doused, a sharp steam hiss and sputter dying out, dry close mono, no reverb, no music | 1.2 | 0.4 | N | 2 | Ambient |
 | fire_smoke_fade | Faint soft smoke and last embers fading after a fire is out, very quiet, dry close mono, no reverb, no music | 1.5 | 0.3 | N | 1 | Ambient |
-| fire_torch_flutter_loop | Seamless loop of a handheld torch flame fluttering and guttering, steady, no start or end, dry close mono, no reverb, no music | 12 | 0.3 | Y | 1 | Ambient |
-| fire_brazier_loop | Seamless loop of a large steady brazier fire burning, fuller and deeper than a torch, no start or end, dry close mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
+| fire_torch_flutter_loop | Perfectly seamless loop of a handheld torch flame fluttering and guttering, steady, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 12 | 0.3 | Y | 1 | Ambient |
+| fire_brazier_loop | Perfectly seamless loop of a large steady brazier fire burning, fuller and deeper than a torch, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
 | camp_rest_fade_sting | A very soft brief tonal breath as the world fades to rest, gentle, almost silent, dry close mono, no reverb, no music | 1.0 | 0.3 | N | 1 | UI |
 | camp_rest_autosave_chime | A single very soft understated low resonance marking a quiet autosave, no fanfare, dry close mono, no reverb, no music | 0.8 | 0.4 | N | 1 | UI |
 
@@ -305,14 +305,14 @@ foley and breath behind a helm):
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| wx_clear_bed_loop | Seamless loop of a calm clear-day outdoor ambience, very gentle air and faint distant openness, steady, no start or end, mono, no reverb, no music | 20 | 0.25 | Y | 1 | Ambient |
-| wx_wind_calm_loop | Seamless loop of soft light calm wind, gentle steady air movement, no gusts, no start or end, mono, no reverb, no music | 18 | 0.25 | Y | 1 | Ambient |
-| wx_wind_breeze_loop | Seamless loop of a moderate breeze through open land, steady with mild swells, no start or end, mono, no reverb, no music | 18 | 0.3 | Y | 1 | Ambient |
-| wx_wind_storm_loop | Seamless loop of strong howling storm wind, powerful sustained gusting, no start or end, mono, no reverb, no music | 18 | 0.35 | Y | 1 | Ambient |
-| wx_rain_light_soil_loop | Seamless loop of light rain falling on soil and grass, soft steady patter, no start or end, mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
-| wx_rain_light_stone_loop | Seamless loop of light rain on stone and pavement, fine bright steady patter, no start or end, mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
-| wx_rain_heavy_soil_loop | Seamless loop of heavy rain on soil and earth, dense drumming downpour, no start or end, mono, no reverb, no music | 16 | 0.35 | Y | 1 | Ambient |
-| wx_rain_heavy_foliage_loop | Seamless loop of heavy rain hammering a forest canopy, dense leafy roar, no start or end, mono, no reverb, no music | 16 | 0.35 | Y | 1 | Ambient |
+| wx_clear_bed_loop | Perfectly seamless loop of a calm clear-day outdoor ambience, very gentle air and faint distant openness, steady, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 20 | 0.25 | Y | 1 | Ambient |
+| wx_wind_calm_loop | Perfectly seamless loop of soft light calm wind, gentle steady air movement, no gusts, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 18 | 0.25 | Y | 1 | Ambient |
+| wx_wind_breeze_loop | Perfectly seamless loop of a moderate breeze through open land, steady with mild swells, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 18 | 0.3 | Y | 1 | Ambient |
+| wx_wind_storm_loop | Perfectly seamless loop of strong howling storm wind, powerful sustained gusting, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 18 | 0.35 | Y | 1 | Ambient |
+| wx_rain_light_soil_loop | Perfectly seamless loop of light rain falling on soil and grass, soft steady patter, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
+| wx_rain_light_stone_loop | Perfectly seamless loop of light rain on stone and pavement, fine bright steady patter, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
+| wx_rain_heavy_soil_loop | Perfectly seamless loop of heavy rain on soil and earth, dense drumming downpour, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 16 | 0.35 | Y | 1 | Ambient |
+| wx_rain_heavy_foliage_loop | Perfectly seamless loop of heavy rain hammering a forest canopy, dense leafy roar, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 16 | 0.35 | Y | 1 | Ambient |
 | wx_thunder_distant | A low distant rolling thunder rumble far away, dry, mono, no reverb, no music | 4 | 0.35 | N | 4 | Ambient |
 | wx_thunder_near_crack | A close violent thunder crack and sharp boom rolling off, dry, mono, no reverb, no music | 4 | 0.45 | N | 3 | Ambient |
 | wx_rain_onset_ramp | Rain beginning, the first scattered drops building into a steady patter, mono, no reverb, no music | 6 | 0.3 | N | 1 | Ambient |
