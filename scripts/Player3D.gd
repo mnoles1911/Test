@@ -163,6 +163,17 @@ var max_health: float = MAX_HEALTH_DEFAULT
 var endurance: float = MAX_ENDURANCE_DEFAULT
 var max_endurance: float = MAX_ENDURANCE_DEFAULT
 
+# --- Footstep SFX (see _update_footsteps) ---
+# A footstep is one foot plant. We don't loop a walk cycle; we emit one
+# one-shot every time the player has covered a "stride" of ground (the
+# "cadence lives in code" model from design/SFX_PROMPTS.md §2). Distance-
+# based so it stays in sync at any speed and on accel/decel.
+const STEP_DIST_WALK: float   = 0.85   # metres of ground travel per step
+const STEP_DIST_SPRINT: float = 1.25   # longer stride at a run
+const STEP_DIST_CROUCH: float = 0.70   # short, careful steps
+const MIN_STEP_SPEED: float   = 0.6    # m/s below this = not really walking
+var _footstep_accum: float = 0.0       # metres travelled since last step
+
 var _is_sprinting: bool  = false
 var _is_crouching: bool  = false
 var _sprint_locked: bool = false
@@ -864,6 +875,9 @@ func _physics_process_inner(delta: float) -> void:
 	if _prof_ms != null:
 		_prof_ms.record("PHYS", "Player3D_move_and_slide", _t_ms_us)
 
+	# Footstep SFX — post-move so position/velocity/is_on_floor are final.
+	_update_footsteps()
+
 	# --- Auto-step over small voxel ledges ---
 	# Walking forward into a 1-voxel cube (16.7 cm at 6 vox/m, since
 	# we run at 6 voxels per metre) catches the capsule's rounded
@@ -1075,3 +1089,40 @@ func toggle_fly_mode() -> bool:
 		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 			_underwater_filter.set_active(false)
 	return is_flying
+
+
+func _update_footsteps() -> void:
+	# One footstep one-shot per "stride" of ground travel. We do NOT loop
+	# a walk cycle — the cadence is produced here so it stays locked to
+	# the feet at any speed (design/SFX_PROMPTS.md §2). Silent (one notice
+	# from AudioManager) until the step .ogg files are curated into
+	# assets/audio/sfx/locomotion/, then it switches on automatically.
+	if not is_on_floor():
+		_footstep_accum = 0.0      # airborne / jumping / swimming -> no steps
+		return
+	if _in_water:
+		return                     # no dry steps while wading (TODO: wade SFX)
+	var hspeed: float = Vector2(velocity.x, velocity.z).length()
+	if hspeed < MIN_STEP_SPEED:
+		return                     # standing still / negligible drift
+	_footstep_accum += hspeed * get_physics_process_delta_time()
+	# Gait + stride from the state Player3D already tracks.
+	var gait: String = "walk"
+	var stride: float = STEP_DIST_WALK
+	if _is_crouching:
+		gait = "crouch"
+		stride = STEP_DIST_CROUCH
+	elif _is_sprinting:
+		gait = "sprint"
+		stride = STEP_DIST_SPRINT
+	if _footstep_accum < stride:
+		return
+	_footstep_accum -= stride
+	# TODO (surface pass): query the voxel material under the player and
+	# pick the real surface (grass/dirt/stone/wood/sand), plus
+	# shallow_water via WaterFlowManager. Placeholder for now — exact
+	# surface is inaudible until the step .ogg files are curated in.
+	var surface: String = "dirt"
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null:
+		am.play("step_%s_%s" % [gait, surface], global_position)
