@@ -142,20 +142,30 @@ func play_loop(id: String, world_pos = null, bus: String = "") -> int:
 		return 0
 	# Belt-and-suspenders: ensure the stream loops even if the import
 	# setting wasn't toggled (AudioStreamOggVorbis exposes `loop`).
+	# set() is used (not stream.loop) because the base AudioStream type
+	# has no `loop` member — only some subclasses do.
 	if "loop" in stream:
-		stream.loop = true
+		stream.set("loop", true)
 	var bus_name := _bus_for(id, bus)
-	var node: Node
+	# Build on the concrete typed player; store the Node reference. (Don't
+	# touch .bus/.stream through a Node-typed var — GDScript static typing
+	# would reject it since Node has no such members.)
+	var node  # untyped on purpose: holds either player subtype
 	if world_pos is Vector3:
-		var p := AudioStreamPlayer3D.new()
-		p.global_position = world_pos
-		node = p
+		var p3 := AudioStreamPlayer3D.new()
+		p3.bus = bus_name
+		p3.stream = stream
+		add_child(p3)
+		p3.global_position = world_pos
+		p3.play()
+		node = p3
 	else:
-		node = AudioStreamPlayer.new()
-	node.bus = bus_name
-	node.stream = stream
-	add_child(node)
-	node.play()
+		var p2 := AudioStreamPlayer.new()
+		p2.bus = bus_name
+		p2.stream = stream
+		add_child(p2)
+		p2.play()
+		node = p2
 	var handle := _next_handle
 	_next_handle += 1
 	_loops[handle] = node
@@ -164,7 +174,7 @@ func play_loop(id: String, world_pos = null, bus: String = "") -> int:
 
 func stop_loop(handle: int) -> void:
 	if _loops.has(handle):
-		var n: Node = _loops[handle]
+		var n = _loops[handle]   # untyped: AudioStreamPlayer(3D) has .stop()
 		_loops.erase(handle)
 		if is_instance_valid(n):
 			n.stop()
@@ -173,7 +183,7 @@ func stop_loop(handle: int) -> void:
 
 func stop_all_loops() -> void:
 	for handle in _loops.keys():
-		var n: Node = _loops[handle]
+		var n = _loops[handle]
 		if is_instance_valid(n):
 			n.stop()
 			n.queue_free()
@@ -191,12 +201,13 @@ func _pick_stream(id: String) -> AudioStream:
 				% id + "placed in assets/audio/sfx/). This is expected "
 				+ "pre-curation.")
 		return null
-	return load(paths.pick_random()) as AudioStream
+	var pick: String = paths.pick_random()
+	return load(pick) as AudioStream
 
 
 func _resolve(id: String) -> Array:
 	if _path_cache.has(id):
-		return _path_cache[id]
+		return _path_cache[id] as Array
 	var folder := _folder_for(id)
 	var found: Array = []
 	if folder != "":
