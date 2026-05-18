@@ -209,19 +209,31 @@ func _pick_stream(id: String) -> AudioStream:
 
 
 func _resolve(id: String) -> Array:
+	# Accept BOTH .ogg and .mp3. ElevenLabs renders mp3 and Godot 4
+	# imports mp3 natively, so "curating" a sound is just dropping the
+	# file in — no ffmpeg step needed. Preference order: a final .ogg
+	# wins over a raw .mp3 of the same name (so an upgraded keeper
+	# supersedes the rough take automatically).
 	if _path_cache.has(id):
 		return _path_cache[id] as Array
 	var folder := _folder_for(id)
 	var found: Array = []
 	if folder != "":
 		var base := SFX_ROOT + folder + "/"
+		# Single curated file: <id>.ogg, else <id>.mp3.
 		if ResourceLoader.exists(base + id + ".ogg"):
 			found.append(base + id + ".ogg")
+		elif ResourceLoader.exists(base + id + ".mp3"):
+			found.append(base + id + ".mp3")
 		else:
+			# Variation set: <id>_01.. (ogg preferred per index, else mp3).
 			for i in range(1, MAX_VARIATIONS + 1):
-				var p := base + "%s_%02d.ogg" % [id, i]
-				if ResourceLoader.exists(p):
-					found.append(p)
+				var ogg := base + "%s_%02d.ogg" % [id, i]
+				var mp3 := base + "%s_%02d.mp3" % [id, i]
+				if ResourceLoader.exists(ogg):
+					found.append(ogg)
+				elif ResourceLoader.exists(mp3):
+					found.append(mp3)
 				elif i > 1:
 					break   # contiguous numbering; stop at first gap
 	_path_cache[id] = found

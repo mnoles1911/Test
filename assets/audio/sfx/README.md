@@ -37,8 +37,13 @@ generator's review folders (`01_locomotion/`, `02_combat/`, `07_weather/`,
 
 ## Format
 
-Mono, 44.1 kHz, OGG Vorbis (per `design/AUDIO_DESIGN.md`). ElevenLabs
-returns mp3 — convert the keeper:
+**`.mp3` works directly** — `AudioManager` loads `.ogg` *or* `.mp3` and
+Godot 4 imports mp3 natively, so "curating" is just dropping the renamed
+ElevenLabs file in (`<id>.mp3` or `<id>_01.mp3`…). No conversion required.
+
+`.ogg` is preferred when present (a final `<id>.ogg` automatically
+supersedes a raw `<id>.mp3` of the same name), so converting to mono
+44.1 kHz OGG is an *optional* polish/size step for finalised keepers:
 
 ```
 ffmpeg -i in.mp3 -ac 1 -ar 44100 -c:a libvorbis out.ogg
