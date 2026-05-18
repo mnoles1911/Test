@@ -789,6 +789,16 @@ func _apply_edit(cmd: Dictionary) -> void:
 			# by the bulk path. Avoids relying on tool.set_voxel which
 			# has churned signatures across Zylann builds.
 			tool.do_box(Vector3(ws_voxel_pos), Vector3(ws_voxel_pos) + Vector3.ONE)
+			# Stage 6 Phase 1: ALSO persist the WaterByteCodec byte
+			# (level + flow dir) into CHANNEL_DATA5. CHANNEL_TYPE above
+			# stays the is-water flag the mesher/shader/collision read;
+			# DATA5 carries the level the flow sim reads back and the
+			# future surface mesher will slope/animate from. An air write
+			# (byte not water) clears DATA5 to 0 too, so no stale level
+			# lingers under removed water.
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			tool.value = (ws_byte & 0xFF if WaterByteCodec.is_water(ws_byte) else 0)
+			tool.do_box(Vector3(ws_voxel_pos), Vector3(ws_voxel_pos) + Vector3.ONE)
 			var ws_world: Vector3 = (Vector3(ws_voxel_pos) + Vector3(0.5, 0.5, 0.5)) / VOXELS_PER_METER
 			var ws_aabb := AABB(
 				Vector3(ws_voxel_pos) / VOXELS_PER_METER,
@@ -811,6 +821,13 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var wb_box := AABB(Vector3(wb_min), Vector3(wb_max - wb_min))
 			if not _try_requeue_if_not_editable(tool, wb_box, cmd):
 				return
+			tool.do_box(Vector3(wb_min), Vector3(wb_max))
+			# Stage 6 Phase 1: also persist the byte into CHANNEL_DATA5
+			# (see "water_set" above for the why). Bulk seeds (test pond,
+			# generator ocean via SOURCE_BYTE) get their level/source/dir
+			# stored so the sim reads true levels at body edges.
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			tool.value = (wb_byte & 0xFF if WaterByteCodec.is_water(wb_byte) else 0)
 			tool.do_box(Vector3(wb_min), Vector3(wb_max))
 			var wb_world_min: Vector3 = Vector3(wb_min) / VOXELS_PER_METER
 			var wb_world_max: Vector3 = Vector3(wb_max) / VOXELS_PER_METER
