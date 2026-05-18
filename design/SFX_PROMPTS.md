@@ -496,6 +496,22 @@ the wiring, revisit the quality here:
 Net: footsteps should now sound markedly better (varied + jittered);
 remaining work is the listen-and-prune curation, not code.
 
+**Confirmed working in-game 2026-05-18 (clean run, no errors):** footsteps
+(surface-aware + varied + jittered), dig strike-on-break + continuous dig
+loop, campfire loop, NoEditZone reject — all firing correctly. Designer
+verdict: functional but **sound quality is rough** — accepted and deferred.
+The remaining quality levers, for the future polish cycle, are entirely
+non-code:
+  a. **Curate (task #8):** audition each id's ~7 bulk takes, keep the 3–5
+     strongest, delete the rest. Most of the "bad" is weak/again-identical
+     takes surviving because nothing was pruned.
+  b. **Re-roll the weakest ids:** footstep takes are the poorest source
+     material; regenerate those prompts (the footstep rows in §2) next
+     credit cycle and re-curate. Tools/process unchanged.
+  c. Optional: fine-tune `STEP_DIST_*` / jitter ranges by feel once (a)+(b)
+     give good source audio (judging cadence on bad samples is misleading).
+Pipeline + wiring are **done**; this is a pure audio-quality pass for later.
+
 ---
 
 ## 9. Maintenance
