@@ -95,7 +95,18 @@ Entered when Player3D's Y position is above the water floor but the player's wai
 
 - `motion_mode = MOTION_MODE_FLOATING`
 - XZ movement driven by camera-facing direction
-- Y movement: Space = swim up, Ctrl = swim down
+- Y movement: Space = swim up, Shift/Ctrl = swim down (dive)
+- **Buoyancy (2026-05-18, #13):** with no vertical input Roland is
+  lighter than water. SUBMERGED → drifts up toward the surface
+  (`BUOYANT_RISE_SPEED` 1.2 m/s, ramp `BUOYANT_RISE_ACCEL` 3.0). At the
+  SURFACE (in water, head clear) → vertical velocity eases to 0
+  (`BUOYANT_SETTLE_ACCEL` 4.0) so he settles and bobs at the waterline.
+  This **replaces** the earlier deliberate slow-sink ("game-y tension")
+  model — letting go now surfaces you; *diving* (descend input) is the
+  thing that takes effort and fights the buoyant rise. Drowning tension
+  now comes from the breath timer + actively diving, not from passively
+  sinking. Player3D constants `BUOYANT_RISE_SPEED` /
+  `BUOYANT_RISE_ACCEL` / `BUOYANT_SETTLE_ACCEL`.
 - Speed: ~3 m/s (slower than walking)
 - Endurance is NOT drained by swimming (only by holding breath when submerged)
 - Sprint key: ignored while swimming
