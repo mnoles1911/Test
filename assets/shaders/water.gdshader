@@ -113,6 +113,23 @@ uniform float wind_strength : hint_range(0.0, 5.0) = 0.5;
 
 
 // ============================================================
+// "LOOK ALIVE" (#15) — animated micro-ripple
+// ============================================================
+// Fragment-only: no geometry (blocky art direction; waves were
+// intentionally dropped) and no texture. A cheap procedural dual-wave
+// perturbs ONLY the shading normal, so the sky reflection / fresnel
+// glint drifts and shimmers. Scrolls along the live weather wind
+// (wind_dir / wind_strength, pushed by WaterFlowManager every frame)
+// so storms visibly chop the water. Amplitude is tiny and scaled by
+// up-facing-ness, so it can NOT re-brighten the LOD-seam side slivers
+// the #222 work suppressed, and it is skipped entirely when any
+// debug_mode is active so F6 diagnostics stay exact.
+uniform float surface_motion_strength : hint_range(0.0, 1.0) = 0.5;
+uniform float surface_motion_speed : hint_range(0.0, 3.0) = 0.6;
+uniform float surface_ripple_scale : hint_range(0.05, 4.0) = 0.7;
+
+
+// ============================================================
 // DEBUG
 // ============================================================
 // 4 = surface facing (white=up-facing water TOP, black=vertical
@@ -152,6 +169,18 @@ void fragment() {
 	// At steep angles (looking straight down) → ~0 (clear, see bottom).
 	// At grazing angles (looking across) → ~1 (bright reflective sheet).
 	vec3 n = normalize(NORMAL);
+	// === 2-alive. Animated micro-ripple (#15) — shading normal only.
+	// Gated to debug_mode==0 (keeps F6 diagnostics pristine) and scaled
+	// by up-ness + a 0.06 cap so side slivers stay ~unchanged (#222).
+	if (debug_mode == 0 && surface_motion_strength > 0.001) {
+		vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		vec2 sc = wpos.xz * surface_ripple_scale;
+		vec2 scroll = wind_dir * (0.4 + wind_strength) * (TIME * surface_motion_speed);
+		float w1 = sin(sc.x + scroll.x) + cos(sc.y * 0.85 - scroll.y);
+		float w2 = sin((sc.x + sc.y) * 0.6 - scroll.x * 1.3);
+		float amp = 0.06 * surface_motion_strength * clamp(n.y, 0.0, 1.0);
+		n = normalize(n + vec3(w1, 0.0, w2) * amp);
+	}
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
