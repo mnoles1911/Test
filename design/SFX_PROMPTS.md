@@ -336,6 +336,52 @@ foley and breath behind a helm):
 
 ---
 
+## 7b. Phase 2 (started) — Category 04: Voxel / Terrain Editing
+
+The core destructible-terrain verbs — the most-heard sounds in a voxel game.
+**Scoped to the 4 wired materials** (sand, dirt, grass, stone) + bedrock,
+wrong-tool, dig loops, gravity collapse, explosives, and build-mode cues.
+Axe/wood and the ore tiers are deferred to a later sub-phase (not wired yet).
+~27 entries / ~133 generations; interim-model estimate well under budget —
+**render with `--credit-cap 12000`** as the hard safety (your monthly
+remainder is tight). The first run also finally ground-truths the per-gen
+floor: note your credit balance before/after and tell me.
+
+| id | prompt | dur | infl | loop | var | bus |
+|---|---|---|---|---|---|---|
+| vox_shovel_strike_dirt | A single shovel blade biting into packed dirt, a soft earthy chop with grit and crumble, dry close mono, no reverb, no music | 0.4 | 0.45 | N | 4 | SFX |
+| vox_shovel_break_dirt | A clod of dirt breaking loose and crumbling away as a block is removed, soft earthy collapse, dry close mono, no reverb, no music | 0.5 | 0.45 | N | 4 | SFX |
+| vox_place_dirt | A block of dirt set and tamped into place, a soft compact thud, dry close mono, no reverb, no music | 0.4 | 0.45 | N | 3 | SFX |
+| vox_shovel_strike_sand | A single shovel scoop into dry sand, a soft granular shove and hiss, dry close mono, no reverb, no music | 0.4 | 0.4 | N | 4 | SFX |
+| vox_shovel_break_sand | Sand giving way and pouring as a block is removed, a soft granular collapse, dry close mono, no reverb, no music | 0.5 | 0.4 | N | 4 | SFX |
+| vox_place_sand | A block of sand dropped into place, a soft heavy granular thud, dry close mono, no reverb, no music | 0.4 | 0.4 | N | 3 | SFX |
+| vox_shovel_strike_grass | A shovel cutting through grass turf and root into soil, a tearing crunch and earthy chop, dry close mono, no reverb, no music | 0.4 | 0.45 | N | 4 | SFX |
+| vox_shovel_break_grass | A clump of grassy turf ripped free and crumbling, root tear and soil patter, dry close mono, no reverb, no music | 0.5 | 0.45 | N | 4 | SFX |
+| vox_place_grass | A turf block set down, a soft muffled grassy thud, dry close mono, no reverb, no music | 0.4 | 0.45 | N | 3 | SFX |
+| vox_pick_strike_stone | A single pickaxe striking solid stone, a sharp hard ringing chip with grit spray, dry close mono, no reverb, no music | 0.4 | 0.55 | N | 4 | SFX |
+| vox_pick_break_stone | A stone block shattering apart under a pick, a hard crack and rubble fall, dry close mono, no reverb, no music | 0.5 | 0.55 | N | 4 | SFX |
+| vox_place_stone | A heavy stone block set into place, a solid grinding thunk, dry close mono, no reverb, no music | 0.4 | 0.5 | N | 3 | SFX |
+| vox_bedrock_blocked | A tool striking unbreakable bedrock with no progress, a dead hard dull clank that does not yield, dry close mono, no reverb, no music | 0.4 | 0.55 | N | 3 | SFX |
+| vox_wrongtool_soft | A wrong tool scraping ineffectively at soil, a dull glancing scuff with little effect, dry close mono, no reverb, no music | 0.5 | 0.45 | N | 3 | SFX |
+| vox_wrongtool_stone | A wrong tool glancing off stone ineffectively, a dull flat scrape with no bite, dry close mono, no reverb, no music | 0.5 | 0.5 | N | 3 | SFX |
+| vox_dig_loop_soft | Perfectly seamless loop of continuous shovel digging in soft soil, steady rhythmic earthy scoops, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 12 | 0.3 | Y | 1 | SFX |
+| vox_dig_loop_hard | Perfectly seamless loop of continuous pickaxe mining stone, steady rhythmic hard chipping, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 12 | 0.3 | Y | 1 | SFX |
+| vox_cluster_collapse | A mass of unsupported voxels giving way and collapsing, a heavy rumbling tumble of earth and stone, dry close mono, no reverb, no music | 1.5 | 0.5 | N | 3 | SFX |
+| vox_cluster_impact_ground | A collapsed chunk of terrain crashing down onto the ground, a heavy debris impact and settle, dry close mono, no reverb, no music | 0.9 | 0.5 | N | 4 | SFX |
+| vox_cluster_impact_water | A collapsed chunk of terrain crashing into water, a heavy splash and churn, dry close mono, no reverb, no music | 1.0 | 0.45 | N | 3 | SFX |
+| vox_powdercharge_fuse | A powder charge fuse sizzling and burning down, a tense sputtering hiss, dry close mono, no reverb, no music | 2.0 | 0.4 | N | 2 | SFX |
+| vox_powdercharge_blast | A powder charge detonating in stone, a hard concussive blast with a rubble burst, dry close mono, no reverb, no music | 1.5 | 0.55 | N | 3 | SFX |
+| vox_sapper_blast_heavy | A heavy sapper charge detonating, a huge deep concussive explosion shattering timber and stone, dry close mono, no reverb, no music | 2.0 | 0.55 | N | 3 | SFX |
+| vox_buildmode_ghost_appear | A soft brief tonal shimmer as a placement ghost block appears, subtle, not electronic, dry close mono, no reverb, no music | 0.4 | 0.4 | N | 1 | SFX |
+| vox_buildmode_snap_click | A short crisp snap as a placed block locks to the grid, a clean physical click, dry close mono, no reverb, no music | 0.3 | 0.55 | N | 2 | SFX |
+| vox_buildmode_reject | A low dull refusal thud when a block placement is blocked, physical not a beep, dry close mono, no reverb, no music | 0.4 | 0.5 | N | 2 | SFX |
+| vox_carve_volume_cycle | A very short subtle tick switching the carve volume size, minimal, not electronic, dry close mono, no reverb, no music | 0.3 | 0.5 | N | 1 | UI |
+
+vox_* files route to `assets/audio/sfx/voxel/` (per `SFX_LIBRARY.md §2`).
+Render: `python3 tools/render_sfx.py --category 04 --credit-cap 12000`.
+
+---
+
 ## 8. Phase 1 rollup & next
 
 | Category | Entries | Files (with var) |

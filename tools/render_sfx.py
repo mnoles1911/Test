@@ -163,6 +163,7 @@ FOLDER_RULES = [
     (("step_", "jumpland", "jump_", "land_", "armor_", "climb_", "vault_",
       "water_wade", "water_entry", "roland_"), "01_locomotion"),
     (("cmb_",), "02_combat"),
+    (("vox_",), "04_voxel"),
     (("fire_", "camp_"), "09_fire_camp"),
     (("wx_",), "07_weather"),
     (("water_",), "08_water"),
@@ -173,6 +174,7 @@ CATEGORY_RULES = [
     (("step_", "jumpland", "jump_", "land_", "armor_", "climb_", "vault_",
       "water_wade", "water_entry", "roland_"), "01"),
     (("cmb_",), "02"),          # impacts + enemies live in cmb_* too
+    (("vox_",), "04"),
     (("fire_", "camp_"), "09"),
     (("wx_",), "07"),
     (("water_",), "08"),
