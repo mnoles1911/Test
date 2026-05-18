@@ -177,6 +177,7 @@ const STEP_DIST_SPRINT: float = 2.10   # longer stride at a run
 const STEP_DIST_CROUCH: float = 1.10   # short, careful steps
 const MIN_STEP_SPEED: float   = 0.6    # m/s below this = not really walking
 var _footstep_accum: float = 0.0       # metres travelled since last step
+var _footstep_air_time: float = 0.0    # seconds since is_on_floor() last true
 
 # Voxel material id_string -> footstep surface bucket (Phase-1 live set:
 # grass/dirt/stone/wood/sand/shallow_water). Anything unmapped falls back
@@ -1115,8 +1116,16 @@ func _update_footsteps() -> void:
 	# from AudioManager) until the step .ogg files are curated into
 	# assets/audio/sfx/locomotion/, then it switches on automatically.
 	if not is_on_floor():
-		_footstep_accum = 0.0      # airborne / jumping / deep-swim -> no steps
+		# Coyote grace: streaming voxel terrain flickers is_on_floor()
+		# false for a frame or two during LOD/collision loads and on
+		# slope bumps. Don't kill the stride for those — only treat it as
+		# a real jump/fall (and zero the accumulator) after >0.25 s of
+		# continuous air. Either way, no step is emitted while off-floor.
+		_footstep_air_time += get_physics_process_delta_time()
+		if _footstep_air_time > 0.25:
+			_footstep_accum = 0.0
 		return
+	_footstep_air_time = 0.0
 	var hspeed: float = Vector2(velocity.x, velocity.z).length()
 	if hspeed < MIN_STEP_SPEED:
 		return                     # standing still / negligible drift

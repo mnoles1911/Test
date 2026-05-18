@@ -246,7 +246,12 @@ func _resolve(id: String) -> Array:
 					found.append(mp3)
 				elif i > 1:
 					break   # contiguous numbering; stop at first gap
-	_path_cache[id] = found
+	# Only cache a HIT. A miss is not cached, so if files are still being
+	# imported by Godot (e.g. just bulk-copied in) the very next trigger
+	# re-probes and picks them up — instead of the sound being dead for
+	# the whole session. Probing is cheap at trigger rates.
+	if not found.is_empty():
+		_path_cache[id] = found
 	return found
 
 
