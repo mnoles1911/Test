@@ -174,6 +174,17 @@ var _in_water: bool = false
 # player's pivot position this frame. When true: motion_mode flips to
 # FLOATING, sprint is disabled, swim speed applies.
 
+const WATER_EXIT_MARGIN_M: float = 0.20
+# #4 waterline-jitter fix (2026-05-17). Standing at the exact sea
+# surface, the pivot bobs sub-voxel (CharacterBody3D snap + float),
+# so a raw per-frame is_position_in_water(pivot) flips true/false every
+# few frames — _in_water chatters, motion_mode/sprint/swim flicker, and
+# the WaterDiag surface-Y Δ swings 0.0-0.67 m. Hysteresis: ENTER water
+# when the pivot is in water (unchanged), but only EXIT once a probe
+# WATER_EXIT_MARGIN_M *below* the pivot is also dry — i.e. the pivot
+# must rise a clear ~1.2 voxels above the surface before going dry.
+# One extra query, only while already wet; no timer, no extra state.
+
 var _is_submerged: bool = false
 # True if Roland's head (HEAD_OFFSET_METERS above his pivot) is below
 # the current water volume's surface_y. When true: breath ticks down,
@@ -997,6 +1008,9 @@ func _update_water_state() -> void:
 	# WaterFlowManager.is_position_in_water tests the active dictionary
 	# AND any registered source regions (oceans, lakes), so a single
 	# query covers per-cell water and large body-of-water AABBs.
+	# Capture last frame's state BEFORE the reset — the hysteresis
+	# exit test below needs to know whether we were already wet.
+	var was_in_water: bool = _in_water
 	_in_water = false
 	_is_submerged = false
 
@@ -1005,7 +1019,17 @@ func _update_water_state() -> void:
 		# Bound the player position cache so the flow tick can scan
 		# only the active radius around the player.
 		wfm.set_player_position(global_position)
-		_in_water = wfm.is_position_in_water(global_position)
+		var pivot_wet: bool = wfm.is_position_in_water(global_position)
+		if was_in_water:
+			# Already wet: stay wet until a probe one exit-margin BELOW
+			# the pivot is also dry. At the surface the pivot bobs but
+			# pivot-margin stays submerged → no chatter. Only a genuine
+			# climb-out (pivot a full margin clear of the surface) makes
+			# the lower probe dry and flips _in_water false.
+			var sink_probe := global_position - Vector3(0.0, WATER_EXIT_MARGIN_M, 0.0)
+			_in_water = pivot_wet or wfm.is_position_in_water(sink_probe)
+		else:
+			_in_water = pivot_wet
 		if _in_water:
 			# Submersion = head also under water. Reusing the existing
 			# HEAD_OFFSET_METERS so the threshold matches PR #130.

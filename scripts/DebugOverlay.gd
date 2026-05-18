@@ -68,8 +68,19 @@ var _btn_teleport: Button
 var _btn_advance_day: Button
 var _btn_advance_time: Button
 var _btn_fly_mode: Button
+var _btn_instant_mine: Button
 var _btn_view_dist: Button
 var _btn_weather: Button
+
+var instant_mine_enabled: bool = false
+# DEV testing accelerator (TOGGLE INSTANT MINE in the COMMANDS tab,
+# default OFF). When true, EditToolHandler zeroes the per-material
+# mining time so one click carves the aimed voxel box immediately
+# instead of waiting out mining_time_seconds. The post-carve swing
+# cooldown still paces repeats, so holding LMB digs steadily. Read by
+# EditToolHandler via get("instant_mine_enabled"); purely a test
+# convenience (e.g. excavating a big multi-chunk volume to validate
+# water flood coverage) — leave OFF for any timing/balance testing.
 
 # SQLite voxel-cache size readout. Refreshed each time the F1
 # overlay opens (cheap — just a stat() on user://voxel_deltas.sqlite
@@ -353,14 +364,16 @@ func _build_commands_list_view() -> void:
 	_btn_advance_day  = _make_command_row("ADVANCE 1 DAY")
 	_btn_advance_time = _make_command_row("ADVANCE TIME...")
 	_btn_fly_mode     = _make_command_row("TOGGLE FLY MODE")
+	_btn_instant_mine = _make_command_row("TOGGLE INSTANT MINE")
 	_btn_view_dist    = _make_command_row("VIEW DISTANCE...")
 	_btn_weather      = _make_command_row("WEATHER...")
 
 	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
 			_btn_advance_day, _btn_advance_time, _btn_fly_mode,
-			_btn_view_dist, _btn_weather]:
+			_btn_instant_mine, _btn_view_dist, _btn_weather]:
 		_commands_list_view.add_child(b)
 	_refresh_fly_mode_label()
+	_refresh_instant_mine_label()
 
 
 func _make_command_row(label: String) -> Button:
@@ -769,6 +782,27 @@ func _refresh_fly_mode_label() -> void:
 	if not players.is_empty() and "is_flying" in players[0]:
 		on = bool(players[0].is_flying)
 	_btn_fly_mode.text = "  TOGGLE FLY MODE  (%s)" % ("ON" if on else "OFF")
+
+
+# --- INSTANT MINE toggle (DEV testing accelerator) ---
+
+func _toggle_instant_mine() -> void:
+	# Flip the flag EditToolHandler reads. No player/scene dependency —
+	# it's a pure dev convenience that zeroes mining time so big test
+	# excavations (e.g. multi-chunk water-flood digs) are one-click.
+	instant_mine_enabled = not instant_mine_enabled
+	_refresh_instant_mine_label()
+	log_action("DEV: instant mine %s" % ("ON" if instant_mine_enabled else "OFF"))
+
+
+func _refresh_instant_mine_label() -> void:
+	# Keep the button text in sync so the menu reads
+	# "TOGGLE INSTANT MINE  (ON)" / "(OFF)" at a glance.
+	if _btn_instant_mine == null:
+		return
+	_btn_instant_mine.text = "  TOGGLE INSTANT MINE  (%s)" % (
+		"ON" if instant_mine_enabled else "OFF"
+	)
 
 
 # --- VIEW DISTANCE sub-view ---
@@ -1543,6 +1577,9 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		if _hits_button(_btn_fly_mode, pos):
 			_toggle_fly_mode()
+			return
+		if _hits_button(_btn_instant_mine, pos):
+			_toggle_instant_mine()
 			return
 		if _hits_button(_btn_view_dist, pos):
 			_show_view_dist_view()

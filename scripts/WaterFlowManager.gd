@@ -174,6 +174,24 @@ var _edit_cell_ttl: Dictionary = {}
 # down once per flow tick.
 const EDIT_CELL_TTL: int = 4  # ~1 sec at 4 Hz
 
+var _pending_water: Dictionary = {}
+# Vector3i (voxel coord) → int (ticks remaining). #5 front-advance fix
+# (2026-05-17). Flood/gravity writes go through VoxelEditManager's
+# ASYNC queue, so a cell the sim filled this tick still reads as air
+# from the next tick's CHANNEL_TYPE buffer copy until the queue drains
+# (200-500 writes/window under load → multi-tick lag). The flood front
+# then can't see its own just-written water, the "is a neighbour wet?"
+# test fails, EDIT_CELL_TTL expires on far cells, and a cave/trench
+# never finishes filling (measured: rej_unfed in the hundreds-to-1300
+# with rej_above_sea=0). Every voxel the sim queues as water is added
+# here and treated as water by the flood/gravity decision IMMEDIATELY,
+# decoupling front advance from queue latency. Pruned two ways:
+# confirm-on-read (erased the moment the buffer shows it really is
+# water) + PENDING_WATER_TTL (safety net for writes that never land,
+# e.g. NoEditZone-rejected). This is the role the abandoned legacy
+# _cells cache used to play.
+const PENDING_WATER_TTL: int = 40  # ~10 s at 4 Hz; confirm-on-read prunes sooner
+
 var _prof: Node = null
 # Cached /root/Profiler ref (see _ready) for the per-query WATER
 # attribution wrapper. null when the Profiler autoload is absent.
@@ -731,6 +749,24 @@ var _diag_flow_any_write: bool = false
 var _diag_flow_above_sea: int = 0
 var _diag_flow_worst_above: Vector3i = Vector3i.ZERO
 
+# #5 residual diagnostic (2026-05-17). After the chunk-dirty fix the
+# flood reaches far via powder blasts (flood 200+/window) but a thin
+# hand-dug trench/cave still doesn't fully fill. Two reasons are
+# possible and the write counters above can't tell them apart:
+#   rej_above_sea — an edit-flagged AIR cell skipped purely because
+#                   wpos.y > sea_y. This is CORRECT (water must not
+#                   climb above sea level — the #3 gate). High here =
+#                   the unfilled cave is just an uneven trench whose
+#                   floor rises above voxel sea_y; not a sim bug.
+#   rej_unfed     — an edit-flagged AIR cell at/below sea_y, not
+#                   blocked, that had NO adjacent water this tick so
+#                   it couldn't flood. Persistently high = the real
+#                   front-advance/readback-lag bug (the front can't
+#                   see its own just-queued water, TTL expires).
+# One re-run of the same trench tells us which fix to write.
+var _diag_flow_rej_above_sea: int = 0
+var _diag_flow_rej_unfed: int = 0
+
 
 func _diag_register_write(pos: Vector3i, sea_y: int) -> void:
 	# Called at every flow write site (gravity drop + flood fill) so the
@@ -762,6 +798,21 @@ func _run_flow_tick_v2() -> void:
 				_edit_cell_ttl[ep] = n
 		for ep in expired:
 			_edit_cell_ttl.erase(ep)
+
+	# #5 front-advance fix: age out the pending-water safety net. Most
+	# entries are erased earlier by confirm-on-read in _flow_chunk; this
+	# only reclaims writes that never landed (NoEditZone-rejected, or the
+	# cell fell out of the active radius before applying).
+	if not _pending_water.is_empty():
+		var pw_expired: Array = []
+		for pp in _pending_water.keys():
+			var pn: int = (_pending_water[pp] as int) - 1
+			if pn <= 0:
+				pw_expired.append(pp)
+			else:
+				_pending_water[pp] = pn
+		for pp in pw_expired:
+			_pending_water.erase(pp)
 
 	if get_node_or_null("/root/VoxelEditManager") == null:
 		return
@@ -796,17 +847,20 @@ func _run_flow_tick_v2() -> void:
 		_diag_flow_ticks = 0
 		if _diag_flow_flood > 0 or _diag_flow_gravity > 0 or not snapshot.is_empty():
 			var _mwy_s: String = str(_diag_flow_max_write_y) if _diag_flow_any_write else "n/a"
-			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  player=%s" % [
+			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  rej_above_sea=%d  rej_unfed=%d  player=%s" % [
 				snapshot.size(), _diag_flow_flood, _diag_flow_gravity,
 				_edit_cell_ttl.size(), str(_diag_flow_last),
 				get_sea_level_voxel_y(), _mwy_s, _diag_flow_above_sea,
-				str(_diag_flow_worst_above), str(_world_to_voxel(_player_pos)),
+				str(_diag_flow_worst_above), _diag_flow_rej_above_sea,
+				_diag_flow_rej_unfed, str(_world_to_voxel(_player_pos)),
 			])
 		_diag_flow_flood = 0
 		_diag_flow_gravity = 0
 		_diag_flow_any_write = false
 		_diag_flow_above_sea = 0
 		_diag_flow_worst_above = Vector3i.ZERO
+		_diag_flow_rej_above_sea = 0
+		_diag_flow_rej_unfed = 0
 
 
 func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
@@ -840,17 +894,26 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 				var here: int = tbuf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_TYPE)
 				var wpos: Vector3i = vmin + Vector3i(lx, ly, lz)
 
-				if here == WATER_TYPE_ID:
-					# --- GRAVITY: water with air directly below falls. ---
+				# Confirm-on-read: the queued write for this cell has
+				# landed in the buffer -- drop it from the pending set.
+				if here == WATER_TYPE_ID and _pending_water.has(wpos):
+					_pending_water.erase(wpos)
+
+				if here == WATER_TYPE_ID or _pending_water.has(wpos):
+					# --- GRAVITY: water (incl. just-queued pending water)
+					# with air directly below falls, so a freshly-flooded
+					# column keeps draining each tick instead of stalling
+					# on the async edit queue. ---
 					var below: int
 					if ly > 0:
 						below = tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE)
 					else:
 						below = tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE)
-					if below == 0:
-						var bpos: Vector3i = wpos - Vector3i(0, 1, 0)
+					var bpos: Vector3i = wpos - Vector3i(0, 1, 0)
+					if below == 0 and not _pending_water.has(bpos):
 						if not _is_water_blocked_at_voxel(bpos):
 							VoxelEditManager.queue_set_water_voxel(bpos, WaterByteCodec.SOURCE_BYTE)
+							_pending_water[bpos] = PENDING_WATER_TTL
 							_dirty_chunks[_voxel_to_chunk(bpos)] = true
 							changed += 1
 							_diag_flow_gravity += 1
@@ -865,6 +928,7 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 				if not _edit_cell_ttl.has(wpos):
 					continue  # only fill what the player carved
 				if wpos.y > sea_y:
+					_diag_flow_rej_above_sea += 1
 					continue  # no source pressure above sea level
 				if _is_water_blocked_at_voxel(wpos):
 					continue
@@ -885,9 +949,24 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					fed = true
 				if not fed and lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
 					fed = true
+				if not fed and (
+						_pending_water.has(wpos + Vector3i(0, 1, 0))
+						or _pending_water.has(wpos + Vector3i(-1, 0, 0))
+						or _pending_water.has(wpos + Vector3i(1, 0, 0))
+						or _pending_water.has(wpos + Vector3i(0, 0, -1))
+						or _pending_water.has(wpos + Vector3i(0, 0, 1))):
+					# Neighbour flooded this tick but its async write has
+					# not landed in the buffer yet -- treat pending water
+					# as water so the front advances every tick (#5 fix).
+					fed = true
 
+				if not fed:
+					# Edit-flagged, at/below sea_y, not blocked, yet no
+					# adjacent water this tick → the front-stall signature.
+					_diag_flow_rej_unfed += 1
 				if fed:
 					VoxelEditManager.queue_set_water_voxel(wpos, WaterByteCodec.SOURCE_BYTE)
+					_pending_water[wpos] = PENDING_WATER_TTL
 					_dirty_chunks[_voxel_to_chunk(wpos)] = true
 					changed += 1
 					_diag_flow_flood += 1
@@ -897,12 +976,28 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					# the flood front keeps advancing through the dug-out
 					# volume on later ticks (self-limited: re-checked
 					# against sea_y + edit gate every cell).
+					#
+					# #5 flood-coverage fix (2026-05-17): ALSO dirty the
+					# chunk each propagation target sits in. Previously
+					# only _voxel_to_chunk(wpos) was dirtied, so when the
+					# front reached a chunk boundary the next cell's chunk
+					# was never in _dirty_chunks → _run_flow_tick_v2 never
+					# processed it → the front stalled at the boundary and
+					# the carried TTL expired before that chunk was ever
+					# re-dirtied (hard waterline, dirty_chunks=1, large
+					# multi-chunk dug-out volumes only partly filled). A
+					# whole dug-out region now fills across chunk seams;
+					# still self-terminating (no air cells left to flood →
+					# no propagation → _dirty_chunks drains → idle) and
+					# still bounded by _chunk_in_active_radius + budget.
 					for d in _LATERAL_DIRS:
 						var npos: Vector3i = wpos + d
 						if npos.y <= sea_y:
 							_edit_cell_ttl[npos] = EDIT_CELL_TTL
+							_dirty_chunks[_voxel_to_chunk(npos)] = true
 					var down_np: Vector3i = wpos - Vector3i(0, 1, 0)
 					_edit_cell_ttl[down_np] = EDIT_CELL_TTL
+					_dirty_chunks[_voxel_to_chunk(down_np)] = true
 	return changed
 
 
