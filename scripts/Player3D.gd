@@ -208,6 +208,18 @@ var _is_submerged: bool = false
 # the current water volume's surface_y. When true: breath ticks down,
 # drowning damage applies if breath reaches zero.
 
+# --- Water audio edge-tracking ---
+# Previous-frame water flags, so _update_water_audio() can fire one-shot
+# splashes/gasps only on the transition. _water_loop_* hold the single
+# self-correcting ambience bed (surface-swim vs muffled underwater), the
+# same one-loop-at-a-time pattern AudioManager uses for the weather bed.
+# All AudioManager calls are no-op-safe (silent until the .ogg is curated
+# in), so this is inert until the water SFX are placed.
+var _was_in_water: bool = false
+var _was_submerged: bool = false
+var _water_loop_handle: int = 0
+var _water_loop_id: String = ""
+
 var _breath_remaining: float = BREATH_MAX_SECONDS
 # Seconds of air left. Refills automatically when not submerged.
 
@@ -1030,6 +1042,49 @@ func _update_water_state() -> void:
 	if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 		_underwater_filter.set_active(_is_submerged)
 
+	# Water audio: transition one-shots + the self-correcting ambience bed.
+	_update_water_audio()
+
+
+func _update_water_audio() -> void:
+	# Mirrors the AudioManager weather-bed approach: discrete one-shots on
+	# the rising/falling edge, plus ONE looping ambience bed swapped to
+	# match state. AudioManager no-ops (one warning, silent) until each
+	# water_*.ogg is curated in, so wiring this now is risk-free.
+	var am: Node = get_node_or_null("/root/AudioManager")
+	if am == null:
+		return
+
+	# --- Edge one-shots (positional, at the player) ---
+	if _in_water and not _was_in_water:
+		am.play("water_splash_medium", global_position)   # entered water
+	elif _was_in_water and not _in_water:
+		am.play("water_splash_small", global_position)     # left water
+	if _is_submerged and not _was_submerged:
+		am.play("water_submerge_plunge", global_position)  # head went under
+	elif _was_submerged and not _is_submerged:
+		am.play("water_surface_gasp", global_position)     # broke surface
+
+	# --- Single ambience bed, self-correcting (flat/non-positional so it
+	#     stays constant as Roland moves) ---
+	var want := ""
+	if _is_submerged:
+		want = "water_underwater_ambient_loop"
+	elif _in_water:
+		want = "water_swim_surface_loop"
+	# Re-fire if the desired bed changed, OR if we want one but never got a
+	# handle (file not imported yet at the last attempt — self-heals).
+	if want != _water_loop_id or (want != "" and _water_loop_handle == 0):
+		if _water_loop_handle != 0:
+			am.stop_loop(_water_loop_handle)
+			_water_loop_handle = 0
+		_water_loop_id = want
+		if want != "":
+			_water_loop_handle = am.play_loop(want)
+
+	_was_in_water = _in_water
+	_was_submerged = _is_submerged
+
 
 # =============================================================
 # DEBUG — FLY MODE
@@ -1106,6 +1161,16 @@ func toggle_fly_mode() -> bool:
 		_is_submerged = false
 		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 			_underwater_filter.set_active(false)
+		# _update_water_state() (and thus _update_water_audio) is skipped
+		# while flying, so the ambience bed won't self-stop — kill it here.
+		if _water_loop_handle != 0:
+			var am: Node = get_node_or_null("/root/AudioManager")
+			if am != null:
+				am.stop_loop(_water_loop_handle)
+			_water_loop_handle = 0
+			_water_loop_id = ""
+			_was_in_water = false
+			_was_submerged = false
 	return is_flying
 
 

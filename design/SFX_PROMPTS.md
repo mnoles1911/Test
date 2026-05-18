@@ -475,12 +475,21 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
   light/heavy rain → `wx_rain_*_soil_loop`. Idempotent (no restart pop if
   the bed is unchanged); done from the audio layer, **no gameplay edit**.
   No dedicated fog/snow beds rendered yet — reuse documented in code.
+- ✅ **Water** — `Player3D._update_water_state` → `_update_water_audio()`
+  (post water-query, pre-movement). Edge one-shots at the player:
+  `water_splash_medium` (enter) / `water_splash_small` (exit) /
+  `water_submerge_plunge` (head under) / `water_surface_gasp` (break
+  surface, → Voice bus). Plus ONE self-correcting flat ambience bed:
+  `water_underwater_ambient_loop` submerged / `water_swim_surface_loop`
+  wading-swimming / none on land — same one-loop pattern as the weather
+  bed (idempotent, self-heals if the file imports late). Fly-mode toggle
+  explicitly stops the bed (water update is skipped while flying).
 
 **Still to wire** (per-system, when that system is touched — not all at once):
 
 - Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` (once Combat
-  SFX are rendered next cycle).
-- Water — `WaterFlowManager` / swim state → `water_*` loops + splashes.
+  SFX are rendered next cycle). This is the only remaining call-site
+  family, and it is blocked on the Cat 02 render (task #7).
 
 ### 8b. Known quality gaps — FUTURE IMPROVEMENT (flagged 2026-05-18)
 
