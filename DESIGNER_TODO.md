@@ -291,6 +291,34 @@ Voice generation tasks for the text-to-speech pipeline.
   phonetic respellings in that file inside the `.txt` scripts before generating.
   The TTS model will guess wrong pronunciations if you skip this.
 
+### SFX (sound effects) — pipeline live, raw takes committed
+
+The SFX system is fully built and wired (`AudioManager` autoload, all
+rendered families hooked, no-op-safe). 548 raw ElevenLabs takes are
+committed in `assets/audio/sfx/` and audible in-game — but **uncurated**
+(rough / again-identical takes still in each set). See
+`design/SFX_PROMPTS.md` §8 / §8b for the full record.
+
+- [ ] **SFX quality pass — prune-in-place curation** (no credits, no code)
+  For each `<id>` set under `assets/audio/sfx/<folder>/`: audition the
+  `<id>_NN.mp3` takes (cross-ref the Desktop `0_KEEP` labels), **delete the
+  weak ones from the repo folder**. Loop ids → keep the one best seam-
+  checked take (loop-seam recipe in `assets/audio/sfx/README.md`);
+  variation ids → keep the strongest 3–5. Footstep takes are the weakest
+  source — flag any id that needs a re-roll. Optionally convert keepers to
+  `.ogg` (`ffmpeg -i in.mp3 -ac 1 -ar 44100 -c:a libvorbis <id>_NN.ogg`; a
+  matching `.ogg` auto-supersedes the `.mp3`). Then flip those entries to
+  EXISTING in `design/SFX_LIBRARY.md`. This is the single biggest lever on
+  "the SFX sound rough."
+- [ ] **Render Combat SFX (Cat 02)** next ElevenLabs billing cycle
+  ~9,585 credits, fits one fresh monthly cycle. Run
+  `python tools/render_sfx.py --category 02 --credit-cap 11000` with
+  `ELEVENLABS_API_KEY` set (see the `.env` step above). Then curate the
+  new `combat/` takes and the Combat call sites become wireable (the only
+  remaining unwired family).
+- [ ] **(Optional) Re-roll the weakest footstep ids** during the Combat
+  cycle — regenerate the footstep rows in `SFX_PROMPTS.md §2`, re-curate.
+
 ---
 
 ## Section 5 — Dialogue Authoring
