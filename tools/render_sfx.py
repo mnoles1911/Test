@@ -486,12 +486,18 @@ def main():
         existing = manifest.get(r.id, {})
         files_ok = all((folder / f"{r.id}_v{i:02d}.mp3").exists()
                        for i in range(1, v + 1))
-        if (not args.force and existing.get("hash") == h and files_ok):
+        stale = existing.get("hash") != h   # prompt/params changed in the doc
+        if not args.force and not stale and files_ok:
             skipped += 1
             continue
-        missing = [i for i in range(1, v + 1)
-                   if args.force or not
-                   (folder / f"{r.id}_v{i:02d}.mp3").exists()]
+        if args.force or stale:
+            # Force, or the prompt/params changed: the old takes are from a
+            # different prompt — supersede ALL versions of this row.
+            missing = list(range(1, v + 1))
+        else:
+            # Same prompt, interrupted run: only fill the missing takes.
+            missing = [i for i in range(1, v + 1)
+                       if not (folder / f"{r.id}_v{i:02d}.mp3").exists()]
         plan.append((r, v, h, missing))
 
     total_gens = sum(len(m) for _, _, _, m in plan)

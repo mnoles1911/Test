@@ -324,11 +324,11 @@ foley and breath behind a helm):
 
 | id | prompt | dur | infl | loop | var | bus |
 |---|---|---|---|---|---|---|
-| water_swim_surface_loop | Seamless loop of a person swimming at the surface, steady rhythmic strokes and splashes, no start or end, dry close mono, no reverb, no music | 12 | 0.35 | Y | 1 | Ambient |
-| water_swim_submerged_loop | Seamless loop of a body moving underwater, muffled low swishes and kicks, steady, no start or end, mono, no reverb, no music | 12 | 0.35 | Y | 1 | Ambient |
+| water_swim_surface_loop | Perfectly seamless loop of a person swimming at the surface, steady rhythmic strokes and splashes, constant unchanging texture and level from the first instant to the last, no onset transient, no attack, no fade in or out, no swell, built to repeat with an inaudible join, dry close mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
+| water_swim_submerged_loop | Perfectly seamless loop of a body moving underwater, muffled low swishes and kicks, constant unchanging texture and level start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 16 | 0.3 | Y | 1 | Ambient |
 | water_submerge_plunge | A body dropping underwater, a heavy plunging splash cutting to muffled, dry close mono, no reverb, no music | 1.2 | 0.4 | N | 3 | Ambient |
 | water_surface_gasp | A person breaking the water surface with a sharp gasp and water-shedding splash, dry close mono, no reverb, no music | 1.0 | 0.4 | N | 3 | Voice |
-| water_underwater_ambient_loop | Seamless loop of a low muffled underwater ambience with faint bubble drift, steady, no start or end, mono, no reverb, no music | 18 | 0.25 | Y | 1 | Ambient |
+| water_underwater_ambient_loop | Perfectly seamless loop of a low muffled underwater ambience with faint bubble drift, constant unchanging texture and level from start to end, no onset transient, no attack, no fade, no swell, built to repeat with an inaudible join, mono, no reverb, no music | 20 | 0.22 | Y | 1 | Ambient |
 | water_splash_small | A small light water splash, a foot or hand entering, dry close mono, no reverb, no music | 0.6 | 0.4 | N | 5 | Ambient |
 | water_splash_medium | A medium water splash, a body-sized entry, dry close mono, no reverb, no music | 0.9 | 0.4 | N | 4 | Ambient |
 | water_splash_large | A large heavy water splash and churn, a big mass hitting water, dry close mono, no reverb, no music | 1.2 | 0.4 | N | 3 | Ambient |
