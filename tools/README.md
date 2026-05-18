@@ -164,7 +164,26 @@ python3 tools/render_sfx.py --category 02
 
 # Re-render one id after editing its prompt in the doc:
 python3 tools/render_sfx.py --id cmb_bear_rear_roar --force
+
+# Label folders with keep-count / loop flag (no API, no cost):
+python3 tools/render_sfx.py --annotate
 ```
+
+### Folder labels (`--annotate`)
+
+So you don't have to cross-reference the doc while curating, `--annotate`
+stamps the keep plan into the output folders (no API, no cost, safe anytime):
+
+- each id folder gets a self-describing marker visible in Explorer:
+  `0_KEEP-5.txt` (keep 5 variants), `0_LOOP_KEEP-1.txt` (it's a loop —
+  check the seam, keep 1). The `0_` prefix sorts it to the top.
+- each category folder gets `0_INDEX.txt`; the output root gets
+  `0_KEEP_INDEX.txt` — the whole keep plan at a glance.
+
+Rule: **loop → keep 1 (seamless check first); `var` ≥ 2 → keep that many
+distinct variants (engine random-picks); `var` 1 → pick 1 best.** Run it
+with the same filter you rendered (`--annotate --category 08`) or bare
+`--annotate` to label everything.
 
 ### Output
 

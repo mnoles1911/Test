@@ -67,6 +67,9 @@ RUN EXAMPLES
   # 6. Re-render just one id after you tweaked its prompt in the doc:
   python3 tools/render_sfx.py --id cmb_bear_rear_roar --force
 
+  # 7. Label every output folder with keep-count/loop (no API, no cost):
+  python3 tools/render_sfx.py --annotate
+
 USEFUL FLAGS
 ============
   --phase N          only rows in Phase N (Phase 1 = the whole current doc)
@@ -82,6 +85,8 @@ USEFUL FLAGS
   --force            re-render even if the row hash is unchanged
   --dry-run          plan only, no API calls
   --mock             placeholder files, no API calls, no key required
+  --annotate         write 0_KEEP-<N> / 0_LOOP_KEEP-1 label files + index
+                     into the output folders, then exit (no API, no cost)
 
 ELEVENLABS API
 ==============
@@ -303,6 +308,51 @@ def save_manifest(out_root, manifest):
                  encoding="utf-8")
 
 
+def _keep_action(row):
+    if row.loop:
+        return "CHECK SEAM, then keep 1 (continuous loop)"
+    if row.var >= 2:
+        return f"keep {row.var} variants (engine random-picks)"
+    return "pick 1 best"
+
+
+def write_annotations(rows, out_root):
+    """Stamp keep-count/loop labels into the review folders.
+
+    Purely additive: creates `0_*` label/index files so you can see, in
+    Windows Explorer, how many takes to keep and which are loops — without
+    opening the doc. No API calls, no cost, safe to run anytime.
+    """
+    out_root.mkdir(parents=True, exist_ok=True)
+    by_folder = {}
+    top = [f"{'category/id':<46}{'loop':<6}{'keep':<6}action",
+           "-" * 78]
+    for r in sorted(rows, key=lambda x: (x.folder(), x.id)):
+        action = _keep_action(r)
+        id_dir = out_root / r.folder() / r.id
+        id_dir.mkdir(parents=True, exist_ok=True)
+        for old in list(id_dir.glob("0_KEEP-*.txt")) + \
+                list(id_dir.glob("0_LOOP*.txt")):
+            old.unlink()
+        marker = f"0_{'LOOP_' if r.loop else ''}KEEP-{r.var}.txt"
+        (id_dir / marker).write_text(
+            f"{r.id}\n"
+            f"loop : {'YES - check the seam first' if r.loop else 'no'}\n"
+            f"keep : {r.var}\n"
+            f"what : {action}\n", encoding="utf-8")
+        line = f"{r.id:<40}{'Y' if r.loop else 'n':<6}{r.var:<6}{action}"
+        by_folder.setdefault(r.folder(), []).append(line)
+        top.append(f"{r.folder() + '/' + r.id:<46}"
+                   f"{'Y' if r.loop else 'n':<6}{r.var:<6}{action}")
+    for folder, lines in by_folder.items():
+        (out_root / folder / "0_INDEX.txt").write_text(
+            f"{'id':<40}{'loop':<6}{'keep':<6}action\n" + "-" * 70 + "\n"
+            + "\n".join(lines) + "\n", encoding="utf-8")
+    (out_root / "0_KEEP_INDEX.txt").write_text(
+        "\n".join(top) + "\n", encoding="utf-8")
+    return len(rows), len(by_folder)
+
+
 def append_spend_log(out_root, line_count, est_credits):
     log = out_root / "_spend.log"
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -378,6 +428,9 @@ def main():
     ap.add_argument("--mock", action="store_true")
     ap.add_argument("--list", action="store_true",
                     help="print parsed rows and exit (no calls)")
+    ap.add_argument("--annotate", action="store_true",
+                    help="write keep-count/loop label files into the output "
+                         "folders and exit (no API, no cost)")
     args = ap.parse_args()
 
     rows = parse_prompts(PROMPTS_DOC)
@@ -403,6 +456,15 @@ def main():
             print(f"{r.category()}  {r.id:<32} v{r.versions(args.versions)} "
                   f"{ds:<6} infl={r.infl:g} loop={'Y' if r.loop else 'N'}")
         print(f"\n{len(rows)} rows.")
+        return
+
+    if args.annotate:
+        n, f = write_annotations(rows, Path(args.out))
+        print(f"Annotated {n} ids across {f} folders in {Path(args.out)}")
+        print("  - each id folder: a 0_KEEP-<N>.txt (or 0_LOOP_KEEP-1.txt)")
+        print("  - each category folder: 0_INDEX.txt")
+        print("  - output root: 0_KEEP_INDEX.txt")
+        print("No API calls, no cost.")
         return
 
     if args.limit is not None:
