@@ -174,6 +174,19 @@ const STEP_DIST_CROUCH: float = 0.70   # short, careful steps
 const MIN_STEP_SPEED: float   = 0.6    # m/s below this = not really walking
 var _footstep_accum: float = 0.0       # metres travelled since last step
 
+# Voxel material id_string -> footstep surface bucket (Phase-1 live set:
+# grass/dirt/stone/wood/sand/shallow_water). Anything unmapped falls back
+# to "dirt". snow has no Phase-1 step set yet -> nearest soft = dirt.
+const _SURFACE_BY_MATERIAL := {
+	"grass": "grass", "leaves": "grass",
+	"dirt": "dirt", "clay": "dirt", "snow": "dirt",
+	"stone": "stone", "bedrock": "stone", "marble": "stone",
+	"stone_dark": "stone", "copper_ore": "stone", "iron_ore": "stone",
+	"sand": "sand", "gravel": "sand",
+	"log": "wood",
+	"water": "shallow_water",
+}
+
 var _is_sprinting: bool  = false
 var _is_crouching: bool  = false
 var _sprint_locked: bool = false
@@ -1098,10 +1111,8 @@ func _update_footsteps() -> void:
 	# from AudioManager) until the step .ogg files are curated into
 	# assets/audio/sfx/locomotion/, then it switches on automatically.
 	if not is_on_floor():
-		_footstep_accum = 0.0      # airborne / jumping / swimming -> no steps
+		_footstep_accum = 0.0      # airborne / jumping / deep-swim -> no steps
 		return
-	if _in_water:
-		return                     # no dry steps while wading (TODO: wade SFX)
 	var hspeed: float = Vector2(velocity.x, velocity.z).length()
 	if hspeed < MIN_STEP_SPEED:
 		return                     # standing still / negligible drift
@@ -1118,11 +1129,47 @@ func _update_footsteps() -> void:
 	if _footstep_accum < stride:
 		return
 	_footstep_accum -= stride
-	# TODO (surface pass): query the voxel material under the player and
-	# pick the real surface (grass/dirt/stone/wood/sand), plus
-	# shallow_water via WaterFlowManager. Placeholder for now — exact
-	# surface is inaudible until the step .ogg files are curated in.
-	var surface: String = "dirt"
+	var surface: String = _surface_under_player()
 	var am := get_node_or_null("/root/AudioManager")
 	if am != null:
 		am.play("step_%s_%s" % [gait, surface], global_position)
+
+
+func _surface_under_player() -> String:
+	# Returns the footstep surface bucket for the ground the player is on.
+	#
+	# Wading first: we already track _in_water, so shallow water just maps
+	# straight to the shallow-water step set (deep swimming never reaches
+	# here — it isn't is_on_floor()).
+	if _in_water:
+		return "shallow_water"
+	# Otherwise read the voxel material directly beneath the feet. This
+	# mirrors the canonical query in EditToolHandler exactly: world->voxel
+	# via VoxelEditManager, the terrain's voxel tool on CHANNEL_TYPE, and
+	# VoxelMaterialRegistry to decode the id — never decode the type byte
+	# by hand (CLAUDE.md "Critical patterns").
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return "dirt"
+	if not get_node_or_null("/root/VoxelMaterialRegistry"):
+		return "dirt"
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return "dirt"
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return "dirt"
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	# Probe from just under the feet downward; first solid block wins
+	# (the top voxel can read as air right at the contact point).
+	for drop in [0.25, 0.45, 0.7, 1.0]:
+		var wp: Vector3 = global_position - Vector3(0.0, drop, 0.0)
+		var vpos: Vector3i = VoxelEditManager.world_to_voxel(wp)
+		var packed: int = tool.get_voxel(vpos)
+		var mat_id: int = VoxelMaterialRegistry.material_id_from_packed(packed)
+		if mat_id <= 0:
+			continue   # air — keep probing downward
+		var mat: VoxelMaterial = VoxelMaterialRegistry.get_by_id(mat_id)
+		if mat == null:
+			continue
+		return _SURFACE_BY_MATERIAL.get(mat.id_string, "dirt")
+	return "dirt"

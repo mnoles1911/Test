@@ -447,6 +447,13 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
   `VoxelEditManager.edit_rejected_no_edit_zone` →
   `play("vox_bedrock_blocked", pos)`. Done from the audio layer (deferred,
   guarded) so **no gameplay-script edit**.
+- ✅ **Footsteps** — `Player3D._update_footsteps` (post-move): distance-
+  cadence, gait from `_is_crouching/_is_sprinting`, **real surface
+  detection** via `_surface_under_player()` — reads the voxel material
+  under the feet (canonical `VoxelEditManager.world_to_voxel` + terrain
+  voxel tool on `CHANNEL_TYPE` + `VoxelMaterialRegistry`, mapped to
+  grass/dirt/stone/wood/sand buckets) and `_in_water` → `shallow_water`.
+  Gated on-floor + moving; airborne/jump/deep-swim skipped.
 
 **Still to wire** (per-system, when that system is touched — not all at once):
 
@@ -455,8 +462,6 @@ isn't placed yet** (so wiring is safe before curation; sounds switch on as
   `VoxelEditManager.edit_applied(world_pos, chunk, aabb)` carries position
   only — not enough for `vox_<tool>_strike_<mat>`. Deliberate edit + editor
   test required (input script; do carefully).
-- Footsteps — `Player3D` foot-plant (anim event / distance emitter) →
-  `step_<gait>_<surface>`, with the surface/gait/variation rules in §2.
 - Combat — melee/`ThrowableSpear`/enemy scripts → `cmb_*` (once Combat
   SFX are rendered next cycle).
 - Weather — `WeatherManager` state change → swap `wx_*` loop beds.
