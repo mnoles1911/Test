@@ -37,7 +37,7 @@ extends Node
 # Active-simulation radius around the player, in meters. Cells beyond
 # this radius freeze (flow tick skips them, monotone-decay halts).
 # Phase 8 implements the freeze; Phase 1 just defines the constant.
-const ACTIVE_RADIUS_M: float = 20.0
+const ACTIVE_RADIUS_M: float = 75.0  # Stage 6 connectivity-fill bound (was 20; designer 2026-05-18)
 
 # Tick interval for the flow simulation (frames between ticks). At
 # 60 fps physics, 15 frames = 4 Hz. Tuned to Minecraft's 5 Hz update
@@ -164,6 +164,30 @@ const _MAX_FLOW_BUDGET_PER_TICK: int = 4096
 # time. Excess work spills to the next tick via _dirty_chunks
 # remaining populated.
 
+const WATER_FILL_CELLS_PER_TICK: int = 12
+# THE FILL-SPEED DIAL (2026-05-18 bottom-up rewrite) — designer-tunable:
+# edit, stop, run. Max water cells the connectivity fill converts per
+# tick (4 Hz), clamped under the _MAX_FLOW_BUDGET_PER_TICK frame ceiling.
+# This is now the ONLY rate knob. The previous "tiered" model (a fast
+# 256/tick bulk tier for falling/submerged cells + a slow surface tier)
+# was removed: it filled TOP-DOWN and ~20x too fast, because any cell
+# with air below it ("falling") converted at the bulk rate regardless of
+# height. The fill is now strictly BOTTOM-UP — the lowest reachable air
+# cell always converts first (Y-bucketed frontier), so a basin fills
+# from the floor and the waterline rises evenly, like real water. With
+# one uniform rate the dial maps directly to that rise speed.
+# Rough feel at 4 Hz (cells/s ≈ value × 4):
+#   80 ≈ brisk   32 ≈ steady   12 ≈ slow, deliberate (default;
+#   ~1/20 of the old effective bulk rate, per designer 2026-05-18)
+#   4  ≈ very slow trickle
+# A huge blasted cavern (tens of thousands of cells) deliberately takes
+# minutes at 12 — the designer chose slow-but-complete over fast. Small
+# ponds/trenches still finish in seconds. Coverage is guaranteed
+# regardless of rate: the frontier is pure connectivity (no TTL, no
+# carve-permission window) and dropped async writes self-heal (see the
+# pending-expiry verify in _run_flow_tick_v2), so a low rate can never
+# leave a cave half-full or holey.
+
 var _edit_cell_ttl: Dictionary = {}
 # Vector3i (voxel coord) → int (ticks remaining). Cells inside a recent
 # VoxelEditManager edit aabb. Lateral spread can only write source
@@ -172,7 +196,24 @@ var _edit_cell_ttl: Dictionary = {}
 # new source can't propagate further onto natural beach-air cells
 # (which were never edited and don't appear in this map). TTL counts
 # down once per flow tick.
-const EDIT_CELL_TTL: int = 4  # ~1 sec at 4 Hz
+const EDIT_CELL_TTL: int = 600  # ~150 s at 4 Hz
+# Stage 6 Phase 1 (2026-05-18): was 4 (~1 s). That 1-second carve-
+# permission window was the root cause of two reported failures: a
+# slowed fill (low WATER_FILL_CELLS_PER_TICK) or a large/overhung cave
+# let the flood FRONT arrive at far cells AFTER their permission had
+# already expired, so those cells became permanently unfillable and
+# the cave stalled half-full. (Confirmed in the field: blasting more
+# charges nearby "fixed" it only because _on_edit_applied re-stamped
+# the TTL — not because water re-simulated.) Permission must outlive
+# the time it takes a slow front to traverse the whole connected
+# sub-sea void, so it is now generous. Still self-terminating and
+# bounded: propagation only stamps sub-sea (npos.y <= sea_y) neighbours
+# of cells that actually flooded, capped by _chunk_in_active_radius
+# (20 m) and the per-tick budget; once the void is full there are no
+# air cells left to flood, no new propagation, _dirty_chunks drains,
+# the sim idles, and the stale entries age out. A connectivity-based
+# gate (fill iff connected to a sub-sea source) is the proper Phase 3
+# replacement; this is the correct, low-risk Phase 1 decoupling.
 
 var _pending_water: Dictionary = {}
 # Vector3i (voxel coord) → int (ticks remaining). #5 front-advance fix
@@ -191,6 +232,55 @@ var _pending_water: Dictionary = {}
 # e.g. NoEditZone-rejected). This is the role the abandoned legacy
 # _cells cache used to play.
 const PENDING_WATER_TTL: int = 40  # ~10 s at 4 Hz; confirm-on-read prunes sooner
+
+# Stage 6 CONNECTIVITY FILL (2026-05-18) — replaces the incremental
+# neighbour front (_edit_cell_ttl/fed/_flow_chunk). Cells reachable from
+# a water source through connected sub-sea air/water are seeded by edits
+# and expanded purely by connectivity, converted at the
+# WATER_FILL_CELLS_PER_TICK rate. Deterministic: can't stall, never needs
+# a re-mine kick; auto-levels at sea_y because nothing above it is ever
+# enqueued; structures cleared when fully idle (memory reclaim). The
+# frontier is Y-BUCKETED (lowest first) so the fill is bottom-up — see
+# the _fill_buckets block below for the data structure.
+# Y-BUCKETED frontier (2026-05-18 bottom-up rewrite). _fill_buckets maps
+# an int voxel-Y to an Array of cells waiting at that height; the
+# processor always drains the LOWEST non-empty bucket first, so water
+# pools on the cave floor and the level rises evenly (bottom-up) instead
+# of converting in seed-distance order (which looked top-down).
+# _fill_enqueued is the in-queue guard (one entry per bucketed cell,
+# erased on pop) so a cell is never double-queued but CAN be re-queued
+# later by the dropped-write self-heal. _fill_active is the live cell
+# count across all buckets (O(1) _frontier_count). _fill_retry caps how
+# many times a rejected write (queue-full / NoEditZone) is retried so a
+# transient drop self-heals while a permanent reject can't loop forever.
+var _fill_buckets: Dictionary = {}
+var _fill_enqueued: Dictionary = {}
+var _fill_active: int = 0
+var _fill_retry: Dictionary = {}
+const FILL_MAX_RETRY: int = 40
+# Raised 6 → 40 (2026-05-18). 6 was abandoning cells that lost the
+# VoxelEditManager async-queue race a few times while the player was
+# mining/blasting AND the fill was writing into the same queue — those
+# became permanent surface holes. 40 retries × PENDING_WATER_TTL is
+# plenty of real time; still bounded so a true NoEditZone reject ends.
+
+# WATER SETTLE / EQUALIZE (2026-05-18) — "water finds its level". The
+# connectivity fill can leave sparse holes when an async water write is
+# dropped under heavy queue contention (mining while filling). This pass
+# is the safety net + the realistic-physics smoothing: once the fill is
+# idle, it sweeps the bounding box of everything converted this session,
+# bottom-up, and re-queues ANY sub-sea AIR cell that still touches water
+# — no retry cap, no dependence on per-cell pending tracking. It repeats
+# until a whole pass finds nothing (the body is flat and solid), then
+# clears. Bounded: one tracked AABB (the dug void — never the ocean,
+# since only cells WE convert grow it), clamped to the active radius,
+# capped per tick, and only while the player is near a dirty region.
+var _settle_min: Vector3i = Vector3i(0x7fffffff, 0x7fffffff, 0x7fffffff)
+var _settle_max: Vector3i = Vector3i(-0x7fffffff, -0x7fffffff, -0x7fffffff)
+var _settle_dirty: bool = false        # a conversion happened → re-sweep
+var _settle_y: int = 0x7fffffff        # bottom-up cursor (current scan Y)
+var _settle_found: int = 0             # air-touching-water re-queued this pass
+const SETTLE_SCAN_PER_TICK: int = 1024 # cells examined per flow tick (bounded)
 
 var _prof: Node = null
 # Cached /root/Profiler ref (see _ready) for the per-query WATER
@@ -255,7 +345,12 @@ func _physics_process_inner() -> void:
 		return
 	_frames_since_tick = 0
 	_tick_count = (_tick_count + 1) & 0xFF
-	if not _dirty_chunks.is_empty():
+	# Stage 6 connectivity fill: the tick must keep firing while the BFS
+	# frontier still has cells (or writes are in flight) — it is NOT
+	# driven by dirty chunks any more. Gating only on _dirty_chunks here
+	# was what stalled the fill after one tick (the "needs a re-mine
+	# kick" bug). Goes cheap-idle the moment all three are empty.
+	if not _dirty_chunks.is_empty() or _frontier_count() > 0 or not _pending_water.is_empty() or _settle_dirty:
 		_run_flow_tick()
 
 
@@ -767,6 +862,13 @@ var _diag_flow_worst_above: Vector3i = Vector3i.ZERO
 var _diag_flow_rej_above_sea: int = 0
 var _diag_flow_rej_unfed: int = 0
 
+# Stage 6 Phase 1: per-window histogram of the LEVEL each flooded /
+# gravity cell was written at (index = level 1..8; index 0 unused).
+# Proves the sim is producing a gradient (8 under vertical inflow,
+# thinning 7→1 outward) rather than the old all-or-nothing full cells.
+# Reset with the other _diag_flow_* counters every ~8 ticks.
+var _diag_level_hist: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+
 
 func _diag_register_write(pos: Vector3i, sea_y: int) -> void:
 	# Called at every flow write site (gravity drop + flood fill) so the
@@ -799,10 +901,28 @@ func _run_flow_tick_v2() -> void:
 		for ep in expired:
 			_edit_cell_ttl.erase(ep)
 
-	# #5 front-advance fix: age out the pending-water safety net. Most
-	# entries are erased earlier by confirm-on-read in _flow_chunk; this
-	# only reclaims writes that never landed (NoEditZone-rejected, or the
-	# cell fell out of the active radius before applying).
+	# Acquire the terrain tool first — the pending-water self-heal below
+	# needs it to verify whether each expiring write actually landed.
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var _heal_sea_y: int = get_sea_level_voxel_y()
+
+	# Age out the pending-water set. Every cell the fill queued is tracked
+	# here for PENDING_WATER_TTL ticks. When an entry EXPIRES we verify it:
+	# if the cell really is water now, fine — drop it. If it is STILL air
+	# (the async write was dropped — queue-full, or the chunk never became
+	# editable) it is a would-be surface HOLE — re-bucket it so the fill
+	# converts it again. This verify is the self-heal that makes a low
+	# fill rate safe and kills the "holes in the top layer" the designer
+	# reported. Bounded: only expiring entries are checked (few per tick),
+	# and FILL_MAX_RETRY stops a permanent reject (NoEditZone) looping.
 	if not _pending_water.is_empty():
 		var pw_expired: Array = []
 		for pp in _pending_water.keys():
@@ -813,46 +933,62 @@ func _run_flow_tick_v2() -> void:
 				_pending_water[pp] = pn
 		for pp in pw_expired:
 			_pending_water.erase(pp)
+			var pv: Vector3i = pp as Vector3i
+			if pv.y > _heal_sea_y:
+				continue
+			if tool.get_voxel(pv) != 0:
+				continue   # confirmed water (or solid) — nothing to heal
+			if _voxel_center_world(pv).distance_to(_player_pos) > ACTIVE_RADIUS_M + CHUNK_SIZE_M:
+				continue   # out of range; a later edit/visit re-seeds it
+			var rr: int = int(_fill_retry.get(pv, 0))
+			if rr >= FILL_MAX_RETRY:
+				continue   # permanent reject (e.g. NoEditZone) — stop looping
+			_fill_retry[pv] = rr + 1
+			_bucket_push(pv, true)   # force: pv is still in the visited set
 
-	if get_node_or_null("/root/VoxelEditManager") == null:
-		return
-	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
-	if terrain == null:
-		return
-	var tool: VoxelTool = terrain.get_voxel_tool()
-	if tool == null:
-		return
-
-	var budget: int = _MAX_FLOW_BUDGET_PER_TICK
-	for chunk in snapshot.keys():
-		if budget <= 0:
-			# Re-queue unprocessed in-radius chunks for next tick.
-			for remaining in snapshot.keys():
-				if remaining == chunk:
-					continue
-				if _dirty_chunks.has(remaining):
-					continue
-				if not _chunk_in_active_radius(remaining):
-					continue
-				_dirty_chunks[remaining] = true
-			break
-		if not _chunk_in_active_radius(chunk):
-			continue
-		budget -= _flow_chunk(chunk, budget, tool)
+	# Stage 6 Phase 1: throttle to the gradual-fill dial, still clamped
+	# under the hard perf ceiling so a pathological flood can't spike
+	# the frame. Unprocessed in-radius chunks already re-queue via the
+	# budget-exhaustion spill below, so a low per-tick batch just means
+	# the fill takes more ticks — exactly the slower, gradual rise we
+	# want, and it also sharpens the level gradient.
+	# Stage 6: connectivity fill replaces the per-chunk incremental
+	# front. snapshot/_dirty_chunks are still cleared above because other
+	# systems listen to water_changed; the fill itself is driven by the
+	# Y-bucketed connectivity frontier (_fill_buckets), not dirty chunks.
+	_process_connectivity_fill(tool)
+	_process_water_settle(tool)   # "water finds its level" — runs only when fill is idle
 
 	# Throttled diagnostic (~every 8 ticks ≈ 2 s) — only when the sim
 	# actually did something, so the Output panel isn't flooded.
 	_diag_flow_ticks += 1
 	if _diag_flow_ticks >= 8:
 		_diag_flow_ticks = 0
-		if _diag_flow_flood > 0 or _diag_flow_gravity > 0 or not snapshot.is_empty():
+		if _diag_flow_flood > 0 or _frontier_count() > 0 or not snapshot.is_empty() or _settle_dirty:
 			var _mwy_s: String = str(_diag_flow_max_write_y) if _diag_flow_any_write else "n/a"
-			print("[FlowDiag] dirty_chunks=%d  flood=%d  gravity=%d  edit_ttl_cells=%d  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  rej_above_sea=%d  rej_unfed=%d  player=%s" % [
-				snapshot.size(), _diag_flow_flood, _diag_flow_gravity,
-				_edit_cell_ttl.size(), str(_diag_flow_last),
+			# Settle state — unambiguous "is the equalize pass still working
+			# / has the surface converged". on(...) = sweeping (cursor Y of
+			# the dug-void AABB + holes re-queued so far this pass); flat =
+			# converged, body is solid + level, sweep stopped.
+			var _settle_s: String = "flat"
+			if _settle_dirty:
+				_settle_s = "on(y%d found=%d)" % [_settle_y, _settle_found]
+			# Stage 6 Phase 1: level histogram (cells written per level
+			# 1..8 this window). A gradient prints as a spread (e.g.
+			# lvl1-8=12/9/7/5/4/3/2/40); the OLD all-or-nothing sim would
+			# put everything in slot 8 only. This is the Phase 1 in-game
+			# gate — watch the spread populate as a pit fills.
+			var _lvl_s: String = "%d/%d/%d/%d/%d/%d/%d/%d" % [
+				_diag_level_hist[1], _diag_level_hist[2], _diag_level_hist[3],
+				_diag_level_hist[4], _diag_level_hist[5], _diag_level_hist[6],
+				_diag_level_hist[7], _diag_level_hist[8],
+			]
+			print("[FlowDiag] frontier=%d  filled=%d  gravity=%d  enqueued=%d  settle=%s  last=%s  sea_voxY=%d  maxWriteY=%s  above_sea=%d  worst=%s  rej_above_sea=%d  rej_unfed=%d  lvl1-8=%s  player=%s" % [
+				_frontier_count(), _diag_flow_flood, _diag_flow_gravity,
+				_fill_enqueued.size(), _settle_s, str(_diag_flow_last),
 				get_sea_level_voxel_y(), _mwy_s, _diag_flow_above_sea,
 				str(_diag_flow_worst_above), _diag_flow_rej_above_sea,
-				_diag_flow_rej_unfed, str(_world_to_voxel(_player_pos)),
+				_diag_flow_rej_unfed, _lvl_s, str(_world_to_voxel(_player_pos)),
 			])
 		_diag_flow_flood = 0
 		_diag_flow_gravity = 0
@@ -861,6 +997,261 @@ func _run_flow_tick_v2() -> void:
 		_diag_flow_worst_above = Vector3i.ZERO
 		_diag_flow_rej_above_sea = 0
 		_diag_flow_rej_unfed = 0
+		_diag_level_hist = PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+
+func _bucket_push(p: Vector3i, force: bool = false) -> void:
+	# Add a cell to its Y bucket. `_fill_enqueued` is a PERMANENT visited
+	# set — a cell is queued at most once for the life of a fill, so the
+	# BFS is linear and TERMINATES. (Erasing it on pop, as the first
+	# bottom-up draft did, let every already-filled water cell perpetually
+	# re-enqueue its neighbours: the frontier livelocked as a fixed-size
+	# churn over the filled bottom and never advanced to the air front —
+	# the "water stops after 8-10 voxels" stall.) `force` bypasses the
+	# guard for the only two cases that legitimately re-queue a cell: an
+	# out-of-range defer, and the dropped-write self-heal retrying a
+	# specific cell whose async write never landed.
+	if not force and _fill_enqueued.has(p):
+		return
+	_fill_enqueued[p] = true
+	# NOTE: Dictionary.get(key, null) returns Nil on a miss, which GDScript
+	# refuses to assign to a typed `Array` — use has() + create instead.
+	if not _fill_buckets.has(p.y):
+		_fill_buckets[p.y] = []
+	var b: Array = _fill_buckets[p.y]
+	b.append(p)   # Array is a reference type in Godot 4 — mutates in place
+	_fill_active += 1
+
+
+func _enqueue_fill_neighbors(c: Vector3i, sea_y: int) -> void:
+	# Enqueue the 6 neighbours of a just-filled / water cell, NEVER above
+	# sea_y (the waterline ceiling that auto-levels the body with the
+	# ocean). Enqueue order no longer matters: the Y-bucketed processor
+	# imposes strict bottom-up ordering globally, so a down-neighbour
+	# lands in a lower bucket and is always serviced before higher cells.
+	for d in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1), Vector3i(0, 1, 0)]:
+		var nb: Vector3i = c + d
+		if nb.y > sea_y:
+			continue
+		_bucket_push(nb)
+
+
+func _lowest_bucket_y() -> int:
+	# The current waterline floor: smallest key with a non-empty bucket.
+	# Bucket count is bounded by the cave's vertical span (tens of Y
+	# levels), so this linear scan is trivially cheap at the fill rate.
+	var lo: int = 0x7fffffff
+	for k in _fill_buckets.keys():
+		if k < lo:
+			lo = k
+	return lo
+
+
+func _frontier_count() -> int:
+	# Live cell count across all Y buckets (drives the tick gate + diag).
+	return _fill_active
+
+
+func _process_connectivity_fill(tool: VoxelTool) -> void:
+	# Drain the BFS frontier at the gradual-fill rate. Everything in the
+	# frontier is provably connected to a water source (it was enqueued
+	# as a neighbour of a seed or an already-converted cell), so there
+	# is no per-cell "fed" guess, no TTL, no stall, no re-mine kick.
+	if _fill_active <= 0:
+		# Genuinely idle (nothing reachable AND nothing in flight) →
+		# reclaim every per-fill structure so the next dig starts fresh.
+		# The pending self-heal ran earlier this tick, so if a hole still
+		# needed filling _fill_active would be > 0 and we would not be
+		# here — reaching this with pending empty means truly complete.
+		if _pending_water.is_empty() and not _fill_enqueued.is_empty():
+			_fill_buckets.clear()
+			_fill_enqueued.clear()
+			_fill_retry.clear()
+		return
+	var cap: int = clampi(WATER_FILL_CELLS_PER_TICK, 1, _MAX_FLOW_BUDGET_PER_TICK)
+	var sea_y: int = get_sea_level_voxel_y()
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var done: int = 0
+	var scanned: int = 0
+	var scan_cap: int = cap * 8 + 4096   # bound skips / water-passthrough / defers
+	var out_of_range: Array[Vector3i] = []   # re-queued AFTER the loop (no in-tick spin)
+	while done < cap and _fill_active > 0 and scanned < scan_cap:
+		var y: int = _lowest_bucket_y()
+		if y == 0x7fffffff:
+			break
+		var b: Array = _fill_buckets[y]
+		var c: Vector3i = b.pop_back()
+		_fill_active -= 1
+		if b.is_empty():
+			_fill_buckets.erase(y)
+		# NOTE: do NOT erase _fill_enqueued[c] here. It is a permanent
+		# visited set (see _bucket_push) — erasing on pop is exactly what
+		# caused the filled-body livelock. Re-queues happen only via the
+		# explicit force=true paths below (out-of-range / retry / heal).
+		scanned += 1
+		if _voxel_center_world(c).distance_to(_player_pos) > ACTIVE_RADIUS_M + CHUNK_SIZE_M:
+			out_of_range.append(c)   # defer; fills when the player nears
+			continue
+		if c.y > sea_y:
+			continue   # at/above waterline → drop (caps fill at sea level)
+		if _pending_water.has(c):
+			continue   # already queued this cell; heal/confirm handles it
+		var t: int = tool.get_voxel(c)
+		if t == WATER_TYPE_ID:
+			# TERMINAL. Do NOT expand the frontier through water. Water is
+			# the SOURCE BOUNDARY (pond / the generator's world ocean),
+			# not something to traverse: propagating through it walked the
+			# entire connected ocean — enqueued exploded to >1.3M, the
+			# processor starved, and the surface layer never finished
+			# (the "missing blocks / uneven top"). Connectivity is carried
+			# purely by converting AIR and enqueuing the converted cell's
+			# neighbours (seed = air-next-to-water); the fill therefore
+			# stops dead at the ocean boundary instead of exploding into
+			# it, while still filling the whole dug void.
+			continue
+		if t != 0:
+			continue   # solid terrain blocks the void here
+		# AIR, sub-sea, in range, connected → convert it to water. Bottom-
+		# up ordering is implicit: this IS the lowest reachable cell.
+		var ok: bool = VoxelEditManager.queue_set_water_voxel(c, WaterByteCodec.pack(WaterByteCodec.MAX_LEVEL, false, WaterByteCodec.DIR_STILL))
+		if not ok:
+			# Rejected: queue-full (transient) or NoEditZone (permanent).
+			# Retry a bounded number of times so a transient drop self-
+			# heals into a filled cell instead of a permanent hole; give
+			# up after FILL_MAX_RETRY so a NoEditZone cell can't loop.
+			var r: int = int(_fill_retry.get(c, 0))
+			if r < FILL_MAX_RETRY:
+				_fill_retry[c] = r + 1
+				_bucket_push(c, true)   # force: c is still in the visited set
+			continue
+		_fill_retry.erase(c)
+		_pending_water[c] = PENDING_WATER_TTL
+		_diag_flow_flood += 1
+		_diag_level_hist[WaterByteCodec.MAX_LEVEL] += 1
+		_diag_flow_last = c
+		_diag_register_write(c, sea_y)
+		done += 1
+		_enqueue_fill_neighbors(c, sea_y)
+		_settle_note(c)   # grow the settle AABB; arm the equalize sweep
+	for oc in out_of_range:
+		_bucket_push(oc, true)   # force: still in visited set, must re-defer
+
+
+func _settle_note(c: Vector3i) -> void:
+	# Every cell the fill converts grows the settle AABB and re-arms the
+	# equalize sweep. The box only ever covers cells WE filled (the dug
+	# void), never the generator ocean — so the settle sweep stays bounded.
+	_settle_min.x = mini(_settle_min.x, c.x)
+	_settle_min.y = mini(_settle_min.y, c.y)
+	_settle_min.z = mini(_settle_min.z, c.z)
+	_settle_max.x = maxi(_settle_max.x, c.x)
+	_settle_max.y = maxi(_settle_max.y, c.y)
+	_settle_max.z = maxi(_settle_max.z, c.z)
+	_settle_dirty = true
+
+
+func _process_water_settle(tool: VoxelTool) -> void:
+	# WATER FINDS ITS LEVEL. Runs only when the connectivity fill is idle
+	# (so it never fights the active bottom-up front). Sweeps the tracked
+	# dug-void AABB bottom-up, a bounded slice per tick; any sub-sea AIR
+	# cell that still touches water is re-queued for conversion (forced,
+	# no retry cap). When a FULL pass re-queues nothing the body is flat
+	# and solid → the region is cleared and the sweep stops. This is the
+	# permanent hole fix (independent of pending/retry) and the realistic
+	# "equalize to a level surface" behaviour.
+	if _fill_active > 0 or not _pending_water.is_empty():
+		return   # fill still working — don't interfere
+	if not _settle_dirty:
+		return   # nothing converted since the last clean pass → settled
+	if _settle_min.x > _settle_max.x:
+		return   # no region yet
+	var sea_y: int = get_sea_level_voxel_y()
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	# Resume the bottom-up cursor; a fresh dig (dirty just re-armed with a
+	# lower floor) restarts it at the region's lowest Y.
+	if _settle_y > _settle_max.y or _settle_y < _settle_min.y:
+		_settle_y = _settle_min.y
+		_settle_found = 0
+	var y_top: int = mini(_settle_max.y, sea_y)
+	var scanned: int = 0
+	while _settle_y <= y_top and scanned < SETTLE_SCAN_PER_TICK:
+		for x in range(_settle_min.x, _settle_max.x + 1):
+			for z in range(_settle_min.z, _settle_max.z + 1):
+				scanned += 1
+				var p: Vector3i = Vector3i(x, _settle_y, z)
+				if _voxel_center_world(p).distance_to(_player_pos) > ACTIVE_RADIUS_M + CHUNK_SIZE_M:
+					continue
+				if _pending_water.has(p):
+					continue
+				if int(_fill_retry.get(p, 0)) >= FILL_MAX_RETRY:
+					continue   # permanently unfillable (e.g. NoEditZone) — let the sweep converge
+				if tool.get_voxel(p) != 0:
+					continue   # solid or already water — fine
+				# AIR at/below sea level inside the filled region. If it
+				# touches water it is a hole / not yet level → re-fill it.
+				for d in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1), Vector3i(0, 1, 0)]:
+					if tool.get_voxel(p + d) == WATER_TYPE_ID:
+						_bucket_push(p, true)
+						_settle_found += 1
+						break
+		_settle_y += 1
+	if _settle_y > y_top:
+		# Finished a full bottom-up pass over the region.
+		if _settle_found == 0:
+			# Nothing left to level anywhere → the body is solid + flat.
+			_settle_dirty = false
+			_settle_min = Vector3i(0x7fffffff, 0x7fffffff, 0x7fffffff)
+			_settle_max = Vector3i(-0x7fffffff, -0x7fffffff, -0x7fffffff)
+		# else: re-buckets were made; the fill will drain them, go idle
+		# again, and _settle_dirty stays set so we sweep once more — this
+		# repeats until a pass is clean (true convergence).
+		_settle_y = 0x7fffffff
+		_settle_found = 0
+
+
+func _seed_fill_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:
+	# An edit landed. Seed the BFS at every AIR cell in the edit box
+	# that the carve just put NEXT TO water (pond/ocean or water already
+	# placed) and that is at/below sea level. Connectivity expands from
+	# there through the rest of the dug-out air, so the whole connected
+	# sub-sea void floods and levels out — no edit-region gate (a tunnel
+	# into a natural sub-sea cave floods it too, by design). If nothing
+	# in the box touches water, nothing seeds (a sealed dry pit stays
+	# dry until a later edit connects it to a source).
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var sea_y: int = get_sea_level_voxel_y()
+	var dirs: Array = [Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	for x in range(vmin.x, vmax.x + 1):
+		for y in range(vmin.y, mini(vmax.y, sea_y) + 1):   # nothing above sea_y
+			for z in range(vmin.z, vmax.z + 1):
+				var p: Vector3i = Vector3i(x, y, z)
+				if _fill_enqueued.has(p):
+					continue
+				if tool.get_voxel(p) != 0:
+					continue   # only AIR cells can seed the fill
+				for d in dirs:
+					if tool.get_voxel(p + d) == WATER_TYPE_ID:
+						_bucket_push(p, true)   # force: a fresh carve must (re)seed even if visited
+						break
+
+
+func _eff_level(data5_byte: int) -> int:
+	# Stage 6 Phase 1: the effective LEVEL of a neighbour that
+	# CHANNEL_TYPE already says is water. A DATA5 level of 0 means the
+	# cell is water (TYPE 5) but has no Stage-6 byte yet — generator
+	# ocean, a pre-Stage-6 save, or water placed before this code. Treat
+	# that as FULL (8): existing water is conservatively a full feed, so
+	# the gradient only thins where the sim itself produced a thin cell.
+	var lvl: int = WaterByteCodec.level_of(data5_byte)
+	return WaterByteCodec.MAX_LEVEL if lvl == 0 else lvl
 
 
 func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
@@ -881,6 +1272,22 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 	var tabove := VoxelBuffer.new()
 	tabove.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
 	tool.copy(vmin + Vector3i(0, CHUNK_SIZE_VOXELS, 0), tabove, 1 << VoxelBuffer.CHANNEL_TYPE)
+
+	# Stage 6 Phase 1: also snapshot CHANNEL_DATA5 (the WaterByteCodec
+	# level/dir byte) for this chunk + the chunk above, so the flood
+	# rule can read a feeding neighbour's actual LEVEL (gradient water)
+	# instead of treating every water cell as full. Lateral neighbours
+	# are always in-chunk here (cross-chunk spread rides the dirty-chunk
+	# front, §_flow_chunk below); only the vertical-above neighbour can
+	# be in the chunk above. Gravity (falling water) is always full so
+	# it needs no DATA5 read of the chunk below.
+	tool.channel = VoxelBuffer.CHANNEL_DATA5
+	var dbuf := VoxelBuffer.new()
+	dbuf.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(vmin, dbuf, 1 << VoxelBuffer.CHANNEL_DATA5)
+	var dabove := VoxelBuffer.new()
+	dabove.create(CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS, CHUNK_SIZE_VOXELS)
+	tool.copy(vmin + Vector3i(0, CHUNK_SIZE_VOXELS, 0), dabove, 1 << VoxelBuffer.CHANNEL_DATA5)
 
 	var sea_y: int = get_sea_level_voxel_y()
 	var changed: int = 0
@@ -912,11 +1319,16 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					var bpos: Vector3i = wpos - Vector3i(0, 1, 0)
 					if below == 0 and not _pending_water.has(bpos):
 						if not _is_water_blocked_at_voxel(bpos):
-							VoxelEditManager.queue_set_water_voxel(bpos, WaterByteCodec.SOURCE_BYTE)
+							# Stage 6 Phase 1: falling water is a FULL (level 8)
+							# NON-source flow cell — not SOURCE_BYTE. Only the
+							# generator's ocean/lake cells keep the source bit
+							# (foundation for #14); sim water must be drainable.
+							VoxelEditManager.queue_set_water_voxel(bpos, WaterByteCodec.pack(WaterByteCodec.MAX_LEVEL, false, WaterByteCodec.DIR_STILL))
 							_pending_water[bpos] = PENDING_WATER_TTL
 							_dirty_chunks[_voxel_to_chunk(bpos)] = true
 							changed += 1
 							_diag_flow_gravity += 1
+							_diag_level_hist[WaterByteCodec.MAX_LEVEL] += 1
 							_diag_flow_last = bpos
 							_diag_register_write(bpos, sea_y)
 					continue
@@ -949,12 +1361,28 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					fed = true
 				if not fed and lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
 					fed = true
+				# Stage 6 hydrostatic rise (2026-05-18): water directly
+				# BELOW also feeds this cell, so a connected sub-sea void
+				# fills UPWARD and levels out, instead of the front dying
+				# the moment the only way left is up (the "cave only
+				# half-fills, needs a re-mine kick" bug). Safe: the
+				# `wpos.y > sea_y` gate above already rejected anything
+				# above sea level, so water can only rise TO it, never past.
+				if not fed:
+					var _vb: int
+					if ly > 0:
+						_vb = tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE)
+					else:
+						_vb = tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE)
+					if _vb == WATER_TYPE_ID:
+						fed = true
 				if not fed and (
 						_pending_water.has(wpos + Vector3i(0, 1, 0))
 						or _pending_water.has(wpos + Vector3i(-1, 0, 0))
 						or _pending_water.has(wpos + Vector3i(1, 0, 0))
 						or _pending_water.has(wpos + Vector3i(0, 0, -1))
-						or _pending_water.has(wpos + Vector3i(0, 0, 1))):
+						or _pending_water.has(wpos + Vector3i(0, 0, 1))
+						or _pending_water.has(wpos + Vector3i(0, -1, 0))):
 					# Neighbour flooded this tick but its async write has
 					# not landed in the buffer yet -- treat pending water
 					# as water so the front advances every tick (#5 fix).
@@ -965,11 +1393,41 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					# adjacent water this tick → the front-stall signature.
 					_diag_flow_rej_unfed += 1
 				if fed:
-					VoxelEditManager.queue_set_water_voxel(wpos, WaterByteCodec.SOURCE_BYTE)
+					# Stage 6 Phase 1: level of this newly-flooded cell.
+					# Water (or not-yet-landed pending water) directly
+					# above, or any pending neighbour (#5), = a full
+					# column (8). Otherwise this is pure lateral spread:
+					# strongest lateral water neighbour's level minus one,
+					# floored at MIN_LEVEL (the Minecraft thinning rule).
+					# The proven `fed` detection above is left untouched;
+					# this only recomputes feed strength for cells already
+					# being written, so flood COVERAGE is unchanged.
+					var _vabove: int = (tbuf.get_voxel(lx, ly + 1, lz, VoxelBuffer.CHANNEL_TYPE) if ly < n - 1 else tabove.get_voxel(lx, 0, lz, VoxelBuffer.CHANNEL_TYPE))
+					var _full_feed: bool = (
+						_vabove == WATER_TYPE_ID
+						or (tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE) if ly > 0 else tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE)) == WATER_TYPE_ID
+						or _pending_water.has(wpos + Vector3i(0, 1, 0))
+						or _pending_water.has(wpos + Vector3i(-1, 0, 0))
+						or _pending_water.has(wpos + Vector3i(1, 0, 0))
+						or _pending_water.has(wpos + Vector3i(0, 0, -1))
+						or _pending_water.has(wpos + Vector3i(0, 0, 1))
+					)
+					var _mlat: int = 0
+					if lx > 0 and tbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_DATA5)))
+					if lx < n - 1 and tbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_DATA5)))
+					if lz > 0 and tbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_DATA5)))
+					if lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_DATA5)))
+					var _flvl: int = WaterByteCodec.MAX_LEVEL if _full_feed else clampi(_mlat - 1, WaterByteCodec.MIN_LEVEL, WaterByteCodec.MAX_LEVEL)
+					VoxelEditManager.queue_set_water_voxel(wpos, WaterByteCodec.pack(_flvl, false, WaterByteCodec.DIR_STILL))
 					_pending_water[wpos] = PENDING_WATER_TTL
 					_dirty_chunks[_voxel_to_chunk(wpos)] = true
 					changed += 1
 					_diag_flow_flood += 1
+					_diag_level_hist[_flvl] += 1
 					_diag_flow_last = wpos
 					_diag_register_write(wpos, sea_y)
 					# Carry carve-permission to sub-sea air neighbours so
@@ -998,6 +1456,14 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					var down_np: Vector3i = wpos - Vector3i(0, 1, 0)
 					_edit_cell_ttl[down_np] = EDIT_CELL_TTL
 					_dirty_chunks[_voxel_to_chunk(down_np)] = true
+					# Hydrostatic rise: also carry permission UP, capped at
+					# sea_y by the very rule the flood obeys, so the body
+					# can climb to the source level and the front never
+					# dies just because the only remaining direction is up.
+					var up_np: Vector3i = wpos + Vector3i(0, 1, 0)
+					if up_np.y <= sea_y:
+						_edit_cell_ttl[up_np] = EDIT_CELL_TTL
+						_dirty_chunks[_voxel_to_chunk(up_np)] = true
 	return changed
 
 
@@ -1696,10 +2162,11 @@ func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i, edit_aabb: AAB
 	var dz_n: int = vmax.z - vmin.z + 1
 	if dx_n * dy_n * dz_n > 4096:
 		return
-	for x in range(vmin.x, vmax.x + 1):
-		for y in range(vmin.y, vmax.y + 1):
-			for z in range(vmin.z, vmax.z + 1):
-				_edit_cell_ttl[Vector3i(x, y, z)] = EDIT_CELL_TTL
+	# Stage 6 connectivity fill: seed the BFS at the air this carve put
+	# next to water. Replaces the old per-cell _edit_cell_ttl stamping
+	# (that whole TTL/fed front was the source of the stall + re-mine
+	# bugs and is gone).
+	_seed_fill_from_aabb(vmin, vmax)
 
 
 # ============================================================
