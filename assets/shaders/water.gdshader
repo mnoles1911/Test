@@ -94,6 +94,14 @@ uniform float depth_fade_distance : hint_range(0.5, 40.0) = 7.0;
 // Minimum surface alpha even over a paper-thin puddle, so there is
 // always a faint water film + the Fresnel/specular sheen on top.
 uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.10;
+// LOD-seam dark-grid suppression is distance-gated (2026-05-18). It does
+// NOTHING nearer than seam_suppress_near_m — so the shallow water you
+// walk up to and look straight down into stays fully readable — and
+// ramps to full strength by seam_suppress_far_m, where the distant dark
+// grid actually lived. Raise _near if near water still fades out; set
+// _near to 0 to restore the old always-on (over-suppressing) behaviour.
+uniform float seam_suppress_near_m : hint_range(0.0, 200.0) = 24.0;
+uniform float seam_suppress_far_m : hint_range(0.0, 400.0) = 64.0;
 
 
 // ============================================================
@@ -168,7 +176,20 @@ void fragment() {
 	// Zylann's angled LOD-transition normals. debug_mode 1/3/4 below
 	// deliberately keep RAW depth_t/thickness/n.y so the diagnostics
 	// still show ground truth after this fix.
-	float up_face = smoothstep(0.30, 0.72, n.y);
+	// 2026-05-18 READABILITY FIX: the suppression described above is
+	// correct for DISTANT water (LOD seams) but it was distance-blind,
+	// so it ALSO faded out the near shallow water you walk up to and
+	// look down into — the #1 "I can't see the water" complaint
+	// (confirmed: debug_mode 4 changes as you tilt to look straight
+	// down at a shallow pond). Gate it by camera distance: near water
+	// has no LOD downsampling, so no seam slivers exist there — keep
+	// full opacity on every face. The side-face suppression ramps in
+	// only past seam_suppress_near_m, reaching full strength by
+	// seam_suppress_far_m where the dark grid actually was. frag_dist
+	// (camera→this water pixel, metres) was computed in step 1.
+	float up_face_raw = smoothstep(0.30, 0.72, n.y);
+	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
+	float up_face = mix(1.0, up_face_raw, seam_region);
 	float depth_t_eff = depth_t * up_face;
 
 	// === 3. SURFACE COLOUR ==========================================

@@ -45,6 +45,16 @@ shader_parameter/depth_fade_distance = 0.30
 ; 0.15 → 0.40 for the "less see-through everywhere" request.
 shader_parameter/shallow_alpha = 0.40
 
+; --- LOD-SEAM SUPPRESSION DISTANCE GATE (2026-05-18 readability fix) ---
+; The dark-grid side-face suppression now only acts at DISTANCE so it
+; stops fading out the near shallow water you look straight down into.
+; _near = metres before any suppression (near water fully readable);
+; _far = metres to reach full suppression (distant seam slivers killed).
+; If near shallow water still reads too faint top-down: raise _near
+; (e.g. 40). If the distant dark grid creeps back: lower _far (e.g. 48).
+shader_parameter/seam_suppress_near_m = 24.0
+shader_parameter/seam_suppress_far_m = 64.0
+
 ; --- DEBUG (0 normal · 1 depth_t · 2 fresnel · 3 thickness) ---
 shader_parameter/debug_mode = 0
 
