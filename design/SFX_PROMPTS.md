@@ -387,7 +387,7 @@ Render: `python3 tools/render_sfx.py --category 04 --credit-cap 12000`.
 Status record as of the first generation push (kept current — update when a
 batch is rendered or assets are curated into the repo).
 
-### Generated this cycle (candidate `.mp3` on `Desktop\SFX\`, NOT yet curated)
+### Generated this cycle — raw renders now COMMITTED in-repo (uncurated)
 
 | Category | Status | ~Gens | Notes |
 |---|---|---|---|
@@ -398,9 +398,16 @@ batch is rendered or assets are curated into the repo).
 | 04 Voxel / Terrain (scoped) | ✅ rendered | 133 | dig/mine/place/collapse/explosive/build |
 | **02 Combat / Impacts / Enemies** | ⛔ NOT rendered | 429 | ~9,585 cr — deferred (budget) |
 
-All rendered files are **review candidates only**: `.mp3`, on the Desktop,
-labelled by `--annotate`, **not** curated, **not** converted, **not** in the
-repo. Nothing in-game consumes them yet.
+**Update 2026-05-18 — raw renders committed (PR #217).** At the designer's
+explicit direction the curate-first step was *skipped*: all **548** raw
+`.mp3` takes were bulk-placed into `assets/audio/sfx/<folder>/` as
+`<id>_NN.mp3` variation sets (mapped by the exact `AudioManager` prefix
+rules, `_vNN`→`_NN`). They are now live — every wired call site plays them
+immediately, random-picking across each id's set. They remain **raw and
+uncurated** (rough/again-identical takes still in the pool, no `.ogg`
+conversion, no loop-Import pass). Distribution: locomotion 287, voxel 133,
+environment 122 (weather/water/fire), ui 6 (`camp_rest_*`). Combat (Cat 02)
+is still unrendered, so `combat/` holds only the `.gitkeep`.
 
 ### Spend & cost model (calibrated, locked)
 
@@ -420,13 +427,18 @@ repo. Nothing in-game consumes them yet.
    weather/water extras, region ambient beds (Cat 10), systems/UI/mini-game
    gaps (Cat 12–18), then the long tail. Draft each phase's prompt table
    here first, budget-scoped, same hardened format.
-3. **Curation pass** (no credits, deferred until needed): for each id, use
-   its `0_KEEP` label — loop → keep 1 (seam-checked), `var`≥2 → keep that
-   many, `var`1 → pick 1. Convert keepers `ffmpeg -i in.mp3 -ac 1 -ar 44100
-   -c:a libvorbis out.ogg`, place in `assets/audio/sfx/<folder>/` as
-   `<id>.ogg` / `<id>_01..0N.ogg`, set loop files' Import→Loop=On, flip the
-   entry to EXISTING in `SFX_LIBRARY.md`.
-4. **Wire call sites** (see §8a) — connect game systems to `AudioManager`.
+3. **Curation pass** — now a **prune-in-place** job, not a placement job
+   (raw takes already committed, see Update above). For each id: audition
+   its `<id>_NN.mp3` set against the Desktop `0_KEEP` label, **delete the
+   weak takes in `assets/audio/sfx/`** (loop → keep the best seam-checked
+   one, `var`≥2 → keep the strongest few, `var`1 → keep 1). Optionally
+   `ffmpeg -i in.mp3 -ac 1 -ar 44100 -c:a libvorbis <id>_NN.ogg` (a
+   matching `.ogg` auto-supersedes the `.mp3`), set loop files'
+   Import→Loop=On, flip the entry to EXISTING in `SFX_LIBRARY.md`. No
+   credits. This is the §8b quality pass.
+4. ✅ **Wire call sites** (see §8a) — DONE for every rendered family
+   (campfire, NoEditZone, footsteps, dig+dig-loop, weather bed, water).
+   Combat is the only unwired family, blocked on its render (#1).
 
 ### 8a. Wiring status — `AudioManager` autoload
 
@@ -527,6 +539,16 @@ non-code:
   c. Optional: fine-tune `STEP_DIST_*` / jitter ranges by feel once (a)+(b)
      give good source audio (judging cadence on bad samples is misleading).
 Pipeline + wiring are **done**; this is a pure audio-quality pass for later.
+
+**Update 2026-05-18 (PR #217) — raw takes committed in-repo.** The full
+548-take pool now lives in `assets/audio/sfx/` (was Desktop-only). This
+*improves* perceived variety immediately (real `<id>_NN` sets → genuine
+random rotation, not the 1–2-clip machine-gun) but does **not** fix the
+"sounds rough" verdict — the weak/again-identical takes are still in the
+pool because nothing was pruned. The §8b quality pass is therefore now a
+**delete-in-place curation** (remove bad takes from the repo folders) plus
+optional `.ogg` conversion + footstep re-roll — no re-placement needed,
+no credits. Combat takes are still absent (Cat 02 unrendered).
 
 ---
 
