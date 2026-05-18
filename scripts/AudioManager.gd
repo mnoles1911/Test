@@ -112,6 +112,7 @@ func _ready() -> void:
 	# autoload loads before VoxelEditManager, so we defer to the end of
 	# this frame, by which point all autoloads are present.
 	call_deferred("_wire_world_signals")
+	print("[AudioManager] Initialized.")
 
 
 # --- Public API ----------------------------------------------------------
@@ -197,9 +198,11 @@ func _pick_stream(id: String) -> AudioStream:
 	if paths.is_empty():
 		if not _warned.has(id):
 			_warned[id] = true
-			push_warning("AudioManager: no file yet for '%s' (silent until "
-				% id + "placed in assets/audio/sfx/). This is expected "
-				+ "pre-curation.")
+			# print (not push_warning) so it shows in the normal Output
+			# stream and isn't alarming during the pre-curation phase,
+			# when most ids legitimately have no file yet.
+			print("[AudioManager] no file yet for '%s' — silent until " % id
+				+ "placed in assets/audio/sfx/ (expected pre-curation).")
 		return null
 	var pick: String = paths.pick_random()
 	return load(pick) as AudioStream
