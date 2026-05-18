@@ -51,3 +51,22 @@ Seamless looping is enabled in-engine, not baked into the file.
 
 Flip that entry's status to `EXISTING` in `design/SFX_LIBRARY.md` and commit
 the asset + the doc change together (see `SFX_LIBRARY.md §24` maintenance).
+
+## Checking loop seams (files marked `0_LOOP_KEEP-1`)
+
+A loop must wrap with no audible click or volume jump. Reliable, version-
+proof method in Audacity (do **not** rely on Shift+Space — it is "play once"
+in Audacity 3.2+, and OS players insert a fake gap):
+
+1. Open the file → `Ctrl+A` → `Ctrl+C`.
+2. Press `End`, then `Ctrl+V` (paste the clip after itself; repeat for more
+   cycles).
+3. `Spacebar`; listen at each **join** — that join is exactly the in-game
+   loop wrap. A tick/click or a volume "breath" there = bad seam.
+4. Optional: zoom into the clip's very start and end — both near the zero
+   centerline and similar = clean; a big vertical jump = the click.
+
+Bad seam → tighten the loop prompt in `design/SFX_PROMPTS.md` (longer
+duration, stronger "no beginning or end / consistent texture" wording) and
+re-render just that id; looping itself is enabled by Godot's import
+**Loop = On**, not baked into the file.
