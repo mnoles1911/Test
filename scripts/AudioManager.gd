@@ -1,0 +1,371 @@
+extends Node
+# AudioManager — autoload: the single API for playing sound effects by id.
+#
+# WHAT THIS DOES IN PLAIN ENGLISH
+#
+#   Every system that wants a sound (a footstep, a pickaxe hit, a campfire,
+#   a sword swing) calls one function here with a short string "id" like
+#   "vox_pick_strike_stone". This autoload finds the matching .ogg under
+#   res://assets/audio/sfx/<folder>/, random-picks a variation if several
+#   exist, plays it on the correct audio bus, and (for positional sounds)
+#   at the right spot in the 3D world. Nothing else needs to know where
+#   files live or how buses are wired.
+#
+#   THREE APIS:
+#
+#     play(id, world_pos = null, bus = "")
+#       — One-shot. Pass a Vector3 world_pos for a 3D positional sound;
+#         omit it for a flat non-positional sound (UI, stingers). The
+#         player frees itself when the sound finishes.
+#
+#     play_loop(id, world_pos = null, bus = "") -> int
+#       — Starts a looping sound (campfire, wind bed, swim loop) and
+#         returns an integer handle. Keep the handle to stop it later.
+#
+#     stop_loop(handle)  /  stop_all_loops()
+#       — Stop one loop, or all of them (e.g. on scene change).
+#
+#   GRACEFUL BY DESIGN: we generate SFX to a Desktop review folder first
+#   and curate/convert/place them into the repo later. Until a given
+#   file is placed, calling its id simply logs one warning and is silent.
+#   The game runs fine today, and each sound "switches on" automatically
+#   the moment its .ogg lands in assets/audio/sfx/ — no code changes.
+#
+#   FILE RESOLUTION: the id prefix maps to a folder (mirrors
+#   SFX_LIBRARY.md §2 and tools/render_sfx.py). It looks for "<id>.ogg"
+#   then "<id>_01.ogg", "<id>_02.ogg", … and random-picks among whatever
+#   exists — that is the anti-"machine-gun" variation the footstep and
+#   impact sets need.
+#
+#   BUS: chosen from the id prefix to match default_bus_layout.tres
+#   (Combat / Ambient / Voice / NPC / UI / SFX), or pass an override.
+#
+#   POOLING: AudioStreamPlayer nodes are pre-allocated and reused, the
+#   same reason BloodVFX pools particles — during heavy play (footsteps
+#   + combat) instantiate-on-demand stutters. Idle players are recycled;
+#   if the pool is exhausted a temporary player is made and auto-freed.
+#
+# LOAD ORDER: registered before the voxel/water/weather/bark managers so
+# they can safely call it from their _ready(). Depends on no other
+# autoload. NOTE: looping is also enabled per-file by the Godot import
+# setting (Import → Loop) per assets/audio/sfx/README.md; play_loop also
+# sets the stream's loop flag defensively.
+
+const SFX_ROOT := "res://assets/audio/sfx/"
+const MAX_VARIATIONS := 20          # probe <id>_01 .. <id>_20
+const POOL_3D := 12                 # reused positional one-shot players
+const POOL_2D := 6                  # reused non-positional one-shot players
+
+# id-prefix -> repo folder. Order matters (longest/most specific first).
+const PREFIX_FOLDER := [
+	["step_", "locomotion"], ["jump", "locomotion"], ["land_", "locomotion"],
+	["armor_", "locomotion"], ["climb_", "locomotion"], ["vault_", "locomotion"],
+	["water_wade", "locomotion"], ["water_entry", "locomotion"],
+	["roland_", "locomotion"],
+	["cmb_", "combat"],
+	["vox_", "voxel"],
+	["wx_", "environment"], ["fire_", "environment"], ["water_", "environment"],
+	["amb_", "ambience"],
+	["craft_", "crafting"],
+	["item_", "items"],
+	["lock_", "systems"], ["minigame_", "systems"], ["invest_", "systems"],
+	["wld_", "creatures"],
+	["npc_", "npc"],
+	["econ_", "economy"],
+	["ui_", "ui"], ["journal_", "ui"], ["map_", "ui"], ["save_", "ui"],
+	["skill_", "ui"], ["camp_rest_", "ui"], ["pause_", "ui"],
+]
+
+# id-prefix -> bus name (must exist in default_bus_layout.tres).
+const PREFIX_BUS := [
+	["cmb_", "Combat"],
+	["wx_", "Ambient"], ["fire_", "Ambient"], ["water_", "Ambient"],
+	["amb_", "Ambient"],
+	["roland_breath", "Voice"], ["roland_effort", "Voice"],
+	["roland_jump", "Voice"], ["water_surface_gasp", "Voice"],
+	["npc_", "NPC"],
+	["ui_", "UI"], ["journal_", "UI"], ["map_", "UI"], ["save_", "UI"],
+	["skill_", "UI"], ["camp_rest_", "UI"], ["pause_", "UI"],
+]
+
+var _pool_3d: Array[AudioStreamPlayer3D] = []
+var _pool_2d: Array[AudioStreamPlayer] = []
+var _loops: Dictionary = {}          # handle:int -> player node
+var _next_handle: int = 1
+var _path_cache: Dictionary = {}     # id -> Array[String] of resource paths
+var _warned: Dictionary = {}         # id -> true (warn once per missing id)
+
+# The single looping weather ambience bed (rain/wind). One at a time; the
+# id swaps when WeatherManager changes state. Handle is 0 when none.
+var _weather_loop_handle: int = 0
+var _weather_loop_id: String = ""
+
+# Weather State -> ambient bed loop id. Keyed by WeatherManager's lowercase
+# state-name strings (STATE_NAMES), not enum ints, so an enum reorder can't
+# silently mis-map. No dedicated fog/snow beds rendered yet: fog reuses the
+# quiet clear bed (calm, muffled); snow reuses the breeze (cold, no rain).
+const WEATHER_BED := {
+	"clear":      "wx_clear_bed_loop",
+	"overcast":   "wx_wind_breeze_loop",
+	"light_rain": "wx_rain_light_soil_loop",
+	"heavy_rain": "wx_rain_heavy_soil_loop",
+	"fog":        "wx_clear_bed_loop",
+	"snow":       "wx_wind_breeze_loop",
+}
+
+
+func _ready() -> void:
+	# Pre-build the reuse pools as children of this autoload node.
+	for i in POOL_3D:
+		var p := AudioStreamPlayer3D.new()
+		p.bus = "SFX"
+		add_child(p)
+		_pool_3d.append(p)
+	for i in POOL_2D:
+		var p := AudioStreamPlayer.new()
+		p.bus = "SFX"
+		add_child(p)
+		_pool_2d.append(p)
+	# Subscribe to gameplay signals once every autoload exists. This
+	# autoload loads before VoxelEditManager, so we defer to the end of
+	# this frame, by which point all autoloads are present.
+	call_deferred("_wire_world_signals")
+	print("[AudioManager] Initialized.")
+
+
+# --- Public API ----------------------------------------------------------
+
+# One-shot. world_pos: Vector3 for a 3D sound, or null for flat/UI.
+# Each play gets a small random pitch + volume wobble so repeated sounds
+# (footsteps, impacts) never machine-gun the identical clip. This is
+# applied to ONE-SHOTS ONLY — loops go through play_loop() and must NOT
+# be detuned. Big perceived-quality win even with a single take.
+func play(id: String, world_pos = null, bus: String = "") -> void:
+	var stream := _pick_stream(id)
+	if stream == null:
+		return
+	var bus_name := _bus_for(id, bus)
+	var pitch: float = randf_range(0.94, 1.06)   # ~ +-6 %
+	var vol_db: float = randf_range(-2.0, 1.5)
+	if world_pos is Vector3:
+		var p := _idle_3d()
+		p.bus = bus_name
+		p.global_position = world_pos
+		p.pitch_scale = pitch
+		p.volume_db = vol_db
+		p.stream = stream
+		p.play()
+	else:
+		var p := _idle_2d()
+		p.bus = bus_name
+		p.pitch_scale = pitch
+		p.volume_db = vol_db
+		p.stream = stream
+		p.play()
+
+
+# Looping sound. Returns a handle for stop_loop(); 0 if the file is absent.
+func play_loop(id: String, world_pos = null, bus: String = "") -> int:
+	var stream := _pick_stream(id)
+	if stream == null:
+		return 0
+	# Belt-and-suspenders: ensure the stream loops even if the import
+	# setting wasn't toggled (AudioStreamOggVorbis exposes `loop`).
+	# set() is used (not stream.loop) because the base AudioStream type
+	# has no `loop` member — only some subclasses do.
+	if "loop" in stream:
+		stream.set("loop", true)
+	var bus_name := _bus_for(id, bus)
+	# Build on the concrete typed player; store the Node reference. (Don't
+	# touch .bus/.stream through a Node-typed var — GDScript static typing
+	# would reject it since Node has no such members.)
+	var node  # untyped on purpose: holds either player subtype
+	if world_pos is Vector3:
+		var p3 := AudioStreamPlayer3D.new()
+		p3.bus = bus_name
+		p3.stream = stream
+		add_child(p3)
+		p3.global_position = world_pos
+		p3.play()
+		node = p3
+	else:
+		var p2 := AudioStreamPlayer.new()
+		p2.bus = bus_name
+		p2.stream = stream
+		add_child(p2)
+		p2.play()
+		node = p2
+	var handle := _next_handle
+	_next_handle += 1
+	_loops[handle] = node
+	return handle
+
+
+func stop_loop(handle: int) -> void:
+	if _loops.has(handle):
+		var n = _loops[handle]   # untyped: AudioStreamPlayer(3D) has .stop()
+		_loops.erase(handle)
+		if is_instance_valid(n):
+			n.stop()
+			n.queue_free()
+
+
+func stop_all_loops() -> void:
+	for handle in _loops.keys():
+		var n = _loops[handle]
+		if is_instance_valid(n):
+			n.stop()
+			n.queue_free()
+	_loops.clear()
+
+
+# --- Internals -----------------------------------------------------------
+
+func _pick_stream(id: String) -> AudioStream:
+	var paths := _resolve(id)
+	if paths.is_empty():
+		if not _warned.has(id):
+			_warned[id] = true
+			# print (not push_warning) so it shows in the normal Output
+			# stream and isn't alarming during the pre-curation phase,
+			# when most ids legitimately have no file yet.
+			print("[AudioManager] no file yet for '%s' — silent until " % id
+				+ "placed in assets/audio/sfx/ (expected pre-curation).")
+		return null
+	var pick: String = paths.pick_random()
+	return load(pick) as AudioStream
+
+
+func _resolve(id: String) -> Array:
+	# Accept BOTH .ogg and .mp3. ElevenLabs renders mp3 and Godot 4
+	# imports mp3 natively, so "curating" a sound is just dropping the
+	# file in — no ffmpeg step needed. Preference order: a final .ogg
+	# wins over a raw .mp3 of the same name (so an upgraded keeper
+	# supersedes the rough take automatically).
+	if _path_cache.has(id):
+		return _path_cache[id] as Array
+	var folder := _folder_for(id)
+	var found: Array = []
+	if folder != "":
+		var base := SFX_ROOT + folder + "/"
+		# Single curated file: <id>.ogg, else <id>.mp3.
+		if ResourceLoader.exists(base + id + ".ogg"):
+			found.append(base + id + ".ogg")
+		elif ResourceLoader.exists(base + id + ".mp3"):
+			found.append(base + id + ".mp3")
+		else:
+			# Variation set: <id>_01.. (ogg preferred per index, else mp3).
+			for i in range(1, MAX_VARIATIONS + 1):
+				var ogg := base + "%s_%02d.ogg" % [id, i]
+				var mp3 := base + "%s_%02d.mp3" % [id, i]
+				if ResourceLoader.exists(ogg):
+					found.append(ogg)
+				elif ResourceLoader.exists(mp3):
+					found.append(mp3)
+				elif i > 1:
+					break   # contiguous numbering; stop at first gap
+	# Only cache a HIT. A miss is not cached, so if files are still being
+	# imported by Godot (e.g. just bulk-copied in) the very next trigger
+	# re-probes and picks them up — instead of the sound being dead for
+	# the whole session. Probing is cheap at trigger rates.
+	if not found.is_empty():
+		_path_cache[id] = found
+	return found
+
+
+func _folder_for(id: String) -> String:
+	for rule in PREFIX_FOLDER:
+		if id.begins_with(rule[0]):
+			return rule[1]
+	return ""
+
+
+func _bus_for(id: String, override: String) -> String:
+	if override != "":
+		return override
+	for rule in PREFIX_BUS:
+		if id.begins_with(rule[0]):
+			return rule[1]
+	return "SFX"
+
+
+func _idle_3d() -> AudioStreamPlayer3D:
+	for p in _pool_3d:
+		if not p.playing:
+			return p
+	# Pool exhausted: transient player that frees itself when done.
+	var t := AudioStreamPlayer3D.new()
+	add_child(t)
+	t.finished.connect(t.queue_free)
+	return t
+
+
+func _idle_2d() -> AudioStreamPlayer:
+	for p in _pool_2d:
+		if not p.playing:
+			return p
+	var t := AudioStreamPlayer.new()
+	add_child(t)
+	t.finished.connect(t.queue_free)
+	return t
+
+
+# --- Gameplay signal wiring ----------------------------------------------
+#
+# The audio layer subscribes to gameplay signals here rather than editing
+# the gameplay scripts. Low-risk, localized, idempotent, and guarded — if a
+# system is absent the connection is simply skipped.
+
+func _wire_world_signals() -> void:
+	# NoEditZone rejection -> the dull "this place doesn't yield" thunk.
+	var vem := get_node_or_null("/root/VoxelEditManager")
+	if vem != null and vem.has_signal("edit_rejected_no_edit_zone"):
+		if not vem.is_connected(
+				"edit_rejected_no_edit_zone", _on_edit_rejected):
+			vem.connect("edit_rejected_no_edit_zone", _on_edit_rejected)
+
+	# Weather ambience bed -> swaps with the weather state. We also prime
+	# the bed for the CURRENT state now, because WeatherManager seeds its
+	# initial state in _ready() WITHOUT emitting weather_state_changed, so
+	# relying on the signal alone would leave silence until the first
+	# weather transition.
+	var wm := get_node_or_null("/root/WeatherManager")
+	if wm != null and wm.has_signal("weather_state_changed"):
+		if not wm.is_connected(
+				"weather_state_changed", _on_weather_state_changed):
+			wm.connect("weather_state_changed", _on_weather_state_changed)
+		if wm.has_method("get_state_name"):
+			_apply_weather_bed(wm.get_state_name())
+
+
+func _on_edit_rejected(world_pos: Vector3) -> void:
+	# Reuses the unbreakable-block thunk for blocked edits (same feel:
+	# "this didn't give"). Silent until vox_bedrock_blocked.ogg is placed.
+	play("vox_bedrock_blocked", world_pos)
+
+
+# WeatherManager emits this AT transition-complete with current_state
+# already updated, so get_state_name() (and thus the new_state arg) is
+# authoritative here.
+func _on_weather_state_changed(_new_state: int, _old_state: int) -> void:
+	var wm := get_node_or_null("/root/WeatherManager")
+	if wm != null and wm.has_method("get_state_name"):
+		_apply_weather_bed(wm.get_state_name())
+
+
+# Swap the looping ambience bed to match the named weather state. Idempotent:
+# if the desired bed is already the one playing, do nothing (no restart
+# pop). No-op-safe like every other call site — silent until the wx_*.ogg
+# is curated in, and self-heals when it lands.
+func _apply_weather_bed(state_name: String) -> void:
+	var want: String = WEATHER_BED.get(state_name, "wx_clear_bed_loop")
+	if want == _weather_loop_id and _weather_loop_handle != 0:
+		return
+	if _weather_loop_handle != 0:
+		stop_loop(_weather_loop_handle)
+		_weather_loop_handle = 0
+	_weather_loop_id = want
+	# Non-positional (world-wide bed): null world_pos -> flat player on the
+	# Ambient bus (wx_ -> Ambient via PREFIX_BUS). 0 if the file isn't
+	# placed yet; we keep _weather_loop_id so a later curate-in still maps.
+	_weather_loop_handle = play_loop(want)

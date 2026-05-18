@@ -167,6 +167,35 @@ var max_health: float = MAX_HEALTH_DEFAULT
 var endurance: float = MAX_ENDURANCE_DEFAULT
 var max_endurance: float = MAX_ENDURANCE_DEFAULT
 
+# --- Footstep SFX (see _update_footsteps) ---
+# A footstep is one foot plant. We don't loop a walk cycle; we emit one
+# one-shot every time the player has covered a "stride" of ground (the
+# "cadence lives in code" model from design/SFX_PROMPTS.md §2). Distance-
+# based so it stays in sync at any speed and on accel/decel.
+# Tuned up from the first pass (0.85/1.25/0.70) — the game's "walk" is a
+# fast ~4.5 m/s, so the old stride fired ~5 steps/s (machine-gun). These
+# give ~2.8/s walk, ~4/s sprint, ~1.8/s crouch. Still a feel knob — see
+# SFX_PROMPTS.md §8b.
+const STEP_DIST_WALK: float   = 1.60   # metres of ground travel per step
+const STEP_DIST_SPRINT: float = 2.10   # longer stride at a run
+const STEP_DIST_CROUCH: float = 1.10   # short, careful steps
+const MIN_STEP_SPEED: float   = 0.6    # m/s below this = not really walking
+var _footstep_accum: float = 0.0       # metres travelled since last step
+var _footstep_air_time: float = 0.0    # seconds since is_on_floor() last true
+
+# Voxel material id_string -> footstep surface bucket (Phase-1 live set:
+# grass/dirt/stone/wood/sand/shallow_water). Anything unmapped falls back
+# to "dirt". snow has no Phase-1 step set yet -> nearest soft = dirt.
+const _SURFACE_BY_MATERIAL := {
+	"grass": "grass", "leaves": "grass",
+	"dirt": "dirt", "clay": "dirt", "snow": "dirt",
+	"stone": "stone", "bedrock": "stone", "marble": "stone",
+	"stone_dark": "stone", "copper_ore": "stone", "iron_ore": "stone",
+	"sand": "sand", "gravel": "sand",
+	"log": "wood",
+	"water": "shallow_water",
+}
+
 var _is_sprinting: bool  = false
 var _is_crouching: bool  = false
 var _sprint_locked: bool = false
@@ -193,6 +222,18 @@ var _is_submerged: bool = false
 # True if Roland's head (HEAD_OFFSET_METERS above his pivot) is below
 # the current water volume's surface_y. When true: breath ticks down,
 # drowning damage applies if breath reaches zero.
+
+# --- Water audio edge-tracking ---
+# Previous-frame water flags, so _update_water_audio() can fire one-shot
+# splashes/gasps only on the transition. _water_loop_* hold the single
+# self-correcting ambience bed (surface-swim vs muffled underwater), the
+# same one-loop-at-a-time pattern AudioManager uses for the weather bed.
+# All AudioManager calls are no-op-safe (silent until the .ogg is curated
+# in), so this is inert until the water SFX are placed.
+var _was_in_water: bool = false
+var _was_submerged: bool = false
+var _water_loop_handle: int = 0
+var _water_loop_id: String = ""
 
 var _breath_remaining: float = BREATH_MAX_SECONDS
 # Seconds of air left. Refills automatically when not submerged.
@@ -904,6 +945,9 @@ func _physics_process_inner(delta: float) -> void:
 	if _prof_ms != null:
 		_prof_ms.record("PHYS", "Player3D_move_and_slide", _t_ms_us)
 
+	# Footstep SFX — post-move so position/velocity/is_on_floor are final.
+	_update_footsteps()
+
 	# --- Auto-step over small voxel ledges ---
 	# Walking forward into a 1-voxel cube (16.7 cm at 6 vox/m, since
 	# we run at 6 voxels per metre) catches the capsule's rounded
@@ -1051,6 +1095,49 @@ func _update_water_state() -> void:
 	if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 		_underwater_filter.set_active(_is_submerged)
 
+	# Water audio: transition one-shots + the self-correcting ambience bed.
+	_update_water_audio()
+
+
+func _update_water_audio() -> void:
+	# Mirrors the AudioManager weather-bed approach: discrete one-shots on
+	# the rising/falling edge, plus ONE looping ambience bed swapped to
+	# match state. AudioManager no-ops (one warning, silent) until each
+	# water_*.ogg is curated in, so wiring this now is risk-free.
+	var am: Node = get_node_or_null("/root/AudioManager")
+	if am == null:
+		return
+
+	# --- Edge one-shots (positional, at the player) ---
+	if _in_water and not _was_in_water:
+		am.play("water_splash_medium", global_position)   # entered water
+	elif _was_in_water and not _in_water:
+		am.play("water_splash_small", global_position)     # left water
+	if _is_submerged and not _was_submerged:
+		am.play("water_submerge_plunge", global_position)  # head went under
+	elif _was_submerged and not _is_submerged:
+		am.play("water_surface_gasp", global_position)     # broke surface
+
+	# --- Single ambience bed, self-correcting (flat/non-positional so it
+	#     stays constant as Roland moves) ---
+	var want := ""
+	if _is_submerged:
+		want = "water_underwater_ambient_loop"
+	elif _in_water:
+		want = "water_swim_surface_loop"
+	# Re-fire if the desired bed changed, OR if we want one but never got a
+	# handle (file not imported yet at the last attempt — self-heals).
+	if want != _water_loop_id or (want != "" and _water_loop_handle == 0):
+		if _water_loop_handle != 0:
+			am.stop_loop(_water_loop_handle)
+			_water_loop_handle = 0
+		_water_loop_id = want
+		if want != "":
+			_water_loop_handle = am.play_loop(want)
+
+	_was_in_water = _in_water
+	_was_submerged = _is_submerged
+
 
 # =============================================================
 # DEBUG — FLY MODE
@@ -1127,4 +1214,93 @@ func toggle_fly_mode() -> bool:
 		_is_submerged = false
 		if _underwater_filter != null and _underwater_filter.has_method("set_active"):
 			_underwater_filter.set_active(false)
+		# _update_water_state() (and thus _update_water_audio) is skipped
+		# while flying, so the ambience bed won't self-stop — kill it here.
+		if _water_loop_handle != 0:
+			var am: Node = get_node_or_null("/root/AudioManager")
+			if am != null:
+				am.stop_loop(_water_loop_handle)
+			_water_loop_handle = 0
+			_water_loop_id = ""
+			_was_in_water = false
+			_was_submerged = false
 	return is_flying
+
+
+func _update_footsteps() -> void:
+	# One footstep one-shot per "stride" of ground travel. We do NOT loop
+	# a walk cycle — the cadence is produced here so it stays locked to
+	# the feet at any speed (design/SFX_PROMPTS.md §2). Silent (one notice
+	# from AudioManager) until the step .ogg files are curated into
+	# assets/audio/sfx/locomotion/, then it switches on automatically.
+	if not is_on_floor():
+		# Coyote grace: streaming voxel terrain flickers is_on_floor()
+		# false for a frame or two during LOD/collision loads and on
+		# slope bumps. Don't kill the stride for those — only treat it as
+		# a real jump/fall (and zero the accumulator) after >0.25 s of
+		# continuous air. Either way, no step is emitted while off-floor.
+		_footstep_air_time += get_physics_process_delta_time()
+		if _footstep_air_time > 0.25:
+			_footstep_accum = 0.0
+		return
+	_footstep_air_time = 0.0
+	var hspeed: float = Vector2(velocity.x, velocity.z).length()
+	if hspeed < MIN_STEP_SPEED:
+		return                     # standing still / negligible drift
+	_footstep_accum += hspeed * get_physics_process_delta_time()
+	# Gait + stride from the state Player3D already tracks.
+	var gait: String = "walk"
+	var stride: float = STEP_DIST_WALK
+	if _is_crouching:
+		gait = "crouch"
+		stride = STEP_DIST_CROUCH
+	elif _is_sprinting:
+		gait = "sprint"
+		stride = STEP_DIST_SPRINT
+	if _footstep_accum < stride:
+		return
+	_footstep_accum -= stride
+	var surface: String = _surface_under_player()
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null:
+		am.play("step_%s_%s" % [gait, surface], global_position)
+
+
+func _surface_under_player() -> String:
+	# Returns the footstep surface bucket for the ground the player is on.
+	#
+	# Wading first: we already track _in_water, so shallow water just maps
+	# straight to the shallow-water step set (deep swimming never reaches
+	# here — it isn't is_on_floor()).
+	if _in_water:
+		return "shallow_water"
+	# Otherwise read the voxel material directly beneath the feet. This
+	# mirrors the canonical query in EditToolHandler exactly: world->voxel
+	# via VoxelEditManager, the terrain's voxel tool on CHANNEL_TYPE, and
+	# VoxelMaterialRegistry to decode the id — never decode the type byte
+	# by hand (CLAUDE.md "Critical patterns").
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return "dirt"
+	if not get_node_or_null("/root/VoxelMaterialRegistry"):
+		return "dirt"
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return "dirt"
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return "dirt"
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	# Probe from just under the feet downward; first solid block wins
+	# (the top voxel can read as air right at the contact point).
+	for drop in [0.25, 0.45, 0.7, 1.0]:
+		var wp: Vector3 = global_position - Vector3(0.0, drop, 0.0)
+		var vpos: Vector3i = VoxelEditManager.world_to_voxel(wp)
+		var packed: int = tool.get_voxel(vpos)
+		var mat_id: int = VoxelMaterialRegistry.material_id_from_packed(packed)
+		if mat_id <= 0:
+			continue   # air — keep probing downward
+		var mat: VoxelMaterial = VoxelMaterialRegistry.get_by_id(mat_id)
+		if mat == null:
+			continue
+		return _SURFACE_BY_MATERIAL.get(mat.id_string, "dirt")
+	return "dirt"

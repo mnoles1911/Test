@@ -113,6 +113,19 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
   sequence
 - `AUDIO_DESIGN.md` — audio bus layout, music/SFX/voice routing, spatial 3D
   audio, settings volume sliders
+- `MUSIC_PROMPTS.md` — the full Suno soundtrack portfolio: 59 instrumental
+  prompt pairs (3:00–5:00 each, Oblivion-first, explicit varied keys, choir
+  only as one brief statement in the Main Theme + 5 optional cues), the
+  anti-sameness variation matrix, cultural palettes, leitmotif system, and
+  flute discipline
+- `SFX_LIBRARY.md` — the master sound-effects inventory: ~1,930 categorized
+  entries (19 categories, combinatorial matrices for footsteps / tool×material
+  / weapon-class / damage-type impacts / region beds, plus a lore-faithful
+  Magic & Spellcraft category), naming + folder conventions, phased generation
+  plan. The spec the SFX generation-prompt pass will draw from
+- `SFX_PROMPTS.md` — ElevenLabs generation prompts built from the library:
+  Phase 1 core (~167 prompts / ~520 files), batchable table with
+  duration/prompt_influence/loop params; further phases appended after review
 
 ### Planning, ops, and overview
 
