@@ -44,6 +44,7 @@ Read `git log` for detail. Highest-impact milestones to know about:
 - **2026-05-12:** Copper Isles generator ported to C++; Skill system (PR #201) — 12 skills, 300 perks, trainers, Speech checks; multiplayer MP-1/2/3 (PR #180) — transport, player presence, voxel edit replication.
 - **2026-05-13:** `HeightmapGeneratorBase` extracted (PR #203); Profiler real_us measurement reliable (PR #207).
 - **2026-05-14:** WaterChunkMesher C++ port + viewer-offset smoothing + thread-count Settings slider (PR #214).
+- **2026-05-16–18:** Water Voxel V2 (transparent `CHANNEL_TYPE`-5 voxel water, PR #217) + flow-Y/jitter/flood-coverage polish + shallow-water shader readability (PR #222). Stage 6 planned — partial-height + directional flow, **smooth-only** (dedicated surface mesher, no stair-step interim): `design/WATER_STAGE6_PLAN.md`.
 
 Outstanding pickups: Blender Roland model, MagicaVoxel prop exports, surface decoration pass, ambient weather audio, region-boundary profile auto-swap. See `DESIGNER_TODO.md`.
 
@@ -103,7 +104,7 @@ Implementation docs live in /design. When lore and design conflict, lore wins. I
 - **Companion & NPC:** COMPANION_SYSTEM, CONVERSATION_SYSTEM, NPC_SYSTEM, BARK_LIBRARY, NPC_DIALOGUE_LIBRARY, JOURNAL_UI.
 - **World & narrative:** FACTION_SYSTEM, QUEST_SYSTEM, ECONOMY_AND_VENDORS, MINI_GAMES.
 - **Art & pipeline:** ART_DIRECTION, CAMERA_AND_PERSPECTIVE, TECH_STACK, ART_PIPELINE, ASSET_PIPELINE_AI, 3D_VOXEL_MIGRATION.
-- **Planning & ops:** MILESTONE_ROADMAP, ENDGAME_CHOICES, DIALOGIC_SETUP, TTS_PIPELINE, LESSONS_LEARNED, PROFILER_AND_DIAGNOSTICS, COPPER_ISLES_DEMO_HEIGHTMAP, COPPER_ISLES_BAKE_NOTES.
+- **Planning & ops:** MILESTONE_ROADMAP, ENDGAME_CHOICES, DIALOGIC_SETUP, TTS_PIPELINE, LESSONS_LEARNED, PROFILER_AND_DIAGNOSTICS, COPPER_ISLES_DEMO_HEIGHTMAP, COPPER_ISLES_BAKE_NOTES, WATER_VOXEL_V2_PLAN, WATER_SHADER_V2_PLAN, WATER_STAGE6_PLAN.
 
 `design/PROFILER_AND_DIAGNOSTICS.md` — **read this before guessing at perf issues**; the answer is usually in a recent capture.
 
