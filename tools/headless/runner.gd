@@ -43,7 +43,7 @@ func _initialize() -> void:
 			quit(_codec())
 		"wmat":
 			quit(_wmat())
-		"spike", "phase2":
+		"spike", "phase2", "gen":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
 		_:
@@ -58,7 +58,10 @@ func _process(_delta: float) -> bool:
 		_spike_begin()
 	_spike_frames += 1
 	if _spike_frames >= _spike_max_frames:
-		quit(_phase2_report() if _spike_mode == "phase2" else _spike_report())
+		match _spike_mode:
+			"phase2": quit(_phase2_report())
+			"gen": quit(_gen_report())
+			_: quit(_spike_report())
 		return true
 	return false
 
@@ -242,6 +245,145 @@ func _spike_report() -> int:
 	print("[SPIKE] terrain=%s %s" % [terrain.get_class(), " ".join(detail)])
 	print("[SPIKE] RESULT=%s streams_headless=%s" % ["PASS" if streamed else "NO", "yes" if streamed else "no"])
 	return 0 if streamed else 0   # never hard-fail: this answers a question, doesn't gate
+
+
+# ============================================================
+# GEN — C++ generator parity (Phase 4, parity-harness-FIRST)
+# ============================================================
+# Calls the REAL configured CubicHeightmapGeneratorCpp from World3D for
+# a fixed set of blocks/LODs. Computes per-block:
+#   • norm_hash : FNV over CHANNEL_TYPE with every water id mapped to a
+#                 sentinel — INVARIANT to the pivot's id change (5->per
+#                 level) but sensitive to ANY terrain/position change.
+#   • water_count + distinct raw water ids.
+# First run writes user://gen_parity_baseline.json (BASELINE). After the
+# C++ change + rebuild, a second run COMPARES: norm_hash + water_count
+# per block must be byte-identical (terrain & water POSITIONS unchanged)
+# and only the water id value may differ (5 -> 16..23). This is the
+# CLAUDE.md "parity harness FIRST, bit-exact" gate for the C++ port.
+const _GEN_SENTINEL := 9999
+const _GEN_BASELINE := "user://gen_parity_baseline.json"
+
+func _gen_report() -> int:
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	var terrain := _find_terrain(_spike_world)
+	if terrain == null:
+		print("[GEN] RESULT=FAIL reason=no_terrain")
+		return 1
+	var gen = terrain.get("generator")
+	var cpp = null
+	if gen != null:
+		cpp = gen.get("cpp_impl") if "cpp_impl" in gen else null
+	if cpp == null:
+		print("[GEN] RESULT=FAIL reason=no_cpp_impl (gen=%s)" % (gen.get_class() if gen else "<null>"))
+		return 1
+	if not cpp.has_method("generate_block_into_buffer"):
+		print("[GEN] RESULT=FAIL reason=no_generate_block_into_buffer")
+		return 1
+	var bs := 16
+	# Block set must be deterministic AND pinned across the
+	# baseline/verify runs (so a moved-water regression can't hide
+	# behind a re-selected set). If a baseline exists, reuse its exact
+	# origins; otherwise DISCOVER wet blocks by a deterministic scan
+	# (water only exists where ground dips below the voxel sea level)
+	# and record them into the baseline.
+	var jobs: Array = []
+	if FileAccess.file_exists(_GEN_BASELINE):
+		var pf := FileAccess.open(_GEN_BASELINE, FileAccess.READ)
+		var pbase: Dictionary = JSON.parse_string(pf.get_as_text())
+		pf.close()
+		for key in pbase.keys():
+			# key = "x,y,z@lod"
+			var at: PackedStringArray = key.split("@")
+			var xyz: PackedStringArray = at[0].split(",")
+			jobs.append([Vector3i(int(xyz[0]), int(xyz[1]), int(xyz[2])), int(at[1])])
+	else:
+		# Deterministic wide XZ sweep at a sea-level-spanning Y band.
+		var wet: Array = []
+		var dry: Array = []
+		var coords := [-1024, -512, -256, -128, -64, 0, 64, 128, 256, 512, 1024]
+		for cz in coords:
+			for cx in coords:
+				if wet.size() >= 6 and dry.size() >= 2:
+					break
+				var o := Vector3i(cx, 64, cz)
+				var tb := VoxelBuffer.new()
+				tb.create(bs, bs, bs)
+				cpp.call("generate_block_into_buffer", tb, o, 0)
+				var wc := 0
+				for z in range(bs):
+					for y in range(bs):
+						for x in range(bs):
+							if WM.is_water_type(tb.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)):
+								wc += 1
+				if wc > 0 and wet.size() < 6:
+					wet.append([o, 0])
+				elif wc == 0 and dry.size() < 2:
+					dry.append([o, 0])
+		jobs = wet + dry
+		if wet.is_empty():
+			print("[GEN] RESULT=FAIL reason=no_wet_blocks_found_in_scan (cannot parity-check the water id change)")
+			return 1
+		# Add a LOD-1 variant of the first wet block for stride coverage.
+		jobs.append([jobs[0][0], 1])
+		print("[GEN] discovered %d wet + %d dry blocks for the parity set." % [wet.size(), dry.size()])
+	var results := {}
+	for job in jobs:
+		var origin: Vector3i = job[0]
+		var lod: int = job[1]
+		var buf := VoxelBuffer.new()
+		buf.create(bs, bs, bs)
+		cpp.call("generate_block_into_buffer", buf, origin, lod)
+		var h: int = 2166136261
+		var wcount: int = 0
+		var wids := {}
+		for z in range(bs):
+			for y in range(bs):
+				for x in range(bs):
+					var t: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
+					var norm: int = t
+					if WM.is_water_type(t):
+						norm = _GEN_SENTINEL
+						wcount += 1
+						wids[t] = true
+					h = ((h ^ norm) * 16777619) & 0x7FFFFFFF
+		var key := "%d,%d,%d@%d" % [origin.x, origin.y, origin.z, lod]
+		var idlist: Array = wids.keys()
+		idlist.sort()
+		results[key] = {"norm_hash": h, "water_count": wcount, "water_ids": idlist}
+		print("[GEN] %s norm_hash=%d water_count=%d water_ids=%s" % [key, h, wcount, str(idlist)])
+
+	if not FileAccess.file_exists(_GEN_BASELINE):
+		var f := FileAccess.open(_GEN_BASELINE, FileAccess.WRITE)
+		f.store_string(JSON.stringify(results))
+		f.close()
+		print("[GEN] RESULT=BASELINE — wrote %s (%d blocks). Re-run AFTER the C++ change to verify parity." % [_GEN_BASELINE, results.size()])
+		return 0
+
+	var bf := FileAccess.open(_GEN_BASELINE, FileAccess.READ)
+	var base: Dictionary = JSON.parse_string(bf.get_as_text())
+	bf.close()
+	var fails: int = 0
+	for key in results.keys():
+		if not base.has(key):
+			fails += 1
+			push_error("[GEN] baseline missing block %s" % key)
+			continue
+		var b = base[key]
+		var r = results[key]
+		# norm_hash + water_count must be IDENTICAL (terrain & water
+		# positions unchanged). JSON ints come back as float -> int().
+		if int(b["norm_hash"]) != int(r["norm_hash"]):
+			fails += 1
+			push_error("[GEN] %s norm_hash drift base=%d now=%d (terrain/water POSITION changed — NOT id-only!)" % [key, int(b["norm_hash"]), int(r["norm_hash"])])
+		if int(b["water_count"]) != int(r["water_count"]):
+			fails += 1
+			push_error("[GEN] %s water_count drift base=%d now=%d" % [key, int(b["water_count"]), int(r["water_count"])])
+	if fails == 0:
+		print("[GEN] RESULT=PASS — terrain & water positions bit-identical to baseline; only the water id value changed (the intended id-only delta).")
+		return 0
+	print("[GEN] RESULT=FAIL — %d parity violations (see push_error)." % fails)
+	return 1
 
 
 func _find_terrain(n: Node) -> Node:

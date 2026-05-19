@@ -28,13 +28,25 @@ static constexpr int STONE_MATERIAL_ID = 1;
 static constexpr int DIRT_MATERIAL_ID = 2;
 static constexpr int GRASS_MATERIAL_ID = 3;
 static constexpr int SAND_MATERIAL_ID = 4;
-// Water Voxel V2 (Minecraft model, 2026-05-16): water is a normal TYPE
-// block (blocky model id 5 = transparent water cube). Below-sea-level
-// air cells get this written into CHANNEL_TYPE at ALL LODs, replacing
-// the old CHANNEL_DATA5 WATER_SOURCE_BYTE side-channel. The blocky
-// mesher draws it (transparent pass) like every other block — no
-// separate WaterChunkMesher, no horizon plane.
-static constexpr int WATER_MATERIAL_ID = 5;
+// Native-fluid pivot (Phase 4, 2026-05-18): generated ocean/lake water
+// is the FULL-level Zylann fluid model, not the old transparent cube
+// (id 5). Mirrors scripts/WaterMaterial.gd EXACTLY:
+//   WATER_FLUID_BASE_ID = 16, WATER_LEVEL_COUNT = 8
+//   level L (1..8) -> blocky model id BASE + L - 1
+//   full (level 8) -> 16 + 8 - 1 = 23
+// Oceans/lakes are Minecraft SOURCE blocks: full to sea level (level
+// 8). Partial levels + sloped surfaces are produced by the flow sim at
+// dynamic fronts (Phase 3) and by waterfalls (Phase 8) — NOT by static
+// generation: a uniform partial top would just sink the whole ocean
+// ~1/8 voxel with no slope benefit and worse LOD downsampling. So this
+// is a strict id-only swap (5 -> 23); the parity harness asserts
+// terrain + water POSITIONS are byte-identical and only the id changed.
+// World3DBootstrap injects the 8 VoxelBlockyModelFluid at runtime so
+// ids 16..23 exist by the time chunks stream. The blocky mesher
+// auto-slopes the fluid surface — no WaterChunkMesher, no horizon plane.
+static constexpr int WATER_FLUID_BASE_ID = 16;
+static constexpr int WATER_LEVEL_COUNT = 8;
+static constexpr int WATER_MATERIAL_ID = WATER_FLUID_BASE_ID + WATER_LEVEL_COUNT - 1; // 23 = full level
 static constexpr int MARBLE_MATERIAL_ID = 9;
 static constexpr int STONE_DARK_MATERIAL_ID = 14;
 
