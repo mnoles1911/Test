@@ -326,13 +326,13 @@ func _shader() -> int:
 		return 1
 	var code: String = sh.get("code")
 	var n_dbg := code.count("debug_mode ==")
-	# Foam is REMOVED when its CODE is gone — i.e. no foam/surface_motion
-	# UNIFORM declarations and no foam_color identifier in expressions.
-	# (The word "foam" still appears in explanatory comments — "#15 foam
-	# fully removed" — which is fine; only real code counts.)
-	var has_foam := code.find("uniform float surface_motion_strength") != -1 \
-		or code.find("uniform vec3 foam_color") != -1 \
-		or code.find("uniform float foam_wind_ref") != -1 \
+	# The DEAD #15 WIND-foam is gone when its WIND-foam-specific
+	# identifiers are absent. NOTE: V3 Phase 3 intentionally adds edge
+	# foam that reuses the `foam_color` name — that is NOT the #15 foam,
+	# so do not key off `foam_color`. Key off the wind-foam-only
+	# uniforms (surface_motion_*, foam_wind_ref, surface_ripple_scale).
+	var has_foam := code.find("surface_motion_strength") != -1 \
+		or code.find("foam_wind_ref") != -1 \
 		or code.find("surface_ripple_scale") != -1
 	# Flow animation must be present (it replaces the foam).
 	var has_flow := code.find("decode_flow") != -1 and code.find("flow_motion_strength") != -1

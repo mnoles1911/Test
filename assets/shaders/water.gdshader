@@ -148,6 +148,19 @@ vec2 decode_flow(vec2 uv, out float strength) {
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float refraction_strength : hint_range(0.0, 0.2) = 0.045;
 
+// --- V3 Phase 2: screen-space reflection (cheap planar approx) ---
+// Godot SSR is opaque-only, so transparent water can't use it directly;
+// this mirrors the screen in Y + wave-distorts it, blended with the
+// sky tint as the no-data fallback. World3DBootstrap also flips env
+// SSR on for opaque contributions.
+uniform float reflection_strength : hint_range(0.0, 1.0) = 0.5;
+uniform float reflection_distort : hint_range(0.0, 0.3) = 0.06;
+
+// --- V3 Phase 3: shoreline edge foam ---
+uniform vec3 foam_color : source_color = vec3(0.92, 0.96, 1.0);
+uniform float foam_edge_dist : hint_range(0.0, 4.0) = 0.5;
+uniform float foam_strength : hint_range(0.0, 1.0) = 0.7;
+
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
@@ -250,14 +263,35 @@ void fragment() {
 	// glass (the *1.6 over-brighten that washed it out is gone).
 	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk) * 1.15;
 	vec3 body = mix(bottom, deep_water_color, depth_t_eff);
-	vec3 surface = mix(body, sky_reflection_color, fresnel);
+
+	// Phase 2 — cheap screen-space planar reflection: the screen
+	// mirrored in Y + wave-distorted by the normal, blended with the
+	// sky tint where the mirror has no data. A roughly-horizontal water
+	// plane mirrors what's above to below — not a true SSR raymarch but
+	// the standard convincing approximation, robust on transparent
+	// surfaces. Blended over `body` by Fresnel (grazing = more mirror).
+	vec2 refl_uv = clamp(vec2(SCREEN_UV.x + n.x * reflection_distort,
+	                          1.0 - SCREEN_UV.y + n.z * reflection_distort),
+	                     vec2(0.001), vec2(0.999));
+	vec3 reflection = mix(sky_reflection_color, texture(screen_tex, refl_uv).rgb,
+	                      reflection_strength);
+	vec3 surface = mix(body, reflection, fresnel);
+
+	// Phase 3 — shoreline EDGE FOAM. Where the water column is thin
+	// (thickness -> 0: water meets terrain / objects) lay a foam band.
+	// Tops only (up_face) so LOD-seam slivers stay clean. Small
+	// foam_edge_dist so only true shore edges foam, not whole shallow
+	// ponds.
+	float foam = clamp((1.0 - smoothstep(0.0, max(foam_edge_dist, 0.01), thickness))
+	                   * foam_strength * up_face, 0.0, 1.0);
+	surface = mix(surface, foam_color, foam);
 
 	// === 4. TRANSPARENCY ===========================================
 	// DEPTH drives alpha (NOT Fresnel): shallow -> see the bottom at any
 	// view angle; deep -> opaque. shallow_alpha floor scaled by up_face
 	// so LOD-seam side slivers (up_face~0) vanish into the water behind
-	// them instead of leaving a pale line.
-	float alpha = max(depth_t_eff, shallow_alpha * up_face);
+	// them. Foam is opaque spray on top → lift alpha by the foam mask.
+	float alpha = max(max(depth_t_eff, shallow_alpha * up_face), foam);
 
 	// === 5. OUTPUT =================================================
 	if (debug_mode == 1) {
