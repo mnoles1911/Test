@@ -718,6 +718,20 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 				("null" if fl_mat == null else (fl_mat.get_class() if fl_mat is Object else str(fl_mat)))])
 			print("[WaterFluidDiag] model[%d] collision_aabbs=%s mesh_collision_enabled(0)=%s collision_mask=%s" % [
 				_fid, str(aabbs), str(meshcoll), str(cmask)])
+			# IDENTITY PROBE (2026-05-19): is the material the fluid
+			# renders with ACTUALLY our water_material.tres / water.gd
+			# shader? If paths are empty or the override is not the same
+			# instance as the loaded .tres, shader edits never reach the
+			# visible surface — the real root cause of "tuning does
+			# nothing". same_inst = the exact resource we tuned.
+			var mo_path: String = String(mo.resource_path) if (mo is Resource) else "<not-res>"
+			var mo_sh = mo.get("shader") if (mo is Object and ("shader" in mo)) else null
+			var mo_sh_path: String = String(mo_sh.resource_path) if (mo_sh is Resource) else "<none>"
+			var same_inst: bool = (mo == _wfd_mat)
+			print("[WaterFluidDiag] model[%d] override.res=%s shader.res=%s same_as_loaded_tres=%s" % [
+				_fid, mo_path, mo_sh_path, str(same_inst)])
+			var flm_path: String = String(fl_mat.resource_path) if (fl_mat is Resource) else "<not-res>"
+			print("[WaterFluidDiag] model[%d] fluid.material.res=%s (Zylann fluid renders with the FLUID's material, not material_override — if these differ, that's why)" % [_fid, flm_path])
 	if lib.has_method("get_materials"):
 		var _mats = lib.call("get_materials")
 		var _mat_classes := PackedStringArray()

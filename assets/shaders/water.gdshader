@@ -124,7 +124,7 @@ uniform float flow_normal_strength : hint_range(0.0, 0.5) = 0.12;
 // ============================================================
 // DEBUG
 // ============================================================
-uniform int debug_mode : hint_range(0, 5) = 0;
+uniform int debug_mode : hint_range(0, 6) = 0;
 
 varying vec2 v_flow_uv;
 
@@ -346,6 +346,18 @@ void fragment() {
 		float a = atan(flow_dir.y, flow_dir.x) / 6.2831853 + 0.5;
 		vec3 hue = clamp(abs(fract(a + vec3(0.0, 0.6667, 0.3333)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
 		ALBEDO = hue * flow_strength; ALPHA = 1.0;
+	} else if (debug_mode == 6) {
+		// PROOF-OF-LIFE (2026-05-19 root-cause probe). Unmistakable
+		// solid opaque MAGENTA, ignoring ALL water math. If F6 mode 6
+		// turns the water bright magenta → this shader IS what draws
+		// the surface (then the bug is in the colour/alpha math above).
+		// If the water looks UNCHANGED → the fluid is NOT rendered with
+		// this shader (the real bug = material/mesher binding, and
+		// every shader edit so far has been editing a file that does
+		// not drive the visible water).
+		ALBEDO = vec3(1.0, 0.0, 1.0);
+		ALPHA = 1.0;
+		EMISSION = vec3(1.0, 0.0, 1.0);  // glow so it's unmissable even unlit
 	} else {
 		ALBEDO = surface;
 		ALPHA = clamp(alpha, 0.0, 1.0);
