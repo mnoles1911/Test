@@ -66,13 +66,16 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // ============================================================
 // DEPTH-FADE (near-water only; horizon plane forces this to "deep")
 // ============================================================
-uniform float depth_fade_distance : hint_range(0.5, 40.0) = 2.5;
-// 7 -> 4 -> 2.5 (2026-05-19): even 1-voxel shoreline water was still
-// glass-clear (bottom blinding, foam invisible). Lower = opaque over a
-// shorter column. Headline clarity knob: 2-3=murky pond · 7=lake ·
-// 15=clear ocean. Raise toward 5+ if deep water should be see-through.
-uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.14;
-// 0.10 -> 0.14: a touch more surface body on very thin water.
+uniform float depth_fade_distance : hint_range(0.2, 40.0) = 1.0;
+// 7 -> 4 -> 2.5 -> 1.0 (2026-05-19): water only "became water" at 4-8
+// voxels deep — far too gradual. At 1.0, ~1 m (6 vox) is ~63% deep-
+// tinted and 1-2 voxels already read clearly as water. Headline
+// clarity knob: <1 very murky · 3 lake · 15 clear ocean.
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
+// 0.14 -> 0.45 (2026-05-19): the depth fade also drives ALPHA, so thin
+// shore water was ~86% transparent (you saw straight through to sand).
+// 0.45 = even the thinnest water is a clearly-present surface while
+// still letting the bottom show. Lower for more see-through.
 // How murky the see-through is — 0 = perfectly clear refraction,
 // 1 = fully tinted (no see-through). 0.5 -> 0.72 (2026-05-19): shallow
 // shoreline water was too clear; more tint = reads as water + foam
@@ -158,7 +161,12 @@ uniform float refraction_strength : hint_range(0.0, 0.2) = 0.045;
 // angles never blow out to pure white. True mirror-of-terrain
 // reflection needs a real planar-reflection pass (scoped follow-up
 // "Phase 2b"), not a screen hack.
-uniform float reflection_strength : hint_range(0.0, 1.0) = 0.45;
+uniform float reflection_strength : hint_range(0.0, 1.0) = 0.7;
+// Always-on sky-sheen floor so the water reads reflective/wet at ANY
+// view angle (not only grazing) — without this, looking down at the
+// water gave zero reflection. Grazing still ramps up via Fresnel on
+// top of this floor. ~0.18 = clearly reflective but still see-through.
+uniform float reflection_floor : hint_range(0.0, 0.6) = 0.18;
 
 // --- V3 Phase 3: shoreline edge foam ---
 uniform vec3 foam_color : source_color = vec3(0.92, 0.96, 1.0);
@@ -274,7 +282,8 @@ void fragment() {
 	// sheen so even at a full grazing angle the surface keeps water
 	// colour instead of blowing out to pure sky. Correctly oriented,
 	// predictable, never inverted.
-	vec3 surface = mix(body, sky_reflection_color, fresnel * reflection_strength);
+	float refl_amt = clamp(fresnel * reflection_strength + reflection_floor, 0.0, 0.85);
+	vec3 surface = mix(body, sky_reflection_color, refl_amt);
 
 	// Phase 3 — shoreline EDGE FOAM. Where the water column is thin
 	// (thickness -> 0: water meets terrain / objects) lay a foam band.
