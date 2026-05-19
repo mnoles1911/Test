@@ -24,8 +24,9 @@ const _PROBE_CLASSES := [
 	"VoxelBlockyLibrary", "VoxelBlockyModelCube",
 ]
 
-# spike state
+# spike / phase2 state
 var _spike_active: bool = false
+var _spike_mode: String = "spike"
 var _spike_frames: int = 0
 var _spike_max_frames: int = 240          # ~4 s at 60 fps physics
 var _spike_world: Node = null
@@ -42,7 +43,8 @@ func _initialize() -> void:
 			quit(_codec())
 		"wmat":
 			quit(_wmat())
-		"spike":
+		"spike", "phase2":
+			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
 		_:
 			push_error("[RUNNER] unknown selector: %s" % selector)
@@ -56,7 +58,7 @@ func _process(_delta: float) -> bool:
 		_spike_begin()
 	_spike_frames += 1
 	if _spike_frames >= _spike_max_frames:
-		quit(_spike_report())
+		quit(_phase2_report() if _spike_mode == "phase2" else _spike_report())
 		return true
 	return false
 
@@ -139,22 +141,29 @@ func _codec() -> int:
 
 
 # ============================================================
-# WMAT — WaterMaterial is BYTE-IDENTICAL to the pre-pivot hardcode
+# WMAT — WaterMaterial contract (evolves per phase; this = Phase 2)
 # ============================================================
-# Phase 1 is a pure refactor: is_water_type(id) MUST equal (id == 5)
-# for every 0..255, and render_id_for_level(level,dir) MUST equal
-# (5 if level>0 else 0) for every level 0..8 / dir 0..7 — i.e. exactly
-# what the old `== 5` / `(5 if is_water else 0)` did. Any drift here is
-# a behaviour change and fails Phase 1.
+# Phase 2 contract:
+#   is_water_type(id)  == (id == 5) OR (16 <= id <= 23)
+#       (legacy cube id 5 still emitted by the C++ generator until
+#        Phase 4 + the 8 fluid-level ids)
+#   render_id_for_level(level,dir) == (FULL_FLUID_ID if level>0 else 0)
+#       (collapse to the full-level fluid id — sim drives per-level
+#        ids only from Phase 3)
+#   map_legacy_id == identity; BODY_ID == FULL_FLUID_ID == 23;
+#   LEGACY_WATER_ID == 5; BASE 16; COUNT 8; WATER_IDS == [5,16..23].
 func _wmat() -> int:
 	var WM := preload("res://scripts/WaterMaterial.gd")
 	var fails: int = 0
 	var checks: int = 0
+	var base: int = WM.WATER_FLUID_BASE_ID
+	var cnt: int = WM.WATER_LEVEL_COUNT
 	for id in range(0, 256):
 		checks += 1
-		if WM.is_water_type(id) != (id == 5):
+		var want_w: bool = (id == 5) or (id >= base and id < base + cnt)
+		if WM.is_water_type(id) != want_w:
 			fails += 1
-			push_error("[WMatParity] is_water_type(%d)=%s expected %s" % [id, WM.is_water_type(id), id == 5])
+			push_error("[WMatParity] is_water_type(%d)=%s expected %s" % [id, WM.is_water_type(id), want_w])
 		checks += 1
 		if WM.map_legacy_id(id) != id:
 			fails += 1
@@ -162,16 +171,20 @@ func _wmat() -> int:
 	for level in range(0, 9):
 		for dir in range(0, 8):
 			checks += 1
-			var expected: int = 5 if level > 0 else 0
+			var expected: int = WM.FULL_FLUID_ID if level > 0 else 0
 			if WM.render_id_for_level(level, dir) != expected:
 				fails += 1
 				push_error("[WMatParity] render_id_for_level(%d,%d)=%d expected %d" % [level, dir, WM.render_id_for_level(level, dir), expected])
 	checks += 1
-	if WM.BODY_ID != 5 or WM.LEGACY_WATER_ID != 5:
+	if base != 16 or cnt != 8 or WM.FULL_FLUID_ID != 23 or WM.BODY_ID != 23 or WM.LEGACY_WATER_ID != 5:
 		fails += 1
-		push_error("[WMatParity] BODY_ID/LEGACY_WATER_ID must be 5 in Phase 1")
+		push_error("[WMatParity] constants wrong: base=%d cnt=%d full=%d body=%d legacy=%d" % [base, cnt, WM.FULL_FLUID_ID, WM.BODY_ID, WM.LEGACY_WATER_ID])
+	checks += 1
+	if Array(WM.WATER_IDS) != [5, 16, 17, 18, 19, 20, 21, 22, 23]:
+		fails += 1
+		push_error("[WMatParity] WATER_IDS=%s expected [5,16..23]" % str(WM.WATER_IDS))
 	if fails == 0:
-		print("[WMatParity] PASS — %d checks, 0 failures. Phase 1 identity holds (== old `==5`/`5:0`)." % checks)
+		print("[WMatParity] PASS — %d checks, 0 failures. Phase 2 contract holds (legacy 5 + fluid 16..23, render->full %d)." % [checks, WM.FULL_FLUID_ID])
 		return 0
 	print("[WMatParity] FAIL — %d failures across %d checks." % [fails, checks])
 	return 1
@@ -224,3 +237,62 @@ func _find_terrain(n: Node) -> Node:
 		if r != null:
 			return r
 	return null
+
+
+# ============================================================
+# PHASE 2 — the bootstrap injected 8 native fluid models correctly
+# ============================================================
+# Data-level half of the [designer] Phase-2 gate (the *visual* "renders
+# as fluid" half is the end-of-build designer review). Asserts the
+# runtime library has 16 static + 8 VoxelBlockyModelFluid at ids 16..23,
+# each level 1..8, fluid linked, collision disabled.
+func _phase2_report() -> int:
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	var terrain := _find_terrain(_spike_world)
+	if terrain == null:
+		print("[PHASE2] RESULT=FAIL reason=no_terrain")
+		return 1
+	var mesher = terrain.get("mesher")
+	if mesher == null and terrain.has_method("get_mesher"):
+		mesher = terrain.call("get_mesher")
+	if mesher == null:
+		print("[PHASE2] RESULT=FAIL reason=no_mesher")
+		return 1
+	var lib = mesher.get("library")
+	if lib == null:
+		print("[PHASE2] RESULT=FAIL reason=no_library")
+		return 1
+	var models: Array = lib.get("models")
+	var fails: int = 0
+	var expect_total: int = WM.WATER_FLUID_BASE_ID + WM.WATER_LEVEL_COUNT
+	print("[PHASE2] library model count=%d (expect %d)" % [models.size(), expect_total])
+	if models.size() != expect_total:
+		fails += 1
+		push_error("[PHASE2] model count %d != %d" % [models.size(), expect_total])
+	for level in range(1, WM.WATER_LEVEL_COUNT + 1):
+		var id: int = WM.WATER_FLUID_BASE_ID + level - 1
+		if id >= models.size():
+			fails += 1
+			continue
+		var m = models[id]
+		var cls: String = m.get_class() if m != null else "<null>"
+		var lvl = m.call("get_level") if (m != null and m.has_method("get_level")) else -1
+		var has_fluid: bool = (m != null and m.has_method("get_fluid") and m.call("get_fluid") != null)
+		var aabbs = m.call("get_collision_aabbs") if (m != null and m.has_method("get_collision_aabbs")) else null
+		var coll_off: bool = (aabbs == null) or (aabbs is Array and (aabbs as Array).is_empty())
+		print("[PHASE2] id=%d class=%s level=%s fluid=%s coll_off=%s" % [id, cls, str(lvl), has_fluid, coll_off])
+		if cls != "VoxelBlockyModelFluid" or int(lvl) != level or not has_fluid or not coll_off:
+			fails += 1
+			push_error("[PHASE2] id=%d wrong (class=%s level=%s fluid=%s coll_off=%s)" % [id, cls, str(lvl), has_fluid, coll_off])
+	# legacy cube water (id 5) must still be present (generator emits it
+	# until Phase 4).
+	if models.size() > 5 and models[5] != null:
+		print("[PHASE2] legacy cube water id=5 class=%s (kept until Phase 4)" % models[5].get_class())
+	else:
+		fails += 1
+		push_error("[PHASE2] legacy water model[5] missing")
+	if fails == 0:
+		print("[PHASE2] RESULT=PASS — 8 fluid level-models injected at 16..23, collision off, legacy 5 intact.")
+		return 0
+	print("[PHASE2] RESULT=FAIL — %d problems (see push_error)." % fails)
+	return 1
