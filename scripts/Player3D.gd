@@ -116,40 +116,29 @@ const SWIM_VERTICAL_ACCEL: float = 8.0
 # diving. Decoupled from _accel so swim feel can be tuned without
 # affecting walk/sprint.
 
-const BUOYANT_RISE_SPEED: float = 1.2
-# Buoyancy (2026-05-18, #13). With no swim input while SUBMERGED,
-# Roland is lighter than water and drifts UP toward the surface at
-# this speed (m/s). Slower than SWIM_VERTICAL_SPEED so actively
-# swimming up still feels faster and deliberate. Replaces the old
-# slow-SINK model: real bodies float; *diving* is the thing that
-# takes effort — which the descend input now meaningfully fights.
+# --- WATER VERTICAL MODEL: SINK BY DEFAULT (designer decision
+#     2026-05-18, REVERSES the #13 auto-buoyancy) ---
+# Roland is NOT buoyant. With no vertical input in water he ALWAYS
+# sinks slowly (submerged or not — there is no auto float-up and no
+# surface "bob"). Rising back to the surface requires ACTIVE input:
+# hold the ascend key (Space / "dodge") to kick upward. Crouch/Shift
+# still dives faster. Letting go anywhere in deep water → slow sink
+# (and eventually the breath/drowning system applies — intended: water
+# is a hazard you must actively swim in, Subnautica/Valheim-style, not
+# a cork you float on). In SHALLOW water the solid lakebed stops the
+# sink, so he just stands/wades. This supersedes BUOYANT_RISE_SPEED /
+# _ACCEL / SETTLE_ACCEL / SINK_SPEED and the #13 "floats up" feel.
 
-const BUOYANT_RISE_ACCEL: float = 3.0
-# Ramp toward BUOYANT_RISE_SPEED when the player lets go underwater.
-# Gentle, so surfacing reads as a natural float-up rather than a pop.
+const WATER_SINK_SPEED: float = 0.7
+# Passive downward drift (m/s) while in water with NO vertical input.
+# "Slowly sink." The single feel knob — lower = sinks gentler / more
+# forgiving, higher = drops faster / more dangerous. Well under
+# SWIM_VERTICAL_SPEED (3.0) so an active Space kick easily overpowers
+# it and climbs out.
 
-const BUOYANT_SETTLE_ACCEL: float = 4.0
-# Ramp rate for the not-submerged buoyancy term (below). NOTE
-# (2026-05-18 native-fluid pivot): this used to ease velocity toward
-# ZERO when the head was clear. With gravity disabled in water that
-# left Roland PERCHED at whatever height he entered — walking off a
-# beach into the sea, his pivot entered water but his head stayed
-# clear, velocity.y → 0, and he strolled across the surface as if it
-# were solid ("walks on water" bug, fluid pivot test 2026-05-18). Real
-# buoyancy: a body less dense than water still sinks until it displaces
-# its weight. So the not-submerged term now eases toward a gentle
-# DOWNWARD sink (below), which — balanced against the submerged rise —
-# self-corrects into a bob at the waterline (cork physics) AND makes
-# wading in actually put you IN the water.
-
-const BUOYANT_SINK_SPEED: float = 0.8
-# Gentle downward drift (m/s) while in water with the head CLEAR and no
-# swim input. Deliberately < BUOYANT_RISE_SPEED (1.2) so the
-# equilibrium stays buoyant — Roland floats with his head mostly at/
-# above the surface and bobs, rather than slowly drowning. Crouch/Shift
-# (descend) still overrides this to dive; Space (ascend) still overrides
-# to climb out. In shallow water the solid lakebed stops the sink so he
-# just wades.
+const WATER_SINK_ACCEL: float = 3.0
+# Ramp toward the passive sink. Gentle so releasing the swim-up key
+# reads as easing back down, not a dead drop.
 
 
 # =============================================================
@@ -856,10 +845,11 @@ func _physics_process_inner(delta: float) -> void:
 	# --- Vertical motion ---
 	if _in_water:
 		# In water, gravity is replaced by player-controlled vertical
-		# swim. Space (dodge action) ascends; Crouch dives. Releasing
-		# both decays vertical velocity to zero so Roland floats at
-		# his current depth. Clamp to ±SWIM_VERTICAL_SPEED so a long
-		# hold doesn't accumulate beyond the design max.
+		# swim over a default SINK. Space (dodge action) kicks UP;
+		# Shift/C dives DOWN. Releasing all vertical input → Roland
+		# sinks slowly (NOT a float — #13 auto-buoyancy was reversed
+		# 2026-05-18). Clamp to ±SWIM_VERTICAL_SPEED so a long hold
+		# doesn't accumulate beyond the design max.
 		# Ascend: Space (dodge action). Descend: Shift (sprint action)
 		# OR C (crouch) — both work. Sprint is unused in water (the
 		# swim-speed cap already handles "no extra speed underwater"),
@@ -872,23 +862,16 @@ func _physics_process_inner(delta: float) -> void:
 		elif descend and not ascend:
 			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		else:
-			# No vertical input — BUOYANCY. Submerged: Roland is lighter
-			# than water and drifts up toward the surface. At the surface
-			# (in water but head clear): ease toward neutral so he settles
-			# and bobs at the waterline instead of sinking back under or
-			# launching out. Diving (descend) above overrides this and
-			# fights the buoyant rise — that is what makes going deep feel
-			# like effort, and lets the player surface just by letting go.
-			if _is_submerged:
-				velocity.y = move_toward(velocity.y, BUOYANT_RISE_SPEED, BUOYANT_RISE_ACCEL * delta)
-			else:
-				# Head clear of the water → Roland is floating too HIGH
-				# (or just waded in and is perched on the surface). Sink
-				# gently; the submerged-rise above balances it into a bob
-				# at the waterline (cork physics). This is what makes
-				# entering water actually put you IN it instead of
-				# walking across the top (fluid-pivot fix 2026-05-18).
-				velocity.y = move_toward(velocity.y, -BUOYANT_SINK_SPEED, BUOYANT_SETTLE_ACCEL * delta)
+			# No vertical input → slow SINK (designer decision
+			# 2026-05-18, REVERSES #13 auto-buoyancy). Roland is not
+			# buoyant: he always sinks slowly, submerged OR not — no
+			# float-up, no surface bob. Rising back up requires actively
+			# holding ascend (Space); descend (Shift/C) above dives
+			# faster. A shallow lakebed (solid terrain) stops the sink
+			# so he just stands/wades; in deep water, letting go means
+			# you go down (and the breath/drowning system eventually
+			# bites — water is a hazard you swim in, not rest on).
+			velocity.y = move_toward(velocity.y, -WATER_SINK_SPEED, WATER_SINK_ACCEL * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally based on the
 		# water level gradient. Active anywhere a flow cell or source
