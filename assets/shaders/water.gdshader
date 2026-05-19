@@ -66,8 +66,17 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // ============================================================
 // DEPTH-FADE (near-water only; horizon plane forces this to "deep")
 // ============================================================
-uniform float depth_fade_distance : hint_range(0.5, 40.0) = 7.0;
-uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.10;
+uniform float depth_fade_distance : hint_range(0.5, 40.0) = 4.0;
+// 7.0 -> 4.0 (2026-05-19): shallow 5-6-voxel (~1 m) ponds were almost
+// crystal-clear with the new refraction. Lower = water turns opaque
+// over a shorter column, so a shallow pond reads as WATER not glass.
+// The headline clarity knob: 3=murky pond · 7=lake · 15=clear ocean.
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.14;
+// 0.10 -> 0.14: a touch more surface body on very thin water.
+// How murky the see-through is — 0 = perfectly clear refraction,
+// 1 = fully tinted (no see-through). 0.5 keeps ponds readable as
+// water while still letting you make out the bottom.
+uniform float water_murk : hint_range(0.0, 1.0) = 0.5;
 // Distance-gated LOD-seam side-face suppression (2026-05-18). Does
 // NOTHING nearer than _near (shallow water you look straight down into
 // stays readable); ramps to full by _far where the distant dark grid
@@ -236,7 +245,10 @@ void fragment() {
 	// cue SEUS/Sildur water relies on.
 	vec2 refr_uv = clamp(SCREEN_UV + n.xz * (refraction_strength * (1.0 - depth_t_eff)),
 	                     vec2(0.001), vec2(0.999));
-	vec3 bottom = texture(screen_tex, refr_uv).rgb * water_tint_color * 1.6;
+	// Refracted bottom, blended toward the water tint by water_murk so
+	// even a shallow pond reads as coloured water rather than clear
+	// glass (the *1.6 over-brighten that washed it out is gone).
+	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk) * 1.15;
 	vec3 body = mix(bottom, deep_water_color, depth_t_eff);
 	vec3 surface = mix(body, sky_reflection_color, fresnel);
 
