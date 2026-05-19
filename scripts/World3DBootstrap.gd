@@ -113,25 +113,14 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	# --- Water V3 Phase 2: enable Godot screen-space reflection ---
-	# Bonus for the in-shader screen reflection: env SSR adds real
-	# reflections of OPAQUE geometry (terrain/props) where it has screen
-	# data. Done at runtime (not a .tscn edit) so it's churn-free and
-	# the bootstrap stays source of truth. Fully guarded — a missing
-	# WorldEnvironment/Environment just skips with a note.
-	var we := get_node_or_null("WorldEnvironment")
-	if we != null and we.get("environment") != null:
-		var env = we.get("environment")
-		if "ssr_enabled" in env:
-			env.set("ssr_enabled", true)
-			if "ssr_max_steps" in env: env.set("ssr_max_steps", 32)
-			if "ssr_fade_in" in env: env.set("ssr_fade_in", 0.15)
-			if "ssr_fade_out" in env: env.set("ssr_fade_out", 2.0)
-			print("[World3D] env SSR enabled (Water V3 Phase 2; ssr_enabled=%s)." % env.get("ssr_enabled"))
-		else:
-			print("[World3D] env has no ssr_enabled property — skipping (in-shader reflection still active).")
-	else:
-		print("[World3D] no WorldEnvironment/Environment — SSR skip (in-shader reflection still active).")
+	# --- Water V3 Phase 2: env SSR REVERTED 2026-05-19 ---
+	# The runtime env-SSR enable was an unvalidated bonus paired with
+	# the in-shader screen-flip reflection. The flip is removed (it
+	# inverted the framebuffer onto the water) and SSR on a transparent
+	# custom-ALBEDO shader is unreliable + a brightness wildcard, so the
+	# enable is removed. Water reflection is now the clean capped
+	# Fresnel sky sheen only. True mirror-of-terrain reflection = a
+	# scoped planar-reflection follow-up ("Phase 2b"), not SSR.
 
 	# --- Hand the voxel terrain to the edit manager ---
 	# Without this call, VoxelEditManager has no terrain to write to

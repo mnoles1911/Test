@@ -66,17 +66,18 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // ============================================================
 // DEPTH-FADE (near-water only; horizon plane forces this to "deep")
 // ============================================================
-uniform float depth_fade_distance : hint_range(0.5, 40.0) = 4.0;
-// 7.0 -> 4.0 (2026-05-19): shallow 5-6-voxel (~1 m) ponds were almost
-// crystal-clear with the new refraction. Lower = water turns opaque
-// over a shorter column, so a shallow pond reads as WATER not glass.
-// The headline clarity knob: 3=murky pond · 7=lake · 15=clear ocean.
+uniform float depth_fade_distance : hint_range(0.5, 40.0) = 2.5;
+// 7 -> 4 -> 2.5 (2026-05-19): even 1-voxel shoreline water was still
+// glass-clear (bottom blinding, foam invisible). Lower = opaque over a
+// shorter column. Headline clarity knob: 2-3=murky pond · 7=lake ·
+// 15=clear ocean. Raise toward 5+ if deep water should be see-through.
 uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.14;
 // 0.10 -> 0.14: a touch more surface body on very thin water.
 // How murky the see-through is — 0 = perfectly clear refraction,
-// 1 = fully tinted (no see-through). 0.5 keeps ponds readable as
-// water while still letting you make out the bottom.
-uniform float water_murk : hint_range(0.0, 1.0) = 0.5;
+// 1 = fully tinted (no see-through). 0.5 -> 0.72 (2026-05-19): shallow
+// shoreline water was too clear; more tint = reads as water + foam
+// stays visible against it.
+uniform float water_murk : hint_range(0.0, 1.0) = 0.72;
 // Distance-gated LOD-seam side-face suppression (2026-05-18). Does
 // NOTHING nearer than _near (shallow water you look straight down into
 // stays readable); ramps to full by _far where the distant dark grid
@@ -148,18 +149,21 @@ vec2 decode_flow(vec2 uv, out float strength) {
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float refraction_strength : hint_range(0.0, 0.2) = 0.045;
 
-// --- V3 Phase 2: screen-space reflection (cheap planar approx) ---
-// Godot SSR is opaque-only, so transparent water can't use it directly;
-// this mirrors the screen in Y + wave-distorts it, blended with the
-// sky tint as the no-data fallback. World3DBootstrap also flips env
-// SSR on for opaque contributions.
-uniform float reflection_strength : hint_range(0.0, 1.0) = 0.5;
-uniform float reflection_distort : hint_range(0.0, 0.3) = 0.06;
+// --- V3 Phase 2: reflection ---
+// The screen-Y-flip "planar" hack was REMOVED 2026-05-19: it pasted
+// the upside-down framebuffer onto the water (only correct for a mirror
+// plane exactly at the horizon) and washed the surface white by
+// sampling bright sky/sand. Reflection is now just a CLEAN, correctly-
+// oriented Fresnel sky sheen, capped by reflection_strength so grazing
+// angles never blow out to pure white. True mirror-of-terrain
+// reflection needs a real planar-reflection pass (scoped follow-up
+// "Phase 2b"), not a screen hack.
+uniform float reflection_strength : hint_range(0.0, 1.0) = 0.45;
 
 // --- V3 Phase 3: shoreline edge foam ---
 uniform vec3 foam_color : source_color = vec3(0.92, 0.96, 1.0);
 uniform float foam_edge_dist : hint_range(0.0, 4.0) = 0.5;
-uniform float foam_strength : hint_range(0.0, 1.0) = 0.7;
+uniform float foam_strength : hint_range(0.0, 1.0) = 0.85;
 
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -261,21 +265,16 @@ void fragment() {
 	// Refracted bottom, blended toward the water tint by water_murk so
 	// even a shallow pond reads as coloured water rather than clear
 	// glass (the *1.6 over-brighten that washed it out is gone).
-	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk) * 1.15;
+	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk);
 	vec3 body = mix(bottom, deep_water_color, depth_t_eff);
 
-	// Phase 2 — cheap screen-space planar reflection: the screen
-	// mirrored in Y + wave-distorted by the normal, blended with the
-	// sky tint where the mirror has no data. A roughly-horizontal water
-	// plane mirrors what's above to below — not a true SSR raymarch but
-	// the standard convincing approximation, robust on transparent
-	// surfaces. Blended over `body` by Fresnel (grazing = more mirror).
-	vec2 refl_uv = clamp(vec2(SCREEN_UV.x + n.x * reflection_distort,
-	                          1.0 - SCREEN_UV.y + n.z * reflection_distort),
-	                     vec2(0.001), vec2(0.999));
-	vec3 reflection = mix(sky_reflection_color, texture(screen_tex, refl_uv).rgb,
-	                      reflection_strength);
-	vec3 surface = mix(body, reflection, fresnel);
+	// Phase 2 — CLEAN Fresnel sky reflection (the upside-down screen-
+	// flip hack was removed; it pasted the mirrored framebuffer onto
+	// the water and washed it white). reflection_strength caps the
+	// sheen so even at a full grazing angle the surface keeps water
+	// colour instead of blowing out to pure sky. Correctly oriented,
+	// predictable, never inverted.
+	vec3 surface = mix(body, sky_reflection_color, fresnel * reflection_strength);
 
 	// Phase 3 — shoreline EDGE FOAM. Where the water column is thin
 	// (thickness -> 0: water meets terrain / objects) lay a foam band.
