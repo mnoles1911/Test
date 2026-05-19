@@ -23,8 +23,9 @@ sky = SubResource("SkyResource_1")
 ambient_light_source = 3
 ambient_light_color = Color(0.22, 0.26, 0.32, 1)
 ambient_light_energy = 0.35
-tonemap_mode = 3
-tonemap_exposure = 0.65
+tonemap_mode = 4
+tonemap_exposure = 1.0
+tonemap_white = 6.0
 ssao_enabled = true
 ssao_radius = 1.5
 ssao_intensity = 1.5
@@ -45,6 +46,10 @@ volumetric_fog_emission_energy = 0.0
 volumetric_fog_length = 48.0
 volumetric_fog_ambient_inject = 1.0
 volumetric_fog_sky_affect = 0.5
+adjustment_enabled = true
+adjustment_brightness = 1.0
+adjustment_contrast = 1.05
+adjustment_saturation = 1.1
 
 [sub_resource type="ShaderMaterial" id="UnderwaterFogMat_1"]
 shader = ExtResource("15_uw_fog_shader")
