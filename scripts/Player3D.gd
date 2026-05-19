@@ -107,9 +107,10 @@ const HEAD_OFFSET_METERS: float = 1.6
 # eye level sits a touch below the crown at ~1.6 m above feet.
 # Used to determine when his head is below the water surface.
 
-const SWIM_VERTICAL_SPEED: float = 3.0
-# Max vertical climb / dive speed in water (m/s). Slower than the
-# horizontal swim speed so diving feels like work, not flight.
+const SWIM_VERTICAL_SPEED: float = 1.5
+# Max vertical climb / dive speed in water (m/s). Halved 3.0 -> 1.5
+# (designer 2026-05-18) — kicking up / diving felt too fast. Governs
+# BOTH the Space kick-up and the Shift/C dive.
 
 const SWIM_VERTICAL_ACCEL: float = 8.0
 # How fast Roland reaches SWIM_VERTICAL_SPEED when ascending or
@@ -129,12 +130,12 @@ const SWIM_VERTICAL_ACCEL: float = 8.0
 # sink, so he just stands/wades. This supersedes BUOYANT_RISE_SPEED /
 # _ACCEL / SETTLE_ACCEL / SINK_SPEED and the #13 "floats up" feel.
 
-const WATER_SINK_SPEED: float = 0.7
+const WATER_SINK_SPEED: float = 0.35
 # Passive downward drift (m/s) while in water with NO vertical input.
-# "Slowly sink." The single feel knob — lower = sinks gentler / more
+# "Slowly sink." Halved 0.7 -> 0.35 (designer 2026-05-18) — sinking
+# felt too fast. The single feel knob: lower = gentler / more
 # forgiving, higher = drops faster / more dangerous. Well under
-# SWIM_VERTICAL_SPEED (3.0) so an active Space kick easily overpowers
-# it and climbs out.
+# SWIM_VERTICAL_SPEED (1.5) so an active Space kick easily climbs out.
 
 const WATER_SINK_ACCEL: float = 3.0
 # Ramp toward the passive sink. Gentle so releasing the swim-up key
@@ -858,7 +859,7 @@ func _physics_process_inner(delta: float) -> void:
 		var ascend: bool = _can_take_input() and Input.is_action_pressed("dodge")
 		var descend: bool = _can_take_input() and (Input.is_action_pressed("sprint") or Input.is_action_pressed("crouch"))
 		if ascend and not descend:
-			velocity.y = move_toward(velocity.y, SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
+			velocity.y = move_toward(velocity.y, (SWIM_VERTICAL_SPEED if _is_submerged else 0.0), SWIM_VERTICAL_ACCEL * delta)  # surface cap: full rise only while head submerged; once head clears, target 0 so holding Space bobs the head just above the waterline (designer 2026-05-18) instead of launching out
 		elif descend and not ascend:
 			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		else:
