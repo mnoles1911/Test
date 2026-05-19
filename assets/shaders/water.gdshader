@@ -85,15 +85,6 @@ uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
 // water_murk: how murky the see-through is — 0 = perfectly clear
 // refraction, 1 = fully tinted. 0.72 keeps shallow water reading as
 // water while the bottom is still faintly visible.
-uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
-// 0.14 -> 0.45 (2026-05-19): the depth fade also drives ALPHA, so thin
-// shore water was ~86% transparent (you saw straight through to sand).
-// 0.45 = even the thinnest water is a clearly-present surface while
-// still letting the bottom show. Lower for more see-through.
-// How murky the see-through is — 0 = perfectly clear refraction,
-// 1 = fully tinted (no see-through). 0.5 -> 0.72 (2026-05-19): shallow
-// shoreline water was too clear; more tint = reads as water + foam
-// stays visible against it.
 uniform float water_murk : hint_range(0.0, 1.0) = 0.72;
 // Distance-gated LOD-seam side-face suppression (2026-05-18). Does
 // NOTHING nearer than _near (shallow water you look straight down into
