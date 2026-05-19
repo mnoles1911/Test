@@ -1,4 +1,7 @@
 extends Node3D
+
+const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+
 # World3DBootstrap — wires up scene-level systems when the World3D
 # scene loads.
 #
@@ -410,7 +413,7 @@ const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
 # shader (NOT an atlas tile — the shader IS the water look). Applied at
 # runtime here for the same Zylann .tres-doesn't-restore reason as the
 # atlas materials. See design/WATER_VOXEL_V2_PLAN.md.
-const _WATER_MATERIAL_ID: int = 5
+const _WATER_MATERIAL_ID: int = WaterMaterial.BODY_ID
 const _WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
 
 # Zylann Cube SIDE enum (from voxel/util/godot/classes/cube.h):

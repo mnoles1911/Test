@@ -1,4 +1,7 @@
 extends Node
+
+const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+
 # VoxelEditManager — central authority for all voxel terrain edits.
 #
 # How this works in plain English:
@@ -776,7 +779,7 @@ func _apply_edit(cmd: Dictionary) -> void:
 			# to place, AIR_BYTE/0 to scoop); translate to a CHANNEL_TYPE
 			# write so the blocky mesher draws/removes the water block.
 			tool.channel = VoxelBuffer.CHANNEL_TYPE
-			tool.value = (5 if WaterByteCodec.is_water(ws_byte) else 0)
+			tool.value = WaterMaterial.render_id_for_level(WaterByteCodec.level_of(ws_byte), WaterByteCodec.dir_of(ws_byte))
 			# Editability guard — Zylann's do_box prints "Area not editable"
 			# and silently no-ops if the target chunk hasn't been streamed
 			# in at LOD0 yet. Re-queue with a retry counter rather than
@@ -816,7 +819,7 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var wb_byte: int = cmd["water_byte"]
 			# Water Voxel V2: TYPE-block water (see "water_set" above).
 			tool.channel = VoxelBuffer.CHANNEL_TYPE
-			tool.value = (5 if WaterByteCodec.is_water(wb_byte) else 0)
+			tool.value = WaterMaterial.render_id_for_level(WaterByteCodec.level_of(wb_byte), WaterByteCodec.dir_of(wb_byte))
 			# Editability guard — see "water_set" above for why.
 			var wb_box := AABB(Vector3(wb_min), Vector3(wb_max - wb_min))
 			if not _try_requeue_if_not_editable(tool, wb_box, cmd):

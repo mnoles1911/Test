@@ -40,6 +40,8 @@ func _initialize() -> void:
 			quit(_gate0())
 		"codec":
 			quit(_codec())
+		"wmat":
+			quit(_wmat())
 		"spike":
 			_spike_active = true   # finishes in _process()
 		_:
@@ -133,6 +135,45 @@ func _codec() -> int:
 		print("[WBCParity] PASS — %d checks, 0 failures. Codec is bit-exact." % checks)
 		return 0
 	print("[WBCParity] FAIL — %d failures across %d checks." % [fails, checks])
+	return 1
+
+
+# ============================================================
+# WMAT — WaterMaterial is BYTE-IDENTICAL to the pre-pivot hardcode
+# ============================================================
+# Phase 1 is a pure refactor: is_water_type(id) MUST equal (id == 5)
+# for every 0..255, and render_id_for_level(level,dir) MUST equal
+# (5 if level>0 else 0) for every level 0..8 / dir 0..7 — i.e. exactly
+# what the old `== 5` / `(5 if is_water else 0)` did. Any drift here is
+# a behaviour change and fails Phase 1.
+func _wmat() -> int:
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	var fails: int = 0
+	var checks: int = 0
+	for id in range(0, 256):
+		checks += 1
+		if WM.is_water_type(id) != (id == 5):
+			fails += 1
+			push_error("[WMatParity] is_water_type(%d)=%s expected %s" % [id, WM.is_water_type(id), id == 5])
+		checks += 1
+		if WM.map_legacy_id(id) != id:
+			fails += 1
+			push_error("[WMatParity] map_legacy_id(%d) not identity" % id)
+	for level in range(0, 9):
+		for dir in range(0, 8):
+			checks += 1
+			var expected: int = 5 if level > 0 else 0
+			if WM.render_id_for_level(level, dir) != expected:
+				fails += 1
+				push_error("[WMatParity] render_id_for_level(%d,%d)=%d expected %d" % [level, dir, WM.render_id_for_level(level, dir), expected])
+	checks += 1
+	if WM.BODY_ID != 5 or WM.LEGACY_WATER_ID != 5:
+		fails += 1
+		push_error("[WMatParity] BODY_ID/LEGACY_WATER_ID must be 5 in Phase 1")
+	if fails == 0:
+		print("[WMatParity] PASS — %d checks, 0 failures. Phase 1 identity holds (== old `==5`/`5:0`)." % checks)
+		return 0
+	print("[WMatParity] FAIL — %d failures across %d checks." % [fails, checks])
 	return 1
 
 

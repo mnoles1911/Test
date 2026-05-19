@@ -1,4 +1,7 @@
 ﻿extends Node3D
+
+const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+
 # EditToolHandler â€” handles "swing tool, edit voxel" input.
 #
 # What this does in plain English:
@@ -831,7 +834,7 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	# path treat a water-targeted swing as "nothing to mine" (the swing
 	# passes through). Water interaction is bucket-only (which uses
 	# WaterFlowManager.is_position_in_water, not this function).
-	if material_id == 5:
+	if WaterMaterial.is_water_type(material_id):
 		return null
 	return VoxelMaterialRegistry.get_by_id(material_id)
 

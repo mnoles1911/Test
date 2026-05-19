@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+
 # WaterDiag.gd — the durable water diagnostics surface (2026-05-17).
 #
 # WHY THIS EXISTS (plain English):
@@ -34,7 +36,7 @@ extends CanvasLayer
 
 # Water is CHANNEL_TYPE id 5 (Water Voxel V2). Mirror the constants the
 # manager uses so this file stays self-contained.
-const WATER_TYPE_ID: int = 5
+const WATER_TYPE_ID: int = WaterMaterial.BODY_ID
 const VOXELS_PER_METER: float = 6.0
 const HEAD_OFFSET_M: float = 1.6   # ~Roland eye height, for submersion test
 const WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
@@ -385,7 +387,7 @@ func _water_top_y(tool: Object, vx: int, vz: int, cy: int) -> int:
 	var hi := cy + SURFACE_SCAN_VOXELS
 	var lo := cy - SURFACE_SCAN_VOXELS
 	for vy in range(hi, lo - 1, -1):
-		if tool.get_voxel(Vector3i(vx, vy, vz)) == WATER_TYPE_ID:
+		if WaterMaterial.is_water_type(tool.get_voxel(Vector3i(vx, vy, vz))):
 			return vy
 	return -2147483648
 
@@ -402,7 +404,7 @@ func _water_count_in_block(tool: Object, vx: int, vz: int, cy: int) -> int:
 	for ox in range(0, 16, 4):          # 4-stride sample = 64 reads, fast
 		for oz in range(0, 16, 4):
 			for vy in range(y_lo, y_hi):
-				if tool.get_voxel(Vector3i(bx + ox, vy, bz + oz)) == WATER_TYPE_ID:
+				if WaterMaterial.is_water_type(tool.get_voxel(Vector3i(bx + ox, vy, bz + oz))):
 					n += 1
 	return n
 
