@@ -70,14 +70,14 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // extinction below: bigger = clearer water / light travels deeper,
 // smaller = murkier. ~2 = readable pond that blues over a few metres,
 // ~5 = lake, ~12 = clear ocean.
-uniform float depth_fade_distance : hint_range(0.2, 40.0) = 0.6;
+uniform float depth_fade_distance : hint_range(0.2, 40.0) = 0.5;
 // PER-WAVELENGTH absorption (per metre, before the clarity divide).
 // Real water kills RED fastest, GREEN mid, BLUE slowest — this RGB
 // spread is what makes water read clear→green→deep-blue with depth
 // instead of a flat tint. R≫G>B. Tune the HUE of the depth falloff
 // here; tune how FAR light reaches with depth_fade_distance.
 uniform vec3 water_extinction : source_color = vec3(0.85, 0.30, 0.18);
-uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.6;
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.85;
 // 0.14 -> 0.45 (2026-05-19): physically shallow water is optically
 // clear, but gameplay needs the SURFACE present — this is the alpha
 // floor so thin water still reads as a water surface (sheen/ripple/
@@ -85,7 +85,7 @@ uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.6;
 // water_murk: how murky the see-through is — 0 = perfectly clear
 // refraction, 1 = fully tinted. 0.72 keeps shallow water reading as
 // water while the bottom is still faintly visible.
-uniform float water_murk : hint_range(0.0, 1.0) = 0.82;
+uniform float water_murk : hint_range(0.0, 1.0) = 0.85;
 // Distance-gated LOD-seam side-face suppression (2026-05-18). Does
 // NOTHING nearer than _near (shallow water you look straight down into
 // stays readable); ramps to full by _far where the distant dark grid

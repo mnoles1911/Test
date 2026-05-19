@@ -341,6 +341,21 @@ func _shader() -> int:
 	# is empty / load emitted SHADER ERROR (grepped by the caller).
 	var ul = RenderingServer.get_shader_parameter_list(sh.get_rid()) if sh.get_rid().is_valid() else []
 	print("[SHADER] uniforms_visible=%d (rid_valid=%s)" % [ul.size(), sh.get_rid().is_valid()])
+	# [SHADERPARAM] — EFFECTIVE runtime values. A ShaderMaterial's
+	# stored shader_parameter/* OVERRIDES the shader's `uniform =
+	# default`. This dump makes that explicit so "I tuned the shader but
+	# nothing changed" (root cause of the 2026-05-19 tuning failure:
+	# the .tres pinned shallow_alpha=0.40 over every shader default) is
+	# visible forever. OVERRIDE = the .tres wins; DEFAULT = shader value.
+	var watch := ["depth_fade_distance", "shallow_alpha", "water_murk",
+		"water_extinction", "reflection_strength", "reflection_floor",
+		"foam_strength", "foam_edge_dist", "flow_motion_strength"]
+	for w in watch:
+		var ov = mat.get("shader_parameter/" + w)
+		if ov != null:
+			print("[SHADERPARAM] %s = %s  (.tres OVERRIDE — wins)" % [w, str(ov)])
+		else:
+			print("[SHADERPARAM] %s = <shader default> (.tres does not set it)" % w)
 	var ok := (not has_foam) and has_flow and n_dbg >= 5
 	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5])
 	return 0 if ok else 1
