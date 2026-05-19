@@ -1,10 +1,38 @@
 # Water Stage 6 — Partial-Height + Directional Flow (PLAN)
 
-Status: **DRAFT FOR DESIGNER REVIEW — no code written yet.**
-Supersedes the "deferred flow-sim rewrite" placeholder in
-`WATER_VOXEL_V2_PLAN.md`. Read that doc first for V2 context (water is a
-transparent `CHANNEL_TYPE == 5` blocky block; flow tick is currently a
-gravity-drop + carve-gated flood that fills cells **all-or-nothing**).
+> ## ⚠ SUPERSEDED 2026-05-18 — NATIVE-FLUID PIVOT
+> The Stage-6 **smooth-only custom-surface-mesher** approach below
+> (esp. §5 / §6 / §9 / §11 — the Phase-2 spike + STOP gate) was
+> **superseded by the engine-native Zylann fluid pivot.** The smooth
+> goal is unchanged; the *means* changed: water is now 8 per-level
+> `VoxelBlockyModelFluid` models (`CHANNEL_TYPE` 16–23) via
+> `scripts/WaterMaterial.gd`; the Zylann blocky mesher auto-slopes the
+> surface and feeds flow to the shader via UV — **no custom mesher**
+> (the `water_chunk_mesher` C++ was deleted). The custom-mesher risk
+> the §11 spike existed to test no longer applies.
+>
+> **What shipped (branch `water-native-fluid-pivot`, phase-by-phase,
+> headless-parity-validated, NOT merged — one designer visual review
+> pending):** H0 hybrid headless harness · GATE 0 (fluid API probed,
+> `design/WATER_NATIVE_FLUID_GATE0_RESULTS.md`) · WaterMaterial
+> identity authority · runtime fluid-model injection · sim→per-level
+> TYPE projection · C++ generator (id 23 + DATA5 source byte for
+> infinite-source oceans #14) · shader v9 (foam removed, flow
+> animation, F6 +mode 5) · player/MP/save audit (non-destructive;
+> `design/SAVE_SYSTEM.md`) · waterfalls #12 via
+> `dip_when_flowing_down`. #11 gradual fill + #13 buoyancy were
+> already on `main` (PR #224).
+>
+> Sections below are retained for history. Where they describe a
+> custom surface mesher / stair-step rejection / Phase-2 spike STOP
+> gate, read them as **context, not the implementation.** §8 (source
+> rules) is still accurate and was delivered as Phase 8a.
+
+Status: **SUPERSEDED — see the banner above. Original draft follows.**
+Originally superseded the "deferred flow-sim rewrite" placeholder in
+`WATER_VOXEL_V2_PLAN.md`. Read that doc first for V2 context (water was
+a transparent `CHANNEL_TYPE == 5` blocky block; flow tick a
+gravity-drop + carve-gated flood that filled cells **all-or-nothing**).
 
 ---
 

@@ -44,7 +44,8 @@ Read `git log` for detail. Highest-impact milestones to know about:
 - **2026-05-12:** Copper Isles generator ported to C++; Skill system (PR #201) — 12 skills, 300 perks, trainers, Speech checks; multiplayer MP-1/2/3 (PR #180) — transport, player presence, voxel edit replication.
 - **2026-05-13:** `HeightmapGeneratorBase` extracted (PR #203); Profiler real_us measurement reliable (PR #207).
 - **2026-05-14:** WaterChunkMesher C++ port + viewer-offset smoothing + thread-count Settings slider (PR #214).
-- **2026-05-16–18:** Water Voxel V2 (transparent `CHANNEL_TYPE`-5 voxel water, PR #217) + flow-Y/jitter/flood-coverage polish + shallow-water shader readability (PR #222). Stage 6 planned — partial-height + directional flow, **smooth-only** (dedicated surface mesher, no stair-step interim): `design/WATER_STAGE6_PLAN.md`.
+- **2026-05-16–18:** Water Voxel V2 (transparent `CHANNEL_TYPE`-5 voxel water, PR #217) + flow-Y/jitter/flood-coverage polish + shallow-water shader readability (PR #222) + Phase 0/1 codec + connectivity fill + buoyancy #13 (PR #224).
+- **2026-05-18 (native-fluid pivot, branch `water-native-fluid-pivot`):** the custom smooth-surface-mesher spike (PR #225, closed) was superseded by engine-native `VoxelBlockyFluid`/`VoxelBlockyModelFluid`. Water = 8 per-level fluid models (`CHANNEL_TYPE` 16–23) via `scripts/WaterMaterial.gd`; mesher auto-slopes the surface + feeds flow to the shader (no custom mesher; `water_chunk_mesher` C++ deleted; #15 hand-rolled foam removed). Generator emits the fluid id + DATA5 source byte for infinite oceans (#14); `dip_when_flowing_down` gives waterfalls (#12). Built phase-by-phase under a **hybrid headless verification** harness (`tools/headless/`), parity-bit-exact for the C++ changes; all designer-visual gates pending one end-of-build review. Plan: `design/WATER_STAGE6_PLAN.md`, `design/WATER_NATIVE_FLUID_GATE0_RESULTS.md`.
 
 Outstanding pickups: Blender Roland model, MagicaVoxel prop exports, surface decoration pass, ambient weather audio, region-boundary profile auto-swap. See `DESIGNER_TODO.md`.
 
@@ -179,7 +180,23 @@ No CLI build, lint, or test for the Godot side. To verify changes:
 
 C++ extension build: see above. After build, reload Godot. When a port is in flight, parity-check via the port's `@tool` harness in `scripts/_dev/` (File → Run).
 
-**Do not write shell commands that try to run Godot headlessly — there is no such setup here.**
+**Headless Godot (reversed 2026-05-18 — native-fluid pivot).** The old
+"no headless setup" rule no longer holds. A hybrid harness exists:
+`tools/headless/runner.gd` (a `SceneTree` script) + `tools/headless/run.ps1`,
+run as
+`<Godot_v4.6.2…_console.exe> --headless --path <proj> --script res://tools/headless/runner.gd -- <selector>`
+(use the **`_console.exe`** build — the plain win64 exe is GUI-subsystem
+and won't pipe stdout). Selectors: `gate0` (Zylann fluid API probe),
+`codec` (WaterByteCodec parity, shares the in-editor `@tool` lib so
+File→Run still works), `wmat`/`phase2`/`phase7` (WaterMaterial + library
++ save contracts), `gen` (C++ generator parity-harness — baseline file
+then bit-exact verify), `shader` (shader compiles, foam gone), `spike`
+(does `VoxelLodTerrain` stream headless — yes). Exit code 0=pass.
+**Scope:** headless = data/logic/parity ONLY (dummy renderer: no GPU,
+no shaders execute, nothing rasterizes). Anything *visual* (does water
+slope/flow/fall, shader look, F-key debug views, perf via `engine.real_us`)
+still needs the designer running the editor. Use the harness for
+parity/contract checks every change; keep the in-editor loop for visuals.
 
 ---
 
@@ -307,16 +324,31 @@ var material: VoxelMaterial = VoxelMaterialRegistry.get_by_id(material_id)
 ```
 Same for writes: `VoxelMaterialRegistry.pack_voxel(mat_id, color)`.
 
-**Water is a `CHANNEL_TYPE` block (id 5), NOT `CHANNEL_DATA5` (since Water Voxel V2, 2026-05-16):**
+**Water is NATIVE Zylann fluid (`VoxelBlockyModelFluid`), `CHANNEL_TYPE` ids 16–23 (native-fluid pivot, 2026-05-18):**
 ```gdscript
-# Water is now a normal transparent blocky block: CHANNEL_TYPE == 5.
-# The terrain VoxelMesherBlocky draws it (model 5 = transparent cube
-# wearing water_material.tres). Generator emits it at all LODs.
-# Player water queries go through WaterFlowManager.is_position_in_water
-# / get_water_level_at (these resolve TYPE-5 → full water).
-buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) == 5  # is this water?
-# CHANNEL_DATA5 / WaterByteCodec are LEGACY — only the deferred flow-sim
-# rewrite (WaterFlowManager._FLOW_SIM_ENABLED) will use DATA5 again.
+# NEVER hardcode the water id. The single authority is
+# scripts/WaterMaterial.gd (path-preload it — it has NO class_name so
+# it stays headless-safe; do NOT add one):
+#   const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+#   WaterMaterial.is_water_type(t)               # replaces every `== 5`
+#   WaterMaterial.render_id_for_level(level, dir) # sim level -> TYPE id
+# Water = 8 VoxelBlockyModelFluid models, level 1..8 -> CHANNEL_TYPE id
+# 16..23 (full = 23), one shared VoxelBlockyFluid (dip_when_flowing_down
+# = waterfalls #12). Injected at RUNTIME by World3DBootstrap via
+# VoxelBlockyLibrary.add_model() — blocky_library.tres is UNCHANGED
+# (bootstrap is source of truth, dodges the .tres-doesn't-restore bug).
+# The Zylann blocky mesher AUTO-SLOPES the surface between differing
+# levels (smooth fill/flow front) and feeds flow to the shader via UV —
+# NO custom mesher, NO horizon plane (water_chunk_mesher C++ deleted).
+# Legacy cube id 5 is retained ONLY so pre-pivot saves still read as
+# water (is_water_type(5)==true); the C++ generator now emits id 23 +
+# WaterByteCodec.SOURCE_BYTE(24) in CHANNEL_DATA5 for infinite-source
+# oceans (#14). DATA5/WaterByteCodec is the SIM SOURCE OF TRUTH (level/
+# source/dir); CHANNEL_TYPE is a pure render projection of it.
+# Player water queries still go through WaterFlowManager
+# .is_position_in_water / .get_water_level_at (now fluid-id aware).
+WaterMaterial.is_water_type(buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE))
+# Plan: design/WATER_STAGE6_PLAN.md + design/WATER_NATIVE_FLUID_GATE0_RESULTS.md.
 # Zylann still reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS.
 ```
 

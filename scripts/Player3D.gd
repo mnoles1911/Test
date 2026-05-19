@@ -107,32 +107,57 @@ const HEAD_OFFSET_METERS: float = 1.6
 # eye level sits a touch below the crown at ~1.6 m above feet.
 # Used to determine when his head is below the water surface.
 
-const SWIM_VERTICAL_SPEED: float = 3.0
-# Max vertical climb / dive speed in water (m/s). Slower than the
-# horizontal swim speed so diving feels like work, not flight.
+const SWIM_VERTICAL_SPEED: float = 1.5
+# Max vertical climb / dive speed in water (m/s). Halved 3.0 -> 1.5
+# (designer 2026-05-18) — kicking up / diving felt too fast. Governs
+# BOTH the Space kick-up and the Shift/C dive.
 
 const SWIM_VERTICAL_ACCEL: float = 8.0
 # How fast Roland reaches SWIM_VERTICAL_SPEED when ascending or
 # diving. Decoupled from _accel so swim feel can be tuned without
 # affecting walk/sprint.
 
-const BUOYANT_RISE_SPEED: float = 1.2
-# Buoyancy (2026-05-18, #13). With no swim input while SUBMERGED,
-# Roland is lighter than water and drifts UP toward the surface at
-# this speed (m/s). Slower than SWIM_VERTICAL_SPEED so actively
-# swimming up still feels faster and deliberate. Replaces the old
-# slow-SINK model: real bodies float; *diving* is the thing that
-# takes effort — which the descend input now meaningfully fights.
+# --- WATER VERTICAL MODEL: SINK BY DEFAULT (designer decision
+#     2026-05-18, REVERSES the #13 auto-buoyancy) ---
+# Roland is NOT buoyant. With no vertical input in water he ALWAYS
+# sinks slowly (submerged or not — there is no auto float-up and no
+# surface "bob"). Rising back to the surface requires ACTIVE input:
+# hold the ascend key (Space / "dodge") to kick upward. Crouch/Shift
+# still dives faster. Letting go anywhere in deep water → slow sink
+# (and eventually the breath/drowning system applies — intended: water
+# is a hazard you must actively swim in, Subnautica/Valheim-style, not
+# a cork you float on). In SHALLOW water the solid lakebed stops the
+# sink, so he just stands/wades. This supersedes BUOYANT_RISE_SPEED /
+# _ACCEL / SETTLE_ACCEL / SINK_SPEED and the #13 "floats up" feel.
 
-const BUOYANT_RISE_ACCEL: float = 3.0
-# Ramp toward BUOYANT_RISE_SPEED when the player lets go underwater.
-# Gentle, so surfacing reads as a natural float-up rather than a pop.
+const WATER_SINK_SPEED: float = 0.44
+# Passive downward drift (m/s) while in water with NO vertical input.
+# "Slowly sink." 0.35 -> 0.44 (designer 2026-05-18: +25% — sink a bit
+# faster). The single feel knob: lower = gentler / more forgiving,
+# higher = drops faster / more dangerous. Well under SWIM_VERTICAL_
+# SPEED (1.5) so an active Space kick easily climbs out.
 
-const BUOYANT_SETTLE_ACCEL: float = 4.0
-# At the surface (in water but head NOT submerged) with no input,
-# vertical velocity eases toward 0 at this rate — Roland settles and
-# bobs at the waterline instead of sinking back under or launching
-# out. This is the "floats at the surface" feel.
+const SURFACE_BOB_SPEED: float = 0.45
+# Peak vertical velocity (m/s) of the Minecraft-style SURFACE BOB —
+# while holding Space at the surface (head clear, chest also clear)
+# Roland's head view rises and falls on a gentle zero-mean sine so the
+# camera bobs with the water instead of sitting dead still.
+
+const SURFACE_BOB_HZ: float = 0.55
+# Bob cycles per second. Slow + calm (Minecraft's surface float is
+# unhurried). Lower = lazier swell, higher = choppier.
+
+const SURFACE_FLOAT_PROBE_FRAC: float = 0.5
+# Chest probe height as a fraction of HEAD_OFFSET_METERS. While
+# ascending and head-clear, Roland keeps rising gently until the point
+# at pivot + HEAD_OFFSET_METERS * this is also out of water — so his
+# head settles ≈ HEAD_OFFSET_METERS*this (≈0.8 m) ABOVE the surface
+# (the "reach ~50% higher above water" the designer asked for), then
+# the zero-mean bob holds him there.
+
+const WATER_SINK_ACCEL: float = 3.0
+# Ramp toward the passive sink. Gentle so releasing the swim-up key
+# reads as easing back down, not a dead drop.
 
 
 # =============================================================
@@ -222,6 +247,19 @@ var _is_submerged: bool = false
 # True if Roland's head (HEAD_OFFSET_METERS above his pivot) is below
 # the current water volume's surface_y. When true: breath ticks down,
 # drowning damage applies if breath reaches zero.
+
+var _float_submerged: bool = false
+# True if a point partway up the body (HEAD_OFFSET_METERS *
+# SURFACE_FLOAT_PROBE_FRAC above the pivot, ≈ chest) is in water.
+# Used ONLY by the Space-kick surface logic: while ascending, Roland
+# keeps rising gently until this chest probe clears, so his head ends
+# up well above the waterline (the "float ~50% higher" feel) before
+# the surface bob takes over. Distinct from _is_submerged so breath /
+# drowning / the underwater filter are unaffected.
+
+var _swim_bob_t: float = 0.0
+# Phase accumulator (seconds) for the Minecraft-style surface bob.
+# Advances while in water, resets on exit so each swim starts fresh.
 
 # --- Water audio edge-tracking ---
 # Previous-frame water flags, so _update_water_audio() can fire one-shot
@@ -839,10 +877,11 @@ func _physics_process_inner(delta: float) -> void:
 	# --- Vertical motion ---
 	if _in_water:
 		# In water, gravity is replaced by player-controlled vertical
-		# swim. Space (dodge action) ascends; Crouch dives. Releasing
-		# both decays vertical velocity to zero so Roland floats at
-		# his current depth. Clamp to ±SWIM_VERTICAL_SPEED so a long
-		# hold doesn't accumulate beyond the design max.
+		# swim over a default SINK. Space (dodge action) kicks UP;
+		# Shift/C dives DOWN. Releasing all vertical input → Roland
+		# sinks slowly (NOT a float — #13 auto-buoyancy was reversed
+		# 2026-05-18). Clamp to ±SWIM_VERTICAL_SPEED so a long hold
+		# doesn't accumulate beyond the design max.
 		# Ascend: Space (dodge action). Descend: Shift (sprint action)
 		# OR C (crouch) — both work. Sprint is unused in water (the
 		# swim-speed cap already handles "no extra speed underwater"),
@@ -851,21 +890,20 @@ func _physics_process_inner(delta: float) -> void:
 		var ascend: bool = _can_take_input() and Input.is_action_pressed("dodge")
 		var descend: bool = _can_take_input() and (Input.is_action_pressed("sprint") or Input.is_action_pressed("crouch"))
 		if ascend and not descend:
-			velocity.y = move_toward(velocity.y, SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
+			velocity.y = move_toward(velocity.y, (SWIM_VERTICAL_SPEED if _is_submerged else (SWIM_VERTICAL_SPEED * 0.5 if _float_submerged else sin(_swim_bob_t * TAU * SURFACE_BOB_HZ) * SURFACE_BOB_SPEED)), SWIM_VERTICAL_ACCEL * delta)  # surface cap: full rise only while head submerged; once head clears, target 0 so holding Space bobs the head just above the waterline (designer 2026-05-18) instead of launching out
 		elif descend and not ascend:
 			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		else:
-			# No vertical input — BUOYANCY. Submerged: Roland is lighter
-			# than water and drifts up toward the surface. At the surface
-			# (in water but head clear): ease toward neutral so he settles
-			# and bobs at the waterline instead of sinking back under or
-			# launching out. Diving (descend) above overrides this and
-			# fights the buoyant rise — that is what makes going deep feel
-			# like effort, and lets the player surface just by letting go.
-			if _is_submerged:
-				velocity.y = move_toward(velocity.y, BUOYANT_RISE_SPEED, BUOYANT_RISE_ACCEL * delta)
-			else:
-				velocity.y = move_toward(velocity.y, 0.0, BUOYANT_SETTLE_ACCEL * delta)
+			# No vertical input → slow SINK (designer decision
+			# 2026-05-18, REVERSES #13 auto-buoyancy). Roland is not
+			# buoyant: he always sinks slowly, submerged OR not — no
+			# float-up, no surface bob. Rising back up requires actively
+			# holding ascend (Space); descend (Shift/C) above dives
+			# faster. A shallow lakebed (solid terrain) stops the sink
+			# so he just stands/wades; in deep water, letting go means
+			# you go down (and the breath/drowning system eventually
+			# bites — water is a hazard you swim in, not rest on).
+			velocity.y = move_toward(velocity.y, -WATER_SINK_SPEED, WATER_SINK_ACCEL * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally based on the
 		# water level gradient. Active anywhere a flow cell or source
@@ -1067,6 +1105,7 @@ func _update_water_state() -> void:
 	var was_in_water: bool = _in_water
 	_in_water = false
 	_is_submerged = false
+	_float_submerged = false
 
 	var wfm: Node = get_node_or_null("/root/WaterFlowManager")
 	if wfm != null:
@@ -1089,6 +1128,15 @@ func _update_water_state() -> void:
 			# HEAD_OFFSET_METERS so the threshold matches PR #130.
 			var head_pos := global_position + Vector3(0.0, HEAD_OFFSET_METERS, 0.0)
 			_is_submerged = wfm.is_position_in_water(head_pos)
+			var chest_pos := global_position + Vector3(0.0, HEAD_OFFSET_METERS * SURFACE_FLOAT_PROBE_FRAC, 0.0)
+			_float_submerged = wfm.is_position_in_water(chest_pos)
+
+	# Advance the surface-bob phase while in water; reset on exit so
+	# each swim starts at phase 0 (no jarring mid-cycle pop).
+	if _in_water:
+		_swim_bob_t += get_physics_process_delta_time()
+	else:
+		_swim_bob_t = 0.0
 
 	# Drive the underwater camera tint. set_active is idempotent —
 	# the filter only updates visibility on actual state changes.

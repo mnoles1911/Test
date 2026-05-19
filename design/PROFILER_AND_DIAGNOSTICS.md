@@ -20,6 +20,21 @@ The JSON tells you which **wrapped GD scripts** ate frame time.
 The `[PERF]` / `[DIAG]` log lines tell you what **engine and Zylann**
 were doing. You need both to see the full picture.
 
+### `World3DBootstrap` `[DIAG]` line — DEFAULT OFF (since 2026-05-18)
+
+`World3DBootstrap.gd` emits a 1 Hz `[DIAG]` line (player pos, speed,
+`VoxelViewer` pos, viewer-lag, `get_statistics`, cache-miss/s) plus an
+F8 toggle for Zylann's built-in debug draws (clipboxes + active mesh
+blocks). This is the **terrain-perf / LOD-streaming "I outwalked the
+loader" investigation tool**. It is now **default OFF**
+(`@export var diag_enabled := false`) because it floods the Output panel
+and buries `[WaterDiag]`/`[WaterInspect]`/`[FlowDiag]`.
+
+**Re-enable for a terrain/LOD perf pass:** tick **Diag Enabled** on the
+`World3DBootstrap` node in `scenes/World3D.tscn` (Inspector — no script
+edit), or flip the `@export` default. `[PERF]` (Profiler autoload) and
+`[WaterDiag]` (F4 panel) are independent and unaffected.
+
 ## Tooling
 
 ### Autoloads
@@ -84,7 +99,7 @@ default OFF, keyboard-toggled, read-only (never mutates water).
 |---|---|
 | `F4` | Toggle the on-screen Water panel. While visible, also prints a consolidated `[WaterDiag]` line once/sec (pasteable into a diagnosis). |
 | `F5` | One-shot `[WaterInspect]` dump of the column + 3×3 mesh-block neighbourhood under the camera. |
-| `F6` | Cycle the water shader `debug_mode` 0→1→2→3→4→0 live. |
+| `F6` | Cycle the water shader `debug_mode` 0→1→2→3→4→5→0 live. |
 
 **Panel / `[WaterDiag]` fields:** `pos`; `in_water` + `submerged`
 (head); `level` 0–8; `surface Y` (world-Y of the topmost water voxel in
@@ -109,8 +124,12 @@ vertical side faces → depth-fade paints them `deep_water_color`).
 `water_material.tres`):** `0` normal · `1` depth_t (white = deep) ·
 `2` fresnel · `3` thickness as opaque grey (no blend/Fresnel — isolates
 geometry from transparency) · `4` surface-facing (white = up-facing
-water top, black = vertical side/riser). **These four are permanent
-diagnostics — do not remove them from `water.gdshader`.** The 2026-05-17
+water top, black = vertical side/riser) · `5` **flow vector** (hue =
+native-fluid flow direction, brightness = flow strength; still water =
+black — added by the native-fluid pivot 2026-05-18; confirms the Zylann
+fluid mesher's flow matches the visible slope / `[FlowDiag]` DIR).
+**These five are permanent diagnostics — do not remove them from
+`water.gdshader`.** The 2026-05-17
 bisection that root-caused the dark grid is the reference recipe: 0
 (confirm) → fade off (is depth-fade the amplifier?) → mode 3 (is it
 geometry vs transparency blend?) → mode 4 (side faces vs stepped tops?).

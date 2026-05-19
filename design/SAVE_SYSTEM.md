@@ -66,6 +66,37 @@ user://saves/slot_{0,1,2}/
 ### What `save.dat` Contains
 
 - **Generator version stamp** — the `WorldGenerator` (VoxelGeneratorGraph) revision this save was created against. Mismatch on load is a hard error: the game refuses to load and surfaces a clear message. There is no silent migration. (The procedural baseline is what voxel deltas are diffed against — if the generator graph changes, old deltas float in nonsense terrain.)
+
+#### Native-fluid pivot — water save compatibility (2026-05-18)
+
+The native-fluid pivot changed the water `CHANNEL_TYPE` id from the
+single transparent-cube `5` to the 8 per-level fluid model ids
+`16..23`. **Old saves remain loadable, non-destructively, with NO
+generator-version bump:**
+
+- The Phase-4 generator parity harness proved terrain *positions* are
+  **byte-identical** — only the water *id value* changed (`5` → full
+  fluid `23`). Stored terrain/edit deltas therefore do not "float in
+  nonsense"; the version stamp does not need to change.
+- `WaterMaterial.LEGACY_WATER_ID = 5` is permanently retained and
+  `WaterMaterial.is_water_type(5)` stays **true**, so any water stored
+  in an old delta still reads as water for collision / queries /
+  buoyancy / the flow sim. It renders via the retained cube model `5`
+  (still in the library, wearing the v9 water shader) until the flow
+  sim next re-touches that cell, at which point `VoxelEditManager`
+  rewrites its `CHANNEL_TYPE` through `WaterMaterial.render_id_for_level`
+  to the correct per-level fluid id.
+- `CHANNEL_DATA5` (`WaterByteCodec`) layout is unchanged —
+  `SOURCE_BYTE = 24` is stable — so old level/source/dir bytes still
+  decode exactly (codec parity asserts this every build).
+- `WaterMaterial.map_legacy_id(5)` returns the full fluid id as a hook
+  if a future explicit migration pass is ever wanted; none is required
+  today (the load-as-cube-then-rewrite-on-touch path above is the
+  designed, safe behaviour).
+
+This save-compat reasoning is a designer-review item (high stakes), but
+it is backed by the bit-exact Phase-4 parity proof and the retained
+legacy id.
 - **Current scene** — the `.tscn` file name and Roland's position/rotation in it
 - **GameState flags** — the entire flag dictionary (quests, faction dispositions, story progress, investigation findings, skill XP, camp upgrades, etc.)
 - **InventoryManager state** — Roland's current inventory, equipment, quick slot assignments, Wanderer's Seal count

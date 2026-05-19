@@ -1,4 +1,9 @@
 extends Node
+
+# Single-authority water-identity (path preload — headless-safe; see
+# WaterMaterial.gd for why it has no class_name).
+const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+
 # WaterFlowManager — autoload for Minecraft-style voxel water.
 #
 # What this is in plain English:
@@ -52,10 +57,12 @@ const TICK_INTERVAL_FRAMES: int = 15
 # sim ever needs disabling for diagnosis.
 const _FLOW_SIM_ENABLED: bool = true
 
-# Water Voxel V2: water is blocky model / CHANNEL_TYPE id 5. All player
-# water queries (is_position_in_water / get_water_level_at / velocity)
-# resolve to "full source water" when the voxel's TYPE == this.
-const WATER_TYPE_ID: int = 5
+# Water Voxel V2 / native-fluid pivot: "is this CHANNEL_TYPE value
+# water?" is now owned by WaterMaterial (single authority — Phase 1).
+# WATER_TYPE_ID stays as the canonical single representative id (writes
+# / "full source water" synthesis); every READ test goes through
+# WaterMaterial.is_water_type() so Phase 2/3 multi-id is one edit there.
+const WATER_TYPE_ID: int = WaterMaterial.BODY_ID
 
 # Maximum water level. Source cells are always 8; flow cells decay
 # from 8 → 7 → 6 → ... → 1, then evaporate at 0.
@@ -452,7 +459,7 @@ func _read_water_byte_at_impl(world_pos: Vector3) -> int:
 		return 0
 	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
 	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	if tool.get_voxel(voxel_pos) == WATER_TYPE_ID:
+	if WaterMaterial.is_water_type(tool.get_voxel(voxel_pos)):
 		return WaterByteCodec.SOURCE_BYTE
 	return 0
 
@@ -511,7 +518,7 @@ func _level_at_voxel(voxel_pos: Vector3i) -> int:
 			if tool != null:
 				# Water Voxel V2: TYPE-5 block reads as full level 8.
 				tool.channel = VoxelBuffer.CHANNEL_TYPE
-				if tool.get_voxel(voxel_pos) == WATER_TYPE_ID:
+				if WaterMaterial.is_water_type(tool.get_voxel(voxel_pos)):
 					return MAX_LEVEL
 	if _cells.has(voxel_pos):
 		return (_cells[voxel_pos] as int) & _LEVEL_MASK
@@ -1097,7 +1104,7 @@ func _process_connectivity_fill(tool: VoxelTool) -> void:
 		if _pending_water.has(c):
 			continue   # already queued this cell; heal/confirm handles it
 		var t: int = tool.get_voxel(c)
-		if t == WATER_TYPE_ID:
+		if WaterMaterial.is_water_type(t):
 			# TERMINAL. Do NOT expand the frontier through water. Water is
 			# the SOURCE BOUNDARY (pond / the generator's world ocean),
 			# not something to traverse: propagating through it walked the
@@ -1190,7 +1197,7 @@ func _process_water_settle(tool: VoxelTool) -> void:
 				# AIR at/below sea level inside the filled region. If it
 				# touches water it is a hole / not yet level → re-fill it.
 				for d in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1), Vector3i(0, 1, 0)]:
-					if tool.get_voxel(p + d) == WATER_TYPE_ID:
+					if WaterMaterial.is_water_type(tool.get_voxel(p + d)):
 						_bucket_push(p, true)
 						_settle_found += 1
 						break
@@ -1238,7 +1245,7 @@ func _seed_fill_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:
 				if tool.get_voxel(p) != 0:
 					continue   # only AIR cells can seed the fill
 				for d in dirs:
-					if tool.get_voxel(p + d) == WATER_TYPE_ID:
+					if WaterMaterial.is_water_type(tool.get_voxel(p + d)):
 						_bucket_push(p, true)   # force: a fresh carve must (re)seed even if visited
 						break
 
@@ -1303,10 +1310,10 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 
 				# Confirm-on-read: the queued write for this cell has
 				# landed in the buffer -- drop it from the pending set.
-				if here == WATER_TYPE_ID and _pending_water.has(wpos):
+				if WaterMaterial.is_water_type(here) and _pending_water.has(wpos):
 					_pending_water.erase(wpos)
 
-				if here == WATER_TYPE_ID or _pending_water.has(wpos):
+				if WaterMaterial.is_water_type(here) or _pending_water.has(wpos):
 					# --- GRAVITY: water (incl. just-queued pending water)
 					# with air directly below falls, so a freshly-flooded
 					# column keeps draining each tick instead of stalling
@@ -1351,15 +1358,15 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					av = tbuf.get_voxel(lx, ly + 1, lz, VoxelBuffer.CHANNEL_TYPE)
 				else:
 					av = tabove.get_voxel(lx, 0, lz, VoxelBuffer.CHANNEL_TYPE)
-				if av == WATER_TYPE_ID:
+				if WaterMaterial.is_water_type(av):
 					fed = true
-				if not fed and lx > 0 and tbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+				if not fed and lx > 0 and WaterMaterial.is_water_type(tbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_TYPE)):
 					fed = true
-				if not fed and lx < n - 1 and tbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+				if not fed and lx < n - 1 and WaterMaterial.is_water_type(tbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_TYPE)):
 					fed = true
-				if not fed and lz > 0 and tbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+				if not fed and lz > 0 and WaterMaterial.is_water_type(tbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_TYPE)):
 					fed = true
-				if not fed and lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+				if not fed and lz < n - 1 and WaterMaterial.is_water_type(tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE)):
 					fed = true
 				# Stage 6 hydrostatic rise (2026-05-18): water directly
 				# BELOW also feeds this cell, so a connected sub-sea void
@@ -1374,7 +1381,7 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 						_vb = tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE)
 					else:
 						_vb = tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE)
-					if _vb == WATER_TYPE_ID:
+					if WaterMaterial.is_water_type(_vb):
 						fed = true
 				if not fed and (
 						_pending_water.has(wpos + Vector3i(0, 1, 0))
@@ -1404,8 +1411,8 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 					# being written, so flood COVERAGE is unchanged.
 					var _vabove: int = (tbuf.get_voxel(lx, ly + 1, lz, VoxelBuffer.CHANNEL_TYPE) if ly < n - 1 else tabove.get_voxel(lx, 0, lz, VoxelBuffer.CHANNEL_TYPE))
 					var _full_feed: bool = (
-						_vabove == WATER_TYPE_ID
-						or (tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE) if ly > 0 else tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE)) == WATER_TYPE_ID
+						WaterMaterial.is_water_type(_vabove)
+						or WaterMaterial.is_water_type(tbuf.get_voxel(lx, ly - 1, lz, VoxelBuffer.CHANNEL_TYPE) if ly > 0 else tbelow.get_voxel(lx, n - 1, lz, VoxelBuffer.CHANNEL_TYPE))
 						or _pending_water.has(wpos + Vector3i(0, 1, 0))
 						or _pending_water.has(wpos + Vector3i(-1, 0, 0))
 						or _pending_water.has(wpos + Vector3i(1, 0, 0))
@@ -1413,13 +1420,13 @@ func _flow_chunk(chunk: Vector3i, budget: int, tool: VoxelTool) -> int:
 						or _pending_water.has(wpos + Vector3i(0, 0, 1))
 					)
 					var _mlat: int = 0
-					if lx > 0 and tbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					if lx > 0 and WaterMaterial.is_water_type(tbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_TYPE)):
 						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx - 1, ly, lz, VoxelBuffer.CHANNEL_DATA5)))
-					if lx < n - 1 and tbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					if lx < n - 1 and WaterMaterial.is_water_type(tbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_TYPE)):
 						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx + 1, ly, lz, VoxelBuffer.CHANNEL_DATA5)))
-					if lz > 0 and tbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					if lz > 0 and WaterMaterial.is_water_type(tbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_TYPE)):
 						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx, ly, lz - 1, VoxelBuffer.CHANNEL_DATA5)))
-					if lz < n - 1 and tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE) == WATER_TYPE_ID:
+					if lz < n - 1 and WaterMaterial.is_water_type(tbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_TYPE)):
 						_mlat = max(_mlat, _eff_level(dbuf.get_voxel(lx, ly, lz + 1, VoxelBuffer.CHANNEL_DATA5)))
 					var _flvl: int = WaterByteCodec.MAX_LEVEL if _full_feed else clampi(_mlat - 1, WaterByteCodec.MIN_LEVEL, WaterByteCodec.MAX_LEVEL)
 					VoxelEditManager.queue_set_water_voxel(wpos, WaterByteCodec.pack(_flvl, false, WaterByteCodec.DIR_STILL))
