@@ -264,14 +264,25 @@ void fragment() {
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
 
-	// === 2b. LOD-SEAM SIDE-FACE SUPPRESSION (distance-gated) =======
-	// Near water keeps full opacity on every face; the suppression
-	// ramps in only past seam_suppress_near_m, full by _far where the
-	// distant dark grid actually was. (Root-caused 2026-05-17; the
-	// 2026-05-18 distance gate stops it fading near shallow water.)
+	// === 2b. LOD-SEAM SUPPRESSION — NEUTRALISED for native fluid =====
+	// THE ROOT CAUSE of the whole "water way too see-through" saga.
+	// This was a CUBE-WATER-era hack: old cube water had clean normals
+	// (tops n.y≈1, vertical side slivers n.y≈0), so
+	// smoothstep(0.30,0.72,n.y) cleanly killed only the slivers. Native
+	// Zylann fluid AUTO-SLOPES its top surface, so legitimate top water
+	// has geometric n.y well below 0.72 over most of the body → up_face
+	// collapsed to ~0.2, and since alpha = shallow_alpha*up_face AND the
+	// depth term is up_face-weighted, the ENTIRE lake rendered at ~0.17
+	// alpha no matter how high shallow_alpha was set. Fluid meshing
+	// doesn't produce the cube-era dark-grid side slivers, so this
+	// suppression has no remaining purpose here and must be off. Forced
+	// to 1.0 (full water everywhere); the old terms kept (referenced) so
+	// seam_suppress_* uniforms / a future re-enable still resolve. If a
+	// distant fluid artefact ever appears, fix it from the geometric
+	// face, not by crushing surface alpha.
 	float up_face_raw = smoothstep(0.30, 0.72, geo_ny);
 	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
-	float up_face = mix(1.0, up_face_raw, seam_region);
+	float up_face = 1.0;  // was mix(1.0, up_face_raw, seam_region) — see above
 
 	// === 3. SURFACE: per-channel Beer-Lambert + in-scatter ==========
 	// Physical model (2026-05-19): light transmittance through the
