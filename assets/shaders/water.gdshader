@@ -132,6 +132,46 @@ vec2 decode_flow(vec2 uv, out float strength) {
 }
 
 
+// ============================================================
+// V3 PHASE 1 — asset-free procedural surface (no texture → no tiling)
+// ============================================================
+// Screen behind the water, for refraction (see-through shallow water).
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float refraction_strength : hint_range(0.0, 0.2) = 0.045;
+
+float _h12(vec2 p) {
+	p = fract(p * vec2(123.34, 456.21));
+	p += dot(p, p + 45.32);
+	return fract(p.x * p.y);
+}
+float _vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(_h12(i), _h12(i + vec2(1.0, 0.0)), u.x),
+	           mix(_h12(i + vec2(0.0, 1.0)), _h12(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float _fbm(vec2 p) {
+	float s = 0.0;
+	float a = 0.5;
+	mat2 r = mat2(vec2(0.80, -0.60), vec2(0.60, 0.80));
+	for (int i = 0; i < 4; i++) {
+		s += a * _vnoise(p);
+		p = r * p * 2.03 + 7.1;
+		a *= 0.5;
+	}
+	return s;
+}
+// Domain-warped, flow-advected wave height. The warp (q feeding back
+// into the sample point) destroys any repeating frequency → no tiling
+// / checkerboard, unlike the v9 sin+cos lattice.
+float _water_h(vec2 p, vec2 flow, float t) {
+	vec2 q = vec2(_fbm(p + vec2(0.0, t * 0.15)),
+	              _fbm(p + vec2(5.2, 1.3) - flow * (t * 0.6)));
+	return _fbm(p + 1.6 * q - flow * (t * 0.35));
+}
+
+
 void vertex() {
 	// Flat voxel fluid — the mesher already slopes the surface
 	// geometry from neighbour levels; no extra vertex displacement
@@ -157,21 +197,22 @@ void fragment() {
 	vec3 n = normalize(NORMAL);
 	float flow_strength = 0.0;
 	vec2 flow_dir = decode_flow(v_flow_uv, flow_strength);
-	if (debug_mode == 0 && flow_motion_strength > 0.001 && flow_strength > 0.001) {
+	if (debug_mode == 0 && flow_motion_strength > 0.001) {
 		vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-		vec2 base = wpos.xz * flow_ripple_scale;
-		// Scroll DOWNSTREAM (advected ripples). Speed rides flow
-		// strength so faster water visibly moves faster.
-		vec2 scroll = flow_dir * (TIME * flow_motion_speed * (0.3 + flow_strength));
-		float w1 = sin(base.x + scroll.x) + cos(base.y * 0.85 - scroll.y);
-		float w2 = sin((base.x + base.y) * 2.3 - scroll.x * 1.7)
-		         + cos((base.x - base.y) * 1.9 + scroll.y * 1.3);
+		vec2 P = wpos.xz * flow_ripple_scale;
+		float T = TIME * flow_motion_speed;
+		// Idle water still gets a slow non-directional ripple (not dead
+		// glass); flowing water advects the waves downstream.
+		vec2 fdir = (flow_strength > 0.001) ? flow_dir : vec2(0.0);
+		float e = 0.35;
+		float h  = _water_h(P, fdir, T);
+		float hx = _water_h(P + vec2(e, 0.0), fdir, T);
+		float hz = _water_h(P + vec2(0.0, e), fdir, T);
 		float upness = clamp(n.y, 0.0, 1.0);
-		float amp = flow_motion_strength * flow_strength * upness;
-		// Perturb the normal along the wave gradient so the lit
-		// highlight + Fresnel travel with the flow. Tops only (upness)
-		// so it can NOT touch the #222 LOD-seam side slivers.
-		n = normalize(n + vec3(w1, 0.0, w2) * (flow_normal_strength * amp));
+		float amp = flow_motion_strength * upness * (0.45 + 0.55 * flow_strength);
+		// World-space height gradient → normal perturbation. Tops only
+		// (upness), so the #222 LOD-seam side slivers stay untouched.
+		n = normalize(n + vec3(h - hx, 0.0, h - hz) * (flow_normal_strength * 8.0 * amp));
 	}
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
@@ -187,8 +228,16 @@ void fragment() {
 	float up_face = mix(1.0, up_face_raw, seam_region);
 	float depth_t_eff = depth_t * up_face;
 
-	// === 3. SURFACE COLOUR =========================================
-	vec3 body = mix(water_tint_color, deep_water_color, depth_t_eff);
+	// === 3. SURFACE COLOUR (refraction + depth absorption) =========
+	// Shallow: see the wave-distorted, tinted bottom THROUGH the water
+	// (screen refraction). Deep: Beer-Lambert absorb to deep colour
+	// (depth_t_eff). Grazing: Fresnel sky sheen on top. This see-
+	// through-shallow → opaque-deep is the core "better than Minecraft"
+	// cue SEUS/Sildur water relies on.
+	vec2 refr_uv = clamp(SCREEN_UV + n.xz * (refraction_strength * (1.0 - depth_t_eff)),
+	                     vec2(0.001), vec2(0.999));
+	vec3 bottom = texture(screen_tex, refr_uv).rgb * water_tint_color * 1.6;
+	vec3 body = mix(bottom, deep_water_color, depth_t_eff);
 	vec3 surface = mix(body, sky_reflection_color, fresnel);
 
 	// === 4. TRANSPARENCY ===========================================
