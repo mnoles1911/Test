@@ -129,10 +129,27 @@ const BUOYANT_RISE_ACCEL: float = 3.0
 # Gentle, so surfacing reads as a natural float-up rather than a pop.
 
 const BUOYANT_SETTLE_ACCEL: float = 4.0
-# At the surface (in water but head NOT submerged) with no input,
-# vertical velocity eases toward 0 at this rate — Roland settles and
-# bobs at the waterline instead of sinking back under or launching
-# out. This is the "floats at the surface" feel.
+# Ramp rate for the not-submerged buoyancy term (below). NOTE
+# (2026-05-18 native-fluid pivot): this used to ease velocity toward
+# ZERO when the head was clear. With gravity disabled in water that
+# left Roland PERCHED at whatever height he entered — walking off a
+# beach into the sea, his pivot entered water but his head stayed
+# clear, velocity.y → 0, and he strolled across the surface as if it
+# were solid ("walks on water" bug, fluid pivot test 2026-05-18). Real
+# buoyancy: a body less dense than water still sinks until it displaces
+# its weight. So the not-submerged term now eases toward a gentle
+# DOWNWARD sink (below), which — balanced against the submerged rise —
+# self-corrects into a bob at the waterline (cork physics) AND makes
+# wading in actually put you IN the water.
+
+const BUOYANT_SINK_SPEED: float = 0.8
+# Gentle downward drift (m/s) while in water with the head CLEAR and no
+# swim input. Deliberately < BUOYANT_RISE_SPEED (1.2) so the
+# equilibrium stays buoyant — Roland floats with his head mostly at/
+# above the surface and bobs, rather than slowly drowning. Crouch/Shift
+# (descend) still overrides this to dive; Space (ascend) still overrides
+# to climb out. In shallow water the solid lakebed stops the sink so he
+# just wades.
 
 
 # =============================================================
@@ -865,7 +882,13 @@ func _physics_process_inner(delta: float) -> void:
 			if _is_submerged:
 				velocity.y = move_toward(velocity.y, BUOYANT_RISE_SPEED, BUOYANT_RISE_ACCEL * delta)
 			else:
-				velocity.y = move_toward(velocity.y, 0.0, BUOYANT_SETTLE_ACCEL * delta)
+				# Head clear of the water → Roland is floating too HIGH
+				# (or just waded in and is perched on the surface). Sink
+				# gently; the submerged-rise above balances it into a bob
+				# at the waterline (cork physics). This is what makes
+				# entering water actually put you IN it instead of
+				# walking across the top (fluid-pivot fix 2026-05-18).
+				velocity.y = move_toward(velocity.y, -BUOYANT_SINK_SPEED, BUOYANT_SETTLE_ACCEL * delta)
 		velocity.y = clampf(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_SPEED)
 		# River currents push the player horizontally based on the
 		# water level gradient. Active anywhere a flow cell or source
