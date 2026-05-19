@@ -427,12 +427,24 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                 if (world_y > ground_y) {
                     // Air above terrain. If this air voxel sits at or
                     // below sea level and the column dips below sea
-                    // level, it becomes a WATER TYPE block (Minecraft
-                    // model). The blocky mesher draws model id 5 (the
-                    // transparent water cube) directly — no DATA5, no
-                    // separate water mesher.
+                    // level, it becomes a native fluid TYPE block
+                    // (WATER_MATERIAL_ID = full level 23). The Zylann
+                    // blocky mesher draws/auto-slopes it directly — no
+                    // separate water mesher, no horizon plane.
                     if (emit_water_here && world_y <= sea_level_v) {
                         out_buffer.call("set_voxel", WATER_MATERIAL_ID, x, y, z, CHANNEL_TYPE);
+                        // #14 SOURCE RULES (Phase 8a): generated ocean/
+                        // lake cells are INFINITE SOURCES. Pin the
+                        // WaterByteCodec source byte (MAX_LEVEL 8 |
+                        // SOURCE_BIT 0x10 = 0x18 = 24) into CHANNEL_DATA5
+                        // so WaterFlowManager.is_source() keeps them at
+                        // level 8 and NEVER drains them — an ocean-fed
+                        // channel doesn't deplete the sea. Player-dug
+                        // pools are written NON-source by the sim
+                        // (WaterByteCodec.pack(level,false,dir)) so they
+                        // drain. This is the field the codec reserved
+                        // but the generator never wrote until now.
+                        out_buffer.call("set_voxel", WATER_SOURCE_BYTE, x, y, z, CHANNEL_DATA5);
                     }
                     continue;
                 }

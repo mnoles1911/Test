@@ -436,6 +436,8 @@ func _gen_report() -> int:
 		var h: int = 2166136261
 		var wcount: int = 0
 		var wids := {}
+		var d5_nonzero: int = 0     # cells with a non-zero CHANNEL_DATA5
+		var d5_vals := {}           # distinct DATA5 values on water cells
 		for z in range(bs):
 			for y in range(bs):
 				for x in range(bs):
@@ -445,12 +447,18 @@ func _gen_report() -> int:
 						norm = _GEN_SENTINEL
 						wcount += 1
 						wids[t] = true
+						d5_vals[buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA5)] = true
+					if buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_DATA5) != 0:
+						d5_nonzero += 1
 					h = ((h ^ norm) * 16777619) & 0x7FFFFFFF
 		var key := "%d,%d,%d@%d" % [origin.x, origin.y, origin.z, lod]
 		var idlist: Array = wids.keys()
 		idlist.sort()
-		results[key] = {"norm_hash": h, "water_count": wcount, "water_ids": idlist}
-		print("[GEN] %s norm_hash=%d water_count=%d water_ids=%s" % [key, h, wcount, str(idlist)])
+		var d5list: Array = d5_vals.keys()
+		d5list.sort()
+		results[key] = {"norm_hash": h, "water_count": wcount, "water_ids": idlist,
+			"d5_nonzero": d5_nonzero, "d5_vals": d5list}
+		print("[GEN] %s norm_hash=%d water_count=%d water_ids=%s d5_nonzero=%d d5_vals=%s" % [key, h, wcount, str(idlist), d5_nonzero, str(d5list)])
 
 	if not FileAccess.file_exists(_GEN_BASELINE):
 		var f := FileAccess.open(_GEN_BASELINE, FileAccess.WRITE)
@@ -478,8 +486,21 @@ func _gen_report() -> int:
 		if int(b["water_count"]) != int(r["water_count"]):
 			fails += 1
 			push_error("[GEN] %s water_count drift base=%d now=%d" % [key, int(b["water_count"]), int(r["water_count"])])
+		# CHANNEL_DATA5 is ALLOWED to change (Phase 8a writes the source
+		# byte) — report the delta; assert the 8a expectation when it
+		# fires: every water cell gets DATA5 == WATER_SOURCE_BYTE (24).
+		var bd5: int = int(b.get("d5_nonzero", 0))
+		var rd5: int = int(r.get("d5_nonzero", 0))
+		if bd5 != rd5:
+			print("[GEN] %s DATA5 delta (expected for #14 source pivot): d5_nonzero %d -> %d, d5_vals %s -> %s" % [key, bd5, rd5, str(b.get("d5_vals", [])), str(r.get("d5_vals", []))])
+			if rd5 != int(r["water_count"]):
+				fails += 1
+				push_error("[GEN] %s 8a: d5_nonzero=%d != water_count=%d (every generated water cell must be a source)" % [key, rd5, int(r["water_count"])])
+			if r.get("d5_vals", []) != [24]:
+				fails += 1
+				push_error("[GEN] %s 8a: water d5_vals=%s expected [24] (WATER_SOURCE_BYTE)" % [key, str(r.get("d5_vals", []))])
 	if fails == 0:
-		print("[GEN] RESULT=PASS — terrain & water positions bit-identical to baseline; only the water id value changed (the intended id-only delta).")
+		print("[GEN] RESULT=PASS — CHANNEL_TYPE (terrain & water positions) bit-identical to baseline; DATA5 delta matches the #14 source-byte expectation.")
 		return 0
 	print("[GEN] RESULT=FAIL — %d parity violations (see push_error)." % fails)
 	return 1
