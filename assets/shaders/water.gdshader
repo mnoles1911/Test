@@ -66,11 +66,25 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // ============================================================
 // DEPTH-FADE (near-water only; horizon plane forces this to "deep")
 // ============================================================
-uniform float depth_fade_distance : hint_range(0.2, 40.0) = 1.0;
-// 7 -> 4 -> 2.5 -> 1.0 (2026-05-19): water only "became water" at 4-8
-// voxels deep — far too gradual. At 1.0, ~1 m (6 vox) is ~63% deep-
-// tinted and 1-2 voxels already read clearly as water. Headline
-// clarity knob: <1 very murky · 3 lake · 15 clear ocean.
+// CLARITY MASTER (2026-05-19 physical rework). Divides the per-channel
+// extinction below: bigger = clearer water / light travels deeper,
+// smaller = murkier. ~2 = readable pond that blues over a few metres,
+// ~5 = lake, ~12 = clear ocean.
+uniform float depth_fade_distance : hint_range(0.2, 40.0) = 2.0;
+// PER-WAVELENGTH absorption (per metre, before the clarity divide).
+// Real water kills RED fastest, GREEN mid, BLUE slowest — this RGB
+// spread is what makes water read clear→green→deep-blue with depth
+// instead of a flat tint. R≫G>B. Tune the HUE of the depth falloff
+// here; tune how FAR light reaches with depth_fade_distance.
+uniform vec3 water_extinction : source_color = vec3(0.85, 0.30, 0.18);
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
+// 0.14 -> 0.45 (2026-05-19): physically shallow water is optically
+// clear, but gameplay needs the SURFACE present — this is the alpha
+// floor so thin water still reads as a water surface (sheen/ripple/
+// foam) even while the bottom shows through. Lower = more see-through.
+// water_murk: how murky the see-through is — 0 = perfectly clear
+// refraction, 1 = fully tinted. 0.72 keeps shallow water reading as
+// water while the bottom is still faintly visible.
 uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
 // 0.14 -> 0.45 (2026-05-19): the depth fade also drives ALPHA, so thin
 // shore water was ~86% transparent (you saw straight through to sand).
@@ -223,9 +237,8 @@ void fragment() {
 	float scene_dist = -view.z;
 	float frag_dist  = -VERTEX.z;
 	float thickness = max(scene_dist - frag_dist, 0.0);
-	// Exponential (Beer-Lambert) falloff: shallow->clear, asymptotically
-	// deep->opaque, no hard cutoff. depth_fade_distance = 1/e distance.
-	float depth_t = 1.0 - exp(-thickness / max(depth_fade_distance, 0.01));
+	// depth_t / depth_t_eff are now derived from the PER-CHANNEL
+	// transmittance in §3 (physical model), after up_face is known.
 
 	// === 2. FLOW + NORMAL ==========================================
 	vec3 n = normalize(NORMAL);
@@ -260,21 +273,25 @@ void fragment() {
 	float up_face_raw = smoothstep(0.30, 0.72, n.y);
 	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
 	float up_face = mix(1.0, up_face_raw, seam_region);
-	float depth_t_eff = depth_t * up_face;
 
-	// === 3. SURFACE COLOUR (refraction + depth absorption) =========
-	// Shallow: see the wave-distorted, tinted bottom THROUGH the water
-	// (screen refraction). Deep: Beer-Lambert absorb to deep colour
-	// (depth_t_eff). Grazing: Fresnel sky sheen on top. This see-
-	// through-shallow → opaque-deep is the core "better than Minecraft"
-	// cue SEUS/Sildur water relies on.
+	// === 3. SURFACE: per-channel Beer-Lambert + in-scatter ==========
+	// Physical model (2026-05-19): light transmittance through the
+	// water column is exp(-k·depth) PER WAVELENGTH (k = water_extinction
+	// / clarity). The refracted bottom is attenuated per RGB channel,
+	// and the light lost (1-trans, red first) is replaced by the
+	// water's own in-scatter colour (deep_water_color) → the real
+	// clear → green → deep-blue gradient, not a flat tint mix.
+	vec3 ext = water_extinction / max(depth_fade_distance, 0.05);
+	vec3 trans_raw = exp(-ext * thickness);          // per-channel bottom transmittance
+	// Seam fix (2026-05-17): non-up faces (distant LOD side slivers)
+	// read as shallow → push trans toward 1 (no depth) by (1-up_face).
+	vec3 trans = mix(vec3(1.0), trans_raw, up_face);
+	float depth_t = 1.0 - dot(trans_raw, vec3(0.33333));  // scalar, ground-truth (debug 1/3)
+	float depth_t_eff = 1.0 - dot(trans, vec3(0.33333));  // up-face-suppressed (refraction/alpha)
 	vec2 refr_uv = clamp(SCREEN_UV + n.xz * (refraction_strength * (1.0 - depth_t_eff)),
 	                     vec2(0.001), vec2(0.999));
-	// Refracted bottom, blended toward the water tint by water_murk so
-	// even a shallow pond reads as coloured water rather than clear
-	// glass (the *1.6 over-brighten that washed it out is gone).
 	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk);
-	vec3 body = mix(bottom, deep_water_color, depth_t_eff);
+	vec3 body = bottom * trans + deep_water_color * (1.0 - trans);
 
 	// Phase 2 — CLEAN Fresnel sky reflection (the upside-down screen-
 	// flip hack was removed; it pasted the mirrored framebuffer onto
