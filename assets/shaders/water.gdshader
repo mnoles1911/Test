@@ -111,15 +111,24 @@ uniform int debug_mode : hint_range(0, 5) = 0;
 varying vec2 v_flow_uv;
 
 
-// Decode the Zylann fluid flow (UV) into a world-XZ flow vector.
-// strength in [0,1] (0 = still). If the installed build encodes flow
-// differently, THIS is the single function to adjust (designer pass).
+// Decode the Zylann VoxelBlockyFluid flow from UV into a world-XZ flow
+// vector. AUTHORITATIVE encoding (godot_voxel doc/source/blocky_terrain
+// .md, MIT — spec, not copied code):
+//   UV.x = triplanar axis (0=X,1=Y,2=Z) — NOT flow; unused here.
+//   UV.y = flow state CODE 0..8 (45° steps, clockwise in XZ):
+//          0:+X 1:+X-Z 2:-Z 3:-X-Z 4:-X 5:-X+Z 6:+Z 7:+X+Z 8:IDLE
+// strength = 0 when idle (code 8), else 1 (flow is directional, not
+// magnitude-graded — animation speed is constant while flowing).
 vec2 decode_flow(vec2 uv, out float strength) {
-	// UV.y ~ flow strength / surface slope (0 = still). UV.x ~ flow
-	// direction as a turn fraction (0..1 -> 0..2pi about +X in XZ).
-	strength = clamp(uv.y, 0.0, 1.0);
-	float ang = uv.x * 6.2831853;
-	return vec2(cos(ang), sin(ang));
+	float code = floor(uv.y + 0.5);          // robust to fp UV
+	if (code > 7.5) {                        // 8 = idle
+		strength = 0.0;
+		return vec2(0.0);
+	}
+	strength = 1.0;
+	float ang = code * 0.78539816;           // code*45° in radians
+	// code 0 → +X(1,0); rotates +X→-Z→-X→+Z, so x=cos, z=-sin.
+	return vec2(cos(ang), -sin(ang));
 }
 
 
