@@ -45,6 +45,8 @@ func _initialize() -> void:
 			quit(_wmat())
 		"shader":
 			quit(_shader())
+		"phase7":
+			quit(_phase7())
 		"spike", "phase2", "gen":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
@@ -171,9 +173,10 @@ func _wmat() -> int:
 			fails += 1
 			push_error("[WMatParity] is_water_type(%d)=%s expected %s" % [id, WM.is_water_type(id), want_w])
 		checks += 1
-		if WM.map_legacy_id(id) != id:
+		var want_legacy: int = WM.FULL_FLUID_ID if id == 5 else id
+		if WM.map_legacy_id(id) != want_legacy:
 			fails += 1
-			push_error("[WMatParity] map_legacy_id(%d) not identity" % id)
+			push_error("[WMatParity] map_legacy_id(%d)=%d expected %d" % [id, WM.map_legacy_id(id), want_legacy])
 	for level in range(0, 9):
 		for dir in range(0, 8):
 			checks += 1
@@ -247,6 +250,57 @@ func _spike_report() -> int:
 	print("[SPIKE] terrain=%s %s" % [terrain.get_class(), " ".join(detail)])
 	print("[SPIKE] RESULT=%s streams_headless=%s" % ["PASS" if streamed else "NO", "yes" if streamed else "no"])
 	return 0 if streamed else 0   # never hard-fail: this answers a question, doesn't gate
+
+
+# ============================================================
+# PHASE 7 — legacy-save + MP byte contract (data-level)
+# ============================================================
+# The risky halves of Phase 7 (buoyancy feel, MP host/client visuals)
+# are designer-gated; this locks the parts a no-GPU run CAN prove:
+#   • old saves' literal water id 5 still reads as water (is_water_type)
+#   • map_legacy_id(5) -> the full fluid id (future-migration hook)
+#   • the codec is byte-stable (SOURCE_BYTE=24) so old DATA5 decodes
+#   • an old full-water cell (SOURCE_BYTE) projects to the full fluid
+#     id and that id is water — the load-old-save path end to end
+#   • MP: render id is a pure function of the codec byte (so the byte
+#     on the wire + host-side render_id_for_level can't desync).
+func _phase7() -> int:
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	var WBC := preload("res://scripts/WaterByteCodec.gd")
+	var fails: int = 0
+	var checks: int = 0
+	checks += 1
+	if not WM.is_water_type(5) or not WM.is_water_type(WM.LEGACY_WATER_ID):
+		fails += 1
+		push_error("[PHASE7] legacy water id 5 no longer reads as water — old saves break")
+	checks += 1
+	if WM.map_legacy_id(5) != WM.FULL_FLUID_ID:
+		fails += 1
+		push_error("[PHASE7] map_legacy_id(5)=%d expected FULL_FLUID_ID=%d" % [WM.map_legacy_id(5), WM.FULL_FLUID_ID])
+	checks += 1
+	if WBC.SOURCE_BYTE != 24:
+		fails += 1
+		push_error("[PHASE7] WaterByteCodec.SOURCE_BYTE changed (%d) — old DATA5 saves would mis-decode" % WBC.SOURCE_BYTE)
+	# Old full-water cell: SOURCE_BYTE -> level 8 -> full fluid id, water.
+	var sb: int = WBC.SOURCE_BYTE
+	var rid: int = WM.render_id_for_level(WBC.level_of(sb), WBC.dir_of(sb))
+	checks += 1
+	if rid != WM.FULL_FLUID_ID or not WM.is_water_type(rid):
+		fails += 1
+		push_error("[PHASE7] old SOURCE_BYTE projects to %d (water=%s) expected FULL_FLUID_ID=%d water=true" % [rid, WM.is_water_type(rid), WM.FULL_FLUID_ID])
+	# MP determinism: render id is a pure function of the byte (same
+	# input -> same id, every call) so host + clients never disagree.
+	for lvl in range(0, 9):
+		var b: int = WBC.pack(lvl, false, WBC.DIR_STILL)
+		checks += 1
+		if WM.render_id_for_level(WBC.level_of(b), WBC.dir_of(b)) != WM.render_id_for_level(WBC.level_of(b), WBC.dir_of(b)):
+			fails += 1
+			push_error("[PHASE7] render_id_for_level not deterministic for level %d" % lvl)
+	if fails == 0:
+		print("[PHASE7] RESULT=PASS — %d checks: legacy id 5 reads as water, codec stable, old full-water -> full fluid, MP id is a pure fn of the byte." % checks)
+		return 0
+	print("[PHASE7] RESULT=FAIL — %d/%d checks failed." % [fails, checks])
+	return 1
 
 
 # ============================================================

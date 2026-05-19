@@ -71,8 +71,11 @@ static func render_id_for_level(level: int, _dir: int) -> int:
 	return WATER_FLUID_BASE_ID + clampi(level, 1, WATER_LEVEL_COUNT) - 1
 
 
-# Legacy save / generator id -> canonical body id. Identity today;
-# Phase 7 save-migration maps the old literal 5 onto the full-level
-# fluid id here.
+# Legacy save / generator id -> canonical id, for an EXPLICIT
+# save-migration pass. NOT auto-applied — nothing in the live stream
+# path calls this (old water loads as cube id 5 and the flow sim
+# rewrites it on first touch; see design/SAVE_SYSTEM.md). The old
+# transparent-cube water id collapses to the full-level fluid id;
+# every other id (terrain, the fluid ids themselves) is unchanged.
 static func map_legacy_id(type_id: int) -> int:
-	return type_id
+	return FULL_FLUID_ID if type_id == LEGACY_WATER_ID else type_id
