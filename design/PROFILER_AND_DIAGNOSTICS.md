@@ -20,6 +20,21 @@ The JSON tells you which **wrapped GD scripts** ate frame time.
 The `[PERF]` / `[DIAG]` log lines tell you what **engine and Zylann**
 were doing. You need both to see the full picture.
 
+### `World3DBootstrap` `[DIAG]` line — DEFAULT OFF (since 2026-05-18)
+
+`World3DBootstrap.gd` emits a 1 Hz `[DIAG]` line (player pos, speed,
+`VoxelViewer` pos, viewer-lag, `get_statistics`, cache-miss/s) plus an
+F8 toggle for Zylann's built-in debug draws (clipboxes + active mesh
+blocks). This is the **terrain-perf / LOD-streaming "I outwalked the
+loader" investigation tool**. It is now **default OFF**
+(`@export var diag_enabled := false`) because it floods the Output panel
+and buries `[WaterDiag]`/`[WaterInspect]`/`[FlowDiag]`.
+
+**Re-enable for a terrain/LOD perf pass:** tick **Diag Enabled** on the
+`World3DBootstrap` node in `scenes/World3D.tscn` (Inspector — no script
+edit), or flip the `@export` default. `[PERF]` (Profiler autoload) and
+`[WaterDiag]` (F4 panel) are independent and unaffected.
+
 ## Tooling
 
 ### Autoloads

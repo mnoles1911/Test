@@ -40,8 +40,17 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 #     which are starving ahead of the player.
 # All of this is gated behind diag_enabled so it can be flipped off
 # from the inspector without re-editing the script.
-
-@export var diag_enabled: bool = true
+#
+# DEFAULT OFF (2026-05-18): the 1 Hz [DIAG] line + F8 debug draws are a
+# TERRAIN-PERF / LOD-STREAMING investigation tool, not needed for normal
+# play or water testing — it spammed the Output panel and drowned the
+# [WaterDiag]/[WaterInspect] lines. To re-enable for a terrain/LOD perf
+# pass: flip this to true here, or tick "Diag Enabled" on the
+# World3DBootstrap node in the World3D.tscn Inspector (no re-edit
+# needed). What it gives you is documented in design/PROFILER_AND_
+# DIAGNOSTICS.md ("World3DBootstrap [DIAG] line"). [PERF] (Profiler)
+# and [WaterDiag] (F4 panel) are SEPARATE and unaffected by this.
+@export var diag_enabled: bool = false
 
 var _diag_terrain: Object = null
 var _diag_player: Node3D = null
@@ -413,7 +422,13 @@ const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
 # shader (NOT an atlas tile — the shader IS the water look). Applied at
 # runtime here for the same Zylann .tres-doesn't-restore reason as the
 # atlas materials. See design/WATER_VOXEL_V2_PLAN.md.
-const _WATER_MATERIAL_ID: int = WaterMaterial.BODY_ID
+# The LEGACY cube water slot (id 5) — this block applies the water
+# shader/transparency/collision to the OLD transparent-cube model that
+# still lives in blocky_library.tres (kept so pre-pivot saves render).
+# It must be 5 (LEGACY_WATER_ID), NOT BODY_ID — BODY_ID is now the
+# full-level FLUID id 23, which isn't in models_arr at this point, so
+# pointing here skipped the whole block (regression fixed 2026-05-18).
+const _WATER_MATERIAL_ID: int = WaterMaterial.LEGACY_WATER_ID
 const _WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
 
 # Zylann Cube SIDE enum (from voxel/util/godot/classes/cube.h):
@@ -645,6 +660,47 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 		lib.bake()
 
 	print("[World3D] inject_atlas_materials: re-applied tiles + atlas mat to %d models, library re-baked." % injected)
+
+	# --- [WaterFluidDiag] hard readback (2026-05-18 debug) -------------
+	# White/solid/F6-inert fluid means material_override and/or collision
+	# and/or the fluid link did NOT take, or the water material failed to
+	# load, or the lib didn't pick up the material. Print ground truth so
+	# we fix from data, not guesses. Cheap, runs once at boot.
+	var _wfd_mat = load(_WATER_MATERIAL_PATH)
+	var _wfd_sh = _wfd_mat.get("shader") if _wfd_mat != null else null
+	print("[WaterFluidDiag] water_material.tres load=%s shader=%s code_len=%s" % [
+		("null" if _wfd_mat == null else _wfd_mat.get_class()),
+		("null" if _wfd_sh == null else _wfd_sh.get_class()),
+		("?" if _wfd_sh == null else str(String(_wfd_sh.get("code")).length()))])
+	if "models" in lib:
+		var _wfd_models: Array = lib.get("models")
+		print("[WaterFluidDiag] lib model count=%d" % _wfd_models.size())
+		var _fid: int = WaterMaterial.WATER_FLUID_BASE_ID  # 16, level 1
+		if _fid < _wfd_models.size() and _wfd_models[_fid] != null:
+			var fm0 = _wfd_models[_fid]
+			var mo = fm0.call("get_material_override", 0) if fm0.has_method("get_material_override") else "<no method>"
+			var fl = fm0.call("get_fluid") if fm0.has_method("get_fluid") else "<no method>"
+			var fl_mat = fl.call("get_material") if (fl != null and fl is Object and fl.has_method("get_material")) else "<n/a>"
+			var aabbs = fm0.call("get_collision_aabbs") if fm0.has_method("get_collision_aabbs") else "<no method>"
+			var meshcoll = fm0.call("is_mesh_collision_enabled", 0) if fm0.has_method("is_mesh_collision_enabled") else "<no method>"
+			var cmask = fm0.call("get_collision_mask") if fm0.has_method("get_collision_mask") else "<no method>"
+			print("[WaterFluidDiag] model[%d] class=%s level=%s fluid=%s" % [
+				_fid, fm0.get_class(),
+				str(fm0.call("get_level")) if fm0.has_method("get_level") else "?",
+				("null" if fl == null else "set")])
+			print("[WaterFluidDiag] model[%d] material_override(0)=%s fluid.material=%s" % [
+				_fid, ("null" if mo == null else (mo.get_class() if mo is Object else str(mo))),
+				("null" if fl_mat == null else (fl_mat.get_class() if fl_mat is Object else str(fl_mat)))])
+			print("[WaterFluidDiag] model[%d] collision_aabbs=%s mesh_collision_enabled(0)=%s collision_mask=%s" % [
+				_fid, str(aabbs), str(meshcoll), str(cmask)])
+	if lib.has_method("get_materials"):
+		var _mats = lib.call("get_materials")
+		var _mat_classes := PackedStringArray()
+		if _mats is Array:
+			for _m in _mats:
+				_mat_classes.append("null" if _m == null else _m.get_class())
+		print("[WaterFluidDiag] lib.get_materials() count=%d classes=%s" % [
+			(_mats.size() if _mats is Array else -1), str(_mat_classes)])
 
 
 func _process(delta: float) -> void:
