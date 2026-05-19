@@ -26,3 +26,15 @@ Documented 2026-05-13 during Tier 2 acceptance check.
 ### Mobile renderer note
 
 `rendering_method.mobile` left at `gl_compatibility`. Reconsider only if a mobile ship enters the roadmap. Game One is desktop / Steam.
+
+### `config/features` reads "GL Compatibility" — this is CORRECT, not stale
+
+`project.godot` → `config/features=PackedStringArray("4.6", "GL Compatibility")`
+**looks like** the project is on the Compatibility renderer. It is not. Desktop is
+`forward_plus` (base `rendering/renderer/rendering_method` is unset → engine default
+`forward_plus`; only the `.mobile` override is written). The "GL Compatibility" feature
+tag is the expected artifact of retaining the intentional `rendering_method.mobile`
+fallback above; it drives texture-import compression compatibility. **Do NOT "fix" it
+to "Forward Plus"** — that would be incorrect and would perturb texture import. This
+note exists because the surface read has already misled one external plan and one
+code-exploration pass into thinking the game runs on Compatibility.
