@@ -84,7 +84,7 @@ default OFF, keyboard-toggled, read-only (never mutates water).
 |---|---|
 | `F4` | Toggle the on-screen Water panel. While visible, also prints a consolidated `[WaterDiag]` line once/sec (pasteable into a diagnosis). |
 | `F5` | One-shot `[WaterInspect]` dump of the column + 3×3 mesh-block neighbourhood under the camera. |
-| `F6` | Cycle the water shader `debug_mode` 0→1→2→3→4→0 live. |
+| `F6` | Cycle the water shader `debug_mode` 0→1→2→3→4→5→0 live. |
 
 **Panel / `[WaterDiag]` fields:** `pos`; `in_water` + `submerged`
 (head); `level` 0–8; `surface Y` (world-Y of the topmost water voxel in
@@ -109,8 +109,12 @@ vertical side faces → depth-fade paints them `deep_water_color`).
 `water_material.tres`):** `0` normal · `1` depth_t (white = deep) ·
 `2` fresnel · `3` thickness as opaque grey (no blend/Fresnel — isolates
 geometry from transparency) · `4` surface-facing (white = up-facing
-water top, black = vertical side/riser). **These four are permanent
-diagnostics — do not remove them from `water.gdshader`.** The 2026-05-17
+water top, black = vertical side/riser) · `5` **flow vector** (hue =
+native-fluid flow direction, brightness = flow strength; still water =
+black — added by the native-fluid pivot 2026-05-18; confirms the Zylann
+fluid mesher's flow matches the visible slope / `[FlowDiag]` DIR).
+**These five are permanent diagnostics — do not remove them from
+`water.gdshader`.** The 2026-05-17
 bisection that root-caused the dark grid is the reference recipe: 0
 (confirm) → fade off (is depth-fade the amplifier?) → mode 3 (is it
 geometry vs transparency blend?) → mode 4 (side faces vs stepped tops?).
