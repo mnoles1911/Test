@@ -147,9 +147,10 @@ func _codec() -> int:
 #   is_water_type(id)  == (id == 5) OR (16 <= id <= 23)
 #       (legacy cube id 5 still emitted by the C++ generator until
 #        Phase 4 + the 8 fluid-level ids)
-#   render_id_for_level(level,dir) == (FULL_FLUID_ID if level>0 else 0)
-#       (collapse to the full-level fluid id — sim drives per-level
-#        ids only from Phase 3)
+#   render_id_for_level(level,dir):
+#       level<=0 -> 0 ; level 1..8 -> BASE + clampi(level,1,8) - 1
+#       (Phase 3: TRUE per-level id so the mesher auto-slopes the
+#        gradual-fill / flow front)
 #   map_legacy_id == identity; BODY_ID == FULL_FLUID_ID == 23;
 #   LEGACY_WATER_ID == 5; BASE 16; COUNT 8; WATER_IDS == [5,16..23].
 func _wmat() -> int:
@@ -171,7 +172,7 @@ func _wmat() -> int:
 	for level in range(0, 9):
 		for dir in range(0, 8):
 			checks += 1
-			var expected: int = WM.FULL_FLUID_ID if level > 0 else 0
+			var expected: int = 0 if level <= 0 else WM.WATER_FLUID_BASE_ID + clampi(level, 1, WM.WATER_LEVEL_COUNT) - 1
 			if WM.render_id_for_level(level, dir) != expected:
 				fails += 1
 				push_error("[WMatParity] render_id_for_level(%d,%d)=%d expected %d" % [level, dir, WM.render_id_for_level(level, dir), expected])
@@ -183,8 +184,24 @@ func _wmat() -> int:
 	if Array(WM.WATER_IDS) != [5, 16, 17, 18, 19, 20, 21, 22, 23]:
 		fails += 1
 		push_error("[WMatParity] WATER_IDS=%s expected [5,16..23]" % str(WM.WATER_IDS))
+	# Phase 3 integration: the exact VoxelEditManager projection path —
+	# WaterByteCodec.pack(level) -> level_of/dir_of -> render_id_for_level
+	# -> a per-level fluid id that is_water_type() accepts (or air).
+	var WBC := preload("res://scripts/WaterByteCodec.gd")
+	for level in range(0, 9):
+		var b: int = WBC.pack(level, false, WBC.DIR_STILL)
+		var rid: int = WM.render_id_for_level(WBC.level_of(b), WBC.dir_of(b))
+		checks += 1
+		var want_rid: int = 0 if level == 0 else WM.WATER_FLUID_BASE_ID + level - 1
+		if rid != want_rid:
+			fails += 1
+			push_error("[WMatParity] pack(%d)->render=%d expected %d" % [level, rid, want_rid])
+		checks += 1
+		if WM.is_water_type(rid) != (level > 0):
+			fails += 1
+			push_error("[WMatParity] is_water_type(render of level %d = %d)=%s expected %s" % [level, rid, WM.is_water_type(rid), level > 0])
 	if fails == 0:
-		print("[WMatParity] PASS — %d checks, 0 failures. Phase 2 contract holds (legacy 5 + fluid 16..23, render->full %d)." % [checks, WM.FULL_FLUID_ID])
+		print("[WMatParity] PASS — %d checks, 0 failures. Phase 3 contract holds (per-level fluid id 16..23; codec->TYPE projection exact)." % checks)
 		return 0
 	print("[WMatParity] FAIL — %d failures across %d checks." % [fails, checks])
 	return 1

@@ -61,12 +61,14 @@ static func is_water_type(type_id: int) -> bool:
 
 # Project a sim water level (0 = air .. 8 = full, see WaterByteCodec)
 # plus flow direction onto the CHANNEL_TYPE id the blocky mesher draws.
-# Phase 2: collapse to ONE id — the full-level fluid model — so the
-# rendering swap (cube -> native fluid) is proven in isolation before
-# the sim drives per-level ids. Phase 3 switches this to the true
-# per-level id: WATER_FLUID_BASE_ID + clampi(level,1,8) - 1.
+# Phase 3: TRUE per-level id. level L (1..8) -> fluid model id
+# BASE+L-1, so the blocky mesher auto-slopes the surface between
+# differing-level neighbours (smooth gradual fill / flow front, #11) —
+# DATA5 stays the sim source of truth; TYPE is purely this projection.
 static func render_id_for_level(level: int, _dir: int) -> int:
-	return FULL_FLUID_ID if level > 0 else 0
+	if level <= 0:
+		return 0
+	return WATER_FLUID_BASE_ID + clampi(level, 1, WATER_LEVEL_COUNT) - 1
 
 
 # Legacy save / generator id -> canonical body id. Identity today;
