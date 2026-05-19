@@ -70,14 +70,14 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // extinction below: bigger = clearer water / light travels deeper,
 // smaller = murkier. ~2 = readable pond that blues over a few metres,
 // ~5 = lake, ~12 = clear ocean.
-uniform float depth_fade_distance : hint_range(0.2, 40.0) = 2.0;
+uniform float depth_fade_distance : hint_range(0.2, 40.0) = 0.6;
 // PER-WAVELENGTH absorption (per metre, before the clarity divide).
 // Real water kills RED fastest, GREEN mid, BLUE slowest — this RGB
 // spread is what makes water read clear→green→deep-blue with depth
 // instead of a flat tint. R≫G>B. Tune the HUE of the depth falloff
 // here; tune how FAR light reaches with depth_fade_distance.
 uniform vec3 water_extinction : source_color = vec3(0.85, 0.30, 0.18);
-uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.6;
 // 0.14 -> 0.45 (2026-05-19): physically shallow water is optically
 // clear, but gameplay needs the SURFACE present — this is the alpha
 // floor so thin water still reads as a water surface (sheen/ripple/
@@ -85,7 +85,7 @@ uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.45;
 // water_murk: how murky the see-through is — 0 = perfectly clear
 // refraction, 1 = fully tinted. 0.72 keeps shallow water reading as
 // water while the bottom is still faintly visible.
-uniform float water_murk : hint_range(0.0, 1.0) = 0.72;
+uniform float water_murk : hint_range(0.0, 1.0) = 0.82;
 // Distance-gated LOD-seam side-face suppression (2026-05-18). Does
 // NOTHING nearer than _near (shallow water you look straight down into
 // stays readable); ramps to full by _far where the distant dark grid
@@ -233,6 +233,14 @@ void fragment() {
 
 	// === 2. FLOW + NORMAL ==========================================
 	vec3 n = normalize(NORMAL);
+	// GEOMETRIC up-ness, captured BEFORE the wave perturbation below.
+	// The §2b LOD-seam suppression must key off the real face
+	// orientation (is this a top face or a vertical side sliver?), NOT
+	// the wave-rippled normal — otherwise the v10 noise waves tilt the
+	// top normal, the distance-gated seam test mistakes wavy tops for
+	// side slivers, and ALL mid/far water turns transparent (the
+	// 2026-05-19 "way too see-through" regression).
+	float geo_ny = n.y;
 	float flow_strength = 0.0;
 	vec2 flow_dir = decode_flow(v_flow_uv, flow_strength);
 	if (debug_mode == 0 && flow_motion_strength > 0.001) {
@@ -261,7 +269,7 @@ void fragment() {
 	// ramps in only past seam_suppress_near_m, full by _far where the
 	// distant dark grid actually was. (Root-caused 2026-05-17; the
 	// 2026-05-18 distance gate stops it fading near shallow water.)
-	float up_face_raw = smoothstep(0.30, 0.72, n.y);
+	float up_face_raw = smoothstep(0.30, 0.72, geo_ny);
 	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
 	float up_face = mix(1.0, up_face_raw, seam_region);
 
