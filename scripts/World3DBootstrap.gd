@@ -654,8 +654,24 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	else:
 		push_error("[World3D][WaterFluid] library has no add_model() — cannot inject native fluid models.")
 
+	# Disable baked tangents. Nothing in this project uses a normal map
+	# (atlas = StandardMaterial3D albedo-only nearest; water v9 shader
+	# references no TANGENT/BINORMAL). With tangents baked, the blocky
+	# mesher must emit a vertex*4 tangent array for EVERY model surface;
+	# the runtime-injected VoxelBlockyModelFluid surfaces don't supply a
+	# matching one, so the real Vulkan renderer rejects each fluid chunk
+	# mesh — the repeating "_surface_set_data: array.size() !=
+	# p_vertex_array_len * 4 / add_surface_from_arrays" spam seen near
+	# water (2026-05-19). The --headless dummy driver skips that
+	# validation, which is why it only shows on GPU. No tangents needed
+	# anywhere → turn them off so no tangent array is built at all.
+	if lib.has_method("set_bake_tangents"):
+		lib.call("set_bake_tangents", false)
+	elif "bake_tangents" in lib:
+		lib.set("bake_tangents", false)
+
 	# Re-bake so Zylann recomputes per-cube UVs from the freshly
-	# written tile coords + atlas_size_in_tiles.
+	# written tile coords + atlas_size_in_tiles (and now WITHOUT tangents).
 	if lib.has_method("bake"):
 		lib.bake()
 
