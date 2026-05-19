@@ -130,12 +130,30 @@ const SWIM_VERTICAL_ACCEL: float = 8.0
 # sink, so he just stands/wades. This supersedes BUOYANT_RISE_SPEED /
 # _ACCEL / SETTLE_ACCEL / SINK_SPEED and the #13 "floats up" feel.
 
-const WATER_SINK_SPEED: float = 0.35
+const WATER_SINK_SPEED: float = 0.44
 # Passive downward drift (m/s) while in water with NO vertical input.
-# "Slowly sink." Halved 0.7 -> 0.35 (designer 2026-05-18) — sinking
-# felt too fast. The single feel knob: lower = gentler / more
-# forgiving, higher = drops faster / more dangerous. Well under
-# SWIM_VERTICAL_SPEED (1.5) so an active Space kick easily climbs out.
+# "Slowly sink." 0.35 -> 0.44 (designer 2026-05-18: +25% — sink a bit
+# faster). The single feel knob: lower = gentler / more forgiving,
+# higher = drops faster / more dangerous. Well under SWIM_VERTICAL_
+# SPEED (1.5) so an active Space kick easily climbs out.
+
+const SURFACE_BOB_SPEED: float = 0.45
+# Peak vertical velocity (m/s) of the Minecraft-style SURFACE BOB —
+# while holding Space at the surface (head clear, chest also clear)
+# Roland's head view rises and falls on a gentle zero-mean sine so the
+# camera bobs with the water instead of sitting dead still.
+
+const SURFACE_BOB_HZ: float = 0.55
+# Bob cycles per second. Slow + calm (Minecraft's surface float is
+# unhurried). Lower = lazier swell, higher = choppier.
+
+const SURFACE_FLOAT_PROBE_FRAC: float = 0.5
+# Chest probe height as a fraction of HEAD_OFFSET_METERS. While
+# ascending and head-clear, Roland keeps rising gently until the point
+# at pivot + HEAD_OFFSET_METERS * this is also out of water — so his
+# head settles ≈ HEAD_OFFSET_METERS*this (≈0.8 m) ABOVE the surface
+# (the "reach ~50% higher above water" the designer asked for), then
+# the zero-mean bob holds him there.
 
 const WATER_SINK_ACCEL: float = 3.0
 # Ramp toward the passive sink. Gentle so releasing the swim-up key
@@ -229,6 +247,19 @@ var _is_submerged: bool = false
 # True if Roland's head (HEAD_OFFSET_METERS above his pivot) is below
 # the current water volume's surface_y. When true: breath ticks down,
 # drowning damage applies if breath reaches zero.
+
+var _float_submerged: bool = false
+# True if a point partway up the body (HEAD_OFFSET_METERS *
+# SURFACE_FLOAT_PROBE_FRAC above the pivot, ≈ chest) is in water.
+# Used ONLY by the Space-kick surface logic: while ascending, Roland
+# keeps rising gently until this chest probe clears, so his head ends
+# up well above the waterline (the "float ~50% higher" feel) before
+# the surface bob takes over. Distinct from _is_submerged so breath /
+# drowning / the underwater filter are unaffected.
+
+var _swim_bob_t: float = 0.0
+# Phase accumulator (seconds) for the Minecraft-style surface bob.
+# Advances while in water, resets on exit so each swim starts fresh.
 
 # --- Water audio edge-tracking ---
 # Previous-frame water flags, so _update_water_audio() can fire one-shot
@@ -859,7 +890,7 @@ func _physics_process_inner(delta: float) -> void:
 		var ascend: bool = _can_take_input() and Input.is_action_pressed("dodge")
 		var descend: bool = _can_take_input() and (Input.is_action_pressed("sprint") or Input.is_action_pressed("crouch"))
 		if ascend and not descend:
-			velocity.y = move_toward(velocity.y, (SWIM_VERTICAL_SPEED if _is_submerged else 0.0), SWIM_VERTICAL_ACCEL * delta)  # surface cap: full rise only while head submerged; once head clears, target 0 so holding Space bobs the head just above the waterline (designer 2026-05-18) instead of launching out
+			velocity.y = move_toward(velocity.y, (SWIM_VERTICAL_SPEED if _is_submerged else (SWIM_VERTICAL_SPEED * 0.5 if _float_submerged else sin(_swim_bob_t * TAU * SURFACE_BOB_HZ) * SURFACE_BOB_SPEED)), SWIM_VERTICAL_ACCEL * delta)  # surface cap: full rise only while head submerged; once head clears, target 0 so holding Space bobs the head just above the waterline (designer 2026-05-18) instead of launching out
 		elif descend and not ascend:
 			velocity.y = move_toward(velocity.y, -SWIM_VERTICAL_SPEED, SWIM_VERTICAL_ACCEL * delta)
 		else:
@@ -1074,6 +1105,7 @@ func _update_water_state() -> void:
 	var was_in_water: bool = _in_water
 	_in_water = false
 	_is_submerged = false
+	_float_submerged = false
 
 	var wfm: Node = get_node_or_null("/root/WaterFlowManager")
 	if wfm != null:
@@ -1096,6 +1128,15 @@ func _update_water_state() -> void:
 			# HEAD_OFFSET_METERS so the threshold matches PR #130.
 			var head_pos := global_position + Vector3(0.0, HEAD_OFFSET_METERS, 0.0)
 			_is_submerged = wfm.is_position_in_water(head_pos)
+			var chest_pos := global_position + Vector3(0.0, HEAD_OFFSET_METERS * SURFACE_FLOAT_PROBE_FRAC, 0.0)
+			_float_submerged = wfm.is_position_in_water(chest_pos)
+
+	# Advance the surface-bob phase while in water; reset on exit so
+	# each swim starts at phase 0 (no jarring mid-cycle pop).
+	if _in_water:
+		_swim_bob_t += get_physics_process_delta_time()
+	else:
+		_swim_bob_t = 0.0
 
 	# Drive the underwater camera tint. set_active is idempotent —
 	# the filter only updates visibility on actual state changes.
