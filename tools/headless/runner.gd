@@ -43,6 +43,8 @@ func _initialize() -> void:
 			quit(_codec())
 		"wmat":
 			quit(_wmat())
+		"shader":
+			quit(_shader())
 		"spike", "phase2", "gen":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
@@ -245,6 +247,49 @@ func _spike_report() -> int:
 	print("[SPIKE] terrain=%s %s" % [terrain.get_class(), " ".join(detail)])
 	print("[SPIKE] RESULT=%s streams_headless=%s" % ["PASS" if streamed else "NO", "yes" if streamed else "no"])
 	return 0 if streamed else 0   # never hard-fail: this answers a question, doesn't gate
+
+
+# ============================================================
+# SHADER — water.gdshader parses/compiles (Phase 5/6)
+# ============================================================
+# Godot parses shader code on load even under --headless (dummy
+# renderer): a syntax/semantic error prints "SHADER ERROR" / sets the
+# shader invalid. This catches the class of mistakes a no-GPU run CAN
+# catch; the *visual* result (flow animation, no foam, F6 modes) is
+# the designer's end-of-build pass — headless cannot rasterize.
+func _shader() -> int:
+	var path := "res://assets/shaders/water_material.tres"
+	if not ResourceLoader.exists(path):
+		print("[SHADER] RESULT=FAIL reason=missing %s" % path)
+		return 1
+	var mat = load(path)
+	if mat == null:
+		print("[SHADER] RESULT=FAIL reason=material_load_null")
+		return 1
+	var sh = mat.get("shader")
+	if sh == null:
+		print("[SHADER] RESULT=FAIL reason=no_shader_on_material")
+		return 1
+	var code: String = sh.get("code")
+	var n_dbg := code.count("debug_mode ==")
+	# Foam is REMOVED when its CODE is gone — i.e. no foam/surface_motion
+	# UNIFORM declarations and no foam_color identifier in expressions.
+	# (The word "foam" still appears in explanatory comments — "#15 foam
+	# fully removed" — which is fine; only real code counts.)
+	var has_foam := code.find("uniform float surface_motion_strength") != -1 \
+		or code.find("uniform vec3 foam_color") != -1 \
+		or code.find("uniform float foam_wind_ref") != -1 \
+		or code.find("surface_ripple_scale") != -1
+	# Flow animation must be present (it replaces the foam).
+	var has_flow := code.find("decode_flow") != -1 and code.find("flow_motion_strength") != -1
+	print("[SHADER] water_material.tres loaded; code_len=%d debug_branches=%d foam_code=%s flow_code=%s" % [code.length(), n_dbg, has_foam, has_flow])
+	# If RenderingServer reports the shader invalid, get_shader_uniform_list
+	# is empty / load emitted SHADER ERROR (grepped by the caller).
+	var ul = RenderingServer.get_shader_parameter_list(sh.get_rid()) if sh.get_rid().is_valid() else []
+	print("[SHADER] uniforms_visible=%d (rid_valid=%s)" % [ul.size(), sh.get_rid().is_valid()])
+	var ok := (not has_foam) and has_flow and n_dbg >= 5
+	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5])
+	return 0 if ok else 1
 
 
 # ============================================================
