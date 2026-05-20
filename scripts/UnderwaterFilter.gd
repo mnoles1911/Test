@@ -108,17 +108,13 @@ extends CanvasLayer
 
 
 # --- Behaviour knobs -----------------------------------------------------
-# Transition durations. C15 (2026-05-20) collapses both to 0 — instant
-# snap, Minecraft-style. The previous 0.08s/0.12s tween combined with
-# the asymmetric LEAD on Player3D produced backward hysteresis that
-# flickered the filter at the surface transition. With an instant
-# snap, no partial-fade window exists, so no LEAD is needed and no
-# flicker is possible.
-#
-# Raise these toward 0.10 if you want a perceptible smooth cross-fade
-# at the surface boundary (will trade flicker risk for that softness).
-# transition_seconds is the legacy export, kept for .tscn back-compat.
-@export var transition_seconds: float = 0.5
+# LEGACY exports — kept only for .tscn back-compat. C16 (2026-05-20)
+# removed the cross-fade tween entirely; set_active now writes env
+# params directly on the same frame the player crossed the surface.
+# True Minecraft-style instant snap. These values are no longer read
+# by any code path. Leaving them so an inspector override on the node
+# doesn't break loading.
+@export var transition_seconds: float = 0.0
 @export var submerge_transition_seconds: float = 0.0
 @export var emerge_transition_seconds: float = 0.0
 # Sun.light_energy peak — DayNightCycle uses 2.2 at noon (see
@@ -167,6 +163,9 @@ var _underwater_fog_volume: FogVolume = null
 # existing motes fade out gracefully when the player surfaces instead
 # of popping out mid-flight.
 var _underwater_particulates: GPUParticles3D = null
+# C16 removed the cross-fade tween entirely (Minecraft-style instant
+# snap). Variable retained as null-only for any external reference
+# that may still poke at it; can be deleted in a follow-up.
 var _tween: Tween = null
 var _submerged: bool = false
 
@@ -215,18 +214,12 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	# While submerged, continuously re-target the underwater preset
-	# values from the live sun brightness. The tween started in
-	# set_active(true) handles the *transition*; once it finishes, we
-	# keep the env in sync with day/night here so a sunrise / sunset
-	# while the player is underwater is reflected smoothly.
+	# values from the live sun brightness so a sunrise / sunset while
+	# the player is underwater is reflected smoothly. NO tween-fight
+	# check needed (C16 removed the tween entirely).
 	if not _submerged:
 		return
 	if _env == null:
-		return
-	# Only touch env fog params when no tween is mid-flight — letting
-	# the tween finish prevents fighting it. After the tween finishes,
-	# we own the values directly and lerp toward day/night targets.
-	if _tween != null and _tween.is_running():
 		return
 	var mix: float = _sun_day_mix()
 	_env.volumetric_fog_density = lerpf(
@@ -260,19 +253,18 @@ func _process(_delta: float) -> void:
 		if _water_mat != null:
 			_water_mat.set_shader_parameter("underwater_depth_meters", depth)
 			_water_mat.set_shader_parameter("depth_for_full_dark", depth_full_dark_meters)
-		# Depth-modulate env volumetric_fog_density. Only do this once
-		# the submerge tween has settled (else we'd fight the tween).
-		if (_tween == null or not _tween.is_running()):
-			var depth_t: float = clampf(depth / maxf(depth_full_dark_meters, 0.5), 0.0, 1.0)
-			var base_density: float = lerpf(
-				underwater_fog_density_night,
-				underwater_fog_density_noon,
-				mix)
-			var density_mult: float = lerpf(
-				depth_shallow_density_multiplier,
-				depth_deep_density_multiplier,
-				depth_t)
-			_env.volumetric_fog_density = base_density * density_mult
+		# Depth-modulate env volumetric_fog_density (no tween to fight
+		# anymore — C16 removed it). Density continuously tracks depth.
+		var depth_t: float = clampf(depth / maxf(depth_full_dark_meters, 0.5), 0.0, 1.0)
+		var base_density: float = lerpf(
+			underwater_fog_density_night,
+			underwater_fog_density_noon,
+			mix)
+		var density_mult: float = lerpf(
+			depth_shallow_density_multiplier,
+			depth_deep_density_multiplier,
+			depth_t)
+		_env.volumetric_fog_density = base_density * density_mult
 
 
 func set_active(submerged: bool) -> void:
@@ -318,68 +310,36 @@ func set_active(submerged: bool) -> void:
 		_underwater_particulates.emitting = submerged
 		if submerged:
 			_underwater_particulates.restart()
-	# Tween the env fog and sun god-ray energy between surface and
-	# underwater presets. submerge → underwater (target depends on
-	# live sun mix); emerge → surface baseline.
+	# DIRECT ASSIGNMENT — Minecraft-style instant snap (C16 2026-05-20).
+	# No tween. The env params are set in the same frame as set_active
+	# fires, on the same frame Player3D detected the crossing, on the
+	# same frame the camera enters/exits water. Zero intermediate state
+	# = zero "ramping up" frames the player can perceive.
 	if _env == null:
 		return
-	# Kill any in-flight tween so we don't fight a still-running one
-	# (e.g. player bobs at the surface).
-	if _tween != null:
-		_tween.kill()
-	# Asymmetric tween duration (designer pass 2026-05-20). Submerge is
-	# near-instant so the underwater state activates before the player
-	# can perceive a "still-above-water" gap as they sink. Emerge stays
-	# at the slower 0.5s so the dark fog smoothly cross-fades out
-	# (instant-snap on emerge would be a visual jolt back to the bright
-	# surface look).
-	var dur: float = submerge_transition_seconds if submerged else emerge_transition_seconds
-	_tween = create_tween()
-	_tween.set_parallel(true)
-	_tween.set_trans(Tween.TRANS_SINE)
-	_tween.set_ease(Tween.EASE_IN_OUT)
 	if submerged:
 		var mix: float = _sun_day_mix()
-		var target_density: float = lerpf(
+		_env.volumetric_fog_density = lerpf(
 			underwater_fog_density_night, underwater_fog_density_noon, mix)
-		var target_albedo: Color = underwater_fog_albedo_night.lerp(
+		_env.volumetric_fog_albedo = underwater_fog_albedo_night.lerp(
 			underwater_fog_albedo_noon, mix)
-		var target_emission: Color = underwater_fog_emission_night.lerp(
+		_env.volumetric_fog_emission = underwater_fog_emission_night.lerp(
 			underwater_fog_emission_noon, mix)
-		var target_rays: float = lerpf(
-			underwater_god_ray_energy_night,
-			underwater_god_ray_energy_noon,
-			mix)
-		_tween.tween_property(_env, "volumetric_fog_density",
-			target_density, dur)
-		_tween.tween_property(_env, "volumetric_fog_albedo",
-			target_albedo, dur)
-		_tween.tween_property(_env, "volumetric_fog_emission",
-			target_emission, dur)
-		# sky_affect and ambient_inject — drop these underwater so the
-		# fog isn't tinted by the bright sky panorama (which produced
-		# the "washed sky through water" screenshot 2026-05-20).
-		_tween.tween_property(_env, "volumetric_fog_sky_affect",
-			underwater_fog_sky_affect, dur)
-		_tween.tween_property(_env, "volumetric_fog_ambient_inject",
-			underwater_fog_ambient_inject, dur)
+		_env.volumetric_fog_sky_affect = underwater_fog_sky_affect
+		_env.volumetric_fog_ambient_inject = underwater_fog_ambient_inject
 		if _sun != null:
-			_tween.tween_property(_sun, "light_volumetric_fog_energy",
-				target_rays, dur)
+			_sun.light_volumetric_fog_energy = lerpf(
+				underwater_god_ray_energy_night,
+				underwater_god_ray_energy_noon,
+				mix)
 	else:
-		_tween.tween_property(_env, "volumetric_fog_density",
-			surface_fog_density, dur)
-		_tween.tween_property(_env, "volumetric_fog_albedo",
-			surface_fog_albedo, dur)
-		_tween.tween_property(_env, "volumetric_fog_emission",
-			surface_fog_emission, dur)
-		_tween.tween_property(_env, "volumetric_fog_sky_affect",
-			surface_fog_sky_affect, dur)
-		_tween.tween_property(_env, "volumetric_fog_ambient_inject",
-			surface_fog_ambient_inject, dur)
+		_env.volumetric_fog_density = surface_fog_density
+		_env.volumetric_fog_albedo = surface_fog_albedo
+		_env.volumetric_fog_emission = surface_fog_emission
+		_env.volumetric_fog_sky_affect = surface_fog_sky_affect
+		_env.volumetric_fog_ambient_inject = surface_fog_ambient_inject
 		if _sun != null:
-			_tween.tween_property(_sun, "light_volumetric_fog_energy",
-				surface_god_ray_energy, dur)
+			_sun.light_volumetric_fog_energy = surface_god_ray_energy
 
 
 func _sun_day_mix() -> float:
