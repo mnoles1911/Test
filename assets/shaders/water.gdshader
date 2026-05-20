@@ -178,6 +178,14 @@ uniform vec3 foam_color : source_color = vec3(0.92, 0.96, 1.0);
 uniform float foam_edge_dist : hint_range(0.0, 4.0) = 0.5;
 uniform float foam_strength : hint_range(0.0, 1.0) = 0.85;
 
+// --- §2c side-face camouflage knobs (2026-05-19) ---
+// side_color = mix(water_tint_color * side_tint_brighten,
+//                  sky_reflection_color, side_sky_mix)
+// The water_tint_color base (0.10,0.30,0.42) alone read too dark on
+// LOD-seam sides — designer wanted brighter + a fraction of sky.
+uniform float side_tint_brighten : hint_range(1.0, 3.0) = 1.7;
+uniform float side_sky_mix : hint_range(0.0, 1.0) = 0.30;
+
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
@@ -391,7 +399,8 @@ void fragment() {
 		// lakebed can't leak through the geometric seam. Auto-sloped
 		// fluid tops (n.y ≳ 0.30) get full `surface`/`alpha` — the
 		// recent murk/shallow_alpha/Fresnel tune is preserved.
-		vec3 side_color = water_tint_color.rgb;
+		vec3 side_base = water_tint_color.rgb * side_tint_brighten;
+		vec3 side_color = mix(side_base, sky_reflection_color.rgb, side_sky_mix);
 		float side_alpha = max(shallow_alpha, 0.92);
 		ALBEDO = mix(side_color, surface, top_weight);
 		ALPHA = clamp(mix(side_alpha, alpha, top_weight), 0.0, 1.0);

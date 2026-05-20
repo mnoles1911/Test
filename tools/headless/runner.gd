@@ -349,7 +349,8 @@ func _shader() -> int:
 	# visible forever. OVERRIDE = the .tres wins; DEFAULT = shader value.
 	var watch := ["depth_fade_distance", "shallow_alpha", "water_murk",
 		"water_extinction", "reflection_strength", "reflection_floor",
-		"foam_strength", "foam_edge_dist", "flow_motion_strength"]
+		"foam_strength", "foam_edge_dist", "flow_motion_strength",
+		"side_tint_brighten", "side_sky_mix"]
 	for w in watch:
 		var ov = mat.get("shader_parameter/" + w)
 		if ov != null:

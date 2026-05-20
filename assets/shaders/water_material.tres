@@ -80,6 +80,18 @@ shader_parameter/reflection_floor = 0.05
 ; the height delta scales with both amp and per-noise frequencies.
 shader_parameter/flow_motion_strength = 0.25
 
+; --- §2c LOD-seam side-face camouflage colour (2026-05-19) ---
+; LOD-seam vertical fluid polygons were "flatter but too dark" with
+; just water_tint_color (0.10,0.30,0.42). Brighten the tint base 1.7×
+; and blend 30% sky_reflection_color so seam fragments visually merge
+; into the lit top water instead of reading as dark stripes.
+; side_color ≈ mix((0.17,0.51,0.71), (0.55,0.70,0.85), 0.30)
+;            = (0.28, 0.57, 0.75) — bright mid-blue with sky lift.
+; Raise side_sky_mix toward 0.5 if seams still read darker than the
+; tops; raise side_tint_brighten toward 2.0 for more saturation.
+shader_parameter/side_tint_brighten = 1.7
+shader_parameter/side_sky_mix = 0.30
+
 ; --- LOD-SEAM SUPPRESSION DISTANCE GATE (2026-05-18 readability fix) ---
 ; The dark-grid side-face suppression now only acts at DISTANCE so it
 ; stops fading out the near shallow water you look straight down into.
