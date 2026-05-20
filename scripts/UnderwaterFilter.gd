@@ -66,16 +66,22 @@ extends CanvasLayer
 # brighter / more readable underwater look.
 @export var underwater_fog_albedo_noon: Color = Color(0.02, 0.06, 0.11, 1.0)
 @export var underwater_fog_albedo_night: Color = Color(0.005, 0.02, 0.04, 1.0)
-# Emission near-zero — albedo + scene lighting define the colour,
-# fog never "glows on its own". Keeping it at 0 underwater makes the
-# fog read as honest absorption (real water doesn't emit light).
-@export var underwater_fog_emission_noon: Color = Color(0.00, 0.00, 0.00, 1.0)
-@export var underwater_fog_emission_night: Color = Color(0.00, 0.00, 0.00, 1.0)
+# Emission — small non-zero values 2026-05-20 (was 0,0,0) so the
+# underwater fog has a baseline glow even when the directional sun
+# isn't contributing strongly. Without this, dawn/dusk underwater
+# looked pitch-black because sun.light_volumetric_fog_energy alone
+# can't carry the look at low sun angles. The emission gives the fog
+# a constant dim blue glow that ambient light adds to.
+@export var underwater_fog_emission_noon: Color = Color(0.04, 0.10, 0.16, 1.0)
+@export var underwater_fog_emission_night: Color = Color(0.005, 0.015, 0.025, 1.0)
 # Sun.light_volumetric_fog_energy — the god-ray dial. 0 = invisible
 # (default Godot), bigger = brighter shafts. 6.0 at noon reads as
-# "clear sunbeams in the water column"; 0.2 at night = faint moon hint.
+# "clear sunbeams in the water column". Night raised 2026-05-20 from
+# 0.2 → 1.5: at dawn/dusk the sun is at a low angle and the directional
+# light contribution to vol-fog drops fast on the mix curve; boosting
+# the night anchor keeps SOMETHING reading as god rays at all times.
 @export var underwater_god_ray_energy_noon: float = 6.0
-@export var underwater_god_ray_energy_night: float = 0.2
+@export var underwater_god_ray_energy_night: float = 1.5
 
 
 # --- Above-water (surface) restore values --------------------------------
@@ -94,11 +100,11 @@ extends CanvasLayer
 @export var surface_fog_ambient_inject: float = 1.0
 # Underwater overrides — much lower so the fog reads as its own colour,
 # not as a tinted sky. 0.0 sky_affect = no sky bleed at all underwater.
-# 0.3 ambient_inject = some ambient still feeds the fog (otherwise it
-# goes pitch-black at night) but the look is dominated by the
-# directional sun's god-ray contribution.
+# ambient_inject raised 2026-05-20 from 0.3 → 0.5 so the diffuse sky
+# brightness feeds the fog more — at dawn/dusk shallow sun angles, the
+# directional god rays alone aren't enough; ambient carries the look.
 @export var underwater_fog_sky_affect: float = 0.0
-@export var underwater_fog_ambient_inject: float = 0.3
+@export var underwater_fog_ambient_inject: float = 0.5
 
 
 # --- Behaviour knobs -----------------------------------------------------
@@ -129,9 +135,26 @@ extends CanvasLayer
 # this script stays headless-safe.
 const WATER_MATERIAL_PATH := "res://assets/shaders/water_material.tres"
 
+# Depth-gradient parameters. UnderwaterFilter snapshots the player's Y
+# at the submerge moment as the "water surface reference" and pushes
+# the current depth to both the water shader (back-face brightness
+# attenuation) and the FogVolume's fog shader (depth-density ramp).
+# Designer report 2026-05-20: water should feel "shallow = bright +
+# clear, deep = dim + thick".
+@export var depth_full_dark_meters: float = 12.0
+@export var depth_shallow_density_multiplier: float = 0.45
+@export var depth_deep_density_multiplier: float = 1.30
+# Snapshot of the player's Y at the most recent set_active(true).
+# Approximates the water surface Y; refined each new submersion.
+var _submerge_y_snapshot: float = 0.0
+
 var _env: Environment = null
 var _sun: DirectionalLight3D = null
 var _water_mat: ShaderMaterial = null
+# Cached reference to the FogVolume's material so we can push depth
+# uniforms to it per-frame. Resolved in _ready from the FogVolume
+# group lookup.
+var _fog_volume_mat: ShaderMaterial = null
 # Optional animated-noise FogVolume (group "underwater_fog_volume").
 # Adds drifting density variety on top of the env's flat underwater
 # baseline. Toggled on/off with .visible from set_active so it costs
@@ -174,6 +197,7 @@ func _ready() -> void:
 	_underwater_fog_volume = get_tree().get_first_node_in_group("underwater_fog_volume") as FogVolume
 	if _underwater_fog_volume != null:
 		_underwater_fog_volume.visible = false
+		_fog_volume_mat = _underwater_fog_volume.material as ShaderMaterial
 		print("[UnderwaterFilter] resolved UnderwaterFogVolume (variety noise).")
 	else:
 		print("[UnderwaterFilter] no FogVolume in 'underwater_fog_volume' group — variety patches disabled.")
@@ -223,6 +247,31 @@ func _process(_delta: float) -> void:
 		var light_dir_world: Vector3 = -_sun.global_transform.basis.z.normalized()
 		_water_mat.set_shader_parameter("sun_direction_world", light_dir_world)
 
+	# Depth gradient: compute the player's current depth below the
+	# surface snapshot, push to BOTH the water shader (back-face
+	# brightness attenuation) and the env fog (density modulation).
+	# Shallow → less fog + brighter underside; deep → dense fog + dim
+	# underside.
+	var player := get_tree().get_first_node_in_group("player")
+	if player != null and player is Node3D:
+		var depth: float = maxf(0.0, _submerge_y_snapshot - (player as Node3D).global_position.y)
+		if _water_mat != null:
+			_water_mat.set_shader_parameter("underwater_depth_meters", depth)
+			_water_mat.set_shader_parameter("depth_for_full_dark", depth_full_dark_meters)
+		# Depth-modulate env volumetric_fog_density. Only do this once
+		# the submerge tween has settled (else we'd fight the tween).
+		if (_tween == null or not _tween.is_running()):
+			var depth_t: float = clampf(depth / maxf(depth_full_dark_meters, 0.5), 0.0, 1.0)
+			var base_density: float = lerpf(
+				underwater_fog_density_night,
+				underwater_fog_density_noon,
+				mix)
+			var density_mult: float = lerpf(
+				depth_shallow_density_multiplier,
+				depth_deep_density_multiplier,
+				depth_t)
+			_env.volumetric_fog_density = base_density * density_mult
+
 
 func set_active(submerged: bool) -> void:
 	# Idempotent — Player3D._update_water_state calls every frame; we
@@ -230,6 +279,21 @@ func set_active(submerged: bool) -> void:
 	if _submerged == submerged:
 		return
 	_submerged = submerged
+	# Snapshot the player's Y at submerge as the "water surface" reference
+	# for depth-gradient calculations in _process. Cheap, single read per
+	# submersion. Approximate — refined each new submersion if the player
+	# enters a different water body at a different Y.
+	if submerged:
+		var player := get_tree().get_first_node_in_group("player")
+		if player != null and player is Node3D:
+			_submerge_y_snapshot = (player as Node3D).global_position.y + 0.85
+			# +0.85 ≈ HEAD_OFFSET so the snapshot is the actual surface
+			# Y, not the player pivot Y (head was just below surface).
+		# Push the surface Y to the FogVolume's fog shader so it can do
+		# depth-modulated density even before the first _process tick.
+		if _fog_volume_mat != null:
+			_fog_volume_mat.set_shader_parameter("water_surface_y", _submerge_y_snapshot)
+			_fog_volume_mat.set_shader_parameter("depth_full_density_meters", depth_full_dark_meters)
 	# Tint rect: instant toggle (matches v1 behaviour; no fade needed
 	# because the alpha is small).
 	_rect.visible = submerged

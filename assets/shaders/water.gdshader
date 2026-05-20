@@ -215,9 +215,12 @@ uniform float side_sky_mix : hint_range(0.0, 1.0) = 0.30;
 // submerged. Default points straight down so the glint sits at the
 // zenith if the autoload isn't pushing yet (dev scenes etc.).
 uniform vec3 sun_direction_world = vec3(0.0, -1.0, 0.0);
-// Glint tightness — higher = smaller, harder bright spot. Tune for the
-// "sunny patch on the underside of the surface" size.
-uniform float underside_sun_glint_power : hint_range(2.0, 256.0) = 48.0;
+// Glint tightness — higher = smaller, harder bright spot. v1 was 48
+// (very tight at sun-zenith only); 2026-05-20 designer report "no
+// rays at dawn/dusk shallow angles" → widened to 24 so the bright
+// spot reads at low sun angles too. Halve for an even wider halo
+// if dawn/dusk still feels dark.
+uniform float underside_sun_glint_power : hint_range(2.0, 256.0) = 24.0;
 uniform float underside_sun_glint_strength : hint_range(0.0, 4.0) = 1.6;
 // Underside alpha — near-opaque so the dark deep-water ceiling reads
 // against the brightly-lit underwater fog beyond the polygon. v1 used
@@ -227,6 +230,24 @@ uniform float underside_sun_glint_strength : hint_range(0.0, 4.0) = 1.6;
 uniform float underside_alpha : hint_range(0.0, 1.0) = 0.98;
 // Underside glint tint — warm-white. Multiplied by glint mask.
 uniform vec3 underside_glint_color : source_color = vec3(1.0, 0.95, 0.80);
+
+// === DEPTH GRADIENT (added 2026-05-20) ===================================
+// Player's submerged depth, in metres below where they entered the water.
+// UnderwaterFilter.gd snapshots the player's Y at the submerge moment
+// and pushes this uniform every frame as `surface_snapshot_y - current_y`.
+// Used by the back-face branch below to fade brightness with depth.
+uniform float underwater_depth_meters = 0.0;
+// At this depth the underside reads fully dark (the depth_attenuation
+// term reaches 0). Linear ramp between 0 m (full brightness) and this.
+uniform float depth_for_full_dark : hint_range(1.0, 40.0) = 12.0;
+// Skylight ambient bleed — even at low sun angles, the bright sky
+// above the water surface should lift the underside slightly so the
+// "looking up" view isn't pitch black. Scales linearly with
+// depth_attenuation (shallow = full bleed, deep = none).
+uniform float skylight_ambient_strength : hint_range(0.0, 1.0) = 0.35;
+// Skylight bleed colour — mostly sky_reflection_color but uniform so
+// the designer can taste-tune separately.
+uniform vec3 skylight_ambient_color : source_color = vec3(0.45, 0.62, 0.80);
 
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -350,21 +371,52 @@ void fragment() {
 		// "alive" feel).
 		glint *= (0.85 + 0.15 * clamp(n.y, 0.0, 1.0));
 
-		// 2026-05-20 designer report: from underwater the surface read as
-		// a flat colour, none of the moving ripple animation visible. The
-		// wave_height field (captured above in the flow block, range 0..1)
-		// drives a brightness/colour modulation across the underside so
-		// the SAME waves the player sees from above are visible as a
-		// dappled pattern from below. Peaks (h→1) read brighter and lean
-		// slightly toward the water-tint colour (fake "caustic" focusing
-		// of sun light through the wave lens); troughs (h→0) stay dark
-		// deep_water_color. Pattern animates with the same flow speed
-		// and direction as the surface ripple, so it visually matches.
-		float wave_brightness = mix(0.70, 1.30, wave_height);
-		vec3 caustic_lift = mix(vec3(0.0), water_tint_color * 0.35, wave_height);
-		vec3 underside = deep_water_color * wave_brightness
-		               + caustic_lift
-		               + underside_glint_color * glint;
+		// 2026-05-20 designer report (pass 2): ripple bands ×5 more
+		// prominent so they're plainly visible even far from the surface,
+		// PLUS depth-graded brightness (shallow = much brighter than
+		// deep), PLUS skylight ambient bleed so the underside isn't
+		// pitch-dark when the sun is at a low angle.
+		//
+		// Wave-pattern brightness: huge ratio between peaks and troughs.
+		//   trough (h=0):     deep_water * 0.30 — near-black
+		//   peak   (h=1):     deep_water * 2.50 + water_tint * 1.5 + sun warm
+		// + caustic_lift adds water_tint colour at peaks (refraction-style
+		//   focusing of sky-light through the wave lens).
+		// + sun_caustic adds a warm tint at peaks scaled by wave_height
+		//   squared so it's concentrated on the actual peaks (lensing).
+		float wave_brightness = mix(0.30, 2.50, wave_height);
+		vec3 caustic_lift = mix(vec3(0.0), water_tint_color * 1.5, wave_height);
+		vec3 sun_caustic = mix(vec3(0.0),
+		                        underside_glint_color * 0.5,
+		                        wave_height * wave_height);
+		vec3 wave_underside = deep_water_color * wave_brightness
+		                    + caustic_lift
+		                    + sun_caustic;
+
+		// Depth attenuation — fades underside brightness from 1.0 at
+		// surface to ~0 at depth_for_full_dark. Player's depth pushed
+		// by UnderwaterFilter; defaults to 0 (no attenuation) when above
+		// water or when the uniform hasn't been written yet.
+		float depth_attenuation = 1.0 - clamp(
+			underwater_depth_meters / max(depth_for_full_dark, 0.5),
+			0.0, 1.0);
+		// At shallow depths, lift everything; at deep, crush it.
+		// 0.4 minimum keeps the underside from going pitch-black even
+		// at full depth (some light always makes it through).
+		float depth_factor = 0.4 + 0.6 * depth_attenuation;
+
+		// Skylight ambient: a sun-direction-INDEPENDENT lift so the
+		// underside reads as "light coming through water" at any time
+		// of day, not only when the sun is directly overhead. Fades
+		// with depth.
+		vec3 skylight_bleed = skylight_ambient_color
+		                    * skylight_ambient_strength
+		                    * depth_attenuation;
+
+		vec3 underside = wave_underside * depth_factor
+		               + skylight_bleed
+		               + underside_glint_color * glint
+		                  * (0.5 + 0.5 * depth_attenuation);
 		// Unlit emission so the bright spot reads at any time of day
 		// (sun could be below horizon; we still want some glow from
 		// scattered/refracted light through the surface — at night this

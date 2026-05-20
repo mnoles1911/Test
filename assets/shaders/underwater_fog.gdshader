@@ -44,6 +44,23 @@ uniform vec3 vel1 = vec3(0.30, 0.05, 0.20);
 uniform vec3 vel2 = vec3(-0.20, 0.10, 0.35);
 uniform vec3 vel3 = vec3(0.10, -0.08, -0.25);
 
+// === DEPTH GRADIENT (added 2026-05-20) ===================================
+// Water surface Y, pushed by UnderwaterFilter on submerge (a snapshot
+// of the player's Y when their head went under). Fog DENSITY ramps
+// up as WORLD_POSITION.y drops below this — shallow = less, deep = more.
+// Default is high so above-water (player not submerged, FogVolume
+// hidden anyway) doesn't see depth-density behaviour.
+uniform float water_surface_y = 999.0;
+// Depth (m below water_surface_y) at which the depth ramp reaches its
+// full DEEP multiplier. Below this, density is capped at the deep
+// multiplier and doesn't keep climbing.
+uniform float depth_full_density_meters : hint_range(1.0, 40.0) = 12.0;
+// Density multiplier at the surface (depth=0) and at full depth.
+// surface_multiplier < 1 ⇒ shallow water has LESS fog than the env
+// baseline alone; deep_multiplier > 1 ⇒ deep water has MORE.
+uniform float surface_density_multiplier : hint_range(0.0, 2.0) = 0.35;
+uniform float deep_density_multiplier : hint_range(0.5, 4.0) = 1.8;
+
 
 // === 3D VALUE NOISE (asset-free) =========================================
 float _h3(vec3 p) {
@@ -81,5 +98,16 @@ void fog() {
     float modulated = base_density * mix(1.0 - noise_strength,
                                          1.0 + noise_strength,
                                          combined);
-    DENSITY = max(modulated, 0.0);
+
+    // Depth gradient (added 2026-05-20). Fog gets DENSER as WORLD_POSITION
+    // drops below water_surface_y. The deeper you swim, the murkier and
+    // thicker the water reads. At the surface itself (depth=0) the
+    // surface_density_multiplier applies — usually <1 so shallow water
+    // feels more "open" than deep water.
+    float depth_below_surface = max(0.0, water_surface_y - WORLD_POSITION.y);
+    float depth_t = clamp(depth_below_surface / max(depth_full_density_meters, 0.5),
+                          0.0, 1.0);
+    float depth_mult = mix(surface_density_multiplier, deep_density_multiplier, depth_t);
+
+    DENSITY = max(modulated * depth_mult, 0.0);
 }
