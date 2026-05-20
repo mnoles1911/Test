@@ -86,6 +86,19 @@ extends CanvasLayer
 @export var surface_fog_albedo: Color = Color(0.85, 0.88, 0.95, 1.0)
 @export var surface_fog_emission: Color = Color(0.00, 0.00, 0.00, 1.0)
 @export var surface_god_ray_energy: float = 0.0
+# Above-water sky_affect / ambient_inject — the Environment_1 defaults.
+# UnderwaterFilter pushes them down on submerge so the underwater fog
+# isn't lifted by the bright sky panorama (which was bleeding through
+# as a "washed sky" look in the 2026-05-20 designer screenshot).
+@export var surface_fog_sky_affect: float = 0.5
+@export var surface_fog_ambient_inject: float = 1.0
+# Underwater overrides — much lower so the fog reads as its own colour,
+# not as a tinted sky. 0.0 sky_affect = no sky bleed at all underwater.
+# 0.3 ambient_inject = some ambient still feeds the fog (otherwise it
+# goes pitch-black at night) but the look is dominated by the
+# directional sun's god-ray contribution.
+@export var underwater_fog_sky_affect: float = 0.0
+@export var underwater_fog_ambient_inject: float = 0.3
 
 
 # --- Behaviour knobs -----------------------------------------------------
@@ -151,10 +164,17 @@ func _ready() -> void:
 	_underwater_fog_volume = get_tree().get_first_node_in_group("underwater_fog_volume") as FogVolume
 	if _underwater_fog_volume != null:
 		_underwater_fog_volume.visible = false
+		print("[UnderwaterFilter] resolved UnderwaterFogVolume (variety noise).")
+	else:
+		print("[UnderwaterFilter] no FogVolume in 'underwater_fog_volume' group — variety patches disabled.")
 	# Optional drifting particulates. Same fail-soft pattern.
 	_underwater_particulates = get_tree().get_first_node_in_group("underwater_particulates") as GPUParticles3D
 	if _underwater_particulates != null:
 		_underwater_particulates.emitting = false
+		_underwater_particulates.visible = false
+		print("[UnderwaterFilter] resolved UnderwaterParticulates.")
+	else:
+		print("[UnderwaterFilter] no GPUParticles3D in 'underwater_particulates' group — motes disabled.")
 
 
 func _process(_delta: float) -> void:
@@ -209,11 +229,19 @@ func set_active(submerged: bool) -> void:
 	# below cross-fades the static portion).
 	if _underwater_fog_volume != null:
 		_underwater_fog_volume.visible = submerged
-	# Particulates: flip .emitting, NOT .visible — existing in-flight
-	# motes finish their lifetime so the player sees them gently fade
-	# instead of pop out when surfacing.
+	# Particulates: toggle BOTH .visible and .emitting. v1 only set
+	# .emitting=false on emerge, but existing motes (8-10 s lifetime)
+	# then drifted UPWARD past the water surface and were visible
+	# floating in mid-air for several seconds — designer reported the
+	# bug 2026-05-20. Setting .visible=false on emerge kills them
+	# immediately. On submerge, restart the system so new motes emit
+	# fresh around the player rather than continuing wherever the
+	# previous batch left off.
 	if _underwater_particulates != null:
+		_underwater_particulates.visible = submerged
 		_underwater_particulates.emitting = submerged
+		if submerged:
+			_underwater_particulates.restart()
 	# Tween the env fog and sun god-ray energy between surface and
 	# underwater presets. submerge → underwater (target depends on
 	# live sun mix); emerge → surface baseline.
@@ -245,6 +273,13 @@ func set_active(submerged: bool) -> void:
 			target_albedo, transition_seconds)
 		_tween.tween_property(_env, "volumetric_fog_emission",
 			target_emission, transition_seconds)
+		# sky_affect and ambient_inject — drop these underwater so the
+		# fog isn't tinted by the bright sky panorama (which produced
+		# the "washed sky through water" screenshot 2026-05-20).
+		_tween.tween_property(_env, "volumetric_fog_sky_affect",
+			underwater_fog_sky_affect, transition_seconds)
+		_tween.tween_property(_env, "volumetric_fog_ambient_inject",
+			underwater_fog_ambient_inject, transition_seconds)
 		if _sun != null:
 			_tween.tween_property(_sun, "light_volumetric_fog_energy",
 				target_rays, transition_seconds)
@@ -255,6 +290,10 @@ func set_active(submerged: bool) -> void:
 			surface_fog_albedo, transition_seconds)
 		_tween.tween_property(_env, "volumetric_fog_emission",
 			surface_fog_emission, transition_seconds)
+		_tween.tween_property(_env, "volumetric_fog_sky_affect",
+			surface_fog_sky_affect, transition_seconds)
+		_tween.tween_property(_env, "volumetric_fog_ambient_inject",
+			surface_fog_ambient_inject, transition_seconds)
 		if _sun != null:
 			_tween.tween_property(_sun, "light_volumetric_fog_energy",
 				surface_god_ray_energy, transition_seconds)

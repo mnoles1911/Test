@@ -12,7 +12,7 @@
 [ext_resource type="Texture2D" uid="uid://jpmo8712egdx" path="res://assets/sky/dusk.jpg" id="12_dusk"]
 [ext_resource type="Texture2D" uid="uid://cjdhv5s5h43i6" path="res://assets/sky/night.jpg" id="13_night"]
 [ext_resource type="VoxelBlockyLibrary" uid="uid://bd1vmr20la2x0" path="res://assets/voxels/blocky_library.tres" id="14_blocky_library"]
-[ext_resource type="Shader" path="res://assets/shaders/underwater_fog.gdshader" id="15_uw_fog_shader"]
+[ext_resource type="Shader" uid="uid://ccwn70msmue1i" path="res://assets/shaders/underwater_fog.gdshader" id="15_uw_fog_shader"]
 
 [sub_resource type="Sky" id="SkyResource_1"]
 sky_material = ExtResource("9_sky_blend")
@@ -45,6 +45,15 @@ volumetric_fog_emission_energy = 0.0
 volumetric_fog_length = 48.0
 volumetric_fog_ambient_inject = 1.0
 volumetric_fog_sky_affect = 0.5
+
+[sub_resource type="ShaderMaterial" id="UnderwaterFogMat_1"]
+shader = ExtResource("15_uw_fog_shader")
+shader_parameter/base_density = 0.8
+shader_parameter/noise_strength = 1.2
+shader_parameter/noise_scale_xyz = Vector3(0.04, 0.06, 0.04)
+shader_parameter/vel1 = Vector3(0.3, 0.05, 0.2)
+shader_parameter/vel2 = Vector3(-0.2, 0.1, 0.35)
+shader_parameter/vel3 = Vector3(0.1, -0.08, -0.25)
 
 [sub_resource type="SphereMesh" id="SunSphereMesh"]
 radius = 25.0
@@ -110,26 +119,13 @@ size = Vector3(2, 2, 2)
 [sub_resource type="BoxShape3D" id="NoEditZone_TestShape"]
 size = Vector3(10, 10, 10)
 
-[sub_resource type="ShaderMaterial" id="UnderwaterFogMat_1"]
-shader = ExtResource("15_uw_fog_shader")
-shader_parameter/base_density = 0.6
-shader_parameter/noise_strength = 0.8
-shader_parameter/noise_scale_xyz = Vector3(0.04, 0.06, 0.04)
-shader_parameter/vel1 = Vector3(0.30, 0.05, 0.20)
-shader_parameter/vel2 = Vector3(-0.20, 0.10, 0.35)
-shader_parameter/vel3 = Vector3(0.10, -0.08, -0.25)
-
 [node name="World3D" type="Node3D" unique_id=433411702]
 script = ExtResource("4_bootstrap")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1612514652 groups=["world_environment"]]
 environment = SubResource("Environment_1")
 
-[node name="UnderwaterFogVolume" type="FogVolume" parent="." groups=["underwater_fog_volume"]]
-; Activated by UnderwaterFilter.set_active(true) on submerge. Shape =
-; SHAPE_WORLD (4) so the noise-modulated density applies wherever the
-; player is — when invisible it contributes nothing. Adds the
-; *variety/motion* on top of the env's flat underwater fog baseline.
+[node name="UnderwaterFogVolume" type="FogVolume" parent="." unique_id=1155460697 groups=["underwater_fog_volume"]]
 visible = false
 shape = 4
 material = SubResource("UnderwaterFogMat_1")

@@ -61,17 +61,23 @@ emission_energy_multiplier = 0.6
 emission_shape = 1
 emission_sphere_radius = 8.0
 direction = Vector3(0.0, 1.0, 0.0)
-spread = 35.0
-initial_velocity_min = 0.02
-initial_velocity_max = 0.08
-gravity = Vector3(0.0, 0.012, 0.0)
-damping_min = 0.4
-damping_max = 0.9
+spread = 45.0
+; Designer pass 2026-05-20: v1 init 0.02-0.08 + damping 0.4-0.9 made
+; motes effectively stop within 1 second of spawning ("imperceptible
+; drift, despawn, respawn elsewhere"). Faster init + near-zero damping
+; + meaningful upward current so they visibly travel a few metres over
+; their lifetime. Turbulence cranked so the drift swirls instead of
+; reading as straight-line trajectories.
+initial_velocity_min = 0.05
+initial_velocity_max = 0.20
+gravity = Vector3(0.0, 0.06, 0.0)
+damping_min = 0.0
+damping_max = 0.1
 scale_min = 0.4
 scale_max = 1.0
 turbulence_enabled = true
-turbulence_noise_strength = 0.08
-turbulence_noise_speed = Vector3(0.1, 0.05, 0.1)
+turbulence_noise_strength = 0.20
+turbulence_noise_speed = Vector3(0.2, 0.1, 0.2)
 
 [node name="Player3D" type="CharacterBody3D" groups=["player"]]
 script = ExtResource("1_player")
@@ -192,7 +198,7 @@ material = ExtResource("7_uw_overlay")
 ; behind as the player swims forward — exactly the "I'm moving through
 ; them" feel.
 amount = 200
-lifetime = 8.0
+lifetime = 10.0
 emitting = false
 local_coords = false
 visibility_aabb = AABB(-12, -12, -12, 24, 24, 24)
