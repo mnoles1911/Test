@@ -55,18 +55,21 @@ extends CanvasLayer
 # transition tracks DayNightCycle's own sun-brightness curve.
 # Tune in the .tscn / inspector — exported so the designer doesn't
 # have to edit GDScript to taste-test.
-@export var underwater_fog_density_noon: float = 0.30
-@export var underwater_fog_density_night: float = 0.70
-# Albedo channels are TUNED FOR "DARKER BLUE": B kept noticeably above
-# R+G so the murk reads cobalt rather than teal (the earlier 0.30 G
-# made noon read green). Raise G back toward 0.20 if you want
-# teal-leaning underwater (tropical-reef look) instead of dark cobalt.
-@export var underwater_fog_albedo_noon: Color = Color(0.06, 0.14, 0.32, 1.0)
-@export var underwater_fog_albedo_night: Color = Color(0.01, 0.03, 0.08, 1.0)
-# Emission is fog glowing on its own. Near-zero values let albedo +
-# scene lighting define the colour — keeps the look "committed dark"
-# instead of lifted/washed.
-@export var underwater_fog_emission_noon: Color = Color(0.01, 0.02, 0.03, 1.0)
+@export var underwater_fog_density_noon: float = 0.55
+@export var underwater_fog_density_night: float = 1.10
+# Albedo MATCHES water_material.tres `deep_water_color = (0.02, 0.06,
+# 0.11)` so the underwater fog and the body-of-water deep tint are
+# the SAME colour — consistency between "looking down into water from
+# above" (Beer-Lambert depth fade in water.gdshader) and "swimming
+# inside water" (this volumetric fog). Night anchor is the same
+# colour ramp pushed darker. Raise toward (0.04,0.10,0.18) for a
+# brighter / more readable underwater look.
+@export var underwater_fog_albedo_noon: Color = Color(0.02, 0.06, 0.11, 1.0)
+@export var underwater_fog_albedo_night: Color = Color(0.005, 0.02, 0.04, 1.0)
+# Emission near-zero — albedo + scene lighting define the colour,
+# fog never "glows on its own". Keeping it at 0 underwater makes the
+# fog read as honest absorption (real water doesn't emit light).
+@export var underwater_fog_emission_noon: Color = Color(0.00, 0.00, 0.00, 1.0)
 @export var underwater_fog_emission_night: Color = Color(0.00, 0.00, 0.00, 1.0)
 # Sun.light_volumetric_fog_energy — the god-ray dial. 0 = invisible
 # (default Godot), bigger = brighter shafts. 6.0 at noon reads as
@@ -96,8 +99,16 @@ extends CanvasLayer
 
 @onready var _rect: ColorRect = $TintRect
 
+# The shared water-surface material. We push `sun_direction_world` into
+# it every frame so the water.gdshader back-face branch (visible from
+# underwater) can place a soft sun glint on the underside of the
+# surface that tracks day/night. Path-load (NOT class_name preload) so
+# this script stays headless-safe.
+const WATER_MATERIAL_PATH := "res://assets/shaders/water_material.tres"
+
 var _env: Environment = null
 var _sun: DirectionalLight3D = null
+var _water_mat: ShaderMaterial = null
 var _tween: Tween = null
 var _submerged: bool = false
 
@@ -118,6 +129,13 @@ func _ready() -> void:
 		push_warning("[UnderwaterFilter] no WorldEnvironment in 'world_environment' group; vol-fog underwater murk disabled (tint rect only).")
 	if _sun == null:
 		push_warning("[UnderwaterFilter] no DirectionalLight3D in 'sun_light' group; god rays disabled.")
+	# Cache the water material so we can push sun_direction_world into
+	# it once per submerged frame. Same shared instance the bootstrap
+	# applies to every fluid model — proven by the [WaterFluidDiag]
+	# `same_as_loaded_tres=true` line in the headless probe.
+	_water_mat = load(WATER_MATERIAL_PATH) as ShaderMaterial
+	if _water_mat == null:
+		push_warning("[UnderwaterFilter] failed to load water_material.tres; underside-sun-glint disabled.")
 
 
 func _process(_delta: float) -> void:
@@ -147,6 +165,14 @@ func _process(_delta: float) -> void:
 			underwater_god_ray_energy_night,
 			underwater_god_ray_energy_noon,
 			mix)
+	# Push the live sun direction (world-space, pointing AWAY from sun,
+	# i.e. the direction sunlight travels) into the water shader so its
+	# back-face branch can render a sun glint on the underside that
+	# tracks where the sun actually is. Updated every frame so the
+	# glint follows the day/night rotation smoothly.
+	if _water_mat != null and _sun != null:
+		var light_dir_world: Vector3 = -_sun.global_transform.basis.z.normalized()
+		_water_mat.set_shader_parameter("sun_direction_world", light_dir_world)
 
 
 func set_active(submerged: bool) -> void:

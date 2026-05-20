@@ -186,6 +186,38 @@ uniform float foam_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float side_tint_brighten : hint_range(1.0, 3.0) = 1.7;
 uniform float side_sky_mix : hint_range(0.0, 1.0) = 0.30;
 
+// ============================================================
+// V3 PHASE 4a — UNDERSIDE (back-face / "looking up from underwater")
+// ============================================================
+// The shader is cull_disabled so the underside renders, but the v9/v10
+// code path assumes "looking down at water from above" — depth-fade
+// reads sky as the scene behind the water (giant thickness → 100%
+// deep_water_color blend) and Fresnel paints the surface with
+// sky_reflection_color, which together make the underside read as a
+// pale sky-tinted ceiling with no visible flow motion. The 2026-05-19
+// "atmospheric fog seems backwards" screenshot is exactly this. Below
+// we branch on FRONT_FACING: for back-faces we render a *dark* underside
+// (deep_water_color) with the SAME flow-perturbed normal animation
+// (so the surface visibly moves) and a soft sun glint where the view
+// ray points toward where the sun is shining down through the water.
+//
+// sun_direction_world: direction the sun's light TRAVELS in world space
+// (i.e. points from sun toward ground). UnderwaterFilter.gd pushes the
+// live value from the Sun DirectionalLight3D each frame while
+// submerged. Default points straight down so the glint sits at the
+// zenith if the autoload isn't pushing yet (dev scenes etc.).
+uniform vec3 sun_direction_world = vec3(0.0, -1.0, 0.0);
+// Glint tightness — higher = smaller, harder bright spot. Tune for the
+// "sunny patch on the underside of the surface" size.
+uniform float underside_sun_glint_power : hint_range(2.0, 256.0) = 48.0;
+uniform float underside_sun_glint_strength : hint_range(0.0, 4.0) = 1.6;
+// Underside alpha — mostly opaque so the dark ceiling reads, but not
+// 1.0 because we want the bright spot to feel like real sunlight
+// breaking through, not pasted on.
+uniform float underside_alpha : hint_range(0.0, 1.0) = 0.92;
+// Underside glint tint — warm-white. Multiplied by glint mask.
+uniform vec3 underside_glint_color : source_color = vec3(1.0, 0.95, 0.80);
+
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
@@ -268,6 +300,41 @@ void fragment() {
 		// (upness), so the #222 LOD-seam side slivers stay untouched.
 		n = normalize(n + vec3(h - hx, 0.0, h - hz) * (flow_normal_strength * 8.0 * amp));
 	}
+
+	// === 2.5 BACK-FACE (player is underwater looking up) ============
+	// Only override the default visual (debug_mode == 0) — non-zero
+	// debug modes fall through to keep F6 diagnostics working from
+	// below too. See uniform block "UNDERSIDE" up top for why.
+	if (!FRONT_FACING && debug_mode == 0) {
+		// World-space view direction (vertex toward camera). We need
+		// it world-space to dot against world-space sun_direction.
+		vec3 view_world = normalize(mat3(INV_VIEW_MATRIX) * VIEW);
+		// Direction from a submerged point toward the sun is the
+		// reverse of the sun's light-travel direction. Looking toward
+		// that direction is what we want to glint on.
+		vec3 to_sun = -normalize(sun_direction_world);
+		float glint_align = clamp(dot(view_world, to_sun), 0.0, 1.0);
+		float glint = pow(glint_align, underside_sun_glint_power)
+		            * underside_sun_glint_strength;
+		// Modulate glint very mildly by the wave-perturbed normal so
+		// the bright spot shimmers with the surface motion (NOT
+		// a hard wiggle — wave normal here is small, this is just
+		// "alive" feel).
+		glint *= (0.85 + 0.15 * clamp(n.y, 0.0, 1.0));
+		vec3 underside = deep_water_color + underside_glint_color * glint;
+		// Unlit emission so the bright spot reads at any time of day
+		// (sun could be below horizon; we still want some glow from
+		// scattered/refracted light through the surface — at night this
+		// term goes near-zero anyway because UnderwaterFilter drops
+		// the sun energy / fog density to inky values).
+		ALBEDO = underside;
+		EMISSION = underside_glint_color * (glint * 0.4);
+		ALPHA = underside_alpha;
+		METALLIC = 0.0;
+		ROUGHNESS = 1.0;
+		return;
+	}
+
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
