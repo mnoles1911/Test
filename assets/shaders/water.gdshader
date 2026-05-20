@@ -293,6 +293,11 @@ void fragment() {
 	float geo_ny = n.y;
 	float flow_strength = 0.0;
 	vec2 flow_dir = decode_flow(v_flow_uv, flow_strength);
+	// Wave height captured at OUTER scope so the back-face branch can
+	// read it to drive an underside brightness pattern that animates
+	// in lockstep with the surface ripple visible from above. Default
+	// 0.5 (neutral) for the cases where the flow block doesn't run.
+	float wave_height = 0.5;
 	if (debug_mode == 0 && flow_motion_strength > 0.001) {
 		vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		vec2 P = wpos.xz * flow_ripple_scale;
@@ -304,6 +309,7 @@ void fragment() {
 		float h  = _water_h(P, fdir, T);
 		float hx = _water_h(P + vec2(e, 0.0), fdir, T);
 		float hz = _water_h(P + vec2(0.0, e), fdir, T);
+		wave_height = h;  // capture for back-face branch
 		float upness = clamp(n.y, 0.0, 1.0);
 		float amp = flow_motion_strength * upness * (0.45 + 0.55 * flow_strength);
 		// World-space height gradient → normal perturbation. Tops only
@@ -343,7 +349,22 @@ void fragment() {
 		// a hard wiggle — wave normal here is small, this is just
 		// "alive" feel).
 		glint *= (0.85 + 0.15 * clamp(n.y, 0.0, 1.0));
-		vec3 underside = deep_water_color + underside_glint_color * glint;
+
+		// 2026-05-20 designer report: from underwater the surface read as
+		// a flat colour, none of the moving ripple animation visible. The
+		// wave_height field (captured above in the flow block, range 0..1)
+		// drives a brightness/colour modulation across the underside so
+		// the SAME waves the player sees from above are visible as a
+		// dappled pattern from below. Peaks (h→1) read brighter and lean
+		// slightly toward the water-tint colour (fake "caustic" focusing
+		// of sun light through the wave lens); troughs (h→0) stay dark
+		// deep_water_color. Pattern animates with the same flow speed
+		// and direction as the surface ripple, so it visually matches.
+		float wave_brightness = mix(0.70, 1.30, wave_height);
+		vec3 caustic_lift = mix(vec3(0.0), water_tint_color * 0.35, wave_height);
+		vec3 underside = deep_water_color * wave_brightness
+		               + caustic_lift
+		               + underside_glint_color * glint;
 		// Unlit emission so the bright spot reads at any time of day
 		// (sun could be below horizon; we still want some glow from
 		// scattered/refracted light through the surface — at night this

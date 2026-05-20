@@ -102,7 +102,17 @@ extends CanvasLayer
 
 
 # --- Behaviour knobs -----------------------------------------------------
+# transition_seconds (legacy export, kept for back-compat with any
+# external `.tscn` referencing it) — REPLACED in set_active by the
+# split values below so the submerge feel is instant. Designer report
+# 2026-05-20: "split second where none of the underwater effects are
+# present; player can see clearly far into the distance as if only the
+# surface plane existed" — that gap was the 0.5s ramp from surface
+# baseline density (0.015) to underwater density (0.55). 80 ms on
+# submerge is 5 frames at 60 fps, perceptually instant.
 @export var transition_seconds: float = 0.5
+@export var submerge_transition_seconds: float = 0.08
+@export var emerge_transition_seconds: float = 0.5
 # Sun.light_energy peak — DayNightCycle uses 2.2 at noon (see
 # DayNightCycle.SUN_ENERGY_DAY). The day/night mix factor divides the
 # observed energy by this, so 2.2 = full "noon" preset. Tune if the
@@ -251,6 +261,13 @@ func set_active(submerged: bool) -> void:
 	# (e.g. player bobs at the surface).
 	if _tween != null:
 		_tween.kill()
+	# Asymmetric tween duration (designer pass 2026-05-20). Submerge is
+	# near-instant so the underwater state activates before the player
+	# can perceive a "still-above-water" gap as they sink. Emerge stays
+	# at the slower 0.5s so the dark fog smoothly cross-fades out
+	# (instant-snap on emerge would be a visual jolt back to the bright
+	# surface look).
+	var dur: float = submerge_transition_seconds if submerged else emerge_transition_seconds
 	_tween = create_tween()
 	_tween.set_parallel(true)
 	_tween.set_trans(Tween.TRANS_SINE)
@@ -268,35 +285,35 @@ func set_active(submerged: bool) -> void:
 			underwater_god_ray_energy_noon,
 			mix)
 		_tween.tween_property(_env, "volumetric_fog_density",
-			target_density, transition_seconds)
+			target_density, dur)
 		_tween.tween_property(_env, "volumetric_fog_albedo",
-			target_albedo, transition_seconds)
+			target_albedo, dur)
 		_tween.tween_property(_env, "volumetric_fog_emission",
-			target_emission, transition_seconds)
+			target_emission, dur)
 		# sky_affect and ambient_inject — drop these underwater so the
 		# fog isn't tinted by the bright sky panorama (which produced
 		# the "washed sky through water" screenshot 2026-05-20).
 		_tween.tween_property(_env, "volumetric_fog_sky_affect",
-			underwater_fog_sky_affect, transition_seconds)
+			underwater_fog_sky_affect, dur)
 		_tween.tween_property(_env, "volumetric_fog_ambient_inject",
-			underwater_fog_ambient_inject, transition_seconds)
+			underwater_fog_ambient_inject, dur)
 		if _sun != null:
 			_tween.tween_property(_sun, "light_volumetric_fog_energy",
-				target_rays, transition_seconds)
+				target_rays, dur)
 	else:
 		_tween.tween_property(_env, "volumetric_fog_density",
-			surface_fog_density, transition_seconds)
+			surface_fog_density, dur)
 		_tween.tween_property(_env, "volumetric_fog_albedo",
-			surface_fog_albedo, transition_seconds)
+			surface_fog_albedo, dur)
 		_tween.tween_property(_env, "volumetric_fog_emission",
-			surface_fog_emission, transition_seconds)
+			surface_fog_emission, dur)
 		_tween.tween_property(_env, "volumetric_fog_sky_affect",
-			surface_fog_sky_affect, transition_seconds)
+			surface_fog_sky_affect, dur)
 		_tween.tween_property(_env, "volumetric_fog_ambient_inject",
-			surface_fog_ambient_inject, transition_seconds)
+			surface_fog_ambient_inject, dur)
 		if _sun != null:
 			_tween.tween_property(_sun, "light_volumetric_fog_energy",
-				surface_god_ray_energy, transition_seconds)
+				surface_god_ray_energy, dur)
 
 
 func _sun_day_mix() -> float:
