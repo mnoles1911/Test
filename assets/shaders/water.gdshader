@@ -284,24 +284,26 @@ void fragment() {
 	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
 	float up_face = 1.0;  // was mix(1.0, up_face_raw, seam_region) — see above
 
-	// === 2c. LOD-SEAM SIDE-FACE ALPHA CUT (2026-05-19, tightened) ===
-	// At distance, mesh blocks of different LOD meet at the fluid
-	// surface; Zylann's fluid mesher fills the height mismatch with a
-	// near-vertical side polygon (n.y ≈ 0). Untouched, those side faces
-	// render as a dark grid (low Fresnel → black in mode 2; dark stripes
-	// in mode 0). The OLD up_face suppression (smoothstep 0.30..0.72)
-	// also killed legitimate auto-sloped tops on native fluid (the "all
-	// transparent" bug), so it was disabled. THIS replacement is:
-	//   • TIGHTER threshold 0.05..0.20 → only truly vertical seam faces
-	//     are dimmed; native fluid auto-sloped tops (n.y ≳ 0.30) keep
-	//     full opacity.
-	//   • ALPHA-ONLY → body colour, depth grade, foam, refraction all
-	//     untouched (the recent water_murk/shallow_alpha tune stays).
-	//   • DISTANCE-GATED via the existing seam_suppress_near_m/_far_m
-	//     uniforms so near-water (where you'd notice a dim side) keeps
-	//     full alpha.
-	float side_face_open = smoothstep(0.05, 0.20, geo_ny);  // 1 = top/slope, 0 = vertical
-	float side_alpha_mul = mix(1.0, side_face_open, seam_region);
+	// === 2c. LOD-SEAM SIDE-FACE CAMOUFLAGE (2026-05-19 v2) ===========
+	// Zylann's fluid mesher fills LOD-block-edge height mismatches with
+	// near-vertical side polygons (n.y ≈ 0). Untouched they render as a
+	// dark grid (low Fresnel → black; visible in mode 2 + mode 0, and
+	// they POP into existence on every chunk during movement because
+	// re-meshing isn't synced to LOD-fade). The previous attempts —
+	// alpha-cut (this branch) and the OLD smoothstep 0.30..0.72 up_face
+	// dim — both failed: alpha-0 leaves a noticeable band, and the
+	// 0.72 threshold also killed auto-sloped fluid tops (the "whole
+	// lake at 17% alpha" bug). We CAN'T stop the mesher generating the
+	// side polys without modifying Zylann. So instead: blend the side
+	// fragment's COLOUR toward the top-water tint so it visually
+	// continues the surface, and keep it opaque so the lakebed doesn't
+	// leak through the seam. Always-on (no distance gate) → grid hides
+	// near AND far, while moving AND stopped.
+	//
+	// top_weight: 1 on real top / auto-sloped fluid surface
+	//             (n.y ≳ 0.30 — fluid auto-slopes never go below this),
+	//             0 on truly vertical seam side faces (n.y ≲ 0.10).
+	float top_weight = smoothstep(0.10, 0.30, geo_ny);
 
 	// === 3. SURFACE: per-channel Beer-Lambert + in-scatter ==========
 	// Physical model (2026-05-19): light transmittance through the
@@ -382,10 +384,17 @@ void fragment() {
 		ALPHA = 1.0;
 		EMISSION = vec3(1.0, 0.0, 1.0);  // glow so it's unmissable even unlit
 	} else {
-		ALBEDO = surface;
-		// side_alpha_mul: alpha-only LOD-seam side-face dim at distance
-		// (§2c). 1.0 by default → no effect on the recent tune.
-		ALPHA = clamp(alpha * side_alpha_mul, 0.0, 1.0);
+		// §2c camouflage: on truly vertical seam side faces, replace
+		// the dark Fresnel-driven `surface` with the top-water tint
+		// (no sun-specular / no Fresnel sky-reflection — those are
+		// what made sides read black), and force solid alpha so the
+		// lakebed can't leak through the geometric seam. Auto-sloped
+		// fluid tops (n.y ≳ 0.30) get full `surface`/`alpha` — the
+		// recent murk/shallow_alpha/Fresnel tune is preserved.
+		vec3 side_color = water_tint_color.rgb;
+		float side_alpha = max(shallow_alpha, 0.92);
+		ALBEDO = mix(side_color, surface, top_weight);
+		ALPHA = clamp(mix(side_alpha, alpha, top_weight), 0.0, 1.0);
 	}
 
 	METALLIC = metallic_amount;
