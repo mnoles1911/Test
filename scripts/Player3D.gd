@@ -233,6 +233,16 @@ var _in_water: bool = false
 # FLOATING, sprint is disabled, swim speed applies.
 
 const WATER_EXIT_MARGIN_M: float = 0.20
+
+# Vertical lead distance for the UnderwaterFilter visual trigger.
+# Player3D._update_water_state queries water at (camera.y + this) so the
+# filter activates a hair BEFORE the camera crosses the water surface
+# (descending) and stays on a hair AFTER the camera exits (emerging).
+# Without this lead, a 1-frame window of unfiltered underwater view
+# was visible at the surface transition (designer report 2026-05-20).
+# 0.15m is enough to absorb the 0.1m head-pos↔camera offset plus a
+# physics-frame's worth of motion.
+const UNDERWATER_FILTER_LEAD_M: float = 0.15
 # #4 waterline-jitter fix (2026-05-17). Standing at the exact sea
 # surface, the pivot bobs sub-voxel (CharacterBody3D snap + float),
 # so a raw per-frame is_position_in_water(pivot) flips true/false every
@@ -1138,10 +1148,27 @@ func _update_water_state() -> void:
 	else:
 		_swim_bob_t = 0.0
 
-	# Drive the underwater camera tint. set_active is idempotent —
-	# the filter only updates visibility on actual state changes.
-	if _underwater_filter != null and _underwater_filter.has_method("set_active"):
-		_underwater_filter.set_active(_is_submerged)
+	# Drive the underwater visual filter from the ACTIVE CAMERA's world
+	# position, NOT _is_submerged (head_pos = pivot + HEAD_OFFSET_METERS
+	# = pivot + 1.6m). The camera lives at CameraTarget Y = 1.5m, which
+	# is 0.1m BELOW head_pos. With head-based triggering there was a
+	# 0.1m window during the surface transition where the camera was
+	# already below the water surface but head_pos hadn't crossed yet
+	# (descending) or had already crossed back (emerging) — producing
+	# the "1-frame unfiltered underwater view" the designer reported
+	# 2026-05-20. We push the check point UP from the camera by
+	# UNDERWATER_FILTER_LEAD_M so the filter activates a hair BEFORE
+	# the camera enters the water, and stays active until the camera
+	# is comfortably clear of the surface. Gameplay submerge state
+	# (`_is_submerged`, used by swim / breath / drown) is unchanged.
+	if _underwater_filter != null and _underwater_filter.has_method("set_active") and wfm != null:
+		var cam_in_water: bool = _is_submerged  # fallback if no active cam
+		var active_cam: Camera3D = get_viewport().get_camera_3d()
+		if active_cam != null:
+			var cam_check_pos: Vector3 = active_cam.global_position \
+				+ Vector3(0.0, UNDERWATER_FILTER_LEAD_M, 0.0)
+			cam_in_water = wfm.is_position_in_water(cam_check_pos)
+		_underwater_filter.set_active(cam_in_water)
 
 	# Water audio: transition one-shots + the self-correcting ambience bed.
 	_update_water_audio()
