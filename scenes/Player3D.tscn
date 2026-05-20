@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://dp3l1roland3d"]
+[gd_scene load_steps=11 format=3 uid="uid://dp3l1roland3d"]
 
 ; Player3D — the 3D Roland scene.
 ;
@@ -21,6 +21,7 @@
 [ext_resource type="Script" path="res://scripts/ThrowableHandler.gd" id="4_throwable"]
 [ext_resource type="Script" path="res://scripts/UnderwaterFilter.gd" id="5_underwater"]
 [ext_resource type="Script" path="res://scripts/PrefetchViewer.gd" id="6_prefetch"]
+[ext_resource type="ShaderMaterial" uid="uid://b8uwoverlay001" path="res://assets/shaders/underwater_overlay_material.tres" id="7_uw_overlay"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -176,7 +177,11 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 visible = false
+; .color is the fallback if the screen-wobble shader fails to compile
+; on a given GPU. The shader (when bound) writes COLOR directly and
+; ignores this property.
 color = Color(0.18, 0.32, 0.42, 0.10)
+material = ExtResource("7_uw_overlay")
 
 [node name="UnderwaterParticulates" type="GPUParticles3D" parent="." groups=["underwater_particulates"]]
 ; Drifting specks visible while submerged. UnderwaterFilter toggles
