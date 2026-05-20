@@ -163,6 +163,11 @@ var _underwater_fog_volume: FogVolume = null
 # existing motes fade out gracefully when the player surfaces instead
 # of popping out mid-flight.
 var _underwater_particulates: GPUParticles3D = null
+# Optional one-shot bubble burst GPUParticles3D (group
+# "underwater_bubble_burst"). Fires on every set_active state flip to
+# mask the Minecraft-style instant fog/colour snap. .restart() re-emits
+# from frame 0; one_shot=true on the node makes the burst self-terminate.
+var _bubble_burst: GPUParticles3D = null
 # C16 removed the cross-fade tween entirely (Minecraft-style instant
 # snap). Variable retained as null-only for any external reference
 # that may still poke at it; can be deleted in a follow-up.
@@ -210,6 +215,13 @@ func _ready() -> void:
 		print("[UnderwaterFilter] resolved UnderwaterParticulates.")
 	else:
 		print("[UnderwaterFilter] no GPUParticles3D in 'underwater_particulates' group — motes disabled.")
+	# Optional one-shot bubble burst on water transitions.
+	_bubble_burst = get_tree().get_first_node_in_group("underwater_bubble_burst") as GPUParticles3D
+	if _bubble_burst != null:
+		_bubble_burst.emitting = false
+		print("[UnderwaterFilter] resolved BubbleBurst (water-transition splash).")
+	else:
+		print("[UnderwaterFilter] no GPUParticles3D in 'underwater_bubble_burst' group — splash burst disabled.")
 
 
 func _process(_delta: float) -> void:
@@ -310,6 +322,15 @@ func set_active(submerged: bool) -> void:
 		_underwater_particulates.emitting = submerged
 		if submerged:
 			_underwater_particulates.restart()
+	# Bubble burst — fires on EVERY set_active state flip (both submerge
+	# AND emerge), masking the instant fog/colour snap. one_shot=true
+	# on the GPUParticles3D self-terminates after the burst completes.
+	# .restart() re-emits from frame 0; works for repeated dive-out-
+	# dive-in cycles. Triggered from a deferred call so the node's
+	# transform (which we positioned at +1.5m head height in the .tscn)
+	# is in its current world frame.
+	if _bubble_burst != null:
+		_bubble_burst.restart()
 	# DIRECT ASSIGNMENT — Minecraft-style instant snap (C16 2026-05-20).
 	# No tween. The env params are set in the same frame as set_active
 	# fires, on the same frame Player3D detected the crossing, on the

@@ -147,6 +147,34 @@ headless validation possible — headless only confirms compile)
 - **Phase 4e — audio coupling. NOT PLANNED YET.** Underwater muffled
   audio mix (low-pass filter on the master bus, dampened SFX) +
   ambient bubble/current loop. Pairs naturally with the visual murk.
+- **Phase 4f — per-pixel screen-space water lerp. DEFERRED (long-term,
+  big-budget bar).** Today's submerge transition is a "whole-screen
+  state flip" the frame the camera POINT crosses the water plane —
+  same model as Minecraft. The C18 bubble-burst + the existing splash
+  SFX mask the snap perceptually. The next tier (Sea of Thieves /
+  Subnautica / RDR2 swamps) renders a second screen-space pass that
+  identifies the water-surface intersection per view ray, then
+  applies above-water vs underwater rendering DIFFERENTIALLY across
+  the screen. The visible result: at the exact moment the camera is
+  half-submerged, the player sees the screen bisected — above-water
+  rendering in the upper half, underwater rendering in the lower
+  half, with a wet refractive band at the water line.
+
+  Components required:
+    - Extra render pass / compositor effect that produces a per-pixel
+      "is this view ray's near-intersection above or below water"
+      mask, plus a water-line distance for the wet-band blend.
+    - Two post-process variants (above-water look, underwater look)
+      composed by that mask.
+    - Refraction/distortion at the water line itself (Snell's law
+      bending, surface tension shimmer).
+  Cost: significant — additional render pass, more bandwidth, harder
+    to tune on integrated GPUs. Voxel/blocky games almost universally
+    skip this; the bisected-view effect reads as more "realistic
+    simulation" than "stylized voxel world".
+  Acceptance: scope when project has a competitive water-visuals
+    goal vs photoreal games. Not before a milestone where art
+    direction explicitly demands it.
 
 Phase 1 is the one that fixes the actual complaint and is the bulk of
 the look. 2–4 are stacked enhancements, each independently shippable.
