@@ -44,15 +44,18 @@ shader_parameter/depth_fade_distance = 0.5
 ; water_extinction (RGB, R≫G>B): the per-wavelength absorption that
 ; makes water grade clear→green→deep-blue with depth (real optics).
 shader_parameter/water_extinction = Color(0.85, 0.30, 0.18, 1.0)
-; water_murk: 0=clear refraction, 1=fully tinted. High so shallow
-; water over bright sand still reads as coloured water.
-shader_parameter/water_murk = 0.85
+; water_murk: 0=clear refraction, 1=fully tinted. 0.97 = body is
+; essentially pure tint with only ~3% lakebed showing through
+; refraction at the top-down (low-Fresnel) near band — was 0.85
+; (15% lakebed leak; provably visible at the player's feet per math
+; + screenshot 2026-05-19).
+shader_parameter/water_murk = 0.97
 ; shallow_alpha = the MINIMUM surface opacity (gameplay floor).
-; 0.40 was why water stayed ~60% see-through over bright sand
-; everywhere — the lakes here are only a few voxels deep so the depth
-; term barely engages and this floor is what you actually see. 0.85 =
-; water reads as a solid coloured surface; lower for more see-through.
-shader_parameter/shallow_alpha = 0.85
+; 0.95 = ~5% lakebed through alpha (was 0.85 → 15% leak). Combined
+; with water_murk 0.97 this makes near top-down water read solid
+; tinted blue (~95% tint + 4% sky + ~3% lakebed) instead of "I can
+; see the sand". Tune down for more see-through-the-water clarity.
+shader_parameter/shallow_alpha = 0.95
 
 ; --- REFLECTION (2026-05-19 root-cause: pale water was the Fresnel
 ; sky-reflection at grazing angles dominating a solid surface — magenta
@@ -64,6 +67,18 @@ shader_parameter/shallow_alpha = 0.85
 ; 0.5). Even at full grazing, max 50% sky → 50%+ body colour stays.
 shader_parameter/reflection_strength = 0.25
 shader_parameter/reflection_floor = 0.05
+
+; --- FLOW-DRIVEN WAVE AMPLITUDE (2026-05-19) ---
+; Zylann's fluid mesher writes UV.y = 0 (NOT 8 / idle) for static
+; full-level water — confirmed by debug_mode 5 showing uniform cyan
+; across a still pond rather than black. Our decode_flow therefore
+; reads strength = 1.0 everywhere and drives the FBM wave-height
+; perturbation at full amplitude on lakes that shouldn't be flowing
+; → the pronounced "shimmer / fingerprint ripples" the designer
+; reported. Drop the master amplitude so static lakes get subtle
+; wavelets; real moving water (rivers, falls) still animates because
+; the height delta scales with both amp and per-noise frequencies.
+shader_parameter/flow_motion_strength = 0.25
 
 ; --- LOD-SEAM SUPPRESSION DISTANCE GATE (2026-05-18 readability fix) ---
 ; The dark-grid side-face suppression now only acts at DISTANCE so it
