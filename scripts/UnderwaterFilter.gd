@@ -109,6 +109,11 @@ const WATER_MATERIAL_PATH := "res://assets/shaders/water_material.tres"
 var _env: Environment = null
 var _sun: DirectionalLight3D = null
 var _water_mat: ShaderMaterial = null
+# Optional animated-noise FogVolume (group "underwater_fog_volume").
+# Adds drifting density variety on top of the env's flat underwater
+# baseline. Toggled on/off with .visible from set_active so it costs
+# nothing above water.
+var _underwater_fog_volume: FogVolume = null
 var _tween: Tween = null
 var _submerged: bool = false
 
@@ -136,6 +141,11 @@ func _ready() -> void:
 	_water_mat = load(WATER_MATERIAL_PATH) as ShaderMaterial
 	if _water_mat == null:
 		push_warning("[UnderwaterFilter] failed to load water_material.tres; underside-sun-glint disabled.")
+	# Optional FogVolume for animated noise variety. Not required —
+	# absent in dev scenes, the env baseline still works.
+	_underwater_fog_volume = get_tree().get_first_node_in_group("underwater_fog_volume") as FogVolume
+	if _underwater_fog_volume != null:
+		_underwater_fog_volume.visible = false
 
 
 func _process(_delta: float) -> void:
@@ -184,6 +194,12 @@ func set_active(submerged: bool) -> void:
 	# Tint rect: instant toggle (matches v1 behaviour; no fade needed
 	# because the alpha is small).
 	_rect.visible = submerged
+	# Animated-noise FogVolume: instant toggle (the noise field is
+	# already in motion; appearing/disappearing in 1 frame at the
+	# water surface boundary reads as expected — the env fog tween
+	# below cross-fades the static portion).
+	if _underwater_fog_volume != null:
+		_underwater_fog_volume.visible = submerged
 	# Tween the env fog and sun god-ray energy between surface and
 	# underwater presets. submerge → underwater (target depends on
 	# live sun mix); emerge → surface baseline.
