@@ -53,11 +53,22 @@ headless validation possible — headless only confirms compile)
   LOD-seam suppression, and all F6 debug modes 0–5. No `.tres`/scene
   change. Designer check: no checkerboard, water reads like water,
   flows along current.
-- **Phase 2 — reflection.** Enable Godot SSR in the World3D
-  WorldEnvironment + add a ReflectionProbe fallback; shader blends
-  reflection by Fresnel. Designer check: sky/terrain mirror on water.
-- **Phase 3 — edge foam** from the depth delta (shorelines, around the
-  player/objects). Designer check: foam line at the water's edge.
+- **Phase 2 — reflection. REWORKED (2026-05-19).** First attempt (a
+  screen-Y-flip "planar" hack + runtime env SSR) was WRONG: it pasted
+  the upside-down framebuffer onto the water and washed it white
+  (designer screenshot). Both removed. Reflection is now a CLEAN,
+  correctly-oriented Fresnel sky sheen, capped by `reflection_strength`
+  so grazing angles never blow out. **Phase 2b (deferred, real work):**
+  true mirror-of-terrain reflection = a planar-reflection pass (second
+  Camera/Viewport rendering the world mirrored about the water plane
+  into a texture the shader samples) — the only correct way; a screen
+  hack cannot do it. Pick up here if the designer wants actual
+  terrain/sky mirrored on the water.
+- **Phase 3 — edge foam. DONE (2026-05-19).** Shoreline foam from the
+  depth delta (`thickness → 0` = water meets terrain/objects), tops-
+  only (up_face), small `foam_edge_dist` so only true shore edges foam
+  (not whole shallow ponds). Clean band (no crest-noise breakup yet —
+  a later tuning option). Uniforms: `foam_color/edge_dist/strength`.
 - **Phase 4 — polish:** caustics on submerged terrain, underwater
   fog/god-rays, tuning pass. Optional.
 

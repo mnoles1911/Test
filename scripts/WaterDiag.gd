@@ -420,9 +420,12 @@ func _cycle_shader_debug_mode() -> void:
 		print("[WaterDiag] cannot cycle debug_mode — water_material.tres not loaded")
 		return
 	var cur := _get_shader_debug_mode()
-	var nxt := (cur + 1) % 5
+	# 0..6 (was % 5 → modes 5 & 6 were UNREACHABLE via F6; 6 = the
+	# 2026-05-19 magenta proof-of-life probe).
+	var nxt := (cur + 1) % 7
 	_water_mat.set_shader_parameter("debug_mode", nxt)
-	var names := ["0 normal", "1 depth_t", "2 fresnel", "3 thickness", "4 surface-facing"]
+	var names := ["0 normal", "1 depth_t", "2 fresnel", "3 thickness",
+		"4 surface-facing", "5 flow-vector", "6 MAGENTA proof-of-life"]
 	print("[WaterDiag] water shader debug_mode → %s" % names[nxt])
 
 

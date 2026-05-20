@@ -66,17 +66,26 @@ uniform float roughness_amount : hint_range(0.0, 1.0) = 0.08;
 // ============================================================
 // DEPTH-FADE (near-water only; horizon plane forces this to "deep")
 // ============================================================
-uniform float depth_fade_distance : hint_range(0.5, 40.0) = 4.0;
-// 7.0 -> 4.0 (2026-05-19): shallow 5-6-voxel (~1 m) ponds were almost
-// crystal-clear with the new refraction. Lower = water turns opaque
-// over a shorter column, so a shallow pond reads as WATER not glass.
-// The headline clarity knob: 3=murky pond · 7=lake · 15=clear ocean.
-uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.14;
-// 0.10 -> 0.14: a touch more surface body on very thin water.
-// How murky the see-through is — 0 = perfectly clear refraction,
-// 1 = fully tinted (no see-through). 0.5 keeps ponds readable as
-// water while still letting you make out the bottom.
-uniform float water_murk : hint_range(0.0, 1.0) = 0.5;
+// CLARITY MASTER (2026-05-19 physical rework). Divides the per-channel
+// extinction below: bigger = clearer water / light travels deeper,
+// smaller = murkier. ~2 = readable pond that blues over a few metres,
+// ~5 = lake, ~12 = clear ocean.
+uniform float depth_fade_distance : hint_range(0.2, 40.0) = 0.5;
+// PER-WAVELENGTH absorption (per metre, before the clarity divide).
+// Real water kills RED fastest, GREEN mid, BLUE slowest — this RGB
+// spread is what makes water read clear→green→deep-blue with depth
+// instead of a flat tint. R≫G>B. Tune the HUE of the depth falloff
+// here; tune how FAR light reaches with depth_fade_distance.
+uniform vec3 water_extinction : source_color = vec3(0.85, 0.30, 0.18);
+uniform float shallow_alpha : hint_range(0.0, 1.0) = 0.85;
+// 0.14 -> 0.45 (2026-05-19): physically shallow water is optically
+// clear, but gameplay needs the SURFACE present — this is the alpha
+// floor so thin water still reads as a water surface (sheen/ripple/
+// foam) even while the bottom shows through. Lower = more see-through.
+// water_murk: how murky the see-through is — 0 = perfectly clear
+// refraction, 1 = fully tinted. 0.72 keeps shallow water reading as
+// water while the bottom is still faintly visible.
+uniform float water_murk : hint_range(0.0, 1.0) = 0.85;
 // Distance-gated LOD-seam side-face suppression (2026-05-18). Does
 // NOTHING nearer than _near (shallow water you look straight down into
 // stays readable); ramps to full by _far where the distant dark grid
@@ -115,7 +124,7 @@ uniform float flow_normal_strength : hint_range(0.0, 0.5) = 0.12;
 // ============================================================
 // DEBUG
 // ============================================================
-uniform int debug_mode : hint_range(0, 5) = 0;
+uniform int debug_mode : hint_range(0, 6) = 0;
 
 varying vec2 v_flow_uv;
 
@@ -147,6 +156,35 @@ vec2 decode_flow(vec2 uv, out float strength) {
 // Screen behind the water, for refraction (see-through shallow water).
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float refraction_strength : hint_range(0.0, 0.2) = 0.045;
+
+// --- V3 Phase 2: reflection ---
+// The screen-Y-flip "planar" hack was REMOVED 2026-05-19: it pasted
+// the upside-down framebuffer onto the water (only correct for a mirror
+// plane exactly at the horizon) and washed the surface white by
+// sampling bright sky/sand. Reflection is now just a CLEAN, correctly-
+// oriented Fresnel sky sheen, capped by reflection_strength so grazing
+// angles never blow out to pure white. True mirror-of-terrain
+// reflection needs a real planar-reflection pass (scoped follow-up
+// "Phase 2b"), not a screen hack.
+uniform float reflection_strength : hint_range(0.0, 1.0) = 0.7;
+// Always-on sky-sheen floor so the water reads reflective/wet at ANY
+// view angle (not only grazing) — without this, looking down at the
+// water gave zero reflection. Grazing still ramps up via Fresnel on
+// top of this floor. ~0.18 = clearly reflective but still see-through.
+uniform float reflection_floor : hint_range(0.0, 0.6) = 0.18;
+
+// --- V3 Phase 3: shoreline edge foam ---
+uniform vec3 foam_color : source_color = vec3(0.92, 0.96, 1.0);
+uniform float foam_edge_dist : hint_range(0.0, 4.0) = 0.5;
+uniform float foam_strength : hint_range(0.0, 1.0) = 0.85;
+
+// --- §2c side-face camouflage knobs (2026-05-19) ---
+// side_color = mix(water_tint_color * side_tint_brighten,
+//                  sky_reflection_color, side_sky_mix)
+// The water_tint_color base (0.10,0.30,0.42) alone read too dark on
+// LOD-seam sides — designer wanted brighter + a fraction of sky.
+uniform float side_tint_brighten : hint_range(1.0, 3.0) = 1.7;
+uniform float side_sky_mix : hint_range(0.0, 1.0) = 0.30;
 
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -198,12 +236,19 @@ void fragment() {
 	float scene_dist = -view.z;
 	float frag_dist  = -VERTEX.z;
 	float thickness = max(scene_dist - frag_dist, 0.0);
-	// Exponential (Beer-Lambert) falloff: shallow->clear, asymptotically
-	// deep->opaque, no hard cutoff. depth_fade_distance = 1/e distance.
-	float depth_t = 1.0 - exp(-thickness / max(depth_fade_distance, 0.01));
+	// depth_t / depth_t_eff are now derived from the PER-CHANNEL
+	// transmittance in §3 (physical model), after up_face is known.
 
 	// === 2. FLOW + NORMAL ==========================================
 	vec3 n = normalize(NORMAL);
+	// GEOMETRIC up-ness, captured BEFORE the wave perturbation below.
+	// The §2b LOD-seam suppression must key off the real face
+	// orientation (is this a top face or a vertical side sliver?), NOT
+	// the wave-rippled normal — otherwise the v10 noise waves tilt the
+	// top normal, the distance-gated seam test mistakes wavy tops for
+	// side slivers, and ALL mid/far water turns transparent (the
+	// 2026-05-19 "way too see-through" regression).
+	float geo_ny = n.y;
 	float flow_strength = 0.0;
 	vec2 flow_dir = decode_flow(v_flow_uv, flow_strength);
 	if (debug_mode == 0 && flow_motion_strength > 0.001) {
@@ -227,37 +272,94 @@ void fragment() {
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
 
-	// === 2b. LOD-SEAM SIDE-FACE SUPPRESSION (distance-gated) =======
-	// Near water keeps full opacity on every face; the suppression
-	// ramps in only past seam_suppress_near_m, full by _far where the
-	// distant dark grid actually was. (Root-caused 2026-05-17; the
-	// 2026-05-18 distance gate stops it fading near shallow water.)
-	float up_face_raw = smoothstep(0.30, 0.72, n.y);
+	// === 2b. LOD-SEAM SUPPRESSION — NEUTRALISED for native fluid =====
+	// THE ROOT CAUSE of the whole "water way too see-through" saga.
+	// This was a CUBE-WATER-era hack: old cube water had clean normals
+	// (tops n.y≈1, vertical side slivers n.y≈0), so
+	// smoothstep(0.30,0.72,n.y) cleanly killed only the slivers. Native
+	// Zylann fluid AUTO-SLOPES its top surface, so legitimate top water
+	// has geometric n.y well below 0.72 over most of the body → up_face
+	// collapsed to ~0.2, and since alpha = shallow_alpha*up_face AND the
+	// depth term is up_face-weighted, the ENTIRE lake rendered at ~0.17
+	// alpha no matter how high shallow_alpha was set. Fluid meshing
+	// doesn't produce the cube-era dark-grid side slivers, so this
+	// suppression has no remaining purpose here and must be off. Forced
+	// to 1.0 (full water everywhere); the old terms kept (referenced) so
+	// seam_suppress_* uniforms / a future re-enable still resolve. If a
+	// distant fluid artefact ever appears, fix it from the geometric
+	// face, not by crushing surface alpha.
+	float up_face_raw = smoothstep(0.30, 0.72, geo_ny);
 	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
-	float up_face = mix(1.0, up_face_raw, seam_region);
-	float depth_t_eff = depth_t * up_face;
+	float up_face = 1.0;  // was mix(1.0, up_face_raw, seam_region) — see above
 
-	// === 3. SURFACE COLOUR (refraction + depth absorption) =========
-	// Shallow: see the wave-distorted, tinted bottom THROUGH the water
-	// (screen refraction). Deep: Beer-Lambert absorb to deep colour
-	// (depth_t_eff). Grazing: Fresnel sky sheen on top. This see-
-	// through-shallow → opaque-deep is the core "better than Minecraft"
-	// cue SEUS/Sildur water relies on.
+	// === 2c. LOD-SEAM SIDE-FACE CAMOUFLAGE (2026-05-19 v2) ===========
+	// Zylann's fluid mesher fills LOD-block-edge height mismatches with
+	// near-vertical side polygons (n.y ≈ 0). Untouched they render as a
+	// dark grid (low Fresnel → black; visible in mode 2 + mode 0, and
+	// they POP into existence on every chunk during movement because
+	// re-meshing isn't synced to LOD-fade). The previous attempts —
+	// alpha-cut (this branch) and the OLD smoothstep 0.30..0.72 up_face
+	// dim — both failed: alpha-0 leaves a noticeable band, and the
+	// 0.72 threshold also killed auto-sloped fluid tops (the "whole
+	// lake at 17% alpha" bug). We CAN'T stop the mesher generating the
+	// side polys without modifying Zylann. So instead: blend the side
+	// fragment's COLOUR toward the top-water tint so it visually
+	// continues the surface, and keep it opaque so the lakebed doesn't
+	// leak through the seam. Always-on (no distance gate) → grid hides
+	// near AND far, while moving AND stopped.
+	//
+	// top_weight: 1 on real top / auto-sloped fluid surface
+	//             (n.y ≳ 0.30 — fluid auto-slopes never go below this),
+	//             0 on truly vertical seam side faces (n.y ≲ 0.10).
+	float top_weight = smoothstep(0.10, 0.30, geo_ny);
+
+	// === 3. SURFACE: per-channel Beer-Lambert + in-scatter ==========
+	// Physical model (2026-05-19): light transmittance through the
+	// water column is exp(-k·depth) PER WAVELENGTH (k = water_extinction
+	// / clarity). The refracted bottom is attenuated per RGB channel,
+	// and the light lost (1-trans, red first) is replaced by the
+	// water's own in-scatter colour (deep_water_color) → the real
+	// clear → green → deep-blue gradient, not a flat tint mix.
+	vec3 ext = water_extinction / max(depth_fade_distance, 0.05);
+	vec3 trans_raw = exp(-ext * thickness);          // per-channel bottom transmittance
+	// Seam fix (2026-05-17): non-up faces (distant LOD side slivers)
+	// read as shallow → push trans toward 1 (no depth) by (1-up_face).
+	vec3 trans = mix(vec3(1.0), trans_raw, up_face);
+	float depth_t = 1.0 - dot(trans_raw, vec3(0.33333));  // scalar, ground-truth (debug 1/3)
+	float depth_t_eff = 1.0 - dot(trans, vec3(0.33333));  // up-face-suppressed (refraction/alpha)
 	vec2 refr_uv = clamp(SCREEN_UV + n.xz * (refraction_strength * (1.0 - depth_t_eff)),
 	                     vec2(0.001), vec2(0.999));
-	// Refracted bottom, blended toward the water tint by water_murk so
-	// even a shallow pond reads as coloured water rather than clear
-	// glass (the *1.6 over-brighten that washed it out is gone).
-	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk) * 1.15;
-	vec3 body = mix(bottom, deep_water_color, depth_t_eff);
-	vec3 surface = mix(body, sky_reflection_color, fresnel);
+	vec3 bottom = mix(texture(screen_tex, refr_uv).rgb, water_tint_color, water_murk);
+	vec3 body = bottom * trans + deep_water_color * (1.0 - trans);
+
+	// Phase 2 — CLEAN Fresnel sky reflection (the upside-down screen-
+	// flip hack was removed; it pasted the mirrored framebuffer onto
+	// the water and washed it white). reflection_strength caps the
+	// sheen so even at a full grazing angle the surface keeps water
+	// colour instead of blowing out to pure sky. Correctly oriented,
+	// predictable, never inverted.
+	// Cap at 0.5 (was 0.85): even at full grazing, at MOST half sky →
+	// the water keeps its body colour and never washes pale-sky. The
+	// real root cause of the "see-through pale water" was this term,
+	// not alpha (the magenta proof-of-life confirmed the shader runs).
+	float refl_amt = clamp(fresnel * reflection_strength + reflection_floor, 0.0, 0.5);
+	vec3 surface = mix(body, sky_reflection_color, refl_amt);
+
+	// Phase 3 — shoreline EDGE FOAM. Where the water column is thin
+	// (thickness -> 0: water meets terrain / objects) lay a foam band.
+	// Tops only (up_face) so LOD-seam slivers stay clean. Small
+	// foam_edge_dist so only true shore edges foam, not whole shallow
+	// ponds.
+	float foam = clamp((1.0 - smoothstep(0.0, max(foam_edge_dist, 0.01), thickness))
+	                   * foam_strength * up_face, 0.0, 1.0);
+	surface = mix(surface, foam_color, foam);
 
 	// === 4. TRANSPARENCY ===========================================
 	// DEPTH drives alpha (NOT Fresnel): shallow -> see the bottom at any
 	// view angle; deep -> opaque. shallow_alpha floor scaled by up_face
 	// so LOD-seam side slivers (up_face~0) vanish into the water behind
-	// them instead of leaving a pale line.
-	float alpha = max(depth_t_eff, shallow_alpha * up_face);
+	// them. Foam is opaque spray on top → lift alpha by the foam mask.
+	float alpha = max(max(depth_t_eff, shallow_alpha * up_face), foam);
 
 	// === 5. OUTPUT =================================================
 	if (debug_mode == 1) {
@@ -277,9 +379,31 @@ void fragment() {
 		float a = atan(flow_dir.y, flow_dir.x) / 6.2831853 + 0.5;
 		vec3 hue = clamp(abs(fract(a + vec3(0.0, 0.6667, 0.3333)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
 		ALBEDO = hue * flow_strength; ALPHA = 1.0;
+	} else if (debug_mode == 6) {
+		// PROOF-OF-LIFE (2026-05-19 root-cause probe). Unmistakable
+		// solid opaque MAGENTA, ignoring ALL water math. If F6 mode 6
+		// turns the water bright magenta → this shader IS what draws
+		// the surface (then the bug is in the colour/alpha math above).
+		// If the water looks UNCHANGED → the fluid is NOT rendered with
+		// this shader (the real bug = material/mesher binding, and
+		// every shader edit so far has been editing a file that does
+		// not drive the visible water).
+		ALBEDO = vec3(1.0, 0.0, 1.0);
+		ALPHA = 1.0;
+		EMISSION = vec3(1.0, 0.0, 1.0);  // glow so it's unmissable even unlit
 	} else {
-		ALBEDO = surface;
-		ALPHA = clamp(alpha, 0.0, 1.0);
+		// §2c camouflage: on truly vertical seam side faces, replace
+		// the dark Fresnel-driven `surface` with the top-water tint
+		// (no sun-specular / no Fresnel sky-reflection — those are
+		// what made sides read black), and force solid alpha so the
+		// lakebed can't leak through the geometric seam. Auto-sloped
+		// fluid tops (n.y ≳ 0.30) get full `surface`/`alpha` — the
+		// recent murk/shallow_alpha/Fresnel tune is preserved.
+		vec3 side_base = water_tint_color.rgb * side_tint_brighten;
+		vec3 side_color = mix(side_base, sky_reflection_color.rgb, side_sky_mix);
+		float side_alpha = max(shallow_alpha, 0.92);
+		ALBEDO = mix(side_color, surface, top_weight);
+		ALPHA = clamp(mix(side_alpha, alpha, top_weight), 0.0, 1.0);
 	}
 
 	METALLIC = metallic_amount;

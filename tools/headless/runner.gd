@@ -326,13 +326,13 @@ func _shader() -> int:
 		return 1
 	var code: String = sh.get("code")
 	var n_dbg := code.count("debug_mode ==")
-	# Foam is REMOVED when its CODE is gone — i.e. no foam/surface_motion
-	# UNIFORM declarations and no foam_color identifier in expressions.
-	# (The word "foam" still appears in explanatory comments — "#15 foam
-	# fully removed" — which is fine; only real code counts.)
-	var has_foam := code.find("uniform float surface_motion_strength") != -1 \
-		or code.find("uniform vec3 foam_color") != -1 \
-		or code.find("uniform float foam_wind_ref") != -1 \
+	# The DEAD #15 WIND-foam is gone when its WIND-foam-specific
+	# identifiers are absent. NOTE: V3 Phase 3 intentionally adds edge
+	# foam that reuses the `foam_color` name — that is NOT the #15 foam,
+	# so do not key off `foam_color`. Key off the wind-foam-only
+	# uniforms (surface_motion_*, foam_wind_ref, surface_ripple_scale).
+	var has_foam := code.find("surface_motion_strength") != -1 \
+		or code.find("foam_wind_ref") != -1 \
 		or code.find("surface_ripple_scale") != -1
 	# Flow animation must be present (it replaces the foam).
 	var has_flow := code.find("decode_flow") != -1 and code.find("flow_motion_strength") != -1
@@ -341,6 +341,22 @@ func _shader() -> int:
 	# is empty / load emitted SHADER ERROR (grepped by the caller).
 	var ul = RenderingServer.get_shader_parameter_list(sh.get_rid()) if sh.get_rid().is_valid() else []
 	print("[SHADER] uniforms_visible=%d (rid_valid=%s)" % [ul.size(), sh.get_rid().is_valid()])
+	# [SHADERPARAM] — EFFECTIVE runtime values. A ShaderMaterial's
+	# stored shader_parameter/* OVERRIDES the shader's `uniform =
+	# default`. This dump makes that explicit so "I tuned the shader but
+	# nothing changed" (root cause of the 2026-05-19 tuning failure:
+	# the .tres pinned shallow_alpha=0.40 over every shader default) is
+	# visible forever. OVERRIDE = the .tres wins; DEFAULT = shader value.
+	var watch := ["depth_fade_distance", "shallow_alpha", "water_murk",
+		"water_extinction", "reflection_strength", "reflection_floor",
+		"foam_strength", "foam_edge_dist", "flow_motion_strength",
+		"side_tint_brighten", "side_sky_mix"]
+	for w in watch:
+		var ov = mat.get("shader_parameter/" + w)
+		if ov != null:
+			print("[SHADERPARAM] %s = %s  (.tres OVERRIDE — wins)" % [w, str(ov)])
+		else:
+			print("[SHADERPARAM] %s = <shader default> (.tres does not set it)" % w)
 	var ok := (not has_foam) and has_flow and n_dbg >= 5
 	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5])
 	return 0 if ok else 1
