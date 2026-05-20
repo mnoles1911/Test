@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://dp3l1roland3d"]
+[gd_scene load_steps=14 format=3 uid="uid://dp3l1roland3d"]
 
 ; Player3D — the 3D Roland scene.
 ;
@@ -21,6 +21,7 @@
 [ext_resource type="Script" path="res://scripts/ThrowableHandler.gd" id="4_throwable"]
 [ext_resource type="Script" path="res://scripts/UnderwaterFilter.gd" id="5_underwater"]
 [ext_resource type="Script" path="res://scripts/PrefetchViewer.gd" id="6_prefetch"]
+[ext_resource type="ShaderMaterial" uid="uid://b8uwoverlay001" path="res://assets/shaders/underwater_overlay_material.tres" id="7_uw_overlay"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -35,6 +36,92 @@ size = Vector3(0.4, 1.8, 0.25)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
 albedo_color = Color(0.2, 0.8, 0.2, 1)
+
+; --- C3: underwater particulates (drifting motes/specks visible while
+; submerged). Slow upward drift in world space (local_coords=false so
+; particles don't stick to the player as they swim), small quads with
+; soft additive-ish emission so they read in dark water. Toggled by
+; UnderwaterFilter.set_active via .emitting (not .visible) so existing
+; specks finish their lifetime gracefully when emerging.
+
+[sub_resource type="QuadMesh" id="ParticulateMesh_1"]
+size = Vector2(0.04, 0.04)
+
+[sub_resource type="StandardMaterial3D" id="ParticulateMat_1"]
+shading_mode = 0
+transparency = 1
+billboard_mode = 1
+billboard_keep_scale = true
+albedo_color = Color(0.75, 0.88, 1.0, 0.55)
+emission_enabled = true
+emission = Color(0.6, 0.78, 1.0, 1.0)
+emission_energy_multiplier = 0.6
+
+[sub_resource type="ParticleProcessMaterial" id="ParticulateProc_1"]
+emission_shape = 1
+emission_sphere_radius = 8.0
+direction = Vector3(0.0, 1.0, 0.0)
+spread = 45.0
+; Designer pass 2026-05-20: v1 init 0.02-0.08 + damping 0.4-0.9 made
+; motes effectively stop within 1 second of spawning ("imperceptible
+; drift, despawn, respawn elsewhere"). Faster init + near-zero damping
+; + meaningful upward current so they visibly travel a few metres over
+; their lifetime. Turbulence cranked so the drift swirls instead of
+; reading as straight-line trajectories.
+initial_velocity_min = 0.05
+initial_velocity_max = 0.20
+gravity = Vector3(0.0, 0.06, 0.0)
+damping_min = 0.0
+damping_max = 0.1
+scale_min = 0.4
+scale_max = 1.0
+turbulence_enabled = true
+turbulence_noise_strength = 0.20
+turbulence_noise_speed = Vector3(0.2, 0.1, 0.2)
+
+; --- C18: bubble BURST on water transition (one-shot splash particles,
+; Minecraft-style). Fires on EVERY set_active flip (submerge AND emerge)
+; to mask the instant fog/colour snap. local_coords=false so the burst
+; stays in world-space at the player's crossing position even if they
+; keep moving. Distinct from UnderwaterParticulates (continuous drift)
+; — this is a one-shot ~0.8s puff of ~40 bubbles around the camera.
+
+[sub_resource type="SphereMesh" id="BubbleMesh_1"]
+; Small spherical bubble. 3D mesh (not billboard quad) so the lighting
+; gives it a subtle highlight as it rises — reads as a real bubble.
+radius = 0.03
+height = 0.06
+radial_segments = 6
+rings = 3
+
+[sub_resource type="StandardMaterial3D" id="BubbleMat_1"]
+shading_mode = 0
+transparency = 1
+albedo_color = Color(0.9, 0.95, 1.0, 0.7)
+emission_enabled = true
+emission = Color(0.75, 0.85, 1.0, 1.0)
+emission_energy_multiplier = 0.8
+metallic = 0.0
+roughness = 0.1
+
+[sub_resource type="ParticleProcessMaterial" id="BubbleProc_1"]
+; Small sphere of emission around the camera/head, bubbles rise
+; upward against (anti-)gravity — buoyancy makes them float UP.
+emission_shape = 1
+emission_sphere_radius = 0.5
+direction = Vector3(0.0, 1.0, 0.0)
+spread = 70.0
+initial_velocity_min = 0.8
+initial_velocity_max = 2.5
+gravity = Vector3(0.0, 2.5, 0.0)
+damping_min = 0.3
+damping_max = 0.8
+scale_min = 0.6
+scale_max = 1.4
+; Slight turbulence so bubbles don't rise in perfect lines.
+turbulence_enabled = true
+turbulence_noise_strength = 0.4
+turbulence_noise_speed = Vector3(1.0, 0.5, 1.0)
 
 [node name="Player3D" type="CharacterBody3D" groups=["player"]]
 script = ExtResource("1_player")
@@ -140,4 +227,44 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 visible = false
-color = Color(0.18, 0.32, 0.42, 0.42)
+; .color is the fallback if the screen-wobble shader fails to compile
+; on a given GPU. The shader (when bound) writes COLOR directly and
+; ignores this property.
+color = Color(0.18, 0.32, 0.42, 0.10)
+material = ExtResource("7_uw_overlay")
+
+[node name="UnderwaterParticulates" type="GPUParticles3D" parent="." groups=["underwater_particulates"]]
+; Drifting specks visible while submerged. UnderwaterFilter toggles
+; .emitting on submerge so existing particles finish gracefully when
+; the player surfaces (no abrupt pop). local_coords=false means the
+; emission ORIGIN moves with the player (so motes always emit near
+; them) but the particles themselves live in world space and stay
+; behind as the player swims forward — exactly the "I'm moving through
+; them" feel.
+amount = 200
+lifetime = 10.0
+emitting = false
+local_coords = false
+visibility_aabb = AABB(-12, -12, -12, 24, 24, 24)
+process_material = SubResource("ParticulateProc_1")
+draw_pass_1 = SubResource("ParticulateMesh_1")
+material_override = SubResource("ParticulateMat_1")
+
+[node name="BubbleBurst" type="GPUParticles3D" parent="." groups=["underwater_bubble_burst"]]
+; One-shot bubble burst on every water-surface crossing (submerge OR
+; emerge). UnderwaterFilter calls .restart() in set_active when state
+; flips, which re-fires the burst from frame 0. one_shot=true makes
+; the emission self-terminate after `amount` particles. Position
+; offset (Y=+1.5) puts the burst at the camera/head height.
+amount = 40
+lifetime = 0.9
+one_shot = true
+emitting = false
+local_coords = false
+explosiveness = 0.9
+randomness = 0.5
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+visibility_aabb = AABB(-3, -3, -3, 6, 6, 6)
+process_material = SubResource("BubbleProc_1")
+draw_pass_1 = SubResource("BubbleMesh_1")
+material_override = SubResource("BubbleMat_1")

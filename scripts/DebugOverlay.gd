@@ -71,6 +71,17 @@ var _btn_fly_mode: Button
 var _btn_instant_mine: Button
 var _btn_view_dist: Button
 var _btn_weather: Button
+var _btn_clean_screenshot: Button
+
+# Clean-screenshot mode (designer-requested 2026-05-20). When true,
+# DebugOverlay forces all gameplay/dev HUD chrome invisible —
+# HUDOverlay short-circuits its per-frame UI updates, and the dev
+# coords/aim/world_time/terrain_scale/fps labels here hide too. The
+# F1 dev panel itself isn't auto-hidden (player can F1 to dismiss it
+# manually for the actual screenshot). Toggle via the TOGGLE CLEAN
+# SCREENSHOT row on the COMMANDS tab. State lives only this session;
+# defaults OFF on every launch.
+var clean_screenshot_enabled: bool = false
 
 var instant_mine_enabled: bool = false
 # DEV testing accelerator (TOGGLE INSTANT MINE in the COMMANDS tab,
@@ -219,27 +230,34 @@ func _process(delta: float) -> void:
 	# crosshair are gameplay-only — hide them when no player is in
 	# the tree (title screen, settings, load picker, etc.). Same
 	# pattern as _update_crosshair_visibility below.
+	# Clean-screenshot mode overrides has_player → forces invisible.
 	var has_player: bool = not get_tree().get_nodes_in_group("player").is_empty()
+	var hud_visible: bool = has_player and not clean_screenshot_enabled
 	if _coords_label != null:
-		_coords_label.visible = has_player
-		if has_player:
+		_coords_label.visible = hud_visible
+		if hud_visible:
 			_update_coords_label()
 	if _aim_label != null:
-		_aim_label.visible = has_player
-		if has_player:
+		_aim_label.visible = hud_visible
+		if hud_visible:
 			_update_aim_label()
 	if _world_time_label != null:
-		_world_time_label.visible = has_player
-		if has_player:
+		_world_time_label.visible = hud_visible
+		if hud_visible:
 			_update_world_time_label()
-	# Terrain-scale readout — visible only when the active scene owns
-	# a VoxelLodTerrain (the Copper Isles test scene + main world).
-	# `_update_terrain_scale_label` does its own present/absent check.
+	# Terrain-scale + FPS readouts: same screenshot override. Their
+	# update functions do their own labelling logic, but we force the
+	# visibility explicitly so the screenshot is clean.
 	if _terrain_scale_label != null:
-		_update_terrain_scale_label()
-	# FPS / worst-ms readout — always on while DebugOverlay.enabled.
+		if clean_screenshot_enabled:
+			_terrain_scale_label.visible = false
+		else:
+			_update_terrain_scale_label()
 	if _fps_label != null:
-		_update_fps_label(delta)
+		if clean_screenshot_enabled:
+			_fps_label.visible = false
+		else:
+			_update_fps_label(delta)
 	_update_crosshair_visibility()
 
 	# DELETE ALL SAVES auto-disarm timer.
@@ -358,22 +376,25 @@ func _build_commands_list_view() -> void:
 	info_div.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_commands_list_view.add_child(info_div)
 
-	_btn_delete_all   = _make_command_row("DELETE ALL SAVES")
-	_btn_delete_one   = _make_command_row("DELETE A SAVE FILE")
-	_btn_teleport     = _make_command_row("TELEPORT PLAYER")
-	_btn_advance_day  = _make_command_row("ADVANCE 1 DAY")
-	_btn_advance_time = _make_command_row("ADVANCE TIME...")
-	_btn_fly_mode     = _make_command_row("TOGGLE FLY MODE")
-	_btn_instant_mine = _make_command_row("TOGGLE INSTANT MINE")
-	_btn_view_dist    = _make_command_row("VIEW DISTANCE...")
-	_btn_weather      = _make_command_row("WEATHER...")
+	_btn_delete_all      = _make_command_row("DELETE ALL SAVES")
+	_btn_delete_one      = _make_command_row("DELETE A SAVE FILE")
+	_btn_teleport        = _make_command_row("TELEPORT PLAYER")
+	_btn_advance_day     = _make_command_row("ADVANCE 1 DAY")
+	_btn_advance_time    = _make_command_row("ADVANCE TIME...")
+	_btn_fly_mode        = _make_command_row("TOGGLE FLY MODE")
+	_btn_instant_mine    = _make_command_row("TOGGLE INSTANT MINE")
+	_btn_clean_screenshot = _make_command_row("TOGGLE CLEAN SCREENSHOT")
+	_btn_view_dist       = _make_command_row("VIEW DISTANCE...")
+	_btn_weather         = _make_command_row("WEATHER...")
 
 	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
 			_btn_advance_day, _btn_advance_time, _btn_fly_mode,
-			_btn_instant_mine, _btn_view_dist, _btn_weather]:
+			_btn_instant_mine, _btn_clean_screenshot,
+			_btn_view_dist, _btn_weather]:
 		_commands_list_view.add_child(b)
 	_refresh_fly_mode_label()
 	_refresh_instant_mine_label()
+	_refresh_clean_screenshot_label()
 
 
 func _make_command_row(label: String) -> Button:
@@ -802,6 +823,28 @@ func _refresh_instant_mine_label() -> void:
 		return
 	_btn_instant_mine.text = "  TOGGLE INSTANT MINE  (%s)" % (
 		"ON" if instant_mine_enabled else "OFF"
+	)
+
+
+# --- CLEAN SCREENSHOT toggle (hide all HUD chrome for clean captures) ---
+
+func _toggle_clean_screenshot() -> void:
+	# Flip the flag HUDOverlay + this overlay's dev HUDs read.
+	# HUDOverlay's _process short-circuits to "hide everything" when
+	# this is true (same code path as 'no player in scene'). Dev huds
+	# below (coords/aim/world_time/terrain_scale/fps + crosshair) get
+	# forced invisible in this script's _process. The F1 panel itself
+	# is NOT auto-hidden — player F1s to dismiss it before screenshot.
+	clean_screenshot_enabled = not clean_screenshot_enabled
+	_refresh_clean_screenshot_label()
+	log_action("DEV: clean screenshot %s" % ("ON" if clean_screenshot_enabled else "OFF"))
+
+
+func _refresh_clean_screenshot_label() -> void:
+	if _btn_clean_screenshot == null:
+		return
+	_btn_clean_screenshot.text = "  TOGGLE CLEAN SCREENSHOT  (%s)" % (
+		"ON" if clean_screenshot_enabled else "OFF"
 	)
 
 
@@ -1452,11 +1495,12 @@ func _build_crosshair() -> void:
 
 func _update_crosshair_visibility() -> void:
 	# Reticle is gameplay-only — hide when no player is in the tree
-	# (title screen, settings, load picker, etc.).
+	# (title screen, settings, load picker, etc.) OR when clean-screenshot
+	# mode is on.
 	if _crosshair_root == null:
 		return
 	var has_player: bool = not get_tree().get_nodes_in_group("player").is_empty()
-	_crosshair_root.visible = has_player
+	_crosshair_root.visible = has_player and not clean_screenshot_enabled
 
 
 # =============================================================
@@ -1580,6 +1624,9 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		if _hits_button(_btn_instant_mine, pos):
 			_toggle_instant_mine()
+			return
+		if _hits_button(_btn_clean_screenshot, pos):
+			_toggle_clean_screenshot()
 			return
 		if _hits_button(_btn_view_dist, pos):
 			_show_view_dist_view()

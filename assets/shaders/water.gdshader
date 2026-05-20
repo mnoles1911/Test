@@ -42,7 +42,15 @@ shader_type spatial;
 // neighbour water as "the surface behind me" -> hard seam lines. Never
 // writing depth keeps the fade measuring to real terrain across all
 // chunks (standard Godot depth-fade-water setup).
-render_mode blend_mix, depth_draw_never, cull_disabled, specular_schlick_ggx, diffuse_burley;
+// shadows_disabled (added 2026-05-20): water must NOT cast shadows on
+// the underwater volumetric fog. Designer screenshot showed a dark
+// SUN-SHAPED orb when looking up from underwater — that was the water
+// polygon shadow-casting onto the god-ray fog, blocking the sun's
+// light exactly along the camera-to-sun column. Real water passes
+// most light through; a stylized voxel water that casts hard shadows
+// reads as opaque. With shadows off, the fog underwater is fully lit
+// by the directional light → visible sunbeams, no shadow disc.
+render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled, specular_schlick_ggx, diffuse_burley;
 
 
 // ============================================================
@@ -186,6 +194,61 @@ uniform float foam_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float side_tint_brighten : hint_range(1.0, 3.0) = 1.7;
 uniform float side_sky_mix : hint_range(0.0, 1.0) = 0.30;
 
+// ============================================================
+// V3 PHASE 4a — UNDERSIDE (back-face / "looking up from underwater")
+// ============================================================
+// The shader is cull_disabled so the underside renders, but the v9/v10
+// code path assumes "looking down at water from above" — depth-fade
+// reads sky as the scene behind the water (giant thickness → 100%
+// deep_water_color blend) and Fresnel paints the surface with
+// sky_reflection_color, which together make the underside read as a
+// pale sky-tinted ceiling with no visible flow motion. The 2026-05-19
+// "atmospheric fog seems backwards" screenshot is exactly this. Below
+// we branch on FRONT_FACING: for back-faces we render a *dark* underside
+// (deep_water_color) with the SAME flow-perturbed normal animation
+// (so the surface visibly moves) and a soft sun glint where the view
+// ray points toward where the sun is shining down through the water.
+//
+// sun_direction_world: direction the sun's light TRAVELS in world space
+// (i.e. points from sun toward ground). UnderwaterFilter.gd pushes the
+// live value from the Sun DirectionalLight3D each frame while
+// submerged. Default points straight down so the glint sits at the
+// zenith if the autoload isn't pushing yet (dev scenes etc.).
+uniform vec3 sun_direction_world = vec3(0.0, -1.0, 0.0);
+// Glint tightness — higher = smaller, harder bright spot. v1 was 48
+// (very tight at sun-zenith only); 2026-05-20 designer report "no
+// rays at dawn/dusk shallow angles" → widened to 24 so the bright
+// spot reads at low sun angles too. Halve for an even wider halo
+// if dawn/dusk still feels dark.
+uniform float underside_sun_glint_power : hint_range(2.0, 256.0) = 24.0;
+uniform float underside_sun_glint_strength : hint_range(0.0, 4.0) = 1.6;
+// Underside alpha — near-opaque so the dark deep-water ceiling reads
+// against the brightly-lit underwater fog beyond the polygon. v1 used
+// 0.92 → 8% bright-fog bleed-through dominated the look, hiding the
+// dark blue. 0.98 keeps only a 2% bleed (enough that the bright glint
+// feels like real light breaking through, not pasted on).
+uniform float underside_alpha : hint_range(0.0, 1.0) = 0.98;
+// Underside glint tint — warm-white. Multiplied by glint mask.
+uniform vec3 underside_glint_color : source_color = vec3(1.0, 0.95, 0.80);
+
+// === DEPTH GRADIENT (added 2026-05-20) ===================================
+// Player's submerged depth, in metres below where they entered the water.
+// UnderwaterFilter.gd snapshots the player's Y at the submerge moment
+// and pushes this uniform every frame as `surface_snapshot_y - current_y`.
+// Used by the back-face branch below to fade brightness with depth.
+uniform float underwater_depth_meters = 0.0;
+// At this depth the underside reads fully dark (the depth_attenuation
+// term reaches 0). Linear ramp between 0 m (full brightness) and this.
+uniform float depth_for_full_dark : hint_range(1.0, 40.0) = 12.0;
+// Skylight ambient bleed — even at low sun angles, the bright sky
+// above the water surface should lift the underside slightly so the
+// "looking up" view isn't pitch black. Scales linearly with
+// depth_attenuation (shallow = full bleed, deep = none).
+uniform float skylight_ambient_strength : hint_range(0.0, 1.0) = 0.35;
+// Skylight bleed colour — mostly sky_reflection_color but uniform so
+// the designer can taste-tune separately.
+uniform vec3 skylight_ambient_color : source_color = vec3(0.45, 0.62, 0.80);
+
 float _h12(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
@@ -251,6 +314,11 @@ void fragment() {
 	float geo_ny = n.y;
 	float flow_strength = 0.0;
 	vec2 flow_dir = decode_flow(v_flow_uv, flow_strength);
+	// Wave height captured at OUTER scope so the back-face branch can
+	// read it to drive an underside brightness pattern that animates
+	// in lockstep with the surface ripple visible from above. Default
+	// 0.5 (neutral) for the cases where the flow block doesn't run.
+	float wave_height = 0.5;
 	if (debug_mode == 0 && flow_motion_strength > 0.001) {
 		vec3 wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		vec2 P = wpos.xz * flow_ripple_scale;
@@ -262,12 +330,110 @@ void fragment() {
 		float h  = _water_h(P, fdir, T);
 		float hx = _water_h(P + vec2(e, 0.0), fdir, T);
 		float hz = _water_h(P + vec2(0.0, e), fdir, T);
+		wave_height = h;  // capture for back-face branch
 		float upness = clamp(n.y, 0.0, 1.0);
 		float amp = flow_motion_strength * upness * (0.45 + 0.55 * flow_strength);
 		// World-space height gradient → normal perturbation. Tops only
 		// (upness), so the #222 LOD-seam side slivers stay untouched.
 		n = normalize(n + vec3(h - hx, 0.0, h - hz) * (flow_normal_strength * 8.0 * amp));
 	}
+
+	// === 2.5 BACK-FACE (player is underwater looking up) ============
+	// Only override the default visual (debug_mode == 0) — non-zero
+	// debug modes fall through to keep F6 diagnostics working from
+	// below too. See uniform block "UNDERSIDE" up top for why.
+	//
+	// NB Godot shaders disallow `return` in fragment(), so we set a
+	// flag and gate the rest of fragment() with an inverse check
+	// below. Functionally identical to early-return.
+	bool _uw_back_face = (!FRONT_FACING && debug_mode == 0);
+	if (_uw_back_face) {
+		// World-space view direction (vertex toward camera). VIEW is in
+		// VIEW space (frag→cam); mat3(INV_VIEW_MATRIX) rotates it back.
+		// When the player is BELOW a water surface fragment, view_world
+		// points DOWN (from the up-fragment to the down-camera).
+		vec3 view_world = normalize(mat3(INV_VIEW_MATRIX) * VIEW);
+		// Both vectors should point DOWN when the camera is looking at
+		// the sun through the water:
+		//   sun_direction_world = direction the sun's light TRAVELS = DOWN
+		//   view_world          = frag-to-camera                    = DOWN
+		// So `dot(view_world, sun_direction_world)` peaks at 1.0 when
+		// the camera ray aligns with the sun-down column. v1 had this
+		// negated (`-sun_direction_world` then dotted) which gave -1
+		// everywhere → glint always 0. Designer screenshot 2026-05-20
+		// showed no bright spot; this fixes it.
+		float glint_align = clamp(dot(view_world, normalize(sun_direction_world)), 0.0, 1.0);
+		float glint = pow(glint_align, underside_sun_glint_power)
+		            * underside_sun_glint_strength;
+		// Modulate glint very mildly by the wave-perturbed normal so
+		// the bright spot shimmers with the surface motion (NOT
+		// a hard wiggle — wave normal here is small, this is just
+		// "alive" feel).
+		glint *= (0.85 + 0.15 * clamp(n.y, 0.0, 1.0));
+
+		// 2026-05-20 designer report (pass 2): ripple bands ×5 more
+		// prominent so they're plainly visible even far from the surface,
+		// PLUS depth-graded brightness (shallow = much brighter than
+		// deep), PLUS skylight ambient bleed so the underside isn't
+		// pitch-dark when the sun is at a low angle.
+		//
+		// Wave-pattern brightness: huge ratio between peaks and troughs.
+		//   trough (h=0):     deep_water * 0.30 — near-black
+		//   peak   (h=1):     deep_water * 2.50 + water_tint * 1.5 + sun warm
+		// + caustic_lift adds water_tint colour at peaks (refraction-style
+		//   focusing of sky-light through the wave lens).
+		// + sun_caustic adds a warm tint at peaks scaled by wave_height
+		//   squared so it's concentrated on the actual peaks (lensing).
+		float wave_brightness = mix(0.30, 2.50, wave_height);
+		vec3 caustic_lift = mix(vec3(0.0), water_tint_color * 1.5, wave_height);
+		vec3 sun_caustic = mix(vec3(0.0),
+		                        underside_glint_color * 0.5,
+		                        wave_height * wave_height);
+		vec3 wave_underside = deep_water_color * wave_brightness
+		                    + caustic_lift
+		                    + sun_caustic;
+
+		// Depth attenuation — fades underside brightness from 1.0 at
+		// surface to ~0 at depth_for_full_dark. Player's depth pushed
+		// by UnderwaterFilter; defaults to 0 (no attenuation) when above
+		// water or when the uniform hasn't been written yet.
+		float depth_attenuation = 1.0 - clamp(
+			underwater_depth_meters / max(depth_for_full_dark, 0.5),
+			0.0, 1.0);
+		// At shallow depths, lift everything; at deep, crush it.
+		// 0.4 minimum keeps the underside from going pitch-black even
+		// at full depth (some light always makes it through).
+		float depth_factor = 0.4 + 0.6 * depth_attenuation;
+
+		// Skylight ambient: a sun-direction-INDEPENDENT lift so the
+		// underside reads as "light coming through water" at any time
+		// of day, not only when the sun is directly overhead. Fades
+		// with depth.
+		vec3 skylight_bleed = skylight_ambient_color
+		                    * skylight_ambient_strength
+		                    * depth_attenuation;
+
+		vec3 underside = wave_underside * depth_factor
+		               + skylight_bleed
+		               + underside_glint_color * glint
+		                  * (0.5 + 0.5 * depth_attenuation);
+		// Unlit emission so the bright spot reads at any time of day
+		// (sun could be below horizon; we still want some glow from
+		// scattered/refracted light through the surface — at night this
+		// term goes near-zero anyway because UnderwaterFilter drops
+		// the sun energy / fog density to inky values).
+		ALBEDO = underside;
+		EMISSION = underside_glint_color * (glint * 0.4);
+		ALPHA = underside_alpha;
+		METALLIC = 0.0;
+		ROUGHNESS = 1.0;
+	}
+
+	// Everything below is the regular front-face / debug-mode path.
+	// Gated by !_uw_back_face since Godot shaders cannot early-return
+	// from fragment(). The closing `}` for this block is just before
+	// the closing `}` of fragment().
+	if (!_uw_back_face) {
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
@@ -412,4 +578,5 @@ void fragment() {
 	// "this is water" read; a hard mirror glint on flat voxel faces is
 	// ugly. Tune via the .tres (roughness_amount) + this constant.
 	SPECULAR = 0.15;
+	}  // end of `if (!_uw_back_face) { ... }` front-face gate
 }

@@ -233,6 +233,25 @@ var _in_water: bool = false
 # FLOATING, sprint is disabled, swim speed applies.
 
 const WATER_EXIT_MARGIN_M: float = 0.20
+
+# Vertical lead for the UnderwaterFilter visual trigger.
+# Player3D._update_water_state probes water at (camera.y - LEAD).
+#
+# DESIGNER PASS 2026-05-20 (C15): C14's asymmetric ENTER/EXIT lead
+# (0.30 / 0.00) produced backward hysteresis — filter ON state had a
+# stricter exit threshold (surface+0.00) than the filter OFF state's
+# entry threshold (surface+0.30). In the 0.30m range ABOVE the
+# surface, the filter toggled every frame: OFF probes 0.30m below,
+# finds water, switches ON; ON probes 0.00m below, finds air,
+# switches OFF; OFF again, ON, OFF — visible flicker.
+#
+# Best-practice fix (matches Minecraft / Veloren / Vintage Story):
+# SINGLE small threshold + INSTANT state snap (no tween). No lead is
+# strictly required because the snap eliminates the partial-fade
+# window that the lead was compensating for. A tiny 0.05m lead is
+# kept to absorb sub-voxel boundary ambiguity (the probe sits just
+# inside the surface voxel when camera is exactly at the surface).
+const UNDERWATER_FILTER_LEAD_M: float = 0.05
 # #4 waterline-jitter fix (2026-05-17). Standing at the exact sea
 # surface, the pivot bobs sub-voxel (CharacterBody3D snap + float),
 # so a raw per-frame is_position_in_water(pivot) flips true/false every
@@ -1138,10 +1157,31 @@ func _update_water_state() -> void:
 	else:
 		_swim_bob_t = 0.0
 
-	# Drive the underwater camera tint. set_active is idempotent —
-	# the filter only updates visibility on actual state changes.
-	if _underwater_filter != null and _underwater_filter.has_method("set_active"):
-		_underwater_filter.set_active(_is_submerged)
+	# Drive the underwater visual filter from the ACTIVE CAMERA's world
+	# position, NOT _is_submerged (head_pos = pivot + HEAD_OFFSET_METERS
+	# = pivot + 1.6m). The camera lives at CameraTarget Y = 1.5m, which
+	# is 0.1m BELOW head_pos. With head-based triggering there was a
+	# 0.1m window during the surface transition where the camera was
+	# already below the water surface but head_pos hadn't crossed yet
+	# (descending) or had already crossed back (emerging) — producing
+	# the "unfiltered underwater view for a split second" the designer
+	# reported 2026-05-20. We probe a point UNDERWATER_FILTER_LEAD_M
+	# BELOW the camera so that probe is already in water while the
+	# camera is still slightly above — filter activates EARLIER on
+	# descent and stays on LATER on emerge. Gameplay submerge state
+	# (`_is_submerged`, used by swim / breath / drown) is unchanged.
+	if _underwater_filter != null and _underwater_filter.has_method("set_active") and wfm != null:
+		var cam_in_water: bool = _is_submerged  # fallback if no active cam
+		var active_cam: Camera3D = get_viewport().get_camera_3d()
+		if active_cam != null:
+			# Single small lead. Probe just below the camera so the
+			# probe sits inside the surface voxel when the camera is
+			# exactly at the surface (covers sub-voxel boundary). One
+			# threshold, no hysteresis, no flicker.
+			var cam_check_pos: Vector3 = active_cam.global_position \
+				- Vector3(0.0, UNDERWATER_FILTER_LEAD_M, 0.0)
+			cam_in_water = wfm.is_position_in_water(cam_check_pos)
+		_underwater_filter.set_active(cam_in_water)
 
 	# Water audio: transition one-shots + the self-correcting ambience bed.
 	_update_water_audio()

@@ -1,0 +1,11 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://b5yvuf5boj441"]
+
+[ext_resource type="Shader" path="res://assets/shaders/underwater_overlay.gdshader" id="1_uw_overlay"]
+
+[resource]
+shader = ExtResource("1_uw_overlay")
+shader_parameter/wobble_strength = 0.0069
+shader_parameter/wobble_speed = 0.6
+shader_parameter/wobble_scale = 2.5
+shader_parameter/chromatic_aberration = 0.0015
+shader_parameter/tint_color = Color(0.18, 0.32, 0.42, 0.10)
