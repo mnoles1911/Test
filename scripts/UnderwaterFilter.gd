@@ -55,11 +55,18 @@ extends CanvasLayer
 # transition tracks DayNightCycle's own sun-brightness curve.
 # Tune in the .tscn / inspector — exported so the designer doesn't
 # have to edit GDScript to taste-test.
-@export var underwater_fog_density_noon: float = 0.18
-@export var underwater_fog_density_night: float = 0.40
-@export var underwater_fog_albedo_noon: Color = Color(0.10, 0.30, 0.42, 1.0)
-@export var underwater_fog_albedo_night: Color = Color(0.02, 0.06, 0.11, 1.0)
-@export var underwater_fog_emission_noon: Color = Color(0.04, 0.08, 0.10, 1.0)
+@export var underwater_fog_density_noon: float = 0.30
+@export var underwater_fog_density_night: float = 0.70
+# Albedo channels are TUNED FOR "DARKER BLUE": B kept noticeably above
+# R+G so the murk reads cobalt rather than teal (the earlier 0.30 G
+# made noon read green). Raise G back toward 0.20 if you want
+# teal-leaning underwater (tropical-reef look) instead of dark cobalt.
+@export var underwater_fog_albedo_noon: Color = Color(0.06, 0.14, 0.32, 1.0)
+@export var underwater_fog_albedo_night: Color = Color(0.01, 0.03, 0.08, 1.0)
+# Emission is fog glowing on its own. Near-zero values let albedo +
+# scene lighting define the colour — keeps the look "committed dark"
+# instead of lifted/washed.
+@export var underwater_fog_emission_noon: Color = Color(0.01, 0.02, 0.03, 1.0)
 @export var underwater_fog_emission_night: Color = Color(0.00, 0.00, 0.00, 1.0)
 # Sun.light_volumetric_fog_energy — the god-ray dial. 0 = invisible
 # (default Godot), bigger = brighter shafts. 6.0 at noon reads as
