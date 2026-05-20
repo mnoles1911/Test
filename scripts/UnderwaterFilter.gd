@@ -114,6 +114,11 @@ var _water_mat: ShaderMaterial = null
 # baseline. Toggled on/off with .visible from set_active so it costs
 # nothing above water.
 var _underwater_fog_volume: FogVolume = null
+# Optional drifting-particulate GPUParticles3D (group
+# "underwater_particulates"). Toggled via .emitting (NOT .visible) so
+# existing motes fade out gracefully when the player surfaces instead
+# of popping out mid-flight.
+var _underwater_particulates: GPUParticles3D = null
 var _tween: Tween = null
 var _submerged: bool = false
 
@@ -146,6 +151,10 @@ func _ready() -> void:
 	_underwater_fog_volume = get_tree().get_first_node_in_group("underwater_fog_volume") as FogVolume
 	if _underwater_fog_volume != null:
 		_underwater_fog_volume.visible = false
+	# Optional drifting particulates. Same fail-soft pattern.
+	_underwater_particulates = get_tree().get_first_node_in_group("underwater_particulates") as GPUParticles3D
+	if _underwater_particulates != null:
+		_underwater_particulates.emitting = false
 
 
 func _process(_delta: float) -> void:
@@ -200,6 +209,11 @@ func set_active(submerged: bool) -> void:
 	# below cross-fades the static portion).
 	if _underwater_fog_volume != null:
 		_underwater_fog_volume.visible = submerged
+	# Particulates: flip .emitting, NOT .visible — existing in-flight
+	# motes finish their lifetime so the player sees them gently fade
+	# instead of pop out when surfacing.
+	if _underwater_particulates != null:
+		_underwater_particulates.emitting = submerged
 	# Tween the env fog and sun god-ray energy between surface and
 	# underwater presets. submerge → underwater (target depends on
 	# live sun mix); emerge → surface baseline.

@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://dp3l1roland3d"]
+[gd_scene load_steps=10 format=3 uid="uid://dp3l1roland3d"]
 
 ; Player3D — the 3D Roland scene.
 ;
@@ -35,6 +35,42 @@ size = Vector3(0.4, 1.8, 0.25)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
 albedo_color = Color(0.2, 0.8, 0.2, 1)
+
+; --- C3: underwater particulates (drifting motes/specks visible while
+; submerged). Slow upward drift in world space (local_coords=false so
+; particles don't stick to the player as they swim), small quads with
+; soft additive-ish emission so they read in dark water. Toggled by
+; UnderwaterFilter.set_active via .emitting (not .visible) so existing
+; specks finish their lifetime gracefully when emerging.
+
+[sub_resource type="QuadMesh" id="ParticulateMesh_1"]
+size = Vector2(0.04, 0.04)
+
+[sub_resource type="StandardMaterial3D" id="ParticulateMat_1"]
+shading_mode = 0
+transparency = 1
+billboard_mode = 1
+billboard_keep_scale = true
+albedo_color = Color(0.75, 0.88, 1.0, 0.55)
+emission_enabled = true
+emission = Color(0.6, 0.78, 1.0, 1.0)
+emission_energy_multiplier = 0.6
+
+[sub_resource type="ParticleProcessMaterial" id="ParticulateProc_1"]
+emission_shape = 1
+emission_sphere_radius = 8.0
+direction = Vector3(0.0, 1.0, 0.0)
+spread = 35.0
+initial_velocity_min = 0.02
+initial_velocity_max = 0.08
+gravity = Vector3(0.0, 0.012, 0.0)
+damping_min = 0.4
+damping_max = 0.9
+scale_min = 0.4
+scale_max = 1.0
+turbulence_enabled = true
+turbulence_noise_strength = 0.08
+turbulence_noise_speed = Vector3(0.1, 0.05, 0.1)
 
 [node name="Player3D" type="CharacterBody3D" groups=["player"]]
 script = ExtResource("1_player")
@@ -141,3 +177,20 @@ anchor_bottom = 1.0
 mouse_filter = 2
 visible = false
 color = Color(0.18, 0.32, 0.42, 0.10)
+
+[node name="UnderwaterParticulates" type="GPUParticles3D" parent="." groups=["underwater_particulates"]]
+; Drifting specks visible while submerged. UnderwaterFilter toggles
+; .emitting on submerge so existing particles finish gracefully when
+; the player surfaces (no abrupt pop). local_coords=false means the
+; emission ORIGIN moves with the player (so motes always emit near
+; them) but the particles themselves live in world space and stay
+; behind as the player swims forward — exactly the "I'm moving through
+; them" feel.
+amount = 200
+lifetime = 8.0
+emitting = false
+local_coords = false
+visibility_aabb = AABB(-12, -12, -12, 24, 24, 24)
+process_material = SubResource("ParticulateProc_1")
+draw_pass_1 = SubResource("ParticulateMesh_1")
+material_override = SubResource("ParticulateMat_1")
