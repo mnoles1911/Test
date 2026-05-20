@@ -234,28 +234,24 @@ var _in_water: bool = false
 
 const WATER_EXIT_MARGIN_M: float = 0.20
 
-# Asymmetric vertical lead for the UnderwaterFilter visual trigger.
-# Player3D._update_water_state probes water at (camera.y - LEAD) so the
-# filter activates BEFORE the camera crosses the surface descending,
-# and turns off as soon as the camera clears the surface ascending.
+# Vertical lead for the UnderwaterFilter visual trigger.
+# Player3D._update_water_state probes water at (camera.y - LEAD).
 #
-# DIRECTION = DOWN. is_position_in_water(p) returns TRUE when p.y is
-# below the water surface. Probing below the camera catches "camera is
-# slightly above the surface" → filter activates early. C12 had this
-# backwards (`+ LEAD`), C13 flipped it.
+# DESIGNER PASS 2026-05-20 (C15): C14's asymmetric ENTER/EXIT lead
+# (0.30 / 0.00) produced backward hysteresis — filter ON state had a
+# stricter exit threshold (surface+0.00) than the filter OFF state's
+# entry threshold (surface+0.30). In the 0.30m range ABOVE the
+# surface, the filter toggled every frame: OFF probes 0.30m below,
+# finds water, switches ON; ON probes 0.00m below, finds air,
+# switches OFF; OFF again, ON, OFF — visible flicker.
 #
-# DESIGNER PASS 2026-05-20: symmetric 0.30 LEAD meant the filter
-# stayed on until the camera was 30cm CLEAR of the surface on emerge —
-# noticeably too long. Split into ENTER vs EXIT:
-#   ENTER (above water → submerged): probe 0.30m below camera so the
-#     filter activates while the camera is still ~0.30m above the
-#     surface. Covers head_pos↔camera offset, fall velocity, comfort.
-#   EXIT  (submerged → above water): probe 0.00m below camera. Filter
-#     deactivates the instant the camera point is above the surface.
-#     Combined with emerge_transition_seconds = 0.12 on UnderwaterFilter,
-#     the fade-out also runs fast, so surfacing feels immediate.
-const UNDERWATER_FILTER_LEAD_ENTER_M: float = 0.30
-const UNDERWATER_FILTER_LEAD_EXIT_M: float = 0.00
+# Best-practice fix (matches Minecraft / Veloren / Vintage Story):
+# SINGLE small threshold + INSTANT state snap (no tween). No lead is
+# strictly required because the snap eliminates the partial-fade
+# window that the lead was compensating for. A tiny 0.05m lead is
+# kept to absorb sub-voxel boundary ambiguity (the probe sits just
+# inside the surface voxel when camera is exactly at the surface).
+const UNDERWATER_FILTER_LEAD_M: float = 0.05
 # #4 waterline-jitter fix (2026-05-17). Standing at the exact sea
 # surface, the pivot bobs sub-voxel (CharacterBody3D snap + float),
 # so a raw per-frame is_position_in_water(pivot) flips true/false every
@@ -312,12 +308,6 @@ var _breath_recovery_remaining: float = 0.0
 # Player3D.tscn.
 
 var _underwater_filter: Node = null
-# Last-frame state of the underwater filter, used to pick the
-# asymmetric LEAD direction in _update_water_state. true ⇒ filter is
-# currently ON (use the small EXIT lead so it deactivates quickly when
-# the camera surfaces); false ⇒ filter is OFF (use the larger ENTER
-# lead so it activates BEFORE the camera crosses the surface).
-var _underwater_filter_active: bool = false
 
 # =============================================================
 # DEBUG FLY MODE
@@ -1184,19 +1174,14 @@ func _update_water_state() -> void:
 		var cam_in_water: bool = _is_submerged  # fallback if no active cam
 		var active_cam: Camera3D = get_viewport().get_camera_3d()
 		if active_cam != null:
-			# Asymmetric lead: big going IN (filter activates BEFORE
-			# camera crosses the surface so there's no unfiltered
-			# flicker), zero going OUT (filter deactivates the instant
-			# the camera is above the surface — no "stays on while
-			# already above water" lag).
-			var lead: float = UNDERWATER_FILTER_LEAD_EXIT_M \
-				if _underwater_filter_active \
-				else UNDERWATER_FILTER_LEAD_ENTER_M
+			# Single small lead. Probe just below the camera so the
+			# probe sits inside the surface voxel when the camera is
+			# exactly at the surface (covers sub-voxel boundary). One
+			# threshold, no hysteresis, no flicker.
 			var cam_check_pos: Vector3 = active_cam.global_position \
-				- Vector3(0.0, lead, 0.0)
+				- Vector3(0.0, UNDERWATER_FILTER_LEAD_M, 0.0)
 			cam_in_water = wfm.is_position_in_water(cam_check_pos)
 		_underwater_filter.set_active(cam_in_water)
-		_underwater_filter_active = cam_in_water
 
 	# Water audio: transition one-shots + the self-correcting ambience bed.
 	_update_water_audio()

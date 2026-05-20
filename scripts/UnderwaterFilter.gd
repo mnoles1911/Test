@@ -108,22 +108,19 @@ extends CanvasLayer
 
 
 # --- Behaviour knobs -----------------------------------------------------
-# transition_seconds (legacy export, kept for back-compat with any
-# external `.tscn` referencing it) — REPLACED in set_active by the
-# split values below so the submerge feel is instant. Designer report
-# 2026-05-20: "split second where none of the underwater effects are
-# present; player can see clearly far into the distance as if only the
-# surface plane existed" — that gap was the 0.5s ramp from surface
-# baseline density (0.015) to underwater density (0.55). 80 ms on
-# submerge is 5 frames at 60 fps, perceptually instant.
+# Transition durations. C15 (2026-05-20) collapses both to 0 — instant
+# snap, Minecraft-style. The previous 0.08s/0.12s tween combined with
+# the asymmetric LEAD on Player3D produced backward hysteresis that
+# flickered the filter at the surface transition. With an instant
+# snap, no partial-fade window exists, so no LEAD is needed and no
+# flicker is possible.
+#
+# Raise these toward 0.10 if you want a perceptible smooth cross-fade
+# at the surface boundary (will trade flicker risk for that softness).
+# transition_seconds is the legacy export, kept for .tscn back-compat.
 @export var transition_seconds: float = 0.5
-@export var submerge_transition_seconds: float = 0.08
-# emerge_transition_seconds 2026-05-20 designer pass: 0.50 felt like
-# the underwater fog "lingered" on after surfacing. Cut to 0.12 so the
-# fade-out runs nearly as fast as the submerge — matches the spatial
-# UNDERWATER_FILTER_LEAD_EXIT_M = 0 on Player3D so surfacing feels
-# immediate. Bump back toward 0.3 if you want a softer exit fade.
-@export var emerge_transition_seconds: float = 0.12
+@export var submerge_transition_seconds: float = 0.0
+@export var emerge_transition_seconds: float = 0.0
 # Sun.light_energy peak — DayNightCycle uses 2.2 at noon (see
 # DayNightCycle.SUN_ENERGY_DAY). The day/night mix factor divides the
 # observed energy by this, so 2.2 = full "noon" preset. Tune if the
