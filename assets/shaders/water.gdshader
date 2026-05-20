@@ -309,7 +309,11 @@ void fragment() {
 	// sheen so even at a full grazing angle the surface keeps water
 	// colour instead of blowing out to pure sky. Correctly oriented,
 	// predictable, never inverted.
-	float refl_amt = clamp(fresnel * reflection_strength + reflection_floor, 0.0, 0.85);
+	// Cap at 0.5 (was 0.85): even at full grazing, at MOST half sky →
+	// the water keeps its body colour and never washes pale-sky. The
+	// real root cause of the "see-through pale water" was this term,
+	// not alpha (the magenta proof-of-life confirmed the shader runs).
+	float refl_amt = clamp(fresnel * reflection_strength + reflection_floor, 0.0, 0.5);
 	vec3 surface = mix(body, sky_reflection_color, refl_amt);
 
 	// Phase 3 — shoreline EDGE FOAM. Where the water column is thin

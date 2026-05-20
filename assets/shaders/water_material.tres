@@ -54,6 +54,17 @@ shader_parameter/water_murk = 0.85
 ; water reads as a solid coloured surface; lower for more see-through.
 shader_parameter/shallow_alpha = 0.85
 
+; --- REFLECTION (2026-05-19 root-cause: pale water was the Fresnel
+; sky-reflection at grazing angles dominating a solid surface — magenta
+; proof-of-life test confirmed the shader IS drawing the water; the
+; "see-through" look was actually mostly-sky-coloured surface). Slash
+; the reflection contribution so the body colour shows through at
+; grazing instead of turning the water pale-sky.
+; refl_amt = clamp(fresnel * reflection_strength + reflection_floor, 0,
+; 0.5). Even at full grazing, max 50% sky → 50%+ body colour stays.
+shader_parameter/reflection_strength = 0.25
+shader_parameter/reflection_floor = 0.05
+
 ; --- LOD-SEAM SUPPRESSION DISTANCE GATE (2026-05-18 readability fix) ---
 ; The dark-grid side-face suppression now only acts at DISTANCE so it
 ; stops fading out the near shallow water you look straight down into.
