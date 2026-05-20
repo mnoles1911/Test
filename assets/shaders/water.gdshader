@@ -305,7 +305,12 @@ void fragment() {
 	// Only override the default visual (debug_mode == 0) — non-zero
 	// debug modes fall through to keep F6 diagnostics working from
 	// below too. See uniform block "UNDERSIDE" up top for why.
-	if (!FRONT_FACING && debug_mode == 0) {
+	//
+	// NB Godot shaders disallow `return` in fragment(), so we set a
+	// flag and gate the rest of fragment() with an inverse check
+	// below. Functionally identical to early-return.
+	bool _uw_back_face = (!FRONT_FACING && debug_mode == 0);
+	if (_uw_back_face) {
 		// World-space view direction (vertex toward camera). We need
 		// it world-space to dot against world-space sun_direction.
 		vec3 view_world = normalize(mat3(INV_VIEW_MATRIX) * VIEW);
@@ -332,9 +337,13 @@ void fragment() {
 		ALPHA = underside_alpha;
 		METALLIC = 0.0;
 		ROUGHNESS = 1.0;
-		return;
 	}
 
+	// Everything below is the regular front-face / debug-mode path.
+	// Gated by !_uw_back_face since Godot shaders cannot early-return
+	// from fragment(). The closing `}` for this block is just before
+	// the closing `}` of fragment().
+	if (!_uw_back_face) {
 	vec3 v = normalize(VIEW);
 	float ndv = clamp(dot(n, v), 0.0, 1.0);
 	float fresnel = pow(1.0 - ndv, fresnel_power) * fresnel_strength;
@@ -479,4 +488,5 @@ void fragment() {
 	// "this is water" read; a hard mirror glint on flat voxel faces is
 	// ugly. Tune via the .tres (roughness_amount) + this constant.
 	SPECULAR = 0.15;
+	}  // end of `if (!_uw_back_face) { ... }` front-face gate
 }
