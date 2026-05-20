@@ -284,6 +284,25 @@ void fragment() {
 	float seam_region = smoothstep(seam_suppress_near_m, seam_suppress_far_m, frag_dist);
 	float up_face = 1.0;  // was mix(1.0, up_face_raw, seam_region) — see above
 
+	// === 2c. LOD-SEAM SIDE-FACE ALPHA CUT (2026-05-19, tightened) ===
+	// At distance, mesh blocks of different LOD meet at the fluid
+	// surface; Zylann's fluid mesher fills the height mismatch with a
+	// near-vertical side polygon (n.y ≈ 0). Untouched, those side faces
+	// render as a dark grid (low Fresnel → black in mode 2; dark stripes
+	// in mode 0). The OLD up_face suppression (smoothstep 0.30..0.72)
+	// also killed legitimate auto-sloped tops on native fluid (the "all
+	// transparent" bug), so it was disabled. THIS replacement is:
+	//   • TIGHTER threshold 0.05..0.20 → only truly vertical seam faces
+	//     are dimmed; native fluid auto-sloped tops (n.y ≳ 0.30) keep
+	//     full opacity.
+	//   • ALPHA-ONLY → body colour, depth grade, foam, refraction all
+	//     untouched (the recent water_murk/shallow_alpha tune stays).
+	//   • DISTANCE-GATED via the existing seam_suppress_near_m/_far_m
+	//     uniforms so near-water (where you'd notice a dim side) keeps
+	//     full alpha.
+	float side_face_open = smoothstep(0.05, 0.20, geo_ny);  // 1 = top/slope, 0 = vertical
+	float side_alpha_mul = mix(1.0, side_face_open, seam_region);
+
 	// === 3. SURFACE: per-channel Beer-Lambert + in-scatter ==========
 	// Physical model (2026-05-19): light transmittance through the
 	// water column is exp(-k·depth) PER WAVELENGTH (k = water_extinction
@@ -364,7 +383,9 @@ void fragment() {
 		EMISSION = vec3(1.0, 0.0, 1.0);  // glow so it's unmissable even unlit
 	} else {
 		ALBEDO = surface;
-		ALPHA = clamp(alpha, 0.0, 1.0);
+		// side_alpha_mul: alpha-only LOD-seam side-face dim at distance
+		// (§2c). 1.0 by default → no effect on the recent tune.
+		ALPHA = clamp(alpha * side_alpha_mul, 0.0, 1.0);
 	}
 
 	METALLIC = metallic_amount;
