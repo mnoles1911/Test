@@ -83,10 +83,70 @@ headless validation possible — headless only confirms compile)
   in group `world_environment`, Sun in group `sun_light`,
   `volumetric_fog_enabled = true` in `scenes/World3D.tscn`. Tint
   `ColorRect` kept at alpha 0.10 as a cheap close-up colour grade.
-- **Phase 4b — caustics + per-biome fog. PENDING.** Caustics on the
-  submerged lakebed (animated sun-through-waves projection) and a
-  per-biome fog/extinction override (read water-body biome at player
-  position to shift the noon/night anchors). Optional.
+- **Phase 4a-extended — back-face / variety / particulates / wobble.
+  DONE (2026-05-19, PR #232 C1..C4).** Four layered improvements on top
+  of the initial Phase 4a:
+  - **C1 — water.gdshader back-face branch.** `if (!FRONT_FACING &&
+    debug_mode == 0)` renders the underside as `deep_water_color` plus
+    a sun-direction-driven bright spot (`pow(dot(view_world,
+    -sun_direction_world), underside_sun_glint_power) *
+    underside_sun_glint_strength`), modulated mildly by the wave-
+    perturbed normal so the bright patch shimmers with the surface
+    motion. Fixes the "looking up at the surface from below looks like
+    a pale-blue ceiling with no motion" (designer screenshot
+    2026-05-19). UnderwaterFilter pushes the live `sun_direction_world`
+    each frame so the glint tracks day/night. Also: `underwater_fog_
+    albedo_noon` set to `Color(0.02, 0.06, 0.11)` = `deep_water_color`,
+    densities raised to 0.55/1.10, `volumetric_fog_length: 80 → 48`.
+  - **C2 — animated noise FogVolume.** `assets/shaders/underwater_fog.
+    gdshader` (`shader_type fog`) with 3 octaves of asset-free 3D value
+    noise scrolling at different scales (1.0/1.9/3.7) and velocities,
+    modulating `DENSITY` on top of the env baseline. Hosted by an
+    `UnderwaterFogVolume` node (shape=WORLD, group
+    `underwater_fog_volume`), toggled via `.visible` on submerge.
+    Drifting denser/lighter patches → water feels alive.
+  - **C3 — drifting particulates.** `GPUParticles3D
+    UnderwaterParticulates` sibling of UnderwaterFilter under Player3D
+    (group `underwater_particulates`). ~200 small unshaded billboards,
+    slow upward drift, 8 s lifetime, mild turbulence. `local_coords =
+    false` so the player swims THROUGH them (motes stay in world
+    space). Toggled via `.emitting` (not `.visible`) so existing motes
+    finish gracefully on surfacing.
+  - **C4 — screen wobble + chromatic aberration.** `assets/shaders/
+    underwater_overlay.gdshader` (`shader_type canvas_item`) on the
+    TintRect. Noise-driven SCREEN_UV displacement (~6 px @ 1080p,
+    0.6 Hz) + RGB sampled at tiny offsets in the wobble direction
+    (~1.5 px CA). v1's `.color` remains as a fallback if the shader
+    fails on a player's GPU.
+- **Phase 4b — caustics on the submerged lakebed. PENDING.** Animated
+  sun-through-waves projection on submerged terrain — the iconic
+  dappled-light underwater look. Options: (a) projected animated
+  caustic texture (orthographic projector pointing down, single tiled
+  noise texture animated over TIME, used by every modern game's
+  underwater scenes — see [NVIDIA GPU Gems Ch 2](https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-2-rendering-water-caustics)); (b) procedural caustics in a
+  post-process compositor pass. (a) is cheaper and easier; (b) is more
+  physically motivated but heavier. Recommend (a). Requires a single
+  ~256-tile noise texture (or generate procedurally). Estimated effort:
+  small. Deferred 2026-05-19 by designer to keep PR #232 focused.
+- **Phase 4c — per-biome fog/extinction. PENDING.** Read water-body
+  biome at player position (river / lake / ocean / swamp / glacial)
+  and shift the `underwater_fog_albedo_*` / `underwater_fog_density_*`
+  anchors to match — green murk for swamps, ice-blue for glacial,
+  brown tint for muddy rivers. The exports on UnderwaterFilter are
+  already named so a biome map just feeds different presets. Needs:
+  biome lookup API (probably from `WeatherLocationProfile` or a new
+  water-body classification autoload). Deferred 2026-05-19.
+- **Phase 4d — planar terrain reflection. PENDING (longer-term).**
+  True mirror-of-terrain reflection on the water surface (a second
+  Camera/Viewport rendering the world mirrored about the water plane
+  into a texture the water shader samples). Reserved as "Phase 2b" in
+  the original V3 plan. Note: only correct above-water-surface
+  reflection at the moment is the Fresnel sky sheen (capped by
+  `reflection_strength`). True mirror is the only correct way to see
+  trees/cliffs reflected — a screen hack cannot do it.
+- **Phase 4e — audio coupling. NOT PLANNED YET.** Underwater muffled
+  audio mix (low-pass filter on the master bus, dampened SFX) +
+  ambient bubble/current loop. Pairs naturally with the visual murk.
 
 Phase 1 is the one that fixes the actual complaint and is the bulk of
 the look. 2–4 are stacked enhancements, each independently shippable.
