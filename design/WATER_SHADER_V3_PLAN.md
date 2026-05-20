@@ -69,8 +69,24 @@ headless validation possible — headless only confirms compile)
   only (up_face), small `foam_edge_dist` so only true shore edges foam
   (not whole shallow ponds). Clean band (no crest-noise breakup yet —
   a later tuning option). Uniforms: `foam_color/edge_dist/strength`.
-- **Phase 4 — polish:** caustics on submerged terrain, underwater
-  fog/god-rays, tuning pass. Optional.
+- **Phase 4a — underwater fog + god rays. DONE (2026-05-19).** Volumetric
+  fog driven from `scripts/UnderwaterFilter.gd`: on submerge it tweens
+  `WorldEnvironment.volumetric_fog_*` (density / albedo / emission) and
+  the Sun `DirectionalLight3D.light_volumetric_fog_energy` between an
+  at-rest atmospheric haze and an underwater preset, with the underwater
+  values *lerped between `*_noon` and `*_night` anchors* every frame
+  using `clamp(sun.light_energy / sun_noon_energy_ref, 0, 1)` as the mix
+  factor (so visibility tracks `DayNightCycle.gd`'s sun-energy curve and
+  god rays brighten/fade with the day). Co-exists safely with
+  `DayNightCycle` — DNC only writes classic `fog_light_color` +
+  `fog_density`, never `volumetric_fog_*`. Scene plumbing: WorldEnvironment
+  in group `world_environment`, Sun in group `sun_light`,
+  `volumetric_fog_enabled = true` in `scenes/World3D.tscn`. Tint
+  `ColorRect` kept at alpha 0.10 as a cheap close-up colour grade.
+- **Phase 4b — caustics + per-biome fog. PENDING.** Caustics on the
+  submerged lakebed (animated sun-through-waves projection) and a
+  per-biome fog/extinction override (read water-body biome at player
+  position to shift the noon/night anchors). Optional.
 
 Phase 1 is the one that fixes the actual complaint and is the bulk of
 the look. 2–4 are stacked enhancements, each independently shippable.
