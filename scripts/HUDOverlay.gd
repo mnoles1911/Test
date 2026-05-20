@@ -1049,7 +1049,17 @@ func _process(delta: float) -> void:
 
 	var player := _find_player()
 
-	if player == null:
+	# Clean-screenshot mode (DebugOverlay → COMMANDS → TOGGLE CLEAN
+	# SCREENSHOT). Same hide block as "no player in scene" — kills HP /
+	# endurance / quick-slot / compass / clock / crosshair / mining /
+	# tooltip / low-HP-pulse so the captured frame has no UI chrome.
+	# The F1 dev panel itself isn't auto-hidden — close it manually
+	# with F1 before the shot.
+	var dbg := get_node_or_null("/root/DebugOverlay")
+	var clean_shot: bool = (dbg != null and "clean_screenshot_enabled" in dbg
+		and dbg.clean_screenshot_enabled)
+
+	if player == null or clean_shot:
 		_root.visible = false
 		if _mining_root != null:
 			_mining_root.visible = false
