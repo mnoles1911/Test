@@ -42,7 +42,15 @@ shader_type spatial;
 // neighbour water as "the surface behind me" -> hard seam lines. Never
 // writing depth keeps the fade measuring to real terrain across all
 // chunks (standard Godot depth-fade-water setup).
-render_mode blend_mix, depth_draw_never, cull_disabled, specular_schlick_ggx, diffuse_burley;
+// shadows_disabled (added 2026-05-20): water must NOT cast shadows on
+// the underwater volumetric fog. Designer screenshot showed a dark
+// SUN-SHAPED orb when looking up from underwater — that was the water
+// polygon shadow-casting onto the god-ray fog, blocking the sun's
+// light exactly along the camera-to-sun column. Real water passes
+// most light through; a stylized voxel water that casts hard shadows
+// reads as opaque. With shadows off, the fog underwater is fully lit
+// by the directional light → visible sunbeams, no shadow disc.
+render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled, specular_schlick_ggx, diffuse_burley;
 
 
 // ============================================================
@@ -211,10 +219,12 @@ uniform vec3 sun_direction_world = vec3(0.0, -1.0, 0.0);
 // "sunny patch on the underside of the surface" size.
 uniform float underside_sun_glint_power : hint_range(2.0, 256.0) = 48.0;
 uniform float underside_sun_glint_strength : hint_range(0.0, 4.0) = 1.6;
-// Underside alpha — mostly opaque so the dark ceiling reads, but not
-// 1.0 because we want the bright spot to feel like real sunlight
-// breaking through, not pasted on.
-uniform float underside_alpha : hint_range(0.0, 1.0) = 0.92;
+// Underside alpha — near-opaque so the dark deep-water ceiling reads
+// against the brightly-lit underwater fog beyond the polygon. v1 used
+// 0.92 → 8% bright-fog bleed-through dominated the look, hiding the
+// dark blue. 0.98 keeps only a 2% bleed (enough that the bright glint
+// feels like real light breaking through, not pasted on).
+uniform float underside_alpha : hint_range(0.0, 1.0) = 0.98;
 // Underside glint tint — warm-white. Multiplied by glint mask.
 uniform vec3 underside_glint_color : source_color = vec3(1.0, 0.95, 0.80);
 
@@ -311,14 +321,21 @@ void fragment() {
 	// below. Functionally identical to early-return.
 	bool _uw_back_face = (!FRONT_FACING && debug_mode == 0);
 	if (_uw_back_face) {
-		// World-space view direction (vertex toward camera). We need
-		// it world-space to dot against world-space sun_direction.
+		// World-space view direction (vertex toward camera). VIEW is in
+		// VIEW space (frag→cam); mat3(INV_VIEW_MATRIX) rotates it back.
+		// When the player is BELOW a water surface fragment, view_world
+		// points DOWN (from the up-fragment to the down-camera).
 		vec3 view_world = normalize(mat3(INV_VIEW_MATRIX) * VIEW);
-		// Direction from a submerged point toward the sun is the
-		// reverse of the sun's light-travel direction. Looking toward
-		// that direction is what we want to glint on.
-		vec3 to_sun = -normalize(sun_direction_world);
-		float glint_align = clamp(dot(view_world, to_sun), 0.0, 1.0);
+		// Both vectors should point DOWN when the camera is looking at
+		// the sun through the water:
+		//   sun_direction_world = direction the sun's light TRAVELS = DOWN
+		//   view_world          = frag-to-camera                    = DOWN
+		// So `dot(view_world, sun_direction_world)` peaks at 1.0 when
+		// the camera ray aligns with the sun-down column. v1 had this
+		// negated (`-sun_direction_world` then dotted) which gave -1
+		// everywhere → glint always 0. Designer screenshot 2026-05-20
+		// showed no bright spot; this fixes it.
+		float glint_align = clamp(dot(view_world, normalize(sun_direction_world)), 0.0, 1.0);
 		float glint = pow(glint_align, underside_sun_glint_power)
 		            * underside_sun_glint_strength;
 		// Modulate glint very mildly by the wave-perturbed normal so
