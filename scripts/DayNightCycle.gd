@@ -220,6 +220,10 @@ func _apply() -> void:
 	# the sun is at the east horizon (angle 0), at hour 12 it's at
 	# zenith (angle 90°), at hour 18 it's at the west horizon (180°).
 	var sun_angle_rad: float = (h - 6.0) / 24.0 * TAU
+	# Star-field rotation — the procedural night sky in sky_blend.gdshader
+	# pivots with the celestial sphere at the same rate as the sun/moon.
+	if _sky_mat != null:
+		_sky_mat.set_shader_parameter("star_rotation", sun_angle_rad)
 	# Tilt the orbit ~15° so the sun arcs through the south hemisphere
 	# rather than dead-overhead — gives more natural shadow direction.
 	var sun_basis: Basis = Basis().rotated(Vector3.LEFT, sun_angle_rad).rotated(Vector3.FORWARD, deg_to_rad(15.0))

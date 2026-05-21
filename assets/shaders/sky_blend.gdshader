@@ -1,33 +1,19 @@
 // sky_blend.gdshader
-// The world's sky. Three layers, drawn back-to-front:
-//   1. Panorama cross-fade  — two equirectangular time-of-day paintings
+// The world's sky. Layers drawn back-to-front:
+//   1. Panorama cross-fade — two equirectangular time-of-day paintings
 //      mixed by DayNightCycle (dawn / noon / dusk / night anchors).
-//   2. Night sky (Phase K)  — procedural stars, aurora and nebula that
-//      fade in as the sun sets and out as it rises.
+//      Darkened toward night so midnight reads near-black.
+//   2. Night sky (Phase K) — procedural stars, aurora and nebula that
+//      fade in as the sun sets. The star field rotates with the day
+//      cycle (DayNightCycle pushes `star_rotation`).
 //   3. Cloud layer (Phase H) — procedural moving clouds lit by the sun.
 //
-// In plain English:
-//   PANORAMA. Four painted sky images (dawn/noon/dusk/night). At any
-//   moment we're between two of them; DayNightCycle picks which two and
-//   how far, and this shader mixes them per sky pixel.
-//
-//   NIGHT SKY. On top of the painted sky, at night only, we draw stars
-//   (sparse twinkling points), an aurora (slow green curtains in the
-//   upper sky) and a faint nebula tint. All procedural — no textures.
-//   They scale by a "night factor" derived from the sun's energy, so
-//   they appear at dusk and vanish at dawn with zero extra wiring.
-//
-//   CLOUDS. Moving clouds drawn last (so they sit in front of stars):
-//   asset-free noise projected onto a flat ceiling, drifting via TIME,
-//   lit by the sun through the sky shader's built-in LIGHT0. Coverage
-//   is driven by WeatherManager through DayNightCycle.set_cloud_coverage().
-//
-//   Equirectangular projection: the panorama source images are 2:1
-//   rectangles wrapping the world like an unrolled cylinder.
+// Everything is procedural — NO textures for clouds or stars (asset-free
+// noise, no tiling). Cloud shape = a hash-based value-noise FBM field
+// thresholded by `cloud_coverage`.
 //
 // The sun and moon discs are NOT in this shader — they're 3D sphere
-// meshes (SunMesh / MoonMesh) positioned by DayNightCycle. Paint the
-// panoramas with no sun, moon, or stars (the stars are procedural now).
+// meshes (SunMesh / MoonMesh) positioned by DayNightCycle.
 
 shader_type sky;
 
@@ -35,44 +21,60 @@ shader_type sky;
 uniform sampler2D texture_from : source_color, filter_linear;
 uniform sampler2D texture_to   : source_color, filter_linear;
 uniform float blend : hint_range(0.0, 1.0) = 0.0;
+// How dark the painted sky goes at full night. 1 = unchanged,
+// 0.15 = near-black midnight (so the procedural stars pop).
+uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.15;
 
 // --- Volumetric cloud layer (Phase H) ---
-uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.4;
-uniform float cloud_opacity : hint_range(0.0, 1.0) = 0.92;
+uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.3;
+uniform float cloud_opacity : hint_range(0.0, 1.0) = 0.95;
 uniform float cloud_scale = 0.8;
-uniform float cloud_scroll_speed = 0.006;
-uniform float cloud_softness : hint_range(0.01, 0.5) = 0.20;
+// Drift speed. This is intentionally brisk — clouds should visibly move.
+uniform float cloud_scroll_speed = 0.08;
+uniform float cloud_softness : hint_range(0.01, 0.5) = 0.12;
 uniform vec3 cloud_lit_color : source_color = vec3(1.0, 0.98, 0.95);
 uniform vec3 cloud_shadow_color : source_color = vec3(0.46, 0.51, 0.62);
 uniform vec3 cloud_night_color : source_color = vec3(0.05, 0.07, 0.13);
 
 // --- Night sky (Phase K) ---
-// Stars: density 0 = empty sky, 1 = dense field. Brightness scales the
-// star glow. Stars twinkle on their own via TIME.
 uniform float star_density : hint_range(0.0, 1.0) = 0.5;
-uniform float star_brightness : hint_range(0.0, 3.0) = 1.1;
-// Aurora: slow green curtains in the upper-mid sky at night. Strength 0
-// disables it entirely.
+uniform float star_brightness : hint_range(0.0, 5.0) = 2.8;
+// 0 = stars hold steady, 1 = strong blink.
+uniform float star_twinkle : hint_range(0.0, 1.0) = 0.8;
+// Radians. DayNightCycle pushes the celestial rotation so the star
+// field pivots across the sky with the sun/moon.
+uniform float star_rotation = 0.0;
 uniform vec3 aurora_color : source_color = vec3(0.25, 0.95, 0.55);
-uniform float aurora_strength : hint_range(0.0, 2.0) = 0.55;
-// Nebula: a faint coloured haze across the night sky.
+uniform float aurora_strength : hint_range(0.0, 3.0) = 1.1;
 uniform vec3 nebula_color : source_color = vec3(0.34, 0.20, 0.52);
-uniform float nebula_strength : hint_range(0.0, 1.0) = 0.22;
+uniform float nebula_strength : hint_range(0.0, 1.0) = 0.4;
 
-// Convert a unit-length view direction into equirectangular UV coords.
-//   u = atan2(z, x) / (2*PI) + 0.5   ->  longitude, 0..1 around horizon
-//   v = acos(y) / PI                 ->  latitude, 0 zenith -> 1 nadir
+// Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
 	float u = atan(dir.z, dir.x) / (2.0 * 3.14159265) + 0.5;
 	float v = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;
 	return vec2(u, v);
 }
 
-// --- Asset-free noise (hash-based value noise + fbm) -----------------
+// Rotate a direction around the X axis — used to spin the star field.
+vec3 rotate_x(vec3 v, float a) {
+	float c = cos(a);
+	float s = sin(a);
+	return vec3(v.x, v.y * c - v.z * s, v.y * s + v.z * c);
+}
+
+// --- Asset-free noise --------------------------------------------------
 float cloud_hash(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
 	return fract(p.x * p.y);
+}
+
+// 3D hash (Dave Hoskins style) — used for the seamless star field.
+float hash3(vec3 p) {
+	p = fract(p * 0.1031);
+	p += dot(p, p.zyx + 31.32);
+	return fract((p.x + p.y) * p.z);
 }
 
 float cloud_value_noise(vec2 p) {
@@ -86,7 +88,6 @@ float cloud_value_noise(vec2 p) {
 	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-// Five octaves of value noise — peaks just under 1.0.
 float cloud_fbm(vec2 p) {
 	float total = 0.0;
 	float amp = 0.5;
@@ -98,45 +99,50 @@ float cloud_fbm(vec2 p) {
 	return total;
 }
 
-// --- Night-sky elements (Phase K) ------------------------------------
-// Stars: chop the sky UV into a fine grid; a sparse subset of cells
-// host a star whose brightness + twinkle speed come from its own hash.
-float stars(vec2 suv) {
-	vec2 g = suv * vec2(640.0, 320.0);
-	vec2 cell = floor(g);
-	float h = cloud_hash(cell);
-	// Only the brightest tail of the hash distribution becomes a star.
-	if (h < 1.0 - star_density * 0.07) {
+// --- Night-sky elements (Phase K) — all seamless (no equirect seam) ---
+// Stars: a 3D grid hashed straight off the view direction, so there is
+// no longitude seam. A sparse subset of cells host a twinkling star.
+float stars(vec3 dir) {
+	vec3 g = dir * 230.0;
+	vec3 cell = floor(g);
+	float h = hash3(cell);
+	if (h < 1.0 - star_density * 0.06) {
 		return 0.0;
 	}
-	vec2 f = fract(g) - 0.5;
+	vec3 f = fract(g) - 0.5;
 	float d = length(f);
-	float b = cloud_hash(cell + vec2(13.7, 41.3));
-	float s = smoothstep(0.34, 0.0, d) * b;
-	// Twinkle — each star at its own pace.
-	s *= 0.55 + 0.45 * sin(TIME * (0.7 + b * 2.6) + h * 40.0);
+	float b = hash3(cell + vec3(19.3, 7.1, 41.7));
+	float s = smoothstep(0.45, 0.0, d) * (0.45 + 0.55 * b);
+	// Twinkle — fast, deep. star_twinkle scales how far it dips.
+	float tw = 0.5 + 0.5 * sin(TIME * (2.5 + b * 6.0) + h * 50.0);
+	s *= 1.0 - star_twinkle * (1.0 - tw);
 	return s;
 }
 
-// Aurora: vertical noise "curtains" confined to a band of the upper
-// sky, drifting and shimmering.
-float aurora(vec2 suv) {
-	// suv.y is latitude: 0 = zenith, 0.5 = horizon. Keep the aurora in
-	// a band of the upper-mid sky.
-	float band = smoothstep(0.08, 0.26, suv.y) * smoothstep(0.60, 0.36, suv.y);
+// Aurora: vertical noise "curtains" in an upper-mid sky band. Sampled
+// on a cos/sin ring of the longitude so it wraps with no hard seam.
+float aurora(vec3 dir) {
+	float lat = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;  // 0 zenith
+	float band = smoothstep(0.06, 0.24, lat) * smoothstep(0.60, 0.34, lat);
 	if (band <= 0.0) {
 		return 0.0;
 	}
-	float curtain = cloud_fbm(vec2(suv.x * 6.0 + TIME * 0.03, suv.y * 2.2));
-	curtain = smoothstep(0.46, 0.86, curtain);
-	curtain *= 0.7 + 0.3 * sin(TIME * 1.4 + suv.x * 42.0);
+	float lon = atan(dir.z, dir.x);
+	vec2 ring = vec2(cos(lon), sin(lon)) * 3.2;
+	float curtain = cloud_fbm(ring + vec2(TIME * 0.05, lat * 3.0));
+	curtain = smoothstep(0.42, 0.9, curtain);
+	// sin(lon * 6) is continuous across the +-PI wrap (6 full periods).
+	curtain *= 0.6 + 0.4 * sin(TIME * 1.6 + lon * 6.0);
 	return band * curtain;
 }
 
-// Nebula: a soft low-frequency haze.
-float nebula(vec2 suv) {
-	float n = cloud_fbm(suv * vec2(3.0, 1.6) + vec2(20.0, 7.0));
-	return smoothstep(0.52, 0.95, n);
+// Nebula: a soft low-frequency haze, also sampled on the seamless ring.
+float nebula(vec3 dir) {
+	float lat = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;
+	float lon = atan(dir.z, dir.x);
+	vec2 ring = vec2(cos(lon), sin(lon)) * 2.2;
+	float n = cloud_fbm(ring + vec2(7.0, lat * 2.5));
+	return smoothstep(0.5, 0.95, n);
 }
 
 void sky() {
@@ -151,43 +157,42 @@ void sky() {
 	}
 	float night = 1.0 - day;
 
-	// --- Layer 1: panorama cross-fade ---
+	// --- Layer 1: panorama, darkened toward night ---
 	vec3 sky_col = mix(
 		texture(texture_from, uv).rgb,
 		texture(texture_to, uv).rgb,
 		blend);
+	sky_col *= mix(1.0, night_sky_darkness, night);
 
 	// --- Layer 2: night sky (stars / aurora / nebula) ---
-	// Only above the horizon, only once the sun is low enough.
 	if (up > 0.0 && night > 0.01) {
-		// Nebula first (faintest, furthest back).
-		sky_col += nebula_color * (nebula(uv) * nebula_strength * night);
-		// Aurora over the nebula.
-		sky_col += aurora_color * (aurora(uv) * aurora_strength * night);
-		// Stars on top — fade them out right at the horizon so the
-		// equirect UV crunch there doesn't smear them into a line.
-		float star_horizon = smoothstep(0.0, 0.14, up);
-		sky_col += vec3(stars(uv) * star_brightness * night * star_horizon);
+		// Nebula first (faintest), aurora over it.
+		sky_col += nebula_color * (nebula(EYEDIR) * nebula_strength * night);
+		sky_col += aurora_color * (aurora(EYEDIR) * aurora_strength * night);
+		// Stars on top. Rotate the view direction by the celestial
+		// rotation so the whole field pivots with the day cycle. Fade
+		// out right at the horizon so they don't sit on the ground.
+		vec3 star_dir = rotate_x(EYEDIR, star_rotation);
+		float star_horizon = smoothstep(0.0, 0.12, up);
+		sky_col += vec3(stars(star_dir) * star_brightness * night * star_horizon);
 	}
 
 	// --- Layer 3: cloud layer (drawn last so clouds sit in front) ---
 	if (up > 0.01) {
 		// Project the view ray onto a flat horizontal cloud layer.
-		// Dividing the horizontal direction by the vertical component
-		// foreshortens clouds toward the horizon like a real ceiling.
 		vec2 plane = EYEDIR.xz / up;
 		vec2 cuv = plane * cloud_scale
 			+ vec2(TIME * cloud_scroll_speed, TIME * cloud_scroll_speed * 0.6);
 
 		float density = cloud_fbm(cuv);
 
-		// Coverage lowers the threshold so more of the noise is cloud.
-		float lo = mix(0.95, 0.12, cloud_coverage);
+		// Coverage -> threshold. At coverage 0 the threshold (1.02) sits
+		// ABOVE the noise's max (~0.97) so the sky is genuinely clear;
+		// at coverage 1 it drops to 0.05 for full overcast.
+		float lo = mix(1.02, 0.05, cloud_coverage);
 		float cloud = smoothstep(lo, lo + cloud_softness, density);
 
-		// Cheap lighting: sample the noise again offset TOWARD the sun.
-		// A sun-facing cloud edge has less cloud sunward, so
-		// (here - sunward) is positive there -> lit.
+		// Cheap lighting: sample the noise again offset toward the sun.
 		float lit = 0.6;
 		if (LIGHT0_ENABLED) {
 			vec2 sunward = -normalize(LIGHT0_DIRECTION.xz + vec2(0.0001));
@@ -196,15 +201,11 @@ void sky() {
 		}
 
 		vec3 day_cloud = mix(cloud_shadow_color, cloud_lit_color, lit);
-		// Tint the lit tops with the sun colour — warm at dawn/dusk.
 		if (LIGHT0_ENABLED) {
 			day_cloud *= mix(vec3(1.0), LIGHT0_COLOR, 0.5 * lit);
 		}
-		// Fade to the night colour as the sun sets.
 		vec3 cloud_rgb = mix(cloud_night_color, day_cloud, day);
 
-		// Fade clouds out near the horizon so the flat layer's
-		// stretching never smears into an ugly band.
 		float horizon_fade = smoothstep(0.02, 0.32, up);
 		float alpha = cloud * cloud_opacity * horizon_fade;
 		sky_col = mix(sky_col, cloud_rgb, alpha);

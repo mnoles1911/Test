@@ -69,7 +69,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    0.5,
 		"particle_density": 0,
 		"ambient_audio":    "",
-		"cloud_coverage":   0.18,
+		"cloud_coverage":   0.0,
 	},
 	State.OVERCAST: {
 		"fog_color":        Color(0.6, 0.65, 0.7),
@@ -78,7 +78,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.0,
 		"particle_density": 0,
 		"ambient_audio":    "wind_med",
-		"cloud_coverage":   0.88,
+		"cloud_coverage":   0.92,
 	},
 	State.LIGHT_RAIN: {
 		"fog_color":        Color(0.55, 0.6, 0.65),
@@ -87,7 +87,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.5,
 		"particle_density": 1500,
 		"ambient_audio":    "rain_light",
-		"cloud_coverage":   0.72,
+		"cloud_coverage":   0.6,
 	},
 	State.HEAVY_RAIN: {
 		"fog_color":        Color(0.4, 0.45, 0.5),
@@ -96,7 +96,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    3.5,
 		"particle_density": 6000,
 		"ambient_audio":    "rain_heavy",
-		"cloud_coverage":   0.96,
+		"cloud_coverage":   1.0,
 	},
 	State.FOG: {
 		"fog_color":        Color(0.75, 0.75, 0.78),
@@ -105,7 +105,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    0.3,
 		"particle_density": 0,
 		"ambient_audio":    "wind_low",
-		"cloud_coverage":   0.55,
+		"cloud_coverage":   0.35,
 	},
 	State.SNOW: {
 		"fog_color":        Color(0.85, 0.88, 0.92),
@@ -114,7 +114,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.2,
 		"particle_density": 2500,
 		"ambient_audio":    "wind_low",
-		"cloud_coverage":   0.82,
+		"cloud_coverage":   0.75,
 	},
 }
 
