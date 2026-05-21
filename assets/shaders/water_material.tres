@@ -89,7 +89,7 @@ shader_parameter/reflection_floor = 0.05
 ; width, strength for opacity.
 shader_parameter/foam_color = Color(0.92, 0.96, 1, 1)
 shader_parameter/foam_edge_dist = 0.85
-shader_parameter/foam_strength = 1.0
+shader_parameter/foam_strength = 0.7
 
 ; --- FLOW-DRIVEN WAVE AMPLITUDE (2026-05-19) ---
 ; Zylann's fluid mesher writes UV.y = 0 (NOT 8 / idle) for static
