@@ -181,10 +181,24 @@ uniform float reflection_strength : hint_range(0.0, 1.0) = 0.7;
 // top of this floor. ~0.18 = clearly reflective but still see-through.
 uniform float reflection_floor : hint_range(0.0, 0.6) = 0.18;
 
-// --- V3 Phase 3: shoreline edge foam ---
+// --- V3 Phase 3: shoreline edge foam (REWORKED 2026-05-20 — animated,
+// noise-broken, tight). Foam is a scrolling FBM-broken fringe that hugs
+// the shore and laps over time, not a flat painted stripe. Knobs:
+//   foam_edge_dist   = band width from the water/terrain contact edge,
+//                      in metres. ~0.33 ~= 2 voxels at 6 vox/m (tight).
+//   foam_strength    = opacity (0 = invisible, 1 = solid).
+//   foam_noise_scale = spatial frequency of the foam churn (bigger =
+//                      finer flecks).
+//   foam_scroll_speed= how fast the foam laps / churns (0 = frozen).
+//   foam_raggedness  = 0 clean smooth band (old look) .. 1 fully
+//                      noise-broken ragged fringe.
+// All tuned in water_material.tres.
 uniform vec3 foam_color : source_color = vec3(0.92, 0.96, 1.0);
-uniform float foam_edge_dist : hint_range(0.0, 4.0) = 0.5;
-uniform float foam_strength : hint_range(0.0, 1.0) = 0.85;
+uniform float foam_edge_dist : hint_range(0.0, 4.0) = 0.33;
+uniform float foam_strength : hint_range(0.0, 1.0) = 0.6;
+uniform float foam_noise_scale : hint_range(0.05, 4.0) = 0.7;
+uniform float foam_scroll_speed : hint_range(0.0, 3.0) = 0.35;
+uniform float foam_raggedness : hint_range(0.0, 1.0) = 0.7;
 
 // --- §2c side-face camouflage knobs (2026-05-19) ---
 // side_color = mix(water_tint_color * side_tint_brighten,
@@ -511,14 +525,28 @@ void fragment() {
 	float refl_amt = clamp(fresnel * reflection_strength + reflection_floor, 0.0, 0.5);
 	vec3 surface = mix(body, sky_reflection_color, refl_amt);
 
-	// Phase 3 — shoreline EDGE FOAM. Where the water column is thin
-	// (thickness -> 0: water meets terrain / objects) lay a foam band.
-	// Tops only (up_face) so LOD-seam slivers stay clean. Small
-	// foam_edge_dist so only true shore edges foam, not whole shallow
-	// ponds.
-	float foam = clamp((1.0 - smoothstep(0.0, max(foam_edge_dist, 0.01), thickness))
+	// Phase 3 — shoreline EDGE FOAM (reworked 2026-05-20: animated +
+	// noise-broken). Base proximity band: foam where the water column is
+	// thin (thickness -> 0, water meets terrain). foam_edge_dist is kept
+	// TIGHT so the band hugs the true contact edge. The cutoff is then
+	// wobbled in/out by scrolling FBM noise -> a ragged, churning foam
+	// fringe that laps over time instead of a flat painted stripe. Tops
+	// only (up_face) so LOD-seam slivers stay clean.
+	vec3 foam_wpos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec2 foam_p = foam_wpos.xz * foam_noise_scale;
+	float foam_t = TIME * foam_scroll_speed;
+	// Advect the noise along the flow direction; the small constant drift
+	// keeps still-water foam lapping too (flow_dir is 0 on idle water).
+	float foam_noise = _fbm(foam_p + flow_dir * foam_t + vec2(0.0, foam_t * 0.5));
+	// Noise pushes the foam cutoff in/out by +/-(raggedness*edge) so the
+	// edge dissolves into moving flecks. raggedness 0 = exact old band.
+	float foam_cut = thickness + (foam_noise - 0.5) * foam_raggedness * foam_edge_dist;
+	float foam = clamp((1.0 - smoothstep(0.0, max(foam_edge_dist, 0.01), foam_cut))
 	                   * foam_strength * up_face, 0.0, 1.0);
-	surface = mix(surface, foam_color, foam);
+	// Mottle the foam itself (light/dark patches from the same noise) so
+	// it does not read as a flat fill.
+	vec3 foam_shaded = foam_color * (0.82 + 0.30 * foam_noise);
+	surface = mix(surface, foam_shaded, foam);
 
 	// === 4. TRANSPARENCY ===========================================
 	// DEPTH drives alpha (NOT Fresnel): shallow -> see the bottom at any
