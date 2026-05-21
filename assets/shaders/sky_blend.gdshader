@@ -22,15 +22,18 @@ uniform sampler2D texture_from : source_color, filter_linear;
 uniform sampler2D texture_to   : source_color, filter_linear;
 uniform float blend : hint_range(0.0, 1.0) = 0.0;
 // How dark the painted sky goes at full night. 1 = unchanged,
-// 0.15 = near-black midnight (so the procedural stars pop).
-uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.15;
+// low = near-black midnight so the procedural stars pop and the
+// night world is lit by the moon rather than a glowing sky.
+uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.06;
 
 // --- Volumetric cloud layer (Phase H) ---
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.3;
 uniform float cloud_opacity : hint_range(0.0, 1.0) = 0.95;
 uniform float cloud_scale = 0.8;
-// Drift speed. This is intentionally brisk — clouds should visibly move.
-uniform float cloud_scroll_speed = 0.08;
+// Drift speed — weather-driven. WeatherManager pushes a per-state value
+// via DayNightCycle.set_cloud_speed(); this default only applies when no
+// weather system is running.
+uniform float cloud_scroll_speed = 0.03;
 uniform float cloud_softness : hint_range(0.01, 0.5) = 0.12;
 uniform vec3 cloud_lit_color : source_color = vec3(1.0, 0.98, 0.95);
 uniform vec3 cloud_shadow_color : source_color = vec3(0.46, 0.51, 0.62);
@@ -181,8 +184,12 @@ void sky() {
 	if (up > 0.01) {
 		// Project the view ray onto a flat horizontal cloud layer.
 		vec2 plane = EYEDIR.xz / up;
-		vec2 cuv = plane * cloud_scale
-			+ vec2(TIME * cloud_scroll_speed, TIME * cloud_scroll_speed * 0.6);
+		// Drift, with a gentle gust — a bounded sine wobble on the phase
+		// makes the clouds surge and ease instead of sliding at a
+		// dead-flat rate (natural variance on top of the weather speed).
+		float gust = sin(TIME * 0.07) * 0.08 + sin(TIME * 0.17 + 2.0) * 0.04;
+		float drift = TIME * cloud_scroll_speed + gust;
+		vec2 cuv = plane * cloud_scale + vec2(drift, drift * 0.6);
 
 		float density = cloud_fbm(cuv);
 

@@ -66,12 +66,13 @@ const SUN_ENERGY_DAY: float    = 2.2
 # a normal "bright outdoor scene" sun energy in Godot 4 — readable
 # without blowing out highlights.
 const SUN_ENERGY_NIGHT: float  = 0.0
-const MOON_ENERGY_NIGHT: float = 0.6
-# Bumped from 0.35 → 0.6: night was almost pitch-black on screen.
-# 0.6 keeps night clearly distinguishable from day but lets the
-# player still see terrain and walk around without a torch.
-# Actual full darkness can come from the WeatherManager fog override
-# or specific story scripts when needed.
+const MOON_ENERGY_NIGHT: float = 2.0
+# The moon is the night's primary light source. Raised 0.6 → 2.0
+# (2026-05-21 designer pass, ~3.3×): the night sky now renders very
+# dark (sky_blend.gdshader night_sky_darkness), so sky-sourced ambient
+# at night is near-zero — the moon's directional light carries the
+# whole night look. A cool-blue moon at this energy gives a bright,
+# readable moonlit world against an almost-black sky.
 const MOON_ENERGY_DAY: float   = 0.0
 
 # Color palettes (tuned by eye — iterate once art direction lands).
@@ -476,3 +477,12 @@ func set_cloud_coverage(coverage: float) -> void:
 	if _sky_mat == null:
 		return
 	_sky_mat.set_shader_parameter("cloud_coverage", clampf(coverage, 0.0, 1.0))
+
+
+# Public API used by WeatherManager — pushes the weather-driven cloud
+# drift speed into the sky shader. Each weather state carries its own
+# cloud_speed in STATE_PROFILES (calm clear day vs. fast-moving storm).
+func set_cloud_speed(speed: float) -> void:
+	if _sky_mat == null:
+		return
+	_sky_mat.set_shader_parameter("cloud_scroll_speed", maxf(0.0, speed))
