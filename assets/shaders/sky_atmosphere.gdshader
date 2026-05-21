@@ -1,4 +1,7 @@
-// sky_blend.gdshader
+// sky_atmosphere.gdshader
+// (Renamed from sky_blend.gdshader 2026-05-21 to force Godot to compile
+//  a fresh shader — the old name had a stuck stale compile.)
+//
 // The world's sky. Layers drawn back-to-front:
 //   1. Panorama cross-fade — two equirectangular time-of-day paintings
 //      mixed by DayNightCycle (dawn / noon / dusk / night anchors).

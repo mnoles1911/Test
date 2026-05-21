@@ -69,7 +69,7 @@ const SUN_ENERGY_NIGHT: float  = 0.0
 const MOON_ENERGY_NIGHT: float = 2.0
 # The moon is the night's primary light source. Raised 0.6 → 2.0
 # (2026-05-21 designer pass, ~3.3×): the night sky now renders very
-# dark (sky_blend.gdshader night_sky_darkness), so sky-sourced ambient
+# dark (sky_atmosphere.gdshader night_sky_darkness), so sky-sourced ambient
 # at night is near-zero — the moon's directional light carries the
 # whole night look. A cool-blue moon at this energy gives a bright,
 # readable moonlit world against an almost-black sky.
@@ -169,7 +169,7 @@ func _ready() -> void:
 
 	# Cache the sky's ShaderMaterial so _update_sky_blend can write to it
 	# without re-fetching it 60 times a second. We accept that this is null
-	# if the project's sky isn't using sky_blend.gdshader — in that case the
+	# if the project's sky isn't using sky_atmosphere.gdshader — in that case the
 	# sky cross-fade just becomes a no-op and the rest of the cycle keeps
 	# working normally (sun/moon rotation, light energy, fog).
 	if _env != null and _env.environment != null and _env.environment.sky != null:
@@ -227,7 +227,7 @@ func _apply() -> void:
 	# the sun is at the east horizon (angle 0), at hour 12 it's at
 	# zenith (angle 90°), at hour 18 it's at the west horizon (180°).
 	var sun_angle_rad: float = (h - 6.0) / 24.0 * TAU
-	# Star-field rotation — the procedural night sky in sky_blend.gdshader
+	# Star-field rotation — the procedural night sky in sky_atmosphere.gdshader
 	# pivots with the celestial sphere at the same rate as the sun/moon.
 	if _sky_mat != null:
 		_sky_mat.set_shader_parameter("star_rotation", sun_angle_rad)
@@ -401,7 +401,7 @@ func _apply() -> void:
 	# Old version tried to cast env.sky.sky_material to ProceduralSkyMaterial,
 	# but the scene actually used PhysicalSkyMaterial — the cast silently
 	# returned null and the _sky_top / _sky_horizon writes did nothing.
-	# Now the scene uses our custom sky_blend.gdshader (a ShaderMaterial),
+	# Now the scene uses our custom sky_atmosphere.gdshader (a ShaderMaterial),
 	# and _update_sky_blend picks two of the four anchor panoramas and
 	# writes the blend factor to the shader. The _sky_top/_sky_horizon Color
 	# variables computed above remain authoritative for the fog tint and
@@ -424,16 +424,19 @@ func _apply() -> void:
 			_debug_night_accum = 0.0
 			var dbg_nf: float = 1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0)
 			var dbg_mat_nf: Variant = null
-			var dbg_mat_dark: Variant = null
+			var dbg_texfrom: Variant = null
 			var dbg_shader_path: String = "<no _sky_mat>"
 			if _sky_mat != null:
 				dbg_mat_nf = _sky_mat.get_shader_parameter("night_factor")
-				dbg_mat_dark = _sky_mat.get_shader_parameter("night_sky_darkness")
+				dbg_texfrom = _sky_mat.get_shader_parameter("texture_from")
 				if _sky_mat.shader != null:
 					dbg_shader_path = _sky_mat.shader.resource_path
-			print("[DNC-DEBUG] hour=%d h=%.2f sun_energy=%.2f moon_energy=%.2f | night_factor(computed)=%.2f | _sky_mat=%s mat.night_factor=%s mat.night_sky_darkness=%s shader=%s" % [
-				WorldClock.current_hour, h, sun_energy, moon_energy, dbg_nf,
-				str(_sky_mat != null), str(dbg_mat_nf), str(dbg_mat_dark), dbg_shader_path])
+			var dbg_pano: String = "%s/%s/%s/%s" % [
+				str(dawn_panorama != null), str(noon_panorama != null),
+				str(dusk_panorama != null), str(night_panorama != null)]
+			print("[DNC-DEBUG] hour=%d h=%.2f sun_e=%.2f night_factor=%.2f | mat.night_factor=%s | panoramas(d/n/du/ni)=%s tex_from_set=%s | shader=%s" % [
+				WorldClock.current_hour, h, sun_energy, dbg_nf,
+				str(dbg_mat_nf), dbg_pano, str(dbg_texfrom != null), dbg_shader_path])
 
 
 # Decide which two anchor panoramas flank the current hour-of-day, then
@@ -507,7 +510,7 @@ func clear_fog_override() -> void:
 # Public API used by WeatherManager — pushes the weather-driven cloud
 # coverage (0 = clear, 1 = overcast) into the sky shader. The sky shader
 # animates and lights the clouds itself; this is the only value it needs
-# from the weather system. No-op if the sky isn't using sky_blend.gdshader.
+# from the weather system. No-op if the sky isn't using sky_atmosphere.gdshader.
 func set_cloud_coverage(coverage: float) -> void:
 	if _sky_mat == null:
 		return
