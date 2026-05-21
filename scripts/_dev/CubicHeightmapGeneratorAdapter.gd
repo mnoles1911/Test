@@ -40,6 +40,13 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if cpp_impl == null:
 		push_warning("CubicHeightmapGeneratorAdapter: no cpp_impl assigned; emitting air")
 		return
+	# [GENDBG] TEMP 2026-05-20 — LOD-flicker investigation. Fires once per
+	# chunk the generator ACTUALLY runs (a cache MISS). If you fly around
+	# and see NO [GENDBG] lines, every chunk is loading from the
+	# voxel_deltas.sqlite cache — meaning the coarse-LOD grass fix is NOT
+	# active for that terrain (the cache must be cleared to regenerate).
+	# Remove this print once the flicker is confirmed fixed.
+	print("[GENDBG] generate lod=", lod, " origin=", origin_in_voxels)
 	cpp_impl.generate_block_into_buffer(out_buffer, origin_in_voxels, lod)
 
 
