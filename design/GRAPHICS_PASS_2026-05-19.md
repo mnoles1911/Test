@@ -110,16 +110,21 @@ Per-phase rollback is one `git revert <commit>` from the table.
 ## Testing round 1 — designer feedback (2026-05-20)
 
 Full 15-item checklist run. Items 2,4,6,11–15 PASS. Items 8,13,14 PASS.
-Fixed this round (commit `0d6ea3f`):
-- **#1a brightness** — world ~13% too bright → `tonemap_exposure` 1.0→0.87.
-- **#5 sun/moon orb through terrain** — `no_depth_test` false on SunMat/MoonMat;
-  terrain now occludes the orbs incrementally.
+Fixed this round:
+- **#1a brightness** (`0d6ea3f`) — world ~13% too bright → `tonemap_exposure` 1.0→0.87.
+- **#5 sun/moon orb through terrain** (`0d6ea3f`) — `no_depth_test` false on
+  SunMat/MoonMat; terrain now occludes the orbs incrementally.
+- **#9 shoreline foam** (`9be5f32`) — foam ran at bare shader defaults (no `.tres`
+  overrides existed). Added foam params to `water_material.tres`, cranked
+  `foam_edge_dist` 0.5→2.5 + `foam_strength`→1.0 for an unmistakable band.
+  Production-taste value ~1.0–1.5; dial in the `.tres`.
+- **#1b LOD3+ whitish-grey flicker** (`0b6293d`) — diagnosed as texture aliasing:
+  atlas had `mipmaps/generate=false` + material used plain `NEAREST`. Enabled
+  atlas mipmaps + `NEAREST_WITH_MIPMAPS_ANISOTROPIC`. Watch for atlas tile-bleed
+  at extreme distance (→ tile-padding follow-up); if flicker persists, secondary
+  suspect is `lod_fade_duration` cross-fade dither.
 
 New follow-ups surfaced by testing (flagged, NOT fixed):
-- **#1b LOD3+ flickering whitish-grey mesh** on distant terrain chunks. Suspect:
-  Zylann LOD cross-fade dither (`lod_fade_duration`), possibly amplified by the
-  newly-enabled SSIL or TAA at distance. First diagnostic: toggle `ssil_enabled`
-  off, then `lod_fade_duration = 0`, see which kills it. Ties into the LOD pass.
 - **#3 weather audio latency** — rain SFX start ~20 s after forcing a weather
   state via F1, and ~15–20 s to revert on clear. Weather/audio system, not
   graphics. Also: weather states (particles/effects/sounds) need a full polish
@@ -130,11 +135,10 @@ New follow-ups surfaced by testing (flagged, NOT fixed):
 - **#8 water reflections** — no sun/terrain mirror on water; current water is a
   Fresnel sky-sheen only (#231 Phase 2). True planar/SSR reflection = #231
   Phase 2b, deferred by design. Cloud reflections need dynamic clouds first.
-- **#9 shoreline foam** — present in code (#231 Phase 3) but not visibly
-  noticeable; likely `foam_strength`/`foam_edge_dist` too subtle. Needs a
-  quick value-tuning pass with in-editor iteration.
 - **#10 underwater god rays** — only visible looking up at the sun; stylized
   light shafts penetrating horizontally would be a #232 underwater enhancement.
+- **Atlas tile-padding** — if mipmaps (#1b fix) bleed tiles at distance, add
+  per-tile edge-extrude padding in `tools/build_texture_atlas.py`.
 
 ## Deferred follow-ups (flagged, not done)
 
