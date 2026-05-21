@@ -107,12 +107,42 @@ say so — but decide AgX exposure (item 1) FIRST; auto-exposure overrides it.
 
 Per-phase rollback is one `git revert <commit>` from the table.
 
+## Testing round 1 — designer feedback (2026-05-20)
+
+Full 15-item checklist run. Items 2,4,6,11–15 PASS. Items 8,13,14 PASS.
+Fixed this round (commit `0d6ea3f`):
+- **#1a brightness** — world ~13% too bright → `tonemap_exposure` 1.0→0.87.
+- **#5 sun/moon orb through terrain** — `no_depth_test` false on SunMat/MoonMat;
+  terrain now occludes the orbs incrementally.
+
+New follow-ups surfaced by testing (flagged, NOT fixed):
+- **#1b LOD3+ flickering whitish-grey mesh** on distant terrain chunks. Suspect:
+  Zylann LOD cross-fade dither (`lod_fade_duration`), possibly amplified by the
+  newly-enabled SSIL or TAA at distance. First diagnostic: toggle `ssil_enabled`
+  off, then `lod_fade_duration = 0`, see which kills it. Ties into the LOD pass.
+- **#3 weather audio latency** — rain SFX start ~20 s after forcing a weather
+  state via F1, and ~15–20 s to revert on clear. Weather/audio system, not
+  graphics. Also: weather states (particles/effects/sounds) need a full polish
+  pass before production — known, out of scope here.
+- **#5b sun-orb residual** — over open water (no terrain to depth-occlude) the
+  orb still hard-pops at the geometric horizon. Plus: god-rays scaled to the
+  sun's above-horizon *fraction* is a real unbuilt feature, not just the orb.
+- **#8 water reflections** — no sun/terrain mirror on water; current water is a
+  Fresnel sky-sheen only (#231 Phase 2). True planar/SSR reflection = #231
+  Phase 2b, deferred by design. Cloud reflections need dynamic clouds first.
+- **#9 shoreline foam** — present in code (#231 Phase 3) but not visibly
+  noticeable; likely `foam_strength`/`foam_edge_dist` too subtle. Needs a
+  quick value-tuning pass with in-editor iteration.
+- **#10 underwater god rays** — only visible looking up at the sun; stylized
+  light shafts penetrating horizontally would be a #232 underwater enhancement.
+
 ## Deferred follow-ups (flagged, not done)
 
 - **LOD terracing / hard LOD seams** — the screenshot's single biggest visual
   problem; you deferred it this pass. `lod_distance` capped 128, `lod_fade_duration`
   Zylann-capped, 6 LODs, hard radial transitions. Cross-ref `memory`
-  project_lod_pop_tiers. Deserves a dedicated pass.
+  project_lod_pop_tiers. Deserves a dedicated pass. **The #1b flicker likely
+  belongs to this pass.**
 - **Normal maps via tangent-free shader** — the only water-safe route to
   per-pixel surface detail (derivative/triplanar bump in a custom terrain
   ShaderMaterial preserving NEAREST + alpha-scissor). Non-trivial; own pass.
