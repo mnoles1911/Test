@@ -498,7 +498,18 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	atlas_mat.albedo_texture = atlas_tex
 	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	atlas_mat.alpha_scissor_threshold = 0.5
-	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	# Nearest WITH MIPMAPS + anisotropic (2026-05-20). Plain NEAREST with
+	# no mipmaps shimmered hard on distant LOD3+ terrain — the bright
+	# sand/snow texels aliased into a flickering whitish-grey wash (the
+	# designer-reported distant-chunk flicker). Mipmaps fix texture-
+	# interior aliasing (MSAA does not); anisotropic cleans grazing
+	# ground angles. Still NEAREST sampling within a mip level, so the
+	# crisp pixel-art look up close is preserved (this is exactly how
+	# Minecraft samples its atlas). Requires mipmaps/generate=true on
+	# atlas.png.import. KNOWN tradeoff: an atlas + mipmaps can bleed
+	# adjacent tiles at the smallest mips (extreme distance) — if that
+	# shows, the proper fix is per-tile padding in build_texture_atlas.py.
+	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 	atlas_mat.roughness = 0.85
 	atlas_mat.metallic = 0.0
 	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
