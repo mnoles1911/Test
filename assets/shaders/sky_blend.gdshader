@@ -25,6 +25,10 @@ uniform float blend : hint_range(0.0, 1.0) = 0.0;
 // low = near-black midnight so the procedural stars pop and the
 // night world is lit by the moon rather than a glowing sky.
 uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.06;
+// Day/night driver — DayNightCycle pushes this every tick (0 = full
+// day, 1 = full night). The shader does NOT infer it from LIGHT0
+// energy, which proved unreliable.
+uniform float night_factor : hint_range(0.0, 1.0) = 0.0;
 
 // --- Volumetric cloud layer (Phase H) ---
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.3;
@@ -152,13 +156,10 @@ void sky() {
 	vec2 uv = equirect_uv(EYEDIR);
 	float up = EYEDIR.y;
 
-	// Day factor from the sun's energy (DayNightCycle ramps it 0..2.2):
-	// 1 in full daylight, 0 once the sun has set. night = the inverse.
-	float day = 0.0;
-	if (LIGHT0_ENABLED) {
-		day = clamp(LIGHT0_ENERGY * 0.5, 0.0, 1.0);
-	}
-	float night = 1.0 - day;
+	// Day / night come straight from DayNightCycle's explicit push
+	// (night_factor uniform) — 0 = full day, 1 = full night.
+	float night = night_factor;
+	float day = 1.0 - night_factor;
 
 	// --- Layer 1: panorama, darkened toward night ---
 	vec3 sky_col = mix(

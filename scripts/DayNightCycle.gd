@@ -258,6 +258,15 @@ func _apply() -> void:
 	_sun.light_energy = sun_energy
 	_sun.light_color  = sun_color
 
+	# Push an explicit night factor (0 = full day, 1 = full night) to the
+	# sky shader. The shader uses THIS — not the indirect LIGHT0 energy,
+	# which proved unreliable — to darken the night sky and fade in the
+	# stars / aurora / nebula. DayNightCycle knows the real sun energy,
+	# so this is deterministic.
+	if _sky_mat != null:
+		_sky_mat.set_shader_parameter("night_factor",
+			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
+
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
 	# its shadow map is being maintained for no visible benefit. We only flip
