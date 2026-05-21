@@ -88,7 +88,7 @@ const WORLD_GENERATOR_VERSION: int = 16
 #         side-channel byte. WaterChunkMesher + the horizon plane are
 #         deleted; the terrain blocky mesher draws water. Pre-v16 saves
 #         have water in DATA5 / no TYPE-5 — they'd render as dry and
-#         must be hard-rejected. See design/WATER_VOXEL_V2_PLAN.md.
+#         must be hard-rejected. See design/SWIMMING_AND_WATER.md.
 
 
 # ============================================================

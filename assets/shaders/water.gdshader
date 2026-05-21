@@ -31,7 +31,8 @@
 //   3 thickness/fade grey · 4 surface-facing (white=up top) ·
 //   5 FLOW VECTOR (hue = flow direction, brightness = flow strength).
 //
-// Reference: design/WATER_SHADER_V2_PLAN.md, design/WATER_STAGE6_PLAN.md.
+// Reference: design/WATER_SHADER_V3_PLAN.md (current shader spec) +
+//   design/WATER_STAGE6_PLAN.md (native-fluid pivot decision record).
 
 shader_type spatial;
 

@@ -430,7 +430,8 @@ const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
 # transparent blocky cube whose material is the v8 depth-fade water
 # shader (NOT an atlas tile — the shader IS the water look). Applied at
 # runtime here for the same Zylann .tres-doesn't-restore reason as the
-# atlas materials. See design/WATER_VOXEL_V2_PLAN.md.
+# atlas materials. See design/SWIMMING_AND_WATER.md (current architecture)
+# and design/WATER_STAGE6_PLAN.md (native-fluid pivot rationale).
 # The LEGACY cube water slot (id 5) — this block applies the water
 # shader/transparency/collision to the OLD transparent-cube model that
 # still lives in blocky_library.tres (kept so pre-pivot saves render).

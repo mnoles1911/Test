@@ -318,7 +318,7 @@ func _ready() -> void:
 	# remaining `if _chunk_mesher != null` call sites below are harmless
 	# no-ops (left in place to keep this change minimal/low-risk for an
 	# untested build; trimmed in a later cleanup).
-	# See design/WATER_VOXEL_V2_PLAN.md.
+	# See design/SWIMMING_AND_WATER.md.
 
 
 func _physics_process(_delta: float) -> void:
@@ -706,7 +706,8 @@ func _run_flow_tick() -> void:
 	# baseline to test against — it is NOT safe to rewrite this 400-line
 	# automaton blind on an untested build. So the tick is inert for v1:
 	# drain the dirty set (so it can't accumulate) and return.
-	# See design/WATER_VOXEL_V2_PLAN.md (Stage 4) + the morning notes.
+	# See design/SWIMMING_AND_WATER.md + design/WATER_STAGE6_PLAN.md
+	# (native-fluid pivot section, formerly the V2-plan Stage 4 notes).
 	# Const-gated (not a bare `return`) so the legacy body stays
 	# reachable to the parser — no unreachable-code warning, zero risk
 	# to this autoload compiling. Flip true only when the Stage-4
