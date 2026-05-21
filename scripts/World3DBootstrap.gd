@@ -462,6 +462,15 @@ func _ready() -> void:
 					player.set("_spawn_freeze", true)
 			call_deferred("_snap_spawn_to_ground")
 
+	# --- Apply the player's graphics-quality tier ---
+	# GraphicsManager owns the POTATO..ULTRA preset the player picked in
+	# Settings. Applying it here — once the world scene is fully in the
+	# tree — pushes SSAO / SSIL / glow / shadows / MSAA / volumetric fog
+	# on or off to match. The default tier (HIGH) equals what
+	# World3D.tscn ships with, so a first-time player sees no change.
+	if get_node_or_null("/root/GraphicsManager"):
+		GraphicsManager.apply_current()
+
 
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
 const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32

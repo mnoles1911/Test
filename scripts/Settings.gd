@@ -56,6 +56,7 @@ const SETTINGS_PATH: String = "user://settings.json"
 @onready var mining_anchor_btn: Button     = $Root/VBox/MiningAnchorRow/MiningAnchorBtn
 @onready var streaming_threads_slider: HSlider = $Root/VBox/StreamingThreadsRow/StreamingThreadsSlider
 @onready var streaming_threads_value: Label = $Root/VBox/StreamingThreadsRow/StreamingThreadsValue
+@onready var graphics_quality_btn: Button  = $Root/VBox/GraphicsQualityRow/GraphicsQualityBtn
 @onready var back_btn: Button              = $Root/VBox/ButtonRow/BackBtn
 @onready var apply_btn: Button             = $Root/VBox/ButtonRow/ApplyBtn
 
@@ -132,6 +133,7 @@ func _ready() -> void:
 	_apply_to_audio()
 	_apply_streaming_threads()
 	_refresh_mining_anchor_button()
+	_refresh_graphics_quality_button()
 	_apply_voxelmark_styles()
 
 	print("[Settings] Initialized (overlay mode).")
@@ -159,7 +161,8 @@ func _apply_voxelmark_styles() -> void:
 	for path in ["Root/VBox/MasterRow/MasterLabel",
 				"Root/VBox/MusicRow/MusicLabel",
 				"Root/VBox/SFXRow/SFXLabel",
-				"Root/VBox/MiningAnchorRow/MiningAnchorLabel"]:
+				"Root/VBox/MiningAnchorRow/MiningAnchorLabel",
+				"Root/VBox/GraphicsQualityRow/GraphicsQualityLabel"]:
 		var lbl: Label = get_node_or_null(path)
 		if lbl != null:
 			UIStyles.apply_subtitle_label(lbl)
@@ -189,6 +192,19 @@ func _apply_voxelmark_styles() -> void:
 		mab.add_theme_stylebox_override("hover", styles["hover"])
 		mab.add_theme_stylebox_override("pressed", styles["pressed"])
 		mab.add_theme_stylebox_override("disabled", styles["disabled"])
+	# Graphics-quality button — menu-button chrome, steady value colour.
+	var gqb: Button = get_node_or_null("Root/VBox/GraphicsQualityRow/GraphicsQualityBtn")
+	if gqb != null:
+		var gqs := UIStyles.menu_button_styles()
+		gqb.add_theme_stylebox_override("normal", gqs["normal"])
+		gqb.add_theme_stylebox_override("hover", gqs["hover"])
+		gqb.add_theme_stylebox_override("pressed", gqs["pressed"])
+		gqb.add_theme_stylebox_override("disabled", gqs["disabled"])
+		# Keep the value colour steady across hover/pressed so the
+		# menu-button gold-seam hover doesn't repaint it.
+		gqb.add_theme_color_override("font_color", Colors.STAM)
+		gqb.add_theme_color_override("font_hover_color", Colors.STAM)
+		gqb.add_theme_color_override("font_pressed_color", Colors.STAM)
 	# Keybindings placeholder.
 	var kb: Label = get_node_or_null("Root/VBox/KeybindingsLabel")
 	if kb != null:
@@ -313,6 +329,16 @@ func _on_lmb_press(pos: Vector2) -> void:
 		_refresh_mining_anchor_button()
 		return
 
+	# Graphics quality button — cycles POTATO→LOW→MEDIUM→HIGH→ULTRA→…
+	# on each click. GraphicsManager applies + persists the change; we
+	# just refresh the label to match.
+	if graphics_quality_btn.get_global_rect().has_point(pos):
+		var gm := get_node_or_null("/root/GraphicsManager")
+		if gm != null:
+			gm.call("cycle_tier")
+		_refresh_graphics_quality_button()
+		return
+
 
 func _update_slider_drag(global_pos: Vector2) -> void:
 	if _drag_slider == null:
@@ -394,6 +420,33 @@ func _refresh_mining_anchor_button() -> void:
 		+ "The cyan aim outline always previews exactly what the next\n"
 		+ "swing will carve — toggle modes and watch it shift to feel\n"
 		+ "the difference."
+	)
+
+
+func _refresh_graphics_quality_button() -> void:
+	# Sync the button label to GraphicsManager's current tier. Called
+	# after a click and at _ready so the button shows the persisted
+	# tier the first time the overlay opens.
+	if graphics_quality_btn == null:
+		return
+	var gm := get_node_or_null("/root/GraphicsManager")
+	if gm == null:
+		graphics_quality_btn.text = "HIGH"
+		return
+	var tier: int = int(gm.get("current_tier"))
+	graphics_quality_btn.text = str(gm.call("tier_name", tier))
+	graphics_quality_btn.tooltip_text = (
+		"GRAPHICS QUALITY\n"
+		+ "\n"
+		+ "Overall rendering preset. Click to cycle:\n"
+		+ "POTATO → LOW → MEDIUM → HIGH → ULTRA\n"
+		+ "\n"
+		+ "Lower presets switch off expensive effects\n"
+		+ "(anti-aliasing, ambient occlusion, shadows,\n"
+		+ "volumetric god rays) to keep the frame rate\n"
+		+ "smooth on weaker hardware. HIGH is the\n"
+		+ "default and matches the shipped look. The\n"
+		+ "change applies immediately."
 	)
 
 

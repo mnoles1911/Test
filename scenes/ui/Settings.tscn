@@ -234,6 +234,35 @@ vertical_alignment = 1
 layout_mode = 2
 custom_minimum_size = Vector2(0, 12)
 
+; GRAPHICS QUALITY row — overall rendering preset (POTATO..ULTRA).
+; The button cycles tiers on each click, same pattern as the Mining
+; Anchor button. Backed by the GraphicsManager autoload.
+[node name="GraphicsQualityRow" type="HBoxContainer" parent="Root/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 56)
+theme_override_constants/separation = 24
+
+[node name="GraphicsQualityLabel" type="Label" parent="Root/VBox/GraphicsQualityRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(280, 0)
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.85, 0.82, 0.72, 1)
+text = "GRAPHICS QUALITY"
+vertical_alignment = 1
+
+[node name="GraphicsQualityBtn" type="Button" parent="Root/VBox/GraphicsQualityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 48)
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.7, 0.95, 0.7, 1)
+text = "HIGH"
+flat = true
+
+[node name="Spacer3d" type="Control" parent="Root/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 12)
+
 ; Keybindings placeholder.
 [node name="KeybindingsLabel" type="Label" parent="Root/VBox"]
 layout_mode = 2
