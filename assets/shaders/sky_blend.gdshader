@@ -29,6 +29,11 @@ uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.06;
 // day, 1 = full night). The shader does NOT infer it from LIGHT0
 // energy, which proved unreliable.
 uniform float night_factor : hint_range(0.0, 1.0) = 0.0;
+// DEBUG (2026-05-21 night-sky investigation) — TEMPORARY. 0 = normal.
+// 1 = paint the whole sky flat grey equal to night_factor (white =
+// full night, black = full day) to verify the uniform reaches the
+// shader. Remove with the debug block in sky().
+uniform int sky_debug = 0;
 
 // --- Volumetric cloud layer (Phase H) ---
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.3;
@@ -219,5 +224,8 @@ void sky() {
 		sky_col = mix(sky_col, cloud_rgb, alpha);
 	}
 
-	COLOR = sky_col;
+	// DEBUG (night-sky investigation, temporary) — sky_debug = 1 paints
+	// the whole sky flat grey = night_factor so we can SEE the value the
+	// shader actually received. Remove once the night look is confirmed.
+	COLOR = (sky_debug == 1) ? vec3(night_factor) : sky_col;
 }

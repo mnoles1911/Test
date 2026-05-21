@@ -128,6 +128,12 @@ var _warned_missing_panoramas: bool = false
 const STATE_TICK_INTERVAL_S: float = 0.1
 var _state_tick_accumulator: float = 0.0
 
+# DEBUG (2026-05-21 night-sky investigation) — TEMPORARY. Prints the
+# day/night state to the Output panel every ~1.5 s. Set false or delete
+# this block + the print in _apply() once the night look is confirmed.
+const _DEBUG_NIGHT: bool = true
+var _debug_night_accum: float = 0.0
+
 # Weather fog override. While WeatherManager wants to drive fog, it calls
 # set_fog_override(color, density). _apply() then writes those values instead
 # of the time-of-day-driven palette every frame. WeatherManager interpolates
@@ -408,6 +414,26 @@ func _apply() -> void:
 		env.fog_density     = _override_fog_density
 	else:
 		env.fog_light_color = fog
+
+	# DEBUG — night-sky investigation. Every ~1.5 s, dump the day/night
+	# state so the designer can read the real values from the Output
+	# panel. Remove this block once the night look is confirmed.
+	if _DEBUG_NIGHT:
+		_debug_night_accum += STATE_TICK_INTERVAL_S
+		if _debug_night_accum >= 1.5:
+			_debug_night_accum = 0.0
+			var dbg_nf: float = 1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0)
+			var dbg_mat_nf: Variant = null
+			var dbg_mat_dark: Variant = null
+			var dbg_shader_path: String = "<no _sky_mat>"
+			if _sky_mat != null:
+				dbg_mat_nf = _sky_mat.get_shader_parameter("night_factor")
+				dbg_mat_dark = _sky_mat.get_shader_parameter("night_sky_darkness")
+				if _sky_mat.shader != null:
+					dbg_shader_path = _sky_mat.shader.resource_path
+			print("[DNC-DEBUG] hour=%d h=%.2f sun_energy=%.2f moon_energy=%.2f | night_factor(computed)=%.2f | _sky_mat=%s mat.night_factor=%s mat.night_sky_darkness=%s shader=%s" % [
+				WorldClock.current_hour, h, sun_energy, moon_energy, dbg_nf,
+				str(_sky_mat != null), str(dbg_mat_nf), str(dbg_mat_dark), dbg_shader_path])
 
 
 # Decide which two anchor panoramas flank the current hour-of-day, then
