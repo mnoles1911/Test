@@ -167,16 +167,6 @@ func _ready() -> void:
 	if _moon_mesh == null:
 		push_warning("[DayNightCycle] MoonMesh not found at %s" % moon_mesh_path)
 
-	# The Moon must NOT light the volumetric fog. The Environment's
-	# volumetric fog has a pale albedo and `volumetric_fog_sky_affect`
-	# paints it over the sky — so a strong night Moon (energy 2.0)
-	# blasting that fog washes the whole night sky bright. The Sun is
-	# already set to light_volumetric_fog_energy = 0 in World3D.tscn for
-	# exactly this reason; the Moon was left at the engine default (1.0).
-	# Match them so the night fog stays dark.
-	if _moon != null:
-		_moon.light_volumetric_fog_energy = 0.0
-
 	# Cache the sky's ShaderMaterial so _update_sky_blend can write to it
 	# without re-fetching it 60 times a second. We accept that this is null
 	# if the project's sky isn't using sky_atmosphere.gdshader — in that case the
