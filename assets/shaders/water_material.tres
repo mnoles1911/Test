@@ -88,9 +88,9 @@ shader_parameter/reflection_floor = 0.05
 ;   foam_raggedness  = 0 clean smooth band ... 1 fully noise-broken edge.
 shader_parameter/foam_color = Color(0.92, 0.96, 1, 1)
 shader_parameter/foam_edge_dist = 0.33
-shader_parameter/foam_strength = 0.4
+shader_parameter/foam_strength = 0.6
 shader_parameter/foam_noise_scale = 0.7
-shader_parameter/foam_scroll_speed = 0.35
+shader_parameter/foam_scroll_speed = 0.7
 shader_parameter/foam_raggedness = 0.7
 
 ; --- FLOW-DRIVEN WAVE AMPLITUDE (2026-05-19) ---
