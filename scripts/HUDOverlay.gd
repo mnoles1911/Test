@@ -1203,12 +1203,17 @@ func _refresh_quick_slot_bar() -> void:
 			var display_name: String = item_id
 			if InventoryManager.ITEM_REGISTRY.has(item_id):
 				display_name = InventoryManager.ITEM_REGISTRY[item_id].get("name", item_id)
-			# Show count for stackables (throwables, materials).
-			var count: int = InventoryManager.get_quantity(item_id)
-			if count > 1:
-				label_text = "%s ×%d" % [display_name, count]
+			# Show count for stackables (throwables, materials) — EXCEPT
+			# powder charges, which read as a plain "Powder Charges" label
+			# (designer call 2026-05-20: the ×N count cluttered the box).
+			if item_id == "powder_charge":
+				label_text = "Powder Charges"
 			else:
-				label_text = display_name
+				var count: int = InventoryManager.get_quantity(item_id)
+				if count > 1:
+					label_text = "%s ×%d" % [display_name, count]
+				else:
+					label_text = display_name
 		_quick_slot_labels[i].text = label_text
 
 		# Highlight when this slot's item is the currently-equipped weapon.
