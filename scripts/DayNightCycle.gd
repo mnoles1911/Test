@@ -462,3 +462,13 @@ func set_fog_override(color: Color, density: float) -> void:
 
 func clear_fog_override() -> void:
 	_fog_override_active = false
+
+
+# Public API used by WeatherManager — pushes the weather-driven cloud
+# coverage (0 = clear, 1 = overcast) into the sky shader. The sky shader
+# animates and lights the clouds itself; this is the only value it needs
+# from the weather system. No-op if the sky isn't using sky_blend.gdshader.
+func set_cloud_coverage(coverage: float) -> void:
+	if _sky_mat == null:
+		return
+	_sky_mat.set_shader_parameter("cloud_coverage", clampf(coverage, 0.0, 1.0))

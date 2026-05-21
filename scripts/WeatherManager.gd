@@ -69,6 +69,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    0.5,
 		"particle_density": 0,
 		"ambient_audio":    "",
+		"cloud_coverage":   0.18,
 	},
 	State.OVERCAST: {
 		"fog_color":        Color(0.6, 0.65, 0.7),
@@ -77,6 +78,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.0,
 		"particle_density": 0,
 		"ambient_audio":    "wind_med",
+		"cloud_coverage":   0.88,
 	},
 	State.LIGHT_RAIN: {
 		"fog_color":        Color(0.55, 0.6, 0.65),
@@ -85,6 +87,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.5,
 		"particle_density": 1500,
 		"ambient_audio":    "rain_light",
+		"cloud_coverage":   0.72,
 	},
 	State.HEAVY_RAIN: {
 		"fog_color":        Color(0.4, 0.45, 0.5),
@@ -93,6 +96,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    3.5,
 		"particle_density": 6000,
 		"ambient_audio":    "rain_heavy",
+		"cloud_coverage":   0.96,
 	},
 	State.FOG: {
 		"fog_color":        Color(0.75, 0.75, 0.78),
@@ -101,6 +105,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    0.3,
 		"particle_density": 0,
 		"ambient_audio":    "wind_low",
+		"cloud_coverage":   0.55,
 	},
 	State.SNOW: {
 		"fog_color":        Color(0.85, 0.88, 0.92),
@@ -109,6 +114,7 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.2,
 		"particle_density": 2500,
 		"ambient_audio":    "wind_low",
+		"cloud_coverage":   0.82,
 	},
 }
 
@@ -217,6 +223,7 @@ var _live_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_strength"]
 var _live_wetness: float = 0.0
 var _live_rain_density: float = 0.0
 var _live_snow_density: float = 0.0
+var _live_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
 
 # Blend origins for the transition tween. Snapshotted from _live_* every
 # time the target state changes. Without this, mid-transition target
@@ -232,6 +239,7 @@ var _blend_origin_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_stren
 var _blend_origin_wetness: float = 0.0
 var _blend_origin_rain_density: float = 0.0
 var _blend_origin_snow_density: float = 0.0
+var _blend_origin_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
 
 # Particle systems. Spawned lazily on the first transition that needs
 # them so a CLEAR-only world never builds the rigs. Position follows
@@ -333,6 +341,7 @@ func _seed_initial_state() -> void:
 	_live_wetness = _state_wetness(current_state)
 	_live_rain_density = _state_rain_density(current_state)
 	_live_snow_density = _state_snow_density(current_state)
+	_live_cloud_coverage = profile["cloud_coverage"]
 	_snapshot_blend_origins()
 	# Kick the audio crossfade off so the seeded state has its bed.
 	_swap_ambient_audio(String(profile["ambient_audio"]))
@@ -349,6 +358,7 @@ func _snapshot_blend_origins() -> void:
 	_blend_origin_wetness = _live_wetness
 	_blend_origin_rain_density = _live_rain_density
 	_blend_origin_snow_density = _live_snow_density
+	_blend_origin_cloud_coverage = _live_cloud_coverage
 
 
 func _process(delta: float) -> void:
@@ -401,6 +411,7 @@ func _process_inner(delta: float) -> void:
 	_live_wetness = lerpf(_blend_origin_wetness, _state_wetness(_target_state), t)
 	_live_rain_density = lerpf(_blend_origin_rain_density, _state_rain_density(_target_state), t)
 	_live_snow_density = lerpf(_blend_origin_snow_density, _state_snow_density(_target_state), t)
+	_live_cloud_coverage = lerpf(_blend_origin_cloud_coverage, target_profile["cloud_coverage"], t)
 	weather_intensity_changed.emit(_live_wetness)
 
 	# Push fog into DayNightCycle's override slot. We try to find the
@@ -409,6 +420,9 @@ func _process_inner(delta: float) -> void:
 	var dnc: Node = _find_day_night_cycle()
 	if dnc != null and dnc.has_method("set_fog_override"):
 		dnc.set_fog_override(_live_fog_color, _live_fog_density)
+	# Push weather-driven cloud coverage into the sky shader (Phase H).
+	if dnc != null and dnc.has_method("set_cloud_coverage"):
+		dnc.set_cloud_coverage(_live_cloud_coverage)
 
 	# Push ambient light directly to WorldEnvironment.environment. We
 	# don't go through DayNightCycle here because DayNightCycle never
@@ -573,6 +587,7 @@ func load_save_data(data: Dictionary) -> void:
 	_live_wetness = _state_wetness(current_state)
 	_live_rain_density = _state_rain_density(current_state)
 	_live_snow_density = _state_snow_density(current_state)
+	_live_cloud_coverage = profile["cloud_coverage"]
 	_snapshot_blend_origins()
 
 
@@ -594,6 +609,7 @@ func clear_persistent_state() -> void:
 	_live_wetness = 0.0
 	_live_rain_density = 0.0
 	_live_snow_density = 0.0
+	_live_cloud_coverage = profile["cloud_coverage"]
 	_snapshot_blend_origins()
 
 
