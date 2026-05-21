@@ -29,10 +29,16 @@
 > rules) is still accurate and was delivered as Phase 8a.
 
 Status: **SUPERSEDED — see the banner above. Original draft follows.**
-Originally superseded the "deferred flow-sim rewrite" placeholder in
-`WATER_VOXEL_V2_PLAN.md`. Read that doc first for V2 context (water was
-a transparent `CHANNEL_TYPE == 5` blocky block; flow tick a
-gravity-drop + carve-gated flood that filled cells **all-or-nothing**).
+
+V2 CONTEXT (formerly in `WATER_VOXEL_V2_PLAN.md`, since deleted as a
+fully-superseded plan file): the pre-Stage-6 architecture was a
+transparent `CHANNEL_TYPE == 5` blocky cube water block drawn by the
+terrain mesher; the flow tick was a gravity-drop + carve-gated flood
+that filled cells **all-or-nothing**. Stage 6 set out to add partial
+heights + directional flow on top of that cube water; the native-fluid
+pivot then replaced ALL of it with `VoxelBlockyModelFluid` at
+`CHANNEL_TYPE` ids 16–23. Current architecture lives in
+`design/SWIMMING_AND_WATER.md`.
 
 ---
 

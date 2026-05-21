@@ -688,9 +688,15 @@ C++ `CubicHeightmapGeneratorCpp` generator (was GDScript, ported 2026-05-11), `V
   Rest autosave hook, Wanderer's Seal manual save hook, three-deep backup rotation.
   Reference: `design/SAVE_SYSTEM.md`
 
-- [ ] **Water Voxel V2: Minecraft-model water (in progress — plan approved 2026-05-16)**
-  Pivot water from the `CHANNEL_DATA5` side-channel + separate `WaterChunkMesher` + fake horizon plane to a normal transparent TYPE block (id 5) drawn by the terrain blocky mesher — exactly like Minecraft. Deletes WaterChunkMesher, the C++ water mesher, and the horizon plane; keeps the v8 water shader as the block material; reworks the flow sim onto type-blocks. 6 staged steps; save-version bump (old saves hard-rejected). Designer/editor work will land per-stage (blocky model #5 → transparent + water material; bump generator version).
-  Reference: `design/WATER_VOXEL_V2_PLAN.md`
+- [x] ~~**Water Voxel V2: Minecraft-model water**~~ — **DONE.** Native-fluid pivot landed (PR #225/227), full underwater experience landed (PR #232, merged 2026-05-20). Water is now Zylann-native `VoxelBlockyModelFluid` at `CHANNEL_TYPE` ids 16–23; the original V2 transparent-cube plan was superseded by the native-fluid pivot mid-flight. Final architecture in `design/SWIMMING_AND_WATER.md`. Native-fluid decision record: `design/WATER_STAGE6_PLAN.md`. Current shader spec + deferred Phase 4b–4f items: `design/WATER_SHADER_V3_PLAN.md`.
+
+- [ ] **Water Phase 4b–4f — deferred follow-up work (specs in `design/WATER_SHADER_V3_PLAN.md`)**
+  Optional polish on top of the now-complete underwater experience (PR #232). None blocking; pick any when art direction wants them.
+  - **4b — Caustics on the seabed.** Animated sun-through-waves projection on submerged terrain (NVIDIA GPU Gems Ch.2 approach: orthographic projector + tiled animated noise). Cost: small. Iconic dappled-light look.
+  - **4c — Per-biome fog/extinction.** Read water-body biome at player position; shift `underwater_fog_albedo_*` + `underwater_fog_density_*` anchors. Swamp green, glacial ice-blue, muddy river brown. Needs a biome lookup API.
+  - **4d — Planar terrain reflection.** Second Camera/Viewport rendering the world mirrored about the water plane into a sampled texture. The only correct way to see trees/cliffs reflected on water (current Fresnel sheen is sky-only). Cost: medium.
+  - **4e — Underwater audio coupling.** Low-pass filter on the master bus while submerged + ambient bubble/current loop. Pairs with the visual murk; small effort once `AudioManager` bus routing is exposed.
+  - **4f — Per-pixel screen-space water lerp.** Sea-of-Thieves-class bisected-view effect at half-submerged camera angles. Big-budget bar; requires extra render pass + per-pixel water-surface mask. Spec in V3 plan.
 
 - [ ] **Weather V2: extended profile knobs + elevation modifier**
   Adds sky_top_color / sky_horizon_color / sun_energy / sun_color / wetness / snow_density / gust_intensity to every state profile, then layers an altitude-zone modifier (LOWLAND / RIDGE / ALPINE) on top so high-elevation play feels distinctly windier + colder + eventually snow-bound regardless of the rolled base state. Includes a new `WINDY` base state. Five implementation phases A–E.
@@ -938,10 +944,11 @@ a short pitch; promote to a real section when scope is committed.
   - Likely starts as a contained spike: FFT or Gerstner-wave ocean
     on the horizon plane only, leaving near-water and gameplay
     water untouched, to judge the look before any deeper integration.
-  - Affects (if promoted): `assets/shaders/water*.gdshader`,
-    `scripts/WaterChunkMesher.gd`, `scripts/WaterFlowManager.gd`,
-    `design/SWIMMING_AND_WATER.md`, `design/WATER_SHADER_V2_PLAN.md`,
-    `design/ART_DIRECTION.md` (aesthetic sign-off).
+  - Affects (if promoted): `assets/shaders/water.gdshader`,
+    `scripts/WaterFlowManager.gd`, `design/SWIMMING_AND_WATER.md`,
+    `design/WATER_SHADER_V3_PLAN.md`, `design/ART_DIRECTION.md`
+    (aesthetic sign-off). (`scripts/WaterChunkMesher.gd` deleted in
+    the native-fluid pivot — water is now Zylann-native.)
   - Not blocking anything. Revisit only if the authored look proves
     insufficient in playtest or after a profiler capture shows
     headroom we want to spend on water fidelity.
