@@ -134,6 +134,13 @@ var _state_tick_accumulator: float = 0.0
 const _DEBUG_NIGHT: bool = true
 var _debug_night_accum: float = 0.0
 
+# DEBUG (2026-05-21) — TEMPORARY. When true, DayNightCycle forces the
+# sky shader's `sky_debug` uniform on, which makes the sky paint a flat
+# colour equal to night_factor (white = midnight, black = midday). If
+# the sky visibly goes flat, the rendered sky IS this material; if it
+# keeps its normal look, the rendered sky is some OTHER material.
+const _DEBUG_SKY_VIZ: bool = true
+
 # Weather fog override. While WeatherManager wants to drive fog, it calls
 # set_fog_override(color, density). _apply() then writes those values instead
 # of the time-of-day-driven palette every frame. WeatherManager interpolates
@@ -272,6 +279,9 @@ func _apply() -> void:
 	if _sky_mat != null:
 		_sky_mat.set_shader_parameter("night_factor",
 			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
+		# DEBUG (temporary) — force the sky shader's flat-colour debug
+		# mode so we can SEE whether the rendered sky is this material.
+		_sky_mat.set_shader_parameter("sky_debug", 1 if _DEBUG_SKY_VIZ else 0)
 
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
