@@ -272,6 +272,8 @@ renderer/rendering_method.mobile="gl_compatibility"
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile=2
 anti_aliasing/quality/use_debanding=true
 anti_aliasing/quality/use_taa=true
+anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/screen_space_roughness_limiter/enabled=true
 rendering/2d/snap/snap_2d_transforms_to_pixel=true
 rendering/2d/snap/snap_2d_vertices_to_pixel=true
 

@@ -462,8 +462,21 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                 // Depth measured DOWN from ground_y. depth=0 is top voxel.
                 const int depth = ground_y - world_y;
 
+                // Topmost solid voxel of the column. At coarse LODs each
+                // voxel spans `stride` (= 2^lod) fine units, so the top
+                // voxel's depth (measured from the fine-grained ground_y)
+                // is usually 1..stride-1 and would fall PAST the thin
+                // grass band into the dirt band — making coarse LODs
+                // render DIRT-topped and flicker against the grass fine
+                // LOD during LOD cross-fades (designer bug 2026-05-20).
+                // Force the topmost voxel to the surface material (top_id)
+                // at lod>0. lod==0 is left byte-identical: stride is 1 so
+                // depth==0 there, already inside the grass band — LOD0
+                // parity holds; only coarse-LOD baselines change.
+                const bool is_top_voxel = (lod > 0) && (depth < stride);
+
                 int mat_id;
-                if (depth < grass_thick) {
+                if (depth < grass_thick || is_top_voxel) {
                     mat_id = top_id;
                 } else if (depth < col_dirt_band_end) {
                     // col_dirt_band_end collapses to grass_thick on cliff

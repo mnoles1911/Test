@@ -138,6 +138,12 @@ var _time_days_edit: LineEdit
 var _time_hours_edit: LineEdit
 var _time_confirm_btn: Button
 var _time_back_btn: Button
+# Jump-to-key-time buttons — absolute jumps via WorldClock.set_time(h, 0).
+# Distinct from _time_confirm_btn (which advances RELATIVELY by N hours).
+var _time_jump_midnight_btn: Button
+var _time_jump_dawn_btn: Button
+var _time_jump_midday_btn: Button
+var _time_jump_dusk_btn: Button
 
 # Console tab.
 var _console_scroll: ScrollContainer
@@ -726,6 +732,44 @@ func _build_commands_time_view() -> void:
 	_time_confirm_btn.custom_minimum_size = Vector2(160, 36)
 	_commands_time_view.add_child(_time_confirm_btn)
 
+	# --- Jump-to-key-times row ---
+	# Absolute jumps (NOT relative advances) so a tester can A/B compare
+	# graphics passes at canonical hours without arithmetic. Routes through
+	# WorldClock.set_time(h, 0) — the clean entry point that emits
+	# hour_changed, refreshes NPC schedules, and fires the time-of-day
+	# transition (i.e. DayNightCycle reacts immediately).
+	var jump_heading := Label.new()
+	jump_heading.text = "OR JUMP TO:"
+	jump_heading.add_theme_font_size_override("font_size", 13)
+	jump_heading.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
+	jump_heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_time_view.add_child(jump_heading)
+
+	var jump_row := HBoxContainer.new()
+	jump_row.add_theme_constant_override("separation", 6)
+	_commands_time_view.add_child(jump_row)
+
+	_time_jump_midnight_btn = _make_jump_button("Midnight\n00:00")
+	_time_jump_dawn_btn     = _make_jump_button("Dawn\n06:00")
+	_time_jump_midday_btn   = _make_jump_button("Midday\n12:00")
+	_time_jump_dusk_btn     = _make_jump_button("Dusk\n18:00")
+	jump_row.add_child(_time_jump_midnight_btn)
+	jump_row.add_child(_time_jump_dawn_btn)
+	jump_row.add_child(_time_jump_midday_btn)
+	jump_row.add_child(_time_jump_dusk_btn)
+
+
+# Local helper for the four jump buttons — kept inline rather than promoted
+# to a general utility because their styling is specific to the time view.
+func _make_jump_button(label: String) -> Button:
+	var b := Button.new()
+	b.text = label
+	b.add_theme_font_size_override("font_size", 14)
+	b.add_theme_color_override("font_color", Color(0.85, 0.85, 0.65, 1))
+	b.custom_minimum_size = Vector2(96, 44)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return b
+
 
 func _show_time_view() -> void:
 	_commands_view = CommandView.TIME_SKIP
@@ -772,6 +816,22 @@ func _do_advance_time_form() -> void:
 	var hours: int = int(_time_hours_edit.text) if _time_hours_edit.text != "" else 0
 	_advance_time(days, hours)
 	_show_command_list()
+
+
+# Jump to an absolute hour-of-day on the current day. Unlike _advance_time
+# this can move "backwards" (Dusk -> Midnight stays on the same day). NPC
+# schedule refresh + DayNightCycle reaction happen via WorldClock.set_time.
+# The menu is intentionally LEFT OPEN so a tester can chain
+# Midnight -> Dawn -> Midday -> Dusk to A/B-compare the lighting pass
+# without re-opening the submenu each time.
+func _jump_to_hour(target_hour: int, label: String) -> void:
+	if not get_node_or_null("/root/WorldClock"):
+		log_action("DEV: time jump failed — WorldClock not available")
+		return
+	WorldClock.set_time(target_hour, 0)
+	log_action("DEV: jumped to %s → Day %d %s" % [
+		label, WorldClock.current_day, WorldClock.get_time_string()
+	])
 
 
 # --- FLY MODE toggle ---
@@ -1728,6 +1788,21 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		if _hits_button(_time_confirm_btn, pos):
 			_do_advance_time_form()
+			return
+		# Absolute jump-to-hour buttons. Menu stays open after each
+		# (no _show_command_list()) so a tester can chain jumps to
+		# compare lighting at canonical times back-to-back.
+		if _hits_button(_time_jump_midnight_btn, pos):
+			_jump_to_hour(0, "Midnight")
+			return
+		if _hits_button(_time_jump_dawn_btn, pos):
+			_jump_to_hour(6, "Dawn")
+			return
+		if _hits_button(_time_jump_midday_btn, pos):
+			_jump_to_hour(12, "Midday")
+			return
+		if _hits_button(_time_jump_dusk_btn, pos):
+			_jump_to_hour(18, "Dusk")
 			return
 		if _hits_control(_time_days_edit, pos):
 			_time_days_edit.grab_focus()

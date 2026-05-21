@@ -103,13 +103,49 @@ const BAKED_BASELINE_PATH: String = "user://baked_baseline_world3d.sqlite"
 
 
 func _enter_tree() -> void:
-	# Seed copy MUST happen before VoxelLodTerrain's child opens its
-	# SQLite stream. Godot's _enter_tree fires top-down (parent before
-	# children); _ready fires bottom-up. If we did the copy in _ready,
-	# Zylann would have already opened the working file with stale
-	# contents and ignored our new copy. This is the same constraint
-	# CopperIslesTestBootstrap calls out in its own _enter_tree.
-	_seed_from_baseline_if_needed()
+	# FRESH-RUN POLICY (2026-05-20). Every run of World3D.tscn starts a
+	# FRESH world — persisted voxel edits must NOT silently carry over
+	# between runs. They only come back when an ACTUAL save is loaded:
+	# the load-save path sets GameState.loading_voxel_save = true.
+	# Default false => wipe the working SQLite so the terrain regenerates
+	# clean from the current generator (incl. the coarse-LOD grass fix).
+	#
+	# This MUST run in _enter_tree, not _ready: _enter_tree fires
+	# top-down (parent before children), so it runs BEFORE the
+	# VoxelLodTerrain child opens its SQLite stream. By _ready that
+	# stream is already open on the old file — the same constraint the
+	# baseline-seed below depends on, and CopperIslesTestBootstrap too.
+	if GameState.loading_voxel_save:
+		# Loading a real save — keep the working voxel DB as the saved
+		# world. (The save-slot system will later point the stream at the
+		# chosen slot; today the working file itself is the loaded world.)
+		return
+	_wipe_working_session_db()
+	# force_reseed_on_launch: opt-in perf test only — refill the
+	# now-empty working DB from the baked baseline instead of pure
+	# generation. See the force_reseed_on_launch docs above.
+	if force_reseed_on_launch:
+		_seed_from_baseline_if_needed()
+
+
+func _wipe_working_session_db() -> void:
+	# Delete the working VoxelStreamSQLite file + its SQLite sidecars so
+	# the terrain streams a clean, freshly-generated world. WORKING_SQLITE
+	# _PATH is the per-run scratch DB — NOT a save slot; under the
+	# fresh-run policy no player save data lives here.
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		push_warning("[World3D] fresh-run: could not open user:// to wipe working DB")
+		return
+	var base: String = WORKING_SQLITE_PATH.get_file()  # "voxel_deltas.sqlite"
+	var removed: int = 0
+	for suffix in ["", "-wal", "-shm", "-journal"]:
+		var fname: String = base + suffix
+		if dir.file_exists(fname) and dir.remove(fname) == OK:
+			removed += 1
+	print("[World3D] Fresh run — wiped %d working-SQLite file(s); terrain " % removed
+			+ "regenerates clean. Voxel edits do NOT persist between runs "
+			+ "(that needs an explicit save load).")
 
 
 func _ready() -> void:
@@ -185,11 +221,15 @@ func _ready() -> void:
 	if "streaming_system" in terrain:
 		terrain.set("streaming_system", 1)
 		print("[World3D] terrain.streaming_system set to 1 CLIPBOX (actual=%s)" % terrain.get("streaming_system"))
-	# LOD fade duration: tried 2.0 to smooth cross-fade + spread mesh
-	# upload, but this Zylann build silently rejects values > 1.0 (the
-	# `actual=` readback returned 1.0). Reverted to 1.0 to match what
-	# Zylann actually applies — keeps the .tscn / bootstrap state and
-	# the engine state in sync so the property dump isn't misleading.
+	# LOD fade duration: 1.0 = smooth dithered cross-fade between LOD
+	# levels (Zylann silently caps this build at 1.0). The dirt/grass
+	# top-texture flicker once suspected of this fade was actually the
+	# generator emitting dirt-TYPED coarse-LOD surface voxels — fixed in
+	# heightmap_generator_base.cpp (2026-05-20, designer-confirmed). With
+	# both LODs now grass-topped the cross-fade blends MATCHING surfaces,
+	# so the fade is kept for a smooth transition (no hard LOD pop). Set
+	# here as the authority — overrides the .tscn value, which Godot's
+	# editor strips/rewrites on save.
 	if "lod_fade_duration" in terrain:
 		terrain.set("lod_fade_duration", 1.0)
 		print("[World3D] terrain.lod_fade_duration set to 1.0 (actual=%s)" % terrain.get("lod_fade_duration"))
@@ -498,7 +538,18 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	atlas_mat.albedo_texture = atlas_tex
 	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	atlas_mat.alpha_scissor_threshold = 0.5
-	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	# Nearest WITH MIPMAPS + anisotropic (2026-05-20). Plain NEAREST with
+	# no mipmaps shimmered hard on distant LOD3+ terrain — the bright
+	# sand/snow texels aliased into a flickering whitish-grey wash (the
+	# designer-reported distant-chunk flicker). Mipmaps fix texture-
+	# interior aliasing (MSAA does not); anisotropic cleans grazing
+	# ground angles. Still NEAREST sampling within a mip level, so the
+	# crisp pixel-art look up close is preserved (this is exactly how
+	# Minecraft samples its atlas). Requires mipmaps/generate=true on
+	# atlas.png.import. KNOWN tradeoff: an atlas + mipmaps can bleed
+	# adjacent tiles at the smallest mips (extreme distance) — if that
+	# shows, the proper fix is per-tile padding in build_texture_atlas.py.
+	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 	atlas_mat.roughness = 0.85
 	atlas_mat.metallic = 0.0
 	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED

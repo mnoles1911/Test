@@ -76,6 +76,23 @@ shader_parameter/shallow_alpha = 0.95
 shader_parameter/reflection_strength = 0.25
 shader_parameter/reflection_floor = 0.05
 
+; --- V3 PHASE 3 shoreline foam (REWORKED 2026-05-20 — animated/noisy/tight) ---
+; Foam is now a scrolling FBM-broken fringe that hugs the shore and laps
+; over time (see the foam block in water.gdshader). Knobs:
+;   foam_edge_dist   = band width from the water/terrain contact edge,
+;                      in metres. 0.33 ~= 2 voxels at 6 vox/m (tight).
+;                      Bigger = foam reaches into deeper water.
+;   foam_strength    = opacity, 0..1.
+;   foam_noise_scale = foam churn feature size (bigger = finer flecks).
+;   foam_scroll_speed= how fast the foam laps/churns (0 = frozen still).
+;   foam_raggedness  = 0 clean smooth band ... 1 fully noise-broken edge.
+shader_parameter/foam_color = Color(0.92, 0.96, 1, 1)
+shader_parameter/foam_edge_dist = 0.33
+shader_parameter/foam_strength = 0.6
+shader_parameter/foam_noise_scale = 0.7
+shader_parameter/foam_scroll_speed = 0.7
+shader_parameter/foam_raggedness = 0.7
+
 ; --- FLOW-DRIVEN WAVE AMPLITUDE (2026-05-19) ---
 ; Zylann's fluid mesher writes UV.y = 0 (NOT 8 / idle) for static
 ; full-level water — confirmed by debug_mode 5 showing uniform cyan

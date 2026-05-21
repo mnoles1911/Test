@@ -23,17 +23,19 @@ sky = SubResource("SkyResource_1")
 ambient_light_source = 3
 ambient_light_color = Color(0.22, 0.26, 0.32, 1)
 ambient_light_energy = 0.35
-tonemap_mode = 3
-tonemap_exposure = 0.65
+tonemap_mode = 4
+tonemap_exposure = 0.87
+tonemap_white = 6.0
 ssao_enabled = true
-ssao_radius = 1.5
-ssao_intensity = 1.5
+ssao_radius = 2.0
+ssil_enabled = true
+ssil_intensity = 2.0
 sdfgi_use_occlusion = true
 sdfgi_energy = 0.7
 glow_enabled = true
 glow_intensity = 0.25
 glow_bloom = 0.05
-glow_hdr_threshold = 1.4
+glow_hdr_threshold = 1.1
 fog_enabled = true
 fog_light_color = Color(0.7, 0.78, 0.85, 1)
 fog_density = 0.0006
@@ -45,6 +47,9 @@ volumetric_fog_emission_energy = 0.0
 volumetric_fog_length = 48.0
 volumetric_fog_ambient_inject = 1.0
 volumetric_fog_sky_affect = 0.5
+adjustment_enabled = true
+adjustment_contrast = 1.05
+adjustment_saturation = 1.15
 
 [sub_resource type="ShaderMaterial" id="UnderwaterFogMat_1"]
 shader = ExtResource("15_uw_fog_shader")
@@ -54,6 +59,10 @@ shader_parameter/noise_scale_xyz = Vector3(0.04, 0.06, 0.04)
 shader_parameter/vel1 = Vector3(0.3, 0.05, 0.2)
 shader_parameter/vel2 = Vector3(-0.2, 0.1, 0.35)
 shader_parameter/vel3 = Vector3(0.1, -0.08, -0.25)
+shader_parameter/water_surface_y = 999.0
+shader_parameter/depth_full_density_meters = 12.0
+shader_parameter/surface_density_multiplier = 0.35
+shader_parameter/deep_density_multiplier = 1.8
 
 [sub_resource type="SphereMesh" id="SunSphereMesh"]
 radius = 25.0
@@ -62,7 +71,6 @@ radial_segments = 16
 rings = 8
 
 [sub_resource type="StandardMaterial3D" id="SunMat"]
-no_depth_test = true
 albedo_color = Color(1, 0.95, 0.5, 1)
 emission_enabled = true
 emission = Color(1, 0.88, 0.35, 1)
@@ -75,7 +83,6 @@ radial_segments = 16
 rings = 8
 
 [sub_resource type="StandardMaterial3D" id="MoonMat"]
-no_depth_test = true
 albedo_color = Color(0.88, 0.93, 1, 1)
 emission_enabled = true
 emission = Color(0.75, 0.82, 1, 1)
@@ -143,8 +150,8 @@ light_energy = 1.4
 light_volumetric_fog_energy = 0.0
 shadow_enabled = true
 shadow_bias = 0.18
-shadow_blur = 3.0
-directional_shadow_mode = 0
+shadow_normal_bias = 1.0
+shadow_blur = 1.5
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 120.0
 
@@ -159,8 +166,8 @@ light_color = Color(0.55, 0.65, 0.85, 1)
 light_energy = 0.0
 shadow_enabled = true
 shadow_bias = 0.18
-shadow_blur = 3.0
-directional_shadow_mode = 0
+shadow_normal_bias = 1.0
+shadow_blur = 1.5
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 120.0
 sky_mode = 1

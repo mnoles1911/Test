@@ -31,6 +31,14 @@ var player_spawn_id: String = ""
 # player_spawn_id is the name of the SpawnPoint node the receiving scene
 # should place the player at. Empty string = use the scene's default position.
 
+var loading_voxel_save: bool = false
+# Transient runtime flag — NOT persisted to the save JSON. The load-save
+# path sets this true immediately before (re)loading World3D so
+# World3DBootstrap KEEPS the working voxel SQLite (the saved world)
+# instead of wiping it. Default false: a plain run of World3D.tscn is
+# ALWAYS a fresh world — voxel edits never silently carry between runs.
+# See World3DBootstrap._enter_tree / _wipe_working_session_db.
+
 
 # =============================================================
 # STORY FLAGS
