@@ -267,12 +267,15 @@ func _apply() -> void:
 	# from the active camera in the sun's sky direction (+Z of the sun node)
 	# so it always appears in the correct part of the sky.
 	#
-	# Visibility gate: BOTH the energy threshold AND a positive Y on the
-	# sky-direction vector. The energy alone isn't enough — during DUSK
-	# (h 17→20) the sun has positive energy (~1.0 at 18:30) but the orbit
-	# already has it below the western horizon, and SunMat.no_depth_test
-	# makes the orb render through the terrain when not hidden explicitly.
-	# A small -0.05 threshold gives a soft fade right at the horizon line.
+	# Visibility gate: BOTH the energy threshold AND a Y on the sky-direction
+	# vector at/above a small negative threshold. As of 2026-05-20 SunMat
+	# depth-tests normally (no_depth_test = false), so real terrain occludes
+	# the orb INCREMENTALLY as it descends — hills on the horizon hide its
+	# lower edge naturally. This gate is now just a safety hard-hide for when
+	# the sun is clearly below the geometric horizon, so the orb can't render
+	# from the far side of the world (e.g. poking up over open water where no
+	# terrain depth exists to occlude it). -0.05 keeps it renderable right at
+	# the horizon line so depth-occlusion does the visible work.
 	if _sun_mesh != null:
 		var cam: Camera3D = get_viewport().get_camera_3d()
 		if cam != null:
