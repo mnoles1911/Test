@@ -9,13 +9,23 @@ verification batched into the checklist below.**
 
 ## What shipped (one commit per phase — clean rollback points)
 
+> **Rebased 2026-05-20** onto origin/main on top of #231 (Water V3 Phases 2+3
+> reflections + foam) and #232 (Water Phase 4a underwater fog/god rays/snap/
+> bubble). Single conflict on `World3D.tscn` `Environment_1` tonemap block —
+> resolved in favor of AgX (this branch's reason for existing); main's
+> volumetric_fog_enabled=true / length=48 / UnderwaterFogMat_1 sub-resource /
+> UnderwaterFogVolume FogVolume node / group taxonomy / Sun
+> light_volumetric_fog_energy=0 all preserved. Commit hashes below are post-rebase.
+
 | Phase | Commit | Change |
 |---|---|---|
-| 0 | `46ec2de` | Doc note: `config/features "GL Compatibility"` is correct, NOT stale (intentional mobile fallback; desktop is forward_plus). No config changed — premise was false. |
-| A-1 | `917bd47` | Tonemap ACES→**AgX**, exposure 0.85→1.0, white 6.0; Adjustments on (contrast 1.05, sat 1.10). |
-| A-2 | `7aae831` | AgX counter-grade: saturation 1.10→**1.15**. Deliberately did NOT blind-rewrite the hand-eye-tuned per-hour sun/sky colors or weather fog — countered at the grade stage instead. |
-| B | `fee2b7d` | **SSAO** strengthened to block scale (r2.0/i2.0/power1.5/detail0.5/horizon0.06); **SSIL** enabled (r5/i2/sharp.98); glow threshold 1.4→1.1. Sun+Moon shadows: Orthogonal→**PSSM 4-splits**, blur 3.0→1.5, +normal_bias 1.0. |
-| D | `3be4858` | **MSAA 3D 4×** + screen-space roughness limiter (kills jagged block edges, zero blur). |
+| 0 | `4b09247` | Doc note: `config/features "GL Compatibility"` is correct, NOT stale (intentional mobile fallback; desktop is forward_plus). No config changed — premise was false. |
+| A-1 | `b218f5a` | Tonemap ACES→**AgX**, exposure 0.85→1.0, white 6.0; Adjustments on (contrast 1.05, sat 1.10). |
+| A-2 | `f7976f3` | AgX counter-grade: saturation 1.10→**1.15**. Deliberately did NOT blind-rewrite the hand-eye-tuned per-hour sun/sky colors or weather fog — countered at the grade stage instead. |
+| B | `5cc3dcc` | **SSAO** strengthened to block scale (r2.0/i2.0/power1.5/detail0.5/horizon0.06); **SSIL** enabled (r5/i2/sharp.98); glow threshold 1.4→1.1. Sun+Moon shadows: Orthogonal→**PSSM 4-splits**, blur 3.0→1.5, +normal_bias 1.0. |
+| D | `8aca069` | **MSAA 3D 4×** + screen-space roughness limiter (kills jagged block edges, zero blur). |
+| E | `894ae9d` | This document. |
+| (debug) | `23eedfe` | Jump-to-key-times buttons in DebugOverlay (Midnight/Dawn/Midday/Dusk). |
 | C | — *(no commit)* | **SHELVED — see below.** |
 
 ## Shelved / deviations (with reasoning)
