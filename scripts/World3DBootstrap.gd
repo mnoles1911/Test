@@ -212,6 +212,16 @@ func _ready() -> void:
 	if "lod_distance" in terrain:
 		terrain.set("lod_distance", 128.0)
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
+	# lod_count: 4 — DistantTerrain LOD overhaul (2026-05-22). With the
+	# reduced VoxelViewer.view_distance the blocky terrain only needs the
+	# crisp near LODs; the streaming DistantTerrainManager heightmesh
+	# replaces the old coarse far LODs (and their terracing). World3D has
+	# no persistent voxel cache (the working SQLite is wiped each fresh
+	# run) so changing lod_count is free. Enforced here too because the
+	# editor strips .tscn LOD values on save.
+	if "lod_count" in terrain:
+		terrain.set("lod_count", 4)
+		print("[World3D] terrain.lod_count set to 4 (actual=%s)" % terrain.get("lod_count"))
 	# Streaming system: 0 = LEGACY_OCTREE (default), 1 = CLIPBOX.
 	# CLIPBOX walks a clipped box of chunks rather than a full octree
 	# per viewer — typically 2-5× faster main-thread cost than the

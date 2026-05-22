@@ -179,7 +179,7 @@ mesh = SubResource("MoonSphereMesh")
 surface_material_override/0 = SubResource("MoonMat")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
-lod_count = 6
+lod_count = 4
 lod_distance = 128.0
 secondary_lod_distance = 128.0
 lod_fade_duration = 1.0

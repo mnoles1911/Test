@@ -182,9 +182,14 @@ current = true
 ;     radius. Bump up if a vista needs more voxel-rendered terrain
 ;     at the cost of movement framerate.
 ;
+;   2700 voxels (~450 m): cut 2026-05-22 for the DistantTerrain LOD
+;     overhaul. The blocky band is now just the crisp editable
+;     near-field; DistantTerrainManager's smooth streaming heightmesh
+;     covers everything past it (no more far-LOD terracing). Tune w/ F12.
+;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
 ; more visible distance (at the cost of streaming load).
-view_distance = 8000
+view_distance = 2700
 
 [node name="PrefetchViewer" type="Node3D" parent="."]
 ; Velocity-scaled SECONDARY VoxelViewer (see scripts/PrefetchViewer.gd).
