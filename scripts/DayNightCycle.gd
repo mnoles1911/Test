@@ -110,15 +110,12 @@ const AURORA_CYCLE: Array[Color] = [
 	Color(0.25, 0.95, 0.55),  # classic green
 	Color(0.60, 0.40, 0.95),  # violet
 ]
-# Nebula colour is still picked per in-game day from this curated palette
-# (hashed by day so it jumps around rather than cycling in order).
-const NEBULA_PALETTE: Array[Color] = [
-	Color(0.46, 0.32, 0.72),  # purple
-	Color(0.32, 0.46, 0.82),  # deep blue
-	Color(0.74, 0.34, 0.66),  # magenta
-	Color(0.30, 0.64, 0.70),  # teal
-	Color(0.66, 0.44, 0.50),  # dusty rose
-]
+# The nebula drifts around the sky's azimuth — NEBULA_DRIFT_PER_CYCLE of
+# a full revolution every NEBULA_CYCLE_DAYS in-game days. Continuous: it
+# never snaps back (a circle has no seam). Its colour is constant — the
+# shader's nebula_color default.
+const NEBULA_CYCLE_DAYS: float = 7.0
+const NEBULA_DRIFT_PER_CYCLE: float = 0.30
 
 
 var _sun: DirectionalLight3D
@@ -150,12 +147,6 @@ var _warned_missing_panoramas: bool = false
 # The in-game day the aurora/nebula palette was last refreshed for.
 # -1 forces _apply() to pick a palette on the first tick.
 var _night_palette_day: int = -1
-
-# DEBUG (temporary, 2026-05-22) — night-sky isolation probe. Drives the
-# sky shader's sky_layer_debug uniform. 0 = normal, 1 = RGB layer split
-# (R nebula / G aurora / B stars), 2 = nebula alone on black in its real
-# colour. Set 0 / delete once the nebula-visibility question is resolved.
-const _DEBUG_SKY_MODE: int = 0
 
 # _apply() updates sun/moon orbit, light energy/color, sky tint, and
 # fog from WorldClock state. With WorldClock running at 240 real-s
@@ -309,7 +300,6 @@ func _apply() -> void:
 	if _sky_mat != null:
 		_sky_mat.set_shader_parameter("night_factor",
 			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
-		_sky_mat.set_shader_parameter("sky_layer_debug", _DEBUG_SKY_MODE)
 
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
@@ -522,10 +512,10 @@ func _update_sky_blend(h: float) -> void:
 	_sky_mat.set_shader_parameter("blend",        blend)
 
 
-# Refresh the sky shader's aurora and nebula colours for a given in-game
-# day. The aurora follows a smooth 7-day loop through AURORA_CYCLE's three
-# anchors (lerped, so the hue drifts night to night); the nebula keeps a
-# per-day pick from NEBULA_PALETTE, hashed so it jumps around the palette.
+# Refresh the night sky's per-day state for a given in-game day: the
+# aurora hue (a smooth 7-day loop through AURORA_CYCLE) and the nebula's
+# drift position around the sky. The nebula's colour is constant — the
+# shader's nebula_color default.
 func _update_night_palette(day: int) -> void:
 	if _sky_mat == null:
 		return
@@ -538,9 +528,10 @@ func _update_night_palette(day: int) -> void:
 	var next_i: int = (i + 1) % AURORA_CYCLE.size()
 	var aurora_col: Color = AURORA_CYCLE[i].lerp(AURORA_CYCLE[next_i], seg - floor(seg))
 	_sky_mat.set_shader_parameter("aurora_color", aurora_col)
-	# Nebula: per-day pick from the curated palette, hashed by day.
-	var n_idx: int = ((day * 40503 + 17) & 0x7fffffff) % NEBULA_PALETTE.size()
-	_sky_mat.set_shader_parameter("nebula_color", NEBULA_PALETTE[n_idx])
+	# Nebula: drift its anchor around the sky's azimuth. day - 1 so day 1
+	# starts at zero rotation; continuous, so it never snaps back.
+	var nebula_rot: float = float(day - 1) / NEBULA_CYCLE_DAYS * NEBULA_DRIFT_PER_CYCLE * TAU
+	_sky_mat.set_shader_parameter("nebula_rotation", nebula_rot)
 
 
 # Public API used by WeatherManager. Color and density are written verbatim

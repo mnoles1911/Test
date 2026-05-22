@@ -32,12 +32,6 @@ uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.06;
 // day, 1 = full night). The shader does NOT infer it from LIGHT0
 // energy, which proved unreliable.
 uniform float night_factor : hint_range(0.0, 1.0) = 0.0;
-// DEBUG (temporary, 2026-05-22) — night-sky isolation. 0 = normal.
-// 1 = RGB layer split (R = nebula, G = aurora, B = stars).
-// 2 = nebula alone on black, in its real colour (nebula_color *
-// nebula() * nebula_strength). Driven by DayNightCycle's
-// _DEBUG_SKY_MODE const.
-uniform int sky_layer_debug = 0;
 
 // --- Volumetric cloud layer (Phase H) ---
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.3;
@@ -60,15 +54,15 @@ uniform float star_twinkle : hint_range(0.0, 1.0) = 0.8;
 // Radians. DayNightCycle pushes the celestial rotation so the star
 // field pivots across the sky with the sun/moon.
 uniform float star_rotation = 0.0;
-// aurora_color / nebula_color are pushed per in-game day by
-// DayNightCycle._update_night_palette() so each night has its own hue.
+// aurora_color is pushed per in-game day by DayNightCycle on a smooth
+// 7-day colour cycle. nebula_color is a constant (not pushed).
 uniform vec3 aurora_color : source_color = vec3(0.25, 0.95, 0.55);
-// Toned down in stages (1.1 -> 0.5 -> 0.3) — the aurora was overpowering.
 uniform float aurora_strength : hint_range(0.0, 3.0) = 0.3;
-uniform vec3 nebula_color : source_color = vec3(0.46, 0.32, 0.70);
-// Cranked hard (0.4 -> 0.7 -> 1.0, range raised) — the nebula was
-// imperceptible against the dark night sky at the old strength.
+uniform vec3 nebula_color : source_color = vec3(0.46, 0.32, 0.72);
 uniform float nebula_strength : hint_range(0.0, 2.0) = 1.0;
+// Azimuth (radians) the nebula anchor is rotated around the sky.
+// DayNightCycle advances this slowly so the nebula drifts over weeks.
+uniform float nebula_rotation = 0.0;
 
 // Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
@@ -82,6 +76,14 @@ vec3 rotate_x(vec3 v, float a) {
 	float c = cos(a);
 	float s = sin(a);
 	return vec3(v.x, v.y * c - v.z * s, v.y * s + v.z * c);
+}
+
+// Rotate a direction around the Y (vertical) axis — drifts the nebula
+// around the sky's azimuth without changing its elevation.
+vec3 rotate_y(vec3 v, float a) {
+	float c = cos(a);
+	float s = sin(a);
+	return vec3(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
 }
 
 // --- Asset-free noise --------------------------------------------------
@@ -169,8 +171,8 @@ float aurora(vec3 dir) {
 // isotropic billows rather than streaks. Static (no TIME) — a nebula is
 // a deep-sky object, not an atmospheric effect.
 float nebula(vec3 dir) {
-	// Fixed anchor — a patch high in the sky.
-	vec3 center = normalize(vec3(0.25, 0.90, 0.35));
+	// Anchor high in the sky, drifted around the azimuth by nebula_rotation.
+	vec3 center = rotate_y(normalize(vec3(0.25, 0.90, 0.35)), nebula_rotation);
 	float prox = dot(dir, center);
 	// Radial falloff: bright near the anchor, gone well before the
 	// horizon. Squared to tighten it into a concentrated core.
@@ -257,19 +259,5 @@ void sky() {
 		sky_col = mix(sky_col, cloud_rgb, alpha);
 	}
 
-	// DEBUG — night-sky isolation. Remove with sky_layer_debug.
-	if (sky_layer_debug == 1) {
-		// RGB layer split: R = nebula, G = aurora, B = stars.
-		float dbg_neb = (up > 0.0) ? nebula(EYEDIR) : 0.0;
-		float dbg_aur = (up > 0.0) ? aurora(EYEDIR) : 0.0;
-		float dbg_str = (up > 0.0) ? stars(rotate_x(EYEDIR, star_rotation)) : 0.0;
-		COLOR = vec3(dbg_neb, dbg_aur, dbg_str);
-	} else if (sky_layer_debug == 2) {
-		// Nebula alone on black, rendered exactly as the real code does
-		// it — tells us whether the nebula term produces a visible colour.
-		float dbg_neb2 = (up > 0.0) ? nebula(EYEDIR) : 0.0;
-		COLOR = nebula_color * (dbg_neb2 * nebula_strength);
-	} else {
-		COLOR = sky_col;
-	}
+	COLOR = sky_col;
 }
