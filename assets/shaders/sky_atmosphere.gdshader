@@ -32,10 +32,11 @@ uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.06;
 // day, 1 = full night). The shader does NOT infer it from LIGHT0
 // energy, which proved unreliable.
 uniform float night_factor : hint_range(0.0, 1.0) = 0.0;
-// DEBUG (temporary, 2026-05-22) — night-sky layer isolation. 0 = normal.
-// 1 = paint the three night-sky layers as raw RGB so we can see exactly
-// which one draws and where: R = nebula(), G = aurora(), B = stars().
-// Driven by DayNightCycle's _DEBUG_SKY_LAYERS const.
+// DEBUG (temporary, 2026-05-22) — night-sky isolation. 0 = normal.
+// 1 = RGB layer split (R = nebula, G = aurora, B = stars).
+// 2 = nebula alone on black, in its real colour (nebula_color *
+// nebula() * nebula_strength). Driven by DayNightCycle's
+// _DEBUG_SKY_MODE const.
 uniform int sky_layer_debug = 0;
 
 // --- Volumetric cloud layer (Phase H) ---
@@ -238,13 +239,18 @@ void sky() {
 		sky_col = mix(sky_col, cloud_rgb, alpha);
 	}
 
-	// DEBUG — isolate the three night-sky layers as raw RGB so we can see
-	// which one actually draws, and where. Remove with sky_layer_debug.
+	// DEBUG — night-sky isolation. Remove with sky_layer_debug.
 	if (sky_layer_debug == 1) {
+		// RGB layer split: R = nebula, G = aurora, B = stars.
 		float dbg_neb = (up > 0.0) ? nebula(EYEDIR) : 0.0;
 		float dbg_aur = (up > 0.0) ? aurora(EYEDIR) : 0.0;
 		float dbg_str = (up > 0.0) ? stars(rotate_x(EYEDIR, star_rotation)) : 0.0;
 		COLOR = vec3(dbg_neb, dbg_aur, dbg_str);
+	} else if (sky_layer_debug == 2) {
+		// Nebula alone on black, rendered exactly as the real code does
+		// it — tells us whether the nebula term produces a visible colour.
+		float dbg_neb2 = (up > 0.0) ? nebula(EYEDIR) : 0.0;
+		COLOR = nebula_color * (dbg_neb2 * nebula_strength);
 	} else {
 		COLOR = sky_col;
 	}

@@ -151,12 +151,11 @@ var _warned_missing_panoramas: bool = false
 # -1 forces _apply() to pick a palette on the first tick.
 var _night_palette_day: int = -1
 
-# DEBUG (temporary, 2026-05-22) — night-sky layer isolation probe. When
-# true, DayNightCycle drives the sky shader's sky_layer_debug uniform so
-# the night sky paints its three layers as raw RGB: R = nebula, G =
-# aurora, B = stars. Lets us see which layer actually draws and where.
-# Set false / delete once the nebula-visibility question is resolved.
-const _DEBUG_SKY_LAYERS: bool = false
+# DEBUG (temporary, 2026-05-22) — night-sky isolation probe. Drives the
+# sky shader's sky_layer_debug uniform. 0 = normal, 1 = RGB layer split
+# (R nebula / G aurora / B stars), 2 = nebula alone on black in its real
+# colour. Set 0 / delete once the nebula-visibility question is resolved.
+const _DEBUG_SKY_MODE: int = 2
 
 # _apply() updates sun/moon orbit, light energy/color, sky tint, and
 # fog from WorldClock state. With WorldClock running at 240 real-s
@@ -310,8 +309,7 @@ func _apply() -> void:
 	if _sky_mat != null:
 		_sky_mat.set_shader_parameter("night_factor",
 			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
-		_sky_mat.set_shader_parameter("sky_layer_debug",
-			1 if _DEBUG_SKY_LAYERS else 0)
+		_sky_mat.set_shader_parameter("sky_layer_debug", _DEBUG_SKY_MODE)
 
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
@@ -543,6 +541,11 @@ func _update_night_palette(day: int) -> void:
 	# Nebula: per-day pick from the curated palette, hashed by day.
 	var n_idx: int = ((day * 40503 + 17) & 0x7fffffff) % NEBULA_PALETTE.size()
 	_sky_mat.set_shader_parameter("nebula_color", NEBULA_PALETTE[n_idx])
+	# DEBUG (temporary) — confirm the night-sky colours/strength actually
+	# reaching the material. Remove with the _DEBUG_SKY_MODE probe.
+	print("[NEBULA-DBG] day=%d aurora_color=%s nebula_color=%s nebula_strength=%s" % [
+		day, str(aurora_col), str(NEBULA_PALETTE[n_idx]),
+		str(_sky_mat.get_shader_parameter("nebula_strength"))])
 
 
 # Public API used by WeatherManager. Color and density are written verbatim
