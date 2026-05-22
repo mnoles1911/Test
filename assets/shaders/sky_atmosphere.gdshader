@@ -32,12 +32,6 @@ uniform float night_sky_darkness : hint_range(0.0, 1.0) = 0.06;
 // day, 1 = full night). The shader does NOT infer it from LIGHT0
 // energy, which proved unreliable.
 uniform float night_factor : hint_range(0.0, 1.0) = 0.0;
-// DEBUG (2026-05-21 night-sky investigation) — TEMPORARY. 0 = normal.
-// 1 = paint the whole sky flat grey equal to night_factor (white =
-// full night, black = full day) to verify the uniform reaches the
-// shader. Remove with the debug block in sky().
-uniform int sky_debug = 0;
-
 // --- Volumetric cloud layer (Phase H) ---
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.3;
 uniform float cloud_opacity : hint_range(0.0, 1.0) = 0.95;
@@ -59,10 +53,13 @@ uniform float star_twinkle : hint_range(0.0, 1.0) = 0.8;
 // Radians. DayNightCycle pushes the celestial rotation so the star
 // field pivots across the sky with the sun/moon.
 uniform float star_rotation = 0.0;
+// aurora_color / nebula_color are pushed per in-game day by
+// DayNightCycle._update_night_palette() so each night has its own hue.
 uniform vec3 aurora_color : source_color = vec3(0.25, 0.95, 0.55);
-uniform float aurora_strength : hint_range(0.0, 3.0) = 1.1;
+// Toned down from 1.1 — the aurora was overpowering the night sky.
+uniform float aurora_strength : hint_range(0.0, 3.0) = 0.5;
 uniform vec3 nebula_color : source_color = vec3(0.34, 0.20, 0.52);
-uniform float nebula_strength : hint_range(0.0, 1.0) = 0.4;
+uniform float nebula_strength : hint_range(0.0, 1.0) = 0.7;
 
 // Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
@@ -155,9 +152,12 @@ float aurora(vec3 dir) {
 float nebula(vec3 dir) {
 	float lat = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;
 	float lon = atan(dir.z, dir.x);
-	vec2 ring = vec2(cos(lon), sin(lon)) * 2.2;
-	float n = cloud_fbm(ring + vec2(7.0, lat * 2.5));
-	return smoothstep(0.5, 0.95, n);
+	// Lower ring scale => larger, broader nebula clouds. The smoothstep
+	// floor sits well below the fbm average so the haze is actually
+	// visible across the sky, not just catching the rare noise peaks.
+	vec2 ring = vec2(cos(lon), sin(lon)) * 1.5;
+	float n = cloud_fbm(ring + vec2(7.0, lat * 2.0));
+	return smoothstep(0.34, 0.78, n);
 }
 
 void sky() {
@@ -227,8 +227,5 @@ void sky() {
 		sky_col = mix(sky_col, cloud_rgb, alpha);
 	}
 
-	// DEBUG (night-sky investigation, temporary) — sky_debug = 1 paints
-	// the whole sky flat grey = night_factor so we can SEE the value the
-	// shader actually received. Remove once the night look is confirmed.
-	COLOR = (sky_debug == 1) ? vec3(night_factor) : sky_col;
+	COLOR = sky_col;
 }

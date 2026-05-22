@@ -100,6 +100,26 @@ const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 const VOL_FOG_ALBEDO_DAY: Color   = Color(0.85, 0.88, 0.95)
 const VOL_FOG_ALBEDO_NIGHT: Color = Color(0.06, 0.08, 0.14)
 
+# Per-night aurora / nebula colour palettes. _update_night_palette() picks
+# one entry from each per in-game day, so every night carries its own
+# colour signature. Curated rather than random-hue so the night sky never
+# lands on a muddy or clashing colour.
+const AURORA_PALETTE: Array[Color] = [
+	Color(0.25, 0.95, 0.55),  # classic green
+	Color(0.20, 0.85, 0.92),  # teal / cyan
+	Color(0.60, 0.40, 0.95),  # violet
+	Color(0.95, 0.40, 0.72),  # rose
+	Color(0.55, 0.95, 0.42),  # lime
+	Color(0.40, 0.62, 0.98),  # ice blue
+]
+const NEBULA_PALETTE: Array[Color] = [
+	Color(0.34, 0.20, 0.52),  # purple
+	Color(0.20, 0.32, 0.62),  # deep blue
+	Color(0.52, 0.20, 0.46),  # magenta
+	Color(0.18, 0.44, 0.50),  # teal
+	Color(0.46, 0.28, 0.32),  # dusty rose
+]
+
 
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
@@ -127,6 +147,10 @@ var _sky_mat: ShaderMaterial = null
 # rather than spamming the console every frame from _process.
 var _warned_missing_panoramas: bool = false
 
+# The in-game day the aurora/nebula palette was last refreshed for.
+# -1 forces _apply() to pick a palette on the first tick.
+var _night_palette_day: int = -1
+
 # _apply() updates sun/moon orbit, light energy/color, sky tint, and
 # fog from WorldClock state. With WorldClock running at 240 real-s
 # per game-hour, the sun moves 0.0625°/real-second — totally invisible
@@ -134,19 +158,6 @@ var _warned_missing_panoramas: bool = false
 # frame (was ~13 µs/frame × 100 % hit rate ≈ 4.9 ms/sec steady cost).
 const STATE_TICK_INTERVAL_S: float = 0.1
 var _state_tick_accumulator: float = 0.0
-
-# DEBUG (2026-05-21 night-sky investigation) — TEMPORARY. Prints the
-# day/night state to the Output panel every ~1.5 s. Set false or delete
-# this block + the print in _apply() once the night look is confirmed.
-const _DEBUG_NIGHT: bool = true
-var _debug_night_accum: float = 0.0
-
-# DEBUG (2026-05-21) — TEMPORARY. When true, DayNightCycle forces the
-# sky shader's `sky_debug` uniform on, which makes the sky paint a flat
-# colour equal to night_factor (white = midnight, black = midday). If
-# the sky visibly goes flat, the rendered sky IS this material; if it
-# keeps its normal look, the rendered sky is some OTHER material.
-const _DEBUG_SKY_VIZ: bool = false
 
 # Weather fog override. While WeatherManager wants to drive fog, it calls
 # set_fog_override(color, density). _apply() then writes those values instead
@@ -236,6 +247,12 @@ func _apply() -> void:
 	var minute_frac: float = WorldClock.get_minute_fraction()
 	var h: float = float(WorldClock.current_hour) + (float(WorldClock.current_minute) + minute_frac) / 60.0
 
+	# Refresh the per-night aurora/nebula palette when the day rolls over,
+	# so each night carries its own colour signature.
+	if _sky_mat != null and WorldClock.current_day != _night_palette_day:
+		_night_palette_day = WorldClock.current_day
+		_update_night_palette(WorldClock.current_day)
+
 	# --- Sun + moon orbit ---
 	# Convert hour to an angle around the world's left axis. At hour 6
 	# the sun is at the east horizon (angle 0), at hour 12 it's at
@@ -286,9 +303,6 @@ func _apply() -> void:
 	if _sky_mat != null:
 		_sky_mat.set_shader_parameter("night_factor",
 			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
-		# DEBUG (temporary) — force the sky shader's flat-colour debug
-		# mode so we can SEE whether the rendered sky is this material.
-		_sky_mat.set_shader_parameter("sky_debug", 1 if _DEBUG_SKY_VIZ else 0)
 
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
@@ -414,16 +428,6 @@ func _apply() -> void:
 	if env == null:
 		return
 
-	# DEBUG (night-sky investigation) — TEMPORARY. With the sky_debug probe
-	# on, also kill BOTH fog systems. The sky shader's debug branch outputs
-	# vec3(night_factor) — pure greyscale — so nothing it produces can be
-	# light blue. If the rendered sky is still flat light blue, a fog layer
-	# is being composited over it. Disabling both fogs here is the airtight
-	# test: sky goes white@midnight / black@midday => fog was the wash.
-	if _DEBUG_SKY_VIZ:
-		env.fog_enabled = false
-		env.volumetric_fog_enabled = false
-
 	# Sky panorama cross-fade.
 	# Old version tried to cast env.sky.sky_material to ProceduralSkyMaterial,
 	# but the scene actually used PhysicalSkyMaterial — the cast silently
@@ -453,34 +457,6 @@ func _apply() -> void:
 	# the hour ramp above — drive it here so the volumetric layer darkens
 	# at night too (its sky_affect otherwise washes the night sky pale).
 	env.volumetric_fog_albedo = VOL_FOG_ALBEDO_DAY.lerp(VOL_FOG_ALBEDO_NIGHT, night_t)
-
-	# DEBUG — night-sky investigation. Every ~1.5 s, dump the day/night
-	# state so the designer can read the real values from the Output
-	# panel. Remove this block once the night look is confirmed.
-	if _DEBUG_NIGHT:
-		_debug_night_accum += STATE_TICK_INTERVAL_S
-		if _debug_night_accum >= 1.5:
-			_debug_night_accum = 0.0
-			var dbg_nf: float = 1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0)
-			var dbg_mat_nf: Variant = null
-			var dbg_texfrom: Variant = null
-			var dbg_shader_path: String = "<no _sky_mat>"
-			if _sky_mat != null:
-				dbg_mat_nf = _sky_mat.get_shader_parameter("night_factor")
-				dbg_texfrom = _sky_mat.get_shader_parameter("texture_from")
-				if _sky_mat.shader != null:
-					dbg_shader_path = _sky_mat.shader.resource_path
-			var dbg_pano: String = "%s/%s/%s/%s" % [
-				str(dawn_panorama != null), str(noon_panorama != null),
-				str(dusk_panorama != null), str(night_panorama != null)]
-			print("[DNC-DEBUG] hour=%d h=%.2f sun_e=%.2f night_factor=%.2f | mat.night_factor=%s | panoramas(d/n/du/ni)=%s tex_from_set=%s | shader=%s" % [
-				WorldClock.current_hour, h, sun_energy, dbg_nf,
-				str(dbg_mat_nf), dbg_pano, str(dbg_texfrom != null), dbg_shader_path])
-			print("[DNC-FOG] fog_enabled=%s vol_fog_enabled=%s | fog_light_color=%s aerial_persp=%.2f | vol_fog_albedo=%s vol_sky_affect=%.2f | fog_override=%s" % [
-				str(env.fog_enabled), str(env.volumetric_fog_enabled),
-				str(env.fog_light_color), env.fog_aerial_perspective,
-				str(env.volumetric_fog_albedo), env.volumetric_fog_sky_affect,
-				str(_fog_override_active)])
 
 
 # Decide which two anchor panoramas flank the current hour-of-day, then
@@ -537,6 +513,19 @@ func _update_sky_blend(h: float) -> void:
 	_sky_mat.set_shader_parameter("texture_from", from_tex)
 	_sky_mat.set_shader_parameter("texture_to",   to_tex)
 	_sky_mat.set_shader_parameter("blend",        blend)
+
+
+# Pick the aurora and nebula colours for a given in-game day and push them
+# to the sky shader. Deterministic — the same day always yields the same
+# colours — but the day number is hashed so consecutive nights jump around
+# the palette instead of walking it in order.
+func _update_night_palette(day: int) -> void:
+	if _sky_mat == null:
+		return
+	var a_idx: int = ((day * 2654435761) & 0x7fffffff) % AURORA_PALETTE.size()
+	var n_idx: int = ((day * 40503 + 17) & 0x7fffffff) % NEBULA_PALETTE.size()
+	_sky_mat.set_shader_parameter("aurora_color", AURORA_PALETTE[a_idx])
+	_sky_mat.set_shader_parameter("nebula_color", NEBULA_PALETTE[n_idx])
 
 
 # Public API used by WeatherManager. Color and density are written verbatim
