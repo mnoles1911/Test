@@ -142,11 +142,17 @@ New follow-ups surfaced by testing (flagged, NOT fixed):
 
 ## Deferred follow-ups (flagged, not done)
 
-- **LOD terracing / hard LOD seams** — the screenshot's single biggest visual
-  problem; you deferred it this pass. `lod_distance` capped 128, `lod_fade_duration`
-  Zylann-capped, 6 LODs, hard radial transitions. Cross-ref `memory`
-  project_lod_pop_tiers. Deserves a dedicated pass. **The #1b flicker likely
-  belongs to this pass.**
+- **LOD terracing / hard LOD seams** — **RESOLVED 2026-05-22** by the
+  DistantTerrain overhaul (branch `feat/distant-terrain-lod`). The blocky
+  Zylann band shrank to ~450 m (`view_distance` 8000→2700, World3D
+  `lod_count` 6→4) and a streaming smooth-heightmesh — `scripts/Distant`
+  `TerrainManager.gd` + C++ `DistantTerrainMesher` (`extensions/voxel_gen/`)
+  + `assets/shaders/distant_terrain.gdshader` — now covers everything
+  past it, replacing both the far blocky LODs and the baked HorizonSkirt.
+  Seam-free by construction (perimeter skirt aprons + Bayer-dither
+  LOD-swap fade). Full record: the CLAUDE.md 2026-05-22 milestone entry.
+  Designer in-editor tuning of view_distance / lod_count / inner_cull is
+  tracked in `DESIGNER_TODO.md`.
 - **Normal maps via tangent-free shader** — the only water-safe route to
   per-pixel surface detail (derivative/triplanar bump in a custom terrain
   ShaderMaterial preserving NEAREST + alpha-scissor). Non-trivial; own pass.
@@ -363,7 +369,7 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   weather state. Each a small, independent `.gdshader` / `canvas_item`
   task — pick off opportunistically.
 
-**LOD terracing / hard LOD seams** (top item in Deferred follow-ups
-above) is *not* in this roadmap — it is a voxel-streaming problem, not a
-shader-look problem, and deserves its own pass first; it is currently the
-single biggest visual issue and will undercut any of F–K if left.
+**LOD terracing / hard LOD seams** — **RESOLVED 2026-05-22** (the
+DistantTerrain overhaul; see the Deferred-follow-ups note above). It was
+a voxel-streaming problem, not a shader-look one, so it got its own
+dedicated pass rather than a slot in this shader roadmap.
