@@ -150,6 +150,75 @@ New follow-ups surfaced by testing (flagged, NOT fixed):
 - **Normal maps via tangent-free shader** — the only water-safe route to
   per-pixel surface detail (derivative/triplanar bump in a custom terrain
   ShaderMaterial preserving NEAREST + alpha-scissor). Non-trivial; own pass.
-- **CLAUDE.md / ART_DIRECTION updates** — pending: apply the maintenance-table
-  updates (palette/shader decision = AgX+lighting; milestone line) only AFTER you
-  verify + this merges. Not claiming "done" pre-verification.
+- **CLAUDE.md / ART_DIRECTION updates** — CLAUDE.md milestone line **DONE**
+  (2026-05-20 graphics-pass entry added on branch `docs/graphics-pass-milestone`).
+  ART_DIRECTION palette/shader-decision note (AgX + lighting punch as the locked
+  colour pipeline) still pending — apply when convenient.
+
+---
+
+## Next graphics passes — Complementary-inspired roadmap (Phase F+)
+
+Phases A–E above tuned Godot's native post stack. This section is the
+forward roadmap: a re-scoped port of techniques studied from the
+**Complementary Reimagined** Minecraft shader pack. It supersedes an
+earlier informal 6-phase sketch — Phases A/B/D already shipped the front
+half of that sketch (tonemap, SSAO/SSIL, AA), so only the items below
+remain. Keep this as the single graphics roadmap; do **not** open a
+parallel `SHADER_PORT_PLAN.md`.
+
+**Licensing:** Complementary Reimagined is a proprietary, all-rights-
+reserved pack (same posture as SEUS / Sildur's — see
+`WATER_SHADER_V3_PLAN.md` § Licensing). **Technique study only, no code.**
+We implement everything ourselves from the published behaviour.
+
+Every phase below is GPU/visual work → each ends in an in-editor designer
+gate (headless only proves it compiles). Ordered by dependency, not pure
+ROI — H unblocks later water/sky work; J is the biggest single payoff.
+
+- **Phase F — Quality-tier `ShaderProfile` resource.** A `ShaderProfile`
+  Resource (POTATO / LOW / MEDIUM / HIGH / ULTRA) wired to the `Settings`
+  autoload, driving the knobs Phases A/B/D introduced: MSAA level,
+  SSAO/SSIL on/off, SDFGI toggle, shadow split count, glow, vol-fog
+  density. Mirrors Complementary's profile system. This is the *only*
+  un-built piece of the post stack — everything else shipped in A/B/D.
+  Pure GDScript. **Effort: small.**
+- **Phase G — `AtmosphereProfile` resource.** Extract the hand-tuned
+  per-hour sun/sky colours from `DayNightCycle.gd` and per-state fog from
+  `WeatherManager.gd` into an `AtmosphereProfile` Resource (the analog of
+  Complementary's `lib/colors/colorMultipliers.glsl`). Decouples art
+  tuning from code and lets weather states swap colour anchors cleanly;
+  also the prerequisite for Water Phase 4c (per-biome underwater fog).
+  Pure GDScript. **Effort: small–medium.**
+- **Phase H — Volumetric clouds.** A `shader_type sky` shader with
+  marched cheap noise clouds, time-of-day + weather driven (layers over
+  or replaces `sky_blend.gdshader`). Dependency unlock: the deferred
+  follow-ups "cloud reflections on water" and "#5b god-rays scaled to the
+  sun's above-horizon fraction" both need real clouds first. Pure
+  `.gdshader`. **Effort: medium.**
+- **Phase I — IPBR-style voxel materials + tangent-free surface detail.**
+  Extend `VoxelMaterial` with emission + roughness fields (glowing ores /
+  emissive blocks fall out for free). Implements the **shelved Phase C**
+  goal the water-safe way: per-pixel surface detail via a tangent-free
+  custom terrain `ShaderMaterial` doing `dFdx/dFdy` derivative or
+  triplanar bump — which is exactly how Complementary generates normals
+  (`lib/util/dFdxdFdy.glsl`). Never touches `bake_tangents`. GDScript +
+  `.gdshader`. **Effort: medium–large.**
+- **Phase J — Colored lighting (voxel floodfill).** The biggest single
+  visual jump and the one piece that genuinely needs C++: a BFS floodfill
+  from emissive voxels into a 3D storage texture, triggered on
+  `VoxelEditManager.edit_applied`, scoped to a radius around the edit —
+  the same shape of work as `VoxelGravityManager`'s flood-fill. C++
+  GDExtension in `extensions/voxel_gen/` + thin GDScript adapter + a
+  manager autoload that uploads the storage texture to a shader global;
+  the terrain shader samples it for indirect block light. Forward+
+  storage textures. **Effort: large.**
+- **Phase K — Atmospheric polish.** Lens flare, world/selection outline,
+  rainbow after rain, aurora / night nebulae / stars in the sky shader,
+  light-shaft intensity per weather state. Each a small, independent
+  `.gdshader` / `canvas_item` task — pick off opportunistically.
+
+**LOD terracing / hard LOD seams** (top item in Deferred follow-ups
+above) is *not* in this roadmap — it is a voxel-streaming problem, not a
+shader-look problem, and deserves its own pass first; it is currently the
+single biggest visual issue and will undercut any of F–K if left.
