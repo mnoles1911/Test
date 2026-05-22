@@ -69,3 +69,6 @@ assets/voxel/copper_isles_baseline*.sqlite
 # from source via `scons` and shouldn't bloat the repo. Mirrors the
 # pattern used for Zylann + GodotSteam binaries above.
 extensions/*/bin/
+
+# Headless test-harness run logs (regenerated each run).
+tools/headless/*.log
