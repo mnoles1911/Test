@@ -213,7 +213,7 @@ settles it in a single run.
 
 ---
 
-## Phases G / I / J — SHIPPED 2026-05-22 (branch `feat/graphics-phases-g-i-j`)
+## Phases G / I / J — SHIPPED 2026-05-22 (PR #238)
 
 The remainder of the Phase F+ roadmap, built in one pass on top of the
 F/H/K work. One commit per phase; headless-gated; one batched in-editor
@@ -264,7 +264,21 @@ cluster lights (one per coarse cell), not one per voxel. Walk ~30 m
 away — distant cluster lights stream out, no perf cliff. F3 profiler:
 `EmissiveLightManager` should be cheap.
 
-Per-phase rollback is one `git revert <commit>` from the branch.
+### Designer verification — 2026-05-22 (PASSED)
+
+Run in-editor by the designer after merge. **G** day-cycle and **I**
+terrain relief read correctly; **J** glowing copper ore confirmed. One
+bug found and fixed: the first build lit emissive copper *buried in
+solid rock* — cluster lights are shadowless, so that brightness bled
+up through the terrain as a radius that followed the player. Fixed so
+only voxels with an air-exposed face register a light
+(`_has_air_neighbor` in `EmissiveLightManager`); re-tested, gone.
+Global illumination — the dark-shadowed-blocks the designer flagged —
+is the **SDFGI** enabled by the **ULTRA** graphics tier; confirmed
+good on ULTRA.
+
+Phases G/I/J landed as a single squash commit — PR #238 (`e8dfac9`);
+revert that commit to roll back the whole pass.
 
 ### Still open after this pass
 

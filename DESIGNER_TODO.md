@@ -190,16 +190,13 @@ Scene building and node configuration that has to be done in the editor.
   pass — note which tier looks wrong and how.
   Reference: `design/GRAPHICS_PASS_2026-05-19.md` → "Phases F / H / K — SHIPPED".
 
-- [ ] **Visual gate — graphics Phases G / I / J** (branch `feat/graphics-phases-g-i-j`)
-  The rest of the graphics roadmap shipped 2026-05-22: G (AtmosphereProfile
-  refactor), I (tangent-free per-pixel terrain relief + emission/roughness),
-  J (emissive voxels cast coloured `OmniLight3D` light). Headless-gated;
-  all three need an in-editor visual check. Run `World3D.tscn` and work
-  through the **"END-OF-BUILD VISUAL CHECKLIST — Phases G / I / J"** in
-  `design/GRAPHICS_PASS_2026-05-19.md` (items G1, I1, I2, J1, J2). The
-  headline test: dig down into stone, mine into a copper-ore vein — it
-  should glow warm amber and light the tunnel around it. Report anything
-  that looks off; tuning knobs are listed inline in the checklist.
+- [x] **Visual gate — graphics Phases G / I / J** — PASSED (2026-05-22, PR #238)
+  G (AtmosphereProfile), I (tangent-free terrain relief), J (emissive
+  voxels cast coloured light) all verified in-editor. Designer testing
+  caught one bug — emissive copper buried in solid rock lit the surface
+  through the terrain in a player-following radius — fixed so only
+  air-exposed emissive voxels register a light. Glowing ore, the
+  day-cycle, and ULTRA-tier SDFGI global illumination all confirmed good.
 
 - [ ] **Build `scenes/NPC_Template.tscn`**
   Create once; duplicate for every new NPC going forward.
