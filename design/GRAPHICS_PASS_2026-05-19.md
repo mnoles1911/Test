@@ -209,7 +209,72 @@ settles it in a single run.
 - **Wind ambience** — the gust modulation added alongside the cloud work
   (`WeatherManager._update_wind_gust`, summed slow sines biased toward
   lulls) is a stopgap; wind audio wants a proper rework.
-- **Phases G, I, J** — not started; see the roadmap below.
+- **Phases G, I, J** — SHIPPED 2026-05-22; see the section directly below.
+
+---
+
+## Phases G / I / J — SHIPPED 2026-05-22 (branch `feat/graphics-phases-g-i-j`)
+
+The remainder of the Phase F+ roadmap, built in one pass on top of the
+F/H/K work. One commit per phase; headless-gated; one batched in-editor
+designer review (the checklist below).
+
+| Phase | Change |
+|---|---|
+| G | `scripts/graphics/AtmosphereProfile.gd` — a Resource holding the 16 time-of-day colour anchors (sun / moon / sky-top / sky-horizon / fog / vol-fog albedo). DayNightCycle's scattered colour `const`s are gone; `_apply()` reads `_atmo.<field>`, resolved in `_ready()` from a new `atmosphere` export (null → a default profile that reproduces the shipped look exactly — no `World3D.tscn` edit needed). New `DayNightCycle.set_atmosphere_profile()` swaps the whole palette at runtime. **Deviation:** the roadmap also floated folding `WeatherManager`'s per-state fog in — NOT done; `STATE_PROFILES` is already a clean designer table where fog sits with ambient/wind/cloud, and splitting it would break cohesion for no gain. |
+| I | `assets/shaders/terrain_voxel.gdshader` — a `shader_type spatial` shader replacing the 14 solid voxel models' shared StandardMaterial3D. It reproduces that material exactly (atlas albedo, 0.5 alpha-scissor, nearest-mipmap-anisotropic, matte, no metal/specular) and adds **tangent-free** per-pixel surface relief — a 3D-noise height field, normal bumped from screen-space derivatives (Mikkelsen surface-gradient). No vertex tangents → never touches `bake_tangents` → water-safe. This is the shelved Phase C goal achieved the only way that doesn't break the native-fluid water meshes. `VoxelMaterial.gd` gained emission + roughness data fields; `World3DBootstrap` builds the shared shader material and gives a model its own variant only when its VoxelMaterial is emissive or sets a non-default roughness (batching preserved for the common case). |
+| J | `scripts/EmissiveLightManager.gd` — new autoload. Emissive voxels cast coloured light: it discovers them edit-driven (bulk-reads the region around every `VoxelEditManager.edit_applied`) plus a periodic vicinity sweep, clusters them on a coarse grid, and streams a capped set of coloured `OmniLight3D`s around the player. `copper_ore` is flagged emissive as the showcase. **Architecture (designer-approved):** real `OmniLight3D`s, NOT the roadmap's C++ BFS-floodfill-into-3D-texture. Forward+'s clustered renderer makes engine-native lights the right call here — the Minecraft baked-light technique solves a problem (no real-time lighting) this engine does not have. Trade-off: light is line-of-sight and does not wrap around corners. |
+
+### END-OF-BUILD VISUAL CHECKLIST — Phases G / I / J (run `World3D.tscn`)
+
+Headless-validated: project loads, every script parses, all three
+shaders compile, `GraphicsManager` applies, `EmissiveLightManager`
+activates. Everything below is GPU/visual and needs your eyes.
+
+**G1 — Day cycle unchanged.** Step WorldClock through dawn / noon /
+dusk / night (DebugOverlay jump buttons). Sky / sun / fog colours
+should look *exactly* as before — Phase G was a pure code refactor, so
+zero visible change IS the pass criterion. *If anything shifted:* a
+value in `scripts/graphics/AtmosphereProfile.gd` drifted from the
+original `DayNightCycle` const.
+
+**I1 — Terrain surface relief.** Look at a big flat stone / dirt face
+up close. It should now carry subtle micro-relief that catches the sun
+— no longer a dead-flat uniform wall — with NO loss of the crisp
+pixel-art texture. *Too strong / noisy:* lower `detail_strength` in
+`assets/shaders/terrain_voxel.gdshader` (default 0.3). *Want more:*
+raise it; `detail_scale` sets the relief feature size.
+
+**I2 — Terrain otherwise unchanged.** Texturing, per-face tile
+mapping, leaf alpha-scissor transparency, distant-LOD sharpness — all
+should be exactly as before. The shader reproduces the old
+StandardMaterial3D; any difference *other than* the new relief is a bug.
+
+**J1 — Glowing copper ore.** Dig down into stone and mine into a
+copper-ore vein (copper sits 0–1500 voxels altitude). The ore surface
+should glow warm amber (Phase I emission) AND the tunnel around it
+should be lit copper-amber — floor and walls, with colour bleed via
+SSIL (Phase J's `OmniLight3D`s). *Too bright / dim:* tune
+`EmissiveLightManager.light_energy_scale`, or `emission_energy` /
+`emission_color` on `copper_ore.tres`. *Don't want copper to glow:*
+set `emission_enabled = false` in `copper_ore.tres`.
+
+**J2 — Streaming + cap.** Mine a long copper vein — expect several
+cluster lights (one per coarse cell), not one per voxel. Walk ~30 m
+away — distant cluster lights stream out, no perf cliff. F3 profiler:
+`EmissiveLightManager` should be cheap.
+
+Per-phase rollback is one `git revert <commit>` from the branch.
+
+### Still open after this pass
+
+- **Phase K remainder** — lens flare, world/selection outline,
+  rainbow-after-rain, per-weather light-shafts (unchanged).
+- **Phase J comprehensive discovery** — emissive voxels are found
+  edit-driven plus a modest vicinity sweep. A whole-world emissive
+  index (deep-cave glow known before you approach) is the part that
+  would want a C++ bulk-scan — a future option if it is ever wanted.
+- **Phase F preset rebalance**, **wind-ambience rework** — unchanged.
 
 ---
 
@@ -241,7 +306,8 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   density. Mirrors Complementary's profile system. This is the *only*
   un-built piece of the post stack — everything else shipped in A/B/D.
   Pure GDScript. **Effort: small.**
-- **Phase G — `AtmosphereProfile` resource.** Extract the hand-tuned
+- **Phase G — `AtmosphereProfile` resource.** **SHIPPED 2026-05-22** —
+  see the "Phases G / I / J — SHIPPED" section above. Extract the hand-tuned
   per-hour sun/sky colours from `DayNightCycle.gd` and per-state fog from
   `WeatherManager.gd` into an `AtmosphereProfile` Resource (the analog of
   Complementary's `lib/colors/colorMultipliers.glsl`). Decouples art
@@ -256,6 +322,7 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   sun's above-horizon fraction" both need real clouds first. Pure
   `.gdshader`. **Effort: medium.**
 - **Phase I — IPBR-style voxel materials + tangent-free surface detail.**
+  **SHIPPED 2026-05-22** — see the "Phases G / I / J — SHIPPED" section above.
   Extend `VoxelMaterial` with emission + roughness fields (glowing ores /
   emissive blocks fall out for free). Implements the **shelved Phase C**
   goal the water-safe way: per-pixel surface detail via a tangent-free
@@ -263,7 +330,10 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   triplanar bump — which is exactly how Complementary generates normals
   (`lib/util/dFdxdFdy.glsl`). Never touches `bake_tangents`. GDScript +
   `.gdshader`. **Effort: medium–large.**
-- **Phase J — Colored lighting (voxel floodfill).** The biggest single
+- **Phase J — Colored lighting (voxel floodfill).** **SHIPPED 2026-05-22**
+  — see the "Phases G / I / J — SHIPPED" section above; built with
+  engine-native `OmniLight3D`s rather than the C++ floodfill sketched
+  here (designer-approved architecture call). The biggest single
   visual jump and the one piece that genuinely needs C++: a BFS floodfill
   from emissive voxels into a 3D storage texture, triggered on
   `VoxelEditManager.edit_applied`, scoped to a radius around the edit —
