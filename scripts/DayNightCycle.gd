@@ -151,6 +151,13 @@ var _warned_missing_panoramas: bool = false
 # -1 forces _apply() to pick a palette on the first tick.
 var _night_palette_day: int = -1
 
+# DEBUG (temporary, 2026-05-22) — night-sky layer isolation probe. When
+# true, DayNightCycle drives the sky shader's sky_layer_debug uniform so
+# the night sky paints its three layers as raw RGB: R = nebula, G =
+# aurora, B = stars. Lets us see which layer actually draws and where.
+# Set false / delete once the nebula-visibility question is resolved.
+const _DEBUG_SKY_LAYERS: bool = true
+
 # _apply() updates sun/moon orbit, light energy/color, sky tint, and
 # fog from WorldClock state. With WorldClock running at 240 real-s
 # per game-hour, the sun moves 0.0625°/real-second — totally invisible
@@ -303,6 +310,8 @@ func _apply() -> void:
 	if _sky_mat != null:
 		_sky_mat.set_shader_parameter("night_factor",
 			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
+		_sky_mat.set_shader_parameter("sky_layer_debug",
+			1 if _DEBUG_SKY_LAYERS else 0)
 
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
