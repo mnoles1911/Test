@@ -548,6 +548,7 @@ const _DISTANT_MIN := Vector2(-192.0, -192.0)
 const _DISTANT_MAX := Vector2(192.0, 192.0)
 const _DISTANT_QUAD_M := 12.0   # matches SkirtBaker.QUAD_SIZE_M
 const _DISTANT_VPM := 6.0       # canonical 6 voxels / metre
+const _DISTANT_APRON_TEST_DEPTH := 64.0  # Phase 2 apron-additive check
 
 
 func _distant_report() -> int:
@@ -573,7 +574,7 @@ func _distant_report() -> int:
 		arrays = _distant_skirtbaker_arrays(cpp)
 		source = "SkirtBaker"
 	else:
-		arrays = _distant_cpp_arrays(cpp)
+		arrays = _distant_cpp_arrays(cpp, 0.0)
 		source = "DistantTerrainMesher(C++)"
 	if arrays.is_empty():
 		print("[DISTANT] RESULT=FAIL reason=mesh_build_failed source=%s" % source)
@@ -608,10 +609,64 @@ func _distant_report() -> int:
 			fails += 1
 			push_error("[DISTANT] %s drift: baseline=%d cpp=%d" % [k, int(base.get(k, -1)), int(summary.get(k, -2))])
 	if fails == 0:
-		print("[DISTANT] RESULT=PASS — C++ DistantTerrainMesher byte-identical to the SkirtBaker baseline (verts/normals/colours/indices).")
+		print("[DISTANT] apron-off parity PASS — grid byte-identical to the SkirtBaker baseline.")
+
+	# --- Phase 2 — the skirt apron is purely additive -----------------
+	var apron_on := _distant_cpp_arrays(cpp, _DISTANT_APRON_TEST_DEPTH)
+	if apron_on.is_empty():
+		fails += 1
+		push_error("[DISTANT] apron-on build failed")
+	else:
+		fails += _distant_check_apron(arrays, apron_on)
+
+	if fails == 0:
+		print("[DISTANT] RESULT=PASS — grid bit-identical to baseline; skirt apron purely additive.")
 		return 0
-	print("[DISTANT] RESULT=FAIL — %d hash/count mismatches vs baseline." % fails)
+	print("[DISTANT] RESULT=FAIL — %d issue(s)." % fails)
 	return 1
+
+
+# Phase 2 — assert the skirt apron is purely additive: the apron-off grid
+# is a byte-identical prefix of the apron-on mesh, and the apron appends
+# exactly 4 verts + 6 indices per chunk-border edge. Returns fail count.
+func _distant_check_apron(off: Dictionary, on: Dictionary) -> int:
+	var ov: PackedVector3Array = off["vertices"]
+	var on_v: PackedVector3Array = on["vertices"]
+	var off_n: PackedVector3Array = off["normals"]
+	var on_n: PackedVector3Array = on["normals"]
+	var off_c: PackedColorArray = off["colors"]
+	var on_c: PackedColorArray = on["colors"]
+	var oi: PackedInt32Array = off["indices"]
+	var on_i: PackedInt32Array = on["indices"]
+	var quads: int = int((_DISTANT_MAX.x - _DISTANT_MIN.x) / _DISTANT_QUAD_M)
+	var apron_edges: int = 4 * quads
+	var exp_v: int = apron_edges * 4
+	var exp_i: int = apron_edges * 6
+	var fails: int = 0
+	if on_v.size() != ov.size() + exp_v:
+		fails += 1
+		push_error("[DISTANT] apron vertex delta=%d expected=%d" % [on_v.size() - ov.size(), exp_v])
+	if on_i.size() != oi.size() + exp_i:
+		fails += 1
+		push_error("[DISTANT] apron index delta=%d expected=%d" % [on_i.size() - oi.size(), exp_i])
+	var prefix_ok := true
+	for k in range(ov.size()):
+		if ov[k] != on_v[k] or off_n[k] != on_n[k] or off_c[k] != on_c[k]:
+			prefix_ok = false
+			break
+	if prefix_ok:
+		for k in range(oi.size()):
+			if oi[k] != on_i[k]:
+				prefix_ok = false
+				break
+	if not prefix_ok:
+		fails += 1
+		push_error("[DISTANT] apron-on grid prefix differs from apron-off — apron is NOT purely additive")
+	if fails == 0:
+		@warning_ignore("integer_division")
+		var apron_tris: int = exp_i / 3
+		print("[DISTANT] apron additive check PASS — +%d verts / +%d tris, grid prefix byte-identical." % [exp_v, apron_tris])
+	return fails
 
 
 func _distant_skirtbaker_arrays(gen) -> Dictionary:
@@ -630,11 +685,11 @@ func _distant_skirtbaker_arrays(gen) -> Dictionary:
 	}
 
 
-func _distant_cpp_arrays(gen) -> Dictionary:
+func _distant_cpp_arrays(gen, apron_depth: float) -> Dictionary:
 	var mesher: Object = ClassDB.instantiate("DistantTerrainMesher")
 	if mesher == null:
 		return {}
-	var d = mesher.call("build_chunk", gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_QUAD_M, _DISTANT_VPM, 0)
+	var d = mesher.call("build_chunk", gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_QUAD_M, _DISTANT_VPM, apron_depth)
 	if typeof(d) != TYPE_DICTIONARY:
 		return {}
 	# Round-trip the raw build_chunk arrays through an ArrayMesh — exactly

@@ -65,9 +65,7 @@ Dictionary DistantTerrainMesher::build_chunk(
         Vector2 p_max_xz,
         double p_quad_size_m,
         double p_voxels_per_metre,
-        int p_lod_ring) const {
-    (void)p_lod_ring;  // Phase 2 scales the skirt apron by the LOD ring.
-
+        double p_apron_depth) const {
     Dictionary out;
     const HeightmapGeneratorBase *gen = p_generator.ptr();
     if (gen == nullptr) {
@@ -294,6 +292,69 @@ Dictionary DistantTerrainMesher::build_chunk(
         idx_v.push_back(ci + cliff_base);
     }
 
+    // --- Pass 5: perimeter skirt apron --------------------------------
+    // A vertical curtain dropping p_apron_depth metres from every
+    // chunk-border edge. Plugs the T-junction crack where this chunk
+    // meets a neighbour at a different LOD — no neighbour-LOD knowledge
+    // needed. The apron hangs below the surface; only its top edge is
+    // ever near the visible terrain, and it carries the edge vertex
+    // colour so any peek blends. p_apron_depth <= 0 disables it (used
+    // for the apron-off parity check and for the innermost ring).
+    // Purely additive — appended after the grid + cliff geometry so the
+    // grid prefix stays byte-identical.
+    if (p_apron_depth > 0.0) {
+        const float depth = static_cast<float>(p_apron_depth);
+        auto add_apron_edge = [&](int i_a, int i_b, const Vector3 &outward) {
+            const Vector3 top_a = verts_v[static_cast<size_t>(i_a)];
+            const Vector3 top_b = verts_v[static_cast<size_t>(i_b)];
+            const Vector3 bot_a(top_a.x, top_a.y - depth, top_a.z);
+            const Vector3 bot_b(top_b.x, top_b.y - depth, top_b.z);
+            const Color col_a = colors[static_cast<size_t>(i_a)];
+            const Color col_b = colors[static_cast<size_t>(i_b)];
+            const int base = static_cast<int>(verts_v.size());
+            verts_v.push_back(top_a);
+            verts_v.push_back(top_b);
+            verts_v.push_back(bot_a);
+            verts_v.push_back(bot_b);
+            for (int k = 0; k < 4; ++k) {
+                norms_v.push_back(outward);
+            }
+            colors.push_back(col_a);
+            colors.push_back(col_b);
+            colors.push_back(col_a);
+            colors.push_back(col_b);
+            // Two triangles: (top_a, top_b, bot_a) + (top_b, bot_b, bot_a).
+            idx_v.push_back(base + 0);
+            idx_v.push_back(base + 1);
+            idx_v.push_back(base + 2);
+            idx_v.push_back(base + 1);
+            idx_v.push_back(base + 3);
+            idx_v.push_back(base + 2);
+        };
+        // South border (zi = 0) — outward -Z.
+        for (int xi = 0; xi < quads_x; ++xi) {
+            add_apron_edge(xi + 0 * verts_x, (xi + 1) + 0 * verts_x,
+                Vector3(0.0f, 0.0f, -1.0f));
+        }
+        // North border (zi = verts_z - 1) — outward +Z.
+        for (int xi = 0; xi < quads_x; ++xi) {
+            add_apron_edge(xi + (verts_z - 1) * verts_x,
+                (xi + 1) + (verts_z - 1) * verts_x,
+                Vector3(0.0f, 0.0f, 1.0f));
+        }
+        // West border (xi = 0) — outward -X.
+        for (int zi = 0; zi < quads_z; ++zi) {
+            add_apron_edge(0 + zi * verts_x, 0 + (zi + 1) * verts_x,
+                Vector3(-1.0f, 0.0f, 0.0f));
+        }
+        // East border (xi = verts_x - 1) — outward +X.
+        for (int zi = 0; zi < quads_z; ++zi) {
+            add_apron_edge((verts_x - 1) + zi * verts_x,
+                (verts_x - 1) + (zi + 1) * verts_x,
+                Vector3(1.0f, 0.0f, 0.0f));
+        }
+    }
+
     // --- Marshal std::vectors into Packed arrays ----------------------
     const int total_verts = static_cast<int>(verts_v.size());
     PackedVector3Array vertices;
@@ -323,6 +384,6 @@ Dictionary DistantTerrainMesher::build_chunk(
 void DistantTerrainMesher::_bind_methods() {
     ClassDB::bind_method(
         D_METHOD("build_chunk", "generator", "min_xz", "max_xz",
-                 "quad_size_m", "voxels_per_metre", "lod_ring"),
+                 "quad_size_m", "voxels_per_metre", "apron_depth"),
         &DistantTerrainMesher::build_chunk);
 }
