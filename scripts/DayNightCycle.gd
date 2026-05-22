@@ -100,18 +100,18 @@ const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 const VOL_FOG_ALBEDO_DAY: Color   = Color(0.85, 0.88, 0.95)
 const VOL_FOG_ALBEDO_NIGHT: Color = Color(0.06, 0.08, 0.14)
 
-# Per-night aurora / nebula colour palettes. _update_night_palette() picks
-# one entry from each per in-game day, so every night carries its own
-# colour signature. Curated rather than random-hue so the night sky never
-# lands on a muddy or clashing colour.
-const AURORA_PALETTE: Array[Color] = [
-	Color(0.25, 0.95, 0.55),  # classic green
+# Aurora colour follows a fixed cycle — a smooth loop through these 3
+# anchor colours, completing once every AURORA_CYCLE_DAYS in-game days
+# then repeating. _update_night_palette() lerps between anchors so each
+# night's hue drifts gradually rather than snapping.
+const AURORA_CYCLE_DAYS: int = 7
+const AURORA_CYCLE: Array[Color] = [
 	Color(0.20, 0.85, 0.92),  # teal / cyan
+	Color(0.25, 0.95, 0.55),  # classic green
 	Color(0.60, 0.40, 0.95),  # violet
-	Color(0.95, 0.40, 0.72),  # rose
-	Color(0.55, 0.95, 0.42),  # lime
-	Color(0.40, 0.62, 0.98),  # ice blue
 ]
+# Nebula colour is still picked per in-game day from this curated palette
+# (hashed by day so it jumps around rather than cycling in order).
 const NEBULA_PALETTE: Array[Color] = [
 	Color(0.34, 0.20, 0.52),  # purple
 	Color(0.20, 0.32, 0.62),  # deep blue
@@ -515,16 +515,24 @@ func _update_sky_blend(h: float) -> void:
 	_sky_mat.set_shader_parameter("blend",        blend)
 
 
-# Pick the aurora and nebula colours for a given in-game day and push them
-# to the sky shader. Deterministic — the same day always yields the same
-# colours — but the day number is hashed so consecutive nights jump around
-# the palette instead of walking it in order.
+# Refresh the sky shader's aurora and nebula colours for a given in-game
+# day. The aurora follows a smooth 7-day loop through AURORA_CYCLE's three
+# anchors (lerped, so the hue drifts night to night); the nebula keeps a
+# per-day pick from NEBULA_PALETTE, hashed so it jumps around the palette.
 func _update_night_palette(day: int) -> void:
 	if _sky_mat == null:
 		return
-	var a_idx: int = ((day * 2654435761) & 0x7fffffff) % AURORA_PALETTE.size()
+	# Aurora: position within the cycle, 0 -> just under 1. day - 1 so
+	# day 1 lands exactly on the first anchor.
+	var phase: float = float((day - 1) % AURORA_CYCLE_DAYS) / float(AURORA_CYCLE_DAYS)
+	# Map the phase onto the 3 anchors arranged on a loop (A -> B -> C -> A).
+	var seg: float = phase * float(AURORA_CYCLE.size())
+	var i: int = int(seg) % AURORA_CYCLE.size()
+	var next_i: int = (i + 1) % AURORA_CYCLE.size()
+	var aurora_col: Color = AURORA_CYCLE[i].lerp(AURORA_CYCLE[next_i], seg - floor(seg))
+	_sky_mat.set_shader_parameter("aurora_color", aurora_col)
+	# Nebula: per-day pick from the curated palette, hashed by day.
 	var n_idx: int = ((day * 40503 + 17) & 0x7fffffff) % NEBULA_PALETTE.size()
-	_sky_mat.set_shader_parameter("aurora_color", AURORA_PALETTE[a_idx])
 	_sky_mat.set_shader_parameter("nebula_color", NEBULA_PALETTE[n_idx])
 
 
