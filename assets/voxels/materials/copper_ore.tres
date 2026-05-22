@@ -22,3 +22,6 @@ ore_noise_scale = 0.06
 replaces_material_id = 1
 min_altitude_voxels = 0
 max_altitude_voxels = 1500
+emission_enabled = true
+emission_color = Color(1, 0.55, 0.25, 1)
+emission_energy = 1.6
