@@ -637,7 +637,39 @@ func _distant_cpp_arrays(gen) -> Dictionary:
 	var d = mesher.call("build_chunk", gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_QUAD_M, _DISTANT_VPM, 0)
 	if typeof(d) != TYPE_DICTIONARY:
 		return {}
-	return d
+	# Round-trip the raw build_chunk arrays through an ArrayMesh — exactly
+	# what DistantTerrainManager does at runtime, and exactly what
+	# SkirtBaker.bake_mesh already does. This is REQUIRED for parity:
+	# ArrayMesh's vertex buffer stores normals octahedral-compressed and
+	# colours as RGBA8, so a raw-vs-round-tripped compare would always
+	# diverge on normals/colours even when the geometry is identical.
+	return _distant_arrays_from_mesh(_distant_mesh_from_arrays(d))
+
+
+# Assemble an ArrayMesh from a { vertices, normals, colors, indices }
+# Dictionary (the DistantTerrainMesher.build_chunk return shape).
+func _distant_mesh_from_arrays(d: Dictionary) -> ArrayMesh:
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = d.get("vertices", PackedVector3Array())
+	arrays[Mesh.ARRAY_NORMAL] = d.get("normals", PackedVector3Array())
+	arrays[Mesh.ARRAY_COLOR] = d.get("colors", PackedColorArray())
+	arrays[Mesh.ARRAY_INDEX] = d.get("indices", PackedInt32Array())
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _distant_arrays_from_mesh(mesh: ArrayMesh) -> Dictionary:
+	if mesh == null or mesh.get_surface_count() == 0:
+		return {}
+	var a: Array = mesh.surface_get_arrays(0)
+	return {
+		"vertices": a[Mesh.ARRAY_VERTEX],
+		"normals": a[Mesh.ARRAY_NORMAL],
+		"colors": a[Mesh.ARRAY_COLOR],
+		"indices": a[Mesh.ARRAY_INDEX],
+	}
 
 
 func _distant_summarise(arrays: Dictionary) -> Dictionary:

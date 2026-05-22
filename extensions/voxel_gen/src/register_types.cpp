@@ -21,6 +21,7 @@
 #include "register_types.h"
 #include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
+#include "distant_terrain_mesher.h"
 #include "heightmap_generator_base.h"
 #include "parity_probe.h"
 
@@ -43,6 +44,10 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     ClassDB::register_abstract_class<HeightmapGeneratorBase>();
     ClassDB::register_class<CubicHeightmapGeneratorCpp>();
     ClassDB::register_class<CopperIslesHeightmapGeneratorCpp>();
+    // DistantTerrainMesher — standalone heightmesh builder for the
+    // streaming distant-terrain LOD system. Not a generator; needs no
+    // ordering vs the HeightmapGeneratorBase chain above.
+    ClassDB::register_class<DistantTerrainMesher>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
