@@ -160,16 +160,34 @@ float aurora(vec3 dir) {
 	return band * curtain;
 }
 
-// Nebula: a soft low-frequency haze, also sampled on the seamless ring.
+// Nebula: a concentrated billowy cloud high in the sky — NOT a sky-
+// spanning curtain. The aurora samples noise on a longitude ring with a
+// lat offset, which produces vertical draped streaks; doing the same for
+// the nebula made the two look identical. This instead builds a LOCALISED
+// blob: a radial glow around a fixed anchor direction, textured by FBM
+// sampled in the anchor's own tangent plane so the structure is round,
+// isotropic billows rather than streaks. Static (no TIME) — a nebula is
+// a deep-sky object, not an atmospheric effect.
 float nebula(vec3 dir) {
-	float lat = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;
-	float lon = atan(dir.z, dir.x);
-	// Lower ring scale => larger, broader nebula clouds. The smoothstep
-	// window straddles the fbm average (~0.48) so most of the sky catches
-	// the haze with structure, instead of only the rare noise peaks.
-	vec2 ring = vec2(cos(lon), sin(lon)) * 1.5;
-	float n = cloud_fbm(ring + vec2(7.0, lat * 2.0));
-	return smoothstep(0.30, 0.60, n);
+	// Fixed anchor — a patch high in the sky.
+	vec3 center = normalize(vec3(0.25, 0.90, 0.35));
+	float prox = dot(dir, center);
+	// Radial falloff: bright near the anchor, gone well before the
+	// horizon. Squared to tighten it into a concentrated core.
+	float glow = smoothstep(0.62, 1.0, prox);
+	glow *= glow;
+	if (glow <= 0.0) {
+		return 0.0;
+	}
+	// Local tangent frame at the anchor, so the FBM gives round billows
+	// rather than the aurora's vertical curtains.
+	vec3 t1 = normalize(cross(center, vec3(0.0, 1.0, 0.0)));
+	vec3 t2 = cross(center, t1);
+	vec2 local = vec2(dot(dir, t1), dot(dir, t2)) * 3.2;
+	float clouds = smoothstep(0.30, 0.82, cloud_fbm(local + vec2(11.0, 4.0)));
+	// Radial glow shapes the blob; the FBM carves billowy structure into
+	// it. The 0.4 floor keeps the core bright even in the noise gaps.
+	return glow * (0.4 + 0.6 * clouds);
 }
 
 void sky() {
