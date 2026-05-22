@@ -183,13 +183,21 @@ current = true
 ;     at the cost of movement framerate.
 ;
 ;   2700 voxels (~450 m): cut 2026-05-22 for the DistantTerrain LOD
-;     overhaul. The blocky band is now just the crisp editable
-;     near-field; DistantTerrainManager's smooth streaming heightmesh
-;     covers everything past it (no more far-LOD terracing). Tune w/ F12.
+;     overhaul — but this still streamed a huge coarse-LOD3 annulus
+;     (lod_count 4 only LOD-covers ~1024 voxels), the real cause of the
+;     10-15 s LOD resolve times.
+;   1100 voxels (~183 m): cut 2026-05-22 — matched to lod_count 4's
+;     actual LOD coverage (LOD3 outer ~1024 voxels) so NO wasteful
+;     coarse annulus streams. ~5x fewer chunks: the near band resolves
+;     fast and the (Zylann-capped 21 m) LOD0 ring tracks the player.
+;     DistantTerrainManager's smooth heightmesh covers everything past
+;     it. Tune with F12 — push higher for a bigger blocky band at a
+;     streaming cost; a small coarse annulus past 1024 voxels is
+;     tolerable, the 1024-2700 one was not.
 ;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
 ; more visible distance (at the cost of streaming load).
-view_distance = 2700
+view_distance = 1100
 
 [node name="PrefetchViewer" type="Node3D" parent="."]
 ; Velocity-scaled SECONDARY VoxelViewer (see scripts/PrefetchViewer.gd).

@@ -46,7 +46,10 @@ const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 ## Half-extent, in chunks, of each LOD ring's square block around the player.
 @export var ring_half_extent: int = 2
 ## No distant chunk renders fully inside this radius — the blocky band.
-@export var inner_cull_radius: float = 300.0
+## ~130 m sits a touch inside the ~183 m blocky band (VoxelViewer
+## view_distance 1100) so the smooth mesh overlaps the band edge with no
+## gap, and well outside any range the player can dig (no dig-through).
+@export var inner_cull_radius: float = 130.0
 ## Hard safety cap on live chunk count (a gap-causing valve; sized never to hit).
 @export var max_live_chunks: int = 220
 ## Chunk meshes built per frame (budgeted so a boundary crossing never hitches).

@@ -212,6 +212,12 @@ func _ready() -> void:
 	if "lod_distance" in terrain:
 		terrain.set("lod_distance", 128.0)
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
+	# NOTE: lod_distance + secondary_lod_distance are both HARD-CAPPED at
+	# 128 by Zylann — re-confirmed for the CLIPBOX streaming system on
+	# 2026-05-22 (a sweep up to 2048 all clamped to 128). The LOD0 ring is
+	# therefore fixed at ~21 m world (128 voxels x the 1/6 terrain scale);
+	# the way to keep the near band crisp is FAST streaming (a tight
+	# view_distance matched to the LOD coverage), not a bigger ring.
 	# lod_count: 4 — DistantTerrain LOD overhaul (2026-05-22). With the
 	# reduced VoxelViewer.view_distance the blocky terrain only needs the
 	# crisp near LODs; the streaming DistantTerrainManager heightmesh
