@@ -151,9 +151,65 @@ New follow-ups surfaced by testing (flagged, NOT fixed):
   per-pixel surface detail (derivative/triplanar bump in a custom terrain
   ShaderMaterial preserving NEAREST + alpha-scissor). Non-trivial; own pass.
 - **CLAUDE.md / ART_DIRECTION updates** — CLAUDE.md milestone line **DONE**
-  (2026-05-20 graphics-pass entry added on branch `docs/graphics-pass-milestone`).
-  ART_DIRECTION palette/shader-decision note (AgX + lighting punch as the locked
-  colour pipeline) still pending — apply when convenient.
+  (2026-05-20 graphics-pass entry, plus a 2026-05-22 entry for Phases F/H/K).
+  ART_DIRECTION "Colour pipeline & sky — LOCKED" note **DONE** (2026-05-22).
+
+---
+
+## Phases F / H / K — SHIPPED 2026-05-22 (PR #235)
+
+Built autonomously, headless-gated per commit, with one batched in-editor
+designer review at the end. The roadmap further down is kept for history
+but is superseded by this section for F, H, and the night-sky slice of K.
+Docs follow-ups landed as PR #236; the audio import sidecars as PR #237.
+
+| Phase | Change |
+|---|---|
+| F | `scripts/graphics/ShaderProfile.gd` (Resource — one tier's render knobs; **no `class_name`**, path-preloaded so the headless harness still parses it, same rule as `WaterMaterial.gd`) + `scripts/graphics/GraphicsManager.gd` **autoload** (registered before `Settings`). Five tiers POTATO/LOW/MEDIUM/HIGH/ULTRA built longhand in `_build_profiles()`; the chosen tier persists to `user://graphics.json`; `apply_current()` pushes MSAA/TAA/SSAO/SSIL/SDFGI/glow/shadow-split/vol-fog into the live `WorldEnvironment` + root `Viewport` + every `DirectionalLight3D` (each step null-guarded — menu/headless safe). **HIGH is the default and mirrors `World3D.tscn` exactly** — first-run look unchanged. ULTRA adds SDFGI + 8× MSAA. `World3DBootstrap._ready()` calls `apply_current()` once the scene is in the tree. Settings UI gained a GRAPHICS QUALITY cycle button (Mining-Anchor pattern, manual `_input` dispatch). |
+| H | Procedural volumetric clouds. The old `sky_blend.gdshader` was **extended** (panorama cross-fade untouched) then **renamed to `assets/shaders/sky_atmosphere.gdshader`** — a stale-compiled-shader-cache workaround (see the bug note below) that was kept. Asset-free hash-FBM clouds on a flat ceiling, drifting via TIME with a bounded sine gust, lit by the scene sun through the shader's built-in `LIGHT0` (noon glow / dawn-dusk warm / night blue — zero time-of-day wiring). `cloud_coverage` + `cloud_speed` added to all six `WeatherManager` `STATE_PROFILES` (CLEAR = 0 coverage = a genuinely clear sky) and pushed each tick via `DayNightCycle.set_cloud_coverage` / `set_cloud_speed`. Clouds thicken and speed up with the weather. |
+| K (night-sky slice) | Procedural stars + aurora + nebula, drawn behind the Phase H clouds. **Stars:** seamless 3D-direction hash, rotate across the sky with the day cycle. **Aurora:** a confined ribbon (lat 0.22–0.34, ~29–50° elevation — narrowed hard from a near-whole-sky band), with a smooth 7-in-game-day colour drift through three anchors teal → green → violet, then loop. **Nebula:** a localised billowy blob — a squared radial glow around an anchor direction, FBM-textured in the anchor's tangent plane so it reads as round isotropic billows, not curtain streaks; constant colour; drifts 30 % of the azimuth per 7 in-game days. All three scale by an explicit `night_factor` `DayNightCycle` pushes every tick. |
+
+### The bright-night-sky bug (root-caused after several wrong turns)
+
+The night sky rendered as bright as midday for most of this pass. The
+fix that stuck was **not** in the sky shader:
+
+- Early theories — the shader inferring day/night from `LIGHT0` energy,
+  a stale *compiled* shader cache, the Moon blasting volumetric fog —
+  were each instrumented and then either fixed-but-insufficient or
+  reverted as unconfirmed guesses. The `LIGHT0` inference was genuinely
+  wrong and was replaced with the explicit `night_factor` uniform; the
+  stale-cache theory forced the `sky_blend` → `sky_atmosphere` rename
+  (kept, harmless, guarantees a fresh compile).
+- A flat-grey `sky_debug` probe proved the rendered sky output was
+  correct greyscale yet still *looked* light blue → something was being
+  composited **over** the sky.
+- **Real cause:** the `WeatherManager` fog override colour and
+  `Environment.volumetric_fog_albedo` were never day/night-aware, so a
+  constant pale fog washed the sky via `fog_aerial_perspective` +
+  `volumetric_fog_sky_affect`. `DayNightCycle` now lerps the override
+  fog colour toward `FOG_COLOR_NIGHT` and drives `volumetric_fog_albedo`
+  from a day/night palette, both by `night_factor`. Midnight now reads
+  genuinely dark; midday unchanged. Designer-confirmed.
+
+Lesson: when a sky looks wrong, rule out the fog layers compositing
+over it **before** touching the sky shader — a flat-colour debug probe
+settles it in a single run.
+
+### Still open after this pass
+
+- **Phase K remainder** — only the night-sky slice shipped. Lens flare,
+  world/selection outline, rainbow-after-rain, and per-weather-state
+  light-shaft intensity are still unbuilt; pick off opportunistically.
+- **Phase F preset rebalance** — only HIGH (the default) was visually
+  verified. POTATO / LOW / MEDIUM / ULTRA need an in-editor tier-by-tier
+  pass for visual cohesion — each tier should look like a deliberate
+  step, not just HIGH with effects toggled off. Tracked as a
+  `DESIGNER_TODO.md` Section 2 item.
+- **Wind ambience** — the gust modulation added alongside the cloud work
+  (`WeatherManager._update_wind_gust`, summed slow sines biased toward
+  lulls) is a stopgap; wind audio wants a proper rework.
+- **Phases G, I, J** — not started; see the roadmap below.
 
 ---
 
@@ -176,7 +232,9 @@ Every phase below is GPU/visual work → each ends in an in-editor designer
 gate (headless only proves it compiles). Ordered by dependency, not pure
 ROI — H unblocks later water/sky work; J is the biggest single payoff.
 
-- **Phase F — Quality-tier `ShaderProfile` resource.** A `ShaderProfile`
+- **Phase F — Quality-tier `ShaderProfile` resource.** **SHIPPED 2026-05-22
+  (PR #235)** — see the "Phases F / H / K — SHIPPED" section above; the
+  original spec is kept below for reference. A `ShaderProfile`
   Resource (POTATO / LOW / MEDIUM / HIGH / ULTRA) wired to the `Settings`
   autoload, driving the knobs Phases A/B/D introduced: MSAA level,
   SSAO/SSIL on/off, SDFGI toggle, shadow split count, glow, vol-fog
@@ -190,7 +248,8 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   tuning from code and lets weather states swap colour anchors cleanly;
   also the prerequisite for Water Phase 4c (per-biome underwater fog).
   Pure GDScript. **Effort: small–medium.**
-- **Phase H — Volumetric clouds.** A `shader_type sky` shader with
+- **Phase H — Volumetric clouds.** **SHIPPED 2026-05-22 (PR #235)** — see
+  the "Phases F / H / K — SHIPPED" section above. A `shader_type sky` shader with
   marched cheap noise clouds, time-of-day + weather driven (layers over
   or replaces `sky_blend.gdshader`). Dependency unlock: the deferred
   follow-ups "cloud reflections on water" and "#5b god-rays scaled to the
@@ -213,10 +272,12 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   manager autoload that uploads the storage texture to a shader global;
   the terrain shader samples it for indirect block light. Forward+
   storage textures. **Effort: large.**
-- **Phase K — Atmospheric polish.** Lens flare, world/selection outline,
-  rainbow after rain, aurora / night nebulae / stars in the sky shader,
-  light-shaft intensity per weather state. Each a small, independent
-  `.gdshader` / `canvas_item` task — pick off opportunistically.
+- **Phase K — Atmospheric polish.** **PARTIAL — SHIPPED 2026-05-22 (PR #235):**
+  the night-sky slice (stars / aurora / nebula) is done; see the
+  "Phases F / H / K — SHIPPED" section above. **Still open:** lens flare,
+  world/selection outline, rainbow after rain, light-shaft intensity per
+  weather state. Each a small, independent `.gdshader` / `canvas_item`
+  task — pick off opportunistically.
 
 **LOD terracing / hard LOD seams** (top item in Deferred follow-ups
 above) is *not* in this roadmap — it is a voxel-streaming problem, not a

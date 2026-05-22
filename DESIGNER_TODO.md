@@ -176,6 +176,20 @@ Scene building and node configuration that has to be done in the editor.
   This is the baseline 3D scene test. Nothing built on top of it is trustworthy
   until this passes.
 
+- [ ] **Verify graphics quality presets across all five tiers**
+  PR #235 added `GraphicsManager` (autoload) + a GRAPHICS QUALITY cycle
+  button in Settings. Only **HIGH** — the default, which mirrors
+  `World3D.tscn` exactly — has been visually verified. Run `World3D.tscn`,
+  open Settings, cycle the GRAPHICS QUALITY button through
+  POTATO / LOW / MEDIUM / HIGH / ULTRA and confirm each reads as a
+  deliberate visual *step*, not just HIGH with effects switched off:
+  watch MSAA edge cleanliness, SSAO/SSIL crevice depth, shadow
+  sharpness, glow, and ULTRA's SDFGI. The chosen tier persists to
+  `user://graphics.json` and re-applies on next launch. If the tiers
+  don't feel cohesive, that is the deferred **Phase F preset rebalance**
+  pass — note which tier looks wrong and how.
+  Reference: `design/GRAPHICS_PASS_2026-05-19.md` → "Phases F / H / K — SHIPPED".
+
 - [ ] **Build `scenes/NPC_Template.tscn`**
   Create once; duplicate for every new NPC going forward.
   Required node structure:
