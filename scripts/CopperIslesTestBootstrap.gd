@@ -252,6 +252,18 @@ func _ready() -> void:
 	# rather than spawning inside an island peak.
 	call_deferred("_snap_player_above_terrain")
 
+	# --- Streaming distant terrain (replaces the baked HorizonSkirt) ---
+	# Same smooth-heightmesh system as World3D; works off the Copper
+	# Isles EXR generator. The baked HorizonSkirt node is retired in
+	# Phase 6 — until then both render (harmless; the skirt is static).
+	# Loaded by path (no class_name) so this bootstrap stays headless-safe.
+	var distant_script := load("res://scripts/DistantTerrainManager.gd")
+	if distant_script != null:
+		var distant: Node3D = distant_script.new()
+		distant.name = "DistantTerrain"
+		add_child(distant)
+		distant.call("setup_from_terrain", terrain)
+
 
 # Path of the player's working SQLite (matches the .tscn's
 # VoxelStreamSQLite.database_path). Hardcoded here rather than

@@ -471,6 +471,19 @@ func _ready() -> void:
 	if get_node_or_null("/root/GraphicsManager"):
 		GraphicsManager.apply_current()
 
+	# --- Streaming distant terrain (smooth heightmesh past the blocky band) ---
+	# Replaces the baked HorizonSkirt: a ring of LOD'd smooth heightmesh
+	# chunks that follow the player, built in C++ by DistantTerrainMesher
+	# from the same world generator. Parented to this (unscaled) world
+	# root, NOT the 1/6-scaled VoxelLodTerrain — the mesh is world-metres.
+	# Loaded by path (no class_name) so this bootstrap stays headless-safe.
+	var distant_script := load("res://scripts/DistantTerrainManager.gd")
+	if distant_script != null:
+		var distant: Node3D = distant_script.new()
+		distant.name = "DistantTerrain"
+		add_child(distant)
+		distant.call("setup_from_terrain", terrain)
+
 
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
 const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
