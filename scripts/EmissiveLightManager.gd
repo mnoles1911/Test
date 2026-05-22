@@ -64,7 +64,7 @@ extends Node
 @export_range(1.0, 24.0, 0.5) var light_range_m: float = 7.0
 # OmniLight3D range, in metres, for each cluster light.
 
-@export_range(0.05, 4.0, 0.05) var light_energy_scale: float = 0.6
+@export_range(0.05, 4.0, 0.05) var light_energy_scale: float = 0.4
 # The cluster light's energy = VoxelMaterial.emission_energy x this x a
 # small cluster-size boost. Lower it if glowing voxels blow out under
 # the AgX tonemap; raise it if they read too dim.
@@ -123,6 +123,14 @@ const _SCAN_QUEUE_MAX: int = 24
 const _MAX_SCAN_SIDE: int = 72
 # At most this many queued scans are drained per tick.
 const _MAX_SCANS_PER_TICK: int = 2
+
+# Face-neighbour offsets — used to test whether an emissive voxel is
+# exposed to air (and therefore worth lighting).
+const _FACE_NEIGHBOURS: Array[Vector3i] = [
+	Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
+	Vector3i(0, 1, 0), Vector3i(0, -1, 0),
+	Vector3i(0, 0, 1), Vector3i(0, 0, -1),
+]
 
 var _terrain: Node = null
 var _terrain_id: int = 0
@@ -273,9 +281,16 @@ func _scan_region(min_v: Vector3i, side: Vector3i) -> void:
 			for z in range(side.z):
 				var g: Vector3i = min_v + Vector3i(x, y, z)
 				var mid: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) & 0xFF
-				var now_emissive: bool = _emissive_mats.has(mid)
+				# Only EXPOSED emissive voxels light the world. A glowing
+				# voxel sealed in solid rock is skipped — cluster lights
+				# are shadowless, so lighting a buried voxel just bleeds
+				# brightness up through the terrain (the "near terrain
+				# too bright, light follows the player" bug). Copper
+				# therefore stays dark underground until it is mined into.
+				var now_lit: bool = _emissive_mats.has(mid) \
+						and _has_air_neighbor(buf, x, y, z, side)
 				var was: bool = _emissive_voxels.has(g)
-				if now_emissive:
+				if now_lit:
 					if not was or _emissive_voxels[g] != mid:
 						_emissive_voxels[g] = mid
 						affected[_cell_of(g)] = true
@@ -285,6 +300,23 @@ func _scan_region(min_v: Vector3i, side: Vector3i) -> void:
 
 	for cell in affected:
 		_rebuild_cell(cell)
+
+
+# True if any of the 6 face-neighbours of buffer voxel (x,y,z) is air.
+# Neighbours outside the buffer are treated as unknown (not air) — a
+# border voxel with no in-buffer air neighbour is simply re-evaluated
+# on the next sweep, when the box has recentred and its neighbours are
+# in range.
+func _has_air_neighbor(buf: VoxelBuffer, x: int, y: int, z: int, side: Vector3i) -> bool:
+	for o in _FACE_NEIGHBOURS:
+		var nx: int = x + o.x
+		var ny: int = y + o.y
+		var nz: int = z + o.z
+		if nx < 0 or ny < 0 or nz < 0 or nx >= side.x or ny >= side.y or nz >= side.z:
+			continue
+		if (buf.get_voxel(nx, ny, nz, VoxelBuffer.CHANNEL_TYPE) & 0xFF) == 0:
+			return true
+	return false
 
 
 # Recount one coarse cell and create / refresh / drop its light meta.
