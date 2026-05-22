@@ -526,27 +526,22 @@ func _gen_report() -> int:
 
 
 # ============================================================
-# DISTANT — DistantTerrainMesher parity vs SkirtBaker (Phase 0/1)
+# DISTANT — DistantTerrainMesher heightmesh contract
 # ============================================================
-# Parity-harness-FIRST gate for the C++ DistantTerrainMesher port
-# (CLAUDE.md rule). A fixed 32×32-quad region is meshed and reduced to
-# four FNV hashes (vertices / normals / colours / indices) + counts.
-#
-#   Phase 0 (no baseline): build the region with SkirtBaker.bake_mesh,
-#     write res://tools/headless/distant_parity_baseline.json, exit 0.
-#   Phase 1+ (baseline exists, DistantTerrainMesher registered): build
-#     the SAME region with the C++ build_chunk and assert every hash is
-#     byte-identical to the baseline.
-#   (baseline exists, C++ not yet registered): SkirtBaker self-check so
-#     the selector stays green between phases.
-#
-# The baseline JSON is COMMITTED to the repo (unlike the user:// gen
-# baseline) because SkirtBaker.gd is deleted in Phase 6 and can no
-# longer regenerate it.
+# Regression gate for the C++ DistantTerrainMesher. A fixed 32×32-quad
+# region is meshed and reduced to four FNV hashes (vertices / normals /
+# colours / indices) + counts, then checked against:
+#   - the committed baseline tools/headless/distant_parity_baseline.json
+#     — the apron-off grid must stay byte-identical. The baseline was
+#     generated from the SkirtBaker prototype and proven bit-equal to the
+#     C++ port in Phase 1; SkirtBaker.gd was retired in Phase 6, so the
+#     committed JSON is now the sole reference.
+#   - the apron-on build, which must be purely additive (Phase 2).
+#   - distant_terrain.gdshader, which must compile (Phase 3).
 const _DISTANT_BASELINE := "res://tools/headless/distant_parity_baseline.json"
 const _DISTANT_MIN := Vector2(-192.0, -192.0)
 const _DISTANT_MAX := Vector2(192.0, 192.0)
-const _DISTANT_QUAD_M := 12.0   # matches SkirtBaker.QUAD_SIZE_M
+const _DISTANT_QUAD_M := 12.0   # the fixed parity-region quad size
 const _DISTANT_VPM := 6.0       # canonical 6 voxels / metre
 const _DISTANT_APRON_TEST_DEPTH := 64.0  # Phase 2 apron-additive check
 
@@ -564,41 +559,23 @@ func _distant_report() -> int:
 	if not cpp.has_method("get_ground_voxel_y_at"):
 		print("[DISTANT] RESULT=FAIL reason=generator_missing_get_ground_voxel_y_at")
 		return 1
-
-	var have_baseline: bool = FileAccess.file_exists(_DISTANT_BASELINE)
-	var cpp_ready: bool = ClassDB.class_exists("DistantTerrainMesher")
-
-	var arrays: Dictionary
-	var source: String
-	if not have_baseline or not cpp_ready:
-		arrays = _distant_skirtbaker_arrays(cpp)
-		source = "SkirtBaker"
-	else:
-		arrays = _distant_cpp_arrays(cpp, 0.0)
-		source = "DistantTerrainMesher(C++)"
-	if arrays.is_empty():
-		print("[DISTANT] RESULT=FAIL reason=mesh_build_failed source=%s" % source)
+	if not ClassDB.class_exists("DistantTerrainMesher"):
+		print("[DISTANT] RESULT=FAIL reason=DistantTerrainMesher_not_registered — build extensions/voxel_gen.")
+		return 1
+	if not FileAccess.file_exists(_DISTANT_BASELINE):
+		print("[DISTANT] RESULT=FAIL reason=baseline_missing %s (committed file)" % _DISTANT_BASELINE)
 		return 1
 
+	# Apron-off grid — must stay byte-identical to the committed baseline.
+	var arrays := _distant_cpp_arrays(cpp, 0.0)
+	if arrays.is_empty():
+		print("[DISTANT] RESULT=FAIL reason=cpp_build_failed (apron-off)")
+		return 1
 	var summary := _distant_summarise(arrays)
-	print("[DISTANT] source=%s verts=%d tris=%d vhash=%d nhash=%d chash=%d ihash=%d" % [
-		source, int(summary["vertex_count"]), int(summary["tri_count"]),
+	print("[DISTANT] cpp apron-off: verts=%d tris=%d vhash=%d nhash=%d chash=%d ihash=%d" % [
+		int(summary["vertex_count"]), int(summary["tri_count"]),
 		int(summary["vertex_hash"]), int(summary["normal_hash"]),
 		int(summary["color_hash"]), int(summary["index_hash"])])
-
-	if not have_baseline:
-		var f := FileAccess.open(_DISTANT_BASELINE, FileAccess.WRITE)
-		if f == null:
-			print("[DISTANT] RESULT=FAIL reason=cannot_write_baseline %s" % _DISTANT_BASELINE)
-			return 1
-		f.store_string(JSON.stringify(summary))
-		f.close()
-		print("[DISTANT] RESULT=BASELINE — wrote %s from SkirtBaker. Commit it; re-run after Phase 1 to verify the C++ port." % _DISTANT_BASELINE)
-		return 0
-
-	if not cpp_ready:
-		print("[DISTANT] RESULT=PASS (self-check) — DistantTerrainMesher not registered yet; SkirtBaker re-run only. Phase 1 build enables the real C++ comparison.")
-		return 0
 
 	var bf := FileAccess.open(_DISTANT_BASELINE, FileAccess.READ)
 	var base: Dictionary = JSON.parse_string(bf.get_as_text())
@@ -609,7 +586,7 @@ func _distant_report() -> int:
 			fails += 1
 			push_error("[DISTANT] %s drift: baseline=%d cpp=%d" % [k, int(base.get(k, -1)), int(summary.get(k, -2))])
 	if fails == 0:
-		print("[DISTANT] apron-off parity PASS — grid byte-identical to the SkirtBaker baseline.")
+		print("[DISTANT] apron-off parity PASS — grid byte-identical to the committed baseline.")
 
 	# --- Phase 2 — the skirt apron is purely additive -----------------
 	var apron_on := _distant_cpp_arrays(cpp, _DISTANT_APRON_TEST_DEPTH)
@@ -701,22 +678,6 @@ func _distant_check_apron(off: Dictionary, on: Dictionary) -> int:
 	return fails
 
 
-func _distant_skirtbaker_arrays(gen) -> Dictionary:
-	var SB = load("res://scripts/_dev/SkirtBaker.gd")
-	if SB == null:
-		return {}
-	var mesh = SB.bake_mesh(gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_VPM)
-	if mesh == null or mesh.get_surface_count() == 0:
-		return {}
-	var a: Array = mesh.surface_get_arrays(0)
-	return {
-		"vertices": a[Mesh.ARRAY_VERTEX],
-		"normals": a[Mesh.ARRAY_NORMAL],
-		"colors": a[Mesh.ARRAY_COLOR],
-		"indices": a[Mesh.ARRAY_INDEX],
-	}
-
-
 func _distant_cpp_arrays(gen, apron_depth: float) -> Dictionary:
 	var mesher: Object = ClassDB.instantiate("DistantTerrainMesher")
 	if mesher == null:
@@ -725,11 +686,11 @@ func _distant_cpp_arrays(gen, apron_depth: float) -> Dictionary:
 	if typeof(d) != TYPE_DICTIONARY:
 		return {}
 	# Round-trip the raw build_chunk arrays through an ArrayMesh — exactly
-	# what DistantTerrainManager does at runtime, and exactly what
-	# SkirtBaker.bake_mesh already does. This is REQUIRED for parity:
-	# ArrayMesh's vertex buffer stores normals octahedral-compressed and
-	# colours as RGBA8, so a raw-vs-round-tripped compare would always
-	# diverge on normals/colours even when the geometry is identical.
+	# what DistantTerrainManager does at runtime. This is REQUIRED for the
+	# baseline compare: ArrayMesh's vertex buffer stores normals
+	# octahedral-compressed and colours as RGBA8, and the committed
+	# baseline was captured post-round-trip, so the C++ output must be
+	# measured the same way.
 	return _distant_arrays_from_mesh(_distant_mesh_from_arrays(d))
 
 

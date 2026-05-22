@@ -3,7 +3,6 @@
 [ext_resource type="PackedScene" uid="uid://dp3l1roland3d" path="res://scenes/Player3D.tscn" id="1_player"]
 [ext_resource type="Script" uid="uid://xx43nl5o4ses" path="res://scripts/CopperIslesTestBootstrap.gd" id="2_bootstrap"]
 [ext_resource type="VoxelGeneratorScript" uid="uid://cq1xllxc7weou" path="res://assets/voxel/copper_isles_generator.tres" id="3_copper_gen"]
-[ext_resource type="Script" uid="uid://bnx7qorxd03dt" path="res://scripts/HorizonSkirt.gd" id="4_skirt"]
 [ext_resource type="Material" uid="uid://b8skybl3nd0a1" path="res://assets/shaders/sky_blend_material.tres" id="5_skyblend"]
 [ext_resource type="Texture2D" uid="uid://cybrgfr0wjji3" path="res://assets/sky/dawn.jpg" id="6_skydawn"]
 [ext_resource type="Texture2D" uid="uid://bbtoku1kj7nen" path="res://assets/sky/noon.jpg" id="7_skynoon"]
@@ -104,9 +103,6 @@ stream = SubResource("VoxelStream_1")
 generator = ExtResource("3_copper_gen")
 mesher = SubResource("VoxelMesher_1")
 transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
-
-[node name="HorizonSkirt" type="MeshInstance3D" parent="." unique_id=1514165914]
-script = ExtResource("4_skirt")
 
 [node name="Player3D" parent="." unique_id=1849933617 instance=ExtResource("1_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21, 253, 147)
