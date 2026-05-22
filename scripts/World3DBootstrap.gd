@@ -475,6 +475,10 @@ func _ready() -> void:
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
 const _ATLAS_TILES_PER_ROW: int = 64   # 2048 / 32
 
+# Phase I — the per-pixel-lit terrain shader the 14 solid voxel models
+# share (replaces the old plain StandardMaterial3D atlas material).
+const _TERRAIN_SHADER_PATH: String = "res://assets/shaders/terrain_voxel.gdshader"
+
 # Water Voxel V2 (Minecraft model, 2026-05-16): water is TYPE id 5, a
 # transparent blocky cube whose material is the v8 depth-fade water
 # shader (NOT an atlas tile — the shader IS the water look). Applied at
@@ -524,6 +528,35 @@ const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
 const _TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
 
 
+# Phase I — pick the terrain material for one voxel model. Most
+# materials share `base_mat` so the blocky mesher can batch them into a
+# single surface per chunk. A material is given its own ShaderMaterial
+# variant ONLY when its VoxelMaterial turns emission on or sets a
+# roughness other than the shared 0.85 default — so the common case
+# stays cheap and only deliberately-special blocks fragment the batch.
+func _terrain_material_for(material_id: int, base_mat: ShaderMaterial,
+		shader: Shader, atlas_tex: Texture2D) -> ShaderMaterial:
+	if shader == null:
+		return base_mat
+	if get_node_or_null("/root/VoxelMaterialRegistry") == null:
+		return base_mat
+	var vm: VoxelMaterial = VoxelMaterialRegistry.get_by_id(material_id)
+	if vm == null:
+		return base_mat
+	var custom_roughness: bool = not is_equal_approx(vm.surface_roughness, 0.85)
+	if not vm.emission_enabled and not custom_roughness:
+		return base_mat
+	var variant := ShaderMaterial.new()
+	variant.resource_name = "terrain_voxel_%s" % vm.id_string
+	variant.shader = shader
+	variant.set_shader_parameter("atlas_tex", atlas_tex)
+	variant.set_shader_parameter("surface_roughness", vm.surface_roughness)
+	if vm.emission_enabled:
+		variant.set_shader_parameter("emission_tint", vm.emission_color)
+		variant.set_shader_parameter("emission_strength", vm.emission_energy)
+	return variant
+
+
 func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	# See call site for the why. Both `material_override_0` AND the
 	# per-face `tile_*` properties survive the .tres save but fail to
@@ -543,26 +576,32 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 		printerr("[World3D]   ⚠ inject_atlas_materials: failed to load %s" % _ATLAS_TEXTURE_PATH)
 		return
 
-	var atlas_mat: StandardMaterial3D = StandardMaterial3D.new()
-	atlas_mat.resource_name = "atlas_default_runtime"
-	atlas_mat.albedo_texture = atlas_tex
-	atlas_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	atlas_mat.alpha_scissor_threshold = 0.5
-	# Nearest WITH MIPMAPS + anisotropic (2026-05-20). Plain NEAREST with
-	# no mipmaps shimmered hard on distant LOD3+ terrain — the bright
-	# sand/snow texels aliased into a flickering whitish-grey wash (the
-	# designer-reported distant-chunk flicker). Mipmaps fix texture-
-	# interior aliasing (MSAA does not); anisotropic cleans grazing
-	# ground angles. Still NEAREST sampling within a mip level, so the
-	# crisp pixel-art look up close is preserved (this is exactly how
-	# Minecraft samples its atlas). Requires mipmaps/generate=true on
+	# Phase I — the 14 solid voxel models share one per-pixel-lit
+	# ShaderMaterial (terrain_voxel.gdshader) in place of the old plain
+	# StandardMaterial3D. The shader reproduces that material exactly
+	# (atlas albedo, 0.5 alpha-scissor, nearest-mipmap-anisotropic
+	# filtering, matte roughness, no metal/specular) and adds tangent-
+	# free surface relief. A material only leaves this shared batch when
+	# its VoxelMaterial is emissive or sets a non-default roughness —
+	# see _terrain_material_for() used in the per-model loop below.
+	#
+	# The nearest-mipmap-anisotropic filter (kept from 2026-05-20) is
+	# now a shader uniform hint: plain NEAREST with no mipmaps shimmered
+	# hard on distant LOD3+ terrain (bright sand/snow texels aliased
+	# into a flickering whitish-grey wash). Mipmaps fix texture-interior
+	# aliasing (MSAA does not); anisotropic cleans grazing ground
+	# angles; sampling stays NEAREST within a mip so the crisp pixel-art
+	# look up close is preserved. Requires mipmaps/generate=true on
 	# atlas.png.import. KNOWN tradeoff: an atlas + mipmaps can bleed
-	# adjacent tiles at the smallest mips (extreme distance) — if that
-	# shows, the proper fix is per-tile padding in build_texture_atlas.py.
-	atlas_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
-	atlas_mat.roughness = 0.85
-	atlas_mat.metallic = 0.0
-	atlas_mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	# adjacent tiles at the smallest mips — if that shows, the proper
+	# fix is per-tile padding in build_texture_atlas.py.
+	var terrain_shader: Shader = load(_TERRAIN_SHADER_PATH) as Shader
+	if terrain_shader == null:
+		printerr("[World3D]   ⚠ inject_atlas_materials: failed to load %s — terrain will render untextured." % _TERRAIN_SHADER_PATH)
+	var atlas_mat: ShaderMaterial = ShaderMaterial.new()
+	atlas_mat.resource_name = "terrain_voxel_runtime"
+	atlas_mat.shader = terrain_shader
+	atlas_mat.set_shader_parameter("atlas_tex", atlas_tex)
 
 	if not "models" in lib:
 		print("[World3D]   ⚠ inject_atlas_materials: library has no models array.")
@@ -590,7 +629,8 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 			m.call("set_tile", _SIDE_NEG_Z, faces["side"])
 			m.call("set_tile", _SIDE_POS_Z, faces["side"])
 		if m.has_method("set_material_override"):
-			m.call("set_material_override", 0, atlas_mat)
+			m.call("set_material_override", 0,
+				_terrain_material_for(idx, atlas_mat, terrain_shader, atlas_tex))
 		# Transparency / culling overrides for leaves etc.
 		if idx in _TRANSPARENT_MATERIALS:
 			m.set("transparency_index", 1)

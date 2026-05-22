@@ -312,6 +312,41 @@ enum FallBehavior {
 
 
 # =============================================================
+# SURFACE RENDERING — emission + roughness (Phase I / IPBR)
+# =============================================================
+#
+# These fields feed the per-pixel-lit terrain shader
+# (assets/shaders/terrain_voxel.gdshader). For render-batching reasons
+# the world's 14 solid voxel materials share ONE shader material by
+# default; a material is only given its own material variant when it
+# turns emission on OR sets a non-default surface_roughness. So leaving
+# every field here at its default costs nothing — the voxel just stays
+# in the shared batch and looks exactly as it did before Phase I.
+
+@export var emission_enabled: bool = false
+# When true, voxels of this material glow — their surface emits
+# emission_color independent of sun/moon light. This is what turns a
+# block into a glowstone / glowing ore. NOTE: emission is surface glow,
+# not a light source — it does not by itself light the blocks around
+# it. Phase J (coloured voxel lighting) is what makes an emissive
+# voxel actually cast its colour onto the neighbouring world.
+
+@export var emission_color: Color = Color(1.0, 0.85, 0.55)
+# The glow colour. Ignored unless emission_enabled. Default is a warm
+# torch-amber.
+
+@export_range(0.0, 16.0, 0.1) var emission_energy: float = 2.0
+# How bright the glow is. Ignored unless emission_enabled. 1-3 reads as
+# a gentle ember; 8+ as a bright lamp under the AgX tonemap.
+
+@export_range(0.0, 1.0, 0.01) var surface_roughness: float = 0.85
+# How matte vs. glossy the surface is. 0.85 — the default, matching the
+# shipped terrain look — is dry matte stone. Lower values let the sun
+# pick out a specular sheen: wet rock, polished marble, ice. A material
+# leaves the shared render batch only when this differs from 0.85.
+
+
+# =============================================================
 # SOUND — hooks for audio (not wired in v1)
 # =============================================================
 

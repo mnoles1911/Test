@@ -403,6 +403,41 @@ Normal maps ARE still valuable for:
 - Props that need surface detail (ancient stone archways, wooden doors)
 - Large flat MagicaVoxel surfaces that would otherwise look too uniform
 
+### Colour pipeline & sky — LOCKED (2026-05-22)
+
+The render-look pipeline is settled. Treat these as the baseline, not
+open questions. The lighting pseudo-config above predates this pass and
+is illustrative only — the live values are in `World3D.tscn` and the
+`GraphicsManager` tier presets.
+
+- **Tonemap: AgX** (`tonemap_exposure` 0.87, white 6.0) with an
+  Adjustments counter-grade (contrast 1.05, saturation 1.15) so AgX
+  doesn't read washed-out. **Lighting punch:** SSAO at block scale +
+  SSIL on + glow threshold 1.1; Sun/Moon shadows PSSM 4-split.
+  **AA:** MSAA 3D 4× (clean voxel silhouettes, no texture blur). The
+  hand-tuned per-hour sun/sky colours in `DayNightCycle.gd` are
+  art-authored against this grade — counter at the grade stage; do not
+  blind-rewrite them.
+- **Per-pixel surface detail on voxel terrain must be tangent-free.**
+  `bake_tangents` is library-global and breaks the native-fluid water
+  meshes — any future terrain normal-map / bump work uses a custom
+  terrain `ShaderMaterial` with `dFdx/dFdy` derivative or triplanar
+  bump. Never flip `bake_tangents`. (Character `.glb` models carry
+  their own tangents and are unaffected.)
+- **The sky is procedural**, not just the static panorama anchors.
+  `assets/shaders/sky_atmosphere.gdshader` layers volumetric clouds
+  (weather-driven — coverage and speed flow down from `WeatherManager`
+  states) over a moving night sky: stars, a colour-cycling aurora
+  ribbon (7-in-game-day teal→green→violet loop), and a slowly drifting
+  nebula. Day vs. night is driven by an explicit `night_factor` from
+  `DayNightCycle`. Both fog layers darken at night by that same factor
+  — fog that ignores day/night will wash the night sky pale.
+- **Graphics quality is player-selectable** — `GraphicsManager` exposes
+  five tiers (POTATO/LOW/MEDIUM/HIGH/ULTRA); HIGH is the default.
+
+Full record, rationale, and per-phase rollback table:
+`design/GRAPHICS_PASS_2026-05-19.md`.
+
 ### Shader — The Aeluvain Effect (Game Two onward)
 
 When `GameState.aeluvain_present` is true, a canvas-level shader shifts color temperature — the scene's cool tones become marginally less cold. Imperceptible on first viewing. Retroactively noticeable on replay.
