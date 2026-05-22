@@ -407,6 +407,16 @@ func _apply() -> void:
 	if env == null:
 		return
 
+	# DEBUG (night-sky investigation) — TEMPORARY. With the sky_debug probe
+	# on, also kill BOTH fog systems. The sky shader's debug branch outputs
+	# vec3(night_factor) — pure greyscale — so nothing it produces can be
+	# light blue. If the rendered sky is still flat light blue, a fog layer
+	# is being composited over it. Disabling both fogs here is the airtight
+	# test: sky goes white@midnight / black@midday => fog was the wash.
+	if _DEBUG_SKY_VIZ:
+		env.fog_enabled = false
+		env.volumetric_fog_enabled = false
+
 	# Sky panorama cross-fade.
 	# Old version tried to cast env.sky.sky_material to ProceduralSkyMaterial,
 	# but the scene actually used PhysicalSkyMaterial — the cast silently
@@ -447,6 +457,11 @@ func _apply() -> void:
 			print("[DNC-DEBUG] hour=%d h=%.2f sun_e=%.2f night_factor=%.2f | mat.night_factor=%s | panoramas(d/n/du/ni)=%s tex_from_set=%s | shader=%s" % [
 				WorldClock.current_hour, h, sun_energy, dbg_nf,
 				str(dbg_mat_nf), dbg_pano, str(dbg_texfrom != null), dbg_shader_path])
+			print("[DNC-FOG] fog_enabled=%s vol_fog_enabled=%s | fog_light_color=%s aerial_persp=%.2f | vol_fog_albedo=%s vol_sky_affect=%.2f | fog_override=%s" % [
+				str(env.fog_enabled), str(env.volumetric_fog_enabled),
+				str(env.fog_light_color), env.fog_aerial_perspective,
+				str(env.volumetric_fog_albedo), env.volumetric_fog_sky_affect,
+				str(_fog_override_active)])
 
 
 # Decide which two anchor panoramas flank the current hour-of-day, then
