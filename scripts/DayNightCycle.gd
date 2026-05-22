@@ -113,11 +113,11 @@ const AURORA_CYCLE: Array[Color] = [
 # Nebula colour is still picked per in-game day from this curated palette
 # (hashed by day so it jumps around rather than cycling in order).
 const NEBULA_PALETTE: Array[Color] = [
-	Color(0.34, 0.20, 0.52),  # purple
-	Color(0.20, 0.32, 0.62),  # deep blue
-	Color(0.52, 0.20, 0.46),  # magenta
-	Color(0.18, 0.44, 0.50),  # teal
-	Color(0.46, 0.28, 0.32),  # dusty rose
+	Color(0.46, 0.32, 0.72),  # purple
+	Color(0.32, 0.46, 0.82),  # deep blue
+	Color(0.74, 0.34, 0.66),  # magenta
+	Color(0.30, 0.64, 0.70),  # teal
+	Color(0.66, 0.44, 0.50),  # dusty rose
 ]
 
 

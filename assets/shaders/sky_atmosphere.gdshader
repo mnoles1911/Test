@@ -56,10 +56,12 @@ uniform float star_rotation = 0.0;
 // aurora_color / nebula_color are pushed per in-game day by
 // DayNightCycle._update_night_palette() so each night has its own hue.
 uniform vec3 aurora_color : source_color = vec3(0.25, 0.95, 0.55);
-// Toned down from 1.1 — the aurora was overpowering the night sky.
-uniform float aurora_strength : hint_range(0.0, 3.0) = 0.5;
-uniform vec3 nebula_color : source_color = vec3(0.34, 0.20, 0.52);
-uniform float nebula_strength : hint_range(0.0, 1.0) = 0.7;
+// Toned down in stages (1.1 -> 0.5 -> 0.3) — the aurora was overpowering.
+uniform float aurora_strength : hint_range(0.0, 3.0) = 0.3;
+uniform vec3 nebula_color : source_color = vec3(0.46, 0.32, 0.70);
+// Cranked hard (0.4 -> 0.7 -> 1.0, range raised) — the nebula was
+// imperceptible against the dark night sky at the old strength.
+uniform float nebula_strength : hint_range(0.0, 2.0) = 1.0;
 
 // Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
@@ -153,11 +155,11 @@ float nebula(vec3 dir) {
 	float lat = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;
 	float lon = atan(dir.z, dir.x);
 	// Lower ring scale => larger, broader nebula clouds. The smoothstep
-	// floor sits well below the fbm average so the haze is actually
-	// visible across the sky, not just catching the rare noise peaks.
+	// window straddles the fbm average (~0.48) so most of the sky catches
+	// the haze with structure, instead of only the rare noise peaks.
 	vec2 ring = vec2(cos(lon), sin(lon)) * 1.5;
 	float n = cloud_fbm(ring + vec2(7.0, lat * 2.0));
-	return smoothstep(0.34, 0.78, n);
+	return smoothstep(0.30, 0.60, n);
 }
 
 void sky() {
