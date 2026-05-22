@@ -93,6 +93,13 @@ const SKY_HORIZON_NIGHT: Color = Color(0.06, 0.08, 0.14)
 const FOG_COLOR_DAY: Color   = Color(0.55, 0.65, 0.78)
 const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
 
+# Volumetric fog albedo — driven by night_factor in _apply(). The day
+# value matches the World3D.tscn authored albedo; the night value is
+# near-black so the volumetric layer (sky_affect 0.5) doesn't wash the
+# night sky pale blue. Nothing else writes volumetric_fog_albedo.
+const VOL_FOG_ALBEDO_DAY: Color   = Color(0.85, 0.88, 0.95)
+const VOL_FOG_ALBEDO_NIGHT: Color = Color(0.06, 0.08, 0.14)
+
 
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
@@ -139,7 +146,7 @@ var _debug_night_accum: float = 0.0
 # colour equal to night_factor (white = midnight, black = midday). If
 # the sky visibly goes flat, the rendered sky IS this material; if it
 # keeps its normal look, the rendered sky is some OTHER material.
-const _DEBUG_SKY_VIZ: bool = true
+const _DEBUG_SKY_VIZ: bool = false
 
 # Weather fog override. While WeatherManager wants to drive fog, it calls
 # set_fog_override(color, density). _apply() then writes those values instead
@@ -429,11 +436,23 @@ func _apply() -> void:
 	# multiplier uniform) but currently aren't pushed anywhere visible.
 	_update_sky_blend(h)
 
+	# Time-of-day darkening applies to fog ALWAYS — even under a weather
+	# override. WeatherManager supplies a weather-state fog colour/density;
+	# DayNightCycle still pulls that colour toward the dark night palette
+	# by night_factor, so the fog (and the sky it aerial-blends into) goes
+	# genuinely dark at night instead of staying weather-bright. Before
+	# this, the override path bypassed all day/night darkening, which is
+	# why the night sky stayed pale blue.
+	var night_t: float = 1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0)
 	if _fog_override_active:
-		env.fog_light_color = _override_fog_color
+		env.fog_light_color = _override_fog_color.lerp(FOG_COLOR_NIGHT, night_t)
 		env.fog_density     = _override_fog_density
 	else:
 		env.fog_light_color = fog
+	# Volumetric fog albedo is part of neither the weather override nor
+	# the hour ramp above — drive it here so the volumetric layer darkens
+	# at night too (its sky_affect otherwise washes the night sky pale).
+	env.volumetric_fog_albedo = VOL_FOG_ALBEDO_DAY.lerp(VOL_FOG_ALBEDO_NIGHT, night_t)
 
 	# DEBUG — night-sky investigation. Every ~1.5 s, dump the day/night
 	# state so the designer can read the real values from the Output
