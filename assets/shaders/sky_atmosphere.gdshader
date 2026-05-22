@@ -143,7 +143,10 @@ float stars(vec3 dir) {
 // on a cos/sin ring of the longitude so it wraps with no hard seam.
 float aurora(vec3 dir) {
 	float lat = acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265;  // 0 zenith
-	float band = smoothstep(0.06, 0.24, lat) * smoothstep(0.60, 0.34, lat);
+	// A narrow ribbon in the upper-mid sky (~29-50 deg elevation). Was
+	// lat 0.06..0.60 — nearly zenith to below the horizon — which made
+	// the aurora swallow the whole sky and bury the nebula behind it.
+	float band = smoothstep(0.22, 0.26, lat) * smoothstep(0.34, 0.30, lat);
 	if (band <= 0.0) {
 		return 0.0;
 	}

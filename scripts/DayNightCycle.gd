@@ -156,7 +156,7 @@ var _night_palette_day: int = -1
 # the night sky paints its three layers as raw RGB: R = nebula, G =
 # aurora, B = stars. Lets us see which layer actually draws and where.
 # Set false / delete once the nebula-visibility question is resolved.
-const _DEBUG_SKY_LAYERS: bool = true
+const _DEBUG_SKY_LAYERS: bool = false
 
 # _apply() updates sun/moon orbit, light energy/color, sky tint, and
 # fog from WorldClock state. With WorldClock running at 240 real-s
