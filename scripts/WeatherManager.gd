@@ -69,6 +69,8 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    0.5,
 		"particle_density": 0,
 		"ambient_audio":    "",
+		"cloud_coverage":   0.0,
+		"cloud_speed":      0.012,
 	},
 	State.OVERCAST: {
 		"fog_color":        Color(0.6, 0.65, 0.7),
@@ -77,6 +79,8 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.0,
 		"particle_density": 0,
 		"ambient_audio":    "wind_med",
+		"cloud_coverage":   0.92,
+		"cloud_speed":      0.04,
 	},
 	State.LIGHT_RAIN: {
 		"fog_color":        Color(0.55, 0.6, 0.65),
@@ -85,6 +89,8 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.5,
 		"particle_density": 1500,
 		"ambient_audio":    "rain_light",
+		"cloud_coverage":   0.6,
+		"cloud_speed":      0.05,
 	},
 	State.HEAVY_RAIN: {
 		"fog_color":        Color(0.4, 0.45, 0.5),
@@ -93,6 +99,8 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    3.5,
 		"particle_density": 6000,
 		"ambient_audio":    "rain_heavy",
+		"cloud_coverage":   1.0,
+		"cloud_speed":      0.08,
 	},
 	State.FOG: {
 		"fog_color":        Color(0.75, 0.75, 0.78),
@@ -101,6 +109,8 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    0.3,
 		"particle_density": 0,
 		"ambient_audio":    "wind_low",
+		"cloud_coverage":   0.35,
+		"cloud_speed":      0.01,
 	},
 	State.SNOW: {
 		"fog_color":        Color(0.85, 0.88, 0.92),
@@ -109,6 +119,8 @@ const STATE_PROFILES: Dictionary = {
 		"wind_strength":    1.2,
 		"particle_density": 2500,
 		"ambient_audio":    "wind_low",
+		"cloud_coverage":   0.75,
+		"cloud_speed":      0.03,
 	},
 }
 
@@ -217,6 +229,8 @@ var _live_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_strength"]
 var _live_wetness: float = 0.0
 var _live_rain_density: float = 0.0
 var _live_snow_density: float = 0.0
+var _live_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
+var _live_cloud_speed: float = STATE_PROFILES[State.CLEAR]["cloud_speed"]
 
 # Blend origins for the transition tween. Snapshotted from _live_* every
 # time the target state changes. Without this, mid-transition target
@@ -232,6 +246,8 @@ var _blend_origin_wind_strength: float = STATE_PROFILES[State.CLEAR]["wind_stren
 var _blend_origin_wetness: float = 0.0
 var _blend_origin_rain_density: float = 0.0
 var _blend_origin_snow_density: float = 0.0
+var _blend_origin_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
+var _blend_origin_cloud_speed: float = STATE_PROFILES[State.CLEAR]["cloud_speed"]
 
 # Particle systems. Spawned lazily on the first transition that needs
 # them so a CLEAR-only world never builds the rigs. Position follows
@@ -260,9 +276,17 @@ var _wet_terrain_active: bool = false
 var _ambient_player: AudioStreamPlayer = null
 var _ambient_current_key: String = ""
 var _ambient_warned_missing: Dictionary = {}   # key -> true once warned
+# Wind-gust state. _ambient_settle_timer counts down the crossfade so
+# gust modulation only takes over once the fade-in tween has finished.
+var _ambient_settle_timer: float = 0.0
+var _ambient_gust_time: float = 0.0
 const AMBIENT_AUDIO_DIR: String = "res://assets/audio/ambient/"
 const AMBIENT_CROSSFADE_S: float = 5.0
 const AMBIENT_TARGET_DB: float = -8.0          # comfortable bed level
+# Wind ambience gusts — the wind bed's volume swells and lulls instead
+# of droning flat. Depth in dB the volume dips below AMBIENT_TARGET_DB
+# at the bottom of a lull.
+const WIND_GUST_DEPTH_DB: float = 14.0
 
 # How high above the camera the particle emitter sits (m). The
 # particles fall from this height; tuning matters for "rain
@@ -333,6 +357,8 @@ func _seed_initial_state() -> void:
 	_live_wetness = _state_wetness(current_state)
 	_live_rain_density = _state_rain_density(current_state)
 	_live_snow_density = _state_snow_density(current_state)
+	_live_cloud_coverage = profile["cloud_coverage"]
+	_live_cloud_speed = profile["cloud_speed"]
 	_snapshot_blend_origins()
 	# Kick the audio crossfade off so the seeded state has its bed.
 	_swap_ambient_audio(String(profile["ambient_audio"]))
@@ -349,6 +375,8 @@ func _snapshot_blend_origins() -> void:
 	_blend_origin_wetness = _live_wetness
 	_blend_origin_rain_density = _live_rain_density
 	_blend_origin_snow_density = _live_snow_density
+	_blend_origin_cloud_coverage = _live_cloud_coverage
+	_blend_origin_cloud_speed = _live_cloud_speed
 
 
 func _process(delta: float) -> void:
@@ -401,6 +429,8 @@ func _process_inner(delta: float) -> void:
 	_live_wetness = lerpf(_blend_origin_wetness, _state_wetness(_target_state), t)
 	_live_rain_density = lerpf(_blend_origin_rain_density, _state_rain_density(_target_state), t)
 	_live_snow_density = lerpf(_blend_origin_snow_density, _state_snow_density(_target_state), t)
+	_live_cloud_coverage = lerpf(_blend_origin_cloud_coverage, target_profile["cloud_coverage"], t)
+	_live_cloud_speed = lerpf(_blend_origin_cloud_speed, target_profile["cloud_speed"], t)
 	weather_intensity_changed.emit(_live_wetness)
 
 	# Push fog into DayNightCycle's override slot. We try to find the
@@ -409,6 +439,12 @@ func _process_inner(delta: float) -> void:
 	var dnc: Node = _find_day_night_cycle()
 	if dnc != null and dnc.has_method("set_fog_override"):
 		dnc.set_fog_override(_live_fog_color, _live_fog_density)
+	# Push weather-driven cloud coverage + drift speed into the sky
+	# shader (Phase H + the 2026-05-21 weather-driven-clouds pass).
+	if dnc != null and dnc.has_method("set_cloud_coverage"):
+		dnc.set_cloud_coverage(_live_cloud_coverage)
+	if dnc != null and dnc.has_method("set_cloud_speed"):
+		dnc.set_cloud_speed(_live_cloud_speed)
 
 	# Push ambient light directly to WorldEnvironment.environment. We
 	# don't go through DayNightCycle here because DayNightCycle never
@@ -444,6 +480,9 @@ func _process_inner(delta: float) -> void:
 
 	# Lightning strike timer — only ticks during HEAVY_RAIN.
 	_process_lightning(delta)
+
+	# Wind ambience gusts — swell/lull the wind bed instead of a drone.
+	_update_wind_gust(delta)
 
 	# Story override countdown — tick down in seconds, ticking the
 	# remaining "hours" by delta/3600 of a real-world hour. We use real
@@ -573,6 +612,8 @@ func load_save_data(data: Dictionary) -> void:
 	_live_wetness = _state_wetness(current_state)
 	_live_rain_density = _state_rain_density(current_state)
 	_live_snow_density = _state_snow_density(current_state)
+	_live_cloud_coverage = profile["cloud_coverage"]
+	_live_cloud_speed = profile["cloud_speed"]
 	_snapshot_blend_origins()
 
 
@@ -594,6 +635,8 @@ func clear_persistent_state() -> void:
 	_live_wetness = 0.0
 	_live_rain_density = 0.0
 	_live_snow_density = 0.0
+	_live_cloud_coverage = profile["cloud_coverage"]
+	_live_cloud_speed = profile["cloud_speed"]
 	_snapshot_blend_origins()
 
 
@@ -787,6 +830,10 @@ func _swap_ambient_audio(key: String) -> void:
 		return
 	_ambient_current_key = key
 
+	# A new bed is crossfading in — hold gust modulation off until the
+	# fade-in tween has settled (see _update_wind_gust).
+	_ambient_settle_timer = AMBIENT_CROSSFADE_S
+
 	# Capture the outgoing player. _ambient_player advances to the new
 	# one (or null) immediately; the captured reference gets its own
 	# fade-out tween. Each tween operates on its own bound players, so
@@ -830,6 +877,27 @@ func _swap_ambient_audio(key: String) -> void:
 		var fade_out := create_tween()
 		fade_out.tween_property(outgoing, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
 		fade_out.tween_callback(outgoing.queue_free)
+
+
+func _update_wind_gust(delta: float) -> void:
+	# Make the wind ambience swell and lull in bursts rather than
+	# droning at a flat volume. Only runs once the crossfade has
+	# settled, and only for wind beds (rain stays steady).
+	if _ambient_settle_timer > 0.0:
+		_ambient_settle_timer -= delta
+		return
+	if _ambient_player == null or not is_instance_valid(_ambient_player):
+		return
+	if not _ambient_current_key.begins_with("wind"):
+		return
+	_ambient_gust_time += delta
+	var t: float = _ambient_gust_time
+	# Summed slow sines -> an irregular -1..1 swell.
+	var raw: float = sin(t * 0.13) * 0.5 + sin(t * 0.29 + 1.7) * 0.3 + sin(t * 0.61 + 4.1) * 0.2
+	var g01: float = clampf((raw + 1.0) * 0.5, 0.0, 1.0)
+	# Bias toward the low end so the loud swells read as gusts/bursts.
+	g01 = pow(g01, 1.8)
+	_ambient_player.volume_db = AMBIENT_TARGET_DB - WIND_GUST_DEPTH_DB + g01 * WIND_GUST_DEPTH_DB
 
 
 func _find_voxel_terrain() -> Node:

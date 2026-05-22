@@ -66,12 +66,13 @@ const SUN_ENERGY_DAY: float    = 2.2
 # a normal "bright outdoor scene" sun energy in Godot 4 — readable
 # without blowing out highlights.
 const SUN_ENERGY_NIGHT: float  = 0.0
-const MOON_ENERGY_NIGHT: float = 0.6
-# Bumped from 0.35 → 0.6: night was almost pitch-black on screen.
-# 0.6 keeps night clearly distinguishable from day but lets the
-# player still see terrain and walk around without a torch.
-# Actual full darkness can come from the WeatherManager fog override
-# or specific story scripts when needed.
+const MOON_ENERGY_NIGHT: float = 2.0
+# The moon is the night's primary light source. Raised 0.6 → 2.0
+# (2026-05-21 designer pass, ~3.3×): the night sky now renders very
+# dark (sky_atmosphere.gdshader night_sky_darkness), so sky-sourced ambient
+# at night is near-zero — the moon's directional light carries the
+# whole night look. A cool-blue moon at this energy gives a bright,
+# readable moonlit world against an almost-black sky.
 const MOON_ENERGY_DAY: float   = 0.0
 
 # Color palettes (tuned by eye — iterate once art direction lands).
@@ -91,6 +92,30 @@ const SKY_HORIZON_NIGHT: Color = Color(0.06, 0.08, 0.14)
 
 const FOG_COLOR_DAY: Color   = Color(0.55, 0.65, 0.78)
 const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
+
+# Volumetric fog albedo — driven by night_factor in _apply(). The day
+# value matches the World3D.tscn authored albedo; the night value is
+# near-black so the volumetric layer (sky_affect 0.5) doesn't wash the
+# night sky pale blue. Nothing else writes volumetric_fog_albedo.
+const VOL_FOG_ALBEDO_DAY: Color   = Color(0.85, 0.88, 0.95)
+const VOL_FOG_ALBEDO_NIGHT: Color = Color(0.06, 0.08, 0.14)
+
+# Aurora colour follows a fixed cycle — a smooth loop through these 3
+# anchor colours, completing once every AURORA_CYCLE_DAYS in-game days
+# then repeating. _update_night_palette() lerps between anchors so each
+# night's hue drifts gradually rather than snapping.
+const AURORA_CYCLE_DAYS: int = 7
+const AURORA_CYCLE: Array[Color] = [
+	Color(0.20, 0.85, 0.92),  # teal / cyan
+	Color(0.25, 0.95, 0.55),  # classic green
+	Color(0.60, 0.40, 0.95),  # violet
+]
+# The nebula drifts around the sky's azimuth — NEBULA_DRIFT_PER_CYCLE of
+# a full revolution every NEBULA_CYCLE_DAYS in-game days. Continuous: it
+# never snaps back (a circle has no seam). Its colour is constant — the
+# shader's nebula_color default.
+const NEBULA_CYCLE_DAYS: float = 7.0
+const NEBULA_DRIFT_PER_CYCLE: float = 0.30
 
 
 var _sun: DirectionalLight3D
@@ -118,6 +143,10 @@ var _sky_mat: ShaderMaterial = null
 # One-shot warning latch so a missing-panorama setup logs once at startup
 # rather than spamming the console every frame from _process.
 var _warned_missing_panoramas: bool = false
+
+# The in-game day the aurora/nebula palette was last refreshed for.
+# -1 forces _apply() to pick a palette on the first tick.
+var _night_palette_day: int = -1
 
 # _apply() updates sun/moon orbit, light energy/color, sky tint, and
 # fog from WorldClock state. With WorldClock running at 240 real-s
@@ -162,7 +191,7 @@ func _ready() -> void:
 
 	# Cache the sky's ShaderMaterial so _update_sky_blend can write to it
 	# without re-fetching it 60 times a second. We accept that this is null
-	# if the project's sky isn't using sky_blend.gdshader — in that case the
+	# if the project's sky isn't using sky_atmosphere.gdshader — in that case the
 	# sky cross-fade just becomes a no-op and the rest of the cycle keeps
 	# working normally (sun/moon rotation, light energy, fog).
 	if _env != null and _env.environment != null and _env.environment.sky != null:
@@ -215,11 +244,21 @@ func _apply() -> void:
 	var minute_frac: float = WorldClock.get_minute_fraction()
 	var h: float = float(WorldClock.current_hour) + (float(WorldClock.current_minute) + minute_frac) / 60.0
 
+	# Refresh the per-night aurora/nebula palette when the day rolls over,
+	# so each night carries its own colour signature.
+	if _sky_mat != null and WorldClock.current_day != _night_palette_day:
+		_night_palette_day = WorldClock.current_day
+		_update_night_palette(WorldClock.current_day)
+
 	# --- Sun + moon orbit ---
 	# Convert hour to an angle around the world's left axis. At hour 6
 	# the sun is at the east horizon (angle 0), at hour 12 it's at
 	# zenith (angle 90°), at hour 18 it's at the west horizon (180°).
 	var sun_angle_rad: float = (h - 6.0) / 24.0 * TAU
+	# Star-field rotation — the procedural night sky in sky_atmosphere.gdshader
+	# pivots with the celestial sphere at the same rate as the sun/moon.
+	if _sky_mat != null:
+		_sky_mat.set_shader_parameter("star_rotation", sun_angle_rad)
 	# Tilt the orbit ~15° so the sun arcs through the south hemisphere
 	# rather than dead-overhead — gives more natural shadow direction.
 	var sun_basis: Basis = Basis().rotated(Vector3.LEFT, sun_angle_rad).rotated(Vector3.FORWARD, deg_to_rad(15.0))
@@ -252,6 +291,15 @@ func _apply() -> void:
 
 	_sun.light_energy = sun_energy
 	_sun.light_color  = sun_color
+
+	# Push an explicit night factor (0 = full day, 1 = full night) to the
+	# sky shader. The shader uses THIS — not the indirect LIGHT0 energy,
+	# which proved unreliable — to darken the night sky and fade in the
+	# stars / aurora / nebula. DayNightCycle knows the real sun energy,
+	# so this is deterministic.
+	if _sky_mat != null:
+		_sky_mat.set_shader_parameter("night_factor",
+			1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0))
 
 	# Disable shadow casting when the sun is below the visibility threshold —
 	# at night the sun is pointing through the world from the wrong side and
@@ -381,7 +429,7 @@ func _apply() -> void:
 	# Old version tried to cast env.sky.sky_material to ProceduralSkyMaterial,
 	# but the scene actually used PhysicalSkyMaterial — the cast silently
 	# returned null and the _sky_top / _sky_horizon writes did nothing.
-	# Now the scene uses our custom sky_blend.gdshader (a ShaderMaterial),
+	# Now the scene uses our custom sky_atmosphere.gdshader (a ShaderMaterial),
 	# and _update_sky_blend picks two of the four anchor panoramas and
 	# writes the blend factor to the shader. The _sky_top/_sky_horizon Color
 	# variables computed above remain authoritative for the fog tint and
@@ -389,11 +437,23 @@ func _apply() -> void:
 	# multiplier uniform) but currently aren't pushed anywhere visible.
 	_update_sky_blend(h)
 
+	# Time-of-day darkening applies to fog ALWAYS — even under a weather
+	# override. WeatherManager supplies a weather-state fog colour/density;
+	# DayNightCycle still pulls that colour toward the dark night palette
+	# by night_factor, so the fog (and the sky it aerial-blends into) goes
+	# genuinely dark at night instead of staying weather-bright. Before
+	# this, the override path bypassed all day/night darkening, which is
+	# why the night sky stayed pale blue.
+	var night_t: float = 1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0)
 	if _fog_override_active:
-		env.fog_light_color = _override_fog_color
+		env.fog_light_color = _override_fog_color.lerp(FOG_COLOR_NIGHT, night_t)
 		env.fog_density     = _override_fog_density
 	else:
 		env.fog_light_color = fog
+	# Volumetric fog albedo is part of neither the weather override nor
+	# the hour ramp above — drive it here so the volumetric layer darkens
+	# at night too (its sky_affect otherwise washes the night sky pale).
+	env.volumetric_fog_albedo = VOL_FOG_ALBEDO_DAY.lerp(VOL_FOG_ALBEDO_NIGHT, night_t)
 
 
 # Decide which two anchor panoramas flank the current hour-of-day, then
@@ -452,6 +512,28 @@ func _update_sky_blend(h: float) -> void:
 	_sky_mat.set_shader_parameter("blend",        blend)
 
 
+# Refresh the night sky's per-day state for a given in-game day: the
+# aurora hue (a smooth 7-day loop through AURORA_CYCLE) and the nebula's
+# drift position around the sky. The nebula's colour is constant — the
+# shader's nebula_color default.
+func _update_night_palette(day: int) -> void:
+	if _sky_mat == null:
+		return
+	# Aurora: position within the cycle, 0 -> just under 1. day - 1 so
+	# day 1 lands exactly on the first anchor.
+	var phase: float = float((day - 1) % AURORA_CYCLE_DAYS) / float(AURORA_CYCLE_DAYS)
+	# Map the phase onto the 3 anchors arranged on a loop (A -> B -> C -> A).
+	var seg: float = phase * float(AURORA_CYCLE.size())
+	var i: int = int(seg) % AURORA_CYCLE.size()
+	var next_i: int = (i + 1) % AURORA_CYCLE.size()
+	var aurora_col: Color = AURORA_CYCLE[i].lerp(AURORA_CYCLE[next_i], seg - floor(seg))
+	_sky_mat.set_shader_parameter("aurora_color", aurora_col)
+	# Nebula: drift its anchor around the sky's azimuth. day - 1 so day 1
+	# starts at zero rotation; continuous, so it never snaps back.
+	var nebula_rot: float = float(day - 1) / NEBULA_CYCLE_DAYS * NEBULA_DRIFT_PER_CYCLE * TAU
+	_sky_mat.set_shader_parameter("nebula_rotation", nebula_rot)
+
+
 # Public API used by WeatherManager. Color and density are written verbatim
 # every frame as long as the override is active — WeatherManager animates them.
 func set_fog_override(color: Color, density: float) -> void:
@@ -462,3 +544,22 @@ func set_fog_override(color: Color, density: float) -> void:
 
 func clear_fog_override() -> void:
 	_fog_override_active = false
+
+
+# Public API used by WeatherManager — pushes the weather-driven cloud
+# coverage (0 = clear, 1 = overcast) into the sky shader. The sky shader
+# animates and lights the clouds itself; this is the only value it needs
+# from the weather system. No-op if the sky isn't using sky_atmosphere.gdshader.
+func set_cloud_coverage(coverage: float) -> void:
+	if _sky_mat == null:
+		return
+	_sky_mat.set_shader_parameter("cloud_coverage", clampf(coverage, 0.0, 1.0))
+
+
+# Public API used by WeatherManager — pushes the weather-driven cloud
+# drift speed into the sky shader. Each weather state carries its own
+# cloud_speed in STATE_PROFILES (calm clear day vs. fast-moving storm).
+func set_cloud_speed(speed: float) -> void:
+	if _sky_mat == null:
+		return
+	_sky_mat.set_shader_parameter("cloud_scroll_speed", maxf(0.0, speed))
