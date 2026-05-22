@@ -619,11 +619,43 @@ func _distant_report() -> int:
 	else:
 		fails += _distant_check_apron(arrays, apron_on)
 
+	# --- Phase 3 — distant_terrain.gdshader compiles ------------------
+	fails += _distant_check_shader()
+
 	if fails == 0:
-		print("[DISTANT] RESULT=PASS — grid bit-identical to baseline; skirt apron purely additive.")
+		print("[DISTANT] RESULT=PASS — grid bit-identical to baseline; apron additive; shader compiles.")
 		return 0
 	print("[DISTANT] RESULT=FAIL — %d issue(s)." % fails)
 	return 1
+
+
+# Phase 3 — load distant_terrain.gdshader and confirm it compiles. Under
+# the headless dummy renderer Godot still parses shader code on load: a
+# syntax/semantic error prints SHADER ERROR to stderr and leaves the
+# shader with no valid RID / an empty uniform list. Returns fail count.
+func _distant_check_shader() -> int:
+	var path := "res://assets/shaders/distant_terrain.gdshader"
+	if not ResourceLoader.exists(path):
+		push_error("[DISTANT] shader missing: %s" % path)
+		return 1
+	var sh = load(path)
+	if sh == null or not (sh is Shader):
+		push_error("[DISTANT] shader load failed or not a Shader: %s" % path)
+		return 1
+	var rid: RID = (sh as Shader).get_rid()
+	var uniforms: Array = []
+	if rid.is_valid():
+		uniforms = RenderingServer.get_shader_parameter_list(rid)
+	var has_fade := false
+	for u in uniforms:
+		if String(u.get("name", "")) == "fade_factor":
+			has_fade = true
+	print("[DISTANT] shader distant_terrain.gdshader rid_valid=%s uniforms=%d fade_factor=%s" % [
+		rid.is_valid(), uniforms.size(), has_fade])
+	if not rid.is_valid() or not has_fade:
+		push_error("[DISTANT] distant_terrain.gdshader failed to compile or is missing the fade_factor uniform (grep stderr for SHADER ERROR)")
+		return 1
+	return 0
 
 
 # Phase 2 — assert the skirt apron is purely additive: the apron-off grid
