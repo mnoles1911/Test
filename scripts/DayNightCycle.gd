@@ -33,6 +33,13 @@ extends Node
 # Reference: design/WEATHER_AND_ENVIRONMENT.md → Six time-of-day periods
 
 
+# Phase G — the time-of-day colour anchors now live in a Resource.
+# Preloaded by path (AtmosphereProfile has no class_name) so the
+# headless harness, which does not rescan global classes, still parses
+# this script.
+const AtmosphereProfile := preload("res://scripts/graphics/AtmosphereProfile.gd")
+
+
 @export var sun_path: NodePath = "../Sun"
 @export var moon_path: NodePath = "../Moon"
 @export var environment_path: NodePath = "../WorldEnvironment"
@@ -51,6 +58,12 @@ extends Node
 @export var noon_panorama:  Texture2D = null
 @export var dusk_panorama:  Texture2D = null
 @export var night_panorama: Texture2D = null
+
+# --- Atmosphere colour palette (Phase G) ---
+# The sky/sun/fog colour anchors. Leave null to use the shipped palette
+# (AtmosphereProfile's defaults reproduce it exactly); assign a custom
+# .tres to retune the world's colour without touching code.
+@export var atmosphere: AtmosphereProfile = null
 
 # How far from the camera the moon mesh is positioned (metres).
 # Far enough to appear celestial; no_depth_test on the material
@@ -75,30 +88,11 @@ const MOON_ENERGY_NIGHT: float = 2.0
 # readable moonlit world against an almost-black sky.
 const MOON_ENERGY_DAY: float   = 0.0
 
-# Color palettes (tuned by eye — iterate once art direction lands).
-const SUN_COLOR_DAWN: Color = Color(1.0, 0.65, 0.35)  # orange-pink
-const SUN_COLOR_NOON: Color = Color(1.0, 0.97, 0.92)  # warm white
-const SUN_COLOR_DUSK: Color = Color(1.0, 0.45, 0.25)  # red-orange
-const MOON_COLOR: Color     = Color(0.55, 0.65, 0.85) # cool pale blue
-
-const SKY_TOP_NOON: Color      = Color(0.32, 0.58, 0.82)
-const SKY_HORIZON_NOON: Color  = Color(0.70, 0.85, 0.95)
-const SKY_TOP_DAWN: Color      = Color(0.32, 0.30, 0.42)
-const SKY_HORIZON_DAWN: Color  = Color(0.95, 0.55, 0.40)
-const SKY_TOP_DUSK: Color      = Color(0.30, 0.20, 0.30)
-const SKY_HORIZON_DUSK: Color  = Color(0.95, 0.35, 0.20)
-const SKY_TOP_NIGHT: Color     = Color(0.04, 0.05, 0.10)
-const SKY_HORIZON_NIGHT: Color = Color(0.06, 0.08, 0.14)
-
-const FOG_COLOR_DAY: Color   = Color(0.55, 0.65, 0.78)
-const FOG_COLOR_NIGHT: Color = Color(0.05, 0.07, 0.10)
-
-# Volumetric fog albedo — driven by night_factor in _apply(). The day
-# value matches the World3D.tscn authored albedo; the night value is
-# near-black so the volumetric layer (sky_affect 0.5) doesn't wash the
-# night sky pale blue. Nothing else writes volumetric_fog_albedo.
-const VOL_FOG_ALBEDO_DAY: Color   = Color(0.85, 0.88, 0.95)
-const VOL_FOG_ALBEDO_NIGHT: Color = Color(0.06, 0.08, 0.14)
+# Time-of-day colour anchors (sun / sky / fog / volumetric-fog albedo)
+# moved into AtmosphereProfile in Phase G. `_atmo` is resolved once in
+# _ready() from the `atmosphere` export (or a fresh default profile)
+# and read as _atmo.<field> throughout _apply().
+var _atmo: AtmosphereProfile = null
 
 # Aurora colour follows a fixed cycle — a smooth loop through these 3
 # anchor colours, completing once every AURORA_CYCLE_DAYS in-game days
@@ -172,6 +166,11 @@ func _ready() -> void:
 	# Group registration happens here rather than in the .tscn so adding
 	# the script to a new World scene is enough — no node-property edit.
 	add_to_group("day_night_cycle")
+
+	# Phase G — resolve the colour palette. A null `atmosphere` export
+	# falls back to a fresh AtmosphereProfile, whose defaults reproduce
+	# the shipped look exactly.
+	_atmo = atmosphere if atmosphere != null else AtmosphereProfile.new()
 
 	_sun  = get_node_or_null(sun_path) as DirectionalLight3D
 	_moon = get_node_or_null(moon_path) as DirectionalLight3D
@@ -271,23 +270,23 @@ func _apply() -> void:
 	var sun_color: Color
 	if h < 5.0:
 		sun_energy = SUN_ENERGY_NIGHT
-		sun_color  = SUN_COLOR_DAWN
+		sun_color  = _atmo.sun_color_dawn
 	elif h < 7.0:
 		# DAWN ramp — energy off → on, color shifts orange → white
 		var t: float = (h - 5.0) / 2.0
 		sun_energy = lerp(SUN_ENERGY_NIGHT, SUN_ENERGY_DAY, t)
-		sun_color  = SUN_COLOR_DAWN.lerp(SUN_COLOR_NOON, t)
+		sun_color  = _atmo.sun_color_dawn.lerp(_atmo.sun_color_noon, t)
 	elif h < 17.0:
 		sun_energy = SUN_ENERGY_DAY
-		sun_color  = SUN_COLOR_NOON
+		sun_color  = _atmo.sun_color_noon
 	elif h < 20.0:
 		# DUSK ramp — energy on → off, color shifts white → red
 		var t: float = (h - 17.0) / 3.0
 		sun_energy = lerp(SUN_ENERGY_DAY, SUN_ENERGY_NIGHT, t)
-		sun_color  = SUN_COLOR_NOON.lerp(SUN_COLOR_DUSK, t)
+		sun_color  = _atmo.sun_color_noon.lerp(_atmo.sun_color_dusk, t)
 	else:
 		sun_energy = SUN_ENERGY_NIGHT
-		sun_color  = SUN_COLOR_DUSK
+		sun_color  = _atmo.sun_color_dusk
 
 	_sun.light_energy = sun_energy
 	_sun.light_color  = sun_color
@@ -349,7 +348,7 @@ func _apply() -> void:
 		moon_energy = MOON_ENERGY_DAY
 
 	_moon.light_energy = moon_energy
-	_moon.light_color  = MOON_COLOR
+	_moon.light_color  = _atmo.moon_color
 
 	# Same dawn/dusk gating for the moon — during the day its shadow map is
 	# wasted work since its light_energy is 0 and any shadows would be
@@ -385,41 +384,41 @@ func _apply() -> void:
 	var _sky_horizon: Color
 	var fog: Color
 	if h < 5.0:
-		_sky_top     = SKY_TOP_NIGHT
-		_sky_horizon = SKY_HORIZON_NIGHT
-		fog         = FOG_COLOR_NIGHT
+		_sky_top     = _atmo.sky_top_night
+		_sky_horizon = _atmo.sky_horizon_night
+		fog         = _atmo.fog_color_night
 	elif h < 6.0:
 		# Late night → dawn: night palette → dawn palette
 		var t: float = h - 5.0
-		_sky_top     = SKY_TOP_NIGHT.lerp(SKY_TOP_DAWN, t)
-		_sky_horizon = SKY_HORIZON_NIGHT.lerp(SKY_HORIZON_DAWN, t)
-		fog         = FOG_COLOR_NIGHT.lerp(FOG_COLOR_DAY, t * 0.5)
+		_sky_top     = _atmo.sky_top_night.lerp(_atmo.sky_top_dawn, t)
+		_sky_horizon = _atmo.sky_horizon_night.lerp(_atmo.sky_horizon_dawn, t)
+		fog         = _atmo.fog_color_night.lerp(_atmo.fog_color_day, t * 0.5)
 	elif h < 8.0:
 		# Dawn → noon: dawn palette → noon palette
 		var t: float = (h - 6.0) / 2.0
-		_sky_top     = SKY_TOP_DAWN.lerp(SKY_TOP_NOON, t)
-		_sky_horizon = SKY_HORIZON_DAWN.lerp(SKY_HORIZON_NOON, t)
-		fog         = FOG_COLOR_NIGHT.lerp(FOG_COLOR_DAY, 0.5 + t * 0.5)
+		_sky_top     = _atmo.sky_top_dawn.lerp(_atmo.sky_top_noon, t)
+		_sky_horizon = _atmo.sky_horizon_dawn.lerp(_atmo.sky_horizon_noon, t)
+		fog         = _atmo.fog_color_night.lerp(_atmo.fog_color_day, 0.5 + t * 0.5)
 	elif h < 17.0:
-		_sky_top     = SKY_TOP_NOON
-		_sky_horizon = SKY_HORIZON_NOON
-		fog         = FOG_COLOR_DAY
+		_sky_top     = _atmo.sky_top_noon
+		_sky_horizon = _atmo.sky_horizon_noon
+		fog         = _atmo.fog_color_day
 	elif h < 19.0:
 		# Afternoon → dusk
 		var t: float = (h - 17.0) / 2.0
-		_sky_top     = SKY_TOP_NOON.lerp(SKY_TOP_DUSK, t)
-		_sky_horizon = SKY_HORIZON_NOON.lerp(SKY_HORIZON_DUSK, t)
-		fog         = FOG_COLOR_DAY.lerp(FOG_COLOR_NIGHT, t * 0.5)
+		_sky_top     = _atmo.sky_top_noon.lerp(_atmo.sky_top_dusk, t)
+		_sky_horizon = _atmo.sky_horizon_noon.lerp(_atmo.sky_horizon_dusk, t)
+		fog         = _atmo.fog_color_day.lerp(_atmo.fog_color_night, t * 0.5)
 	elif h < 21.0:
 		# Dusk → night
 		var t: float = (h - 19.0) / 2.0
-		_sky_top     = SKY_TOP_DUSK.lerp(SKY_TOP_NIGHT, t)
-		_sky_horizon = SKY_HORIZON_DUSK.lerp(SKY_HORIZON_NIGHT, t)
-		fog         = FOG_COLOR_DAY.lerp(FOG_COLOR_NIGHT, 0.5 + t * 0.5)
+		_sky_top     = _atmo.sky_top_dusk.lerp(_atmo.sky_top_night, t)
+		_sky_horizon = _atmo.sky_horizon_dusk.lerp(_atmo.sky_horizon_night, t)
+		fog         = _atmo.fog_color_day.lerp(_atmo.fog_color_night, 0.5 + t * 0.5)
 	else:
-		_sky_top     = SKY_TOP_NIGHT
-		_sky_horizon = SKY_HORIZON_NIGHT
-		fog         = FOG_COLOR_NIGHT
+		_sky_top     = _atmo.sky_top_night
+		_sky_horizon = _atmo.sky_horizon_night
+		fog         = _atmo.fog_color_night
 
 	var env: Environment = _env.environment
 	if env == null:
@@ -446,14 +445,14 @@ func _apply() -> void:
 	# why the night sky stayed pale blue.
 	var night_t: float = 1.0 - clampf(sun_energy / SUN_ENERGY_DAY, 0.0, 1.0)
 	if _fog_override_active:
-		env.fog_light_color = _override_fog_color.lerp(FOG_COLOR_NIGHT, night_t)
+		env.fog_light_color = _override_fog_color.lerp(_atmo.fog_color_night, night_t)
 		env.fog_density     = _override_fog_density
 	else:
 		env.fog_light_color = fog
 	# Volumetric fog albedo is part of neither the weather override nor
 	# the hour ramp above — drive it here so the volumetric layer darkens
 	# at night too (its sky_affect otherwise washes the night sky pale).
-	env.volumetric_fog_albedo = VOL_FOG_ALBEDO_DAY.lerp(VOL_FOG_ALBEDO_NIGHT, night_t)
+	env.volumetric_fog_albedo = _atmo.vol_fog_albedo_day.lerp(_atmo.vol_fog_albedo_night, night_t)
 
 
 # Decide which two anchor panoramas flank the current hour-of-day, then
@@ -544,6 +543,14 @@ func set_fog_override(color: Color, density: float) -> void:
 
 func clear_fog_override() -> void:
 	_fog_override_active = false
+
+
+# Public API (Phase G) — swap the whole time-of-day colour palette at
+# runtime. A weather state or a biome trigger can call this to retint
+# the world without touching code; pass null to restore the shipped
+# palette. The next _apply() tick (10 Hz) picks the new colours up.
+func set_atmosphere_profile(profile: AtmosphereProfile) -> void:
+	_atmo = profile if profile != null else AtmosphereProfile.new()
 
 
 # Public API used by WeatherManager — pushes the weather-driven cloud
