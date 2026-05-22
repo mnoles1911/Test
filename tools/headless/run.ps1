@@ -4,6 +4,7 @@
 #   powershell -File tools\headless\run.ps1 gate0
 #   powershell -File tools\headless\run.ps1 codec
 #   powershell -File tools\headless\run.ps1 spike
+#   powershell -File tools\headless\run.ps1 distant
 #
 # Godot binary resolution order:
 #   1. -GodotBin argument
@@ -16,7 +17,7 @@
 
 param(
 	[Parameter(Mandatory = $true)]
-	[ValidateSet("gate0", "codec", "spike")]
+	[ValidateSet("gate0", "codec", "wmat", "shader", "phase7", "spike", "phase2", "gen", "distant")]
 	[string]$Selector,
 
 	[string]$GodotBin = ""

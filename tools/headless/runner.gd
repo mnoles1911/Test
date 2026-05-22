@@ -13,6 +13,8 @@ extends SceneTree
 #   spike  — load World3D.tscn headless, pump physics frames, report
 #            whether VoxelLodTerrain actually streams/meshes under the
 #            dummy renderer (decides Phase-3/smoke automation).
+#   distant— DistantTerrainMesher heightmesh parity vs SkirtBaker
+#            (FNV hashes; baseline-then-verify, parity-harness-FIRST).
 #
 # Exit code 0 = pass, non-zero = fail/blocked, so run.ps1 + CI can gate
 # without scraping prose. Every machine line is prefixed with a tag.
@@ -47,7 +49,7 @@ func _initialize() -> void:
 			quit(_shader())
 		"phase7":
 			quit(_phase7())
-		"spike", "phase2", "gen":
+		"spike", "phase2", "gen", "distant":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
 		_:
@@ -65,6 +67,7 @@ func _process(_delta: float) -> bool:
 		match _spike_mode:
 			"phase2": quit(_phase2_report())
 			"gen": quit(_gen_report())
+			"distant": quit(_distant_report())
 			_: quit(_spike_report())
 		return true
 	return false
@@ -520,6 +523,146 @@ func _gen_report() -> int:
 		return 0
 	print("[GEN] RESULT=FAIL — %d parity violations (see push_error)." % fails)
 	return 1
+
+
+# ============================================================
+# DISTANT — DistantTerrainMesher parity vs SkirtBaker (Phase 0/1)
+# ============================================================
+# Parity-harness-FIRST gate for the C++ DistantTerrainMesher port
+# (CLAUDE.md rule). A fixed 32×32-quad region is meshed and reduced to
+# four FNV hashes (vertices / normals / colours / indices) + counts.
+#
+#   Phase 0 (no baseline): build the region with SkirtBaker.bake_mesh,
+#     write res://tools/headless/distant_parity_baseline.json, exit 0.
+#   Phase 1+ (baseline exists, DistantTerrainMesher registered): build
+#     the SAME region with the C++ build_chunk and assert every hash is
+#     byte-identical to the baseline.
+#   (baseline exists, C++ not yet registered): SkirtBaker self-check so
+#     the selector stays green between phases.
+#
+# The baseline JSON is COMMITTED to the repo (unlike the user:// gen
+# baseline) because SkirtBaker.gd is deleted in Phase 6 and can no
+# longer regenerate it.
+const _DISTANT_BASELINE := "res://tools/headless/distant_parity_baseline.json"
+const _DISTANT_MIN := Vector2(-192.0, -192.0)
+const _DISTANT_MAX := Vector2(192.0, 192.0)
+const _DISTANT_QUAD_M := 12.0   # matches SkirtBaker.QUAD_SIZE_M
+const _DISTANT_VPM := 6.0       # canonical 6 voxels / metre
+
+
+func _distant_report() -> int:
+	var terrain := _find_terrain(_spike_world)
+	if terrain == null:
+		print("[DISTANT] RESULT=FAIL reason=no_terrain")
+		return 1
+	var gen = terrain.get("generator")
+	var cpp = gen.get("cpp_impl") if (gen != null and "cpp_impl" in gen) else null
+	if cpp == null:
+		print("[DISTANT] RESULT=FAIL reason=no_cpp_impl (gen=%s)" % (gen.get_class() if gen else "<null>"))
+		return 1
+	if not cpp.has_method("get_ground_voxel_y_at"):
+		print("[DISTANT] RESULT=FAIL reason=generator_missing_get_ground_voxel_y_at")
+		return 1
+
+	var have_baseline: bool = FileAccess.file_exists(_DISTANT_BASELINE)
+	var cpp_ready: bool = ClassDB.class_exists("DistantTerrainMesher")
+
+	var arrays: Dictionary
+	var source: String
+	if not have_baseline or not cpp_ready:
+		arrays = _distant_skirtbaker_arrays(cpp)
+		source = "SkirtBaker"
+	else:
+		arrays = _distant_cpp_arrays(cpp)
+		source = "DistantTerrainMesher(C++)"
+	if arrays.is_empty():
+		print("[DISTANT] RESULT=FAIL reason=mesh_build_failed source=%s" % source)
+		return 1
+
+	var summary := _distant_summarise(arrays)
+	print("[DISTANT] source=%s verts=%d tris=%d vhash=%d nhash=%d chash=%d ihash=%d" % [
+		source, int(summary["vertex_count"]), int(summary["tri_count"]),
+		int(summary["vertex_hash"]), int(summary["normal_hash"]),
+		int(summary["color_hash"]), int(summary["index_hash"])])
+
+	if not have_baseline:
+		var f := FileAccess.open(_DISTANT_BASELINE, FileAccess.WRITE)
+		if f == null:
+			print("[DISTANT] RESULT=FAIL reason=cannot_write_baseline %s" % _DISTANT_BASELINE)
+			return 1
+		f.store_string(JSON.stringify(summary))
+		f.close()
+		print("[DISTANT] RESULT=BASELINE — wrote %s from SkirtBaker. Commit it; re-run after Phase 1 to verify the C++ port." % _DISTANT_BASELINE)
+		return 0
+
+	if not cpp_ready:
+		print("[DISTANT] RESULT=PASS (self-check) — DistantTerrainMesher not registered yet; SkirtBaker re-run only. Phase 1 build enables the real C++ comparison.")
+		return 0
+
+	var bf := FileAccess.open(_DISTANT_BASELINE, FileAccess.READ)
+	var base: Dictionary = JSON.parse_string(bf.get_as_text())
+	bf.close()
+	var fails: int = 0
+	for k in ["vertex_count", "index_count", "tri_count", "vertex_hash", "normal_hash", "color_hash", "index_hash"]:
+		if int(base.get(k, -1)) != int(summary.get(k, -2)):
+			fails += 1
+			push_error("[DISTANT] %s drift: baseline=%d cpp=%d" % [k, int(base.get(k, -1)), int(summary.get(k, -2))])
+	if fails == 0:
+		print("[DISTANT] RESULT=PASS — C++ DistantTerrainMesher byte-identical to the SkirtBaker baseline (verts/normals/colours/indices).")
+		return 0
+	print("[DISTANT] RESULT=FAIL — %d hash/count mismatches vs baseline." % fails)
+	return 1
+
+
+func _distant_skirtbaker_arrays(gen) -> Dictionary:
+	var SB = load("res://scripts/_dev/SkirtBaker.gd")
+	if SB == null:
+		return {}
+	var mesh = SB.bake_mesh(gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_VPM)
+	if mesh == null or mesh.get_surface_count() == 0:
+		return {}
+	var a: Array = mesh.surface_get_arrays(0)
+	return {
+		"vertices": a[Mesh.ARRAY_VERTEX],
+		"normals": a[Mesh.ARRAY_NORMAL],
+		"colors": a[Mesh.ARRAY_COLOR],
+		"indices": a[Mesh.ARRAY_INDEX],
+	}
+
+
+func _distant_cpp_arrays(gen) -> Dictionary:
+	var mesher: Object = ClassDB.instantiate("DistantTerrainMesher")
+	if mesher == null:
+		return {}
+	var d = mesher.call("build_chunk", gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_QUAD_M, _DISTANT_VPM, 0)
+	if typeof(d) != TYPE_DICTIONARY:
+		return {}
+	return d
+
+
+func _distant_summarise(arrays: Dictionary) -> Dictionary:
+	var verts: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
+	var norms: PackedVector3Array = arrays.get("normals", PackedVector3Array())
+	var cols: PackedColorArray = arrays.get("colors", PackedColorArray())
+	var idx: PackedInt32Array = arrays.get("indices", PackedInt32Array())
+	@warning_ignore("integer_division")
+	var tri: int = idx.size() / 3
+	return {
+		"vertex_count": verts.size(),
+		"index_count": idx.size(),
+		"tri_count": tri,
+		"vertex_hash": _fnv_bytes(verts.to_byte_array()),
+		"normal_hash": _fnv_bytes(norms.to_byte_array()),
+		"color_hash": _fnv_bytes(cols.to_byte_array()),
+		"index_hash": _fnv_bytes(idx.to_byte_array()),
+	}
+
+
+func _fnv_bytes(b: PackedByteArray) -> int:
+	var h: int = 2166136261
+	for byte in b:
+		h = ((h ^ byte) * 16777619) & 0x7FFFFFFF
+	return h
 
 
 func _find_terrain(n: Node) -> Node:
