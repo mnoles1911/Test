@@ -280,10 +280,32 @@ func _process(delta: float) -> void:
 	rotation.y = _yaw_offset
 
 
-# --- Lock-on API (called by CombatManager) ---
+# --- Lock-on API (called by LockOnManager autoload) ---
+#
+# set_lock_on_target(target) — set / replace the current lock target.
+# clear_lock_target()         — explicit "let go entirely" (LockOnManager
+#                               uses this on MMB-hold and disengagement).
+# cycle_lock_target(direction)— stub for keyboard / gamepad cycle later.
+#                               LockOnManager does its own cycle logic
+#                               via the visible-enemies snapshot — this
+#                               method is here so the API surface is
+#                               complete and consistent.
 
 func set_lock_on_target(target: Node3D) -> void:
 	_lock_on_target = target
+
+
+func clear_lock_target() -> void:
+	_lock_on_target = null
+
+
+func cycle_lock_target(_direction: int) -> void:
+	# Direction: +1 = next, -1 = previous. Reserved for keyboard/gamepad
+	# cycle. LockOnManager handles cycling via its tracked snapshot and
+	# calls set_lock_on_target(...) directly; this method intentionally
+	# does nothing for now so external callers don't reach into _lock_on_
+	# target as a side-effect of "next target".
+	pass
 
 
 func _update_lock_on_rotation(delta: float) -> void:

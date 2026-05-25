@@ -67,6 +67,24 @@ const _EYE_GLOW_BY_STATE: Dictionary = {
 ## — cheaper than re-fetching every frame.
 var _eye_material: StandardMaterial3D
 
+# Composed Phase-3 attack state machine (directional windup + strike +
+# unblockable telegraph). Picks an attack per-tick from the pool below;
+# forwards the committed_attack signal to MeleeHandler / LockOnManager
+# via Enemy3D.committed_attack (declared on the base).
+var _attack_pool: EnemyAttackPool
+
+# Goblin attack pool — weights per design/ENEMY_AI.md:
+#   50% jab / thrust (1-target, fast)
+#   35% swing (left or right, telegraphed)
+#   15% leap (unblockable; player must dodge — Phase 1 has no dodge so
+#         the unblockable just deals damage if not avoided positionally)
+const _ATTACK_POOL_CONFIG: Array = [
+	{ "id": "jab",          "weight": 0.50, "is_unblockable": false, "direction": 3, "windup": 0.45, "strike_window": 0.10, "recovery": 0.40 },  # 3 = DIR_THRUST
+	{ "id": "swing_left",   "weight": 0.18, "is_unblockable": false, "direction": 1, "windup": 0.60, "strike_window": 0.10, "recovery": 0.45 },  # 1 = DIR_LEFT
+	{ "id": "swing_right",  "weight": 0.17, "is_unblockable": false, "direction": 2, "windup": 0.60, "strike_window": 0.10, "recovery": 0.45 },  # 2 = DIR_RIGHT
+	{ "id": "leap",         "weight": 0.15, "is_unblockable": true,  "direction": 0, "windup": 0.75, "strike_window": 0.12, "recovery": 0.55 },  # 0 = DIR_OVERHEAD (leap-down chop)
+]
+
 
 # =============================================================
 # LIFECYCLE
@@ -92,12 +110,29 @@ func _ready() -> void:
 			_eye_glow.material_override = _eye_material
 	_apply_eye_glow_for_state()
 
+	# Build the directional attack pool (Phase 3 — directional combat).
+	_attack_pool = EnemyAttackPool.new()
+	add_child(_attack_pool)
+	_attack_pool.attack_pool = _ATTACK_POOL_CONFIG.duplicate(true)
+	_attack_pool.strike_range_meters = 1.6
+	_attack_pool.attack_cooldown_seconds = 0.8
+	_attack_pool.initialize(self, _visual)
+	# Forward the host's committed_attack signal to MeleeHandler so it can
+	# open the parry window. The signal is declared on Enemy3D (base) and
+	# emitted by EnemyAttackPool via self.committed_attack.emit(...).
+	committed_attack.connect(_on_attack_pool_committed)
+
 
 # =============================================================
 # MOVEMENT (override of Enemy3D._enemy_physics_step)
 # =============================================================
 
-func _enemy_physics_step(_delta: float) -> void:
+func _enemy_physics_step(delta: float) -> void:
+	# Drive the directional attack state machine first — it can lock us
+	# out (STAGGERED) or freeze movement (WINDUP/STRIKE/RECOVERY).
+	if _attack_pool != null:
+		_attack_pool.tick(delta)
+
 	# Only move during COMBAT. IDLE / ALERT goblins stand still.
 	if current_state != State.COMBAT:
 		velocity.x = 0.0
@@ -105,22 +140,59 @@ func _enemy_physics_step(_delta: float) -> void:
 		return
 	if _player == null:
 		return
+	# Stagger / mid-swing: clamp movement so the telegraph is readable
+	# and the player can step in for a punish.
+	var move_scale: float = 1.0
+	if _attack_pool != null:
+		move_scale = _attack_pool.velocity_scale()
+	if move_scale <= 0.0:
+		velocity.x = 0.0
+		velocity.z = 0.0
+		# Still face the player so the eyes track even while staggered.
+		_face_player()
+		return
 	# Walk toward the player on the XZ plane only; Y is gravity.
 	var to_player: Vector3 = _player.global_position - global_position
 	to_player.y = 0.0
 	var distance: float = to_player.length()
 	if distance < 0.8:
-		# Close enough — stop walking, contact damage will fire.
+		# Close enough — stop walking, the AttackPool's STRIKE will
+		# deal the actual damage when its windup completes.
 		velocity.x = 0.0
 		velocity.z = 0.0
+		_face_player()
 		return
 	var dir: Vector3 = to_player / distance
-	velocity.x = dir.x * walk_speed_meters_per_second
-	velocity.z = dir.z * walk_speed_meters_per_second
-	# Face the player so the body and eyes track. Use look_at on the
-	# horizontal plane only to avoid tipping the goblin forward.
-	var look_target: Vector3 = global_position + Vector3(dir.x, 0.0, dir.z)
+	velocity.x = dir.x * walk_speed_meters_per_second * move_scale
+	velocity.z = dir.z * walk_speed_meters_per_second * move_scale
+	_face_player()
+
+
+func _face_player() -> void:
+	if _player == null:
+		return
+	var to_player: Vector3 = _player.global_position - global_position
+	to_player.y = 0.0
+	if to_player.length_squared() < 0.0001:
+		return
+	var look_target: Vector3 = global_position + to_player.normalized()
 	look_at(look_target, Vector3.UP)
+
+
+func _on_attack_pool_committed(direction: int, time_to_impact: float, is_unblockable: bool) -> void:
+	# Bridge from base-class signal → MeleeHandler so the parry window
+	# opens with the right direction + duration. LockOnManager subscribes
+	# to its own copy of the signal directly via the base class.
+	if _player == null:
+		return
+	var handler: Node = _player.get_node_or_null("MeleeHandler")
+	if handler != null and handler.has_method("notify_enemy_committed"):
+		handler.call("notify_enemy_committed", self, direction, time_to_impact)
+	# Brief one-frame log so the dev arena shows what's happening even
+	# before HUDDirectionArrows lands in Phase 6.
+	if get_node_or_null("/root/DebugOverlay"):
+		var tag := "UNBLOCKABLE" if is_unblockable else "parryable"
+		DebugOverlay.log_action("Goblin %s commits attack: dir=%d (%s) tti=%.2fs" % [name, direction, tag, time_to_impact])
 
 
 # =============================================================

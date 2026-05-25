@@ -60,6 +60,18 @@ var _hp_value_label: Label
 var _end_value_label: Label
 var _status_label: Label
 
+# Phase 6 (directional melee v1) — parry chain counter ("x2", "x3") shown
+# right of the status label. Reads MeleeHandler.parry_chain.current_chain_count
+# in _process; hidden when count is 0 or 1. Painted Colors.MANA (blue) so it
+# reads as a distinct callout vs HP/STAM tints.
+var _chain_count_label: Label
+
+# Phase 6 — directional-attack arrows above committed enemies + a small
+# combat radar bottom-center. Both added in _ready, hidden by
+# _hide_all_chrome for dev scenes.
+var _direction_arrows: Control
+var _combat_radar: Control
+
 # Voxelmark HUD chrome (added 2026-05-06 to match
 # assets/ui/html/Voxelmark HUD v1.html). Each subtree builds and
 # refreshes itself; layout positions match the mock except for the
@@ -140,7 +152,24 @@ func _ready() -> void:
 	_build_clock()
 	_build_hotbar_tooltip()
 	_build_bark_overlay()
+	_build_combat_hud()
 	print("[HUDOverlay] Initialized.")
+
+
+func _build_combat_hud() -> void:
+	# Phase 6 (directional melee v1) — direction arrows above enemies +
+	# small combat radar bottom-center. Both are pure read-only Controls
+	# that read from LockOnManager + Enemy3D signals; mouse_filter is
+	# IGNORE so they never intercept clicks.
+	var arrows_script := preload("res://scripts/HUDDirectionArrows.gd")
+	_direction_arrows = arrows_script.new()
+	_direction_arrows.name = "DirectionArrows"
+	add_child(_direction_arrows)
+
+	var radar_script := preload("res://scripts/HUDCombatRadar.gd")
+	_combat_radar = radar_script.new()
+	_combat_radar.name = "CombatRadar"
+	add_child(_combat_radar)
 
 
 # Instantiates the BarkOverlay (scripts/ui/BarkOverlay.gd) as a child
@@ -412,19 +441,34 @@ func _build_ui() -> void:
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(vbox)
 
-	# --- Status label (CROUCHING / EXHAUSTED) ---
-	# Always present in the layout; text is set to "" when not needed.
+	# --- Status / chain row: status label on the left, chain count on the right ---
+	# Status label = CROUCHING / EXHAUSTED / SWIMMING; chain label = "x2", "x3"
+	# during a parry chain. Both sit in a horizontal row above the vitals.
+	var status_row := HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(status_row)
+
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status_label.custom_minimum_size = Vector2(0, STATUS_FONT + 4)
 	UIStyles.apply_subtitle_label(_status_label)
 	_status_label.add_theme_font_size_override("font_size", STATUS_FONT)
-	# No backdrop on this label — paint a hard 1 px shadow so it stays
-	# readable on bright skies and bare voxel terrain.
 	_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	_status_label.add_theme_constant_override("shadow_offset_x", 1)
 	_status_label.add_theme_constant_override("shadow_offset_y", 1)
-	vbox.add_child(_status_label)
+	status_row.add_child(_status_label)
+
+	_chain_count_label = Label.new()
+	_chain_count_label.text = ""
+	_chain_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_chain_count_label.add_theme_font_size_override("font_size", STATUS_FONT + 2)
+	_chain_count_label.add_theme_color_override("font_color", Colors.MANA)
+	_chain_count_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	_chain_count_label.add_theme_constant_override("shadow_offset_x", 1)
+	_chain_count_label.add_theme_constant_override("shadow_offset_y", 1)
+	_chain_count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_row.add_child(_chain_count_label)
 
 	# --- Health row: [icon] [bar with overlaid 78/100] ---
 	# Mock structure: small black-iron panel containing the glyph,
@@ -1100,6 +1144,22 @@ func _process(delta: float) -> void:
 
 	# Status label: "CROUCHING", "EXHAUSTED", or blank.
 	_status_label.text = player.status_text
+
+	# Parry chain count (Phase 6, directional melee v1). Read from
+	# MeleeHandler.parry_chain.current_chain_count if the handler is
+	# attached. Shown as "x2", "x3" once a chain is active; hidden
+	# otherwise so it doesn't add noise during non-combat play.
+	if _chain_count_label != null:
+		var melee: Node = player.get_node_or_null("MeleeHandler")
+		var chain: int = 0
+		if melee != null:
+			var pc: Variant = melee.get("parry_chain")
+			if pc != null:
+				chain = int(pc.current_chain_count)
+		if chain >= 2:
+			_chain_count_label.text = "x%d" % chain
+		else:
+			_chain_count_label.text = ""
 
 	# Voxelmark HUD chrome refreshers.
 	_refresh_compass(player)
