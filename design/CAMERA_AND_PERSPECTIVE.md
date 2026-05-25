@@ -15,7 +15,7 @@ This is distinct from:
 
 **Open world demands a horizon.** With a playable Mira of 12km × 10km, the player needs to feel the world at scale — the Spine mountains visible as a distant ridgeline from Aldenholt, the Greatwood canopy rising as they approach from the south, Drûn-Khazad's ash cloud present on the Thal horizon before arrival. A fixed 50° elevation camera compresses vertical terrain and hides distances. Third-person over-shoulder reveals the horizon and lets geography communicate scale.
 
-**1-vs-many melee requires spatial awareness.** The combat design is real-time, 1-vs-many. The player needs to read enemy positions around Roland, track telegraph animations, and manage flanking threats. Third-person over-shoulder — combined with the lock-on system — provides this awareness. The Hades camera provided spatial awareness via overhead view; this camera provides it via player-controlled rotation and lock-on targeting.
+**1-vs-many melee requires spatial awareness.** The combat design is real-time, 1-vs-many. The player needs to read enemy positions around Roland, track telegraph animations, and manage flanking threats. Third-person over-shoulder + free-aim mouse facing provides this awareness; `HUDDirectionArrows` flags committed attackers above their heads, `HUDCombatRadar` shows enemy bearing at a glance.
 
 **Roland must be visible.** This is his story. His silhouette, his armor under torchlight, his posture at rest or under pressure — these are part of the narrative language. Third-person keeps Roland in frame and readable at all times.
 
@@ -68,19 +68,9 @@ Player3D (CharacterBody3D)
 
 ---
 
-## Lock-On System
+## Combat Camera — Free-Aim
 
-Lock-on is essential for 1-vs-many melee at third-person. Without it the camera drifts during multi-enemy encounters and the player loses target clarity.
-
-**Behavior:**
-- Press `lock_on` to target the nearest enemy in the forward arc within range
-- Camera pivots to keep the locked enemy in the right 60% of frame; Roland occupies the left foreground — standard Souls framing
-- Roland's attacks, dodge direction, and block facing are relative to the locked target
-- Cycle targets with `camera_left` / `camera_right` while locked
-- Lock-on disengages automatically when the target dies or exits range
-- Press `lock_on` again to disengage manually
-
-**Reference:** `design/COMBAT_DESIGN_3D.md` specifies the lock-on detection radius, token system, and target priority logic.
+Pure free-aim (no lock-on). Mouse drives Roland's facing continuously. The Bannerlord-style directional melee (PR #239) requires uninterrupted mouse control so strafing + positioning can serve as the 1-vs-many depth axis. Lock-on was prototyped + removed 2026-05-25 because the auto-rotation fought mouse input. `HUDCombatRadar` and `HUDDirectionArrows` carry the target-awareness load that lock-on used to.
 
 ---
 
@@ -107,7 +97,7 @@ The Dialogic portrait system handles character expression. The world-space camer
 | Cave / dungeon entrance | 3.0–4.0m | Auto-shortened by SpringArm |
 | Khorumzad deep levels | 2.0–3.0m | Increasingly tight — intentional |
 | Dialogue moment | 3.5m (tweened) | Drift to slight profile framing |
-| Combat lock-on | 5.0m + offset | Locked enemy in right frame half |
+| Combat | 5.0m | Free-aim, no lock-on offset |
 
 These are targets. `SpringArm3D` modulates dynamically from the desired arm length. Do not hardcode per-room values — let the physics do it.
 
@@ -122,7 +112,7 @@ The original design used a fixed-elevation camera at ~50° above horizontal (Had
 | Fixed 50° elevation, never rotates | ~15° elevation, player-rotatable |
 | World read from above | World read at eye level, horizon visible |
 | Horizon and distant landmarks not visible | Geography communicates scale |
-| Combat: overhead view shows all enemies | Combat: lock-on system provides target clarity |
+| Combat: overhead view shows all enemies | Combat: free-aim + HUD direction arrows + radar |
 | `allow_horizontal_rotation: bool` export | Always rotatable |
 | Per-room arm length configuration | SpringArm3D handles this via physics collision |
 

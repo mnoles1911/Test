@@ -41,11 +41,8 @@ All input is routed through Godot's Input Map. Physical keys are defaults only �
 
 | Action name | Default (KB) | Default (Controller) | Description |
 |---|---|---|---|
-| `attack` | LMB (tap = light, hold = charge) | R2 / RT (tap/hold) | Light attack or power attack charge |
-| `block` | RMB (hold = block, tap = parry) | L2 / LT (hold/tap) | Block stance or parry timing |
-| `lock_on` | Middle Mouse | R3 / Right stick click | Toggle lock-on to nearest enemy |
-| `next_target` | Mouse Scroll Up | Right stick right | Cycle lock-on target right |
-| `prev_target` | Mouse Scroll Down | Right stick left | Cycle lock-on target left |
+| `attack` | LMB (hold + mouse flick + release; ≥ 0.4 s held = charged 2x) | R2 / RT | Bannerlord-style hold-flick-release directional swing |
+| `parry_block` | RMB (tap ≤ 0.14 s = parry, hold = directional block) | L2 / LT | Block stance (matched direction = 0 dmg) or parry timing (300 ms window) |
 
 **Tap vs hold detection:** `attack` and `block` use press duration to distinguish tap from hold. In GDScript: `Input.is_action_just_pressed("attack")` = tap; `Input.is_action_pressed("attack")` held for >0.15 seconds = charge/hold.
 
@@ -103,7 +100,7 @@ Explosives (Powder Charge, Sapper's Bundle) are **equipped to the Weapon slot** 
 
 **KB+M primary:** Camera rotation is driven by **mouse motion** (`InputEventMouseMotion`) directly in `CameraRig.gd` — no Input Map action needed. Mouse horizontal → yaw (standard mode: rotates Roland's body; freelook mode: orbits the arm); mouse vertical → pitch. Arrow key actions are fallbacks for players who prefer keys.
 
-**Scroll wheel zoom:** Mouse scroll up/down zooms the camera in/out (arm length 2m–10m). Works in both standard and freelook modes. This takes priority over lock-on target cycling — target cycling uses `next_target` / `prev_target` actions which can be rebound.
+**Scroll wheel zoom:** Mouse scroll up/down zooms the camera in/out (arm length 2m–10m). Works in both standard and freelook modes.
 
 **Controller:** Right stick drives camera directly via `Input.get_vector("camera_left", "camera_right", "camera_up", "camera_down")`.
 
@@ -125,13 +122,11 @@ Confirmed KB+M layout. No key conflicts.
 | Mouse Scroll Up / Down | Zoom | Camera arm length 2m–10m. Works in both standard and freelook modes |
 | E | `interact` | Talk, examine, open door, rest at fire |
 | Q | `quick_slot_prev` | Cycle quick slot left |
-| LMB | `attack` | Tap = light attack; hold ≥0.20s = power charge |
-| RMB | `block` | Hold = block stance; tap = parry |
+| LMB | `attack` | Hold + flick mouse + release = directional swing; ≥ 0.4 s held = charged 2x |
+| RMB | `parry_block` | Tap (≤ 0.14 s) = parry; hold = directional block |
 | Space | `dodge` | Directional roll (costs endurance) |
 | Left Shift | `sprint` | Hold to sprint (drains endurance; exhaustion locks sprint until recovery) |
 | C | `crouch` | Toggle crouch; reduces speed to ~2 m/s; sprint blocked while crouching |
-| Middle Mouse | `lock_on` | Toggle lock-on to nearest enemy (Phase 7-3D) |
-| Mouse Scroll Up / Down (locked) | `next_target` / `prev_target` | Cycle lock-on target while locked on (scroll zoom takes priority; rebind if needed) |
 | J | `open_journal` | Open/close journal overlay |
 | I | `open_inventory` | Open/close inventory screen |
 | Escape | `pause` | Open/close pause menu |
@@ -142,8 +137,8 @@ Confirmed KB+M layout. No key conflicts.
 ### Mouse in Combat
 
 - **LMB / RMB** are the primary combat inputs. The mouse cursor is hidden during combat and exploration — Roland moves with WASD, the camera follows mouse movement.
-- **Mouse scroll wheel** zooms the camera in/out (arm length 2m–10m) in all modes. When locked on to an enemy, scroll is consumed by zoom first; rebind `next_target` / `prev_target` to other inputs if you need target cycling without zoom interference.
-- There is no mouse-aim for melee attacks. Roland always attacks toward his current facing direction or lock-on target.
+- **Mouse scroll wheel** zooms the camera in/out (arm length 2m–10m) in all modes.
+- Melee attacks fire toward Roland's current facing direction. Free-aim — there is no lock-on. The `MouseDirectionSampler` reads the last ~120 ms of mouse motion at the press moment to pick swing direction (UP=THRUST, DOWN=OVERHEAD, LEFT/RIGHT = side swings).
 
 ### Mouse in Menus
 

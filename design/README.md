@@ -33,8 +33,9 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
 
 ### Combat, AI, and progression
 
-- `COMBAT_DESIGN_3D.md` — real-time 3D combat: tap-vs-hold attack, parry, dodge,
-  lock-on, locked tunable values (parry 300 ms, endurance costs, wound HP 25 %)
+- `COMBAT_DESIGN_3D.md` — Bannerlord-style directional melee: hold-flick-release
+  attack, directional parry/block (300 ms window), free-aim (no lock-on),
+  endurance costs, wound HP 25 %
 - `ENEMY_AI.md` — detection states, attack-token arbitration, per-type specs
   (Goblin, Ashfallen, Wolf, Bear)
 - `SKILLS_AND_PROGRESSION.md` — learn-by-doing skill domains, sub-skills, perk
@@ -101,7 +102,7 @@ right one quickly. **Read `MILESTONE_ROADMAP.md` first** for the build order.
 - `ART_DIRECTION.md` — palette, location visual identity, architecture by
   region, shaders
 - `CAMERA_AND_PERSPECTIVE.md` — third-person over-shoulder follow camera at
-  ~15° elevation, player-rotatable, with lock-on for 1-vs-many combat
+  ~15° elevation, player-rotatable, free-aim (no lock-on)
 - `ART_PIPELINE.md` — MagicaVoxel for props/buildings, Zylann Voxel Tools for
   terrain (`VoxelLodTerrain` streaming + `VoxelStreamSQLite` for player edits),
   schematic-prop pipeline for player-built structures, low-poly Blender
