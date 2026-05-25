@@ -85,10 +85,14 @@ func sample() -> int:
 	if total_mag < MIN_TOTAL_PIXELS:
 		return DIR_RIGHT
 	# Mouse y is positive DOWN (Godot screen convention). Convert:
-	#   sum.x > 0 → moved RIGHT
-	#   sum.x < 0 → moved LEFT
-	#   sum.y > 0 → moved DOWN  → THRUST
-	#   sum.y < 0 → moved UP    → OVERHEAD
+	#   sum.x > 0 → moved RIGHT (left-to-right horizontal swing)
+	#   sum.x < 0 → moved LEFT  (right-to-left horizontal swing)
+	#   sum.y > 0 → moved DOWN  → OVERHEAD (downward chop — sword comes down)
+	#   sum.y < 0 → moved UP    → THRUST   (forward stab — sword punches forward)
+	#
+	# Designer mapping (test 2026-05-25): flick the mouse downward to chop
+	# down, flick up to stab forward. This inverts the Bannerlord/KCD
+	# convention but matches the intuition "the sword moves where I flick."
 	#
 	# Pick the dominant axis. The 10° overlap window is implicit — we
 	# only switch from horizontal to vertical (or vice versa) when one
@@ -98,7 +102,8 @@ func sample() -> int:
 	var abs_y: float = absf(sum.y)
 	if abs_x >= abs_y:
 		return DIR_RIGHT if sum.x > 0.0 else DIR_LEFT
-	return DIR_THRUST if sum.y > 0.0 else DIR_OVERHEAD
+	# Flick DOWN (sum.y > 0) → OVERHEAD; flick UP → THRUST.
+	return DIR_OVERHEAD if sum.y > 0.0 else DIR_THRUST
 
 
 # Convenience for the parry path: returns true if the recently-sampled

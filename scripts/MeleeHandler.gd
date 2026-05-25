@@ -387,7 +387,10 @@ func _begin_swing(direction: int, is_charged: bool) -> void:
 	_current_swing_damage = charged_dmg if is_charged else base_dmg
 	_current_swing_is_charged = is_charged
 	_current_swing_hit_enemies.clear()
-	_tween_sword_to_direction(direction, windup_seconds)
+	# Stage 1 of the 3-stage swing: sword tweens to the WINDUP pose (raised
+	# back / cocked to the side / drawn back). Stage 2 fires when WINDUP
+	# transitions to STRIKE inside _advance_swing.
+	_tween_sword_to_windup(direction, windup_seconds)
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("SWING dir=%d %s dmg=%d ep=%.0f" % [
 			direction, ("CHARGED" if is_charged else "light"), _current_swing_damage, end_cost,
@@ -403,8 +406,13 @@ func _advance_swing(delta: float) -> void:
 			# Enter STRIKE: perform the damage check this frame and on each
 			# subsequent strike-window frame (only one chance to hit each
 			# enemy via _current_swing_hit_enemies).
+			# Stage 2 of the 3-stage swing: tween from the windup pose to
+			# the STRIKE pose (chopped down / swept across / thrust forward).
+			# This is the visible "swing" — fast, with EASE_IN so the sword
+			# accelerates through contact.
 			_swing_phase = SwingPhase.STRIKE
 			_swing_phase_remaining = strike_seconds
+			_tween_sword_to_strike(_current_swing_direction, strike_seconds)
 			_perform_strike_check()
 		SwingPhase.STRIKE:
 			# Move to recovery + start tween back to home pose.
@@ -696,11 +704,35 @@ func _prune_pending_attacks() -> void:
 # Numeric literals (not _DirectionSampler.DIR_*) so the Dictionary literal
 # is fully resolvable at const-init time without depending on another
 # preloaded script being parsed first.
-const _SWORD_POSE_BY_DIRECTION := {
-	0: { "rot": Vector3(-110.0, 0.0, 0.0),  "pos": Vector3(0.0, 0.4, -0.1) },     # OVERHEAD
-	1: { "rot": Vector3(  -10.0, 90.0, 30.0), "pos": Vector3(-0.3, 0.0, 0.0) },   # LEFT
-	2: { "rot": Vector3(  -10.0, -90.0, -30.0), "pos": Vector3(0.3, 0.0, 0.0) },  # RIGHT
-	3: { "rot": Vector3(  -90.0, 0.0, 0.0),  "pos": Vector3(0.0, 0.0, -0.5) },    # THRUST
+# Two-stage swing animation:
+#   WINDUP pose = where the sword sits during telegraphing (raised back,
+#                 cocked to the side, drawn back near the body).
+#   STRIKE pose = where the sword ends up at the end of the strike phase
+#                 (chopped down, swept across, thrust forward). The
+#                 visible motion BETWEEN windup → strike is what reads
+#                 as "the swing" — a single tween that just goes to the
+#                 strike pose without first going to the windup pose
+#                 looks like a stiff teleport, not a swing.
+const _SWORD_WINDUP_POSE_BY_DIRECTION := {
+	# OVERHEAD: sword raised above and behind Roland's head, ready to chop down.
+	0: { "rot": Vector3( 120.0,   0.0,   0.0), "pos": Vector3( 0.0,  0.5,  0.3) },
+	# LEFT: sword cocked far on the right side, ready to sweep across to the left.
+	1: { "rot": Vector3( -30.0, -55.0,  30.0), "pos": Vector3( 0.5,  0.3,  0.0) },
+	# RIGHT: sword cocked far on the left side, ready to sweep across to the right.
+	2: { "rot": Vector3( -30.0,  55.0, -30.0), "pos": Vector3(-0.5,  0.3,  0.0) },
+	# THRUST: sword drawn back near the body (horizontal, tip forward), ready to push forward.
+	3: { "rot": Vector3( -90.0,   0.0,   0.0), "pos": Vector3( 0.0,  0.1,  0.4) },
+}
+
+const _SWORD_STRIKE_POSE_BY_DIRECTION := {
+	# OVERHEAD: sword chopped down and forward — tip points down/forward.
+	0: { "rot": Vector3(-100.0,   0.0,   0.0), "pos": Vector3( 0.0, -0.4, -0.5) },
+	# LEFT: sword sweep ended far on the left side — followed all the way through.
+	1: { "rot": Vector3( -30.0,  90.0, -30.0), "pos": Vector3(-0.5,  0.0, -0.2) },
+	# RIGHT: sword sweep ended far on the right side.
+	2: { "rot": Vector3( -30.0, -90.0,  30.0), "pos": Vector3( 0.5,  0.0, -0.2) },
+	# THRUST: sword thrust far forward (horizontal, tip pushed forward as far as it goes).
+	3: { "rot": Vector3( -90.0,   0.0,   0.0), "pos": Vector3( 0.0,  0.0, -0.8) },
 }
 
 const _SHIELD_POSE_BY_DIRECTION := {
@@ -711,13 +743,28 @@ const _SHIELD_POSE_BY_DIRECTION := {
 }
 
 
-func _tween_sword_to_direction(direction: int, duration: float) -> void:
+func _tween_sword_to_windup(direction: int, duration: float) -> void:
+	# Slow, telegraphing tween — moves the sword to its pre-strike pose
+	# (raised, cocked, or drawn back). Easing OUT so the sword decelerates
+	# into the held pose at the end of the windup.
+	_tween_sword_to_pose(_SWORD_WINDUP_POSE_BY_DIRECTION, direction, duration, Tween.EASE_OUT)
+
+
+func _tween_sword_to_strike(direction: int, duration: float) -> void:
+	# Fast, snappy tween — moves the sword from its windup pose to its
+	# follow-through pose. This is the visible STRIKE — the sword
+	# sweeps across, chops down, or thrusts forward. Easing IN so the
+	# sword accelerates through the strike (fastest at the contact moment).
+	_tween_sword_to_pose(_SWORD_STRIKE_POSE_BY_DIRECTION, direction, duration, Tween.EASE_IN)
+
+
+func _tween_sword_to_pose(pose_table: Dictionary, direction: int, duration: float, ease_mode: int) -> void:
 	if _melee_pivot == null:
 		return
-	var pose: Dictionary = _SWORD_POSE_BY_DIRECTION.get(direction, _SWORD_POSE_BY_DIRECTION[2])  # 2 = DIR_RIGHT
+	var pose: Dictionary = pose_table.get(direction, pose_table[2])  # 2 = DIR_RIGHT
 	if _swing_tween != null and _swing_tween.is_valid():
 		_swing_tween.kill()
-	_swing_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_swing_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(ease_mode)
 	var target_xform := _sword_home_transform
 	target_xform.basis = Basis.from_euler(Vector3(
 		deg_to_rad(pose["rot"].x),

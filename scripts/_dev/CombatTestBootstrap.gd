@@ -48,13 +48,16 @@ extends Node3D
 
 const _GOBLIN_SCENE: PackedScene = preload("res://scenes/enemies/Goblin.tscn")
 
-## Triangle formation matching the original placement in
-## CombatTest.tscn. Reset Enemies respawns goblins at these exact
-## positions so the encounter is reproducible across resets.
+## Tight triangle so a single 110° wide-arc sweep can hit all three.
+## Front-left and front-right 2.4 m apart at z=-2 (capsules don't
+## overlap at 0.4 m radius each), back-center at z=-2.5 — all three
+## within the 2 m sword reach when the player stands at roughly z=-1.
+## Designer test 2026-05-25: the previous (-3, +3, -6) spread was
+## 6 m wide and made sweep testing impossible.
 const _GOBLIN_SPAWN_POSITIONS: Array[Vector3] = [
-	Vector3(-3.0, 0.0, -2.0),
-	Vector3(3.0, 0.0, -2.0),
-	Vector3(0.0, 0.0, -6.0),
+	Vector3(-1.2, 0.0, -2.0),
+	Vector3(1.2, 0.0, -2.0),
+	Vector3(0.0, 0.0, -2.5),
 ]
 
 
