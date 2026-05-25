@@ -152,6 +152,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			# pending parry windows, chain count. Useful when a parry
 			# silently fails and you want to know why.
 			_print_melee_state()
+		KEY_B:
+			# Toggle Bannerlord-style auto-block on the player's
+			# MeleeHandler. When ON, holding RMB blocks any direction
+			# regardless of mouse flick — the difficulty option for
+			# players who don't want to learn directional reads.
+			_toggle_auto_block()
 		KEY_Q:
 			# Quit the game window. Dev arena only — no save.
 			_quit_game()
@@ -192,6 +198,7 @@ func _build_debug_menu() -> void:
 	label.text += "  K  — Print loadout\n"
 	label.text += "  M  — Print melee state\n"
 	label.text += "  N  — Passive goblins ON/OFF\n"
+	label.text += "  B  — Auto-block ON/OFF\n"
 	label.text += "  Q  — Quit"
 	label.add_theme_color_override("font_color", Color(0.92, 0.88, 0.78, 1.0))
 	panel.add_child(label)
@@ -275,6 +282,29 @@ func _apply_passive_to(n: Node) -> void:
 		n.set("combat_range_meters", 5.0)
 
 
+func _toggle_auto_block() -> void:
+	# Flip MeleeHandler.auto_block on Player3D. With auto_block ON, holding
+	# RMB blocks any incoming attack at full effectiveness regardless of
+	# the player's mouse direction — Bannerlord's "Auto Block" difficulty
+	# option. Production UI integration lives in Settings; this debug key
+	# is for testing the mechanic in CombatTest.
+	var player := _find_player()
+	if player == null:
+		print("[CombatTest] no player")
+		return
+	var melee: Node = player.get_node_or_null("MeleeHandler")
+	if melee == null:
+		print("[CombatTest] no MeleeHandler")
+		return
+	var current: bool = bool(melee.get("auto_block"))
+	melee.set("auto_block", not current)
+	var msg := "Auto-block ON — any RMB hold blocks any direction" if not current else "Auto-block OFF — directional blocking required"
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("[CombatTest] " + msg)
+	else:
+		print("[CombatTest] " + msg)
+
+
 func _print_melee_state() -> void:
 	var player := _find_player()
 	if player == null:
@@ -291,8 +321,12 @@ func _print_melee_state() -> void:
 	var pc: Variant = melee.get("parry_chain")
 	if pc != null:
 		chain_count = int(pc.current_chain_count)
-	print("[CombatTest] MELEE STATE: phase=%s pending_parries=%d chain=x%d  block_active=%s" % [
+	var held_dir: int = int(melee.get("_held_swing_direction"))
+	var auto_next: int = int(melee.get("_auto_alternate_next"))
+	var auto_blk: bool = bool(melee.get("auto_block"))
+	print("[CombatTest] MELEE STATE: phase=%s pending_parries=%d chain=x%d block_active=%s held_dir=%d auto_alt_next=%d auto_block=%s" % [
 		phase_name, pending.size(), chain_count, str(melee.get("_block_active")),
+		held_dir, auto_next, str(auto_blk),
 	])
 
 

@@ -265,15 +265,34 @@ func _perform_strike() -> void:
 	if distance > strike_range_meters + 0.3:
 		# Player stepped out of reach during windup. Whiff — no damage.
 		return
+	# Ask the player's MeleeHandler if a directional block is up. Returns
+	# a damage multiplier: 1.0 = no block, 0.0 = matched block (or auto-
+	# block), block_chip_fraction (0.6) = mismatched block. Without this
+	# query the block direction is stored but never consulted (the
+	# previous bug where the shield raised but damage passed through).
+	var dmg_mult: float = 1.0
+	var melee: Node = _player.get_node_or_null("MeleeHandler")
+	if melee != null and melee.has_method("is_blocking_against"):
+		dmg_mult = float(melee.call("is_blocking_against", _current_direction))
+	var final_dmg: int = int(round(float(_host.contact_damage) * dmg_mult))
+	# Log the block outcome via DebugOverlay so dev-arena testing can verify
+	# the block layer end-to-end without instrumenting the player HP.
+	if get_node_or_null("/root/DebugOverlay"):
+		if dmg_mult <= 0.001:
+			DebugOverlay.log_action("BLOCK matched — 0 dmg taken (would have been %d)" % _host.contact_damage)
+		elif dmg_mult < 1.0:
+			DebugOverlay.log_action("BLOCK mismatched — %d chip dmg taken (of %d)" % [final_dmg, _host.contact_damage])
+	if final_dmg <= 0:
+		return  # Fully blocked — no damage path.
 	if not _player.has_method("apply_damage"):
 		# Player3D may not have apply_damage yet (Player3D doesn't expose
 		# one in v1; combat HP is reduced by direct enemy contact). Drop
 		# damage onto the player.health field directly as a fallback so
 		# the directional attack still bites in the dev arena.
 		if "health" in _player:
-			_player.health = maxf(0.0, _player.health - float(_host.contact_damage))
+			_player.health = maxf(0.0, _player.health - float(final_dmg))
 		return
-	_player.call("apply_damage", _host.contact_damage)
+	_player.call("apply_damage", final_dmg)
 
 
 # =============================================================

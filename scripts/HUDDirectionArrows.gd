@@ -4,8 +4,7 @@ extends Control
 # WHAT THIS DOES IN PLAIN ENGLISH
 #
 #   Phase 6 of the directional-melee v1. When an enemy commits to an
-#   attack (Enemy3D.committed_attack signal via LockOnManager.tracked_
-#   enemies), this control:
+#   attack (Enemy3D.committed_attack signal), this control:
 #
 #     1. Projects the enemy's head position to screen space.
 #     2. Draws a colored arrow above their head pointing in the matched
@@ -18,17 +17,19 @@ extends Control
 #   YELLOW (Colors.STAM) = parryable
 #   RED    (Colors.HP_BRIGHT) = unblockable — dodge / don't parry
 #
-#   Added as a child of HUDOverlay._root in HUDOverlay._ready (so it
-#   inherits visibility gating + dev-scene hide). Pure read-only Control;
-#   no input handling (CLAUDE.md: Dialogic consumes mouse input globally).
+#   Added as a child of HUDOverlay in HUDOverlay._ready. Pure read-only
+#   Control; no input handling (CLAUDE.md: Dialogic consumes mouse input
+#   globally).
 #
 # IMPLEMENTATION
 #
-#   _process re-snapshots LockOnManager.tracked_enemies once per frame
-#   and walks committed attackers. We track our own per-enemy short-lived
-#   record because the upstream committed_attack signal is fire-and-
-#   forget — we need persisted state to draw the arrow for the duration
-#   of the windup. Records expire on their own time_to_impact countdown.
+#   _ready connects directly to every Enemy3D's committed_attack signal
+#   via the "enemy" group + SceneTree.node_added (catches respawns).
+#   We hold a per-enemy short-lived record because the signal is
+#   fire-and-forget — we need persisted state to draw the arrow for the
+#   duration of the windup. Records expire on their own time_to_impact
+#   countdown. Lock-on system was removed 2026-05-25 (designer call);
+#   the previous LockOnManager.tracked_enemies path is gone.
 
 const _DirectionSampler := preload("res://scripts/combat/MouseDirectionSampler.gd")
 
@@ -64,8 +65,8 @@ func _ready() -> void:
 	offset_top = 0.0
 	offset_right = 0.0
 	offset_bottom = 0.0
-	# Connect to LockOnManager's tracked enemies — wait one frame so the
-	# autoload is fully constructed in scene-load races.
+	# Subscribe to every Enemy3D in the "enemy" group. Deferred one frame
+	# so any in-progress scene load finishes before we iterate.
 	call_deferred("_subscribe_to_existing_enemies")
 
 

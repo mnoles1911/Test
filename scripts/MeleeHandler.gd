@@ -91,6 +91,19 @@ const _ParryChainTracker := preload("res://scripts/combat/ParryChainTracker.gd")
 @export var parry_refund_endurance: float = 5.0
 # Endurance refunded on a successful (non-chained) parry.
 
+@export var block_chip_fraction: float = 0.60
+# Fraction of incoming damage that gets through when the player is blocking
+# in the WRONG direction (mismatched block). 1.0 = no block, 0.0 = full block.
+# 0.6 = 40% blocked, 60% chip damage taken. Designer-tunable.
+
+@export var auto_block: bool = false
+# Difficulty toggle (Bannerlord's "Auto Block" passive blocking option).
+# When true, holding RMB blocks any incoming attack at full effectiveness
+# regardless of the player's actual block direction. Lets the player focus
+# on positioning + attack timing without learning directional reads.
+# Toggle in CombatTest with the B key; production toggle lives in the
+# Settings menu (deferred to v1.1).
+
 
 # =============================================================
 # STATE
@@ -99,11 +112,26 @@ const _ParryChainTracker := preload("res://scripts/combat/ParryChainTracker.gd")
 # Action cooldown — set by recovery. Below 0 = ready to swing.
 var _next_swing_ready_t: float = 0.0
 
-# Charge state — non-zero while LMB is held.
-var _charge_pressed_t: int = 0       # ticks_usec when LMB went down (0 = not held)
-var _charge_active: bool = false     # passed the charge threshold
-var _charge_direction_at_start: int = -1  # for feint detection (direction flip)
+# Hold state — non-zero while LMB is held. The Bannerlord model: press LMB
+# starts the windup, flick during the hold to lock a direction, release to
+# fire the swing. Quick release (< charge_threshold) = light damage; long
+# hold release (>= charge_threshold) = charged 2x damage.
+var _charge_pressed_t: int = 0        # ticks_usec when LMB went down (0 = not held)
+var _charge_active: bool = false      # passed the charge threshold
+# Direction locked at the FIRST flick during the hold. Persists for the rest
+# of the hold even after the sampler window forgets the flick — so a 1-second
+# hold with one flick at the start still fires in that direction on release.
+# DIR_NONE = the player has not flicked yet this hold.
+var _held_swing_direction: int = _DirectionSampler.DIR_NONE
+# For feint detection: if the player changes direction during the hold and
+# releases within feint_window_seconds of the change, the swing cancels.
 var _last_direction_change_usec: int = 0
+var _direction_before_last_flip: int = _DirectionSampler.DIR_NONE
+
+# Auto-alternating direction for no-flick releases. Bannerlord cycles
+# left, right, left, right... when you don't flick. Start with RIGHT so
+# the first auto-swing matches the old "default RIGHT" behavior.
+var _auto_alternate_next: int = _DirectionSampler.DIR_RIGHT
 
 # Live attack state machine.
 enum SwingPhase { IDLE, WINDUP, STRIKE, RECOVERY }
@@ -179,14 +207,10 @@ func _ready() -> void:
 	parry_chain = _ParryChainTracker.new()
 
 
-# Phase 4: LockOnManager subscribes to this signal so it can re-prioritise
-# the camera target the instant an enemy commits to a swing. Phase 3 fills
-# `_pending_attacks` from the same upstream signal on enemies.
-signal received_committed_attack(enemy: Node3D, direction: int)
-
-
-# Called from EnemyAttackPool (Phase 3) when an enemy starts WINDUP. Updates
-# the parry window and remembers the direction as the next block default.
+# Called from EnemyAttackPool (Phase 3) when an enemy starts WINDUP.
+# Opens the parry window for the matched direction and updates the
+# "last incoming attack direction" so a quick block hold can default
+# to the threat that's already coming at you.
 func notify_enemy_committed(enemy: Node3D, direction: int, time_to_impact_s: float) -> void:
 	if enemy == null:
 		return
@@ -198,17 +222,42 @@ func notify_enemy_committed(enemy: Node3D, direction: int, time_to_impact_s: flo
 		"enemy": enemy,
 	}
 	_last_incoming_attack_direction = direction
-	received_committed_attack.emit(enemy, direction)
 
 
 # =============================================================
-# PUBLIC API (used by LockOnManager / HUD)
+# PUBLIC API (used by HUD)
 # =============================================================
 
-# True while a player swing is in WINDUP / STRIKE / RECOVERY. LockOnManager
-# suppresses camera target switching during this window (Phase 4).
+# True while a player swing is in WINDUP / STRIKE / RECOVERY. Used by the
+# HUDDirectionArrows fade-in and by phase-2's hyperarmor flag — also
+# kept as a public flag for any future system that wants to know "is
+# the player committed to a swing right now?"
 func is_attacking() -> bool:
 	return _swing_phase != SwingPhase.IDLE
+
+
+# Public block query for EnemyAttackPool — asked before applying damage so
+# a matched-direction block can null the hit, a mismatched block can chip,
+# and auto-block can clear everything. Returns the damage multiplier the
+# caller should apply: 0.0 = fully blocked (no damage), 1.0 = no block,
+# block_chip_fraction = mismatched block.
+#
+# attack_direction is the enemy's committed direction (the DIR_* the
+# EnemyAttackPool emitted). Both characters use the same enum convention,
+# so DIR_LEFT match-blocks DIR_LEFT (see design note in MouseDirection
+# Sampler — "where the sword ends" is the same on both sides).
+func is_blocking_against(attack_direction: int) -> float:
+	if not _block_active:
+		return 1.0
+	if auto_block:
+		# Bannerlord-style auto-block: the shield always aligns to the
+		# incoming attack regardless of mouse direction. Easy mode.
+		return 0.0
+	if attack_direction == _block_direction:
+		# Matched direction → full block.
+		return 0.0
+	# Mismatched block → chip damage gets through.
+	return block_chip_fraction
 
 
 # =============================================================
@@ -306,53 +355,86 @@ func _has_melee_weapon_equipped() -> bool:
 # =============================================================
 
 func _handle_attack_input() -> void:
+	# Bannerlord-style hold-flick-release attack:
+	#   1. Press LMB → start windup tracking. No direction locked yet.
+	#   2. Flick the mouse at any point during the hold → that direction is
+	#      LOCKED for this swing (survives the rest of the hold even if the
+	#      sampler window forgets the flick a moment later).
+	#   3. Flick to a DIFFERENT direction during the hold → feint potential
+	#      if released within feint_window_seconds.
+	#   4. Release LMB:
+	#      - If a flick was locked → swing in that direction.
+	#      - If no flick was locked → auto-alternate (LRLR...) so silent
+	#        presses still produce varied swings.
+	#      - If a recent flick changed direction within the feint window
+	#        → cancel cleanly (no swing, no damage, no EP).
+	#   5. Hold time controls light vs charged: < charge_threshold = light,
+	#      >= charge_threshold = charged (2x damage). Same flow either way.
 	var just_pressed: bool = Input.is_action_just_pressed(attack_input_action)
 	var just_released: bool = Input.is_action_just_released(attack_input_action)
 	var is_pressed: bool = Input.is_action_pressed(attack_input_action)
 
-	# --- Press: start tracking for a charge. The actual swing fires on
-	# release (tap) or once the charge threshold passes (charged). This is
-	# the Bannerlord model — every attack is "just pressed and released."
+	# --- Press: start tracking the hold. Reset direction lock.
 	if just_pressed and _swing_phase == SwingPhase.IDLE and _next_swing_ready_t <= 0.0:
 		_charge_pressed_t = Time.get_ticks_usec()
 		_charge_active = false
-		_charge_direction_at_start = _direction_sampler.sample()
+		_held_swing_direction = _DirectionSampler.DIR_NONE
+		_direction_before_last_flip = _DirectionSampler.DIR_NONE
 		_last_direction_change_usec = _charge_pressed_t
 
-	# --- Hold: track direction flips for feint detection + drive camera pinch.
+	# --- Hold: lock direction on the first flick + track flips for feint.
 	if is_pressed and _charge_pressed_t != 0:
-		var held_s: float = (Time.get_ticks_usec() - _charge_pressed_t) / 1_000_000.0
+		var held_s_hold: float = (Time.get_ticks_usec() - _charge_pressed_t) / 1_000_000.0
 		# Promote to charged once threshold passed.
-		if not _charge_active and held_s >= charge_threshold_seconds:
+		if not _charge_active and held_s_hold >= charge_threshold_seconds:
 			_charge_active = true
 			_set_player_hyperarmor(true)
 		# Camera FOV pinch ramps from 0 → 1 over charge_full_seconds.
 		if _charge_active:
-			var pinch_t: float = clampf(held_s / charge_full_seconds, 0.0, 1.0)
+			var pinch_t: float = clampf(held_s_hold / charge_full_seconds, 0.0, 1.0)
 			_apply_camera_pinch(pinch_t)
-		# Track direction flips (for feint cancel).
+		# Direction lock: the first time the sampler returns a real direction
+		# (not DIR_NONE), capture it. Subsequent samples only override the
+		# lock if they're a DIFFERENT non-NONE direction (that's a feint
+		# attempt; we remember the previous direction so we can detect the
+		# flip on release).
 		var sampled_dir: int = _direction_sampler.sample()
-		if sampled_dir != _charge_direction_at_start:
+		if sampled_dir != _DirectionSampler.DIR_NONE and sampled_dir != _held_swing_direction:
+			_direction_before_last_flip = _held_swing_direction
+			_held_swing_direction = sampled_dir
 			_last_direction_change_usec = Time.get_ticks_usec()
-			_charge_direction_at_start = sampled_dir
 
-	# --- Release: fire tap or charged swing, or cancel as feint.
+	# --- Release: fire the locked direction, auto-alternate, or feint-cancel.
 	if just_released and _charge_pressed_t != 0:
 		var held_s: float = (Time.get_ticks_usec() - _charge_pressed_t) / 1_000_000.0
-		# Feint check: if the player just flicked the direction during a
-		# charge and released within the feint window, cancel cleanly.
+		# Feint: the player locked direction A, then flicked to direction B,
+		# then released within feint_window_seconds of the flip. The hold
+		# must have been long enough to be "real" (above the tap threshold
+		# of feint_window_seconds + a small grace) so reactive tap-releases
+		# don't all read as feints.
 		var since_flip_s: float = (Time.get_ticks_usec() - _last_direction_change_usec) / 1_000_000.0
-		var did_feint: bool = _charge_active and since_flip_s <= feint_window_seconds \
-			and held_s < charge_full_seconds + 0.2  # only mid-charge feints
+		var did_feint: bool = (
+			_direction_before_last_flip != _DirectionSampler.DIR_NONE
+			and since_flip_s <= feint_window_seconds
+			and held_s > feint_window_seconds + 0.05
+		)
 		if did_feint:
 			_cancel_charge()
 			return
-		# Fire it. Charged if we passed the threshold; tap otherwise.
-		var direction: int = _direction_sampler.sample()
-		if _charge_active:
-			_begin_swing(direction, true)
+		# Pick the swing direction. If the player flicked, use the lock.
+		# Otherwise auto-alternate LRLR so silent presses still vary.
+		var direction: int
+		if _held_swing_direction != _DirectionSampler.DIR_NONE:
+			direction = _held_swing_direction
 		else:
-			_begin_swing(direction, false)
+			direction = _auto_alternate_next
+			# Flip the toggle for next time.
+			_auto_alternate_next = (
+				_DirectionSampler.DIR_LEFT
+				if _auto_alternate_next == _DirectionSampler.DIR_RIGHT
+				else _DirectionSampler.DIR_RIGHT
+			)
+		_begin_swing(direction, _charge_active)
 		_charge_pressed_t = 0
 		_charge_active = false
 		_set_player_hyperarmor(false)
@@ -364,8 +446,12 @@ func _cancel_charge() -> void:
 	# the hyperarmor flag. No swing, no endurance cost.
 	_charge_pressed_t = 0
 	_charge_active = false
+	_held_swing_direction = _DirectionSampler.DIR_NONE
+	_direction_before_last_flip = _DirectionSampler.DIR_NONE
 	_set_player_hyperarmor(false)
 	_apply_camera_pinch(0.0)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("FEINT cancelled")
 
 
 func _begin_swing(direction: int, is_charged: bool) -> void:
@@ -536,10 +622,10 @@ func _handle_parry_block_input() -> void:
 func _engage_block() -> void:
 	# Default block direction = the most recent incoming attack direction.
 	# If the player flicks the mouse before/while engaging, that flick
-	# wins (sampler picks it up).
+	# wins. With the new DIR_NONE sentinel we can cleanly distinguish
+	# "no flick → default to last incoming" from "flicked deliberately."
 	var sampled: int = _direction_sampler.sample()
-	if sampled == _DirectionSampler.DIR_RIGHT and _direction_sampler.is_empty():
-		# No motion → use the last incoming attack as the default.
+	if sampled == _DirectionSampler.DIR_NONE:
 		_block_direction = _last_incoming_attack_direction
 	else:
 		_block_direction = sampled
@@ -547,10 +633,13 @@ func _engage_block() -> void:
 
 
 func _update_block_direction() -> void:
-	# Re-sample each frame so the player can adjust mid-block. Only re-tween
-	# the shield if the direction actually changed (avoid tween churn).
+	# Re-sample each frame so the player can adjust mid-block (Bannerlord's
+	# "active blocking" — the shield direction follows the mouse as the
+	# player tracks incoming threats). DIR_NONE means "no flick happened
+	# recently, keep the current block direction" — don't churn the
+	# tween on stationary mouse.
 	var sampled: int = _direction_sampler.sample()
-	if sampled != _block_direction:
+	if sampled != _DirectionSampler.DIR_NONE and sampled != _block_direction:
 		_block_direction = sampled
 		_tween_shield_to_direction(_block_direction, 0.08)
 
@@ -618,10 +707,6 @@ func _succeed_parry(enemy: Node3D, direction: int) -> void:
 			"direction": direction,
 			"enemy": enemy,
 		})
-	# Tell LockOnManager to stop auto-switching for a moment so the
-	# camera holds steady through the riposte animation.
-	if get_node_or_null("/root/LockOnManager"):
-		LockOnManager.notify_parry_success()
 
 
 func _fire_riposte_sweep(direction: int) -> void:

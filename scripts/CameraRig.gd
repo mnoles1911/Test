@@ -79,11 +79,13 @@ extends SpringArm3D
 @export var dialogue_tween_duration: float = 0.3
 # Seconds for the dialogue arm length tween.
 
-@export var lock_on_lerp_speed: float = 5.0
-# How fast the camera swings to frame a lock-on target.
-
-@export var lock_on_horizontal_offset: float = 0.3
-# Radians to offset left so the target appears in the right frame half.
+# Lock-on was removed 2026-05-25 (designer call) so the player has
+# uninterrupted mouse-driven facing in 1-vs-many — strafing + positioning
+# is the depth axis, Bannerlord-style. The previous lock-on API
+# (set_lock_on_target / cycle_lock_target / clear_lock_target /
+# _update_lock_on_rotation) is gone. HUDDirectionArrows and HUDCombatRadar
+# subscribe to enemy.committed_attack directly and read the "enemy" group
+# for positions — no autoload mediation needed.
 
 @export var first_person_mesh_path: NodePath = NodePath("../../Visual")
 # Relative path from this SpringArm3D to Roland's visual mesh
@@ -134,7 +136,6 @@ var _pitch_before_freelook: float = 0.0
 # Pitch value saved when F2 is first pressed. Restored on F2 release.
 
 var _in_dialogue: bool = false
-var _lock_on_target: Node3D
 
 var _player: CharacterBody3D
 # Reference to the CharacterBody3D (grandparent node). Used to rotate
@@ -253,7 +254,7 @@ func _process(delta: float) -> void:
 
 	# --- Arrow key fallback rotation ---
 	# Disabled during re-centering to avoid fighting the lerp.
-	if not _in_dialogue and _lock_on_target == null and not _recentering:
+	if not _in_dialogue and not _recentering:
 		if Input.is_action_pressed("camera_left"):
 			if _freelook:
 				_yaw_offset += deg_to_rad(key_rotation_speed) * delta
@@ -270,57 +271,10 @@ func _process(delta: float) -> void:
 			_pitch += deg_to_rad(key_rotation_speed * 0.5) * delta
 		_pitch = clamp(_pitch, deg_to_rad(vertical_min_degrees), deg_to_rad(vertical_max_degrees))
 
-	# --- Lock-on tracking ---
-	if _lock_on_target != null:
-		_update_lock_on_rotation(delta)
-
 	# Apply rotation. The player body handles world-facing direction (Y axis).
 	# This node only needs to store the vertical tilt and the freelook offset.
 	rotation.x = _pitch
 	rotation.y = _yaw_offset
-
-
-# --- Lock-on API (called by LockOnManager autoload) ---
-#
-# set_lock_on_target(target) — set / replace the current lock target.
-# clear_lock_target()         — explicit "let go entirely" (LockOnManager
-#                               uses this on MMB-hold and disengagement).
-# cycle_lock_target(direction)— stub for keyboard / gamepad cycle later.
-#                               LockOnManager does its own cycle logic
-#                               via the visible-enemies snapshot — this
-#                               method is here so the API surface is
-#                               complete and consistent.
-
-func set_lock_on_target(target: Node3D) -> void:
-	_lock_on_target = target
-
-
-func clear_lock_target() -> void:
-	_lock_on_target = null
-
-
-func cycle_lock_target(_direction: int) -> void:
-	# Direction: +1 = next, -1 = previous. Reserved for keyboard/gamepad
-	# cycle. LockOnManager handles cycling via its tracked snapshot and
-	# calls set_lock_on_target(...) directly; this method intentionally
-	# does nothing for now so external callers don't reach into _lock_on_
-	# target as a side-effect of "next target".
-	pass
-
-
-func _update_lock_on_rotation(delta: float) -> void:
-	if not is_instance_valid(_lock_on_target):
-		_lock_on_target = null
-		return
-
-	var player_pos: Vector3 = get_parent().global_position
-	var target_pos: Vector3 = _lock_on_target.global_position
-	var to_target: Vector3 = target_pos - player_pos
-	var target_yaw: float = atan2(to_target.x, to_target.z)
-
-	if _player:
-		_player.rotation.y = lerp_angle(_player.rotation.y, target_yaw, lock_on_lerp_speed * delta)
-	_yaw_offset = lerp_angle(_yaw_offset, -lock_on_horizontal_offset, lock_on_lerp_speed * delta)
 
 
 # --- First-person mode (F3 toggle) ---

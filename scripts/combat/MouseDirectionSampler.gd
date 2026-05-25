@@ -27,12 +27,15 @@ extends RefCounted
 #   that crosses the dominance threshold wins, breaking ties in player-
 #   favor toward whichever is moving fastest.
 #
-# WHY DEFAULT RIGHT
+# NO-FLICK = DIR_NONE
 #
-#   If the player taps the attack with NO meaningful mouse motion (< the
-#   minimum-magnitude threshold), Bannerlord's convention is a right-handed
-#   horizontal swing. Roland is right-handed; right is the natural rest-
-#   stroke. See design conversation 2026-05-25.
+#   If the player presses + releases with NO meaningful mouse motion
+#   (< the minimum-magnitude threshold), sample() returns DIR_NONE so
+#   the caller can implement its own fallback. MeleeHandler uses an
+#   auto-alternating L/R cycle (Bannerlord-style: hold the attack
+#   button without flicking and the game cycles your swings for you).
+#   Older versions of this sampler defaulted to DIR_RIGHT which produced
+#   "every silent press is a right swing" — boring and unidiomatic.
 
 
 # Direction enum exposed to callers. Integer values are sticky — referenced
@@ -41,6 +44,11 @@ const DIR_OVERHEAD: int = 0
 const DIR_LEFT:     int = 1
 const DIR_RIGHT:    int = 2
 const DIR_THRUST:   int = 3
+# Returned by sample() when no meaningful mouse motion is in the window.
+# MeleeHandler treats this as "no flick" and applies its auto-alternating
+# direction fallback (LRLR...). Distinct from DIR_RIGHT so we don't
+# auto-RIGHT on every silent press the way the old default did.
+const DIR_NONE:     int = -1
 
 # Rolling window of (timestamp_usec, mouse_relative Vector2) samples. We
 # only keep the last WINDOW_SECONDS worth — older entries are dropped at
@@ -83,7 +91,12 @@ func sample() -> int:
 		sum += d
 		total_mag += d.length()
 	if total_mag < MIN_TOTAL_PIXELS:
-		return DIR_RIGHT
+		# No meaningful flick this window. Bannerlord behavior: the caller
+		# (MeleeHandler) gets to decide what "no flick" means — typically
+		# falling through to an auto-alternating L/R cycle. Returning a
+		# distinct sentinel lets the caller distinguish "no flick" from
+		# "deliberate RIGHT flick."
+		return DIR_NONE
 	# Mouse y is positive DOWN (Godot screen convention). Convert:
 	#   sum.x > 0 → moved RIGHT (left-to-right horizontal swing)
 	#   sum.x < 0 → moved LEFT  (right-to-left horizontal swing)
