@@ -56,7 +56,7 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if _player == null:
 		return
-	var colors := get_node_or_null("/root/Colors")
+	var colors: Node = get_node_or_null("/root/Colors")
 	# Palette fallbacks (color literal copy of assets/ui/Colors.gd).
 	var iron: Color = Color(0.43, 0.39, 0.34, 1.0)
 	var stam: Color = Color(0.78, 0.63, 0.29, 1.0)

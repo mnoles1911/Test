@@ -147,7 +147,7 @@ func _draw() -> void:
 	var now_msec: int = Time.get_ticks_msec()
 
 	# Resolve palette colors via the Colors autoload.
-	var colors := get_node_or_null("/root/Colors")
+	var colors: Node = get_node_or_null("/root/Colors")
 	var yellow: Color = Color(0.78, 0.63, 0.29, 1.0)
 	var red: Color = Color(0.92, 0.29, 0.23, 1.0)
 	if colors != null:

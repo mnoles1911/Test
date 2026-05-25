@@ -287,8 +287,12 @@ func _apply_telegraph_tint() -> void:
 	if mat == null:
 		return
 	# Yellow for parryable, red for unblockable. Pulled from the project
-	# palette (assets/ui/Colors.gd).
-	var colors := Engine.get_main_loop().root.get_node_or_null("Colors")
+	# palette (assets/ui/Colors.gd). EnemyAttackPool extends Node, so we
+	# walk the SceneTree direct — `Engine.get_main_loop().root.get_node_or_
+	# null("Colors")` is the cross-cutting pattern but it can't be used
+	# with `:=` because MainLoop has no typed `.root` and the parser
+	# can't infer the chain's return type.
+	var colors: Node = get_node_or_null("/root/Colors")
 	if colors != null:
 		mat.albedo_color = colors.HP_BRIGHT if _current_is_unblockable else colors.STAM
 	else:
