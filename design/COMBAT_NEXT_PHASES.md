@@ -244,6 +244,64 @@ Items that don't fit neatly into a single phase but need to land somewhere.
 
 ---
 
+## v1.2+ — Bannerlord-style combat depth (deferred)
+
+The v1 combat system that shipped May 2026 (PRs #239 + follow-up commits) covers the foundational Bannerlord-style loop: 4-direction mouse-flick attacks, hold-flick-release with direction-lock + auto-alternating swings, active directional blocking that actually reduces damage, parry chain refunds, optional auto-block as a difficulty toggle, wide-arc cone hits, riposte sweeps, free-aim camera (no lock-on), 3-stage sword tween animation. Designer feedback 2026-05-25 surfaced a list of additional simulation depth Bannerlord has that we don't — collected here so it doesn't get lost while v1 settles in playtest.
+
+### Per-weapon reach + speed
+- Each weapon type (sword, axe, mace, dagger, spear) gets a `reach_meters` and `swing_speed_multiplier` in `InventoryManager.ITEM_REGISTRY`. Longer reach = catches enemies at greater distance but slower windup; faster swing = less time to read + react but less damage.
+- Within a type, individual weapons vary (e.g. "iron arming sword" vs "longsword"). Bannerlord has different lengths within sword variants — same pattern here.
+- Wire `MeleeHandler.swing_cone_meters` to read the equipped weapon's `reach_meters` per swing (instead of the current global `@export var swing_cone_meters`).
+
+### Weapon-type restrictions
+- Spears can only thrust (DIR_THRUST) — side swings and overheads are no-ops or play a "wrong technique" feedback. Match Bannerlord: polearms have limited swing directions.
+- Daggers can't be used to block effectively (block damage reduction is poor) — encourages a parry-or-dodge playstyle on small weapons.
+- Two-handed weapons disable the shield slot entirely (no offhand). Single-handed weapons + shield is the v1 baseline.
+- Per-weapon `allowed_directions: Array[int]` in ITEM_REGISTRY (e.g. spear = `[DIR_THRUST]`).
+
+### Stagger from heavy hits
+- Player gets staggered (movement lockout ~0.5 s, can't attack/parry) when hit by a high-damage attack from a heavy enemy (Bear charge, Ashfallen power swing). Enemy3D's existing `stagger(duration)` already works for the inverse direction — extend the same concept to the player.
+- Trigger conditions: incoming damage above a threshold (e.g. ≥ 25 dmg), or hit while at low endurance, or hit while in WINDUP without hyperarmor.
+- Bannerlord's "knockback" momentum should also push the player a half-meter on big hits — physics impulse on Player3D.velocity.
+
+### Damage simulation depth (Bannerlord parity)
+Currently damage is a flat `combat_damage` or 2× charged. Bannerlord simulates several factors:
+- **Weapon type + weight**: heavy weapons swing slower but deal more damage. Add `weapon_weight_kg` + `damage_curve` to ITEM_REGISTRY; final damage = base × weight_modifier × ...
+- **Charge / hold duration**: longer holds increase swing momentum and damage. v1 has a binary light-vs-charged (2×); Bannerlord-style would be a continuous curve from light → fully-charged, with the curve plateauing after a full wind-up (no benefit to over-holding past the charge_full_seconds threshold).
+- **Hit location**: head hits deal 2.0×, torso 1.0×, limb 0.6× — `design/COMBAT_NEXT_PHASES.md` "Physics polish → Per-hit zones" already specs this. Author `HeadHitbox / TorsoHitbox / LimbHitbox` Area3D children on `Goblin.tscn` and route MeleeHandler's cone overlap through them. (Currently `_perform_strike_check` is a single distance + arc test with no per-zone resolution.)
+- **Player movement speed at swing moment**: in Bannerlord, swinging while running deals MORE damage (momentum carries through). Capture `Player3D.velocity.length()` at the strike frame and multiply damage by a small speed bonus (e.g. +20% at full sprint).
+- **Character skill level**: `SkillManager.sword` level should feed back into damage — high sword skill = more damage per swing. Currently SkillManager tracks XP but doesn't influence MeleeHandler. Wire `SkillManager.get_level("sword")` into `_resolve_weapon_data` as a damage multiplier (e.g. +1% per level, capped).
+
+Final damage formula sketch:
+```
+final = base × weight_mod × charge_curve × hit_zone × movement_mod × (1 + skill_level × 0.01)
+```
+
+### Enemy AI: dodge + block based on intelligence + attack obviousness
+- Add `ai_intelligence: float` (0.0 dumb → 1.0 brilliant) to `EnemyAttackPool` or `Enemy3D`. Goblins ≈ 0.3, Ashfallen ≈ 0.7, Bear ≈ 0.2 (raw aggression), Wolf ≈ 0.5 (reactive).
+- Track "attack obviousness": how long the player has held LMB charging from a stable direction. Longer hold + no direction-changes = more telegraphed = higher score (e.g. `obviousness = clamp(hold_seconds / 1.0, 0.0, 1.0)`).
+- When the player commits a swing, every nearby enemy rolls `randf() < ai_intelligence × obviousness` to:
+  - Block in the matched direction (the enemy raises a defensive pose for that windup), OR
+  - Dodge sideways (short backward/strafe impulse out of the cone).
+- Hyperarmor exception: if the enemy is mid-WINDUP itself, it can't react (mirroring the player's hyperarmor flag).
+- Reward subtle play: rapid direction-flicks, short hold-releases, and feinting all KEEP the obviousness score low.
+
+### Bannerlord depth NOT in our system that we should consider
+
+From the Bannerlord summary the designer pasted (read 2026-05-25):
+
+- **Player movement speed → damage** — already listed under "Damage simulation depth" above.
+- **Character skill level → damage** — already listed under "Damage simulation depth" above.
+- **Weapon momentum / weight → damage curve** — already listed under "Damage simulation depth" above.
+- **Ranged combat (bows, crossbows)**: not in v1 (sword + shield only). When ranged lands, it needs: accuracy degraded by movement (running shots wobble), firing arc / bullet drop physics (arrow drops on long shots), high-ground advantage (arrows fly further from elevation), long-distance bonus XP for hits past N meters. Roland is melee-only per `design/COMBAT_DESIGN_3D.md:54` but **companions can use bows** (Orion). When `Bow.gd` lands for Orion's companion AI, build the simulation depth in from the start instead of retro-fitting it.
+- **Training Field area**: Bannerlord has a dedicated practice arena with dummies + various weapon types. Our `CombatTest.tscn` already serves this purpose for developers; consider extending it (or building a sibling scene) as an in-game tutorial / sandbox once the combat is content-ready. Defer until Act I narrative slots one in.
+
+### Contradiction with current v1 to flag
+
+**Charged attacks vs Bannerlord:** v1 keeps a binary "tap = light dmg 15, hold = charged dmg 30" model. Bannerlord doesn't have this — every swing is the same press-and-release flow, and damage is purely a function of weapon physics + skill + momentum. Designer call 2026-05-25 was to keep the charged distinction for v1 because it adds a learnable gameplay layer. When the "Damage simulation depth" item above lands, charged attacks should reconceptualise to "fully wound-up swing" — the longer hold gives the swing more momentum, but the player thinks "I'm waiting for the moment of maximum impact," not "I'm charging up an attack."
+
+---
+
 ## Tracking / housekeeping
 
 - This doc replaces ad-hoc "Phase X" mentions scattered in commit messages and the asset pipeline doc. When a phase ships, move it to the "What's already shipped" section at top with a date and PR reference, then drop the old detailed section.
