@@ -375,15 +375,17 @@ func _process(delta: float) -> void:
 		_clear_target()
 		return
 
-	# If the equipped item is a throwable, ThrowableHandler owns LMB.
+	# If the equipped item is a throwable or a melee_weapon, the
+	# respective handler (ThrowableHandler / MeleeHandler) owns LMB.
 	# Bail entirely so we don't double-process the click (and don't
 	# show a "wrong tool" mining diagnostic for grass).
 	if get_node_or_null("/root/InventoryManager"):
 		var eid: String = InventoryManager.get_equipped("weapon")
-		if eid != "" and InventoryManager.ITEM_REGISTRY.has(eid) \
-				and InventoryManager.ITEM_REGISTRY[eid].get("type", "") == "throwable":
-			_clear_target()
-			return
+		if eid != "" and InventoryManager.ITEM_REGISTRY.has(eid):
+			var equipped_type: String = InventoryManager.ITEM_REGISTRY[eid].get("type", "")
+			if equipped_type == "throwable" or equipped_type == "melee_weapon":
+				_clear_target()
+				return
 
 	# Bucket is one-shot per click (not held). Routes through its own
 	# handler so the held-attack gate below doesn't apply.

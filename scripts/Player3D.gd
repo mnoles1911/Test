@@ -319,6 +319,15 @@ var is_flying: bool = false
 # times normal walk speed. Toggled via the F1 debug overlay's
 # TOGGLE FLY MODE command (see DebugOverlay.gd).
 
+var _melee_hyperarmor: bool = false
+# Set by MeleeHandler during a charged-attack windup. Damage still applies
+# but the swing animation continues (no flinch / interrupt). v1 simply
+# records the flag — the actual "swing isn't cancelled by being hit"
+# behaviour comes from the MeleeHandler state machine never reading damage
+# events, so cancellation is impossible by construction. The flag is here
+# so future damage paths (apply_damage when it exists, knockback) can
+# honour it without restructuring.
+
 var _spawn_freeze: bool = false
 # When true, _physics_process skips ALL motion (gravity, input, water).
 # Set briefly during scene load while we wait for VoxelLodTerrain

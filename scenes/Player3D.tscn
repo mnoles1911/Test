@@ -22,6 +22,7 @@
 [ext_resource type="Script" path="res://scripts/UnderwaterFilter.gd" id="5_underwater"]
 [ext_resource type="Script" path="res://scripts/PrefetchViewer.gd" id="6_prefetch"]
 [ext_resource type="ShaderMaterial" uid="uid://b8uwoverlay001" path="res://assets/shaders/underwater_overlay_material.tres" id="7_uw_overlay"]
+[ext_resource type="Script" path="res://scripts/MeleeHandler.gd" id="8_melee"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -36,6 +37,47 @@ size = Vector3(0.4, 1.8, 0.25)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
 albedo_color = Color(0.2, 0.8, 0.2, 1)
+
+; --- Sword + Shield placeholder meshes (Phase 1, Directional Melee v1) ---
+; Long thin box clearly reads as a sword silhouette; flat square as a
+; shield. Origin sits at the grip end of the sword (so rotations pivot
+; around Roland's hand) and at the shield's center for the shield.
+; Materials use the iron palette from Voxelmark to match the rest of
+; Roland's HUD chrome.
+
+[sub_resource type="BoxMesh" id="SwordMesh_1"]
+; Blade dimensions: 8 cm wide × 100 cm long × 2 cm thick. Pivot is at
+; the BOTTOM of the blade (handle end) — translated up by half-length
+; in the parent's transform.
+size = Vector3(0.08, 1.0, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="SwordMat_1"]
+albedo_color = Color(0.78, 0.80, 0.85, 1)
+metallic = 0.9
+roughness = 0.25
+emission_enabled = true
+emission = Color(0.5, 0.55, 0.6, 1)
+emission_energy_multiplier = 0.08
+
+[sub_resource type="BoxMesh" id="ShieldMesh_1"]
+; Round-ish shield approximated by a flat box: 50 cm wide × 60 cm tall
+; × 5 cm thick. Pivot at center so directional rotations sweep cleanly.
+size = Vector3(0.5, 0.6, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="ShieldMat_1"]
+albedo_color = Color(0.43, 0.32, 0.20, 1)
+metallic = 0.2
+roughness = 0.6
+emission_enabled = true
+emission = Color(0.30, 0.22, 0.14, 1)
+emission_energy_multiplier = 0.05
+
+[sub_resource type="BoxShape3D" id="MeleeHitbox_1"]
+; Hitbox roughly the volume the sword sweeps through. Used as a probe
+; volume only — MeleeHandler does its own cone overlap math; this Area3D
+; exists for future contact-physics use (e.g. mid-swing collision with a
+; wall to cancel a swing).
+size = Vector3(0.6, 0.6, 1.0)
 
 ; --- C3: underwater particulates (drifting motes/specks visible while
 ; submerged). Slow upward drift in world space (local_coords=false so
@@ -213,6 +255,59 @@ script = ExtResource("3_edit_tool")
 ; Roland with forward velocity. Quick-slot UI rotation comes later.
 ; See scripts/ThrowableHandler.gd.
 script = ExtResource("4_throwable")
+
+[node name="MeleeHandler" type="Node3D" parent="."]
+; Handles directional melee input — LMB swing (4 directions sampled from
+; mouse motion), RMB parry tap / block hold. Only active when the equipped
+; weapon's type is "melee_weapon" (sword); EditToolHandler short-circuits
+; in that case so the same LMB does the right thing whether Roland has a
+; tool, a thrown weapon, or a sword in hand. See scripts/MeleeHandler.gd.
+script = ExtResource("8_melee")
+
+[node name="MeleeWeaponPivot" type="Node3D" parent="."]
+; Sword grip pivot. Positioned at Roland's right hand (X=+0.35 from
+; pivot, Y=1.2 ≈ chest height, Z=-0.2 slightly forward). The sword
+; mesh sits as a child of this pivot, translated up by half its length
+; so the GRIP end is at the pivot — that way directional swings rotate
+; the blade around the grip, the way a real swing pivots from the wrist.
+; MeleeHandler tweens this node's transform per swing direction.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, 1.2, -0.2)
+
+[node name="SwordVisual" type="MeshInstance3D" parent="MeleeWeaponPivot"]
+; Blade translated up by 0.5 m so the bottom edge (grip) sits at the
+; pivot's origin. Pre-tilted forward 15° so it reads as "held ready"
+; in the idle/home pose (a sword pointed straight up looks awkward).
+transform = Transform3D(0.9659, 0.2588, 0, -0.2588, 0.9659, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("SwordMesh_1")
+surface_material_override/0 = SubResource("SwordMat_1")
+
+[node name="MeleeWeaponHitbox" type="Area3D" parent="MeleeWeaponPivot"]
+; Hitbox stub. MeleeHandler does its own cone overlap math (which is
+; cheaper and direction-aware), but the Area3D is here so future
+; mid-swing collision queries (sword vs wall to cancel a swing) have
+; a place to live without restructuring.
+collision_layer = 0
+collision_mask = 1
+monitorable = true
+monitoring = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeleeWeaponPivot/MeleeWeaponHitbox"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -0.5)
+shape = SubResource("MeleeHitbox_1")
+
+[node name="ShieldPivot" type="Node3D" parent="."]
+; Shield pivot. Positioned at Roland's left hand (X=-0.35), held forward
+; and slightly out from his body at ~chest height. The shield faces
+; FORWARD (-Z) at rest so the front face is visible in third-person
+; over-shoulder; MeleeHandler rotates this node to angle the shield
+; toward the matched block direction during RMB hold.
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.35, 1.0, -0.25)
+
+[node name="ShieldVisual" type="MeshInstance3D" parent="ShieldPivot"]
+; Shield centered on the pivot. No additional offset — origin = center
+; of shield face = where it pivots when tilted up / left / right.
+mesh = SubResource("ShieldMesh_1")
+surface_material_override/0 = SubResource("ShieldMat_1")
 
 [node name="UnderwaterFilter" type="CanvasLayer" parent="."]
 ; Full-screen blue-green tint shown when Roland's head is below

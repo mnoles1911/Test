@@ -82,12 +82,21 @@ func _ready() -> void:
 	# MOUSE_MODE_CAPTURED to register look input.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	# Equip the spear so LMB throws it. The InventoryManager autoload
-	# already added 5× spear to the debug starting inventory; we just
-	# move it into the weapon slot so ThrowableHandler routes LMB to
-	# the spear scene rather than to the equipped shovel.
+	# Equip the sword + shield loadout for directional melee testing.
+	# The sword routes LMB through MeleeHandler (instead of EditToolHandler /
+	# ThrowableHandler) and the shield raises during RMB hold / parry tap.
+	# Both items are added here on demand so the dev arena doesn't depend
+	# on the starting-inventory order (and so swapping back to spear is
+	# trivial — comment out these three lines + uncomment the spear line).
 	if get_node_or_null("/root/InventoryManager"):
-		InventoryManager.equip("weapon", "spear")
+		if not InventoryManager.has_item("iron_sword"):
+			InventoryManager.add_item("iron_sword", 1)
+		if not InventoryManager.has_item("iron_shield"):
+			InventoryManager.add_item("iron_shield", 1)
+		InventoryManager.equip("weapon", "iron_sword")
+		InventoryManager.equip("offhand", "iron_shield")
+		# Old throwables-only loadout (kept for reference):
+		# InventoryManager.equip("weapon", "spear")
 
 	# Build the on-screen debug menu.
 	_build_debug_menu()
@@ -125,6 +134,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Reset Enemies: clear current goblins (alive + corpses)
 			# and respawn three fresh ones at the original positions.
 			_reset_enemies()
+		KEY_K:
+			# Print equipped weapon + offhand to console — verification
+			# probe for the sword/shield Phase 0 setup.
+			_print_loadout()
 		KEY_Q:
 			# Quit the game window. Dev arena only — no save.
 			_quit_game()
@@ -162,6 +175,7 @@ func _build_debug_menu() -> void:
 	label.text += "  F8 — Kill nearest\n"
 	label.text += "  F9 — Wound nearest\n"
 	label.text += "  R  — Reset enemies\n"
+	label.text += "  K  — Print loadout\n"
 	label.text += "  Q  — Quit"
 	label.add_theme_color_override("font_color", Color(0.92, 0.88, 0.78, 1.0))
 	panel.add_child(label)
@@ -201,6 +215,23 @@ func _reset_enemies() -> void:
 		DebugOverlay.log_action("[CombatTest] Reset — %d goblins respawned" % _GOBLIN_SPAWN_POSITIONS.size())
 	else:
 		print("[CombatTest] Reset — %d goblins respawned" % _GOBLIN_SPAWN_POSITIONS.size())
+
+
+func _print_loadout() -> void:
+	# Phase 0 verification: confirm the sword/shield ended up in the right
+	# slots and the InventoryManager type metadata reads back correctly.
+	if not get_node_or_null("/root/InventoryManager"):
+		print("[CombatTest] InventoryManager autoload not present")
+		return
+	var weapon: String = InventoryManager.get_equipped("weapon")
+	var offhand: String = InventoryManager.get_equipped("offhand")
+	var w_type: String = ""
+	var o_type: String = ""
+	if weapon != "" and InventoryManager.ITEM_REGISTRY.has(weapon):
+		w_type = InventoryManager.ITEM_REGISTRY[weapon].get("type", "")
+	if offhand != "" and InventoryManager.ITEM_REGISTRY.has(offhand):
+		o_type = InventoryManager.ITEM_REGISTRY[offhand].get("type", "")
+	print("[CombatTest] LOADOUT: weapon='%s' (type=%s)  offhand='%s' (type=%s)" % [weapon, w_type, offhand, o_type])
 
 
 func _quit_game() -> void:
