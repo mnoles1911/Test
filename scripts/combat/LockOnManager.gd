@@ -203,12 +203,23 @@ func _process_inner(delta: float) -> void:
 	# MMB cycle / clear handling.
 	_handle_mmb_input(delta)
 
-	# Engagement / disengagement decision.
-	var in_combat: Array = _enemies_in_combat_radius()
-	if in_combat.size() > 0:
+	# Lock-on is OPT-IN — the player taps MMB to engage. We do NOT auto-
+	# engage on a goblin entering COMBAT because mouse-driven body
+	# rotation fights the lock lerp and Roland twists unpredictably
+	# (designer test 2026-05-25). Auto-SWITCH still works once a lock
+	# is held: when a committed_attack signal lands while locked, the
+	# camera eases to the new threat. Pure auto-engagement is gone.
+	# Disengagement happens automatically when the locked target dies
+	# or leaves COMBAT for the grace window.
+	var locked_in_combat: bool = (
+		_current_target != null
+		and is_instance_valid(_current_target)
+		and not (_current_target.get("_is_dead") if "_is_dead" in _current_target else false)
+		and _current_target.get("current_state") == Enemy3D.State.COMBAT
+		and _player.global_position.distance_to(_current_target.global_position) <= ENGAGEMENT_RADIUS_METERS
+	)
+	if locked_in_combat:
 		_no_combat_seconds = 0.0
-		if _current_target == null or not is_instance_valid(_current_target):
-			_engage(_nearest(in_combat))
 	else:
 		_no_combat_seconds += delta
 		if _current_target != null and _no_combat_seconds >= DISENGAGE_GRACE_SECONDS:

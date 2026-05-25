@@ -138,6 +138,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Print equipped weapon + offhand to console — verification
 			# probe for the sword/shield Phase 0 setup.
 			_print_loadout()
+		KEY_N:
+			# Toggle "passive goblins" mode — disables EnemyAttackPool
+			# attacks AND combat detection so the goblins stand still as
+			# practice dummies. Lets the user verify directional swings
+			# in isolation (Phase 1) without being shoved or attacked.
+			_toggle_passive_goblins()
+		KEY_M:
+			# Print MeleeHandler internal state — current swing phase,
+			# pending parry windows, chain count. Useful when a parry
+			# silently fails and you want to know why.
+			_print_melee_state()
 		KEY_Q:
 			# Quit the game window. Dev arena only — no save.
 			_quit_game()
@@ -176,6 +187,8 @@ func _build_debug_menu() -> void:
 	label.text += "  F9 — Wound nearest\n"
 	label.text += "  R  — Reset enemies\n"
 	label.text += "  K  — Print loadout\n"
+	label.text += "  M  — Print melee state\n"
+	label.text += "  N  — Passive goblins ON/OFF\n"
 	label.text += "  Q  — Quit"
 	label.add_theme_color_override("font_color", Color(0.92, 0.88, 0.78, 1.0))
 	panel.add_child(label)
@@ -210,11 +223,74 @@ func _reset_enemies() -> void:
 		var goblin := _GOBLIN_SCENE.instantiate() as Node3D
 		add_child(goblin)
 		goblin.global_position = spawn_pos
+		# Preserve passive-goblins toggle across resets.
+		if _passive_goblins:
+			# Deferred so the goblin's _ready (Goblin.gd) runs first and
+			# sets up its _visual + EnemyAttackPool before we tweak ranges.
+			call_deferred("_apply_passive_to", goblin)
 
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("[CombatTest] Reset — %d goblins respawned" % _GOBLIN_SPAWN_POSITIONS.size())
 	else:
 		print("[CombatTest] Reset — %d goblins respawned" % _GOBLIN_SPAWN_POSITIONS.size())
+
+
+var _passive_goblins: bool = false
+
+
+func _toggle_passive_goblins() -> void:
+	# Toggle a "training dummies" mode — goblins detect nothing and the
+	# AttackPool is frozen. Lets the designer isolate-test directional
+	# swings (Phase 1) before adding the enemy-attack feedback loop
+	# (Phase 3). Reset (R) respawns them in the same mode.
+	_passive_goblins = not _passive_goblins
+	for n in get_tree().get_nodes_in_group("enemy"):
+		_apply_passive_to(n)
+	var msg := "Passive goblins ON — they stand as dummies" if _passive_goblins else "Passive goblins OFF — combat AI live"
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("[CombatTest] " + msg)
+	else:
+		print("[CombatTest] " + msg)
+
+
+func _apply_passive_to(n: Node) -> void:
+	if n == null or not is_instance_valid(n):
+		return
+	# Make the goblin behave like a stationary dummy. Setting alert_range
+	# / combat_range to 0 keeps it permanently IDLE; freezing
+	# _stagger_remaining keeps the AttackPool in STAGGERED (no attacks)
+	# without dying. Restoring on toggle-off uses authored defaults.
+	if _passive_goblins:
+		n.set("alert_range_meters", 0.0)
+		n.set("combat_range_meters", 0.0)
+		# Force back to IDLE if currently in COMBAT.
+		if "current_state" in n and n.has_method("_set_state"):
+			n.call("_set_state", Enemy3D.State.IDLE)
+	else:
+		# Restore defaults from Enemy3D base.
+		n.set("alert_range_meters", 10.0)
+		n.set("combat_range_meters", 5.0)
+
+
+func _print_melee_state() -> void:
+	var player := _find_player()
+	if player == null:
+		print("[CombatTest] no player")
+		return
+	var melee: Node = player.get_node_or_null("MeleeHandler")
+	if melee == null:
+		print("[CombatTest] no MeleeHandler")
+		return
+	var phase: int = int(melee.get("_swing_phase"))
+	var phase_name: String = ["IDLE", "WINDUP", "STRIKE", "RECOVERY"][phase]
+	var pending: Dictionary = melee.get("_pending_attacks") as Dictionary
+	var chain_count: int = 0
+	var pc: Variant = melee.get("parry_chain")
+	if pc != null:
+		chain_count = int(pc.current_chain_count)
+	print("[CombatTest] MELEE STATE: phase=%s pending_parries=%d chain=x%d  block_active=%s" % [
+		phase_name, pending.size(), chain_count, str(melee.get("_block_active")),
+	])
 
 
 func _print_loadout() -> void:

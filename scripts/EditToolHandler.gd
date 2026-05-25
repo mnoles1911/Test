@@ -359,14 +359,21 @@ func _process(delta: float) -> void:
 	# Diagnostic: log the moment the LMB is JUST pressed, regardless
 	# of any other gate. Tells us "is the input even reaching this
 	# script?" â€” the answer to the user's "left click does nothing".
+	# Suppressed when a melee_weapon / throwable is equipped (MeleeHandler
+	# / ThrowableHandler own LMB in that case) to keep the log readable
+	# while debugging combat.
 	if Input.is_action_just_pressed("attack"):
 		var mm: int = Input.mouse_mode
 		var equipped_dbg: String = "(no InventoryManager)"
+		var equipped_type_dbg: String = ""
 		if get_node_or_null("/root/InventoryManager"):
 			equipped_dbg = InventoryManager.get_equipped("weapon")
-		print("[EditTool] LMB just_pressed | mouse_mode=%d (need 2=CAPTURED) | equipped=%s | cooldown=%.2f" % [
-			mm, equipped_dbg, _swing_cooldown_remaining,
-		])
+			if equipped_dbg != "" and InventoryManager.ITEM_REGISTRY.has(equipped_dbg):
+				equipped_type_dbg = InventoryManager.ITEM_REGISTRY[equipped_dbg].get("type", "")
+		if equipped_type_dbg != "melee_weapon" and equipped_type_dbg != "throwable":
+			print("[EditTool] LMB just_pressed | mouse_mode=%d (need 2=CAPTURED) | equipped=%s | cooldown=%.2f" % [
+				mm, equipped_dbg, _swing_cooldown_remaining,
+			])
 
 	# Mouse must be captured (no menu open) and attack action must be
 	# HELD (not just-pressed) â€” held-swing accumulator gates progress

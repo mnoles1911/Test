@@ -155,9 +155,14 @@ func _enemy_physics_step(delta: float) -> void:
 	var to_player: Vector3 = _player.global_position - global_position
 	to_player.y = 0.0
 	var distance: float = to_player.length()
-	if distance < 0.8:
-		# Close enough — stop walking, the AttackPool's STRIKE will
-		# deal the actual damage when its windup completes.
+	# Stop a full body-width away (capsule radius 0.4 m each, so 0.8 m
+	# is exactly touching). 1.7 m gives Roland comfortable space to
+	# swing without the goblin's CharacterBody3D physics-shoving him
+	# (designer test 2026-05-25 — enemies pushed the player around).
+	# The goblin's sword reach (strike_range_meters = 1.6 m in
+	# EnemyAttackPool) still covers this distance, so swings still
+	# land in the cone.
+	if distance < 1.7:
 		velocity.x = 0.0
 		velocity.z = 0.0
 		_face_player()

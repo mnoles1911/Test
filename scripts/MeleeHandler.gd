@@ -388,6 +388,10 @@ func _begin_swing(direction: int, is_charged: bool) -> void:
 	_current_swing_is_charged = is_charged
 	_current_swing_hit_enemies.clear()
 	_tween_sword_to_direction(direction, windup_seconds)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("SWING dir=%d %s dmg=%d ep=%.0f" % [
+			direction, ("CHARGED" if is_charged else "light"), _current_swing_damage, end_cost,
+		])
 
 
 func _advance_swing(delta: float) -> void:
@@ -476,6 +480,8 @@ func _apply_damage_to(enemy: Node3D, origin: Vector3) -> void:
 	if "last_hit_skill" in enemy:
 		enemy.last_hit_skill = "sword"
 	enemy.take_damage(_current_swing_damage, hit_dir, hit_point)
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("SWORD HIT %s for %d dmg" % [enemy.name, _current_swing_damage])
 	# Spawn blood burst at the hit point. Intensity scales with damage so
 	# charged hits read as gorier.
 	if get_node_or_null("/root/BloodVFX"):
