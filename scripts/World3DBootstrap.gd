@@ -65,17 +65,19 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # streams. The Player3D VoxelViewer is at 1100 vox; this terrain-level
 # cap is the hard limit that gates them all.
 #
-# Tuned 2026-05-26 to 480 vox (~80 m world) for Option A: lod_count=1
-# all-LOD0 blocky terrain in a tight bubble, with DistantTerrain smooth
-# heightmesh (inner_cull dropped to 85 m to match) covering everything
-# past. Chunk count scales with view_distance² — 480 vs 720 is 44%
-# of the chunk count, which is what keeps Zylann's clipbox scheduler
-# from blowing up at all-LOD0 detail (z.detect at vd=720+lod_count=1
-# was spiking to 5700 ms; geometric reduction back into safe range).
+# Back to 512 vox (~85 m) on 2026-05-26 after the Option A pivot —
+# this is Zylann's own default and the value that paired with the
+# original lod_count=4 across the project history. Sized for
+# lod_count=4's LOD pyramid: LOD0 (0-21 m), LOD1 (21-43 m),
+# LOD2 (43-85 m) all fit cleanly inside this radius; LOD3 only
+# barely streams. DistantTerrain smooth heightmesh covers everything
+# past 85 m out to the vista.
 #
-# Bump up only if a vista absolutely needs more blocky-detail terrain
-# at the cost of streaming load — but remember the cost is geometric.
-@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 480
+# Bump up only if a vista absolutely needs more blocky terrain at
+# the cost of streaming load. Chunk count scales with view_distance²
+# — 720 vs 512 is ~2× chunks, which was tolerable at lod_count=4
+# (the LOD pyramid thins the outer rings) but blew up at lod_count=1.
+@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 512
 
 
 # =============================================================
@@ -270,30 +272,29 @@ func _ready() -> void:
 	# the way to keep the near band crisp is FAST streaming (a tight
 	# view_distance matched to the LOD coverage), not a bigger ring.
 	#
-	# lod_count: 1 — SINGLE-LOD with TIGHT view_distance (Option A,
-	# 2026-05-26). Designer pivot history (one session, all logged):
-	#   * lod_count=4 + vd=720: cascade upgrades read as "outwalk the
-	#     streamer" — three LOD pops per chunk approach.
-	#   * lod_count=1 + vd=720: zero cascade, looked fantastic, but
-	#     z.detect spiked to 5.7 seconds and FPS hit 20. Scheduler
-	#     enumeration cost scales ~quadratically with full-detail chunks
-	#     in volume — 120 m sphere at all-LOD0 was too much.
-	#   * lod_count=2 + vd=720: perf rescued (max z.det 196 ms vs
-	#     5737 ms; ~99% frames under 16 ms in a 12k-frame capture) but
-	#     designer disliked the visible LOD1 half-res ring at 21+ m.
-	#   * lod_count=1 + vd=480 (THIS COMMIT, Option A): the LOD0 visual
-	#     designer loved, in a TIGHTER 80 m bubble. Chunk count drops
-	#     ~44% of vd=720 (geometry scales with view_distance²), pulling
-	#     the scheduler enumeration cost back under control. DistantTerrain
-	#     smooth heightmesh's inner_cull is dropped from 130 m to 85 m
-	#     in the same commit so the smooth ring slides up to meet the
-	#     new blocky-band edge with a small overlap — no visible gap
-	#     between blocky and smooth.
+	# lod_count: 4 — the proven good-perf LOD baseline (2026-05-26
+	# session conclusion). Full pivot history one-line:
+	#   lod_count=4 (good perf, cascade pops) -> 1+vd=720 (no pops,
+	#   FPS 20, z.det 5.7s spikes) -> 2+vd=720 (rescued perf, designer
+	#   disliked LOD1) -> 1+vd=480 (tighter bubble, perf still bad) ->
+	#   THIS: back to 4+vd=512 (the original known-good config) PLUS
+	#   the session's foundational fixes still in place:
+	#     - VoxelViewer-direction fix (a76d3ae): chunks ahead of the
+	#       player are now correctly prioritized, regardless of body
+	#       rotation. This was the root cause of "outwalk the streamer"
+	#       feel that originally drove us toward lod_count=1.
+	#     - PrefetchViewer sprint anchor tightened to 7.0 m/s (matches
+	#       actual sustained sprint speed).
+	#     - Viewer telemetry (read_viewer_telemetry, F9 dump,
+	#       [VIEWERS] log line) so future misaligned-viewer bugs
+	#       can't hide.
+	#     - save_generator_output=false (skip waste-writes for
+	#       procedural world).
 	#
 	# Enforced here because the editor strips .tscn LOD values on save.
 	if "lod_count" in terrain:
-		terrain.set("lod_count", 1)
-		print("[World3D] terrain.lod_count set to 1 (single-LOD; actual=%s)" % terrain.get("lod_count"))
+		terrain.set("lod_count", 4)
+		print("[World3D] terrain.lod_count set to 4 (LOD baseline; actual=%s)" % terrain.get("lod_count"))
 	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
 	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
 	# enormous volumes of buried rock. See the @export comment at the top
@@ -623,17 +624,6 @@ func _ready() -> void:
 	if distant_script != null:
 		var distant: Node3D = distant_script.new()
 		distant.name = "DistantTerrain"
-		# inner_cull_radius matched to the blocky band edge (Option A,
-		# 2026-05-26). With terrain.view_distance dropped to 480 vox
-		# (~80 m), the blocky-band edge sits at 80 m world. The default
-		# inner_cull of 130 m was sized for the prior 120 m blocky band
-		# with a small overlap; with the smaller band we need the smooth
-		# mesh to come in much closer. 85 m gives a 5 m overlap where
-		# the blocky layer wins the depth test (the smooth mesh is
-		# Y-offset 1.5 m below true ground for exactly this purpose).
-		# Bump up if you ever push terrain_view_distance_voxels higher.
-		if "inner_cull_radius" in distant:
-			distant.set("inner_cull_radius", 85.0)
 		add_child(distant)
 		distant.call("setup_from_terrain", terrain)
 
