@@ -291,6 +291,23 @@ func _ready() -> void:
 		terrain.set("lod_fade_duration", 1.0)
 		print("[World3D] terrain.lod_fade_duration set to 1.0 (actual=%s)" % terrain.get("lod_fade_duration"))
 
+	# stream.save_generator_output = false for World3D (procedural Mira).
+	# The working SQLite is wiped on every fresh run (see the "Fresh run —
+	# wiped" log line above), so every chunk we serialize to it on
+	# generation is data the next launch immediately discards. SQLite
+	# writes are single-threaded and can throttle the streaming pipeline.
+	# The C++ generator regenerates a chunk in microseconds; regen on
+	# revisit is as fast or faster than reading from cache. Player edits
+	# still persist (they save as deltas regardless of this flag).
+	#
+	# 2026-05-25 streaming-throughput pass: profile capture showed ~480 ms
+	# main-thread spikes during streaming with attribution totalling only
+	# ~1-3 ms — i.e. the cost is downstream of the meshing (GPU / SDFGI /
+	# SQLite). Removing the SQLite write removes one of those candidates.
+	if terrain.stream != null and "save_generator_output" in terrain.stream:
+		terrain.stream.set("save_generator_output", false)
+		print("[World3D] stream.save_generator_output = false (skip SQLite writes for the procedural wipe-each-run world; actual=%s)" % terrain.stream.get("save_generator_output"))
+
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
 	# setting. The earlier filtered dump only showed depth/format/
