@@ -422,6 +422,19 @@ func _dump_stream_diag() -> void:
 						continue
 					print("    %s = %.2f ms" % [entries[i][0], us / 1000.0])
 	print("=== /F9 StreamDiag ===")
+	# Re-assert mouse capture (2026-05-26). Pressing F9 during gameplay
+	# was popping the mouse out of the test scene window — Godot's
+	# stdout-flush + focus-grab during a large console burst seems to
+	# release MOUSE_MODE_CAPTURED on Windows. Re-assert it AFTER the
+	# print burst finishes so the player isn't yanked out of FPS look
+	# control. Only re-assert if we WERE captured; never silently
+	# capture from CAPTURED-state to avoid stealing the cursor while
+	# the player is intentionally using a menu (mouse_mode == VISIBLE).
+	if Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
+		# Player is in a menu / pause — leave alone.
+		pass
+	else:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
 func _toggle() -> void:

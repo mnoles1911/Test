@@ -265,16 +265,31 @@ func _ready() -> void:
 	# therefore fixed at ~21 m world (128 voxels x the 1/6 terrain scale);
 	# the way to keep the near band crisp is FAST streaming (a tight
 	# view_distance matched to the LOD coverage), not a bigger ring.
-	# lod_count: 4 — DistantTerrain LOD overhaul (2026-05-22). With the
-	# reduced VoxelViewer.view_distance the blocky terrain only needs the
-	# crisp near LODs; the streaming DistantTerrainManager heightmesh
-	# replaces the old coarse far LODs (and their terracing). World3D has
-	# no persistent voxel cache (the working SQLite is wiped each fresh
-	# run) so changing lod_count is free. Enforced here too because the
-	# editor strips .tscn LOD values on save.
+	#
+	# lod_count: 1 — SINGLE-LOD architecture (2026-05-26). The earlier
+	# lod_count=4 cascade (LOD3 -> LOD2 -> LOD1 -> LOD0 as the player
+	# approached each chunk) was the root cause of the perceived
+	# "outwalk the streamer" feeling, NOT a Zylann throughput issue.
+	# Capture profile_capture_112811.json proved Zylann's worker mesh
+	# pipeline averages 0.01 ms / frame even while the player is
+	# moving at 8.2 m/s — pipeline is idle, the cost is the cascade
+	# transitions themselves.
+	#
+	# At lod_count=1 every chunk inside terrain.view_distance is at
+	# LOD0 the moment it streams in. No cascade exists; therefore
+	# there is no cascade to outrun. DistantTerrain's streaming
+	# smooth heightmesh covers everything past view_distance, so we
+	# don't lose the vista.
+	#
+	# Cost: ~3x triangle / mesh work per visible chunk vs. the
+	# previous mostly-LOD2/3 average. RX 7800 XT triangle budget is
+	# ~50-100 M / frame at 60 FPS; current at 0.7 M, projected 1.5 M.
+	# Trivial. Zylann workers also have headroom (mesh_us idling).
+	#
+	# Enforced here because the editor strips .tscn LOD values on save.
 	if "lod_count" in terrain:
-		terrain.set("lod_count", 4)
-		print("[World3D] terrain.lod_count set to 4 (actual=%s)" % terrain.get("lod_count"))
+		terrain.set("lod_count", 1)
+		print("[World3D] terrain.lod_count set to 1 (single-LOD; actual=%s)" % terrain.get("lod_count"))
 	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
 	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
 	# enormous volumes of buried rock. See the @export comment at the top

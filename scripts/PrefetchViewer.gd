@@ -81,8 +81,15 @@ class_name PrefetchViewer
 @export_range(1.0, 20.0, 0.5) var walk_speed_mps: float = 4.5
 
 ## Reference sprint speed for the lookahead/view-distance interpolation.
-## Matches Player3D.BASE_SPRINT_SPEED.
-@export_range(1.0, 30.0, 0.5) var sprint_speed_mps: float = 8.5
+## Tightened 2026-05-26 from 8.5 -> 7.0 m/s. The capture in
+## profile_capture_112811.json showed actual in-game max horizontal
+## speed of 8.2 m/s (terrain friction / collision drag never lets the
+## player hit the nominal BASE_SPRINT_SPEED of 8.5). Anchoring the
+## interp at 7.0 lets the prefetch reach its full sprint config (90 m
+## lookahead, 480 vox view_distance) at the speed the player ACTUALLY
+## sustains during a sprint, not the theoretical cap. Prior capture
+## avg lead was 55 m of a 90 m config — the curve wasn't biting.
+@export_range(1.0, 30.0, 0.5) var sprint_speed_mps: float = 7.0
 
 ## Master toggle. Set false to disable the prefetch viewer entirely
 ## without removing the node (for A/B comparing with/without).
