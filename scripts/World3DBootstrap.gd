@@ -50,6 +50,16 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 @export var terrain_voxel_y_min: int = -200
 @export var terrain_voxel_y_max: int = 500
 
+# Terrain shadow casting. Default OFF (2026-05-25 streaming-throughput
+# probe). Every streamed VoxelLodTerrain mesh chunk submitting to the
+# directional PSSM shadow atlas is one of the largest engine-side costs
+# during traversal — and the profile capture's 87 ms unattributed
+# main-thread gap during fast movement is consistent with shadow-map
+# rebuilds. Tradeoff: terrain hills / cliffs won't shadow each other.
+# Other shadow-receivers (Roland, trees, NPCs) still cast onto terrain.
+# Flip to true in the Inspector for an A/B comparison capture.
+@export var terrain_casts_shadow: bool = false
+
 
 # =============================================================
 # DIAGNOSTIC STATE — LOD / streaming investigation 2026-05-07
@@ -307,6 +317,20 @@ func _ready() -> void:
 	if terrain.stream != null and "save_generator_output" in terrain.stream:
 		terrain.stream.set("save_generator_output", false)
 		print("[World3D] stream.save_generator_output = false (skip SQLite writes for the procedural wipe-each-run world; actual=%s)" % terrain.stream.get("save_generator_output"))
+
+	# Terrain shadow casting — see the @export comment at the top of
+	# this file. Setting GeometryInstance3D.SHADOW_CASTING_SETTING_OFF (0)
+	# stops every streamed mesh chunk from being re-submitted to the
+	# directional shadow atlas during traversal. Receivers (Roland,
+	# NPCs, props) still cast shadows ONTO the terrain.
+	if "cast_shadow" in terrain:
+		var desired_shadow: int = 1 if terrain_casts_shadow else 0
+		terrain.set("cast_shadow", desired_shadow)
+		print("[World3D] terrain.cast_shadow set to %d (%s; actual=%s)" % [
+			desired_shadow,
+			"ON" if terrain_casts_shadow else "OFF — streaming-throughput probe",
+			terrain.get("cast_shadow"),
+		])
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar

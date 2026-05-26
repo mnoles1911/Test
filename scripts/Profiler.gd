@@ -278,6 +278,28 @@ func frame_finalize() -> void:
 		var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 		var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
 		var vram_mb: int = int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / (1024 * 1024))
+		# Added 2026-05-25 (streaming-throughput probe): the worst spike
+		# in the prior capture had real=104 ms but only ~16 ms attributed
+		# to wrapped scripts and ~0 ms in Zylann's detect/io/mesh. The 87 ms
+		# gap is engine-side — but we couldn't tell WHICH engine subsystem.
+		# These four narrow the field:
+		#   render_objs    — total visible objects this frame; a jump
+		#                    correlates with a draw burst from streaming
+		#                    chunks arriving.
+		#   phys_pairs     — collision pairs Bullet/Jolt is currently
+		#                    tracking. Rises sharply when newly-streamed
+		#                    chunks add CollisionShape3D bodies.
+		#   phys_active    — active rigid/character bodies in the scene.
+		#   phys_islands   — separate physics simulation islands.
+		# If a spike correlates with a phys_pairs jump → collision-shape
+		# rebuild is the bottleneck. If it correlates with a render_objs /
+		# draws jump → render submission. If neither, the cost is in
+		# shadow-atlas rebuild / SDFGI cascade integration (no Performance
+		# monitor exposes those directly).
+		var render_objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+		var phys_pairs: int = int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))
+		var phys_active: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS))
+		var phys_islands: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ISLAND_COUNT))
 
 		var record: Dictionary = {
 			"frame": _frame_count_total,
@@ -290,6 +312,10 @@ func frame_finalize() -> void:
 				"draws": draws,
 				"prims": prims,
 				"vram_mb": vram_mb,
+				"render_objs": render_objs,
+				"phys_pairs": phys_pairs,
+				"phys_active": phys_active,
+				"phys_islands": phys_islands,
 			},
 		}
 		# Zylann main-thread budgets. Pull from the live VoxelLodTerrain
