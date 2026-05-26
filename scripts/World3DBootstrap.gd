@@ -62,16 +62,20 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
 # Terrain-level view_distance cap (voxels). Zylann uses the MIN of every
 # VoxelViewer's view_distance AND this terrain-level cap to decide what
-# streams. Default 512 voxels = ~85 m world, was the practical limit
-# during the LOD-pyramid era; on 2026-05-26 (post viewer-direction fix
-# in commit a76d3ae) we have headroom to push this higher — the wasted
-# half of streaming work that was being aimed at chunks BEHIND the
-# player is no longer wasted, so a wider radius costs roughly what the
-# old 512 cost. 720 vox = 120 m gives the player a meaningful blocky
-# band before DistantTerrain takes over. The Player3D VoxelViewer is
-# already at 1100 vox; the .tscn value is the per-viewer reach but
-# terrain.view_distance is the hard cap that gates them all.
-@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 720
+# streams. The Player3D VoxelViewer is at 1100 vox; this terrain-level
+# cap is the hard limit that gates them all.
+#
+# Tuned 2026-05-26 to 480 vox (~80 m world) for Option A: lod_count=1
+# all-LOD0 blocky terrain in a tight bubble, with DistantTerrain smooth
+# heightmesh (inner_cull dropped to 85 m to match) covering everything
+# past. Chunk count scales with view_distance² — 480 vs 720 is 44%
+# of the chunk count, which is what keeps Zylann's clipbox scheduler
+# from blowing up at all-LOD0 detail (z.detect at vd=720+lod_count=1
+# was spiking to 5700 ms; geometric reduction back into safe range).
+#
+# Bump up only if a vista absolutely needs more blocky-detail terrain
+# at the cost of streaming load — but remember the cost is geometric.
+@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 480
 
 
 # =============================================================
@@ -266,34 +270,30 @@ func _ready() -> void:
 	# the way to keep the near band crisp is FAST streaming (a tight
 	# view_distance matched to the LOD coverage), not a bigger ring.
 	#
-	# lod_count: 2 — SINGLE-TRANSITION architecture (2026-05-26).
-	# History of this knob:
-	#   * lod_count=4 (original): four LOD bands (0-21 m LOD0, 21-43
-	#     LOD1, 43-85 LOD2, 85-120 LOD3). THREE visible LOD transitions
-	#     per chunk as the player approached → the "outwalk the
-	#     streamer" perception (capture_112811.json proved Zylann's
-	#     worker pipeline was idle; cost was the cascade UPGRADES).
-	#   * lod_count=1: zero transitions, LOD0 everywhere out to
-	#     view_distance. Visually fantastic but cost Zylann's
-	#     clipbox scheduler 5.7-SECOND main-thread spikes (z.detect_us
-	#     spiked from p99 12 ms to p99 5737 ms — schedule cost scales
-	#     ~quadratically with full-detail chunk count). Spawn ready
-	#     check timed out at 120 s. FPS 20, frame spikes 130-140 ms.
-	#   * lod_count=2 (this commit): ONE transition (LOD1 → LOD0)
-	#     at the 21 m boundary. The far ring past 21 m is half-resolution
-	#     (33 cm voxels vs 16 cm) — a tolerable visual hit at that
-	#     distance — but chunk count drops to roughly half the
-	#     lod_count=1 set + each far chunk has 1/4 the mesh work. This
-	#     gives the scheduler back its breathing room while keeping
-	#     the cascade visible only one step deep (vs the four-step
-	#     cascade you originally hated).
+	# lod_count: 1 — SINGLE-LOD with TIGHT view_distance (Option A,
+	# 2026-05-26). Designer pivot history (one session, all logged):
+	#   * lod_count=4 + vd=720: cascade upgrades read as "outwalk the
+	#     streamer" — three LOD pops per chunk approach.
+	#   * lod_count=1 + vd=720: zero cascade, looked fantastic, but
+	#     z.detect spiked to 5.7 seconds and FPS hit 20. Scheduler
+	#     enumeration cost scales ~quadratically with full-detail chunks
+	#     in volume — 120 m sphere at all-LOD0 was too much.
+	#   * lod_count=2 + vd=720: perf rescued (max z.det 196 ms vs
+	#     5737 ms; ~99% frames under 16 ms in a 12k-frame capture) but
+	#     designer disliked the visible LOD1 half-res ring at 21+ m.
+	#   * lod_count=1 + vd=480 (THIS COMMIT, Option A): the LOD0 visual
+	#     designer loved, in a TIGHTER 80 m bubble. Chunk count drops
+	#     ~44% of vd=720 (geometry scales with view_distance²), pulling
+	#     the scheduler enumeration cost back under control. DistantTerrain
+	#     smooth heightmesh's inner_cull is dropped from 130 m to 85 m
+	#     in the same commit so the smooth ring slides up to meet the
+	#     new blocky-band edge with a small overlap — no visible gap
+	#     between blocky and smooth.
 	#
-	# DistantTerrain smooth heightmesh continues to cover everything
-	# past view_distance (120 m), so the vista is untouched. Enforced
-	# here because the editor strips .tscn LOD values on save.
+	# Enforced here because the editor strips .tscn LOD values on save.
 	if "lod_count" in terrain:
-		terrain.set("lod_count", 2)
-		print("[World3D] terrain.lod_count set to 2 (single-transition; actual=%s)" % terrain.get("lod_count"))
+		terrain.set("lod_count", 1)
+		print("[World3D] terrain.lod_count set to 1 (single-LOD; actual=%s)" % terrain.get("lod_count"))
 	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
 	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
 	# enormous volumes of buried rock. See the @export comment at the top
@@ -623,6 +623,17 @@ func _ready() -> void:
 	if distant_script != null:
 		var distant: Node3D = distant_script.new()
 		distant.name = "DistantTerrain"
+		# inner_cull_radius matched to the blocky band edge (Option A,
+		# 2026-05-26). With terrain.view_distance dropped to 480 vox
+		# (~80 m), the blocky-band edge sits at 80 m world. The default
+		# inner_cull of 130 m was sized for the prior 120 m blocky band
+		# with a small overlap; with the smaller band we need the smooth
+		# mesh to come in much closer. 85 m gives a 5 m overlap where
+		# the blocky layer wins the depth test (the smooth mesh is
+		# Y-offset 1.5 m below true ground for exactly this purpose).
+		# Bump up if you ever push terrain_view_distance_voxels higher.
+		if "inner_cull_radius" in distant:
+			distant.set("inner_cull_radius", 85.0)
 		add_child(distant)
 		distant.call("setup_from_terrain", terrain)
 
