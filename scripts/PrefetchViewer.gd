@@ -1,103 +1,102 @@
 extends Node3D
 class_name PrefetchViewer
 
-# PrefetchViewer — secondary, velocity-scaled VoxelViewer that loads
-# chunks AHEAD of where the player is moving, so they're already in
-# memory by the time the main viewer's sphere reaches them.
+# PrefetchViewer — multi-viewer streaming train (refactored 2026-05-26).
+#
+# Spawns N inner VoxelViewers spaced along the player's motion direction
+# so their LOD0 rings overlap into a CONTIGUOUS LOD0 CORRIDOR ahead of
+# the player. The single-viewer version of this script created a single
+# LOD0 sphere ~110 m ahead — which left a 21-90 m LOD1/2 gap that the
+# player ran through, watching the cascade upgrade. The N-viewer version
+# stitches that gap shut.
 #
 # How it differs from Player3D._update_viewer_lookahead:
 #   * That system shifts the PRIMARY VoxelViewer's center forward,
-#     producing a lopsided streaming sphere (same total volume, biased
-#     toward direction of travel). When the player turns 180° the
-#     backward chunks have to re-stream.
-#   * THIS system adds a SECOND VoxelViewer node parked ahead of the
-#     player. Total streaming volume goes up — both viewers' spheres
-#     are tracked — but the chunks behind the player remain loaded.
-#     Trade-off: more steady-state main-thread detect cost, less
-#     spike cost when crossing chunk boundaries.
+#     producing a lopsided main streaming sphere (same volume, biased
+#     to motion). When player turns 180° the backward chunks have to
+#     re-stream.
+#   * THIS system adds N SECONDARY viewers parked AHEAD of the player.
+#     Total streaming volume goes up — every viewer's sphere is tracked —
+#     but the chunks BEHIND the player stay loaded (the main viewer
+#     covers them), and the N-deep ring up front guarantees that the
+#     player's forward 0-to-lookahead corridor is all at LOD0 priority,
+#     not at the LOD pyramid's distance-binned levels.
 #
-# Velocity scaling (matches Player3D's BASE_WALK_SPEED / BASE_SPRINT_SPEED):
-#   idle  (0   m/s): viewer collapses to player pos, view_distance=0
-#                    (effectively disabled — costs nothing)
-#   walk  (~4.5 m/s): viewer at +30 m ahead, view_distance = 192 vox = 32 m
-#   sprint(~8.5 m/s): viewer at +60 m ahead, view_distance = 256 vox = 43 m
-#   fly   (~45 m/s):  clamped — +90 m ahead, view_distance = 384 vox = 64 m
+# Geometry at sprint (8.5 m/s, default settings N=3, lookahead=90m):
+#   Main VoxelViewer LOD0 ring: 0-21 m around player
+#   Inner viewer 1 (at +30 m):  LOD0 ring 9-51 m ahead
+#   Inner viewer 2 (at +60 m):  LOD0 ring 39-81 m ahead
+#   Inner viewer 3 (at +90 m):  LOD0 ring 69-111 m ahead
+#   → Combined LOD0 corridor:   0-111 m straight ahead at full detail
 #
-# Reaches (lookahead + view_distance) extend BEYOND the main viewer's
-# 512-vox (85 m) range only at sprint+. At walk pace the prefetch
-# overlaps the main viewer mostly, providing earlier load for the
-# transition zone where chunks are about to leave-then-rejoin LOD0.
+# Spacing is lookahead/N; with N=3 and 90 m lookahead → 30 m spacing.
+# Each LOD0 ring is 42 m diameter (Zylann's lod_distance hard-cap),
+# so spacing < diameter ensures contiguity (no LOD1 gap between rings).
 #
-# Attach as a CHILD of Player3D. The script auto-creates its
-# VoxelViewer child on _ready (no .tscn config required) so adding
-# this to a scene is a single "Add Child Node" operation.
+# Cost: ~3x prefetch streaming load vs single-viewer. Spread along a
+# forward CONE, not 360°. Idle player → all viewers collapse to vd=0
+# (existing zero-cost-when-stationary behavior).
+#
+# Attach as a CHILD of Player3D. The script auto-creates its inner
+# viewers on _ready (no .tscn config required) so adding/configuring
+# this is a single Inspector edit.
 
 # --- Tunables (override per scene if needed) ---
 
+## Number of inner VoxelViewers stacked along motion direction. Default
+## 3 gives a contiguous LOD0 corridor 0 → ~111 m ahead at sprint with
+## the default lookahead settings. Set to 1 for single-viewer mode
+## (legacy behavior — equivalent to the pre-2026-05-26 PrefetchViewer).
+## 2 thins coverage but halves prefetch chunk count. 4-5 widens the
+## corridor at proportionally higher cost.
+@export_range(1, 8, 1) var inner_viewer_count: int = 3
+
+## View distance (voxels) per inner viewer. Sized to cover the 21 m
+## LOD0 ring + a small buffer (24 m = 144 vox). Each inner viewer's
+## job is purely to anchor a LOD0 ring at its position — view_distance
+## past 21 m just streams LOD1/2 chunks unnecessarily. Keep tight.
+## Bump up only if you want the prefetch viewers to ALSO contribute
+## to the broader LOD pyramid past their own LOD0 rings.
+@export_range(64, 1024, 16) var inner_viewer_view_distance_vox: int = 144
+
 ## Distance ahead of player (m) at idle/walk transition speed.
-## Bumped 2026-05-26 from 30 → 45 m: the viewer-direction fix (a76d3ae)
-## means the prefetch sphere is now genuinely in the player's path, so
-## a deeper lookahead pulls real value instead of partly aiming sideways.
+## Determines where the FARTHEST inner viewer sits (the others sit at
+## proportional fractions of this — see _update_inner).
 @export_range(0.0, 200.0, 1.0) var walk_lookahead_m: float = 45.0
 
-## Distance ahead of player (m) at sprint speed.
-## Bumped 2026-05-26 from 60 → 90 m. Sprint anchor is 8.5 m/s; a 90 m
-## lookahead is roughly "where the player will be in 10 s." Combined
-## with the new larger view_distance below, chunks at the 10 s horizon
-## get LOD0 priority before the player closes on them.
+## Distance ahead of player (m) at sprint speed. Combined with
+## inner_viewer_count=3 and default per-viewer vd=144 vox, this builds
+## a LOD0 corridor reaching 0 → ~111 m ahead at sprint.
 @export_range(0.0, 400.0, 1.0) var sprint_lookahead_m: float = 90.0
 
 ## Hard cap on lookahead distance (m). Prevents fly-mode from pushing
-## the prefetch viewer past sensible reach into uncached territory we
-## won't actually visit.
-## Bumped 2026-05-26 from 90 → 150 m. Headroom for fly mode now that
-## the terrain-level cap is 120 m; prefetch can park ahead of the main
-## viewer's sphere instead of inside it.
+## the train past sensible reach.
 @export_range(0.0, 800.0, 1.0) var max_lookahead_m: float = 150.0
 
-## View distance (voxels) at walk pace. Higher = larger streaming sphere
-## around the prefetch viewer = more chunks loaded but better coverage.
-## Bumped 2026-05-26 from 192 → 320 vox (~32 → 53 m). The wasted-streaming
-## half of the bug (viewer pointing wrong direction) is gone, so the
-## prefetch sphere does ~2× the useful work for the same chunk count.
-@export_range(0, 1024, 16) var walk_view_distance_vox: int = 320
-
-## View distance (voxels) at sprint pace.
-## Bumped 2026-05-26 from 256 → 480 vox (~43 → 80 m).
-@export_range(0, 1024, 16) var sprint_view_distance_vox: int = 480
-
-## View distance (voxels) at the lookahead cap (fly mode). Larger
-## prefetch sphere since the player is moving very fast.
-## Bumped 2026-05-26 from 384 → 600 vox (~64 → 100 m).
-@export_range(0, 1024, 16) var max_view_distance_vox: int = 600
-
-## Speed threshold below which the prefetch is disabled (viewer
-## collapses to player pos and view_distance is set to 0). Stops the
-## prefetch from costing anything during idle/standing.
+## Speed threshold below which the entire train collapses to player
+## position with vd=0 (every viewer disabled). Costs nothing while
+## the player is standing still.
 @export_range(0.0, 5.0, 0.1) var min_active_speed_mps: float = 0.5
 
-## Reference walk speed for the lookahead/view-distance interpolation.
+## Reference walk speed for the lookahead interpolation.
 ## Matches Player3D.BASE_WALK_SPEED.
 @export_range(1.0, 20.0, 0.5) var walk_speed_mps: float = 4.5
 
-## Reference sprint speed for the lookahead/view-distance interpolation.
-## Tightened 2026-05-26 from 8.5 -> 7.0 m/s. The capture in
-## profile_capture_112811.json showed actual in-game max horizontal
-## speed of 8.2 m/s (terrain friction / collision drag never lets the
-## player hit the nominal BASE_SPRINT_SPEED of 8.5). Anchoring the
-## interp at 7.0 lets the prefetch reach its full sprint config (90 m
-## lookahead, 480 vox view_distance) at the speed the player ACTUALLY
-## sustains during a sprint, not the theoretical cap. Prior capture
-## avg lead was 55 m of a 90 m config — the curve wasn't biting.
+## Reference sprint speed for the lookahead interpolation.
+## Tightened 2026-05-26 from 8.5 -> 7.0 m/s: actual in-game max
+## horizontal speed is 8.2 m/s (terrain friction never lets the
+## player hit nominal BASE_SPRINT_SPEED). Anchoring at 7.0 lets the
+## train reach its full sprint config at the speed the player actually
+## sustains.
 @export_range(1.0, 30.0, 0.5) var sprint_speed_mps: float = 7.0
 
-## Master toggle. Set false to disable the prefetch viewer entirely
-## without removing the node (for A/B comparing with/without).
+## Master toggle. Set false to disable the train entirely without
+## removing the node (for A/B comparing with/without).
 @export var enabled: bool = true
 
 
 var _player: CharacterBody3D = null     # cached parent
-var _viewer: Node = null                # the inner VoxelViewer instance
+var _viewers: Array = []                # Array[Node] of inner VoxelViewer instances
 var _initial_log_done: bool = false
 
 
@@ -114,24 +113,26 @@ func _ready() -> void:
 		return
 	_player = p
 
-	# Create the inner VoxelViewer. We attach it as our own child rather
-	# than a sibling of the main viewer so its global_position can be
-	# driven by this script's own transform. The actual VoxelLodTerrain
+	# Spawn N inner VoxelViewers. They attach as our own children rather
+	# than siblings of the main viewer so their global_position can be
+	# driven by this script's per-frame loop. The actual VoxelLodTerrain
 	# discovers viewers anywhere in the tree by class.
 	if not ClassDB.class_exists("VoxelViewer"):
 		push_warning("[PrefetchViewer] VoxelViewer class missing — Zylann plugin not loaded?")
 		enabled = false
 		return
-	_viewer = ClassDB.instantiate("VoxelViewer")
-	if _viewer == null:
-		push_warning("[PrefetchViewer] could not instantiate VoxelViewer; disabling.")
-		enabled = false
-		return
-	# Start with view_distance=0 so we don't load chunks before the
-	# first _physics_process gets a chance to scale us.
-	if "view_distance" in _viewer:
-		_viewer.view_distance = 0
-	add_child(_viewer)
+	for i in inner_viewer_count:
+		var v: Node = ClassDB.instantiate("VoxelViewer")
+		if v == null:
+			push_warning("[PrefetchViewer] could not instantiate VoxelViewer #%d; disabling." % i)
+			enabled = false
+			return
+		# Start with view_distance=0 so we don't load chunks before the
+		# first _physics_process gets a chance to position the train.
+		if "view_distance" in v:
+			v.view_distance = 0
+		add_child(v)
+		_viewers.append(v)
 
 
 func _physics_process(_delta: float) -> void:
@@ -145,48 +146,49 @@ func _physics_process(_delta: float) -> void:
 
 
 func _update_inner() -> void:
-	if not enabled or _player == null or _viewer == null:
+	if not enabled or _player == null or _viewers.is_empty():
 		return
 
 	# Horizontal velocity only — gravity/jump shouldn't yank the
-	# prefetch sphere up and down on every jump frame.
+	# train up and down on every jump frame.
 	var vel: Vector3 = _player.velocity
 	var horiz: Vector3 = Vector3(vel.x, 0.0, vel.z)
 	var speed: float = horiz.length()
+	var player_pos: Vector3 = _player.global_position
 
-	# Below the active threshold: collapse to player pos with zero
-	# view_distance. Zylann will unload the prefetch's contribution
-	# and the main viewer continues alone, so the system costs nothing
-	# while the player is standing still.
+	# Below the active threshold: collapse every inner viewer to player
+	# pos with vd=0. Zylann unloads the train's contribution and the
+	# main viewer continues alone — train costs nothing at rest.
 	if speed < min_active_speed_mps:
-		global_position = _player.global_position
-		if "view_distance" in _viewer:
-			_viewer.view_distance = 0
+		for v in _viewers:
+			v.global_position = player_pos
+			if "view_distance" in v:
+				v.view_distance = 0
 		return
 
-	# Lookahead distance interpolated between walk and sprint anchors,
-	# extrapolated past sprint up to max_lookahead_m. Same approach for
-	# view_distance.
+	# Compute the corridor's far end (where the LAST inner viewer sits).
+	# Inner viewers space evenly between the player and this point.
 	var lookahead_m: float = _interp_speed_to(walk_lookahead_m, sprint_lookahead_m, speed)
 	lookahead_m = clampf(lookahead_m, 0.0, max_lookahead_m)
-
-	var view_vox: float = _interp_speed_to(
-			float(walk_view_distance_vox),
-			float(sprint_view_distance_vox),
-			speed)
-	view_vox = clampf(view_vox, 0.0, float(max_view_distance_vox))
-
 	var dir: Vector3 = horiz.normalized()
-	global_position = _player.global_position + dir * lookahead_m
-	if "view_distance" in _viewer:
-		_viewer.view_distance = int(view_vox)
 
-	# One-time log so the developer can confirm the prefetch is active
-	# on first movement (and what config it picked).
+	# Position each inner viewer at lookahead_m * (i+1) / N along motion.
+	# i=0 → closest to player, i=N-1 → at far end (lookahead_m).
+	var n: int = _viewers.size()
+	for i in n:
+		var fraction: float = float(i + 1) / float(n)
+		var v_pos: Vector3 = player_pos + dir * (lookahead_m * fraction)
+		var v = _viewers[i]
+		v.global_position = v_pos
+		if "view_distance" in v:
+			v.view_distance = inner_viewer_view_distance_vox
+
+	# One-time log so the developer can confirm the train is active on
+	# first movement (and what config it picked).
 	if not _initial_log_done:
 		_initial_log_done = true
-		print("[PrefetchViewer] active — speed=%.1f m/s  lookahead=%.1f m  view_distance=%d vox" % [
-			speed, lookahead_m, int(view_vox),
+		print("[PrefetchViewer] active — speed=%.1f m/s  count=%d  lookahead=%.1f m  per-viewer vd=%d vox" % [
+			speed, n, lookahead_m, inner_viewer_view_distance_vox,
 		])
 
 
@@ -198,5 +200,5 @@ func _interp_speed_to(at_walk: float, at_sprint: float, speed: float) -> float:
 	if sprint_speed_mps > walk_speed_mps:
 		t = (speed - walk_speed_mps) / (sprint_speed_mps - walk_speed_mps)
 	# Allow extrapolation beyond sprint (no upper clamp here — caller
-	# clamps lookahead_m / view_distance to their max values).
+	# clamps lookahead_m to its max value).
 	return at_walk + (at_sprint - at_walk) * t
