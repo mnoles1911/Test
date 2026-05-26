@@ -27,6 +27,30 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # touching this script.
 
 
+# --- Surface-slab voxel_bounds clamp (2026-05-25) -------------------
+# Zylann streams fully 3D voxel volumes by default — chunks top to
+# bottom regardless of where the heightmap surface actually is. For a
+# heightmap world like Mira that wastes generation + meshing + memory +
+# EmissiveLightManager scan time on enormous volumes of buried rock that
+# the player never sees and rarely digs. Clamping `terrain.voxel_bounds`
+# in Y to a realistic surface slab makes Zylann never even request
+# chunks outside that band — pure win.
+#
+# Units are VOXEL coordinates (not world metres). With the canonical 1/6
+# terrain scale, voxel Y * (1/6) = world Y metres.
+#
+# Mira's cubic generator: sea level ~ voxel Y 72 (= 12 m world); macro
+# noise centred around offset 60 with +/-100 swing; max ground rarely
+# above voxel Y ~180. The defaults below give:
+#   floor   voxel Y -200 = -33 m world (digging room below sea floor)
+#   ceiling voxel Y +500 =  83 m world (headroom above any peak)
+# Bump `terrain_voxel_y_min` lower if a player wants to dig deeper than
+# 27 m below sea floor; bump `terrain_voxel_y_max` higher if a new
+# generator tuning pushes peaks past 83 m world.
+@export var terrain_voxel_y_min: int = -200
+@export var terrain_voxel_y_max: int = 500
+
+
 # =============================================================
 # DIAGNOSTIC STATE — LOD / streaming investigation 2026-05-07
 # =============================================================
@@ -228,6 +252,23 @@ func _ready() -> void:
 	if "lod_count" in terrain:
 		terrain.set("lod_count", 4)
 		print("[World3D] terrain.lod_count set to 4 (actual=%s)" % terrain.get("lod_count"))
+	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
+	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
+	# enormous volumes of buried rock. See the @export comment at the top
+	# of this file. Modify only Y; keep X/Z at Zylann's default
+	# (effectively infinite). Read back to confirm the values landed.
+	if "voxel_bounds" in terrain:
+		var bounds: AABB = terrain.get("voxel_bounds")
+		bounds.position.y = float(terrain_voxel_y_min)
+		bounds.size.y = float(terrain_voxel_y_max - terrain_voxel_y_min)
+		terrain.set("voxel_bounds", bounds)
+		var actual: AABB = terrain.get("voxel_bounds")
+		print("[World3D] terrain.voxel_bounds Y clamped: %d..%d voxels (actual y=%d..%d, x=%d..%d, z=%d..%d)" % [
+			terrain_voxel_y_min, terrain_voxel_y_max,
+			int(actual.position.y), int(actual.position.y + actual.size.y),
+			int(actual.position.x), int(actual.position.x + actual.size.x),
+			int(actual.position.z), int(actual.position.z + actual.size.z),
+		])
 	# Streaming system: 0 = LEGACY_OCTREE (default), 1 = CLIPBOX.
 	# CLIPBOX walks a clipped box of chunks rather than a full octree
 	# per viewer — typically 2-5× faster main-thread cost than the
