@@ -266,30 +266,34 @@ func _ready() -> void:
 	# the way to keep the near band crisp is FAST streaming (a tight
 	# view_distance matched to the LOD coverage), not a bigger ring.
 	#
-	# lod_count: 1 — SINGLE-LOD architecture (2026-05-26). The earlier
-	# lod_count=4 cascade (LOD3 -> LOD2 -> LOD1 -> LOD0 as the player
-	# approached each chunk) was the root cause of the perceived
-	# "outwalk the streamer" feeling, NOT a Zylann throughput issue.
-	# Capture profile_capture_112811.json proved Zylann's worker mesh
-	# pipeline averages 0.01 ms / frame even while the player is
-	# moving at 8.2 m/s — pipeline is idle, the cost is the cascade
-	# transitions themselves.
+	# lod_count: 2 — SINGLE-TRANSITION architecture (2026-05-26).
+	# History of this knob:
+	#   * lod_count=4 (original): four LOD bands (0-21 m LOD0, 21-43
+	#     LOD1, 43-85 LOD2, 85-120 LOD3). THREE visible LOD transitions
+	#     per chunk as the player approached → the "outwalk the
+	#     streamer" perception (capture_112811.json proved Zylann's
+	#     worker pipeline was idle; cost was the cascade UPGRADES).
+	#   * lod_count=1: zero transitions, LOD0 everywhere out to
+	#     view_distance. Visually fantastic but cost Zylann's
+	#     clipbox scheduler 5.7-SECOND main-thread spikes (z.detect_us
+	#     spiked from p99 12 ms to p99 5737 ms — schedule cost scales
+	#     ~quadratically with full-detail chunk count). Spawn ready
+	#     check timed out at 120 s. FPS 20, frame spikes 130-140 ms.
+	#   * lod_count=2 (this commit): ONE transition (LOD1 → LOD0)
+	#     at the 21 m boundary. The far ring past 21 m is half-resolution
+	#     (33 cm voxels vs 16 cm) — a tolerable visual hit at that
+	#     distance — but chunk count drops to roughly half the
+	#     lod_count=1 set + each far chunk has 1/4 the mesh work. This
+	#     gives the scheduler back its breathing room while keeping
+	#     the cascade visible only one step deep (vs the four-step
+	#     cascade you originally hated).
 	#
-	# At lod_count=1 every chunk inside terrain.view_distance is at
-	# LOD0 the moment it streams in. No cascade exists; therefore
-	# there is no cascade to outrun. DistantTerrain's streaming
-	# smooth heightmesh covers everything past view_distance, so we
-	# don't lose the vista.
-	#
-	# Cost: ~3x triangle / mesh work per visible chunk vs. the
-	# previous mostly-LOD2/3 average. RX 7800 XT triangle budget is
-	# ~50-100 M / frame at 60 FPS; current at 0.7 M, projected 1.5 M.
-	# Trivial. Zylann workers also have headroom (mesh_us idling).
-	#
-	# Enforced here because the editor strips .tscn LOD values on save.
+	# DistantTerrain smooth heightmesh continues to cover everything
+	# past view_distance (120 m), so the vista is untouched. Enforced
+	# here because the editor strips .tscn LOD values on save.
 	if "lod_count" in terrain:
-		terrain.set("lod_count", 1)
-		print("[World3D] terrain.lod_count set to 1 (single-LOD; actual=%s)" % terrain.get("lod_count"))
+		terrain.set("lod_count", 2)
+		print("[World3D] terrain.lod_count set to 2 (single-transition; actual=%s)" % terrain.get("lod_count"))
 	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
 	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
 	# enormous volumes of buried rock. See the @export comment at the top
