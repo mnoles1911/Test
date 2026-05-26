@@ -737,7 +737,23 @@ func _update_viewer_lookahead(delta: float) -> void:
 	# frame, eliminating the dropped_block_loads bursts.
 	var alpha: float = 1.0 - pow(2.0, -delta / VIEWER_OFFSET_SMOOTH_HALFLIFE_S)
 	_viewer_offset_smoothed = _viewer_offset_smoothed.lerp(target_offset, alpha)
-	_voxel_viewer.position = _viewer_offset_smoothed
+	# BUG FIX 2026-05-26 — write to WORLD position, not local.
+	# `_viewer_offset_smoothed` is built from `velocity`, which on
+	# CharacterBody3D is always world-space. But `_voxel_viewer` is a
+	# child of Player3D, and CameraRig rotates Player3D to match camera
+	# yaw, so the body's basis is NOT identity. Writing a world vector
+	# as a local-space `.position` value transforms it AGAIN by the
+	# parent basis on the way out, producing offsets in totally wrong
+	# directions (e.g. player rotated 180° → viewer ends up 180° behind
+	# the player). The viewer is what tells Zylann which chunks deserve
+	# LOD0 priority, so this silently wrong-direction-biased the entire
+	# streaming pipeline whenever the player wasn't facing the default
+	# Godot forward (world -Z). User-visible symptom: chunks AHEAD of
+	# the player downgraded from LOD0 → LOD1 as the player approached
+	# them, because the LOD0 ring was actually drawn around a point
+	# behind/beside the player.
+	# Writing to `global_position` skips the parent-basis transform.
+	_voxel_viewer.global_position = global_position + _viewer_offset_smoothed
 
 
 func _smooth_camera_y(delta: float) -> void:
