@@ -1355,6 +1355,12 @@ func _perf_diag_tick(delta: float) -> void:
 			top_str = " | top: " + " ".join(parts)
 		_profile_buckets.clear()
 
+	# Viewer telemetry summary (added 2026-05-26). Compact one-line read
+	# of every VoxelViewer's lead/alignment vs the player. Surfaced every
+	# second alongside the [PERF] line so a misaligned viewer (today's
+	# bug) is impossible to miss going forward.
+	var viewer_dump: String = _build_viewer_dump()
+
 	if _perf_spike_count > 0 or fps < 50:
 		print("[PERF] fps=%d spikes=%d worst=%d ms%s | draws=%d prims=%d render_objs=%d phys_pairs=%d phys_active=%d nodes=%d orphans=%d vram=%d MB%s" % [
 			fps, _perf_spike_count, int(round(_perf_spike_max_ms)),
@@ -1362,6 +1368,11 @@ func _perf_diag_tick(delta: float) -> void:
 			draws, prims, render_objs, phys_pairs, phys_active, nodes, orphans, vram_mb,
 			spike_dump,
 		])
+		# Print viewer dump on the same beat as [PERF] so the two
+		# correlate cleanly in the Output panel. Print on its own line —
+		# the [PERF] line is already long enough to wrap.
+		if viewer_dump != "":
+			print(viewer_dump)
 
 	_perf_spike_count = 0
 	_perf_spike_max_ms = 0.0
@@ -1380,6 +1391,45 @@ func _perf_diag_tick(delta: float) -> void:
 # worst spike inline means we don't need to ask "which frame should I
 # look at." It also gives us Zylann main-thread budgets (detect_us /
 # mesh_us) without requiring the F3 overlay to be open.
+func _build_viewer_dump() -> String:
+	# Pull viewer telemetry from Profiler.read_viewer_telemetry() and
+	# format one line per viewer. Returns "" when the Profiler is missing
+	# or no viewers are present (loading screens, dev scenes). The
+	# alignment dot product is what would have caught today's bug —
+	# anything ≤ 0 while the player is actually moving means the viewer
+	# is BEHIND or PERPENDICULAR to motion. Show "—" when idle so we
+	# don't flag a meaningless 0.0 as a problem.
+	var p: Node = get_node_or_null("/root/Profiler")
+	if p == null or not p.has_method("read_viewer_telemetry"):
+		return ""
+	var vt: Dictionary = p.call("read_viewer_telemetry")
+	var viewers: Array = vt.get("viewers", [])
+	if viewers.is_empty():
+		return ""
+	var p_vel: Vector3 = vt.get("player_velocity", Vector3.ZERO)
+	var moving: bool = Vector3(p_vel.x, 0.0, p_vel.z).length() > 0.5
+	var parts: Array = []
+	for v in viewers:
+		var path: String = v["path"]
+		# Shorten "/root/World3D/Player3D/VoxelViewer" -> "VoxelViewer"
+		# (or the leaf node name) so the line stays scannable.
+		var name: String = path.get_file() if path.contains("/") else path
+		var lead_m: float = v["distance_to_player_m"]
+		var vd: int = v["view_distance"]
+		var align: float = v["alignment"]
+		var align_str: String = "—" if not moving else ("%+.2f" % align)
+		# Flag a misaligned viewer with a "!" so it pops in the log scroll.
+		# Threshold: dot < 0.3 while moving means viewer is meaningfully
+		# off-axis from motion (the bug fixed in a76d3ae produced -1.0).
+		var flag: String = ""
+		if moving and align < 0.3:
+			flag = "  !MISALIGNED"
+		parts.append("%s(lead=%.1fm vd=%d align=%s)%s" % [
+			name, lead_m, vd, align_str, flag,
+		])
+	return "[VIEWERS] " + "  ".join(parts)
+
+
 func _build_spike_dump() -> String:
 	var p: Node = get_node_or_null("/root/Profiler")
 	if p == null or not p.has_method("get_last_spike"):

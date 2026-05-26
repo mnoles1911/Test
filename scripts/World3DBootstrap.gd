@@ -60,6 +60,19 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # Flip to true in the Inspector for an A/B comparison capture.
 @export var terrain_casts_shadow: bool = false
 
+# Terrain-level view_distance cap (voxels). Zylann uses the MIN of every
+# VoxelViewer's view_distance AND this terrain-level cap to decide what
+# streams. Default 512 voxels = ~85 m world, was the practical limit
+# during the LOD-pyramid era; on 2026-05-26 (post viewer-direction fix
+# in commit a76d3ae) we have headroom to push this higher — the wasted
+# half of streaming work that was being aimed at chunks BEHIND the
+# player is no longer wasted, so a wider radius costs roughly what the
+# old 512 cost. 720 vox = 120 m gives the player a meaningful blocky
+# band before DistantTerrain takes over. The Player3D VoxelViewer is
+# already at 1100 vox; the .tscn value is the per-viewer reach but
+# terrain.view_distance is the hard cap that gates them all.
+@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 720
+
 
 # =============================================================
 # DIAGNOSTIC STATE — LOD / streaming investigation 2026-05-07
@@ -330,6 +343,18 @@ func _ready() -> void:
 			desired_shadow,
 			"ON" if terrain_casts_shadow else "OFF — streaming-throughput probe",
 			terrain.get("cast_shadow"),
+		])
+
+	# Terrain-level view_distance — see the @export comment for the
+	# wider rationale. We don't set it during spawn (the spawn-shrink
+	# path below saves and overrides it); this is the value the spawn
+	# path restores to once the loading raycast succeeds.
+	if "view_distance" in terrain:
+		terrain.set("view_distance", terrain_view_distance_voxels)
+		print("[World3D] terrain.view_distance set to %d voxels (~%d m; actual=%s)" % [
+			terrain_view_distance_voxels,
+			int(terrain_view_distance_voxels / 6.0),
+			terrain.get("view_distance"),
 		])
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we

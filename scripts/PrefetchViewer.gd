@@ -35,26 +35,41 @@ class_name PrefetchViewer
 # --- Tunables (override per scene if needed) ---
 
 ## Distance ahead of player (m) at idle/walk transition speed.
-@export_range(0.0, 200.0, 1.0) var walk_lookahead_m: float = 30.0
+## Bumped 2026-05-26 from 30 → 45 m: the viewer-direction fix (a76d3ae)
+## means the prefetch sphere is now genuinely in the player's path, so
+## a deeper lookahead pulls real value instead of partly aiming sideways.
+@export_range(0.0, 200.0, 1.0) var walk_lookahead_m: float = 45.0
 
 ## Distance ahead of player (m) at sprint speed.
-@export_range(0.0, 400.0, 1.0) var sprint_lookahead_m: float = 60.0
+## Bumped 2026-05-26 from 60 → 90 m. Sprint anchor is 8.5 m/s; a 90 m
+## lookahead is roughly "where the player will be in 10 s." Combined
+## with the new larger view_distance below, chunks at the 10 s horizon
+## get LOD0 priority before the player closes on them.
+@export_range(0.0, 400.0, 1.0) var sprint_lookahead_m: float = 90.0
 
 ## Hard cap on lookahead distance (m). Prevents fly-mode from pushing
 ## the prefetch viewer past sensible reach into uncached territory we
 ## won't actually visit.
-@export_range(0.0, 800.0, 1.0) var max_lookahead_m: float = 90.0
+## Bumped 2026-05-26 from 90 → 150 m. Headroom for fly mode now that
+## the terrain-level cap is 120 m; prefetch can park ahead of the main
+## viewer's sphere instead of inside it.
+@export_range(0.0, 800.0, 1.0) var max_lookahead_m: float = 150.0
 
 ## View distance (voxels) at walk pace. Higher = larger streaming sphere
 ## around the prefetch viewer = more chunks loaded but better coverage.
-@export_range(0, 1024, 16) var walk_view_distance_vox: int = 192
+## Bumped 2026-05-26 from 192 → 320 vox (~32 → 53 m). The wasted-streaming
+## half of the bug (viewer pointing wrong direction) is gone, so the
+## prefetch sphere does ~2× the useful work for the same chunk count.
+@export_range(0, 1024, 16) var walk_view_distance_vox: int = 320
 
 ## View distance (voxels) at sprint pace.
-@export_range(0, 1024, 16) var sprint_view_distance_vox: int = 256
+## Bumped 2026-05-26 from 256 → 480 vox (~43 → 80 m).
+@export_range(0, 1024, 16) var sprint_view_distance_vox: int = 480
 
 ## View distance (voxels) at the lookahead cap (fly mode). Larger
 ## prefetch sphere since the player is moving very fast.
-@export_range(0, 1024, 16) var max_view_distance_vox: int = 384
+## Bumped 2026-05-26 from 384 → 600 vox (~64 → 100 m).
+@export_range(0, 1024, 16) var max_view_distance_vox: int = 600
 
 ## Speed threshold below which the prefetch is disabled (viewer
 ## collapses to player pos and view_distance is set to 0). Stops the
