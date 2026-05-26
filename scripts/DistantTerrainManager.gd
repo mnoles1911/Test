@@ -128,6 +128,30 @@ func configure(generator: Object, vpm: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# Wrapper instrumentation (added 2026-05-25). The capture of 71343 ms
+	# / 14614 frames showed 100+ ms main-thread spike CLUSTERS during
+	# fast traversal — 25 consecutive frames at 90-174 ms each — where
+	# zylann.detect/io/mesh totalled ~0.4 ms and wrapped-script
+	# attribution totalled ~6 ms. The 160+ ms gap matched our own
+	# DistantTerrain build pattern (recompute on boundary cross →
+	# many chunks queued → drained at builds_per_frame from this
+	# unwrapped _process). The wrap pattern below (Time.get_ticks_usec
+	# outer + Profiler.record + HUDOverlay.profile_record) matches every
+	# other autoload's instrumentation and adds ~1-2 µs per frame.
+	# Records the WHOLE _process tick — finer attribution (recompute vs
+	# build_queue vs fades) is one inner-wrap pass away if the next
+	# capture shows it's needed, but step 1 is just confirming
+	# DistantTerrain owns the gap.
+	var _t0: int = Time.get_ticks_usec()
+	_process_inner(delta)
+	var _elapsed: int = Time.get_ticks_usec() - _t0
+	HUDOverlay.profile_record("DistantTerrain", _elapsed)
+	var prof: Node = get_node_or_null("/root/Profiler")
+	if prof != null:
+		prof.record("WORLD", "DistantTerrain", _elapsed)
+
+
+func _process_inner(delta: float) -> void:
 	if not _active:
 		return
 	if _player == null or not is_instance_valid(_player):
