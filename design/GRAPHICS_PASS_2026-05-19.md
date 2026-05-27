@@ -350,18 +350,30 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   triplanar bump — which is exactly how Complementary generates normals
   (`lib/util/dFdxdFdy.glsl`). Never touches `bake_tangents`. GDScript +
   `.gdshader`. **Effort: medium–large.**
-- **Phase J — Colored lighting (voxel floodfill).** **SHIPPED 2026-05-22**
-  — see the "Phases G / I / J — SHIPPED" section above; built with
-  engine-native `OmniLight3D`s rather than the C++ floodfill sketched
-  here (designer-approved architecture call). The biggest single
-  visual jump and the one piece that genuinely needs C++: a BFS floodfill
-  from emissive voxels into a 3D storage texture, triggered on
-  `VoxelEditManager.edit_applied`, scoped to a radius around the edit —
-  the same shape of work as `VoxelGravityManager`'s flood-fill. C++
-  GDExtension in `extensions/voxel_gen/` + thin GDScript adapter + a
-  manager autoload that uploads the storage texture to a shader global;
-  the terrain shader samples it for indirect block light. Forward+
-  storage textures. **Effort: large.**
+- **Phase J — Colored lighting (voxel floodfill).** **SHIPPED 2026-05-22
+  (v1, OmniLight3D)** → **SUPERSEDED 2026-05-27 by v2 (C++ floodfill,
+  PR #241).** The original sketch in this roadmap (C++ BFS floodfill
+  from emissive voxels into a 3D storage texture sampled by the
+  terrain shader) was deferred for v1 in favour of engine-native
+  `OmniLight3D`s. Designer testing 2026-05-26 found the v1's
+  shadowless cluster lights bled brightness through ~5-15 voxels of
+  rock to the surface — physics-correct for `shadow_enabled = false`,
+  cosmetically wrong. The v1 also regressed perf when its `scan_region`
+  C++ port used per-voxel `Variant::call("get_voxel")` instead of a
+  bulk channel read (47.6 ms peak vs 18 ms GD-native pre-port). PR
+  #241 shipped the original sketch as designed: `EmissiveBakedCpp`
+  (BFS gated on "cell-centre voxel is air", `PackedByteArray` RGBA8
+  output) + `EmissiveBakedLightManager` autoload (owns
+  `ImageTexture3D` + four `[shader_globals]` declarations) +
+  `terrain_voxel.gdshader` sampler. The v1 autoload (`EmissiveLightManager`)
+  stays on disk; the v2 disables it at `_ready` so they don't
+  double-light, and reverting just the v2 autoload re-enables the v1
+  cleanly. Defaults after three rounds of designer tuning:
+  `cells_per_axis = 32`, `cell_size_voxels = 4` (~21 m cube),
+  `max_bfs_steps = 2`, `falloff_q12 = 1024` (0.25/step), `bake_strength = 0.10`.
+  All `@export`; live-tunable from the Inspector. Closing profile
+  2026-05-27: `WORLD.EmissiveBakedLight` 8.0 ms max / 5 ms avg / 0
+  spikes >10 ms across 285 ticks. **DONE.**
 - **Phase K — Atmospheric polish.** **PARTIAL — SHIPPED 2026-05-22 (PR #235):**
   the night-sky slice (stars / aurora / nebula) is done; see the
   "Phases F / H / K — SHIPPED" section above. **Still open:** lens flare,
