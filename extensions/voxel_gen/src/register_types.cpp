@@ -31,6 +31,7 @@
 #include "heightmap_generator_base.h"
 #include "parity_probe.h"
 #include "voxel_gravity_cpp.h"
+#include "water_flow_cpp.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -61,6 +62,7 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     ClassDB::register_class<VoxelGravityCpp>();
     ClassDB::register_class<EmissiveLightCpp>();
     ClassDB::register_class<EmissiveBakedCpp>();
+    ClassDB::register_class<WaterFlowCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
