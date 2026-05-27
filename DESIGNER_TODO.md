@@ -190,16 +190,13 @@ Scene building and node configuration that has to be done in the editor.
   pass — note which tier looks wrong and how.
   Reference: `design/GRAPHICS_PASS_2026-05-19.md` → "Phases F / H / K — SHIPPED".
 
-- [ ] **Visual gate — graphics Phases G / I / J** (branch `feat/graphics-phases-g-i-j`)
-  The rest of the graphics roadmap shipped 2026-05-22: G (AtmosphereProfile
-  refactor), I (tangent-free per-pixel terrain relief + emission/roughness),
-  J (emissive voxels cast coloured `OmniLight3D` light). Headless-gated;
-  all three need an in-editor visual check. Run `World3D.tscn` and work
-  through the **"END-OF-BUILD VISUAL CHECKLIST — Phases G / I / J"** in
-  `design/GRAPHICS_PASS_2026-05-19.md` (items G1, I1, I2, J1, J2). The
-  headline test: dig down into stone, mine into a copper-ore vein — it
-  should glow warm amber and light the tunnel around it. Report anything
-  that looks off; tuning knobs are listed inline in the checklist.
+- [x] **Visual gate — graphics Phases G / I / J** — PASSED (2026-05-22, PR #238)
+  G (AtmosphereProfile), I (tangent-free terrain relief), J (emissive
+  voxels cast coloured light) all verified in-editor. Designer testing
+  caught one bug — emissive copper buried in solid rock lit the surface
+  through the terrain in a player-following radius — fixed so only
+  air-exposed emissive voxels register a light. Glowing ore, the
+  day-cycle, and ULTRA-tier SDFGI global illumination all confirmed good.
 
 - [ ] **Build `scenes/NPC_Template.tscn`**
   Create once; duplicate for every new NPC going forward.
@@ -242,6 +239,30 @@ Scene building and node configuration that has to be done in the editor.
 - [ ] **Add `SpawnPoint3D` nodes for each NPC schedule location**
   Each `NPCScheduleEntry.location_id` must match the exact name of a `SpawnPoint3D`
   node in the scene. Add each to the `spawn_points` group via Node panel → Groups tab.
+
+- [ ] **Verify + tune the DistantTerrain streaming heightmesh**
+  (DistantTerrain LOD overhaul, 2026-05-22, branch `feat/distant-terrain-lod`.)
+  The blocky Zylann terrain is now a tight ~450 m near-band; everything past
+  it is the smooth streaming `DistantTerrain` heightmesh. Run `World3D.tscn`
+  AND `CopperIslesTest.tscn` and confirm:
+  - No terracing anywhere — distant slopes read smooth, not stair-stepped.
+  - Walk a long straight line — distant chunks recenter with no pop, hitch,
+    or crack flicker; a ring LOD-swap dithers cleanly.
+  - The blocky band fully covers the smooth mesh in the overlap zone (no
+    z-fighting); digging a deep hole near the player never exposes it.
+  - The blocky↔smooth handoff colour doesn't jump jarringly at the band edge.
+  - Copper Isles: whole archipelago visible from a peak. Mira: no
+    sky-meets-cliff cutoff at any heading.
+  - F3 profiler: distant tri-count within budget, no boundary-crossing spike.
+  - `scenes/_dev/BakeWorld.tscn` still bakes (the skirt-bake button is gone).
+  Then TUNE in-editor with F12 (Zylann LOD debug draws). Starting values:
+  `VoxelViewer.view_distance` 2700, World3D `lod_count` 4, and the
+  `DistantTerrainManager` node's exports (`ring_half_extent`,
+  `inner_cull_radius`, `base_quad_size`, `quads_per_chunk`, `lod_count`,
+  `fade_seconds`, `apron_base_depth`, `max_live_chunks`). Fog/atmosphere at
+  the band edge is eyeballed here too (fog is runtime-driven by
+  `WeatherManager` per-state — adjust those profiles if the haze reads wrong).
+  Reference: CLAUDE.md 2026-05-22 milestone, `design/GRAPHICS_PASS_2026-05-19.md`.
 
 ---
 
@@ -903,14 +924,16 @@ a short pitch; promote to a real section when scope is committed.
     shutdown ordering quirks could surface a write to a freed Tween.
     Low-risk; address if it ever shows up in the log.
 
-- **HorizonSkirt — triplanar texturing for distant terrain (Copper Isles + future regions).**
-  Today the baked skirt mesh (`assets/voxel/copper_isles_skirt.res`,
-  `scripts/_dev/SkirtBaker.gd` + `scripts/HorizonSkirt.gd`) reads as
-  vertex-colour bands with per-vertex noise. Lit by Cascaded Shadow
-  Maps and shaded as 3-stop elevation gradient (forest → rock →
-  snowcap), it's a clear upgrade over the original flat-grey, but it
-  still reads as "low-LOD distant terrain" up close — uniformly tinted
-  slopes without surface texture detail.
+- **DistantTerrain — triplanar texturing for the distant heightmesh.**
+  (Was "HorizonSkirt triplanar texturing"; the baked HorizonSkirt was
+  retired 2026-05-22 — this now applies to the streaming
+  `DistantTerrainManager` heightmesh, which inherited the skirt's
+  vertex-colour palette via `assets/shaders/distant_terrain.gdshader`.)
+  The distant heightmesh reads as vertex-colour bands with per-vertex
+  noise — a 3-stop elevation gradient (forest → rock → snowcap) plus a
+  slope-to-rock shift. Coherent at distance, but it reads as untextured
+  "low-LOD terrain" if the player gets near the blocky↔smooth handoff
+  band — uniformly tinted slopes without surface texture detail.
   
   Production open-worlds (Skyrim, BotW, Horizon, Witcher 3) push
   past this with **triplanar texturing**: project a small set of

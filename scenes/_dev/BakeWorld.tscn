@@ -34,7 +34,6 @@ bake_label = "COPPER ISLES — BAKE TOOL"
 bake_db_path = "user://baked_baseline_v14.sqlite"
 final_baseline_path = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 show_copy_button = true
-show_skirt_button = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1580842734]
 environment = SubResource("Env_1")

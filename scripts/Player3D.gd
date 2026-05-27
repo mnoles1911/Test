@@ -386,13 +386,39 @@ const VIEWER_LOOKAHEAD_HIGH_SPEED_MPS: float = 8.5
 # Fly mode (~45 m/s) pegs here too and then gets clamped by the
 # distance cap.
 
-const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 40.0
-# Hard cap on the viewer offset in metres. Prevents fly mode (or any
-# future high-speed traversal) from pushing the viewer past the LOD0
-# ring, which would leave the chunks under the player at LOD1+ and
-# create visible LOD pop directly under their feet. 40 m is ~31 % of
-# the 128 m LOD0 ring — comfortably inside the safety margin.
-# Set to 0.0 to disable the entire lookahead system.
+const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 0.0
+# Hard cap on the viewer offset in metres. DISABLED 2026-05-26 (set to
+# 0.0 — see _update_viewer_lookahead, which special-cases <= 0 as
+# "stay at player position").
+#
+# History: this cap was 40.0 m for months. The original comment
+# claimed "40 m is ~31 % of the 128 m LOD0 ring" — that was an
+# off-by-6 UNIT BUG. `terrain.lod_distance = 128` is in VOXELS, not
+# metres; at 6 vox/m the LOD0 ring is ~21 m, not 128 m. So a 40 m
+# offset was pushing the main viewer ~188 % of the ring radius
+# AHEAD of the player — leaving the player standing OUTSIDE the LOD0
+# ring whenever they moved. That is exactly the "I outrun LOD0
+# after 10 s of sprinting" symptom: the LOD0 ring isn't behind
+# the player, it's offset 20–30 m IN FRONT of them.
+#
+# Once the offset was zeroed, the streaming pipeline kept up with
+# sprint speed (detect_us spike 465 ms → 9 ms, dropped_loads
+# 30,000+ → 0). The lookahead system's premise — "prefetch chunks
+# ahead so the main viewer never lags" — turned out to be the
+# opposite of what helps: with `lag_xz=0` the main viewer's LOD0
+# ring is always centred on the player, and Zylann's scheduler
+# never has to thrash recomputing required blocks for a moving
+# viewer-offset target.
+#
+# An earlier experiment (PrefetchViewer "train", 3 secondary
+# VoxelViewers spaced 0–111 m ahead) made this worse, not better:
+# four viewers all canceling each other's pending load tasks at
+# sprint speed produced 465 ms scheduler stalls. Code deleted
+# 2026-05-26.
+#
+# Bump above 0 only if a future redesign genuinely needs forward
+# lookahead — and only with a value < 21.0 (the actual LOD0 ring
+# radius in metres at lod_distance=128 vox).
 
 const VIEWER_OFFSET_SMOOTH_HALFLIFE_S: float = 0.20
 # Exponential half-life for VoxelViewer offset transitions. Without
@@ -737,7 +763,23 @@ func _update_viewer_lookahead(delta: float) -> void:
 	# frame, eliminating the dropped_block_loads bursts.
 	var alpha: float = 1.0 - pow(2.0, -delta / VIEWER_OFFSET_SMOOTH_HALFLIFE_S)
 	_viewer_offset_smoothed = _viewer_offset_smoothed.lerp(target_offset, alpha)
-	_voxel_viewer.position = _viewer_offset_smoothed
+	# BUG FIX 2026-05-26 — write to WORLD position, not local.
+	# `_viewer_offset_smoothed` is built from `velocity`, which on
+	# CharacterBody3D is always world-space. But `_voxel_viewer` is a
+	# child of Player3D, and CameraRig rotates Player3D to match camera
+	# yaw, so the body's basis is NOT identity. Writing a world vector
+	# as a local-space `.position` value transforms it AGAIN by the
+	# parent basis on the way out, producing offsets in totally wrong
+	# directions (e.g. player rotated 180° → viewer ends up 180° behind
+	# the player). The viewer is what tells Zylann which chunks deserve
+	# LOD0 priority, so this silently wrong-direction-biased the entire
+	# streaming pipeline whenever the player wasn't facing the default
+	# Godot forward (world -Z). User-visible symptom: chunks AHEAD of
+	# the player downgraded from LOD0 → LOD1 as the player approached
+	# them, because the LOD0 ring was actually drawn around a point
+	# behind/beside the player.
+	# Writing to `global_position` skips the parent-basis transform.
+	_voxel_viewer.global_position = global_position + _viewer_offset_smoothed
 
 
 func _smooth_camera_y(delta: float) -> void:

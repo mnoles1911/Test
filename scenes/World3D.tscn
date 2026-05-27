@@ -128,6 +128,7 @@ size = Vector3(10, 10, 10)
 
 [node name="World3D" type="Node3D" unique_id=433411702]
 script = ExtResource("4_bootstrap")
+diag_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1612514652 groups=["world_environment"]]
 environment = SubResource("Environment_1")
@@ -152,6 +153,7 @@ shadow_enabled = true
 shadow_bias = 0.18
 shadow_normal_bias = 1.0
 shadow_blur = 1.5
+directional_shadow_mode = 1
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 120.0
 
@@ -168,6 +170,7 @@ shadow_enabled = true
 shadow_bias = 0.18
 shadow_normal_bias = 1.0
 shadow_blur = 1.5
+directional_shadow_mode = 1
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 120.0
 sky_mode = 1
@@ -179,7 +182,6 @@ mesh = SubResource("MoonSphereMesh")
 surface_material_override/0 = SubResource("MoonMat")
 
 [node name="VoxelLodTerrain" type="VoxelLodTerrain" parent="." unique_id=2000000001]
-lod_count = 6
 lod_distance = 128.0
 secondary_lod_distance = 128.0
 lod_fade_duration = 1.0

@@ -93,7 +93,17 @@ extends Node
 @export_range(8, 40, 1) var vicinity_scan_radius_voxels: int = 24
 # Half-side of the vicinity sweep box, in voxels (6 voxels = 1 m). The
 # sweep bulk-reads one box this big around the player each interval —
-# the cost is iterating the buffer, so keep it modest.
+# the cost is iterating the buffer, so keep it modest. The box is
+# sliced into 8 octants and drained one per tick (see
+# _queue_vicinity_scan) so a 24-voxel radius costs ~5 ms per tick spread
+# over 8 ticks instead of one ~38 ms frame stall.
+
+@export_range(0.0, 8.0, 0.5) var vicinity_movement_threshold_m: float = 1.0
+# Movement gate. If the player has moved less than this many metres
+# since the last vicinity sweep, skip the new sweep — the box would
+# cover almost the same voxels. Standing still: one scan after the
+# player arrives, then idle. Moving: the gate is opened by the player's
+# own motion. Set to 0 to disable the gate (sweep on every interval).
 
 
 # =============================================================
@@ -121,8 +131,13 @@ const _SCAN_QUEUE_MAX: int = 24
 # Largest box (per axis) a single scan may cover — guards the buffer
 # allocation against a runaway request.
 const _MAX_SCAN_SIDE: int = 72
-# At most this many queued scans are drained per tick.
-const _MAX_SCANS_PER_TICK: int = 2
+# At most this many queued scans are drained per tick. Vicinity sweeps
+# are sliced into 8 octants in _queue_vicinity_scan, so a value of 1
+# spreads each sweep over 8 ticks (~1.6 s) — keeping each tick's scan
+# work well under the 16 ms frame budget. Profiler capture 2026-05-25:
+# the old un-sliced sweep cost 38 ms in a single frame; sliced + 1/tick
+# is ~5 ms per tick, invisible.
+const _MAX_SCANS_PER_TICK: int = 1
 
 # Face-neighbour offsets — used to test whether an emissive voxel is
 # exposed to air (and therefore worth lighting).
@@ -139,6 +154,12 @@ var _terrain_id: int = 0
 const _TICK_S: float = 0.2
 var _tick_accum: float = 0.0
 var _periodic_accum: float = 0.0
+
+# Movement-gate state. _last_vicinity_pos is the camera position the
+# last vicinity sweep was centred on; _vicinity_first forces the first
+# sweep to always run (otherwise it would be gated against ZERO).
+var _last_vicinity_pos: Vector3 = Vector3.ZERO
+var _vicinity_first: bool = true
 
 
 # =============================================================
@@ -237,9 +258,26 @@ func _queue_vicinity_scan() -> void:
 	var cam: Camera3D = _get_camera()
 	if cam == null:
 		return
-	var g: Vector3i = _world_to_voxel(cam.global_position)
+	var pos: Vector3 = cam.global_position
+	# Movement gate — skip if the player hasn't moved enough since the
+	# last sweep. The scan box would otherwise cover almost the same
+	# voxels we already know about (the lights are cached in _lights and
+	# _emissive_voxels and persist for the session).
+	if not _vicinity_first \
+			and vicinity_movement_threshold_m > 0.0 \
+			and pos.distance_to(_last_vicinity_pos) < vicinity_movement_threshold_m:
+		return
+	_vicinity_first = false
+	_last_vicinity_pos = pos
+	# Slice the (2r)³ box into 8 (r)³ octants. With _MAX_SCANS_PER_TICK=1
+	# the drain spreads the work across 8 ticks (~1.6 s) — each tick
+	# handles ~r³ voxels instead of the (2r)³ all-at-once frame stall.
+	var g: Vector3i = _world_to_voxel(pos)
 	var r: int = vicinity_scan_radius_voxels
-	_queue_scan(g - Vector3i(r, r, r), Vector3i(r * 2, r * 2, r * 2))
+	for dx in [-r, 0]:
+		for dy in [-r, 0]:
+			for dz in [-r, 0]:
+				_queue_scan(g + Vector3i(dx, dy, dz), Vector3i(r, r, r))
 
 
 func _queue_scan(min_v: Vector3i, side: Vector3i) -> void:

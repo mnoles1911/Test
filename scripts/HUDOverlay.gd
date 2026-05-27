@@ -39,6 +39,11 @@ var _perf_spike_count: int = 0
 var _perf_spike_max_ms: float = 0.0
 var _perf_window_start_msec: int = 0
 
+# Set by _build_spike_dump after a spike is logged in the per-second
+# [PERF] line, so the same spike isn't re-printed every second until a
+# worse one displaces it from Profiler._last_spike.
+var _perf_last_logged_spike_frame: int = -1
+
 # Per-autoload work attribution. Each autoload wraps its _process /
 # _physics_process with Time.get_ticks_usec() and calls profile_record(
 # label, usec). _perf_diag_tick dumps the top 3 buckets every second
@@ -1319,6 +1324,17 @@ func _perf_diag_tick(delta: float) -> void:
 	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
 	var orphans: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var vram_mb: int = int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / (1024 * 1024))
+	# Streaming-throughput probe (2026-05-25). Surface physics + render
+	# object counts so a spike that the per-script attribution doesn't
+	# explain has a chance of correlating with one of these. See the
+	# matching commentary in Profiler.gd capture path.
+	var phys_pairs: int = int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))
+	var phys_active: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS))
+	var render_objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+	# Pull this second's worst spike's attribution AND Zylann snapshot
+	# from the Profiler autoload so the [PERF] line shows what dominated
+	# the spike (no opening the JSON for a quick glance).
+	var spike_dump: String = _build_spike_dump()
 
 	# Build the per-autoload "top contributors" string. Sort buckets
 	# by accumulated usec descending and emit the top 3 in ms. Anything
@@ -1339,13 +1355,120 @@ func _perf_diag_tick(delta: float) -> void:
 			top_str = " | top: " + " ".join(parts)
 		_profile_buckets.clear()
 
+	# Viewer telemetry summary (added 2026-05-26). Compact one-line read
+	# of every VoxelViewer's lead/alignment vs the player. Surfaced every
+	# second alongside the [PERF] line so a misaligned viewer (today's
+	# bug) is impossible to miss going forward.
+	var viewer_dump: String = _build_viewer_dump()
+
 	if _perf_spike_count > 0 or fps < 50:
-		print("[PERF] fps=%d spikes=%d worst=%d ms%s | draws=%d prims=%d nodes=%d orphans=%d vram=%d MB" % [
+		print("[PERF] fps=%d spikes=%d worst=%d ms%s | draws=%d prims=%d render_objs=%d phys_pairs=%d phys_active=%d nodes=%d orphans=%d vram=%d MB%s" % [
 			fps, _perf_spike_count, int(round(_perf_spike_max_ms)),
 			top_str,
-			draws, prims, nodes, orphans, vram_mb,
+			draws, prims, render_objs, phys_pairs, phys_active, nodes, orphans, vram_mb,
+			spike_dump,
 		])
+		# Print viewer dump on the same beat as [PERF] so the two
+		# correlate cleanly in the Output panel. Print on its own line —
+		# the [PERF] line is already long enough to wrap.
+		if viewer_dump != "":
+			print(viewer_dump)
 
 	_perf_spike_count = 0
 	_perf_spike_max_ms = 0.0
 	_perf_window_start_msec = now_msec
+
+
+# Pull the Profiler autoload's last spike, sort its attribution buckets,
+# and format a one-line " | spike@<frame>: <bucket>=<ms> <bucket>=<ms>
+# z.detect=<ms> z.mesh=<ms>" suffix for the [PERF] line. Returns "" when
+# the Profiler isn't loaded, or when no spike exists in the last 2 s of
+# the ring buffer (the Profiler clears _last_spike each capture).
+#
+# Why surface this in [PERF] instead of only in the F3 overlay: the user's
+# routine investigation flow is to paste the Output panel + a JSON path
+# into the chat. Having the per-second top-attributor of THIS second's
+# worst spike inline means we don't need to ask "which frame should I
+# look at." It also gives us Zylann main-thread budgets (detect_us /
+# mesh_us) without requiring the F3 overlay to be open.
+func _build_viewer_dump() -> String:
+	# Pull viewer telemetry from Profiler.read_viewer_telemetry() and
+	# format one line per viewer. Returns "" when the Profiler is missing
+	# or no viewers are present (loading screens, dev scenes). The
+	# alignment dot product is what would have caught today's bug —
+	# anything ≤ 0 while the player is actually moving means the viewer
+	# is BEHIND or PERPENDICULAR to motion. Show "—" when idle so we
+	# don't flag a meaningless 0.0 as a problem.
+	var p: Node = get_node_or_null("/root/Profiler")
+	if p == null or not p.has_method("read_viewer_telemetry"):
+		return ""
+	var vt: Dictionary = p.call("read_viewer_telemetry")
+	var viewers: Array = vt.get("viewers", [])
+	if viewers.is_empty():
+		return ""
+	var p_vel: Vector3 = vt.get("player_velocity", Vector3.ZERO)
+	var moving: bool = Vector3(p_vel.x, 0.0, p_vel.z).length() > 0.5
+	var parts: Array = []
+	for v in viewers:
+		var path: String = v["path"]
+		# Shorten "/root/World3D/Player3D/VoxelViewer" -> "VoxelViewer"
+		# (or the leaf node name) so the line stays scannable.
+		var name: String = path.get_file() if path.contains("/") else path
+		var lead_m: float = v["distance_to_player_m"]
+		var vd: int = v["view_distance"]
+		var align: float = v["alignment"]
+		var align_str: String = "—" if not moving else ("%+.2f" % align)
+		# Flag a misaligned viewer with a "!" so it pops in the log scroll.
+		# Threshold: dot < 0.3 while moving means viewer is meaningfully
+		# off-axis from motion (the bug fixed in a76d3ae produced -1.0).
+		var flag: String = ""
+		if moving and align < 0.3:
+			flag = "  !MISALIGNED"
+		parts.append("%s(lead=%.1fm vd=%d align=%s)%s" % [
+			name, lead_m, vd, align_str, flag,
+		])
+	return "[VIEWERS] " + "  ".join(parts)
+
+
+func _build_spike_dump() -> String:
+	var p: Node = get_node_or_null("/root/Profiler")
+	if p == null or not p.has_method("get_last_spike"):
+		return ""
+	var spike: Dictionary = p.call("get_last_spike")
+	if spike.is_empty():
+		return ""
+	# Only surface spikes that occurred recently — Profiler ring is
+	# 2 s @ 60 fps, but the last_spike dict has no timestamp. Skip if
+	# this exact frame index has already been printed once (the spike
+	# stays in _last_spike until a worse one comes along).
+	var spike_frame: int = int(spike.get("frame", -1))
+	if spike_frame == _perf_last_logged_spike_frame:
+		return ""
+	_perf_last_logged_spike_frame = spike_frame
+	var attr: Dictionary = spike.get("attribution", {})
+	if attr.is_empty():
+		return " | spike@%d (unattributed)" % spike_frame
+	var entries: Array = []
+	for k in attr.keys():
+		entries.append([k, attr[k]])
+	entries.sort_custom(func(a, b): return a[1] > b[1])
+	var parts: Array = []
+	for i in range(mini(2, entries.size())):
+		var us: int = entries[i][1]
+		if us < 500:
+			continue
+		parts.append("%s=%.1fms" % [entries[i][0], us / 1000.0])
+	# If the Profiler has a live VoxelLodTerrain reference, pull its
+	# stats too. Same Variant call the capture uses; cost ~1 µs.
+	if p.has_method("_read_zylann_stats"):
+		var z: Dictionary = p.call("_read_zylann_stats")
+		if not z.is_empty():
+			var z_detect_ms: float = int(z.get("detect_us", 0)) / 1000.0
+			var z_mesh_ms: float = int(z.get("mesh_us", 0)) / 1000.0
+			if z_detect_ms >= 1.0:
+				parts.append("z.detect=%.1fms" % z_detect_ms)
+			if z_mesh_ms >= 1.0:
+				parts.append("z.mesh=%.1fms" % z_mesh_ms)
+	if parts.is_empty():
+		return ""
+	return " | spike@%d: %s" % [spike_frame, " ".join(parts)]

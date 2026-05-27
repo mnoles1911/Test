@@ -13,6 +13,8 @@ extends SceneTree
 #   spike  — load World3D.tscn headless, pump physics frames, report
 #            whether VoxelLodTerrain actually streams/meshes under the
 #            dummy renderer (decides Phase-3/smoke automation).
+#   distant— DistantTerrainMesher heightmesh parity vs SkirtBaker
+#            (FNV hashes; baseline-then-verify, parity-harness-FIRST).
 #
 # Exit code 0 = pass, non-zero = fail/blocked, so run.ps1 + CI can gate
 # without scraping prose. Every machine line is prefixed with a tag.
@@ -47,7 +49,7 @@ func _initialize() -> void:
 			quit(_shader())
 		"phase7":
 			quit(_phase7())
-		"spike", "phase2", "gen":
+		"spike", "phase2", "gen", "distant":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
 		_:
@@ -65,6 +67,7 @@ func _process(_delta: float) -> bool:
 		match _spike_mode:
 			"phase2": quit(_phase2_report())
 			"gen": quit(_gen_report())
+			"distant": quit(_distant_report())
 			_: quit(_spike_report())
 		return true
 	return false
@@ -520,6 +523,226 @@ func _gen_report() -> int:
 		return 0
 	print("[GEN] RESULT=FAIL — %d parity violations (see push_error)." % fails)
 	return 1
+
+
+# ============================================================
+# DISTANT — DistantTerrainMesher heightmesh contract
+# ============================================================
+# Regression gate for the C++ DistantTerrainMesher. A fixed 32×32-quad
+# region is meshed and reduced to four FNV hashes (vertices / normals /
+# colours / indices) + counts, then checked against:
+#   - the committed baseline tools/headless/distant_parity_baseline.json
+#     — the apron-off grid must stay byte-identical. The baseline was
+#     generated from the SkirtBaker prototype and proven bit-equal to the
+#     C++ port in Phase 1; SkirtBaker.gd was retired in Phase 6, so the
+#     committed JSON is now the sole reference.
+#   - the apron-on build, which must be purely additive (Phase 2).
+#   - distant_terrain.gdshader, which must compile (Phase 3).
+const _DISTANT_BASELINE := "res://tools/headless/distant_parity_baseline.json"
+const _DISTANT_MIN := Vector2(-192.0, -192.0)
+const _DISTANT_MAX := Vector2(192.0, 192.0)
+const _DISTANT_QUAD_M := 12.0   # the fixed parity-region quad size
+const _DISTANT_VPM := 6.0       # canonical 6 voxels / metre
+const _DISTANT_APRON_TEST_DEPTH := 64.0  # Phase 2 apron-additive check
+
+
+func _distant_report() -> int:
+	var terrain := _find_terrain(_spike_world)
+	if terrain == null:
+		print("[DISTANT] RESULT=FAIL reason=no_terrain")
+		return 1
+	var gen = terrain.get("generator")
+	var cpp = gen.get("cpp_impl") if (gen != null and "cpp_impl" in gen) else null
+	if cpp == null:
+		print("[DISTANT] RESULT=FAIL reason=no_cpp_impl (gen=%s)" % (gen.get_class() if gen else "<null>"))
+		return 1
+	if not cpp.has_method("get_ground_voxel_y_at"):
+		print("[DISTANT] RESULT=FAIL reason=generator_missing_get_ground_voxel_y_at")
+		return 1
+	if not ClassDB.class_exists("DistantTerrainMesher"):
+		print("[DISTANT] RESULT=FAIL reason=DistantTerrainMesher_not_registered — build extensions/voxel_gen.")
+		return 1
+	if not FileAccess.file_exists(_DISTANT_BASELINE):
+		print("[DISTANT] RESULT=FAIL reason=baseline_missing %s (committed file)" % _DISTANT_BASELINE)
+		return 1
+
+	# Apron-off grid — must stay byte-identical to the committed baseline.
+	var arrays := _distant_cpp_arrays(cpp, 0.0)
+	if arrays.is_empty():
+		print("[DISTANT] RESULT=FAIL reason=cpp_build_failed (apron-off)")
+		return 1
+	var summary := _distant_summarise(arrays)
+	print("[DISTANT] cpp apron-off: verts=%d tris=%d vhash=%d nhash=%d chash=%d ihash=%d" % [
+		int(summary["vertex_count"]), int(summary["tri_count"]),
+		int(summary["vertex_hash"]), int(summary["normal_hash"]),
+		int(summary["color_hash"]), int(summary["index_hash"])])
+
+	var bf := FileAccess.open(_DISTANT_BASELINE, FileAccess.READ)
+	var base: Dictionary = JSON.parse_string(bf.get_as_text())
+	bf.close()
+	var fails: int = 0
+	for k in ["vertex_count", "index_count", "tri_count", "vertex_hash", "normal_hash", "color_hash", "index_hash"]:
+		if int(base.get(k, -1)) != int(summary.get(k, -2)):
+			fails += 1
+			push_error("[DISTANT] %s drift: baseline=%d cpp=%d" % [k, int(base.get(k, -1)), int(summary.get(k, -2))])
+	if fails == 0:
+		print("[DISTANT] apron-off parity PASS — grid byte-identical to the committed baseline.")
+
+	# --- Phase 2 — the skirt apron is purely additive -----------------
+	var apron_on := _distant_cpp_arrays(cpp, _DISTANT_APRON_TEST_DEPTH)
+	if apron_on.is_empty():
+		fails += 1
+		push_error("[DISTANT] apron-on build failed")
+	else:
+		fails += _distant_check_apron(arrays, apron_on)
+
+	# --- Phase 3 — distant_terrain.gdshader compiles ------------------
+	fails += _distant_check_shader()
+
+	if fails == 0:
+		print("[DISTANT] RESULT=PASS — grid bit-identical to baseline; apron additive; shader compiles.")
+		return 0
+	print("[DISTANT] RESULT=FAIL — %d issue(s)." % fails)
+	return 1
+
+
+# Phase 3 — load distant_terrain.gdshader and confirm it compiles. Under
+# the headless dummy renderer Godot still parses shader code on load: a
+# syntax/semantic error prints SHADER ERROR to stderr and leaves the
+# shader with no valid RID / an empty uniform list. Returns fail count.
+func _distant_check_shader() -> int:
+	var path := "res://assets/shaders/distant_terrain.gdshader"
+	if not ResourceLoader.exists(path):
+		push_error("[DISTANT] shader missing: %s" % path)
+		return 1
+	var sh = load(path)
+	if sh == null or not (sh is Shader):
+		push_error("[DISTANT] shader load failed or not a Shader: %s" % path)
+		return 1
+	var rid: RID = (sh as Shader).get_rid()
+	var uniforms: Array = []
+	if rid.is_valid():
+		uniforms = RenderingServer.get_shader_parameter_list(rid)
+	var has_fade := false
+	for u in uniforms:
+		if String(u.get("name", "")) == "fade_factor":
+			has_fade = true
+	print("[DISTANT] shader distant_terrain.gdshader rid_valid=%s uniforms=%d fade_factor=%s" % [
+		rid.is_valid(), uniforms.size(), has_fade])
+	if not rid.is_valid() or not has_fade:
+		push_error("[DISTANT] distant_terrain.gdshader failed to compile or is missing the fade_factor uniform (grep stderr for SHADER ERROR)")
+		return 1
+	return 0
+
+
+# Phase 2 — assert the skirt apron is purely additive: the apron-off grid
+# is a byte-identical prefix of the apron-on mesh, and the apron appends
+# exactly 4 verts + 6 indices per chunk-border edge. Returns fail count.
+func _distant_check_apron(off: Dictionary, on: Dictionary) -> int:
+	var ov: PackedVector3Array = off["vertices"]
+	var on_v: PackedVector3Array = on["vertices"]
+	var off_n: PackedVector3Array = off["normals"]
+	var on_n: PackedVector3Array = on["normals"]
+	var off_c: PackedColorArray = off["colors"]
+	var on_c: PackedColorArray = on["colors"]
+	var oi: PackedInt32Array = off["indices"]
+	var on_i: PackedInt32Array = on["indices"]
+	var quads: int = int((_DISTANT_MAX.x - _DISTANT_MIN.x) / _DISTANT_QUAD_M)
+	var apron_edges: int = 4 * quads
+	var exp_v: int = apron_edges * 4
+	var exp_i: int = apron_edges * 6
+	var fails: int = 0
+	if on_v.size() != ov.size() + exp_v:
+		fails += 1
+		push_error("[DISTANT] apron vertex delta=%d expected=%d" % [on_v.size() - ov.size(), exp_v])
+	if on_i.size() != oi.size() + exp_i:
+		fails += 1
+		push_error("[DISTANT] apron index delta=%d expected=%d" % [on_i.size() - oi.size(), exp_i])
+	var prefix_ok := true
+	for k in range(ov.size()):
+		if ov[k] != on_v[k] or off_n[k] != on_n[k] or off_c[k] != on_c[k]:
+			prefix_ok = false
+			break
+	if prefix_ok:
+		for k in range(oi.size()):
+			if oi[k] != on_i[k]:
+				prefix_ok = false
+				break
+	if not prefix_ok:
+		fails += 1
+		push_error("[DISTANT] apron-on grid prefix differs from apron-off — apron is NOT purely additive")
+	if fails == 0:
+		@warning_ignore("integer_division")
+		var apron_tris: int = exp_i / 3
+		print("[DISTANT] apron additive check PASS — +%d verts / +%d tris, grid prefix byte-identical." % [exp_v, apron_tris])
+	return fails
+
+
+func _distant_cpp_arrays(gen, apron_depth: float) -> Dictionary:
+	var mesher: Object = ClassDB.instantiate("DistantTerrainMesher")
+	if mesher == null:
+		return {}
+	var d = mesher.call("build_chunk", gen, _DISTANT_MIN, _DISTANT_MAX, _DISTANT_QUAD_M, _DISTANT_VPM, apron_depth)
+	if typeof(d) != TYPE_DICTIONARY:
+		return {}
+	# Round-trip the raw build_chunk arrays through an ArrayMesh — exactly
+	# what DistantTerrainManager does at runtime. This is REQUIRED for the
+	# baseline compare: ArrayMesh's vertex buffer stores normals
+	# octahedral-compressed and colours as RGBA8, and the committed
+	# baseline was captured post-round-trip, so the C++ output must be
+	# measured the same way.
+	return _distant_arrays_from_mesh(_distant_mesh_from_arrays(d))
+
+
+# Assemble an ArrayMesh from a { vertices, normals, colors, indices }
+# Dictionary (the DistantTerrainMesher.build_chunk return shape).
+func _distant_mesh_from_arrays(d: Dictionary) -> ArrayMesh:
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = d.get("vertices", PackedVector3Array())
+	arrays[Mesh.ARRAY_NORMAL] = d.get("normals", PackedVector3Array())
+	arrays[Mesh.ARRAY_COLOR] = d.get("colors", PackedColorArray())
+	arrays[Mesh.ARRAY_INDEX] = d.get("indices", PackedInt32Array())
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _distant_arrays_from_mesh(mesh: ArrayMesh) -> Dictionary:
+	if mesh == null or mesh.get_surface_count() == 0:
+		return {}
+	var a: Array = mesh.surface_get_arrays(0)
+	return {
+		"vertices": a[Mesh.ARRAY_VERTEX],
+		"normals": a[Mesh.ARRAY_NORMAL],
+		"colors": a[Mesh.ARRAY_COLOR],
+		"indices": a[Mesh.ARRAY_INDEX],
+	}
+
+
+func _distant_summarise(arrays: Dictionary) -> Dictionary:
+	var verts: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
+	var norms: PackedVector3Array = arrays.get("normals", PackedVector3Array())
+	var cols: PackedColorArray = arrays.get("colors", PackedColorArray())
+	var idx: PackedInt32Array = arrays.get("indices", PackedInt32Array())
+	@warning_ignore("integer_division")
+	var tri: int = idx.size() / 3
+	return {
+		"vertex_count": verts.size(),
+		"index_count": idx.size(),
+		"tri_count": tri,
+		"vertex_hash": _fnv_bytes(verts.to_byte_array()),
+		"normal_hash": _fnv_bytes(norms.to_byte_array()),
+		"color_hash": _fnv_bytes(cols.to_byte_array()),
+		"index_hash": _fnv_bytes(idx.to_byte_array()),
+	}
+
+
+func _fnv_bytes(b: PackedByteArray) -> int:
+	var h: int = 2166136261
+	for byte in b:
+		h = ((h ^ byte) * 16777619) & 0x7FFFFFFF
+	return h
 
 
 func _find_terrain(n: Node) -> Node:
