@@ -1085,16 +1085,21 @@ func _spawn_horizon_plane(sea_level_y: float) -> void:
 func _process(delta: float) -> void:
 	# Per-frame: push the player's world position into the LOD band
 	# debug shader so the coloured rings track the player. Uses a
-	# GLOBAL shader parameter (registered lazily on first F11 press)
+	# GLOBAL shader parameter (declared in project.godot [shader_globals])
 	# instead of writing to a ShaderMaterial directly — Zylann
 	# duplicates `terrain.material` per chunk, so per-material writes
 	# don't propagate. Globals do.
-	if _lod_debug_on and _lod_debug_global_registered:
-		_diag_resolve_refs()
-		if _diag_player != null:
-			RenderingServer.global_shader_parameter_set(
-				LOD_DEBUG_GLOBAL_PARAM, _diag_player.global_position
-			)
+	#
+	# Pushed UNCONDITIONALLY each frame (2026-05-27, was gated on the
+	# F11 LOD-debug toggle): the water shader's new debug_mode 8 also
+	# reads this global, and gating on _lod_debug_on left mode 8's
+	# rings frozen at world origin during designer testing. Cost is
+	# trivial (one Vector3 global write per frame, no per-chunk fan-out).
+	_diag_resolve_refs()
+	if _diag_player != null:
+		RenderingServer.global_shader_parameter_set(
+			LOD_DEBUG_GLOBAL_PARAM, _diag_player.global_position
+		)
 
 	# Horizon backdrop plane follow disabled — see _spawn_horizon_plane
 	# comment above for why the plane was reverted.

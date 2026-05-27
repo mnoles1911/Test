@@ -578,12 +578,15 @@ func _expected_lod(dist_m: float) -> int:
 # at that LOD (regression in heightmap_generator_base.cpp). Either
 # way, this probe DECIDES which file owns the fix.
 
-# Match the LOD ring boundaries (21/43/85/170) exactly so each ring's
-# transition is sampled twice (once just inside, once at the boundary).
-# Plain Array const — GDScript doesn't allow PackedFloat32Array
-# constructors in const-init context.
+# Sample distances along the camera look-ray (metres). The boundary
+# values (21/43/85) align with the LOD ring transitions exactly so each
+# ring's edge is probed twice. The HARD CAP is set at probe time from
+# the terrain's view_distance — tool.get_voxel on an unloaded chunk
+# SEGFAULTS Zylann silently (no log line, the editor just closes), so
+# F8 must never sample past what's loaded. Plain Array const (GDScript
+# doesn't allow PackedFloat32Array in const-init).
 const LOOKRAY_DISTANCES: Array = [
-	5.0, 10.0, 15.0, 21.0, 30.0, 43.0, 60.0, 85.0, 120.0, 170.0, 250.0
+	2.0, 5.0, 10.0, 15.0, 21.0, 30.0, 43.0, 60.0, 85.0
 ]
 
 
@@ -603,29 +606,55 @@ func _dump_lookray_probe() -> void:
 	var origin: Vector3 = cam.global_position
 	var fwd: Vector3 = -cam.global_basis.z   # Godot Camera forward
 	var sea_y: int = _sea_voxel_y()
-	_emit_lookray(lines, "camera world=(%.1f, %.1f, %.1f) fwd=(%.2f, %.2f, %.2f) sea_voxY=%d" % [
-		origin.x, origin.y, origin.z, fwd.x, fwd.y, fwd.z, sea_y])
+	# Resolve view_distance cap. tool.get_voxel BEYOND the loaded radius
+	# segfaults Zylann (designer test 2026-05-27: F8 closed the editor
+	# with zero log output when probes ran out to 250m on a 85m
+	# view_distance build). Stay safely inside.
+	var view_cap_m: float = 85.0
+	if get_node_or_null("/root/VoxelEditManager") != null:
+		var terrain = VoxelEditManager.get_terrain()
+		if terrain != null and "view_distance" in terrain:
+			# view_distance is in VOXELS, not metres. Convert.
+			view_cap_m = float(terrain.get("view_distance")) / VOXELS_PER_METER
+	# Clamp our preset distances to (cap - 1 m) so the 3x3 column cluster
+	# at the farthest sample is still inside the loaded radius.
+	var max_safe: float = max(2.0, view_cap_m - 1.0)
+	_emit_lookray(lines, "camera world=(%.1f, %.1f, %.1f) fwd=(%.2f, %.2f, %.2f) sea_voxY=%d view_cap=%.0f m" % [
+		origin.x, origin.y, origin.z, fwd.x, fwd.y, fwd.z, sea_y, view_cap_m])
 	_emit_lookray(lines, "  d_m  | voxel             | TYPE | wat | col3x3 | expLOD | wpos")
-	for d in LOOKRAY_DISTANCES:
+	for d_var in LOOKRAY_DISTANCES:
+		var d: float = float(d_var)
+		if d > max_safe:
+			_emit_lookray(lines, "  %5.1f | (skipped — past view_distance cap %.0f m)" % [d, max_safe])
+			continue
 		var wp: Vector3 = origin + fwd * d
 		var v: Vector3i = _world_to_voxel(wp)
+		# Per-sample editable check (guards against partially-loaded chunks
+		# inside view_distance — chunks load asynchronously, an in-range
+		# chunk that hasn't streamed in yet would still crash get_voxel).
+		var sample_box := AABB(Vector3(v) - Vector3.ONE, Vector3(3.0, 3.0, 3.0))
+		if not tool.is_area_editable(sample_box):
+			_emit_lookray(lines, "  %5.1f | (chunk not loaded at voxel %s)" % [d, str(v)])
+			continue
 		var t: int = int(tool.get_voxel(v))
 		var wat: bool = WaterMaterial.is_water_type(t)
-		# 3×3 column cluster at THIS world XZ, scanning a small Y band
-		# around the sample (covers off-by-a-voxel ray slippage).
-		var c33: int = 0
+		# 3x3 column cluster at THIS world XZ (Y fixed at sample voxel).
+		# Drops the 27-cell 3D cluster the v1 used: 9 reads is enough to
+		# detect water presence and keeps the F8 cost under 100 reads
+		# total even at the deepest sampling.
+		var c9: int = 0
 		for ox in [-1, 0, 1]:
 			for oz in [-1, 0, 1]:
-				for oy in [-1, 0, 1]:
-					var ts: int = int(tool.get_voxel(Vector3i(v.x + ox, v.y + oy, v.z + oz)))
-					if WaterMaterial.is_water_type(ts):
-						c33 += 1
+				var ts: int = int(tool.get_voxel(Vector3i(v.x + ox, v.y, v.z + oz)))
+				if WaterMaterial.is_water_type(ts):
+					c9 += 1
 		var exp_lod: int = _expected_lod(d)
-		_emit_lookray(lines, "  %5.1f | %-17s | %4d |  %s  |  %2d/27 |   %d    | (%.1f, %.1f, %.1f)" % [
-			d, str(v), t, ("Y" if wat else "N"), c33, exp_lod, wp.x, wp.y, wp.z])
-	_emit_lookray(lines, "  READ: wat=Y across all samples + screen gap = fluid mesh bug (Zylann fluid mesher at LOD>0).")
-	_emit_lookray(lines, "        wat=N at far samples = generator not emitting water at LOD>0 (heightmap_generator_base.cpp).")
-	_emit_lookray(lines, "        wat=Y near + wat=N far + col3x3=0 = the buffer truly has no water there.")
+		_emit_lookray(lines, "  %5.1f | %-17s | %4d |  %s  |  %d/9   |   %d    | (%.1f, %.1f, %.1f)" % [
+			d, str(v), t, ("Y" if wat else "N"), c9, exp_lod, wp.x, wp.y, wp.z])
+	_emit_lookray(lines, "  READ: wat=Y across all near samples + visible gap = fluid mesher not stitching")
+	_emit_lookray(lines, "        adjacent chunks (or per-chunk shell-mesh culling the boundary face).")
+	_emit_lookray(lines, "        wat=N at far samples in line with the gap = generator not emitting water there.")
+	_emit_lookray(lines, "        wat=Y everywhere + screen still shows gap = bug is in mesher/cull, not buffer.")
 	_show_inspect(lines)
 
 
