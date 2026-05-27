@@ -240,29 +240,14 @@ Scene building and node configuration that has to be done in the editor.
   Each `NPCScheduleEntry.location_id` must match the exact name of a `SpawnPoint3D`
   node in the scene. Add each to the `spawn_points` group via Node panel → Groups tab.
 
-- [ ] **Verify + tune the DistantTerrain streaming heightmesh**
-  (DistantTerrain LOD overhaul, 2026-05-22, branch `feat/distant-terrain-lod`.)
-  The blocky Zylann terrain is now a tight ~450 m near-band; everything past
-  it is the smooth streaming `DistantTerrain` heightmesh. Run `World3D.tscn`
-  AND `CopperIslesTest.tscn` and confirm:
-  - No terracing anywhere — distant slopes read smooth, not stair-stepped.
-  - Walk a long straight line — distant chunks recenter with no pop, hitch,
-    or crack flicker; a ring LOD-swap dithers cleanly.
-  - The blocky band fully covers the smooth mesh in the overlap zone (no
-    z-fighting); digging a deep hole near the player never exposes it.
-  - The blocky↔smooth handoff colour doesn't jump jarringly at the band edge.
-  - Copper Isles: whole archipelago visible from a peak. Mira: no
-    sky-meets-cliff cutoff at any heading.
-  - F3 profiler: distant tri-count within budget, no boundary-crossing spike.
-  - `scenes/_dev/BakeWorld.tscn` still bakes (the skirt-bake button is gone).
-  Then TUNE in-editor with F12 (Zylann LOD debug draws). Starting values:
-  `VoxelViewer.view_distance` 2700, World3D `lod_count` 4, and the
-  `DistantTerrainManager` node's exports (`ring_half_extent`,
-  `inner_cull_radius`, `base_quad_size`, `quads_per_chunk`, `lod_count`,
-  `fade_seconds`, `apron_base_depth`, `max_live_chunks`). Fog/atmosphere at
-  the band edge is eyeballed here too (fog is runtime-driven by
-  `WeatherManager` per-state — adjust those profiles if the haze reads wrong).
-  Reference: CLAUDE.md 2026-05-22 milestone, `design/GRAPHICS_PASS_2026-05-19.md`.
+- [x] **Verify + tune the DistantTerrain streaming heightmesh** — DONE
+  via PR #240 (2026-05-26). The branch closed with `lod_count=4`,
+  `view_distance=512 vox`, `DistantTerrainManager.inner_cull_radius=130 m`,
+  `albedo_tint=(0.70, 0.85, 0.55)`. The streaming pipeline went from "outrun
+  LOD0 in 10 s" to "designer confirmed cannot out run the streaming." The
+  bright-skirt-ghosting-through-hills bug fixed by the new shader tint.
+  Outstanding: LOD1+ water-surface line artefact (separate water-shader work,
+  not a DistantTerrain issue — see CLAUDE.md 2026-05-26 milestone).
 
 ---
 
