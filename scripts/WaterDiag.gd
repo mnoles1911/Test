@@ -93,7 +93,7 @@ func _ready() -> void:
 	var wfm := get_node_or_null("/root/WaterFlowManager")
 	if wfm != null and wfm.has_signal("water_changed"):
 		wfm.water_changed.connect(_on_water_changed)
-	print("[WaterDiag] ready — F4 panel · F5 inspect · F6 cycle shader debug_mode · F9 look-ray · Shift+F9 FORCE-FILL. (F8 reserved by editor as Stop-Scene)")
+	print("[WaterDiag] ready — F4 panel · F5 inspect · F6 cycle shader debug_mode · ` (backtick) look-ray · Shift+` FORCE-FILL.")
 
 
 func _on_water_changed(_chunk_coord: Vector3i) -> void:
@@ -166,18 +166,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F6:
 			_cycle_shader_debug_mode()
 			get_viewport().set_input_as_handled()
-		# NB: F8 is Godot's hardcoded editor shortcut "Stop Running Scene".
-		# Pressing F8 in a scene launched from the editor closes the game
-		# CLEANLY before the input event reaches _unhandled_input. Multiple
-		# failed iterations 2026-05-27 chased a phantom "F8 crash" before
-		# realising the editor was just stopping the scene. NEVER bind a
-		# WaterDiag key to F8. F5/F6/F7 are the same family (Play / Run
-		# Scene / Pause Scene). Stick with F9/F10/F11/F12.
-		KEY_F9:
-			# F9 unmodified = LOOK-RAY PROBE. Shift+F9 = FORCE-FILL. The
-			# look-ray was on F8 in v1; F8 turned out to be the Godot
-			# editor's "Stop Running Scene" shortcut (intercepted before
-			# the event ever reaches us) so it was moved here.
+		# NB on key choice: every F-key in this project is taken or
+		# reserved.  F1 DebugOverlay · F2 freelook · F3 ProfilerOverlay
+		# panel · F4-F6 WaterDiag · F7 Copper scale · F8 Godot EDITOR
+		# Stop-Scene (intercepted before reaching us) · F9 ProfilerOverlay
+		# StreamDiag (calls set_input_as_handled, blocks us) · F10
+		# World3DBootstrap emissive magenta · F11 LOD debug shader · F12
+		# Zylann debug draws. So the water probes live on BACKTICK (top-
+		# left of every keyboard, never bound anywhere). Plain ` =
+		# look-ray; Shift+` = force-fill.
+		KEY_QUOTELEFT:
 			if k.shift_pressed:
 				# Brute-force write SOURCE_BYTE into every voxel in a 32 m
 				# XZ box around the player, below sea level. Bypasses the
@@ -192,7 +190,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				# correspond to chunks where the BUFFER says no water
 				# (generator/sim bug) or to chunks where the buffer has water
 				# but the MESHER didn't emit faces (chunk-stitching bug).
-				printerr("[WaterLookRay] F9 keypress received — deferring probe")
+				printerr("[WaterLookRay] ` keypress received — deferring probe")
 				call_deferred("_dump_lookray_probe")
 			get_viewport().set_input_as_handled()
 
@@ -288,7 +286,7 @@ func _format(d: Dictionary) -> String:
 	var p: Vector3 = d["pos"]
 	var surf_y = d["surf_y"]
 	var surf_txt := ("%.2f (Δ%.2f m)" % [surf_y, d["surf_dist"]]) if not is_nan(surf_y) else "none ±%d vox" % SURFACE_SCAN_VOXELS
-	return "WATER DIAG  (F4 panel · F5 inspect · F6 shader · F9 look-ray · Shift+F9 force-fill)\n" + \
+	return "WATER DIAG  (F4 panel · F5 inspect · F6 shader · ` look-ray · Shift+` force-fill)\n" + \
 		"pos        %.1f, %.1f, %.1f\n" % [p.x, p.y, p.z] + \
 		"in_water   %s    submerged %s\n" % [str(d["in_water"]), str(d["submerged"])] + \
 		"level      %d / 8\n" % int(d["level"]) + \
