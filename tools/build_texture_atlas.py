@@ -17,12 +17,16 @@ into a single atlas.png, and emits a manifest.json mapping
 material_id -> face tile coordinates that the Godot side reads at
 startup.
 
-We use NEAREST (not LANCZOS) because the target is pixel art: the AI
-source images are generated as upscaled pixel-art renders (clean
-square pixels on a 32x grid in a 512x512 canvas, per
-tools/AI_TEXTURE_PROMPTS.md), so the only correct downscale is the
-one that preserves the existing pixel grid. LANCZOS would average
-adjacent source pixels and produce blurry mush at 16x16.
+Downscale uses LANCZOS (2026-05-27): the AI-pixel-art workflow the
+script was originally designed for produced clean square pixels on a
+32x grid; on that input NEAREST is the correct call. The actual source
+PNGs on disk are 1024x1024 photo-style textures (NOT pixel-art),
+where NEAREST at 64x downscale samples 16 essentially-random pixels
+and produces noise that looks nothing like the source — the symptom
+the designer flagged for copper_ore. LANCZOS averages over the source
+region and produces a clean tile that reads as a 16-px representation
+of the photo. If a genuine pixel-art source ever lands, override the
+algorithm per-source.
 
 Two faces are auto-built and do NOT need to exist in source/:
   - grass_side.png is composited from dirt_all + grass_top (top-edge
@@ -251,7 +255,8 @@ def load_source_images(source_dir, tile_size):
             img = chroma_key_white(img)
             print(f"  {name}: white background -> alpha (chroma key applied)")
         if img.size != (tile_size, tile_size):
-            img = img.resize((tile_size, tile_size), Image.NEAREST)
+            # LANCZOS for photo-style sources — see module docstring.
+            img = img.resize((tile_size, tile_size), Image.LANCZOS)
         loaded[name] = img
     return loaded
 
