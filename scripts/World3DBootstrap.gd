@@ -1194,18 +1194,18 @@ func _input(event: InputEvent) -> void:
 			var _state_str: String = "ON" if _diag_debug_draw_on else "OFF"
 			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes + LOD0 fill cubes)" % _state_str)
 		elif event.keycode == KEY_F10:
-				# F10 — paint all emissive voxels flat magenta so the
-				# designer can locate ore at a glance. The shader checks
-				# the `debug_emissive_magenta` global; only emissive
-				# variants (copper_ore today) react.
-				_emissive_magenta_on = not _emissive_magenta_on
-				RenderingServer.global_shader_parameter_set(
-					"debug_emissive_magenta",
-					1.0 if _emissive_magenta_on else 0.0,
-				)
-				var _mag_str: String = "ON — emissive voxels (copper_ore) painted magenta" if _emissive_magenta_on else "OFF"
-				print("[DIAG] F10 emissive-magenta debug %s" % _mag_str)
-			elif event.keycode == KEY_F11:
+			# F10 — paint all emissive voxels flat magenta so the
+			# designer can locate ore at a glance. The shader checks
+			# the `debug_emissive_magenta` global; only emissive
+			# variants (copper_ore today) react.
+			_emissive_magenta_on = not _emissive_magenta_on
+			RenderingServer.global_shader_parameter_set(
+				"debug_emissive_magenta",
+				1.0 if _emissive_magenta_on else 0.0,
+			)
+			var _mag_str: String = "ON — emissive voxels (copper_ore) painted magenta" if _emissive_magenta_on else "OFF"
+			print("[DIAG] F10 emissive-magenta debug %s" % _mag_str)
+		elif event.keycode == KEY_F11:
 			# F11 — LOD band debug shader. Recolours every voxel
 			# surface by LOD ring (green/yellow/orange/red/purple)
 			# so transitions on the world surface are unmistakable.
