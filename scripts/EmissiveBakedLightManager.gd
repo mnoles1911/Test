@@ -51,24 +51,23 @@ extends Node
 @export var cells_per_axis: int = 32
 @export var cell_size_voxels: int = 4
 
-# BFS reach in cells. Designer-intended look is "subtle local glow"
-# (2026-05-27 test): once the player exposes copper, the BFS walks
-# freely through air corridors and bleeds light across the whole
-# surface unless reach is tight. 4 cells × 4 voxels = ~2.7 m radius —
-# barely past the emitter itself, which is what we want.
-@export var max_bfs_steps: int = 4
-# falloff_q12 = 2048 ≈ 0.5 per step. Combined with max_bfs_steps=4 the
-# light is ~6 % of source at the edge of reach — effectively a soft
-# half-cell halo. Designer can raise toward 3482 (~0.85) for longer
-# reach OR raise max_bfs_steps if a brighter cavern glow is wanted.
-@export var falloff_q12: int = 2048
+# BFS reach in cells. Designer 2026-05-27 second-round test: 4 steps
+# at falloff 0.5 was STILL too bright + penetrated too many blocks.
+# Going aggressive — 2 steps means BFS reaches at most one cell past
+# the seed (~1.3 m radius). Combined with the lower falloff below,
+# anything past the immediate neighbour is effectively invisible.
+@export var max_bfs_steps: int = 2
+# falloff_q12 = 1024 ≈ 0.25 per step. At max_bfs_steps=2 the edge
+# value is 0.25^2 = 6 % of source; combined with bake_strength below
+# that contributes ~0.01 to EMISSION — barely visible.
+@export var falloff_q12: int = 1024
 
 # Shader multiplier — bytes encode 0..1 range, this scales them into
-# EMISSION (AgX tonemaps from 0..several). v1 EmissiveLightManager used
-# light_energy_scale=0.4 for comparable subtle glow; v1's
-# OmniLight3D had no per-cell saturation issue so we match that
-# magnitude. Designer-tunable @export — start subtle, raise if dim.
-@export var bake_strength: float = 0.5
+# EMISSION (AgX tonemaps from 0..several). 0.15 puts a fully-lit
+# emitter cell at EMISSION ~ vec3(0.15, 0.10, 0.05) — visible as a
+# faint warm tint but nowhere near "glowing through walls" bright.
+# Designer-tunable @export — raise toward 0.5 / 1.0 for stronger glow.
+@export var bake_strength: float = 0.15
 
 # Periodic safety rebake — picks up anything edit_applied + player-
 # movement missed (e.g. a chunk that streamed in with a new emissive
