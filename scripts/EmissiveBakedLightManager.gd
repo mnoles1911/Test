@@ -63,11 +63,11 @@ extends Node
 @export var falloff_q12: int = 1024
 
 # Shader multiplier — bytes encode 0..1 range, this scales them into
-# EMISSION (AgX tonemaps from 0..several). 0.15 puts a fully-lit
-# emitter cell at EMISSION ~ vec3(0.15, 0.10, 0.05) — visible as a
-# faint warm tint but nowhere near "glowing through walls" bright.
-# Designer-tunable @export — raise toward 0.5 / 1.0 for stronger glow.
-@export var bake_strength: float = 0.15
+# EMISSION (AgX tonemaps from 0..several). Designer round 3
+# 2026-05-27: another -30% from 0.15 -> 0.10. Emitter cell now
+# contributes ~0.10 EMISSION; neighbour ring ~0.025; past that 0.
+# Designer-tunable @export — raise toward 0.3 / 0.5 for stronger glow.
+@export var bake_strength: float = 0.10
 
 # Periodic safety rebake — picks up anything edit_applied + player-
 # movement missed (e.g. a chunk that streamed in with a new emissive
