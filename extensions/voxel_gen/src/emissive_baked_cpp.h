@@ -66,10 +66,21 @@ public:
     //                      into local (cell-space) coords.
     //   p_cell_size_voxels— K (clamped to >=1).
     //   p_cells_per_axis  — N (clamped to >=1; <=256).
-    //   p_emitters        — flat stream, 7 ints per emitter:
-    //                       [g_x, g_y, g_z, r_byte, g_byte, b_byte, energy_byte]
-    //                       (world voxel coords + pre-resolved RGB byte colour
-    //                        + energy scaled to 0..255).
+    //   p_mat_color_table — 256 × 4 bytes (r, g, b, energy). Each entry
+    //                       is the emission colour + energy for that
+    //                       material id; energy == 0 means "not emissive,
+    //                       skip." Built once on the GD side from
+    //                       VoxelMaterialRegistry. C++ discovers emitters
+    //                       by scanning the bulk channel bytes and looking
+    //                       up each non-air voxel — no per-emitter Variant
+    //                       crossing.
+    //   p_air_neighbor_filter — when true, only EXPOSED emissive voxels
+    //                           (at least one 6-face-neighbour is air)
+    //                           seed light. Buried emissive voxels are
+    //                           skipped entirely. This is the gate that
+    //                           prevents a buried copper voxel from
+    //                           lighting its own cell (the "amber-glow-
+    //                           through-the-surface" cosmetic bug).
     //   p_max_steps       — BFS cell-step depth cap (clamped to >=1, <=cells_per_axis).
     //   p_falloff_q12     — per-step attenuation as Q12 fixed-point
     //                       (e.g. 0.85 -> 3482). Clamped to (0, 4096].
@@ -97,7 +108,8 @@ public:
         godot::Vector3i p_volume_origin_v,
         int p_cell_size_voxels,
         int p_cells_per_axis,
-        godot::PackedInt32Array p_emitters,
+        godot::PackedByteArray p_mat_color_table,
+        bool p_air_neighbor_filter,
         int p_max_steps,
         int p_falloff_q12);
 

@@ -102,6 +102,16 @@ const INF_VOXEL: int = 2147483647
 # Re-use the same Vector3i origin each bake to avoid re-allocs.
 var _scratch_buf: VoxelBuffer = null
 
+# 256 × 4 bytes (r, g, b, energy) per material id. energy=0 means
+# "not emissive — C++ skips it." Built once in _ready from the
+# VoxelMaterialRegistry. Passed by reference into the C++ bake.
+var _mat_color_table: PackedByteArray = PackedByteArray()
+
+# Buried emissive voxels still seed their own cell unless this is on
+# — the v1 bug the designer flagged 2026-05-27. The C++ port checks
+# at least one 6-face-neighbour is air before letting a voxel emit.
+@export var air_neighbor_filter: bool = true
+
 
 # =============================================================
 # LIFECYCLE
@@ -150,11 +160,22 @@ func _ready() -> void:
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 
-	# Register the four shader globals. The default texture is a 1x1x1
-	# black image so the shader has something safe to sample before the
-	# first bake; the inv_volume default of 0 makes the shader skip the
-	# sample entirely until we push a real value.
-	_init_globals()
+	# Build the 256-entry color table for C++ (one pass over the registry).
+	_build_mat_color_table()
+
+	# Initialise the global texture with a 1x1x1 black image. The four
+	# globals (baked_light_tex / origin / inv_volume / strength) are
+	# DECLARED in project.godot under [shader_globals] — runtime code
+	# only ever calls global_shader_parameter_set(). The add/get/get_list
+	# APIs are editor-only and error in runtime builds.
+	var black := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	black.set_pixel(0, 0, Color(0, 0, 0, 0))
+	_texture = ImageTexture3D.new()
+	_texture.create(Image.FORMAT_RGBA8, 1, 1, 1, false, [black])
+	RenderingServer.global_shader_parameter_set(_GLOBAL_TEX, _texture)
+	RenderingServer.global_shader_parameter_set(_GLOBAL_ORIGIN, Vector3.ZERO)
+	RenderingServer.global_shader_parameter_set(_GLOBAL_INV_VOLUME, 0.0)
+	RenderingServer.global_shader_parameter_set(_GLOBAL_STRENGTH, bake_strength)
 
 	_active = true
 	print("[EmissiveBakedLight] active — %d emissive material(s), %dx%dx%d cells × %d voxels (~%.1f m cube)." % [
@@ -165,31 +186,24 @@ func _ready() -> void:
 	])
 
 
-func _init_globals() -> void:
-	# Initial 1x1x1 black texture as the safe default.
-	var black := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	black.set_pixel(0, 0, Color(0, 0, 0, 0))
-	_texture = ImageTexture3D.new()
-	_texture.create(Image.FORMAT_RGBA8, 1, 1, 1, false, [black])
-	_set_or_add_global(_GLOBAL_TEX, RenderingServer.GLOBAL_VAR_TYPE_SAMPLER3D, _texture)
-	_set_or_add_global(_GLOBAL_ORIGIN, RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
-	_set_or_add_global(_GLOBAL_INV_VOLUME, RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
-	_set_or_add_global(_GLOBAL_STRENGTH, RenderingServer.GLOBAL_VAR_TYPE_FLOAT, bake_strength)
-
-
-func _set_or_add_global(gname: String, gtype: int, default_val: Variant) -> void:
-	# global_shader_parameter_get returns null when the parameter doesn't
-	# exist OR when it's currently null — but in both cases we want add().
-	# Try get_list and check membership for a reliable "exists" test.
-	var exists: bool = false
-	for n in RenderingServer.global_shader_parameter_get_list():
-		if String(n) == gname:
-			exists = true
-			break
-	if not exists:
-		RenderingServer.global_shader_parameter_add(gname, gtype, default_val)
-	else:
-		RenderingServer.global_shader_parameter_set(gname, default_val)
+# Pre-resolve the per-material emission colour + energy into a 256-byte
+# lookup table (256 × 4 bytes = r, g, b, energy). C++ reads this once
+# per bake instead of crossing a Dictionary for every emissive voxel
+# found. Energy 0 marks "not emissive — skip."
+func _build_mat_color_table() -> void:
+	_mat_color_table = PackedByteArray()
+	_mat_color_table.resize(256 * 4)
+	for mid in _emissive_mat_ids.keys():
+		var vm: VoxelMaterial = VoxelMaterialRegistry.get_by_id(int(mid))
+		if vm == null:
+			continue
+		var c: Color = vm.emission_color
+		var energy: float = clampf(vm.emission_energy, 0.0, 1.0) * 255.0
+		var base: int = int(mid) * 4
+		_mat_color_table[base + 0] = clampi(int(c.r * 255.0), 0, 255)
+		_mat_color_table[base + 1] = clampi(int(c.g * 255.0), 0, 255)
+		_mat_color_table[base + 2] = clampi(int(c.b * 255.0), 0, 255)
+		_mat_color_table[base + 3] = clampi(int(round(energy)), 0, 255)
 
 
 func _process(delta: float) -> void:
@@ -267,20 +281,13 @@ func _bake_now(origin_v: Vector3i) -> void:
 	tool.copy(origin_v, _scratch_buf, type_mask)
 	var t_after_copy: int = Time.get_ticks_usec()
 
-	# Discover emitters by scanning the bulk-read byte array for emissive
-	# material ids. One Variant call returns the whole channel as a
-	# contiguous PackedByteArray; Zylann layout is Y-fastest with
-	# byte_index = (y + x*sy + z*sx*sy) * bytes_per_voxel.
-	var ch_bytes: PackedByteArray = _scratch_buf.get_channel_as_byte_array(VoxelBuffer.CHANNEL_TYPE)
-	var voxel_count: int = side_v * side_v * side_v
-	@warning_ignore("integer_division")
-	var bpv: int = ch_bytes.size() / voxel_count if voxel_count > 0 else 1
-	var emitters: PackedInt32Array = _collect_emitters(ch_bytes, origin_v, side_v, bpv)
-	var t_after_scan: int = Time.get_ticks_usec()
-
-	# C++ floodfill.
+	# C++ does emitter discovery (with the air-neighbour filter) AND
+	# the BFS in one call. Pass the pre-built mat_color_table so per-
+	# material colour resolution stays a single byte lookup per voxel.
 	var bytes: PackedByteArray = _cpp.bake_light_volume(
-		_scratch_buf, origin_v, k, n, emitters, max_bfs_steps, falloff_q12)
+		_scratch_buf, origin_v, k, n,
+		_mat_color_table, air_neighbor_filter,
+		max_bfs_steps, falloff_q12)
 	var t_after_bake: int = Time.get_ticks_usec()
 
 	# Upload as Z-slices into the ImageTexture3D. Re-create the texture
@@ -309,11 +316,9 @@ func _bake_now(origin_v: Vector3i) -> void:
 
 	var t_end: int = Time.get_ticks_usec()
 	if verbose or (t_end - t_start) > 20000:
-		print("[EmissiveBakedLight] bake: emitters=%d  copy=%d  scan=%d  bake=%d  upload=%d  globals=%d  TOTAL=%d us" % [
-			emitters.size() / 7,
+		print("[EmissiveBakedLight] bake: copy=%d  bake=%d  upload=%d  globals=%d  TOTAL=%d us" % [
 			t_after_copy - t_start,
-			t_after_scan - t_after_copy,
-			t_after_bake - t_after_scan,
+			t_after_bake - t_after_copy,
 			t_after_upload - t_after_bake,
 			t_end - t_after_upload,
 			t_end - t_start,
@@ -324,56 +329,6 @@ func _bake_now(origin_v: Vector3i) -> void:
 		prof.record("WORLD", "EmissiveBakedLight", t_end - t_start)
 	if get_node_or_null("/root/HUDOverlay") != null:
 		HUDOverlay.profile_record("EmissiveBakedLight", t_end - t_start)
-
-
-# Walk the bulk-read CHANNEL_TYPE bytes and emit one stream entry per
-# emissive voxel. Each entry = 7 ints:
-#   [g_x, g_y, g_z, r, g, b, energy_byte]
-# matching EmissiveBakedCpp.bake_light_volume's contract.
-#
-# Y-fastest layout: iterating outer Z, then X, then inner Y matches
-# how Zylann packs the byte array — so the inner loop is a tight read
-# over contiguous memory.
-func _collect_emitters(ch_bytes: PackedByteArray, origin_v: Vector3i, side_v: int, bpv: int) -> PackedInt32Array:
-	var emitters: PackedInt32Array = PackedInt32Array()
-	# Cache per-mat-id RGB + energy_byte so we don't re-resolve per voxel.
-	var color_cache: Dictionary = {}   # mat_id -> [r, g, b, energy_byte]
-	for mid in _emissive_mat_ids.keys():
-		var vm: VoxelMaterial = VoxelMaterialRegistry.get_by_id(int(mid))
-		if vm == null:
-			continue
-		var c: Color = vm.emission_color
-		var energy: float = clampf(vm.emission_energy, 0.0, 1.0) * 255.0
-		color_cache[int(mid)] = [
-			clampi(int(c.r * 255.0), 0, 255),
-			clampi(int(c.g * 255.0), 0, 255),
-			clampi(int(c.b * 255.0), 0, 255),
-			clampi(int(round(energy)), 0, 255),
-		]
-	if color_cache.is_empty():
-		return emitters
-
-	var sx: int = side_v
-	var sy: int = side_v
-	for z in range(side_v):
-		var z_base: int = z * sx * sy
-		for x in range(side_v):
-			var zx_base: int = z_base + x * sy
-			for y in range(side_v):
-				var b: int = ch_bytes[(zx_base + y) * bpv] & 0xFF
-				if b == 0:
-					continue
-				if not color_cache.has(b):
-					continue
-				var pack: Array = color_cache[b]
-				emitters.append(origin_v.x + x)
-				emitters.append(origin_v.y + y)
-				emitters.append(origin_v.z + z)
-				emitters.append(pack[0])
-				emitters.append(pack[1])
-				emitters.append(pack[2])
-				emitters.append(pack[3])
-	return emitters
 
 
 # =============================================================

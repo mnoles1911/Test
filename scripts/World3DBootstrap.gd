@@ -1209,17 +1209,14 @@ func _input(event: InputEvent) -> void:
 						return
 					_lod_debug_material = ShaderMaterial.new()
 					_lod_debug_material.shader = sh
-				# Register the global shader parameter the shader reads
-				# from. Lazy / one-shot so we don't touch the rendering
-				# server unless the debug is actually used.
+				# The global shader parameter `player_world_pos` is now
+				# DECLARED in project.godot under [shader_globals] —
+				# global_shader_parameter_get / _add are EDITOR-ONLY
+				# (severe-perf warning + runtime error). One-shot mark
+				# "registered" here so the per-frame _set path keeps
+				# working; the [shader_globals] declaration guarantees
+				# the parameter exists with a Vector3.ZERO default.
 				if not _lod_debug_global_registered:
-					var existing: Variant = RenderingServer.global_shader_parameter_get(LOD_DEBUG_GLOBAL_PARAM)
-					if existing == null:
-						RenderingServer.global_shader_parameter_add(
-							LOD_DEBUG_GLOBAL_PARAM,
-							RenderingServer.GLOBAL_VAR_TYPE_VEC3,
-							Vector3.ZERO,
-						)
 					_lod_debug_global_registered = true
 				_diag_terrain.set("material", _lod_debug_material)
 				print("[DIAG] LOD band debug shader ON — green=LOD0 (0–21m) · yellow=LOD1 (21–42m) · orange=LOD2 (42–85m) · red=LOD3 (85–171m) · purple=beyond")

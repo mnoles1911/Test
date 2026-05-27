@@ -1118,17 +1118,34 @@ func _baked_light() -> int:
 	var max_steps: int = 8
 	var falloff_q12: int = 3482  # ~0.85 per step
 
-	# Two emitters separated by the wall.
-	var emitters: PackedInt32Array = PackedInt32Array([
-		3, 3, 3, 255, 0, 0, 255,   # red, cell (1,1,1)
-		13, 3, 3, 0, 0, 255, 255,  # blue, cell (6,1,1)
-	])
+	# Two emissive voxels (red mat_id=2, blue mat_id=3) placed in the
+	# buffer. Stone wall is mat_id=1. The colour table marks 2 and 3 as
+	# emissive (energy=255), 1 as non-emissive.
+	buf.set_voxel(2, 3, 3, 3, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(3, 13, 3, 3, VoxelBuffer.CHANNEL_TYPE)
+	var table: PackedByteArray = PackedByteArray()
+	table.resize(256 * 4)
+	# id 2 = red, energy 255
+	table[2 * 4 + 0] = 255
+	table[2 * 4 + 1] = 0
+	table[2 * 4 + 2] = 0
+	table[2 * 4 + 3] = 255
+	# id 3 = blue, energy 255
+	table[3 * 4 + 0] = 0
+	table[3 * 4 + 1] = 0
+	table[3 * 4 + 2] = 255
+	table[3 * 4 + 3] = 255
+	# Air-neighbour filter OFF for the parity test — both emissives sit
+	# in air so they'd pass either way; off keeps the test focused on
+	# the BFS-through-air-cells gate (the wall block) rather than the
+	# additional exposure gate.
+	var air_filter: bool = false
 
 	var ref_bytes: PackedByteArray = _BakedRef.bake_light_volume(
-		buf, origin, cell_size, n, emitters, max_steps, falloff_q12)
+		buf, origin, cell_size, n, table, air_filter, max_steps, falloff_q12)
 	var cpp_bytes: PackedByteArray = cpp.call(
 		"bake_light_volume",
-		buf, origin, cell_size, n, emitters, max_steps, falloff_q12)
+		buf, origin, cell_size, n, table, air_filter, max_steps, falloff_q12)
 
 	var expected_size: int = n * n * n * 4
 	print("[BAKED] sizes ref=%d cpp=%d expected=%d" % [

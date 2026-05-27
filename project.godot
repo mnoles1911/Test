@@ -56,6 +56,29 @@ WeatherManager="*res://scripts/WeatherManager.gd"
 BloodVFX="*res://scripts/BloodVFX.gd"
 WaterDiag="*res://scripts/WaterDiag.gd"
 
+[shader_globals]
+
+baked_light_tex={
+"type": "sampler3D",
+"value": null
+}
+baked_light_origin_world={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+baked_light_inv_volume_m={
+"type": "float",
+"value": 0.0
+}
+baked_light_strength={
+"type": "float",
+"value": 4.0
+}
+player_world_pos={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+
 [dialogic]
 
 directories/dch_directory={
