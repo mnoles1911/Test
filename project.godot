@@ -45,8 +45,11 @@ AudioManager="*res://scripts/AudioManager.gd"
 NoEditZoneRegistry="*res://scripts/NoEditZoneRegistry.gd"
 VoxelEditManager="*res://scripts/VoxelEditManager.gd"
 VoxelGravityManager="*res://scripts/VoxelGravityManager.gd"
-EmissiveLightManager="*res://scripts/EmissiveLightManager.gd"
-EmissiveBakedLightManager="*res://scripts/EmissiveBakedLightManager.gd"
+; --- A/B test 2026-05-27: disable BOTH emissive-light managers and let
+; --- the terrain shader's per-voxel EMISSION + Forward+ SSIL handle the
+; --- glow alone. Re-enable both lines to restore the baked-light system.
+;EmissiveLightManager="*res://scripts/EmissiveLightManager.gd"
+;EmissiveBakedLightManager="*res://scripts/EmissiveBakedLightManager.gd"
 WaterFlowManager="*res://scripts/WaterFlowManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 SpeechCheckBroker="*res://scripts/SpeechCheckBroker.gd"
@@ -55,29 +58,6 @@ WorldClock="*res://scripts/WorldClock.gd"
 WeatherManager="*res://scripts/WeatherManager.gd"
 BloodVFX="*res://scripts/BloodVFX.gd"
 WaterDiag="*res://scripts/WaterDiag.gd"
-
-[shader_globals]
-
-baked_light_tex={
-"type": "sampler3D",
-"value": null
-}
-baked_light_origin_world={
-"type": "vec3",
-"value": Vector3(0, 0, 0)
-}
-baked_light_inv_volume_m={
-"type": "float",
-"value": 0.0
-}
-baked_light_strength={
-"type": "float",
-"value": 4.0
-}
-player_world_pos={
-"type": "vec3",
-"value": Vector3(0, 0, 0)
-}
 
 [dialogic]
 
@@ -302,6 +282,29 @@ anti_aliasing/quality/use_taa=true
 anti_aliasing/quality/screen_space_roughness_limiter/enabled=true
 rendering/2d/snap/snap_2d_transforms_to_pixel=true
 rendering/2d/snap/snap_2d_vertices_to_pixel=true
+
+[shader_globals]
+
+baked_light_tex={
+"type": "sampler3D",
+"value": null
+}
+baked_light_origin_world={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+baked_light_inv_volume_m={
+"type": "float",
+"value": 0.0
+}
+baked_light_strength={
+"type": "float",
+"value": 4.0
+}
+player_world_pos={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
 
 [voxel]
 
