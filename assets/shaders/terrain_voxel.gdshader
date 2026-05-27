@@ -67,6 +67,14 @@ global uniform vec3 baked_light_origin_world;
 global uniform float baked_light_inv_volume_m;
 global uniform float baked_light_strength;
 
+// --- F10 debug: tag emissive voxels ---
+// World3DBootstrap toggles this global on F10 so the designer can find
+// emissive ore (currently only copper_ore) in-world. > 0.5 means: every
+// fragment whose material is emissive (emission_strength > 0) renders as
+// flat full-bright magenta — ignoring atlas / relief / EMISSION. Cheap
+// throw-away diagnostic; defaults to 0 in project.godot [shader_globals].
+global uniform float debug_emissive_magenta;
+
 varying vec3 v_world_pos;
 
 // --- 3D value noise -------------------------------------------------
@@ -111,6 +119,15 @@ void fragment() {
 	METALLIC = 0.0;
 	ROUGHNESS = surface_roughness;
 	EMISSION = emission_tint * emission_strength;
+
+	// F10 debug override: paint emissive voxels flat magenta so the
+	// designer can locate ore at a glance. Only emissive variants
+	// (emission_strength > 0) react — non-emissive terrain is unaffected.
+	if (debug_emissive_magenta > 0.5 && emission_strength > 0.0) {
+		ALBEDO = vec3(1.0, 0.0, 1.0);
+		EMISSION = vec3(1.0, 0.0, 1.0);
+		ALPHA = 1.0;
+	}
 
 	// Phase J baked emissive volume — sample the 3D light texture the
 	// EmissiveBakedLightManager autoload bakes around the player. The

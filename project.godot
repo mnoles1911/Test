@@ -45,11 +45,6 @@ AudioManager="*res://scripts/AudioManager.gd"
 NoEditZoneRegistry="*res://scripts/NoEditZoneRegistry.gd"
 VoxelEditManager="*res://scripts/VoxelEditManager.gd"
 VoxelGravityManager="*res://scripts/VoxelGravityManager.gd"
-; --- A/B test 2026-05-27: disable BOTH emissive-light managers and let
-; --- the terrain shader's per-voxel EMISSION + Forward+ SSIL handle the
-; --- glow alone. Re-enable both lines to restore the baked-light system.
-;EmissiveLightManager="*res://scripts/EmissiveLightManager.gd"
-;EmissiveBakedLightManager="*res://scripts/EmissiveBakedLightManager.gd"
 WaterFlowManager="*res://scripts/WaterFlowManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 SpeechCheckBroker="*res://scripts/SpeechCheckBroker.gd"
@@ -304,6 +299,10 @@ baked_light_strength={
 player_world_pos={
 "type": "vec3",
 "value": Vector3(0, 0, 0)
+}
+debug_emissive_magenta={
+"type": "float",
+"value": 0.0
 }
 
 [voxel]
