@@ -123,9 +123,6 @@ emission_energy_multiplier = 1.5
 [sub_resource type="BoxShape3D" id="TriggerShape"]
 size = Vector3(2, 2, 2)
 
-[sub_resource type="BoxShape3D" id="NoEditZone_TestShape"]
-size = Vector3(10, 10, 10)
-
 [node name="World3D" type="Node3D" unique_id=433411702]
 script = ExtResource("4_bootstrap")
 diag_enabled = true
@@ -214,12 +211,6 @@ script = ExtResource("3_trigger")
 
 [node name="TriggerShape" type="CollisionShape3D" parent="DialogueTriggerArea" unique_id=778159175]
 shape = SubResource("TriggerShape")
-
-[node name="NoEditZone_Test" type="Area3D" parent="." unique_id=2000000002 groups=["no_edit_zone"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 5, 0)
-
-[node name="ZoneShape" type="CollisionShape3D" parent="NoEditZone_Test" unique_id=2000000003]
-shape = SubResource("NoEditZone_TestShape")
 
 [node name="Player3D" parent="." unique_id=1627586586 instance=ExtResource("1_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 120, 0)

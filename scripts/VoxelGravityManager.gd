@@ -151,6 +151,19 @@ var _last_read_used_bulk: bool = false
 # (vs. the per-voxel get_voxel() fallback). Used only by the perf
 # log to label which path was taken.
 
+# C++ partition impl (extensions/voxel_gen/src/voxel_gravity_cpp.cpp).
+# Owns the buffer iteration + flood-fill + cluster BFS hot path. The
+# autoload still owns ALL SceneTree work (VoxelTool.copy, NoEditZone
+# queries, queue_set_voxels_bulk, FallingVoxelCluster spawn). When this
+# is null (DLL missing / older Zylann), _process_bubble falls back to
+# the original full-GD path below. See memory/project_vgm_elm_cpp_port
+# and design/LESSONS_LEARNED.md 2026-05-26.
+var _cpp: Resource = null
+# Pure-GD reference used by the headless `gravity` selector AND as the
+# fallback when _cpp is null. Path-preload (not class_name) so it stays
+# headless-safe.
+const _GravityRef := preload("res://scripts/_dev/GravityReference.gd")
+
 
 # =============================================================
 # SIGNALS
@@ -180,6 +193,18 @@ func _ready() -> void:
 	if _cluster_scene == null:
 		push_error("[VoxelGravityManager] could not load %s" % FALLING_CLUSTER_SCENE_PATH)
 		enabled = false
+
+	# Resolve the C++ partition impl if the DLL exposes it. The autoload
+	# stays functional without it (falls back to the GD inner loop) so a
+	# stale build doesn't brick gravity.
+	if ClassDB.class_exists("VoxelGravityCpp"):
+		_cpp = ClassDB.instantiate("VoxelGravityCpp")
+		if _cpp != null:
+			print("[VoxelGravityManager] using C++ partition (VoxelGravityCpp).")
+		else:
+			print("[VoxelGravityManager] VoxelGravityCpp registered but instantiate failed; using GD fallback.")
+	else:
+		print("[VoxelGravityManager] VoxelGravityCpp not registered; using GD fallback.")
 
 
 func _physics_process(_delta: float) -> void:
@@ -354,6 +379,18 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 		# TYPE (material_id integer); COLOR/SDF channels are unused.
 		var type_mask: int = 1 << VoxelBuffer.CHANNEL_TYPE
 		tool.copy(min_v, buf, type_mask)
+		# --- C++ FAST PATH ----------------------------------------------
+		# When the C++ partition impl is available, hand the buffer +
+		# fall_behavior snapshot + (optional) NoEditZone mask to it. C++
+		# returns four packed streams (loose / pickup / cluster_counts /
+		# cluster_voxels) plus solid_count + unanchored_cluster_count.
+		# The GD autoload then consumes those streams, queues writes, and
+		# spawns clusters — short-circuits the per-voxel GD inner loop
+		# entirely.
+		if _cpp != null:
+			_run_cpp_partition(buf, min_v, max_v, side, edit_world_pos, terrain, t_start)
+			return
+		# --- GD fallback path: build solids dict, fall through. ---------
 		for x in range(side):
 			for y in range(side):
 				for z in range(side):
@@ -921,3 +958,213 @@ func _handle_cluster(
 	print("[VoxelGravityManager] spawned cluster: %d voxels at %s (active=%d)" % [
 		n, centroid_world, _active_clusters.size()
 	])
+
+
+# =============================================================
+# C++ FAST PATH
+# =============================================================
+#
+# Replaces the GD anchor/flood/partition/loose/pickup/cluster pipeline
+# (lines ~385-573 of _process_bubble) when VoxelGravityCpp is available.
+# Same outputs (carve + place writes, cluster instantiation) — the
+# delta is that the per-voxel hot loop runs in native code with
+# branch-predicted partition + stack-array scratch + tight 6-conn
+# BFS, instead of GDScript Dictionary hashing.
+
+func _run_cpp_partition(
+	buf: VoxelBuffer,
+	bubble_min_v: Vector3i,
+	bubble_max_v: Vector3i,
+	side: int,
+	edit_world_pos: Vector3,
+	terrain: VoxelLodTerrain,
+	t_start: int,
+) -> void:
+	# Build the fall_behavior snapshot. Cheap (one Dictionary entry per
+	# registered VoxelMaterial — ~15 today). The snapshot is rebuilt every
+	# bubble because the registry is in principle mutable; the cost is
+	# negligible vs. one bubble's flood-fill.
+	var fall_table: Dictionary = _build_fall_table()
+
+	# NoEditZone mask: only built when zones actually overlap the bubble.
+	# Pre-flight via the registry's AABB overlap test — when no zones are
+	# in range (the common case) we hand an empty PackedByteArray to C++
+	# and skip the per-voxel zone check entirely.
+	var bubble_min_world: Vector3 = Vector3(bubble_min_v) * VOXEL_SIZE_M
+	var bubble_max_world: Vector3 = Vector3(bubble_max_v + Vector3i.ONE) * VOXEL_SIZE_M
+	var noeditzone_mask: PackedByteArray = PackedByteArray()
+	var registry := get_node_or_null("/root/NoEditZoneRegistry")
+	var bubble_has_zones: bool = false
+	if registry != null and registry.has_method("does_aabb_overlap_no_edit_zone"):
+		bubble_has_zones = registry.does_aabb_overlap_no_edit_zone(
+			bubble_min_world, bubble_max_world
+		)
+	if bubble_has_zones and registry != null and registry.has_method("is_point_inside_no_edit_zone"):
+		noeditzone_mask = _build_noeditzone_mask(registry, bubble_min_v, side, buf)
+
+	var t_after_read: int = Time.get_ticks_usec()
+
+	# Hand off to C++.
+	_cpp.set_fall_behavior_table(fall_table)
+	_cpp.set_noeditzone_anchor_mask(noeditzone_mask)
+	var result: Dictionary = _cpp.analyze_bubble(buf, bubble_min_v, side)
+	var t_after_cpp: int = Time.get_ticks_usec()
+
+	var bubble_volume: int = side * side * side
+	var bubble_solid_count: int = int(result.get("bubble_solid_count", 0))
+	var unanchored_cluster_count: int = int(result.get("unanchored_cluster_count", 0))
+
+	if bubble_solid_count == 0:
+		if perf_log_enabled:
+			var total_us: int = Time.get_ticks_usec() - t_start
+			if total_us >= perf_log_min_us:
+				print("[PERF VGM cpp] empty bubble: vol=%d  read=%d us  total=%d us" % [
+					bubble_volume, t_after_read - t_start, total_us,
+				])
+		return
+
+	# --- Consume loose stream → carve + place writes ----------------
+	var loose_stream: PackedInt32Array = result["loose"]
+	if loose_stream.size() > 0:
+		_handle_loose_stream(loose_stream, bubble_min_v)
+
+	# --- Consume pickup stream → carves + pending drops -------------
+	var pickup_stream: PackedInt32Array = result["pickup"]
+	if pickup_stream.size() > 0:
+		_handle_pickup_stream(pickup_stream, bubble_min_v)
+
+	# --- Consume cluster stream → one _handle_cluster per cluster ---
+	var cluster_count: int = 0
+	if unanchored_cluster_count > 0:
+		var cluster_counts: PackedInt32Array = result["cluster_counts"]
+		var cluster_voxels: PackedInt32Array = result["cluster_voxels"]
+		var cursor: int = 0
+		for c in cluster_counts:
+			# Rebuild bubble-local Dictionary[Vector3i, packed] for
+			# _handle_cluster. Cluster sizes are capped at
+			# max_cluster_voxels (4096) — rebuild cost is bounded.
+			var cluster_voxel_dict: Dictionary = {}
+			for _i in range(c):
+				cluster_voxel_dict[Vector3i(
+					cluster_voxels[cursor],
+					cluster_voxels[cursor + 1],
+					cluster_voxels[cursor + 2],
+				)] = cluster_voxels[cursor + 3]
+				cursor += 4
+			_handle_cluster(cluster_voxel_dict, bubble_min_v, edit_world_pos, terrain)
+			cluster_count += 1
+
+	var t_end: int = Time.get_ticks_usec()
+	var total_us: int = t_end - t_start
+	if perf_log_enabled and total_us >= perf_log_min_us:
+		print("[PERF VGM cpp] vol=%d solids=%d cluster_vox=%d clusters=%d  read=%d  cpp=%d  handle=%d  TOTAL=%d us (%.2f ms)" % [
+			bubble_volume, bubble_solid_count, unanchored_cluster_count, cluster_count,
+			t_after_read - t_start,
+			t_after_cpp - t_after_read,
+			t_end - t_after_cpp,
+			total_us, total_us / 1000.0,
+		])
+	# DIAGNOSTIC — always print > 30 ms bubbles (matches the legacy path's
+	# spike detector so the existing perf-hunt workflow keeps working).
+	if total_us > 30000:
+		print("[SPIKE _process_bubble cpp] total=%d us  bubble_vol=%d  solids=%d  cluster_voxels=%d  clusters=%d" % [
+			total_us, bubble_volume, bubble_solid_count, unanchored_cluster_count, cluster_count,
+		])
+
+
+# Build a Dictionary[int, int] mirror of VoxelMaterialRegistry's
+# fall_behavior table for the C++ partition. Cheap — ~15 entries.
+func _build_fall_table() -> Dictionary:
+	var table: Dictionary = {}
+	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if mat_registry == null:
+		return table
+	if not mat_registry.has_method("get_all"):
+		return table
+	var all_mats: Array = mat_registry.get_all()
+	for vm in all_mats:
+		if vm == null:
+			continue
+		table[vm.material_id] = vm.fall_behavior
+	return table
+
+
+# Build the side^3 NoEditZone anchor mask. Only solid non-bottom voxels
+# get a registry query — bottom-face cells anchor via the y==0 seed in
+# C++, air cells don't need a check. Matches the original GD code's
+# per-voxel query pattern (lines 438-443 of the pre-port _process_bubble).
+func _build_noeditzone_mask(registry, bubble_min_v: Vector3i, side: int, buf: VoxelBuffer) -> PackedByteArray:
+	var mask: PackedByteArray = PackedByteArray()
+	mask.resize(side * side * side)
+	for x in range(side):
+		for y in range(1, side):  # skip y==0; the bottom seed handles it
+			for z in range(side):
+				var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
+				if (packed & 0xFF) == 0:
+					continue
+				var v_world_centre_m: Vector3 = (
+					Vector3(bubble_min_v) + Vector3(x, y, z) + Vector3.ONE * 0.5
+				) * VOXEL_SIZE_M
+				if registry.is_point_inside_no_edit_zone(v_world_centre_m):
+					mask[x + y * side + z * side * side] = 1
+	return mask
+
+
+# C++ loose stream: 7 ints per entry [fx, fy, fz, tx, ty, tz, packed].
+# Convert to carve + place write batches.
+func _handle_loose_stream(loose_stream: PackedInt32Array, bubble_min_v: Vector3i) -> void:
+	@warning_ignore("integer_division")
+	var n_entries: int = loose_stream.size() / 7
+	var carve_writes: Array = []
+	var place_writes: Array = []
+	for i in range(n_entries):
+		var base: int = i * 7
+		var from_world: Vector3 = (
+			Vector3(bubble_min_v) + Vector3(loose_stream[base], loose_stream[base + 1], loose_stream[base + 2]) + Vector3.ONE * 0.5
+		) * VOXEL_SIZE_M
+		var to_world: Vector3 = (
+			Vector3(bubble_min_v) + Vector3(loose_stream[base + 3], loose_stream[base + 4], loose_stream[base + 5]) + Vector3.ONE * 0.5
+		) * VOXEL_SIZE_M
+		carve_writes.append({"pos": from_world, "value": 0})
+		place_writes.append({"pos": to_world, "value": loose_stream[base + 6]})
+	if not carve_writes.is_empty():
+		VoxelEditManager.queue_set_voxels_bulk(carve_writes, "loose_carve_n%d" % carve_writes.size())
+	if not place_writes.is_empty():
+		VoxelEditManager.queue_set_voxels_bulk(place_writes, "loose_place_n%d" % place_writes.size())
+
+
+# C++ pickup stream: 4 ints per entry [x, y, z, packed]. Carve every
+# entry; queue drops up to max_pickup_drops_per_scan. Mirrors the
+# legacy _handle_pickup_voxels logic, just with stream input.
+func _handle_pickup_stream(pickup_stream: PackedInt32Array, bubble_min_v: Vector3i) -> void:
+	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if mat_registry == null:
+		return
+	@warning_ignore("integer_division")
+	var n_entries: int = pickup_stream.size() / 4
+	var carve_writes: Array = []
+	var drops_queued: int = 0
+	for i in range(n_entries):
+		var base: int = i * 4
+		var packed: int = pickup_stream[base + 3]
+		var mat_id: int = packed & 0xFF
+		var material: VoxelMaterial = mat_registry.get_by_id(mat_id)
+		var world_centre: Vector3 = (
+			Vector3(bubble_min_v) + Vector3(pickup_stream[base], pickup_stream[base + 1], pickup_stream[base + 2]) + Vector3.ONE * 0.5
+		) * VOXEL_SIZE_M
+		carve_writes.append({"pos": world_centre, "value": 0})
+		if drops_queued >= max_pickup_drops_per_scan:
+			continue
+		if material == null or material.yield_item_id == "":
+			continue
+		_pending_drops.append({
+			"pos": world_centre,
+			"item_id": material.yield_item_id,
+			"color": material.color_low,
+			"count": material.yield_quantity,
+		})
+		drops_queued += 1
+	if not carve_writes.is_empty():
+		VoxelEditManager.queue_set_voxels_bulk(
+			carve_writes, "pickup_carve_n%d" % carve_writes.size()
+		)

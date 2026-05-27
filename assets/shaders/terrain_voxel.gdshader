@@ -56,6 +56,25 @@ uniform float surface_roughness : hint_range(0.0, 1.0) = 0.85;
 uniform vec3 emission_tint : source_color = vec3(1.0, 0.85, 0.55);
 uniform float emission_strength : hint_range(0.0, 16.0) = 0.0;
 
+// --- Phase J baked emissive light volume ---
+// Managed by EmissiveBakedLightManager autoload via RenderingServer
+// global shader parameters. Default values (1x1x1 black tex, inv_volume=0)
+// keep this branch visually inert until the autoload pushes a real volume.
+// inv_volume_m = 1.0 / (cells_per_axis * cell_size_metres), so a single
+// multiply maps a world position into UV space.
+global uniform sampler3D baked_light_tex : filter_linear, repeat_disable;
+global uniform vec3 baked_light_origin_world;
+global uniform float baked_light_inv_volume_m;
+global uniform float baked_light_strength;
+
+// --- F10 debug: tag emissive voxels ---
+// World3DBootstrap toggles this global on F10 so the designer can find
+// emissive ore (currently only copper_ore) in-world. > 0.5 means: every
+// fragment whose material is emissive (emission_strength > 0) renders as
+// flat full-bright magenta — ignoring atlas / relief / EMISSION. Cheap
+// throw-away diagnostic; defaults to 0 in project.godot [shader_globals].
+global uniform float debug_emissive_magenta;
+
 varying vec3 v_world_pos;
 
 // --- 3D value noise -------------------------------------------------
@@ -100,6 +119,30 @@ void fragment() {
 	METALLIC = 0.0;
 	ROUGHNESS = surface_roughness;
 	EMISSION = emission_tint * emission_strength;
+
+	// F10 debug override: paint emissive voxels flat magenta so the
+	// designer can locate ore at a glance. Only emissive variants
+	// (emission_strength > 0) react — non-emissive terrain is unaffected.
+	if (debug_emissive_magenta > 0.5 && emission_strength > 0.0) {
+		ALBEDO = vec3(1.0, 0.0, 1.0);
+		EMISSION = vec3(1.0, 0.0, 1.0);
+		ALPHA = 1.0;
+	}
+
+	// Phase J baked emissive volume — sample the 3D light texture the
+	// EmissiveBakedLightManager autoload bakes around the player. The
+	// floodfill stops at solid voxels in C++, so this never bleeds light
+	// through rock (the OmniLight3D system the v1 used could not avoid
+	// that because shadowless cluster lights pass through geometry).
+	// inv_volume_m == 0 (default) disables the sample — keeps the shader
+	// visually identical to pre-Phase-J when the autoload is parked.
+	if (baked_light_inv_volume_m > 0.0) {
+		vec3 uv = (v_world_pos - baked_light_origin_world) * baked_light_inv_volume_m;
+		if (all(greaterThanEqual(uv, vec3(0.0))) && all(lessThanEqual(uv, vec3(1.0)))) {
+			vec3 baked = texture(baked_light_tex, uv).rgb;
+			EMISSION += baked * baked_light_strength;
+		}
+	}
 
 	// Tangent-free bump — Mikkelsen's surface-gradient method.
 	// h is the relief height at this fragment, sampled in WORLD space so

@@ -15,6 +15,22 @@ extends SceneTree
 #            dummy renderer (decides Phase-3/smoke automation).
 #   distant— DistantTerrainMesher heightmesh parity vs SkirtBaker
 #            (FNV hashes; baseline-then-verify, parity-harness-FIRST).
+#   gravity— VoxelGravityCpp scaffolding probe (Phase 0: registration +
+#            stub callable). Phase 1 lays the parity baseline; Phase 2
+#            implements analyze_bubble. Pure ClassDB reflection, no scene.
+#   emissive— EmissiveLightCpp scaffolding probe (Phase 0: registration +
+#            stub callable). Phase 3 lays the parity baseline; Phase 4
+#            implements scan_region. Pure ClassDB reflection, no scene.
+#   baked_light — EmissiveBakedCpp byte-exact parity vs
+#            EmissiveBakedReference for the Phase J light-volume bake
+#            (BFS floodfill into a 3D RGBA8 cell grid). Wall scenario:
+#            two emitters separated by a solid wall must NOT bleed
+#            light across the wall.
+#   water_flow — WaterFlowCpp.scan_settle_region byte-exact parity vs
+#            WaterFlowReference (the per-cell water-settle hot loop).
+#            Air pocket adjacent to a water source must produce the
+#            face-touching air cells as hits; cells past the scan cap
+#            must be deferred to next_y.
 #
 # Exit code 0 = pass, non-zero = fail/blocked, so run.ps1 + CI can gate
 # without scraping prose. Every machine line is prefixed with a tag.
@@ -49,6 +65,14 @@ func _initialize() -> void:
 			quit(_shader())
 		"phase7":
 			quit(_phase7())
+		"gravity":
+			quit(_gravity())
+		"emissive":
+			quit(_emissive())
+		"baked_light":
+			quit(_baked_light())
+		"water_flow":
+			quit(_water_flow())
 		"spike", "phase2", "gen", "distant":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
@@ -814,3 +838,513 @@ func _phase2_report() -> int:
 		return 0
 	print("[PHASE2] RESULT=FAIL — %d problems (see push_error)." % fails)
 	return 1
+
+
+# ============================================================
+# GRAVITY — VoxelGravityCpp parity vs GravityReference (Phase 2)
+# ============================================================
+# Synthesises a 16^3 VoxelBuffer with all four interesting cases:
+#   * a solid bottom plate (anchored-from-floor seed)
+#   * a 2x2x2 floating stone block (NEVER -> cluster path)
+#   * a 1x1x3 floating sand column (LOOSE -> column-fall path)
+#   * a 2x2x1 floating dirt patch (PICKUP_DROP -> pickup path)
+# Runs both GravityReference.analyze_bubble (pure GD) and
+# VoxelGravityCpp.analyze_bubble against the same buffer + fall table.
+# Compares the four output streams SEMANTICALLY (as sets) — iteration
+# order doesn't affect parity.
+const _GravityRef := preload("res://scripts/_dev/GravityReference.gd")
+
+func _gravity() -> int:
+	print("[GRAVITY] === parity probe ===")
+	if not ClassDB.class_exists("VoxelGravityCpp"):
+		print("[GRAVITY] RESULT=FAIL reason=VoxelGravityCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var cpp: Object = ClassDB.instantiate("VoxelGravityCpp")
+	if cpp == null:
+		print("[GRAVITY] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	for m in ["set_fall_behavior_table", "set_noeditzone_anchor_mask", "analyze_bubble"]:
+		if not cpp.has_method(m):
+			print("[GRAVITY] RESULT=FAIL reason=missing_method:%s" % m)
+			return 1
+
+	# Material ids: stone=1 (NEVER), dirt=2 (PICKUP_DROP), sand=4 (LOOSE).
+	# Match the canonical ids in scripts/VoxelMaterialRegistry.gd so a
+	# real engine session and the harness exercise the same constants.
+	var fall_table := {
+		1: _GravityRef.FALL_NEVER,
+		2: _GravityRef.FALL_PICKUP_DROP,
+		4: _GravityRef.FALL_LOOSE,
+	}
+	var side: int = 16
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(side, side, side)
+	_gravity_populate_scenario(buf, side)
+
+	var ref_out: Dictionary = _GravityRef.analyze_bubble(buf, side, fall_table, PackedByteArray())
+	cpp.call("set_fall_behavior_table", fall_table)
+	cpp.call("set_noeditzone_anchor_mask", PackedByteArray())
+	var cpp_out: Dictionary = cpp.call("analyze_bubble", buf, Vector3i.ZERO, side)
+
+	print("[GRAVITY] scenario: solids ref=%d cpp=%d   unanchored ref=%d cpp=%d   loose ref=%d cpp=%d   pickup ref=%d cpp=%d   clusters ref=%d cpp=%d" % [
+		int(ref_out["bubble_solid_count"]), int(cpp_out["bubble_solid_count"]),
+		int(ref_out["unanchored_cluster_count"]), int(cpp_out["unanchored_cluster_count"]),
+		ref_out["loose"].size() / 7, cpp_out["loose"].size() / 7,
+		ref_out["pickup"].size() / 4, cpp_out["pickup"].size() / 4,
+		ref_out["cluster_counts"].size(), cpp_out["cluster_counts"].size(),
+	])
+
+	var fails: Array = _gravity_compare(ref_out, cpp_out)
+	if fails.is_empty():
+		print("[GRAVITY] RESULT=PASS — C++ analyze_bubble matches GD reference set-for-set.")
+		return 0
+	for f in fails:
+		print("[GRAVITY] FAIL %s" % f)
+	print("[GRAVITY] RESULT=FAIL — %d parity divergence(s)." % fails.size())
+	return 1
+
+
+# Build the scenario buffer. Bottom 3 rows of stone span the full XZ plane
+# (so the flood-fill has a wide anchor). The four floating shapes sit well
+# above with a gap of empty rows around them so they cannot be reached
+# from the anchored set.
+func _gravity_populate_scenario(buf: VoxelBuffer, side: int) -> void:
+	# Bottom plate: y in [0, 2], every (x, z) -> stone(1).
+	for y in range(3):
+		for x in range(side):
+			for z in range(side):
+				buf.set_voxel(1, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+	# Floating stone 2x2x2 at (7..8, 8..9, 7..8) — cluster path.
+	for x in range(7, 9):
+		for y in range(8, 10):
+			for z in range(7, 9):
+				buf.set_voxel(1, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+	# Floating sand column 1x3x1 at (3, 8..10, 3) — LOOSE path.
+	# y=8, 9, 10 at the same (x=3, z=3). Bottom (y=8) falls to y=3
+	# (lands on top of the bottom plate), y=9 then sees y=3 occupied
+	# and stacks at y=4, y=10 at y=5. Tests the bottom-up sort.
+	for y in range(8, 11):
+		buf.set_voxel(4, 3, y, 3, VoxelBuffer.CHANNEL_TYPE)
+	# Floating dirt patch 2x1x2 at (12..13, 8, 12..13) — PICKUP_DROP.
+	for x in range(12, 14):
+		for z in range(12, 14):
+			buf.set_voxel(2, x, 8, z, VoxelBuffer.CHANNEL_TYPE)
+
+
+# Semantic compare: each stream becomes a set of tuples; clusters become
+# a multiset of (sorted) voxel sets. Returns a list of human-readable
+# failure descriptions; empty = parity.
+func _gravity_compare(ref: Dictionary, got: Dictionary) -> Array:
+	var fails: Array = []
+	if int(ref["bubble_solid_count"]) != int(got["bubble_solid_count"]):
+		fails.append("bubble_solid_count ref=%d got=%d" % [int(ref["bubble_solid_count"]), int(got["bubble_solid_count"])])
+	if int(ref["unanchored_cluster_count"]) != int(got["unanchored_cluster_count"]):
+		fails.append("unanchored_cluster_count ref=%d got=%d" % [int(ref["unanchored_cluster_count"]), int(got["unanchored_cluster_count"])])
+	var loose_diff: int = _stream_set_sym_diff(ref["loose"], got["loose"], 7)
+	if loose_diff != 0:
+		fails.append("loose set symmetric_diff=%d (ref entries=%d, got entries=%d)" % [loose_diff, ref["loose"].size() / 7, got["loose"].size() / 7])
+	var pickup_diff: int = _stream_set_sym_diff(ref["pickup"], got["pickup"], 4)
+	if pickup_diff != 0:
+		fails.append("pickup set symmetric_diff=%d (ref=%d, got=%d)" % [pickup_diff, ref["pickup"].size() / 4, got["pickup"].size() / 4])
+	# Clusters: compare as a sorted list of "voxel-set signatures"
+	# (sorted list of voxel tuples per cluster).
+	var ref_clusters: Array = _parse_clusters(ref["cluster_counts"], ref["cluster_voxels"])
+	var got_clusters: Array = _parse_clusters(got["cluster_counts"], got["cluster_voxels"])
+	ref_clusters.sort()
+	got_clusters.sort()
+	if ref_clusters != got_clusters:
+		fails.append("clusters: ref count=%d got count=%d (signatures differ)" % [ref_clusters.size(), got_clusters.size()])
+	return fails
+
+
+# Treat a [a0,b0,c0,...,aN,bN,cN] stream as a set of stride-tuples and
+# return the symmetric-difference count (entries in one but not the
+# other). Zero = the two streams represent the same set.
+func _stream_set_sym_diff(a: PackedInt32Array, b: PackedInt32Array, stride: int) -> int:
+	var ra: Dictionary = _stream_to_set(a, stride)
+	var rb: Dictionary = _stream_to_set(b, stride)
+	var only_a: int = 0
+	for k in ra.keys():
+		if not rb.has(k): only_a += 1
+	var only_b: int = 0
+	for k in rb.keys():
+		if not ra.has(k): only_b += 1
+	return only_a + only_b
+
+
+func _stream_to_set(s: PackedInt32Array, stride: int) -> Dictionary:
+	var d: Dictionary = {}
+	@warning_ignore("integer_division")
+	var n: int = s.size() / stride
+	for i in range(n):
+		var parts: PackedStringArray = PackedStringArray()
+		for j in range(stride):
+			parts.append(str(s[i * stride + j]))
+		d[",".join(parts)] = true
+	return d
+
+
+# Returns Array[String] — one entry per cluster, each entry a sorted
+# "x,y,z,packed|x,y,z,packed|..." signature of that cluster's voxels.
+# Sortable so the harness can compare cluster lists order-independently.
+func _parse_clusters(counts: PackedInt32Array, voxels: PackedInt32Array) -> Array:
+	var out: Array = []
+	var cursor: int = 0
+	for c in counts:
+		var tuples: PackedStringArray = PackedStringArray()
+		for _i in range(c):
+			tuples.append("%d,%d,%d,%d" % [voxels[cursor], voxels[cursor + 1], voxels[cursor + 2], voxels[cursor + 3]])
+			cursor += 4
+		tuples.sort()
+		out.append("|".join(tuples))
+	return out
+
+
+# ============================================================
+# EMISSIVE — EmissiveLightCpp parity vs EmissiveReference (Phase 4)
+# ============================================================
+# Synthesises a 20x20x20 buffer with three test cases:
+#   * a 4-voxel vertical emissive chain at (5,5..8,5) — all exposed to air
+#   * a buried emissive voxel at (15,10,15) surrounded by stone — NOT lit
+#   * a single emissive cube at (2,15,17) — exposed (on the surface)
+# Emissive id = 12 (copper_ore, matches registry).
+const _EmissiveRef := preload("res://scripts/_dev/EmissiveReference.gd")
+
+func _emissive() -> int:
+	print("[EMISSIVE] === parity probe ===")
+	if not ClassDB.class_exists("EmissiveLightCpp"):
+		print("[EMISSIVE] RESULT=FAIL reason=EmissiveLightCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var cpp: Object = ClassDB.instantiate("EmissiveLightCpp")
+	if cpp == null:
+		print("[EMISSIVE] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	for m in ["set_emissive_material_ids", "set_cell_size_voxels", "scan_region"]:
+		if not cpp.has_method(m):
+			print("[EMISSIVE] RESULT=FAIL reason=missing_method:%s" % m)
+			return 1
+
+	var side := Vector3i(20, 20, 20)
+	var min_v := Vector3i(100, -50, 200)  # Arbitrary non-zero origin, tests world-coord math.
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(side.x, side.y, side.z)
+	_emissive_populate_scenario(buf, side)
+
+	var emissive_ids: PackedInt32Array = PackedInt32Array([12])
+	var cell_size: int = 5
+
+	var ref_out: Dictionary = _EmissiveRef.scan_region(buf, min_v, side, emissive_ids, cell_size)
+	cpp.call("set_emissive_material_ids", emissive_ids)
+	cpp.call("set_cell_size_voxels", cell_size)
+	var cpp_out: Dictionary = cpp.call("scan_region", buf, min_v, side)
+
+	print("[EMISSIVE] now_lit ref=%d cpp=%d   affected_cells ref=%d cpp=%d" % [
+		ref_out["now_lit"].size() / 4, cpp_out["now_lit"].size() / 4,
+		ref_out["affected_cells"].size() / 3, cpp_out["affected_cells"].size() / 3,
+	])
+
+	var fails: Array = []
+	var nl_diff: int = _stream_set_sym_diff(ref_out["now_lit"], cpp_out["now_lit"], 4)
+	if nl_diff != 0:
+		fails.append("now_lit set symmetric_diff=%d" % nl_diff)
+	var ac_diff: int = _stream_set_sym_diff(ref_out["affected_cells"], cpp_out["affected_cells"], 3)
+	if ac_diff != 0:
+		fails.append("affected_cells set symmetric_diff=%d" % ac_diff)
+	if fails.is_empty():
+		print("[EMISSIVE] RESULT=PASS — C++ scan_region matches GD reference set-for-set.")
+		return 0
+	for f in fails:
+		print("[EMISSIVE] FAIL %s" % f)
+	print("[EMISSIVE] RESULT=FAIL — %d parity divergence(s)." % fails.size())
+	return 1
+
+
+const _BakedRef := preload("res://scripts/_dev/EmissiveBakedReference.gd")
+
+# ============================================================
+# BAKED LIGHT — EmissiveBakedCpp byte-exact parity (Phase J spec)
+# ============================================================
+# Synthesises a 16x8x8 buffer with a vertical wall at voxel x=9 (cell
+# cx=4, K=2). Two emitters: red at world voxel (3,3,3) -> cell (1,1,1),
+# blue at (13,3,3) -> cell (6,1,1). With BFS gated on "centre voxel is
+# air", neither emitter's light can reach the cells past the wall —
+# proves the wall-bleed-through fix. Reference + C++ must produce
+# byte-identical output (PackedByteArray equality).
+func _baked_light() -> int:
+	print("[BAKED] === parity probe ===")
+	if not ClassDB.class_exists("EmissiveBakedCpp"):
+		print("[BAKED] RESULT=FAIL reason=EmissiveBakedCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var cpp: Object = ClassDB.instantiate("EmissiveBakedCpp")
+	if cpp == null:
+		print("[BAKED] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	if not cpp.has_method("bake_light_volume"):
+		print("[BAKED] RESULT=FAIL reason=missing_method:bake_light_volume")
+		return 1
+
+	# Probe Zylann's channel byte layout. Set known voxels at known (x,y,z)
+	# and check which BYTE index in the returned PackedByteArray holds the
+	# value. Distinguishes X-fastest vs Y-fastest vs Z-fastest layouts.
+	var probe_buf: VoxelBuffer = VoxelBuffer.new()
+	probe_buf.create(4, 4, 4)
+	probe_buf.set_voxel(11, 1, 0, 0, VoxelBuffer.CHANNEL_TYPE)  # x=1
+	probe_buf.set_voxel(22, 0, 1, 0, VoxelBuffer.CHANNEL_TYPE)  # y=1
+	probe_buf.set_voxel(33, 0, 0, 1, VoxelBuffer.CHANNEL_TYPE)  # z=1
+	var raw: PackedByteArray = probe_buf.get_channel_as_byte_array(VoxelBuffer.CHANNEL_TYPE)
+	print("[BAKED] probe len=%d" % raw.size())
+	for i in range(64):
+		if raw[i] != 0:
+			print("[BAKED]   byte[%d] = %d" % [i, raw[i]])
+
+	# Buffer: 16x8x8 voxels, mostly air, wall plane at x=9.
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(16, 8, 8)
+	for y in range(8):
+		for z in range(8):
+			buf.set_voxel(1, 9, y, z, VoxelBuffer.CHANNEL_TYPE)  # stone wall
+
+	# Cells: 8x4x4 grid at K=2. Origin = (0,0,0). Buffer covers
+	# (0,0,0)..(15,7,7) — matches cells_per_axis * K per axis only on X.
+	# Y/Z volumes shorter than cells_per_axis*K is fine: cells whose
+	# centre falls outside the buffer are treated as closed.
+	# To keep this clean we'll use N=8 on x, but the bake takes a single
+	# N; we'll use N=8 and let the harness scenario sit inside a cube
+	# subset of the volume (Y/Z cells beyond cy=4/cz=4 close themselves
+	# via the out-of-buffer-centre check).
+	var origin := Vector3i(0, 0, 0)
+	var cell_size: int = 2
+	var n: int = 8
+	var max_steps: int = 8
+	var falloff_q12: int = 3482  # ~0.85 per step
+
+	# Two emissive voxels (red mat_id=2, blue mat_id=3) placed in the
+	# buffer. Stone wall is mat_id=1. The colour table marks 2 and 3 as
+	# emissive (energy=255), 1 as non-emissive.
+	buf.set_voxel(2, 3, 3, 3, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(3, 13, 3, 3, VoxelBuffer.CHANNEL_TYPE)
+	var table: PackedByteArray = PackedByteArray()
+	table.resize(256 * 4)
+	# id 2 = red, energy 255
+	table[2 * 4 + 0] = 255
+	table[2 * 4 + 1] = 0
+	table[2 * 4 + 2] = 0
+	table[2 * 4 + 3] = 255
+	# id 3 = blue, energy 255
+	table[3 * 4 + 0] = 0
+	table[3 * 4 + 1] = 0
+	table[3 * 4 + 2] = 255
+	table[3 * 4 + 3] = 255
+	# Air-neighbour filter OFF for the parity test — both emissives sit
+	# in air so they'd pass either way; off keeps the test focused on
+	# the BFS-through-air-cells gate (the wall block) rather than the
+	# additional exposure gate.
+	var air_filter: bool = false
+
+	var ref_bytes: PackedByteArray = _BakedRef.bake_light_volume(
+		buf, origin, cell_size, n, table, air_filter, max_steps, falloff_q12)
+	var cpp_bytes: PackedByteArray = cpp.call(
+		"bake_light_volume",
+		buf, origin, cell_size, n, table, air_filter, max_steps, falloff_q12)
+
+	var expected_size: int = n * n * n * 4
+	print("[BAKED] sizes ref=%d cpp=%d expected=%d" % [
+		ref_bytes.size(), cpp_bytes.size(), expected_size])
+	if ref_bytes.size() != expected_size or cpp_bytes.size() != expected_size:
+		print("[BAKED] RESULT=FAIL reason=size_mismatch")
+		return 1
+
+	# Count lit cells (any non-zero RGB) on each side of the wall.
+	var ref_lit_west: int = 0
+	var ref_lit_east: int = 0
+	var ref_lit_wall: int = 0  # cells AT the wall column (cx=4) — must be 0
+	for cz in range(n):
+		for cy in range(n):
+			for cx in range(n):
+				var idx: int = (cx + cy * n + cz * n * n) * 4
+				var any_light: bool = ref_bytes[idx] > 0 or ref_bytes[idx + 1] > 0 or ref_bytes[idx + 2] > 0
+				if not any_light:
+					continue
+				if cx < 4: ref_lit_west += 1
+				elif cx > 4: ref_lit_east += 1
+				else: ref_lit_wall += 1
+	print("[BAKED] ref lit cells: west(cx<4)=%d  east(cx>4)=%d  wall(cx=4)=%d" % [
+		ref_lit_west, ref_lit_east, ref_lit_wall])
+	if ref_lit_wall != 0:
+		print("[BAKED] RESULT=FAIL reason=wall_was_lit_in_ref (BFS gate broken)")
+		return 1
+
+	# Byte-exact comparison.
+	var fails: int = 0
+	var first_diff: int = -1
+	for i in range(expected_size):
+		if ref_bytes[i] != cpp_bytes[i]:
+			fails += 1
+			if first_diff < 0:
+				first_diff = i
+	if fails == 0:
+		print("[BAKED] RESULT=PASS — %d bytes byte-identical; wall blocks light cross-flow." % expected_size)
+		return 0
+	@warning_ignore("integer_division")
+	var cell_of_first: int = first_diff / 4
+	var cx: int = cell_of_first % n
+	@warning_ignore("integer_division")
+	var cy: int = (cell_of_first / n) % n
+	@warning_ignore("integer_division")
+	var cz: int = cell_of_first / (n * n)
+	print("[BAKED] RESULT=FAIL — %d byte diffs; first at byte=%d cell=(%d,%d,%d)  ref=%d cpp=%d" % [
+		fails, first_diff, cx, cy, cz, ref_bytes[first_diff], cpp_bytes[first_diff]])
+	return 1
+
+
+const _WaterFlowRef := preload("res://scripts/_dev/WaterFlowReference.gd")
+
+# ============================================================
+# WATER FLOW — WaterFlowCpp.scan_settle_region byte-exact parity
+# ============================================================
+# Synthesises a 12x8x12 buffer:
+#   * Stone floor at y=0..1
+#   * Stone wall along x=11 (so the eastern column of cells is solid)
+#   * Water (legacy id 5) filling a 4x4x4 block at (1..4, 2..5, 1..4)
+#   * Two AIR cells touching that water: (5, 2, 1) and (5, 4, 3) — these
+#     are the EXPECTED hits.
+#   * One AIR cell NOT touching water: (8, 4, 8) — must NOT be in hits.
+#   * One AIR cell touching water but in _pending_water — must SKIP.
+#   * One AIR cell touching water but at retry cap — must SKIP.
+# Region = whole buffer. Player at world origin (well inside radius).
+func _water_flow() -> int:
+	print("[WFLOW] === parity probe ===")
+	if not ClassDB.class_exists("WaterFlowCpp"):
+		print("[WFLOW] RESULT=FAIL reason=WaterFlowCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var cpp: Object = ClassDB.instantiate("WaterFlowCpp")
+	if cpp == null:
+		print("[WFLOW] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	if not cpp.has_method("scan_settle_region"):
+		print("[WFLOW] RESULT=FAIL reason=missing_method:scan_settle_region")
+		return 1
+
+	var sx: int = 12
+	var sy: int = 8
+	var sz: int = 12
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(sx, sy, sz)
+	# Stone floor.
+	for x in range(sx):
+		for z in range(sz):
+			buf.set_voxel(1, x, 0, z, VoxelBuffer.CHANNEL_TYPE)
+			buf.set_voxel(1, x, 1, z, VoxelBuffer.CHANNEL_TYPE)
+	# Stone wall on the east edge.
+	for y in range(sy):
+		for z in range(sz):
+			buf.set_voxel(1, 11, y, z, VoxelBuffer.CHANNEL_TYPE)
+	# 4x4x4 water block.
+	for x in range(1, 5):
+		for y in range(2, 6):
+			for z in range(1, 5):
+				buf.set_voxel(5, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+
+	# Expected hits: air cells at face-neighbours of the water block.
+	# (5, 2, 1) is +X-neighbour of (4, 2, 1) water.
+	# (5, 4, 3) is +X-neighbour of (4, 4, 3) water.
+	# (1, 6, 1) is +Y-neighbour of (1, 5, 1) water.
+	# Etc — for our test we only check two specific ones; the harness
+	# checks set equality so order doesn't matter.
+
+	# A cell already pending (must skip).
+	var pending: Dictionary = {}
+	pending[Vector3i(5, 5, 1)] = true   # +X of (4,5,1) water — would be a hit but pending
+	# A cell at retry cap (must skip).
+	var retry: Dictionary = {}
+	retry[Vector3i(5, 3, 3)] = 40       # +X of (4,3,3) water — would be a hit but retry cap
+
+	var region_min := Vector3i(0, 0, 0)
+	var region_max := Vector3i(sx - 1, sy - 1, sz - 1)
+	var player_pos := Vector3(0, 0, 0)
+	var active_radius_m: float = 100.0  # easily covers the whole buffer at 6 vox/m
+	var voxels_per_metre: float = 6.0
+	var scan_cap: int = 4096
+	var fill_max_retry: int = 40
+
+	var ref_out: Dictionary = _WaterFlowRef.scan_settle_region(
+		buf, region_min, region_max, 0, sy - 1, scan_cap,
+		player_pos, active_radius_m, voxels_per_metre,
+		pending, retry, fill_max_retry)
+	var cpp_out: Dictionary = cpp.call(
+		"scan_settle_region",
+		buf, region_min, region_max, 0, sy - 1, scan_cap,
+		player_pos, active_radius_m, voxels_per_metre,
+		pending, retry, fill_max_retry)
+
+	print("[WFLOW] ref: hits=%d  next_y=%d  scanned=%d" % [
+		ref_out["hits"].size() / 3, int(ref_out["next_y"]), int(ref_out["scanned"])])
+	print("[WFLOW] cpp: hits=%d  next_y=%d  scanned=%d" % [
+		cpp_out["hits"].size() / 3, int(cpp_out["next_y"]), int(cpp_out["scanned"])])
+
+	# next_y + scanned must match exactly.
+	var fails: int = 0
+	if int(ref_out["next_y"]) != int(cpp_out["next_y"]):
+		fails += 1
+		print("[WFLOW] FAIL next_y mismatch")
+	if int(ref_out["scanned"]) != int(cpp_out["scanned"]):
+		fails += 1
+		print("[WFLOW] FAIL scanned mismatch")
+
+	# Hits — compare as sets.
+	var ref_set: Dictionary = _wflow_stream_to_set(ref_out["hits"])
+	var cpp_set: Dictionary = _wflow_stream_to_set(cpp_out["hits"])
+	var only_ref: Array = []
+	var only_cpp: Array = []
+	for k in ref_set.keys():
+		if not cpp_set.has(k): only_ref.append(k)
+	for k in cpp_set.keys():
+		if not ref_set.has(k): only_cpp.append(k)
+	if not only_ref.is_empty() or not only_cpp.is_empty():
+		fails += 1
+		print("[WFLOW] FAIL hits differ: only_ref=%d only_cpp=%d" % [only_ref.size(), only_cpp.size()])
+
+	# Sanity: the pending + retry cells must NOT appear in either set.
+	if ref_set.has("5,5,1") or cpp_set.has("5,5,1"):
+		fails += 1
+		print("[WFLOW] FAIL pending cell (5,5,1) leaked into hits")
+	if ref_set.has("5,3,3") or cpp_set.has("5,3,3"):
+		fails += 1
+		print("[WFLOW] FAIL retry-cap cell (5,3,3) leaked into hits")
+
+	if fails == 0:
+		print("[WFLOW] RESULT=PASS — C++ scan_settle_region matches GD reference set-for-set; pending+retry honoured.")
+		return 0
+	print("[WFLOW] RESULT=FAIL — %d divergence(s)." % fails)
+	return 1
+
+
+func _wflow_stream_to_set(s: PackedInt32Array) -> Dictionary:
+	var d: Dictionary = {}
+	@warning_ignore("integer_division")
+	var n: int = s.size() / 3
+	for i in range(n):
+		d["%d,%d,%d" % [s[i * 3], s[i * 3 + 1], s[i * 3 + 2]]] = true
+	return d
+
+
+func _emissive_populate_scenario(buf: VoxelBuffer, side: Vector3i) -> void:
+	# Stone shell around a buried emissive voxel at (15, 10, 15). 26
+	# face/edge/corner neighbours all stone -> the emissive cell has NO
+	# air face, must not be reported as lit.
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			for dz in range(-1, 2):
+				buf.set_voxel(1, 15 + dx, 10 + dy, 15 + dz, VoxelBuffer.CHANNEL_TYPE)
+	# Now overwrite the centre with copper_ore (id 12) — still surrounded
+	# by stone on all 6 cardinal faces.
+	buf.set_voxel(12, 15, 10, 15, VoxelBuffer.CHANNEL_TYPE)
+
+	# Vertical emissive chain at (5, 5..8, 5) — all exposed to air on
+	# multiple faces.
+	for y in range(5, 9):
+		buf.set_voxel(12, 5, y, 5, VoxelBuffer.CHANNEL_TYPE)
+
+	# Single exposed emissive cube at (2, 15, 17) — pure air around it,
+	# six air faces.
+	buf.set_voxel(12, 2, 15, 17, VoxelBuffer.CHANNEL_TYPE)

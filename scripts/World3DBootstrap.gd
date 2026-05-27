@@ -129,6 +129,7 @@ const LodDebugShaderPath := "res://assets/shaders/terrain_lod_debug.gdshader"
 const LOD_DEBUG_GLOBAL_PARAM := "player_world_pos"
 var _lod_debug_material: ShaderMaterial = null
 var _lod_debug_on: bool = false
+var _emissive_magenta_on: bool = false  # F10 toggle
 var _lod_debug_global_registered: bool = false
 
 # Sea-level horizon backdrop plane. The 2026-05-18 native-fluid pivot
@@ -1192,6 +1193,18 @@ func _input(event: InputEvent) -> void:
 				_lod_box_overlay.call("set_visible_overlay", _diag_debug_draw_on)
 			var _state_str: String = "ON" if _diag_debug_draw_on else "OFF"
 			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes + LOD0 fill cubes)" % _state_str)
+		elif event.keycode == KEY_F10:
+			# F10 — paint all emissive voxels flat magenta so the
+			# designer can locate ore at a glance. The shader checks
+			# the `debug_emissive_magenta` global; only emissive
+			# variants (copper_ore today) react.
+			_emissive_magenta_on = not _emissive_magenta_on
+			RenderingServer.global_shader_parameter_set(
+				"debug_emissive_magenta",
+				1.0 if _emissive_magenta_on else 0.0,
+			)
+			var _mag_str: String = "ON — emissive voxels (copper_ore) painted magenta" if _emissive_magenta_on else "OFF"
+			print("[DIAG] F10 emissive-magenta debug %s" % _mag_str)
 		elif event.keycode == KEY_F11:
 			# F11 — LOD band debug shader. Recolours every voxel
 			# surface by LOD ring (green/yellow/orange/red/purple)
@@ -1209,17 +1222,14 @@ func _input(event: InputEvent) -> void:
 						return
 					_lod_debug_material = ShaderMaterial.new()
 					_lod_debug_material.shader = sh
-				# Register the global shader parameter the shader reads
-				# from. Lazy / one-shot so we don't touch the rendering
-				# server unless the debug is actually used.
+				# The global shader parameter `player_world_pos` is now
+				# DECLARED in project.godot under [shader_globals] —
+				# global_shader_parameter_get / _add are EDITOR-ONLY
+				# (severe-perf warning + runtime error). One-shot mark
+				# "registered" here so the per-frame _set path keeps
+				# working; the [shader_globals] declaration guarantees
+				# the parameter exists with a Vector3.ZERO default.
 				if not _lod_debug_global_registered:
-					var existing: Variant = RenderingServer.global_shader_parameter_get(LOD_DEBUG_GLOBAL_PARAM)
-					if existing == null:
-						RenderingServer.global_shader_parameter_add(
-							LOD_DEBUG_GLOBAL_PARAM,
-							RenderingServer.GLOBAL_VAR_TYPE_VEC3,
-							Vector3.ZERO,
-						)
 					_lod_debug_global_registered = true
 				_diag_terrain.set("material", _lod_debug_material)
 				print("[DIAG] LOD band debug shader ON — green=LOD0 (0–21m) · yellow=LOD1 (21–42m) · orange=LOD2 (42–85m) · red=LOD3 (85–171m) · purple=beyond")

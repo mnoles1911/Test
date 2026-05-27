@@ -46,6 +46,7 @@ NoEditZoneRegistry="*res://scripts/NoEditZoneRegistry.gd"
 VoxelEditManager="*res://scripts/VoxelEditManager.gd"
 VoxelGravityManager="*res://scripts/VoxelGravityManager.gd"
 EmissiveLightManager="*res://scripts/EmissiveLightManager.gd"
+EmissiveBakedLightManager="*res://scripts/EmissiveBakedLightManager.gd"
 WaterFlowManager="*res://scripts/WaterFlowManager.gd"
 Dialogic="*uid://ds2q0uclmolvu"
 SpeechCheckBroker="*res://scripts/SpeechCheckBroker.gd"
@@ -272,12 +273,39 @@ backend="enet"
 textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method.mobile="gl_compatibility"
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile=2
+anti_aliasing/quality/msaa_3d=2
 anti_aliasing/quality/use_debanding=true
 anti_aliasing/quality/use_taa=true
-anti_aliasing/quality/msaa_3d=2
 anti_aliasing/quality/screen_space_roughness_limiter/enabled=true
 rendering/2d/snap/snap_2d_transforms_to_pixel=true
 rendering/2d/snap/snap_2d_vertices_to_pixel=true
+
+[shader_globals]
+
+baked_light_tex={
+"type": "sampler3D",
+"value": null
+}
+baked_light_origin_world={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+baked_light_inv_volume_m={
+"type": "float",
+"value": 0.0
+}
+baked_light_strength={
+"type": "float",
+"value": 4.0
+}
+player_world_pos={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+debug_emissive_magenta={
+"type": "float",
+"value": 0.0
+}
 
 [voxel]
 
