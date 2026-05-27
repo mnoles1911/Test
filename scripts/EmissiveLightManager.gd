@@ -150,6 +150,15 @@ const _FACE_NEIGHBOURS: Array[Vector3i] = [
 var _terrain: Node = null
 var _terrain_id: int = 0
 
+# C++ scan impl (extensions/voxel_gen/src/emissive_light_cpp.cpp). Owns
+# the per-voxel classification + _has_air_neighbor gate + coarse-cell
+# dedupe. The autoload still owns OmniLight3D node creation/streaming,
+# camera lookup, _resolve_terrain, and the diff-against-existing-state.
+# When this is null (DLL missing), _scan_region falls back to the
+# original full-GD path.
+var _cpp: Resource = null
+const _EmissiveRef := preload("res://scripts/_dev/EmissiveReference.gd")
+
 # 10 Hz-ish heavy-work gate, mirroring DayNightCycle / WeatherManager.
 const _TICK_S: float = 0.2
 var _tick_accum: float = 0.0
@@ -194,6 +203,21 @@ func _ready() -> void:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 	else:
 		push_warning("[EmissiveLightManager] VoxelEditManager missing — edit-driven lighting off.")
+
+	# Resolve the C++ scan impl + push the emissive id set.
+	if ClassDB.class_exists("EmissiveLightCpp"):
+		_cpp = ClassDB.instantiate("EmissiveLightCpp")
+		if _cpp != null:
+			var ids: PackedInt32Array = PackedInt32Array()
+			for id in _emissive_mats.keys():
+				ids.append(int(id))
+			_cpp.set_emissive_material_ids(ids)
+			_cpp.set_cell_size_voxels(cell_size_voxels)
+			print("[EmissiveLightManager] using C++ scan (EmissiveLightCpp).")
+		else:
+			print("[EmissiveLightManager] EmissiveLightCpp registered but instantiate failed; using GD fallback.")
+	else:
+		print("[EmissiveLightManager] EmissiveLightCpp not registered; using GD fallback.")
 
 	print("[EmissiveLightManager] active — %d emissive material(s)." % _emissive_mats.size())
 
@@ -314,27 +338,69 @@ func _scan_region(min_v: Vector3i, side: Vector3i) -> void:
 	# A voxel can have become emissive (mined into / placed), stopped
 	# being emissive (mined away), or be unchanged.
 	var affected: Dictionary = {}
-	for x in range(side.x):
-		for y in range(side.y):
-			for z in range(side.z):
-				var g: Vector3i = min_v + Vector3i(x, y, z)
-				var mid: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) & 0xFF
-				# Only EXPOSED emissive voxels light the world. A glowing
-				# voxel sealed in solid rock is skipped — cluster lights
-				# are shadowless, so lighting a buried voxel just bleeds
-				# brightness up through the terrain (the "near terrain
-				# too bright, light follows the player" bug). Copper
-				# therefore stays dark underground until it is mined into.
-				var now_lit: bool = _emissive_mats.has(mid) \
-						and _has_air_neighbor(buf, x, y, z, side)
-				var was: bool = _emissive_voxels.has(g)
-				if now_lit:
-					if not was or _emissive_voxels[g] != mid:
-						_emissive_voxels[g] = mid
+
+	if _cpp != null:
+		# FAST PATH — C++ classifies every voxel + applies the
+		# _has_air_neighbor gate, returning the full set of currently-
+		# lit emissive cells in the region. GD then diffs against
+		# _emissive_voxels to compute add / remove / change.
+		var result: Dictionary = _cpp.scan_region(buf, min_v, side)
+		var now_lit_stream: PackedInt32Array = result["now_lit"]
+		var lit_set: Dictionary = {}
+		@warning_ignore("integer_division")
+		var n: int = now_lit_stream.size() / 4
+		for i in range(n):
+			var g: Vector3i = Vector3i(
+				now_lit_stream[i * 4],
+				now_lit_stream[i * 4 + 1],
+				now_lit_stream[i * 4 + 2],
+			)
+			var mid: int = now_lit_stream[i * 4 + 3]
+			lit_set[g] = mid
+			var was: bool = _emissive_voxels.has(g)
+			if not was or _emissive_voxels[g] != mid:
+				_emissive_voxels[g] = mid
+				affected[_cell_of(g)] = true
+		# Removals: walk _emissive_voxels for entries inside the
+		# scanned region that aren't in this scan's now_lit. The walk
+		# is O(|_emissive_voxels|); the dict holds dozens to hundreds
+		# of entries in practice, not thousands, so it stays cheap.
+		var region_end: Vector3i = min_v + side
+		var to_erase: Array = []
+		for g_v in _emissive_voxels.keys():
+			var g: Vector3i = g_v
+			if g.x < min_v.x or g.y < min_v.y or g.z < min_v.z:
+				continue
+			if g.x >= region_end.x or g.y >= region_end.y or g.z >= region_end.z:
+				continue
+			if lit_set.has(g):
+				continue
+			to_erase.append(g)
+		for g in to_erase:
+			_emissive_voxels.erase(g)
+			affected[_cell_of(g)] = true
+	else:
+		# GD fallback — original per-voxel inner loop.
+		for x in range(side.x):
+			for y in range(side.y):
+				for z in range(side.z):
+					var g: Vector3i = min_v + Vector3i(x, y, z)
+					var mid: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) & 0xFF
+					# Only EXPOSED emissive voxels light the world. A
+					# glowing voxel sealed in solid rock is skipped —
+					# cluster lights are shadowless, so lighting a
+					# buried voxel just bleeds brightness up through the
+					# terrain. Copper stays dark underground until mined into.
+					var now_lit: bool = _emissive_mats.has(mid) \
+							and _has_air_neighbor(buf, x, y, z, side)
+					var was: bool = _emissive_voxels.has(g)
+					if now_lit:
+						if not was or _emissive_voxels[g] != mid:
+							_emissive_voxels[g] = mid
+							affected[_cell_of(g)] = true
+					elif was:
+						_emissive_voxels.erase(g)
 						affected[_cell_of(g)] = true
-				elif was:
-					_emissive_voxels.erase(g)
-					affected[_cell_of(g)] = true
 
 	for cell in affected:
 		_rebuild_cell(cell)
