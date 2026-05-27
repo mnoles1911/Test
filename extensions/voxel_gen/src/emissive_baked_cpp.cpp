@@ -91,33 +91,52 @@ PackedByteArray EmissiveBakedCpp::bake_light_volume(
     std::fill(out_ptr, out_ptr + n3 * 4, uint8_t(0));
 
     // --- Pre-compute open[]: cell-centre voxel must be air. ----------
+    //
+    // Single bulk Variant call to Zylann's get_channel_as_byte_array
+    // pulls the whole CHANNEL_TYPE as a contiguous PackedByteArray.
+    // Eliminates the per-voxel Variant cost that surfaced as the ELM
+    // regression (47.6 ms peak vs 18 ms GD-native pre-port). For a
+    // 256^3 production volume that is one call returning 16 MB of
+    // bytes vs. 64^3 = 262144 individual calls.
     Variant size_v = p_buf.call("get_size");
     if (size_v.get_type() != Variant::VECTOR3I) {
         return out;
     }
     const Vector3i buf_size = size_v;
+    Variant ch_v = p_buf.call("get_channel_as_byte_array", CHANNEL_TYPE);
+    if (ch_v.get_type() != Variant::PACKED_BYTE_ARRAY) {
+        return out;
+    }
+    PackedByteArray ch_bytes = ch_v;
+    const uint8_t *ch_ptr = ch_bytes.ptr();
+    const int sx = buf_size.x;
+    const int sy = buf_size.y;
+    const int sz = buf_size.z;
+    const int voxel_count = sx * sy * sz;
+    // Layout: Y-FASTEST (Zylann convention — confirmed by the
+    // 2026-05-27 probe). Linear byte index =
+    //   (y + x*sy + z*sx*sy) * bytes_per_voxel
+    // Material id is the LOW byte at that offset (mat_ids are < 256
+    // so this works for both 8-bit production CHANNEL_TYPE and 16-bit
+    // Zylann-default channels used in tests).
+    const int bpv = (voxel_count > 0) ? (ch_bytes.size() / voxel_count) : 1;
     std::vector<uint8_t> open(static_cast<size_t>(n3), 0);
     const int half_k = k / 2;
     for (int cz = 0; cz < n; ++cz) {
         const int bz = cz * k + half_k;
-        const bool z_in = (bz >= 0 && bz < buf_size.z);
+        const bool z_in = (bz >= 0 && bz < sz);
         for (int cy = 0; cy < n; ++cy) {
             const int by = cy * k + half_k;
-            const bool y_in = (by >= 0 && by < buf_size.y);
+            const bool y_in = (by >= 0 && by < sy);
             for (int cx = 0; cx < n; ++cx) {
                 const int bx = cx * k + half_k;
                 const int idx = cx + cy * n + cz * n2;
-                if (!y_in || !z_in || bx < 0 || bx >= buf_size.x) {
+                if (!y_in || !z_in || bx < 0 || bx >= sx) {
                     open[static_cast<size_t>(idx)] = 0;
                     continue;
                 }
-                Variant v = p_buf.call("get_voxel", bx, by, bz, CHANNEL_TYPE);
-                if (v.get_type() != Variant::INT) {
-                    open[static_cast<size_t>(idx)] = 0;
-                    continue;
-                }
-                const int mid = static_cast<int>(static_cast<int64_t>(v)) & 0xFF;
-                open[static_cast<size_t>(idx)] = (mid == 0) ? 1 : 0;
+                const int byte_idx = (by + bx * sy + bz * sx * sy) * bpv;
+                open[static_cast<size_t>(idx)] = (ch_ptr[byte_idx] == 0) ? 1 : 0;
             }
         }
     }

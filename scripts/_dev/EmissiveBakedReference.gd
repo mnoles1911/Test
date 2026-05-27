@@ -59,24 +59,43 @@ static func bake_light_volume(
 	# --- Pre-compute open[]: cell's centre voxel must be air. ---
 	# Centre voxel of cell (cx,cy,cz) at buffer-local
 	#   (cx*K + K/2, cy*K + K/2, cz*K + K/2).
+	#
+	# Bulk read CHANNEL_TYPE in one call — Zylann's get_channel_as_byte_array
+	# returns the whole channel as a contiguous PackedByteArray. One Variant
+	# crossing instead of N^3 per-cell calls in production.
+	#
+	# Layout: Zylann packs voxels Y-FASTEST (linear byte index =
+	# (y + x*sy + z*sx*sy) * bytes_per_voxel — confirmed by 2026-05-27
+	# probe). bytes_per_voxel is derived from byte_count / voxel_count so
+	# the same code works at 8-bit (production CHANNEL_TYPE) and 16-bit
+	# (Zylann default). Material id is always the LOW byte (offset 0
+	# within the voxel) since mat_ids are < 256.
 	var open: PackedByteArray = PackedByteArray()
 	open.resize(n3)
 	var buf_size: Vector3i = buf.get_size()
+	var ch_bytes: PackedByteArray = buf.get_channel_as_byte_array(VoxelBuffer.CHANNEL_TYPE)
+	var sx: int = buf_size.x
+	var sy: int = buf_size.y
+	var sz: int = buf_size.z
+	var voxel_count: int = sx * sy * sz
+	@warning_ignore("integer_division")
+	var bpv: int = ch_bytes.size() / voxel_count if voxel_count > 0 else 1
 	var half_k: int = k / 2
 	for cz in range(n):
 		var bz: int = cz * k + half_k
-		var z_in: bool = bz >= 0 and bz < buf_size.z
+		var z_in: bool = bz >= 0 and bz < sz
 		for cy in range(n):
 			var by: int = cy * k + half_k
-			var y_in: bool = by >= 0 and by < buf_size.y
+			var y_in: bool = by >= 0 and by < sy
 			for cx in range(n):
 				var bx: int = cx * k + half_k
 				var idx: int = cx + cy * n + cz * n2
-				if not y_in or not z_in or bx < 0 or bx >= buf_size.x:
+				if not y_in or not z_in or bx < 0 or bx >= sx:
 					open[idx] = 0
 					continue
-				var v: int = buf.get_voxel(bx, by, bz, VoxelBuffer.CHANNEL_TYPE) & 0xFF
-				open[idx] = 1 if v == 0 else 0
+				# Y-fastest linear index, low byte = mat_id.
+				var byte_idx: int = (by + bx * sy + bz * sx * sy) * bpv
+				open[idx] = 1 if ch_bytes[byte_idx] == 0 else 0
 
 	# --- Per-emitter BFS, max-blend into out[]. ---
 	@warning_ignore("integer_division")

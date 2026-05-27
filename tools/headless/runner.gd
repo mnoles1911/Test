@@ -1076,6 +1076,20 @@ func _baked_light() -> int:
 		print("[BAKED] RESULT=FAIL reason=missing_method:bake_light_volume")
 		return 1
 
+	# Probe Zylann's channel byte layout. Set known voxels at known (x,y,z)
+	# and check which BYTE index in the returned PackedByteArray holds the
+	# value. Distinguishes X-fastest vs Y-fastest vs Z-fastest layouts.
+	var probe_buf: VoxelBuffer = VoxelBuffer.new()
+	probe_buf.create(4, 4, 4)
+	probe_buf.set_voxel(11, 1, 0, 0, VoxelBuffer.CHANNEL_TYPE)  # x=1
+	probe_buf.set_voxel(22, 0, 1, 0, VoxelBuffer.CHANNEL_TYPE)  # y=1
+	probe_buf.set_voxel(33, 0, 0, 1, VoxelBuffer.CHANNEL_TYPE)  # z=1
+	var raw: PackedByteArray = probe_buf.get_channel_as_byte_array(VoxelBuffer.CHANNEL_TYPE)
+	print("[BAKED] probe len=%d" % raw.size())
+	for i in range(64):
+		if raw[i] != 0:
+			print("[BAKED]   byte[%d] = %d" % [i, raw[i]])
+
 	# Buffer: 16x8x8 voxels, mostly air, wall plane at x=9.
 	var buf: VoxelBuffer = VoxelBuffer.new()
 	buf.create(16, 8, 8)
