@@ -13,18 +13,68 @@ After generating all the textures, run from the repo root:
 That nearest-neighbour-downscales the source PNGs to 16x16 each,
 packs them into `atlas.png`, and writes the manifest the game loads.
 
+## Pick your generator FIRST
+
+**The pipeline is pixel-art-only by design** (NEAREST downscale,
+`filter_nearest_mipmap_anisotropic` sampling in-engine). Source PNGs
+MUST be pixel art on a clean grid — flat blocks of solid colour on an
+N×N lattice — or NEAREST downscale samples 1 source pixel per output
+tile pixel and produces noise that looks nothing like the source.
+
+The atlas builder prints a `WARN: <name> looks like PHOTO input` line
+for any source whose intra-cell variance suggests a photo / painterly
+output. If you see those warnings, the source is wrong for the
+pipeline (not the build) — regenerate it with a tool below.
+
+**Recommended generators, in order of how reliably they produce
+correct input:**
+
+1. **Retrodiffusion** (`retrodiffusion.ai`) or **PixelLab.ai** —
+   **strongly recommended.** Pixel-art-specific diffusion services
+   that output real pixel art directly at 16x16 / 32x32 / 64x64. No
+   pixel-grid gymnastics, no "30% of generations come back as photo
+   mush". Worth the per-image cost for asset work this exacting.
+2. **Aseprite or Pixilart by hand** — if you want a truly authored
+   look or a critical material (e.g. boss-arena floor). Paint
+   directly at 16x16 PNG, drop in `source/`, the builder will pass
+   it through unchanged (no resize when src size already matches
+   target).
+3. **Gemini Nano Banana** with the SYSTEM PROMPT below — **fallback
+   only.** NB is a general-purpose diffusion model trained on photos
+   and paintings, not pixel art. Asked for "pixel art," it returns
+   *fake pixel art*: soft anti-aliased imagery with gradients
+   between pixels and a ghost-grid that drifts. Sometimes the prompt
+   discipline below produces something close enough that NEAREST
+   recovers a useable tile; often it doesn't. Expect 3-5 regens per
+   material and accept some materials will never land cleanly. Use
+   only when the dedicated tools are unavailable.
+4. **DALL-E 3 / Midjourney v6** — same caveat as NB; sometimes
+   cleaner pixel grids, sometimes worse. Try if NB keeps failing.
+
 ## Generation settings
 
-- **Output size**: 512x512 (the builder downscales to 16x16 for the
-  atlas). The 512 figure is **not arbitrary** — it is 16 x 32, which
-  means every 32x32 block of pixels in the source becomes a single
-  pixel after NEAREST downscale. The whole prompt strategy hinges on
-  that 32x upscale being clean.
+- **Output size**: 1024x1024 minimum (most modern generators) or
+  512x512 (older). The size must be an **integer multiple of 16** so
+  each output pixel maps to an exact NxN block of source pixels —
+  1024 → each tile pixel is 64x64 source pixels, 512 → 32x32. Any
+  resolution that isn't 16x integer (e.g. 900x900) will produce
+  fractional-block sampling and grid drift.
 - **File format**: PNG. RGB is fine for everything — for `leaves_all`,
   the atlas builder color-keys the white background to alpha at build
   time, so you don't need an RGBA-capable generator.
 - **Seamless tiling**: required for everything except `log_top`.
   Tiling is requested in the per-material prompts below.
+
+## Migration note (2026-05-27)
+
+The 15 source PNGs currently committed in `source/` were generated
+with Nano Banana before this doc made the pixel-art-only requirement
+clear. 5 of them flag as PHOTO input when the builder runs:
+`grass_top`, `gravel_all`, `log_side`, `leaves_all`, `copper_ore_all`.
+The other 10 happened to land closer to pixel-art-on-grid and read
+acceptably after NEAREST. Plan to regenerate the flagged five with a
+pixel-art-specific tool (Retrodiffusion or PixelLab.ai). Until then
+those five appear as noise in-game.
 
 ## How to use these prompts
 
@@ -52,67 +102,35 @@ PROMPT first then the per-material prompt as one continuous block.
 
 ---
 
-## Will Nano Banana actually output pixel art?
+## Why the pipeline rejects photo input
 
-**Honest answer: not reliably on its own.** Diffusion image models
-(Gemini Nano Banana 2, DALL-E, Midjourney, Stable Diffusion in default
-modes) are trained on photographs and digital paintings, not pixel
-art. Asked for "pixel art," they typically produce *fake pixel art* —
-soft, anti-aliased imagery with gradients between pixels, a
-ghost-pixel grid that drifts across the image, occasional sub-pixel
-detail. Looks pixel-ish at thumbnail size; falls apart on close
-inspection.
+The atlas builder NEAREST-downscales 1024 -> 16 by **sampling one
+source pixel per output tile pixel** and throwing away the other 4095
+(at 1024/16=64 ratio). Two regimes:
 
-**Why our pipeline still gets crisp pixels out of it:**
+1. **Pixel-art input** — each 64x64 source region is already a flat
+   block of one colour. NEAREST samples ONE pixel from that block;
+   any pixel in the block is the same colour, so the output is
+   mathematically pixel-perfect.
+2. **Photo input** — each 64x64 source region contains hundreds of
+   distinct colours. NEAREST samples one essentially-arbitrary pixel
+   from each region. The output tile is 16 unrelated pixels —
+   visually noise.
 
-1. The builder downscales 512 -> 16 using **nearest-neighbour**, not
-   LANCZOS. That collapses 32x32 source pixels into a single output
-   pixel — picking one source pixel, throwing away the other 1023.
-   Any sub-pixel softness, anti-aliasing, or drift in the source is
-   simply discarded. The output is mathematically pixel-perfect even
-   if the input was mush.
-2. The in-game atlas material uses `TEXTURE_FILTER_NEAREST`
-   (`tools/build_blocky_library.gd:135`), so the GPU never blurs the
-   16 px tile when sampling it onto a voxel face. The pixels stay
-   crisp at any draw size.
+The pipeline cannot fix photo input by changing the downscale algorithm
+without changing the entire art direction. LANCZOS (which averages all
+source pixels per output tile) would produce blurry-but-recognisable
+mini-photo tiles — that would shift the look from
+Minecraft/Terraria/Stardew (crisp pixel art) to something more like
+Conquest/Faithful (high-res photo texture pack). The project bible
+calls for pixel art; the builder enforces it.
 
-**What we're really asking the AI to do** is be a *color and
-composition machine*. The prompt asks for a 16x16 image upscaled to
-512x512 with clean square pixels and a limited palette — the AI tries
-to honor that, fails to honor it perfectly, but gets close enough
-that the nearest-neighbour downscale recovers a clean 16 px image
-with the right colors and the right large-scale shapes (vein
-direction, leaf-cluster spacing, sand-grain density). It's a
-denoising-by-downsampling trick: the AI provides intent, the
-downscale enforces the grid.
-
-**Recommended generators**, in order of how reliably they produce
-clean pixel input:
-
-1. **Gemini Nano Banana 2** with the SYSTEM PROMPT below — works
-   well enough for our 15 source images and is already wired into
-   the rest of the asset pipeline (`design/ASSET_PIPELINE_AI.md`).
-   Expect 1-3 regenerations per material to get a usable result.
-2. **DALL-E 3 / Midjourney v6** — similar quality, sometimes
-   cleaner pixel grids, sometimes worse. Worth a shot if Gemini
-   keeps producing mush on a specific material.
-3. **Aseprite or Pixilart by hand** — if you want a truly authored
-   look. Make 16x16 PNGs directly, name them per the layout below,
-   set the builder's NEAREST downscale will leave them untouched
-   (no resize happens when input size already matches target).
-4. **Retrodiffusion / PixelLab.ai** — dedicated pixel-art diffusion
-   services. They produce real pixel art at the target resolution
-   directly. Output is usually 32x32 or 64x64; the NEAREST downscale
-   to 16 will still work but you lose some detail. Recommended only
-   if Gemini keeps failing on a particular material.
-
-**Cheap quality check before saving:** the AI output will look "soft"
-at 512x512. That's fine — what matters is what falls out of the
-downscale. The builder prints `[atlas]` summary at the end of every
-run, and you can sanity-check by zooming in on `atlas.png` afterward
-to see if each 16x16 tile reads as the material you wanted. If a tile
-looks like grey noise rather than stone-with-cracks, that prompt
-needs another roll.
+**Cheap quality check before saving an AI generation:** zoom in on the
+1024x1024 output. Each visual "pixel" should be a flat 64x64 block of
+one solid colour with hard edges. If you see gradients within a
+block, soft edges between blocks, or the grid drifting off the 64-px
+lattice, regenerate (or accept the WARN at build time and plan to
+redo with a pixel-art-specific tool).
 
 ---
 
@@ -121,16 +139,16 @@ needs another roll.
 *Paste this once into the system / style / context field.*
 
 > You are generating seamlessly tiling 16x16 pixel art block face
-> textures for a medieval fantasy voxel RPG. Output size: 512x512,
-> rendered as a 32x nearest-neighbor upscale of an underlying 16x16
+> textures for a medieval fantasy voxel RPG. Output size: 1024x1024,
+> rendered as a 64x nearest-neighbor upscale of an underlying 16x16
 > pixel-art tile.
 >
 > Pixel grid rule: The image must read as exactly 16x16 large square
-> pixels arranged in a 16x16 grid. Each pixel is a flat 32x32 block of
+> pixels arranged in a 16x16 grid. Each pixel is a flat 64x64 block of
 > solid uniform color. No gradients between pixels, no anti-aliasing,
 > no soft edges, no blur, no dithering across pixel boundaries.
 > Adjacent pixels meet at hard square edges. The pixel grid must be
-> axis-aligned: every pixel boundary falls on multiples of 32px.
+> axis-aligned: every pixel boundary falls on multiples of 64px.
 >
 > Palette rule: Limited 6 to 10 color palette per tile. Solid flat
 > colors only. No color ramps, no smooth shading, no painted
@@ -169,7 +187,7 @@ recitation filter accepts.*
 ### `stone_all.png`
 
 > A 16x16 pixel art tile of warm grey granite stone, rendered at
-> 512x512 as a 32x upscale with hard square pixels. Designed to
+> 1024x1024 as a 64x upscale with hard square pixels. Designed to
 > repeat invisibly across a cliff face. Warm grey palette of 6 tones
 > from dark charcoal to pale highlight, with subtle brownish
 > undertones. Many short 1 to 2 pixel micro-fractures scattered
@@ -193,7 +211,7 @@ underground walls show three-tone variety — plain stone, dark
 stone, rare marble — rather than uniform grey.)*
 
 > A 16x16 pixel art tile of cool dark grey basalt stone, rendered
-> at 512x512 as a 32x upscale with hard square pixels. Designed to
+> at 1024x1024 as a 64x upscale with hard square pixels. Designed to
 > repeat invisibly across a deep cave wall. Approximately 80 percent
 > of the pixels are a single uniform deep charcoal grey base color
 > with subtle cool blue-grey undertones — this dominant color fills
@@ -214,7 +232,7 @@ stone, rare marble — rather than uniform grey.)*
 ### `dirt_all.png`
 
 > A 16x16 pixel art tile of dark rich brown loam soil, rendered at
-> 512x512 as a 32x upscale with hard square pixels. Designed to
+> 1024x1024 as a 64x upscale with hard square pixels. Designed to
 > repeat invisibly across an underground wall. Deep warm brown
 > palette of 6 tones, the layer found under grass rather than
 > topsoil. Tiny scattered micro-pebbles and faint root flecks at
@@ -226,7 +244,7 @@ stone, rare marble — rather than uniform grey.)*
 ### `grass_top.png`
 
 > A 16x16 pixel art tile of dense short-cropped grass viewed from
-> directly above, rendered at 512x512 as a 32x upscale with hard
+> directly above, rendered at 1024x1024 as a 64x upscale with hard
 > square pixels. Designed to repeat invisibly across an open field.
 > Vivid saturated green palette of 5 to 7 tones from olive green to
 > bright spring green, distributed in many tiny clusters of similar
@@ -241,7 +259,7 @@ stone, rare marble — rather than uniform grey.)*
 ### `sand_all.png`
 
 > A 16x16 pixel art tile of fine pale golden beach sand, rendered
-> at 512x512 as a 32x upscale with hard square pixels. Designed to
+> at 1024x1024 as a 64x upscale with hard square pixels. Designed to
 > repeat invisibly across a beach surface. Warm tan and cream
 > palette of 5 tones, soft golden highlights blending into pale
 > warm beige across the pixel grid. Single-pixel grain variation
@@ -253,7 +271,7 @@ stone, rare marble — rather than uniform grey.)*
 ### `gravel_all.png`
 
 > A 16x16 pixel art tile of mixed grey and warm-brown river shingle
-> pebbles, rendered at 512x512 as a 32x upscale with hard square
+> pebbles, rendered at 1024x1024 as a 64x upscale with hard square
 > pixels. Designed to repeat invisibly across a riverbed surface.
 > Cool grey palette with warm earth-tone undertones, 7 tones total.
 > Small pebbles each occupying a 1 to 2 pixel cluster, packed
@@ -266,7 +284,7 @@ stone, rare marble — rather than uniform grey.)*
 ### `clay_all.png`
 
 > A 16x16 pixel art tile of smooth blue-grey coastal clay, rendered
-> at 512x512 as a 32x upscale with hard square pixels. Designed to
+> at 1024x1024 as a 64x upscale with hard square pixels. Designed to
 > repeat invisibly across a tidal mudflat surface. Cool blue-grey
 > palette of 5 tones with subtle moisture variation. Many short 1
 > to 2 pixel hairline crack lines scattered uniformly, all of
@@ -278,7 +296,7 @@ stone, rare marble — rather than uniform grey.)*
 ### `marble_all.png`
 
 > A 16x16 pixel art tile of weathered white-grey coastal marble,
-> rendered at 512x512 as a 32x upscale with hard square pixels.
+> rendered at 1024x1024 as a 64x upscale with hard square pixels.
 > Designed to repeat invisibly across a sea-battered cliff face.
 > Pale cream and soft grey palette of 6 tones with subtle warm
 > undertones. Natural grey vein lines broken into short irregular
@@ -297,7 +315,7 @@ it has internal variation under sunlight; cliff faces still poke
 through as bare stone.)*
 
 > A 16x16 pixel art tile of fresh dry mountain snow viewed from
-> directly above, rendered at 512x512 as a 32x upscale with hard
+> directly above, rendered at 1024x1024 as a 64x upscale with hard
 > square pixels. Designed to repeat invisibly across a high alpine
 > peak. Approximately 85 percent of the pixels are a single uniform
 > bright cool white base color — this dominant color fills the tile
@@ -325,7 +343,7 @@ circular log-slice illustration with a white background. The grain
 must fill the entire square tile to all four corners.)*
 
 > A 16x16 pixel art tile of wood end-grain filling the full square
-> tile corner to corner, rendered at 512x512 as a 32x upscale with
+> tile corner to corner, rendered at 1024x1024 as a 64x upscale with
 > hard square pixels. Designed to repeat invisibly across the top
 > of a multi-block tree trunk or timber beam. Curved annual growth
 > lines flowing gently across the entire tile in 1 to 2 pixel arcs
@@ -340,7 +358,7 @@ must fill the entire square tile to all four corners.)*
 ### `log_side.png`
 
 > A 16x16 pixel art tile of weathered tree bark, rendered at
-> 512x512 as a 32x upscale with hard square pixels. Designed to
+> 1024x1024 as a 64x upscale with hard square pixels. Designed to
 > repeat invisibly up a tall tree trunk. Vertical 1 to 2 pixel
 > furrow columns alternating with raised ridges across the tile.
 > Dark warm brown palette of 6 tones with slightly lighter ridge
@@ -358,7 +376,7 @@ builder color-keys white to alpha automatically — you don't need
 an RGBA-capable generator.)*
 
 > A 16x16 pixel art tile of dense small rounded forest leaves on a
-> pure white background, rendered at 512x512 as a 32x upscale with
+> pure white background, rendered at 1024x1024 as a 64x upscale with
 > hard square pixels. Designed to repeat invisibly across a forest
 > canopy. Many small leaf clusters each occupying 1 to 3 pixels,
 > spread evenly across the tile with white gap pixels between
@@ -373,7 +391,7 @@ an RGBA-capable generator.)*
 ### `copper_ore_all.png`
 
 > A 16x16 pixel art tile of grey stone with veins and flecks of
-> copper mineral, rendered at 512x512 as a 32x upscale with hard
+> copper mineral, rendered at 1024x1024 as a 64x upscale with hard
 > square pixels. Designed to repeat invisibly across a cave wall.
 > Warm grey stone palette of 4 tones forming the base, with
 > scattered raw orange-bronze copper pixels and oxidized blue-green
@@ -395,7 +413,7 @@ patina — so the player can tell them apart at a glance
 underground.)*
 
 > A 16x16 pixel art tile of grey stone with embedded iron mineral
-> deposits, rendered at 512x512 as a 32x upscale with hard square
+> deposits, rendered at 1024x1024 as a 64x upscale with hard square
 > pixels. Designed to repeat invisibly across a cave wall.
 > Approximately 75 percent of the pixels are a single uniform
 > medium cool grey base color — this dominant color fills the tile
@@ -417,7 +435,7 @@ underground.)*
 ### `bedrock_all.png`
 
 > A 16x16 pixel art tile of near-black dense igneous stone,
-> rendered at 512x512 as a 32x upscale with hard square pixels.
+> rendered at 1024x1024 as a 64x upscale with hard square pixels.
 > Designed to repeat invisibly across an underground floor. Heavy
 > ancient dark surface with very subtle dark-grey mottling. Tight
 > 4-tone palette across a narrow contrast range, almost no color
@@ -430,13 +448,14 @@ underground.)*
 
 ## Quality checklist (per texture, before saving)
 
-- [ ] **Pixel grid honored?** Zoom in on the 512x512 output. Each
-  visual "pixel" should be a flat 32x32 block of one solid color
-  with hard edges. If you see gradients within a pixel block, soft
-  edges between blocks, or the grid drifting off the 32px lattice,
-  regenerate. (Some softness is fine — the NEAREST downscale will
-  clean it up — but heavy mush means the AI ignored the grid rule.)
-- [ ] **Tiles seamlessly?** Place 4 copies of the 512px source in a
+- [ ] **Pixel grid honored?** Zoom in on the 1024x1024 output. Each
+  visual "pixel" should be a flat 64x64 block of one solid color
+  with hard edges (or 32x32 at 512px output). If you see gradients
+  within a pixel block, soft edges between blocks, or the grid
+  drifting off the lattice, regenerate. (Some softness is fine —
+  the NEAREST downscale will clean it up — but heavy mush means the
+  AI ignored the grid rule.)
+- [ ] **Tiles seamlessly?** Place 4 copies of the 1024px source in a
   2x2 grid — no visible seam at any edge.
 - [ ] **Tiles at 60x without a visible pattern?** Place 8x8 copies
   and scan for any pixel the eye locks onto. If you see a single
