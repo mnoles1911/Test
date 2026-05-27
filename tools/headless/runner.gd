@@ -827,62 +827,241 @@ func _phase2_report() -> int:
 
 
 # ============================================================
-# GRAVITY — VoxelGravityCpp scaffolding probe (Phase 0)
+# GRAVITY — VoxelGravityCpp parity vs GravityReference (Phase 2)
 # ============================================================
-# Confirms the class is registered, instantiable, exposes the agreed
-# methods, and the stub return shape contains every key the GD autoload
-# will eventually consume. No parity check yet — Phase 1 lays the
-# baseline; Phase 2 implements analyze_bubble.
+# Synthesises a 16^3 VoxelBuffer with all four interesting cases:
+#   * a solid bottom plate (anchored-from-floor seed)
+#   * a 2x2x2 floating stone block (NEVER -> cluster path)
+#   * a 1x1x3 floating sand column (LOOSE -> column-fall path)
+#   * a 2x2x1 floating dirt patch (PICKUP_DROP -> pickup path)
+# Runs both GravityReference.analyze_bubble (pure GD) and
+# VoxelGravityCpp.analyze_bubble against the same buffer + fall table.
+# Compares the four output streams SEMANTICALLY (as sets) — iteration
+# order doesn't affect parity.
+const _GravityRef := preload("res://scripts/_dev/GravityReference.gd")
+
 func _gravity() -> int:
-	print("[GRAVITY] === Phase 0 scaffolding probe ===")
+	print("[GRAVITY] === parity probe ===")
 	if not ClassDB.class_exists("VoxelGravityCpp"):
 		print("[GRAVITY] RESULT=FAIL reason=VoxelGravityCpp_not_registered — build extensions/voxel_gen.")
 		return 1
-	var inst: Object = ClassDB.instantiate("VoxelGravityCpp")
-	if inst == null:
+	var cpp: Object = ClassDB.instantiate("VoxelGravityCpp")
+	if cpp == null:
 		print("[GRAVITY] RESULT=FAIL reason=instantiate_returned_null")
 		return 1
 	for m in ["set_fall_behavior_table", "set_noeditzone_anchor_mask", "analyze_bubble"]:
-		if not inst.has_method(m):
+		if not cpp.has_method(m):
 			print("[GRAVITY] RESULT=FAIL reason=missing_method:%s" % m)
 			return 1
-	# Stub must tolerate empty inputs (buf=null, side=0).
-	inst.call("set_fall_behavior_table", {})
-	inst.call("set_noeditzone_anchor_mask", PackedByteArray())
-	var r: Dictionary = inst.call("analyze_bubble", null, Vector3i.ZERO, 0)
-	for k in ["loose", "pickup", "cluster_counts", "cluster_voxels",
-			"bubble_solid_count", "unanchored_cluster_count"]:
-		if not r.has(k):
-			print("[GRAVITY] RESULT=FAIL reason=stub_missing_key:%s" % k)
-			return 1
-	print("[GRAVITY] RESULT=PASS-STUB — class registered, stub callable, return shape correct.")
-	print("[GRAVITY] phase=%s. Phase 1 lays the parity baseline; Phase 2 implements analyze_bubble." % str(r.get("phase", "?")))
-	return 0
+
+	# Material ids: stone=1 (NEVER), dirt=2 (PICKUP_DROP), sand=4 (LOOSE).
+	# Match the canonical ids in scripts/VoxelMaterialRegistry.gd so a
+	# real engine session and the harness exercise the same constants.
+	var fall_table := {
+		1: _GravityRef.FALL_NEVER,
+		2: _GravityRef.FALL_PICKUP_DROP,
+		4: _GravityRef.FALL_LOOSE,
+	}
+	var side: int = 16
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(side, side, side)
+	_gravity_populate_scenario(buf, side)
+
+	var ref_out: Dictionary = _GravityRef.analyze_bubble(buf, side, fall_table, PackedByteArray())
+	cpp.call("set_fall_behavior_table", fall_table)
+	cpp.call("set_noeditzone_anchor_mask", PackedByteArray())
+	var cpp_out: Dictionary = cpp.call("analyze_bubble", buf, Vector3i.ZERO, side)
+
+	print("[GRAVITY] scenario: solids ref=%d cpp=%d   unanchored ref=%d cpp=%d   loose ref=%d cpp=%d   pickup ref=%d cpp=%d   clusters ref=%d cpp=%d" % [
+		int(ref_out["bubble_solid_count"]), int(cpp_out["bubble_solid_count"]),
+		int(ref_out["unanchored_cluster_count"]), int(cpp_out["unanchored_cluster_count"]),
+		ref_out["loose"].size() / 7, cpp_out["loose"].size() / 7,
+		ref_out["pickup"].size() / 4, cpp_out["pickup"].size() / 4,
+		ref_out["cluster_counts"].size(), cpp_out["cluster_counts"].size(),
+	])
+
+	var fails: Array = _gravity_compare(ref_out, cpp_out)
+	if fails.is_empty():
+		print("[GRAVITY] RESULT=PASS — C++ analyze_bubble matches GD reference set-for-set.")
+		return 0
+	for f in fails:
+		print("[GRAVITY] FAIL %s" % f)
+	print("[GRAVITY] RESULT=FAIL — %d parity divergence(s)." % fails.size())
+	return 1
+
+
+# Build the scenario buffer. Bottom 3 rows of stone span the full XZ plane
+# (so the flood-fill has a wide anchor). The four floating shapes sit well
+# above with a gap of empty rows around them so they cannot be reached
+# from the anchored set.
+func _gravity_populate_scenario(buf: VoxelBuffer, side: int) -> void:
+	# Bottom plate: y in [0, 2], every (x, z) -> stone(1).
+	for y in range(3):
+		for x in range(side):
+			for z in range(side):
+				buf.set_voxel(1, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+	# Floating stone 2x2x2 at (7..8, 8..9, 7..8) — cluster path.
+	for x in range(7, 9):
+		for y in range(8, 10):
+			for z in range(7, 9):
+				buf.set_voxel(1, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+	# Floating sand column 1x3x1 at (3, 8..10, 3) — LOOSE path.
+	# y=8, 9, 10 at the same (x=3, z=3). Bottom (y=8) falls to y=3
+	# (lands on top of the bottom plate), y=9 then sees y=3 occupied
+	# and stacks at y=4, y=10 at y=5. Tests the bottom-up sort.
+	for y in range(8, 11):
+		buf.set_voxel(4, 3, y, 3, VoxelBuffer.CHANNEL_TYPE)
+	# Floating dirt patch 2x1x2 at (12..13, 8, 12..13) — PICKUP_DROP.
+	for x in range(12, 14):
+		for z in range(12, 14):
+			buf.set_voxel(2, x, 8, z, VoxelBuffer.CHANNEL_TYPE)
+
+
+# Semantic compare: each stream becomes a set of tuples; clusters become
+# a multiset of (sorted) voxel sets. Returns a list of human-readable
+# failure descriptions; empty = parity.
+func _gravity_compare(ref: Dictionary, got: Dictionary) -> Array:
+	var fails: Array = []
+	if int(ref["bubble_solid_count"]) != int(got["bubble_solid_count"]):
+		fails.append("bubble_solid_count ref=%d got=%d" % [int(ref["bubble_solid_count"]), int(got["bubble_solid_count"])])
+	if int(ref["unanchored_cluster_count"]) != int(got["unanchored_cluster_count"]):
+		fails.append("unanchored_cluster_count ref=%d got=%d" % [int(ref["unanchored_cluster_count"]), int(got["unanchored_cluster_count"])])
+	var loose_diff: int = _stream_set_sym_diff(ref["loose"], got["loose"], 7)
+	if loose_diff != 0:
+		fails.append("loose set symmetric_diff=%d (ref entries=%d, got entries=%d)" % [loose_diff, ref["loose"].size() / 7, got["loose"].size() / 7])
+	var pickup_diff: int = _stream_set_sym_diff(ref["pickup"], got["pickup"], 4)
+	if pickup_diff != 0:
+		fails.append("pickup set symmetric_diff=%d (ref=%d, got=%d)" % [pickup_diff, ref["pickup"].size() / 4, got["pickup"].size() / 4])
+	# Clusters: compare as a sorted list of "voxel-set signatures"
+	# (sorted list of voxel tuples per cluster).
+	var ref_clusters: Array = _parse_clusters(ref["cluster_counts"], ref["cluster_voxels"])
+	var got_clusters: Array = _parse_clusters(got["cluster_counts"], got["cluster_voxels"])
+	ref_clusters.sort()
+	got_clusters.sort()
+	if ref_clusters != got_clusters:
+		fails.append("clusters: ref count=%d got count=%d (signatures differ)" % [ref_clusters.size(), got_clusters.size()])
+	return fails
+
+
+# Treat a [a0,b0,c0,...,aN,bN,cN] stream as a set of stride-tuples and
+# return the symmetric-difference count (entries in one but not the
+# other). Zero = the two streams represent the same set.
+func _stream_set_sym_diff(a: PackedInt32Array, b: PackedInt32Array, stride: int) -> int:
+	var ra: Dictionary = _stream_to_set(a, stride)
+	var rb: Dictionary = _stream_to_set(b, stride)
+	var only_a: int = 0
+	for k in ra.keys():
+		if not rb.has(k): only_a += 1
+	var only_b: int = 0
+	for k in rb.keys():
+		if not ra.has(k): only_b += 1
+	return only_a + only_b
+
+
+func _stream_to_set(s: PackedInt32Array, stride: int) -> Dictionary:
+	var d: Dictionary = {}
+	@warning_ignore("integer_division")
+	var n: int = s.size() / stride
+	for i in range(n):
+		var parts: PackedStringArray = PackedStringArray()
+		for j in range(stride):
+			parts.append(str(s[i * stride + j]))
+		d[",".join(parts)] = true
+	return d
+
+
+# Returns Array[String] — one entry per cluster, each entry a sorted
+# "x,y,z,packed|x,y,z,packed|..." signature of that cluster's voxels.
+# Sortable so the harness can compare cluster lists order-independently.
+func _parse_clusters(counts: PackedInt32Array, voxels: PackedInt32Array) -> Array:
+	var out: Array = []
+	var cursor: int = 0
+	for c in counts:
+		var tuples: PackedStringArray = PackedStringArray()
+		for _i in range(c):
+			tuples.append("%d,%d,%d,%d" % [voxels[cursor], voxels[cursor + 1], voxels[cursor + 2], voxels[cursor + 3]])
+			cursor += 4
+		tuples.sort()
+		out.append("|".join(tuples))
+	return out
 
 
 # ============================================================
-# EMISSIVE — EmissiveLightCpp scaffolding probe (Phase 0)
+# EMISSIVE — EmissiveLightCpp parity vs EmissiveReference (Phase 4)
 # ============================================================
+# Synthesises a 20x20x20 buffer with three test cases:
+#   * a 4-voxel vertical emissive chain at (5,5..8,5) — all exposed to air
+#   * a buried emissive voxel at (15,10,15) surrounded by stone — NOT lit
+#   * a single emissive cube at (2,15,17) — exposed (on the surface)
+# Emissive id = 12 (copper_ore, matches registry).
+const _EmissiveRef := preload("res://scripts/_dev/EmissiveReference.gd")
+
 func _emissive() -> int:
-	print("[EMISSIVE] === Phase 0 scaffolding probe ===")
+	print("[EMISSIVE] === parity probe ===")
 	if not ClassDB.class_exists("EmissiveLightCpp"):
 		print("[EMISSIVE] RESULT=FAIL reason=EmissiveLightCpp_not_registered — build extensions/voxel_gen.")
 		return 1
-	var inst: Object = ClassDB.instantiate("EmissiveLightCpp")
-	if inst == null:
+	var cpp: Object = ClassDB.instantiate("EmissiveLightCpp")
+	if cpp == null:
 		print("[EMISSIVE] RESULT=FAIL reason=instantiate_returned_null")
 		return 1
 	for m in ["set_emissive_material_ids", "set_cell_size_voxels", "scan_region"]:
-		if not inst.has_method(m):
+		if not cpp.has_method(m):
 			print("[EMISSIVE] RESULT=FAIL reason=missing_method:%s" % m)
 			return 1
-	inst.call("set_emissive_material_ids", PackedInt32Array())
-	inst.call("set_cell_size_voxels", 5)
-	var r: Dictionary = inst.call("scan_region", null, Vector3i.ZERO, Vector3i.ZERO)
-	for k in ["now_lit", "affected_cells"]:
-		if not r.has(k):
-			print("[EMISSIVE] RESULT=FAIL reason=stub_missing_key:%s" % k)
-			return 1
-	print("[EMISSIVE] RESULT=PASS-STUB — class registered, stub callable, return shape correct.")
-	print("[EMISSIVE] phase=%s. Phase 3 lays the parity baseline; Phase 4 implements scan_region." % str(r.get("phase", "?")))
-	return 0
+
+	var side := Vector3i(20, 20, 20)
+	var min_v := Vector3i(100, -50, 200)  # Arbitrary non-zero origin, tests world-coord math.
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(side.x, side.y, side.z)
+	_emissive_populate_scenario(buf, side)
+
+	var emissive_ids: PackedInt32Array = PackedInt32Array([12])
+	var cell_size: int = 5
+
+	var ref_out: Dictionary = _EmissiveRef.scan_region(buf, min_v, side, emissive_ids, cell_size)
+	cpp.call("set_emissive_material_ids", emissive_ids)
+	cpp.call("set_cell_size_voxels", cell_size)
+	var cpp_out: Dictionary = cpp.call("scan_region", buf, min_v, side)
+
+	print("[EMISSIVE] now_lit ref=%d cpp=%d   affected_cells ref=%d cpp=%d" % [
+		ref_out["now_lit"].size() / 4, cpp_out["now_lit"].size() / 4,
+		ref_out["affected_cells"].size() / 3, cpp_out["affected_cells"].size() / 3,
+	])
+
+	var fails: Array = []
+	var nl_diff: int = _stream_set_sym_diff(ref_out["now_lit"], cpp_out["now_lit"], 4)
+	if nl_diff != 0:
+		fails.append("now_lit set symmetric_diff=%d" % nl_diff)
+	var ac_diff: int = _stream_set_sym_diff(ref_out["affected_cells"], cpp_out["affected_cells"], 3)
+	if ac_diff != 0:
+		fails.append("affected_cells set symmetric_diff=%d" % ac_diff)
+	if fails.is_empty():
+		print("[EMISSIVE] RESULT=PASS — C++ scan_region matches GD reference set-for-set.")
+		return 0
+	for f in fails:
+		print("[EMISSIVE] FAIL %s" % f)
+	print("[EMISSIVE] RESULT=FAIL — %d parity divergence(s)." % fails.size())
+	return 1
+
+
+func _emissive_populate_scenario(buf: VoxelBuffer, side: Vector3i) -> void:
+	# Stone shell around a buried emissive voxel at (15, 10, 15). 26
+	# face/edge/corner neighbours all stone -> the emissive cell has NO
+	# air face, must not be reported as lit.
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			for dz in range(-1, 2):
+				buf.set_voxel(1, 15 + dx, 10 + dy, 15 + dz, VoxelBuffer.CHANNEL_TYPE)
+	# Now overwrite the centre with copper_ore (id 12) — still surrounded
+	# by stone on all 6 cardinal faces.
+	buf.set_voxel(12, 15, 10, 15, VoxelBuffer.CHANNEL_TYPE)
+
+	# Vertical emissive chain at (5, 5..8, 5) — all exposed to air on
+	# multiple faces.
+	for y in range(5, 9):
+		buf.set_voxel(12, 5, y, 5, VoxelBuffer.CHANNEL_TYPE)
+
+	# Single exposed emissive cube at (2, 15, 17) — pure air around it,
+	# six air faces.
+	buf.set_voxel(12, 2, 15, 17, VoxelBuffer.CHANNEL_TYPE)
