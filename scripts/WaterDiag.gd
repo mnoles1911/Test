@@ -93,7 +93,7 @@ func _ready() -> void:
 	var wfm := get_node_or_null("/root/WaterFlowManager")
 	if wfm != null and wfm.has_signal("water_changed"):
 		wfm.water_changed.connect(_on_water_changed)
-	print("[WaterDiag] ready — F4 panel · F5 inspect · F6 cycle shader debug_mode · F8 look-ray · F9 FORCE-FILL.")
+	print("[WaterDiag] ready — F4 panel · F5 inspect · F6 cycle shader debug_mode · F9 look-ray · Shift+F9 FORCE-FILL. (F8 reserved by editor as Stop-Scene)")
 
 
 func _on_water_changed(_chunk_coord: Vector3i) -> void:
@@ -166,32 +166,34 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F6:
 			_cycle_shader_debug_mode()
 			get_viewport().set_input_as_handled()
-		KEY_F8:
-			# Look-ray probe (2026-05-27 v2 — defensive). v1 crashed the
-			# editor before any stdout line flushed. We now (a) print to
-			# STDERR which is line-buffered so the last log line before
-			# a crash actually survives, (b) defer the heavy work to
-			# next frame so we exit the input-handler call stack first
-			# (Zylann's voxel methods on the input thread were the v1
-			# crash suspect), and (c) sample a single voxel cluster
-			# directly under the player instead of walking a ray —
-			# enough to bisect "water in buffer here?" without touching
-			# anything past view_distance.
-			printerr("[WaterLookRay] F8 keypress received — deferring probe")
-			call_deferred("_dump_lookray_probe")
-			get_viewport().set_input_as_handled()
+		# NB: F8 is Godot's hardcoded editor shortcut "Stop Running Scene".
+		# Pressing F8 in a scene launched from the editor closes the game
+		# CLEANLY before the input event reaches _unhandled_input. Multiple
+		# failed iterations 2026-05-27 chased a phantom "F8 crash" before
+		# realising the editor was just stopping the scene. NEVER bind a
+		# WaterDiag key to F8. F5/F6/F7 are the same family (Play / Run
+		# Scene / Pause Scene). Stick with F9/F10/F11/F12.
 		KEY_F9:
-			# FORCE-FILL (2026-05-27): writes WaterByteCodec.SOURCE_BYTE
-			# (level 8 + source bit) into every voxel in a ±32 m XZ box
-			# around the player below sea level. Bypasses the connectivity
-			# fill / settle pass entirely — brute-force "every sub-sea
-			# voxel near me is water RIGHT NOW". If the LOD gap-bands
-			# survive a successful force-fill, the bug isn't in the
-			# fill/settle sim — it's in the fluid mesher / generator
-			# at LOD>0. If the gap-bands vanish after force-fill, the
-			# fill sim is leaving holes the gap diagnosis was a symptom
-			# of.
-			_force_fill_around_player()
+			# F9 unmodified = LOOK-RAY PROBE. Shift+F9 = FORCE-FILL. The
+			# look-ray was on F8 in v1; F8 turned out to be the Godot
+			# editor's "Stop Running Scene" shortcut (intercepted before
+			# the event ever reaches us) so it was moved here.
+			if k.shift_pressed:
+				# Brute-force write SOURCE_BYTE into every voxel in a 32 m
+				# XZ box around the player, below sea level. Bypasses the
+				# connectivity-fill / settle sim entirely. If the gap-lines
+				# survive a successful force-fill, the bug is the mesher's
+				# chunk stitching, not the fill sim.
+				_force_fill_around_player()
+			else:
+				# Look-ray probe via WaterFlowManager public API (no raw
+				# VoxelTool calls). Prints a 5x5 XZ grid at sea level to the
+				# inspect overlay + log so we can see whether the gap-lines
+				# correspond to chunks where the BUFFER says no water
+				# (generator/sim bug) or to chunks where the buffer has water
+				# but the MESHER didn't emit faces (chunk-stitching bug).
+				printerr("[WaterLookRay] F9 keypress received — deferring probe")
+				call_deferred("_dump_lookray_probe")
 			get_viewport().set_input_as_handled()
 
 
@@ -286,7 +288,7 @@ func _format(d: Dictionary) -> String:
 	var p: Vector3 = d["pos"]
 	var surf_y = d["surf_y"]
 	var surf_txt := ("%.2f (Δ%.2f m)" % [surf_y, d["surf_dist"]]) if not is_nan(surf_y) else "none ±%d vox" % SURFACE_SCAN_VOXELS
-	return "WATER DIAG  (F4 panel · F5 inspect · F6 shader · F8 look-ray · F9 force-fill)\n" + \
+	return "WATER DIAG  (F4 panel · F5 inspect · F6 shader · F9 look-ray · Shift+F9 force-fill)\n" + \
 		"pos        %.1f, %.1f, %.1f\n" % [p.x, p.y, p.z] + \
 		"in_water   %s    submerged %s\n" % [str(d["in_water"]), str(d["submerged"])] + \
 		"level      %d / 8\n" % int(d["level"]) + \
