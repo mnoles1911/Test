@@ -15,6 +15,12 @@ extends SceneTree
 #            dummy renderer (decides Phase-3/smoke automation).
 #   distant— DistantTerrainMesher heightmesh parity vs SkirtBaker
 #            (FNV hashes; baseline-then-verify, parity-harness-FIRST).
+#   gravity— VoxelGravityCpp scaffolding probe (Phase 0: registration +
+#            stub callable). Phase 1 lays the parity baseline; Phase 2
+#            implements analyze_bubble. Pure ClassDB reflection, no scene.
+#   emissive— EmissiveLightCpp scaffolding probe (Phase 0: registration +
+#            stub callable). Phase 3 lays the parity baseline; Phase 4
+#            implements scan_region. Pure ClassDB reflection, no scene.
 #
 # Exit code 0 = pass, non-zero = fail/blocked, so run.ps1 + CI can gate
 # without scraping prose. Every machine line is prefixed with a tag.
@@ -49,6 +55,10 @@ func _initialize() -> void:
 			quit(_shader())
 		"phase7":
 			quit(_phase7())
+		"gravity":
+			quit(_gravity())
+		"emissive":
+			quit(_emissive())
 		"spike", "phase2", "gen", "distant":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
@@ -814,3 +824,65 @@ func _phase2_report() -> int:
 		return 0
 	print("[PHASE2] RESULT=FAIL — %d problems (see push_error)." % fails)
 	return 1
+
+
+# ============================================================
+# GRAVITY — VoxelGravityCpp scaffolding probe (Phase 0)
+# ============================================================
+# Confirms the class is registered, instantiable, exposes the agreed
+# methods, and the stub return shape contains every key the GD autoload
+# will eventually consume. No parity check yet — Phase 1 lays the
+# baseline; Phase 2 implements analyze_bubble.
+func _gravity() -> int:
+	print("[GRAVITY] === Phase 0 scaffolding probe ===")
+	if not ClassDB.class_exists("VoxelGravityCpp"):
+		print("[GRAVITY] RESULT=FAIL reason=VoxelGravityCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var inst: Object = ClassDB.instantiate("VoxelGravityCpp")
+	if inst == null:
+		print("[GRAVITY] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	for m in ["set_fall_behavior_table", "set_noeditzone_anchor_mask", "analyze_bubble"]:
+		if not inst.has_method(m):
+			print("[GRAVITY] RESULT=FAIL reason=missing_method:%s" % m)
+			return 1
+	# Stub must tolerate empty inputs (buf=null, side=0).
+	inst.call("set_fall_behavior_table", {})
+	inst.call("set_noeditzone_anchor_mask", PackedByteArray())
+	var r: Dictionary = inst.call("analyze_bubble", null, Vector3i.ZERO, 0)
+	for k in ["loose", "pickup", "cluster_counts", "cluster_voxels",
+			"bubble_solid_count", "unanchored_cluster_count"]:
+		if not r.has(k):
+			print("[GRAVITY] RESULT=FAIL reason=stub_missing_key:%s" % k)
+			return 1
+	print("[GRAVITY] RESULT=PASS-STUB — class registered, stub callable, return shape correct.")
+	print("[GRAVITY] phase=%s. Phase 1 lays the parity baseline; Phase 2 implements analyze_bubble." % str(r.get("phase", "?")))
+	return 0
+
+
+# ============================================================
+# EMISSIVE — EmissiveLightCpp scaffolding probe (Phase 0)
+# ============================================================
+func _emissive() -> int:
+	print("[EMISSIVE] === Phase 0 scaffolding probe ===")
+	if not ClassDB.class_exists("EmissiveLightCpp"):
+		print("[EMISSIVE] RESULT=FAIL reason=EmissiveLightCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var inst: Object = ClassDB.instantiate("EmissiveLightCpp")
+	if inst == null:
+		print("[EMISSIVE] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	for m in ["set_emissive_material_ids", "set_cell_size_voxels", "scan_region"]:
+		if not inst.has_method(m):
+			print("[EMISSIVE] RESULT=FAIL reason=missing_method:%s" % m)
+			return 1
+	inst.call("set_emissive_material_ids", PackedInt32Array())
+	inst.call("set_cell_size_voxels", 5)
+	var r: Dictionary = inst.call("scan_region", null, Vector3i.ZERO, Vector3i.ZERO)
+	for k in ["now_lit", "affected_cells"]:
+		if not r.has(k):
+			print("[EMISSIVE] RESULT=FAIL reason=stub_missing_key:%s" % k)
+			return 1
+	print("[EMISSIVE] RESULT=PASS-STUB — class registered, stub callable, return shape correct.")
+	print("[EMISSIVE] phase=%s. Phase 3 lays the parity baseline; Phase 4 implements scan_region." % str(r.get("phase", "?")))
+	return 0
