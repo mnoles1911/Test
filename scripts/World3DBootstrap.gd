@@ -113,6 +113,43 @@ var _diag_last_player_pos: Vector3 = Vector3.ZERO
 var _diag_last_player_pos_valid: bool = false
 var _diag_debug_draw_on: bool = false
 
+# Colored filled-cube overlay for the LOD0 box of every active
+# VoxelViewer. Spawned in _ready, toggled on F12 alongside the Zylann
+# built-in debug draws. Distinct per-viewer colors make it obvious
+# when the train's LOD0 corridor is offset away from the player.
+const LodBoxOverlayScript := preload("res://scripts/_dev/LodBoxOverlay.gd")
+var _lod_box_overlay: Node3D = null
+
+# F11 — LOD band debug shader. Swaps terrain.material between null
+# (normal per-cube atlas rendering) and a distance-band ShaderMaterial
+# that flat-colours every voxel by LOD ring around the player.
+# Lets the designer SEE on the world surface where LOD transitions
+# are happening as they move.
+const LodDebugShaderPath := "res://assets/shaders/terrain_lod_debug.gdshader"
+const LOD_DEBUG_GLOBAL_PARAM := "player_world_pos"
+var _lod_debug_material: ShaderMaterial = null
+var _lod_debug_on: bool = false
+var _lod_debug_global_registered: bool = false
+
+# Sea-level horizon backdrop plane. The 2026-05-18 native-fluid pivot
+# deleted the original horizon plane mesh — the assumption was Zylann's
+# VoxelBlockyModelFluid would stitch chunk faces cleanly. It does at
+# LOD0, but at LOD0↔LOD1 boundaries (and LOD1↔LOD2) adjacent fluid
+# meshes have slightly misaligned top faces, opening thin transparent
+# slits along chunk borders that show the sky through the lake surface.
+#
+# Visible only at distance (when the player crosses into LOD1+ range)
+# and only on flat water bodies aligned to sea level — exactly when
+# the gap-vs-sky contrast is worst.
+#
+# The fix: a single huge flat blue plane just under the water top,
+# tracking the player. When the camera looks at a chunk seam, the
+# slit now shows the dark blue backdrop instead of sky. The seam
+# is no longer perceptible.
+const HORIZON_PLANE_SIZE_M: float = 2000.0
+const HORIZON_PLANE_Y_OFFSET_M: float = -0.3  # below water top so it z-orders correctly
+var _horizon_plane: MeshInstance3D = null
+
 # Cache-miss telemetry — see HeightmapGeneratorBase.get_generated_block_count().
 # The adapter exposes this method via the cpp_impl Resource. Drill through
 # adapter → cpp_impl in _ready; poll the counter once per [DIAG] tick.
@@ -552,6 +589,15 @@ func _ready() -> void:
 		# call_deferred keeps load-order forgiving).
 		call_deferred("_seed_test_pond")
 		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
+		# Horizon backdrop plane attempt reverted 2026-05-26: it did not
+		# fix the LOD1+ water-surface line artefact (those lines are not
+		# mesh gaps showing the sky — they're a reflection-normal
+		# discontinuity in water.gdshader at adjacent-LOD chunk seams)
+		# AND it caused a pitch-black band between Y=10.3–10.5 when the
+		# camera was underwater looking up at the plane's underside.
+		# The line fix needs a proper shader-level investigation; not
+		# something a backdrop plane can paper over.
+		# _spawn_horizon_plane(OCEAN_SURFACE_Y)
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
 
@@ -998,8 +1044,60 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 		print("[WaterFluidDiag] lib.get_materials() count=%d classes=%s" % [
 			(_mats.size() if _mats is Array else -1), str(_mat_classes)])
 
+	# Spawn the LOD0 box overlay (filled coloured cubes per VoxelViewer,
+	# toggled on F12 alongside Zylann's built-in debug draws). Default
+	# hidden — zero per-frame cost until F12 enables it.
+	_lod_box_overlay = LodBoxOverlayScript.new()
+	_lod_box_overlay.name = "LodBoxOverlay"
+	add_child(_lod_box_overlay)
+
+
+func _spawn_horizon_plane(sea_level_y: float) -> void:
+	# Single huge flat plane just under the water top. Translucent
+	# `cull_back` so it only renders from above (the camera sees its
+	# upward face filling water-mesh gaps) and not from underwater
+	# (where the player would otherwise see its underside as a fake
+	# ceiling). Material colour matches the water shader's
+	# deep_water_color so the patched gap blends with the water
+	# around it.
+	if _horizon_plane != null:
+		return
+	var plane := MeshInstance3D.new()
+	plane.name = "HorizonPlane"
+	var plane_mesh := PlaneMesh.new()
+	plane_mesh.size = Vector2(HORIZON_PLANE_SIZE_M, HORIZON_PLANE_SIZE_M)
+	plane.mesh = plane_mesh
+	var mat := StandardMaterial3D.new()
+	# deep_water_color from the underwater filter notes — the colour
+	# the bottom of a lake should be reading at distance.
+	mat.albedo_color = Color(0.02, 0.06, 0.11, 1.0)
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_BACK
+	plane.material_override = mat
+	plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	plane.position = Vector3(0.0, sea_level_y + HORIZON_PLANE_Y_OFFSET_M, 0.0)
+	add_child(plane)
+	_horizon_plane = plane
+	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, tracks player XZ)." % plane.position.y)
+
 
 func _process(delta: float) -> void:
+	# Per-frame: push the player's world position into the LOD band
+	# debug shader so the coloured rings track the player. Uses a
+	# GLOBAL shader parameter (registered lazily on first F11 press)
+	# instead of writing to a ShaderMaterial directly — Zylann
+	# duplicates `terrain.material` per chunk, so per-material writes
+	# don't propagate. Globals do.
+	if _lod_debug_on and _lod_debug_global_registered:
+		_diag_resolve_refs()
+		if _diag_player != null:
+			RenderingServer.global_shader_parameter_set(
+				LOD_DEBUG_GLOBAL_PARAM, _diag_player.global_position
+			)
+
+	# Horizon backdrop plane follow disabled — see _spawn_horizon_plane
+	# comment above for why the plane was reverted.
+
 	# 1 Hz diagnostic line for the LOD-streaming investigation.
 	# Prints player position, instantaneous speed (m/s), VoxelViewer
 	# position, and the XZ distance between them ("viewer lag"). If
@@ -1088,8 +1186,46 @@ func _input(event: InputEvent) -> void:
 			_diag_terrain.set("debug_draw_active_mesh_blocks", _diag_debug_draw_on)
 			_diag_terrain.set("debug_draw_viewer_clipboxes", _diag_debug_draw_on)
 			_diag_terrain.set("debug_draw_octree_nodes", _diag_debug_draw_on)
+			# Also toggle the colored fill overlay so the LOD0 boxes are
+			# obvious even when several viewers overlap.
+			if _lod_box_overlay != null and _lod_box_overlay.has_method("set_visible_overlay"):
+				_lod_box_overlay.call("set_visible_overlay", _diag_debug_draw_on)
 			var _state_str: String = "ON" if _diag_debug_draw_on else "OFF"
-			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes)" % _state_str)
+			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes + LOD0 fill cubes)" % _state_str)
+		elif event.keycode == KEY_F11:
+			# F11 — LOD band debug shader. Recolours every voxel
+			# surface by LOD ring (green/yellow/orange/red/purple)
+			# so transitions on the world surface are unmistakable.
+			_diag_resolve_refs()
+			if _diag_terrain == null:
+				return
+			_lod_debug_on = not _lod_debug_on
+			if _lod_debug_on:
+				if _lod_debug_material == null:
+					var sh: Shader = load(LodDebugShaderPath) as Shader
+					if sh == null:
+						push_warning("[DIAG] could not load %s" % LodDebugShaderPath)
+						_lod_debug_on = false
+						return
+					_lod_debug_material = ShaderMaterial.new()
+					_lod_debug_material.shader = sh
+				# Register the global shader parameter the shader reads
+				# from. Lazy / one-shot so we don't touch the rendering
+				# server unless the debug is actually used.
+				if not _lod_debug_global_registered:
+					var existing: Variant = RenderingServer.global_shader_parameter_get(LOD_DEBUG_GLOBAL_PARAM)
+					if existing == null:
+						RenderingServer.global_shader_parameter_add(
+							LOD_DEBUG_GLOBAL_PARAM,
+							RenderingServer.GLOBAL_VAR_TYPE_VEC3,
+							Vector3.ZERO,
+						)
+					_lod_debug_global_registered = true
+				_diag_terrain.set("material", _lod_debug_material)
+				print("[DIAG] LOD band debug shader ON — green=LOD0 (0–21m) · yellow=LOD1 (21–42m) · orange=LOD2 (42–85m) · red=LOD3 (85–171m) · purple=beyond")
+			else:
+				_diag_terrain.set("material", null)
+				print("[DIAG] LOD band debug shader OFF — restored per-cube atlas materials")
 
 
 func _diag_resolve_refs() -> void:

@@ -25,6 +25,20 @@ uniform float fade_factor : hint_range(0.0, 1.0) = 1.0;
 // Matte terrain — matches terrain_voxel.gdshader.
 uniform float surface_roughness : hint_range(0.0, 1.0) = 0.85;
 
+// Per-channel darkening factor on the C++ vertex-baked palette. The
+// raw palette renders too bright in two failure modes (2026-05-26):
+//   (a) MSAA + bloom at hill-silhouette pixels makes the bright skirt
+//       ghost through occluding hills.
+//   (b) at LOD1+, partial-fill water voxels expose the skirt below as
+//       a grey-tile grid on the water surface near shore.
+// Multiplied against the baked palette to (a) kill the hill-silhouette
+// MSAA/bloom ghosting from the old too-bright skirt, (b) bias the
+// palette slightly green so the distant terrain visually matches the
+// near grass-top + dirt-side atlas colour at the blocky→smooth handoff.
+// Tunable live in the Inspector — bump up if the heightmesh disappears
+// into shadow, bump down if hill-silhouette bleed returns.
+uniform vec3 albedo_tint : source_color = vec3(0.70, 0.85, 0.55);
+
 // Ordered 4x4 Bayer matrix — a stable, shimmer-free dither pattern.
 const float BAYER_4X4[16] = float[16](
 	0.0, 8.0, 2.0, 10.0,
@@ -42,7 +56,7 @@ void fragment() {
 	if (threshold >= fade_factor) {
 		discard;
 	}
-	ALBEDO = COLOR.rgb;
+	ALBEDO = COLOR.rgb * albedo_tint;
 	ROUGHNESS = surface_roughness;
 	METALLIC = 0.0;
 }
