@@ -21,6 +21,11 @@ extends SceneTree
 #   emissive— EmissiveLightCpp scaffolding probe (Phase 0: registration +
 #            stub callable). Phase 3 lays the parity baseline; Phase 4
 #            implements scan_region. Pure ClassDB reflection, no scene.
+#   baked_light — EmissiveBakedCpp byte-exact parity vs
+#            EmissiveBakedReference for the Phase J light-volume bake
+#            (BFS floodfill into a 3D RGBA8 cell grid). Wall scenario:
+#            two emitters separated by a solid wall must NOT bleed
+#            light across the wall.
 #
 # Exit code 0 = pass, non-zero = fail/blocked, so run.ps1 + CI can gate
 # without scraping prose. Every machine line is prefixed with a tag.
@@ -59,6 +64,8 @@ func _initialize() -> void:
 			quit(_gravity())
 		"emissive":
 			quit(_emissive())
+		"baked_light":
+			quit(_baked_light())
 		"spike", "phase2", "gen", "distant":
 			_spike_mode = selector
 			_spike_active = true   # finishes in _process()
@@ -1042,6 +1049,113 @@ func _emissive() -> int:
 	for f in fails:
 		print("[EMISSIVE] FAIL %s" % f)
 	print("[EMISSIVE] RESULT=FAIL — %d parity divergence(s)." % fails.size())
+	return 1
+
+
+const _BakedRef := preload("res://scripts/_dev/EmissiveBakedReference.gd")
+
+# ============================================================
+# BAKED LIGHT — EmissiveBakedCpp byte-exact parity (Phase J spec)
+# ============================================================
+# Synthesises a 16x8x8 buffer with a vertical wall at voxel x=9 (cell
+# cx=4, K=2). Two emitters: red at world voxel (3,3,3) -> cell (1,1,1),
+# blue at (13,3,3) -> cell (6,1,1). With BFS gated on "centre voxel is
+# air", neither emitter's light can reach the cells past the wall —
+# proves the wall-bleed-through fix. Reference + C++ must produce
+# byte-identical output (PackedByteArray equality).
+func _baked_light() -> int:
+	print("[BAKED] === parity probe ===")
+	if not ClassDB.class_exists("EmissiveBakedCpp"):
+		print("[BAKED] RESULT=FAIL reason=EmissiveBakedCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var cpp: Object = ClassDB.instantiate("EmissiveBakedCpp")
+	if cpp == null:
+		print("[BAKED] RESULT=FAIL reason=instantiate_returned_null")
+		return 1
+	if not cpp.has_method("bake_light_volume"):
+		print("[BAKED] RESULT=FAIL reason=missing_method:bake_light_volume")
+		return 1
+
+	# Buffer: 16x8x8 voxels, mostly air, wall plane at x=9.
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(16, 8, 8)
+	for y in range(8):
+		for z in range(8):
+			buf.set_voxel(1, 9, y, z, VoxelBuffer.CHANNEL_TYPE)  # stone wall
+
+	# Cells: 8x4x4 grid at K=2. Origin = (0,0,0). Buffer covers
+	# (0,0,0)..(15,7,7) — matches cells_per_axis * K per axis only on X.
+	# Y/Z volumes shorter than cells_per_axis*K is fine: cells whose
+	# centre falls outside the buffer are treated as closed.
+	# To keep this clean we'll use N=8 on x, but the bake takes a single
+	# N; we'll use N=8 and let the harness scenario sit inside a cube
+	# subset of the volume (Y/Z cells beyond cy=4/cz=4 close themselves
+	# via the out-of-buffer-centre check).
+	var origin := Vector3i(0, 0, 0)
+	var cell_size: int = 2
+	var n: int = 8
+	var max_steps: int = 8
+	var falloff_q12: int = 3482  # ~0.85 per step
+
+	# Two emitters separated by the wall.
+	var emitters: PackedInt32Array = PackedInt32Array([
+		3, 3, 3, 255, 0, 0, 255,   # red, cell (1,1,1)
+		13, 3, 3, 0, 0, 255, 255,  # blue, cell (6,1,1)
+	])
+
+	var ref_bytes: PackedByteArray = _BakedRef.bake_light_volume(
+		buf, origin, cell_size, n, emitters, max_steps, falloff_q12)
+	var cpp_bytes: PackedByteArray = cpp.call(
+		"bake_light_volume",
+		buf, origin, cell_size, n, emitters, max_steps, falloff_q12)
+
+	var expected_size: int = n * n * n * 4
+	print("[BAKED] sizes ref=%d cpp=%d expected=%d" % [
+		ref_bytes.size(), cpp_bytes.size(), expected_size])
+	if ref_bytes.size() != expected_size or cpp_bytes.size() != expected_size:
+		print("[BAKED] RESULT=FAIL reason=size_mismatch")
+		return 1
+
+	# Count lit cells (any non-zero RGB) on each side of the wall.
+	var ref_lit_west: int = 0
+	var ref_lit_east: int = 0
+	var ref_lit_wall: int = 0  # cells AT the wall column (cx=4) — must be 0
+	for cz in range(n):
+		for cy in range(n):
+			for cx in range(n):
+				var idx: int = (cx + cy * n + cz * n * n) * 4
+				var any_light: bool = ref_bytes[idx] > 0 or ref_bytes[idx + 1] > 0 or ref_bytes[idx + 2] > 0
+				if not any_light:
+					continue
+				if cx < 4: ref_lit_west += 1
+				elif cx > 4: ref_lit_east += 1
+				else: ref_lit_wall += 1
+	print("[BAKED] ref lit cells: west(cx<4)=%d  east(cx>4)=%d  wall(cx=4)=%d" % [
+		ref_lit_west, ref_lit_east, ref_lit_wall])
+	if ref_lit_wall != 0:
+		print("[BAKED] RESULT=FAIL reason=wall_was_lit_in_ref (BFS gate broken)")
+		return 1
+
+	# Byte-exact comparison.
+	var fails: int = 0
+	var first_diff: int = -1
+	for i in range(expected_size):
+		if ref_bytes[i] != cpp_bytes[i]:
+			fails += 1
+			if first_diff < 0:
+				first_diff = i
+	if fails == 0:
+		print("[BAKED] RESULT=PASS — %d bytes byte-identical; wall blocks light cross-flow." % expected_size)
+		return 0
+	@warning_ignore("integer_division")
+	var cell_of_first: int = first_diff / 4
+	var cx: int = cell_of_first % n
+	@warning_ignore("integer_division")
+	var cy: int = (cell_of_first / n) % n
+	@warning_ignore("integer_division")
+	var cz: int = cell_of_first / (n * n)
+	print("[BAKED] RESULT=FAIL — %d byte diffs; first at byte=%d cell=(%d,%d,%d)  ref=%d cpp=%d" % [
+		fails, first_diff, cx, cy, cz, ref_bytes[first_diff], cpp_bytes[first_diff]])
 	return 1
 
 

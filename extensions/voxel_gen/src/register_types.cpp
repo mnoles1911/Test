@@ -26,6 +26,7 @@
 #include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
 #include "distant_terrain_mesher.h"
+#include "emissive_baked_cpp.h"
 #include "emissive_light_cpp.h"
 #include "heightmap_generator_base.h"
 #include "parity_probe.h"
@@ -54,10 +55,12 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     // streaming distant-terrain LOD system. Not a generator; needs no
     // ordering vs the HeightmapGeneratorBase chain above.
     ClassDB::register_class<DistantTerrainMesher>();
-    // VoxelGravityCpp / EmissiveLightCpp — standalone autoload helpers.
-    // No ordering vs the generator chain (no shared inheritance).
+    // VoxelGravityCpp / EmissiveLightCpp / EmissiveBakedCpp — standalone
+    // autoload helpers. No ordering vs the generator chain (no shared
+    // inheritance).
     ClassDB::register_class<VoxelGravityCpp>();
     ClassDB::register_class<EmissiveLightCpp>();
+    ClassDB::register_class<EmissiveBakedCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {
