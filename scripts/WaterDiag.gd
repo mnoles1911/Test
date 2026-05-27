@@ -167,12 +167,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_shader_debug_mode()
 			get_viewport().set_input_as_handled()
 		KEY_F8:
-			# Look-ray probe (2026-05-27): walk a ray from the camera
-			# through screen-centre and sample CHANNEL_TYPE at fixed
-			# distances. Bisects "water voxel absent at LOD distance"
-			# (the visible gap-band hypothesis) by printing what's
-			# actually in the buffer along the look-axis.
-			_dump_lookray_probe()
+			# Look-ray probe (2026-05-27 v2 — defensive). v1 crashed the
+			# editor before any stdout line flushed. We now (a) print to
+			# STDERR which is line-buffered so the last log line before
+			# a crash actually survives, (b) defer the heavy work to
+			# next frame so we exit the input-handler call stack first
+			# (Zylann's voxel methods on the input thread were the v1
+			# crash suspect), and (c) sample a single voxel cluster
+			# directly under the player instead of walking a ray —
+			# enough to bisect "water in buffer here?" without touching
+			# anything past view_distance.
+			printerr("[WaterLookRay] F8 keypress received — deferring probe")
+			call_deferred("_dump_lookray_probe")
 			get_viewport().set_input_as_handled()
 		KEY_F9:
 			# FORCE-FILL (2026-05-27): writes WaterByteCodec.SOURCE_BYTE
@@ -578,83 +584,83 @@ func _expected_lod(dist_m: float) -> int:
 # at that LOD (regression in heightmap_generator_base.cpp). Either
 # way, this probe DECIDES which file owns the fix.
 
-# Sample distances along the camera look-ray (metres). The boundary
-# values (21/43/85) align with the LOD ring transitions exactly so each
-# ring's edge is probed twice. The HARD CAP is set at probe time from
-# the terrain's view_distance — tool.get_voxel on an unloaded chunk
-# SEGFAULTS Zylann silently (no log line, the editor just closes), so
-# F8 must never sample past what's loaded. Plain Array const (GDScript
-# doesn't allow PackedFloat32Array in const-init).
-const LOOKRAY_DISTANCES: Array = [
-	2.0, 5.0, 10.0, 15.0, 21.0, 30.0, 43.0, 60.0, 85.0
-]
+# v1 (2026-05-27) walked a ray from the camera and called
+# VoxelTool.get_voxel at each step. Crashed the editor with zero stdout
+# even with view_distance guards and is_area_editable pre-flights.
+# v2 dropped the raw VoxelTool path entirely and probes via
+# WaterFlowManager.is_position_in_water / .get_water_level_at — public
+# APIs Player3D already hits every physics frame. No raw tool calls,
+# no look-ray walk, no AABB construction. LOOKRAY_DISTANCES is gone.
 
 
 func _dump_lookray_probe() -> void:
+	# v2 (2026-05-27): EVERYTHING is routed through stderr (printerr)
+	# because v1's stdout prints were being buffered and lost on the
+	# crash. Every potentially-failing call gets a "BEFORE" line so the
+	# last surviving log line tells us exactly which step died.
+	printerr("[WaterLookRay] v2 BEGIN")
 	var lines: Array[String] = []
-	var tool := _get_tool()
-	if tool == null:
-		_emit_lookray(lines, "no VoxelTool yet (terrain still loading)")
+
+	# Step 1: get a Player Node3D (group "player"). Avoid the camera —
+	# v1 used cam.global_basis.z which depends on first-person vs third-
+	# person camera state. Player position is unambiguous.
+	printerr("[WaterLookRay] step 1: find player")
+	var player := _find_player()
+	if player == null:
+		printerr("[WaterLookRay] FAIL: no player node in 'player' group")
+		_emit_lookray(lines, "no player node (group 'player') — cannot probe")
 		_show_inspect(lines)
 		return
-	var cam := get_viewport().get_camera_3d()
-	if cam == null:
-		_emit_lookray(lines, "no Camera3D in viewport")
+	var ppos: Vector3 = player.global_position
+	printerr("[WaterLookRay] player world=(%s, %s, %s)" % [ppos.x, ppos.y, ppos.z])
+
+	# Step 2: get terrain. Bypass VoxelTool entirely (v1's get_voxel
+	# was the prime crash suspect) and use the SAME read path the rest
+	# of WaterDiag already uses successfully (WaterFlowManager queries).
+	printerr("[WaterLookRay] step 2: resolve WaterFlowManager")
+	var wfm := get_node_or_null("/root/WaterFlowManager")
+	if wfm == null:
+		printerr("[WaterLookRay] FAIL: no WaterFlowManager autoload")
+		_emit_lookray(lines, "no WaterFlowManager — cannot probe")
 		_show_inspect(lines)
 		return
-	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	var origin: Vector3 = cam.global_position
-	var fwd: Vector3 = -cam.global_basis.z   # Godot Camera forward
-	var sea_y: int = _sea_voxel_y()
-	# Resolve view_distance cap. tool.get_voxel BEYOND the loaded radius
-	# segfaults Zylann (designer test 2026-05-27: F8 closed the editor
-	# with zero log output when probes ran out to 250m on a 85m
-	# view_distance build). Stay safely inside.
-	var view_cap_m: float = 85.0
-	if get_node_or_null("/root/VoxelEditManager") != null:
-		var terrain = VoxelEditManager.get_terrain()
-		if terrain != null and "view_distance" in terrain:
-			# view_distance is in VOXELS, not metres. Convert.
-			view_cap_m = float(terrain.get("view_distance")) / VOXELS_PER_METER
-	# Clamp our preset distances to (cap - 1 m) so the 3x3 column cluster
-	# at the farthest sample is still inside the loaded radius.
-	var max_safe: float = max(2.0, view_cap_m - 1.0)
-	_emit_lookray(lines, "camera world=(%.1f, %.1f, %.1f) fwd=(%.2f, %.2f, %.2f) sea_voxY=%d view_cap=%.0f m" % [
-		origin.x, origin.y, origin.z, fwd.x, fwd.y, fwd.z, sea_y, view_cap_m])
-	_emit_lookray(lines, "  d_m  | voxel             | TYPE | wat | col3x3 | expLOD | wpos")
-	for d_var in LOOKRAY_DISTANCES:
-		var d: float = float(d_var)
-		if d > max_safe:
-			_emit_lookray(lines, "  %5.1f | (skipped — past view_distance cap %.0f m)" % [d, max_safe])
-			continue
-		var wp: Vector3 = origin + fwd * d
-		var v: Vector3i = _world_to_voxel(wp)
-		# Per-sample editable check (guards against partially-loaded chunks
-		# inside view_distance — chunks load asynchronously, an in-range
-		# chunk that hasn't streamed in yet would still crash get_voxel).
-		var sample_box := AABB(Vector3(v) - Vector3.ONE, Vector3(3.0, 3.0, 3.0))
-		if not tool.is_area_editable(sample_box):
-			_emit_lookray(lines, "  %5.1f | (chunk not loaded at voxel %s)" % [d, str(v)])
-			continue
-		var t: int = int(tool.get_voxel(v))
-		var wat: bool = WaterMaterial.is_water_type(t)
-		# 3x3 column cluster at THIS world XZ (Y fixed at sample voxel).
-		# Drops the 27-cell 3D cluster the v1 used: 9 reads is enough to
-		# detect water presence and keeps the F8 cost under 100 reads
-		# total even at the deepest sampling.
-		var c9: int = 0
-		for ox in [-1, 0, 1]:
-			for oz in [-1, 0, 1]:
-				var ts: int = int(tool.get_voxel(Vector3i(v.x + ox, v.y, v.z + oz)))
-				if WaterMaterial.is_water_type(ts):
-					c9 += 1
-		var exp_lod: int = _expected_lod(d)
-		_emit_lookray(lines, "  %5.1f | %-17s | %4d |  %s  |  %d/9   |   %d    | (%.1f, %.1f, %.1f)" % [
-			d, str(v), t, ("Y" if wat else "N"), c9, exp_lod, wp.x, wp.y, wp.z])
-	_emit_lookray(lines, "  READ: wat=Y across all near samples + visible gap = fluid mesher not stitching")
-	_emit_lookray(lines, "        adjacent chunks (or per-chunk shell-mesh culling the boundary face).")
-	_emit_lookray(lines, "        wat=N at far samples in line with the gap = generator not emitting water there.")
-	_emit_lookray(lines, "        wat=Y everywhere + screen still shows gap = bug is in mesher/cull, not buffer.")
+
+	# Step 3: probe a small XZ grid at sea level around the player. Use
+	# WaterFlowManager.is_position_in_water and .get_water_level_at —
+	# both are PUBLIC API designed to be called from anywhere safely
+	# (Player3D hits them every physics frame). No raw VoxelTool calls.
+	printerr("[WaterLookRay] step 3: probe 5x5 grid at sea level")
+	var sea_voxY: int = _sea_voxel_y()
+	var sea_world_y: float = float(sea_voxY) / VOXELS_PER_METER
+	_emit_lookray(lines, "F8 PROBE at player (%.1f, %.1f, %.1f) sea_voxY=%d (worldY=%.2f)" % [
+		ppos.x, ppos.y, ppos.z, sea_voxY, sea_world_y])
+	_emit_lookray(lines, "  5x5 grid at sea-level world Y=%.2f, stride 4 m (= 24 voxels)" % sea_world_y)
+	# Grid header
+	var header: String = "       "
+	for ix in [-2, -1, 0, 1, 2]:
+		header += "  x%+3d " % (int(ix) * 4)
+	_emit_lookray(lines, header)
+	for iz in [-2, -1, 0, 1, 2]:
+		var row: String = "z%+3d   " % (int(iz) * 4)
+		for ix in [-2, -1, 0, 1, 2]:
+			var probe_pos := Vector3(
+				ppos.x + float(ix) * 4.0,
+				sea_world_y + 0.1,   # just above sea level so query lands on a water voxel
+				ppos.z + float(iz) * 4.0,
+			)
+			var in_water: bool = bool(wfm.is_position_in_water(probe_pos))
+			var lvl: int = int(wfm.get_water_level_at(probe_pos))
+			# "W" = is_position_in_water true; "." = false; level appended.
+			var cell: String = ("W%d" % lvl) if in_water else (". " if lvl == 0 else "?%d" % lvl)
+			row += "  %4s" % cell
+		_emit_lookray(lines, row)
+	_emit_lookray(lines, "  KEY: W8 = full water, W1-7 = partial, . = no water")
+	_emit_lookray(lines, "  READ: all 'W' cells visible on screen as continuous water surface = mesher OK.")
+	_emit_lookray(lines, "        any '.' cells inside a body shown as continuous water = mesher emits geometry")
+	_emit_lookray(lines, "          where buffer says no water (= over-mesh, not the gap bug).")
+	_emit_lookray(lines, "        all 'W' but gap-lines still visible = mesher MISSING faces at chunk boundaries")
+	_emit_lookray(lines, "          (= the chunk-mesh-stitching diagnosis — fix in mesher/cull layer).")
+	printerr("[WaterLookRay] v2 END — probe printed %d lines" % lines.size())
 	_show_inspect(lines)
 
 
