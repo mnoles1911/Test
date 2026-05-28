@@ -150,6 +150,7 @@ var _lod_debug_global_registered: bool = false
 const HORIZON_PLANE_SIZE_M: float = 2000.0
 const HORIZON_PLANE_Y_OFFSET_M: float = -0.3  # below water top so it z-orders correctly
 var _horizon_plane: MeshInstance3D = null
+var _lens_flare: CanvasLayer = null  # Phase K bundle 2026-05-27
 
 # Cache-miss telemetry — see HeightmapGeneratorBase.get_generated_block_count().
 # The adapter exposes this method via the cpp_impl Resource. Drill through
@@ -597,6 +598,10 @@ func _ready() -> void:
 		# from above; UnderwaterFilter hides the plane on submerge so
 		# the dark-band issue that reverted the v1 attempt can't happen.
 		_spawn_horizon_plane(OCEAN_SURFACE_Y)
+		# Lens flare (Phase K bundle, 2026-05-27). One CanvasLayer with
+		# a full-screen ColorRect that paints a sun-aligned halo + ghost
+		# string. Respects GraphicsManager.is_effect_enabled("lens_flare").
+		_spawn_lens_flare()
 		# Stale comment below kept for context — diagnosis is now clear.
 		# (Original 2026-05-27 deferral note follows.)
 		# fix the LOD1+ water-surface line artefact (those lines are not
@@ -1120,6 +1125,25 @@ func _spawn_horizon_plane(sea_level_y: float) -> void:
 	add_child(plane)
 	_horizon_plane = plane
 	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, water_material.tres, tracks player XZ, hidden on submerge)." % plane.position.y)
+
+
+func _spawn_lens_flare() -> void:
+	# Phase K bundle (2026-05-27). LensFlare CanvasLayer with a
+	# full-screen ColorRect + lens_flare.gdshader. Self-contained:
+	# the script finds its own camera + sun via groups, projects the
+	# sun position to screen UV each frame, and paints a halo + ghost
+	# string. Hides itself when GraphicsManager.is_effect_enabled(
+	# "lens_flare") is false (subscribed via effect_toggles_changed).
+	if _lens_flare != null:
+		return
+	var script: Script = load("res://scripts/LensFlare.gd") as Script
+	if script == null:
+		push_warning("[World3D] LensFlare.gd missing — lens flare disabled.")
+		return
+	_lens_flare = CanvasLayer.new()
+	_lens_flare.name = "LensFlare"
+	_lens_flare.set_script(script)
+	add_child(_lens_flare)
 
 
 func _process(delta: float) -> void:
