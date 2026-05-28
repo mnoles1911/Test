@@ -20,6 +20,32 @@ I am a writer + game designer, not a programmer. Explain code in plain English, 
 | C++ GDExtension (perf code) | `extensions/voxel_gen/CLAUDE.md` |
 | Pipeline tools (TTS, headless harness, SFX gen) | `tools/CLAUDE.md` |
 | Dialogic timelines, voice + style guides | `dialogue/CLAUDE.md` |
+| "What shipped recently / what's in flight" | `MILESTONES.md` + the **Current state** block below |
+| "Non-negotiable code rules" | `design/PATTERNS_AND_GOTCHAS.md` |
+
+## Current state (check before starting work)
+
+Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
+
+- **Open PRs:**
+  - **#247 `combat/phase-5-gibs`** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge mechanic. Awaiting designer playtest.
+  - **#246 `gameplay/entity-streamer`** — `EntityRegistry` + 4-tier AI sleep + Goblin/NPC/VoxelDrop retrofit. Headless 66 checks green; awaiting merge.
+  - **#245 `weather/rain-rework`** — rain shader + audio envelope + god ray framework. **Designer deferred all visuals; gated OFF by default.** Has CLAUDE.md conflict from this reorg — rebase needed before merge.
+  - **#239 `claude/game-combat-design-Z5oLa`** — Directional Melee Combat v1 (sword + shield, parry/block, lock-on, HUD). **Awaiting review — do NOT build melee work on a different branch without checking this first.**
+- **Default-OFF features (do not flip without designer direction):**
+  - `GraphicsManager.rain_visuals_enabled = false` (PR #245 — rain shader + splash particles + wet-surface mod).
+  - `GraphicsManager.light_shafts_enabled = false` (PR #245 — per-state vol-fog god rays).
+- **Last merged:** PR #244 (Phase K bundle — selection outline, cloud cohesion, lens flare, rainbow shader, DebugOverlay GRAPHICS sub-view).
+
+## Deprecated / superseded (do NOT implement from these)
+
+Files that still exist but look canonical without being it. Always check this list before implementing against an older-looking plan.
+
+- **`design/WATER_VOXEL_V2_PLAN.md`** — superseded by the **native-fluid pivot** (`WATER_STAGE6_PLAN.md` is the actual record). Water is now Zylann `VoxelBlockyModelFluid` at ids 16–23, not the V2 transparent voxel scheme.
+- **`scripts/WaterChunkMesher.gd`** — **DELETED 2026-05-16**. Any doc / comment referencing it is stale.
+- **`scripts/EmissiveLightManager.gd` v1 OmniLight3D streaming** — kept on disk as fallback but **parked at startup by `EmissiveBakedLightManager`** (Phase J). New emissive work goes through the baked manager, not v1.
+- **`scripts/HorizonSkirt.gd` / `scripts/_dev/SkirtBaker.gd`** — retired 2026-05-22 by `DistantTerrainManager` streaming heightmesh. Any doc referencing the baked skirt is stale.
+- **`scripts/_dev/`, `scripts/_prototypes/`, `scenes/_prototypes/`** — throwaway / parity / experimental code. Don't pattern new work after files in these directories without checking they're current.
 
 ## Top-level reference files
 
