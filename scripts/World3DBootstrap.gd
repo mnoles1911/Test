@@ -1091,20 +1091,35 @@ func _spawn_horizon_plane(sea_level_y: float) -> void:
 	var plane_mesh := PlaneMesh.new()
 	plane_mesh.size = Vector2(HORIZON_PLANE_SIZE_M, HORIZON_PLANE_SIZE_M)
 	plane.mesh = plane_mesh
-	var mat := StandardMaterial3D.new()
-	# deep_water_color from the water shader's uniform of the same name —
-	# the colour the bottom of a lake reads at depth. Plane patches blend
-	# into the surrounding water visually.
-	mat.albedo_color = Color(0.02, 0.06, 0.11, 1.0)
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	mat.render_priority = -2
-	plane.material_override = mat
+	# Apply the SAME water shader material the chunk-fluid uses (v2
+	# 2026-05-27). v1 used a solid opaque deep_water_color StandardMaterial3D
+	# which patched the chunk-seam transparent gaps but showed up as a
+	# VISIBLY DARKER PATCH against the surrounding chunk water (because
+	# the water shader adds Fresnel sky sheen + water_tint_color + flow
+	# normal animation that the solid colour didn't have) — the patches
+	# read as a horizontal line/band at every chunk-seam, exactly what
+	# the designer reported. Using water_material.tres makes the plane
+	# render as water — chunk-seam patches blend invisibly into the
+	# surrounding chunk water surface (same shader, same uniforms,
+	# same look).
+	var water_mat: Material = load("res://assets/shaders/water_material.tres") as Material
+	if water_mat == null:
+		# Fall back to the v1 deep_water_color material rather than leave
+		# the plane untextured (worst-case visual is the v1 darker patch).
+		push_warning("[World3D] horizon plane: water_material.tres failed to load; using deep_water_color fallback.")
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.02, 0.06, 0.11, 1.0)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.cull_mode = BaseMaterial3D.CULL_BACK
+		mat.render_priority = -2
+		plane.material_override = mat
+	else:
+		plane.material_override = water_mat
 	plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	plane.position = Vector3(0.0, sea_level_y + HORIZON_PLANE_Y_OFFSET_M, 0.0)
 	add_child(plane)
 	_horizon_plane = plane
-	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, tracks player XZ, hidden on submerge)." % plane.position.y)
+	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, water_material.tres, tracks player XZ, hidden on submerge)." % plane.position.y)
 
 
 func _process(delta: float) -> void:
