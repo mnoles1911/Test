@@ -1698,6 +1698,34 @@ func _apply_god_rays_to_env() -> void:
 
 
 const RAINBOW_GLOBAL_PARAM: StringName = &"rainbow_factor"
+const RAINBOW_DEBUG_PARAM: StringName = &"rainbow_debug"
+
+# Weather rework 2026-05 Phase E — debug toggle. Pushes a float to the
+# `rainbow_debug` global shader param so the sky shader draws the band at
+# full alpha regardless of weather state / day / sun. Lets the designer
+# confirm the band geometry independent of the state machine.
+var _rainbow_debug_on: bool = false
+
+
+func set_rainbow_debug(enabled: bool) -> void:
+	_rainbow_debug_on = enabled
+	RenderingServer.global_shader_parameter_set(RAINBOW_DEBUG_PARAM, 1.0 if enabled else 0.0)
+	print("[WeatherManager] rainbow_debug -> %s" % str(enabled))
+
+
+func is_rainbow_debug_on() -> bool:
+	return _rainbow_debug_on
+
+
+# Force-trigger the rainbow state machine (designer aid — bypasses the
+# rain→clear transition gate). Designer can press a DebugOverlay button
+# to make the rainbow ramp without setting up a weather override.
+func force_rainbow_now() -> void:
+	_rainbow_state = RainbowState.RAMPING_UP
+	_rainbow_elapsed = 0.0
+	_rainbow_factor = 0.0
+	_rainbow_log_accum = 0.0
+	print("[WeatherManager] Rainbow force-triggered.")
 
 
 func _tick_rainbow(delta: float) -> void:
@@ -1716,8 +1744,24 @@ func _tick_rainbow(delta: float) -> void:
 			_rainbow_log_accum += delta
 			if _rainbow_log_accum >= 1.0:
 				_rainbow_log_accum = 0.0
-				print("[WeatherManager] Rainbow ramping up: factor=%.2f (%.1f s / %.1f s)" % [
-					_rainbow_factor, _rainbow_elapsed, RAINBOW_RAMP_UP_S])
+				# Weather rework 2026-05 Phase E — also log where the
+				# antisolar point is so the designer can face the rainbow.
+				# The arc forms at ~42° around -sun_direction.
+				var antisolar_hint: String = "sun not found"
+				var sun: DirectionalLight3D = _find_sun()
+				if sun != null:
+					# DirectionalLight3D shines along its local -Z, so light
+					# TRAVEL direction = -basis.z (world). The shader's
+					# LIGHT0_DIRECTION is the surface-to-light direction
+					# (= +basis.z); antisolar = -LIGHT0_DIRECTION = -basis.z.
+					# That's the direction the player should face to see the
+					# rainbow arc form ~42° around the antisolar point.
+					var antisolar: Vector3 = -sun.global_transform.basis.z
+					var azimuth_deg: float = rad_to_deg(atan2(antisolar.x, antisolar.z))
+					var elevation_deg: float = rad_to_deg(asin(clampf(antisolar.y, -1.0, 1.0)))
+					antisolar_hint = "antisolar az=%.0f° el=%.0f° (face here to see arc)" % [azimuth_deg, elevation_deg]
+				print("[WeatherManager] Rainbow ramping up: factor=%.2f (%.1f s / %.1f s) — %s" % [
+					_rainbow_factor, _rainbow_elapsed, RAINBOW_RAMP_UP_S, antisolar_hint])
 			if _rainbow_elapsed >= RAINBOW_RAMP_UP_S:
 				_rainbow_state = RainbowState.HOLDING
 				_rainbow_elapsed = 0.0

@@ -119,6 +119,8 @@ var _weather_wind_label: Label
 var _weather_state_buttons: Dictionary = {}  # state_id -> Button
 var _weather_clear_override_btn: Button
 var _weather_force_lightning_btn: Button
+var _weather_force_rainbow_btn: Button
+var _weather_rainbow_debug_btn: Button
 
 # DELETE ALL SAVES — two-click confirm state.
 var _delete_saves_armed: bool = false
@@ -1079,6 +1081,12 @@ func _build_commands_weather_view() -> void:
 	_weather_force_lightning_btn = _make_command_row("FORCE LIGHTNING")
 	_commands_weather_view.add_child(_weather_force_lightning_btn)
 
+	# Weather rework 2026-05 Phase E — rainbow designer aids.
+	_weather_force_rainbow_btn = _make_command_row("FORCE RAINBOW NOW")
+	_commands_weather_view.add_child(_weather_force_rainbow_btn)
+	_weather_rainbow_debug_btn = _make_command_row("RAINBOW DEBUG (always-on band): ?")
+	_commands_weather_view.add_child(_weather_rainbow_debug_btn)
+
 
 func _show_weather_view() -> void:
 	_commands_view = CommandView.WEATHER
@@ -1111,6 +1119,10 @@ func _refresh_weather_labels() -> void:
 	var wind: Vector3 = WeatherManager.wind_direction
 	var strength: float = WeatherManager._live_wind_strength
 	_weather_wind_label.text = "Wind: (%.2f, %.2f) × %.2f" % [wind.x, wind.z, strength]
+	# Weather rework Phase E — rainbow debug toggle label.
+	if _weather_rainbow_debug_btn != null and WeatherManager.has_method("is_rainbow_debug_on"):
+		var on_off: String = "ON" if WeatherManager.is_rainbow_debug_on() else "OFF"
+		_weather_rainbow_debug_btn.text = "RAINBOW DEBUG (always-on band): %s" % on_off
 
 
 # --- Console tab ---
@@ -1781,6 +1793,17 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			if get_node_or_null("/root/WeatherManager") != null and WeatherManager.has_method("trigger_lightning_strike"):
 				WeatherManager.trigger_lightning_strike()
 				log_action("DEV: forced lightning")
+			return
+		if _hits_button(_weather_force_rainbow_btn, pos):
+			if get_node_or_null("/root/WeatherManager") != null and WeatherManager.has_method("force_rainbow_now"):
+				WeatherManager.force_rainbow_now()
+				log_action("DEV: forced rainbow")
+			return
+		if _hits_button(_weather_rainbow_debug_btn, pos):
+			if get_node_or_null("/root/WeatherManager") != null and WeatherManager.has_method("set_rainbow_debug"):
+				WeatherManager.set_rainbow_debug(not WeatherManager.is_rainbow_debug_on())
+				_refresh_weather_labels()
+				log_action("DEV: rainbow debug -> %s" % str(WeatherManager.is_rainbow_debug_on()))
 			return
 		for state_id in _weather_state_buttons.keys():
 			var b: Button = _weather_state_buttons[state_id]
