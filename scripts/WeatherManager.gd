@@ -1136,45 +1136,107 @@ func _spawn_thunder_audio(strike_pos: Vector3, listener_pos: Vector3) -> void:
 # ------------------------------------------------------------
 
 func _update_particles() -> void:
-	# Particle counts come straight from the live interpolated values
-	# (already lerped from blend origin to target). _live_*_density is
-	# updated each frame in _process; this function just rounds them.
-	var rain_amount: int = int(round(_live_rain_density))
-	var snow_amount: int = int(round(_live_snow_density))
+	# Weather rework 2026-05 (Phase A) — rain is now a full-screen shader,
+	# not GPUParticles3D. `_update_rain_overlay` drives the new screen-space
+	# rain layer; snow still uses its particle rig (slow lifetime + low
+	# gravity means it reads fine across camera angles).
+	#
+	# The old GPUParticles3D rain rig is kept on disk as a fallback toggle
+	# via GraphicsManager.is_effect_enabled("rain_3d_fallback") so the v1
+	# look can be A/B'd if the new shader regresses something.
+	_update_rain_overlay()
+	_update_rain_3d_fallback()
+	_update_snow_particles()
 
-	# Lazily build emitters the first time a non-zero amount is needed.
-	if rain_amount > 0 and _rain_particles == null:
-		_rain_particles = _build_rain_particles()
-		add_child(_rain_particles)
+
+func _update_snow_particles() -> void:
+	var snow_amount: int = int(round(_live_snow_density))
 	if snow_amount > 0 and _snow_particles == null:
 		_snow_particles = _build_snow_particles()
 		add_child(_snow_particles)
-
-	# Position each emitter above the active camera. Emitters that are
-	# sitting at amount = 0 still get repositioned so when they next
-	# turn on, they don't dump particles in the wrong place.
 	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
-	if cam != null:
-		var follow_pos: Vector3 = cam.global_position + Vector3(0.0, PARTICLE_HEIGHT_OFFSET, 0.0)
-		if _rain_particles != null:
-			_rain_particles.global_position = follow_pos
-		if _snow_particles != null:
-			_snow_particles.global_position = follow_pos
-
-	if _rain_particles != null:
-		_rain_particles.amount = maxi(1, rain_amount)
-		_rain_particles.emitting = rain_amount > 0
-		# Wind drift writes directly to the particle process material's
-		# gravity vector; the result is rain that visibly slants when
-		# the wind is strong.
-		_apply_wind_to_particles(_rain_particles, _live_wind_strength * 0.3)
-
+	if cam != null and _snow_particles != null:
+		_snow_particles.global_position = cam.global_position + Vector3(0.0, PARTICLE_HEIGHT_OFFSET, 0.0)
 	if _snow_particles != null:
 		_snow_particles.amount = maxi(1, snow_amount)
 		_snow_particles.emitting = snow_amount > 0
-		# Snow drifts more than rain at the same wind strength
-		# because the lifetime is much longer; multiplier stays small.
 		_apply_wind_to_particles(_snow_particles, _live_wind_strength * 0.5)
+
+
+# Screen-space rain layer driver. Pushes per-frame uniforms to the
+# RainOverlay shader: density (normalised), slant (wind-projected screen
+# angle), parallax (camera-yaw/pitch-derived UV offset), and the surface
+# visibility gate (1.0 above water, 0.0 underwater so streaks don't draw
+# over a water column).
+func _update_rain_overlay() -> void:
+	if _rain_overlay == null or not _rain_overlay.has_method("set_rain"):
+		return
+	# Density normalised against the same _MAX_WETNESS_DENSITY the wetness
+	# field uses, so density=1 at full HEAVY_RAIN.
+	var density_norm: float = clampf(_live_rain_density / _MAX_WETNESS_DENSITY, 0.0, 1.0)
+
+	# Slant — project wind onto screen-X. Positive wind_direction.x = right;
+	# scale by wind strength so a gentle breeze barely tilts the streaks
+	# and a gale leans them ~45°.
+	var slant_radians: float = clampf(wind_direction.x * _live_wind_strength * 0.18, -1.2, 1.2)
+
+	var parallax: Vector2 = Vector2.ZERO
+	var surface_visible: float = 1.0
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam != null:
+		var fwd: Vector3 = -cam.global_transform.basis.z
+		# pitch ≈ asin(forward.y); positive = looking up. Tiny UV offset so
+		# the rain feels parallaxed without screaming "shader effect".
+		var pitch: float = asin(clampf(fwd.y, -1.0, 1.0))
+		var yaw: float = atan2(fwd.x, fwd.z)
+		parallax = Vector2(yaw * 0.03, -pitch * 0.10)
+		# Underwater fade — sample UnderwaterFilter group if available, else
+		# fall back to WaterFlowManager query on the camera.
+		var uw: Node = get_tree().get_first_node_in_group("underwater_filter")
+		if uw != null and "_filter_active" in uw:
+			surface_visible = 0.0 if bool(uw.get("_filter_active")) else 1.0
+		elif get_node_or_null("/root/WaterFlowManager") != null \
+				and WaterFlowManager.has_method("is_position_in_water"):
+			surface_visible = 0.0 if WaterFlowManager.is_position_in_water(cam.global_position) else 1.0
+
+	_rain_overlay.set_rain(density_norm, slant_radians, parallax, surface_visible)
+
+	# Aspect — viewport size can change mid-session (window resize). One
+	# uniform write per tick is trivial.
+	var vp: Viewport = get_viewport()
+	if vp != null:
+		var size: Vector2 = vp.get_visible_rect().size
+		if size.y > 0.0 and _rain_overlay.has_method("set_aspect"):
+			_rain_overlay.set_aspect(size.x / size.y)
+
+
+# GPUParticles3D fallback path — only runs when GraphicsManager has the
+# `rain_3d_fallback` toggle on (default OFF). Lets a designer A/B the new
+# screen-space shader against the old 3D rig.
+func _update_rain_3d_fallback() -> void:
+	var fallback_on: bool = false
+	if get_node_or_null("/root/GraphicsManager") != null \
+			and GraphicsManager.has_method("is_effect_enabled"):
+		fallback_on = GraphicsManager.is_effect_enabled("rain_3d_fallback")
+
+	if not fallback_on:
+		# Make sure the rig isn't sitting around emitting if the toggle
+		# was just flipped off.
+		if _rain_particles != null:
+			_rain_particles.emitting = false
+		return
+
+	var rain_amount: int = int(round(_live_rain_density))
+	if rain_amount > 0 and _rain_particles == null:
+		_rain_particles = _build_rain_particles()
+		add_child(_rain_particles)
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam != null and _rain_particles != null:
+		_rain_particles.global_position = cam.global_position + Vector3(0.0, PARTICLE_HEIGHT_OFFSET, 0.0)
+	if _rain_particles != null:
+		_rain_particles.amount = maxi(1, rain_amount)
+		_rain_particles.emitting = rain_amount > 0
+		_apply_wind_to_particles(_rain_particles, _live_wind_strength * 0.3)
 
 
 func _state_rain_density(state_id: int) -> float:

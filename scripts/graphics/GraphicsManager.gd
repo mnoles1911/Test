@@ -72,6 +72,10 @@ var current_tier: int = DEFAULT_TIER
 @export var lens_flare_enabled: bool = true
 @export var light_shafts_enabled: bool = true
 @export var rainbow_enabled: bool = true
+# Weather rework 2026-05 (Phase A) — keep the GPUParticles3D rain rig as
+# a fallback so the v1 visual can be A/B'd against the new screen-space
+# shader. Defaults OFF — the new shader is the shipping path.
+@export var rain_3d_fallback_enabled: bool = false
 
 # Signal fired whenever any effect toggle changes so subscribers can
 # react without polling. DebugOverlay flips → GraphicsManager emits →
@@ -94,6 +98,10 @@ func _ready() -> void:
 ## so callers don't have to AND-with master themselves. `effect` is the
 ## name of one of the @export bools above (without the `_enabled` suffix).
 func is_effect_enabled(effect_name: String) -> bool:
+	# rain_3d_fallback is independent of master_post_processing — it is a
+	# debug A/B switch, not an FX layer. Check it before the master gate.
+	if effect_name == "rain_3d_fallback":
+		return rain_3d_fallback_enabled
 	if not master_post_processing_enabled:
 		return false
 	match effect_name:
@@ -123,6 +131,8 @@ func set_effect_enabled(effect_name: String, enabled: bool) -> void:
 			light_shafts_enabled = enabled
 		"rainbow":
 			rainbow_enabled = enabled
+		"rain_3d_fallback":
+			rain_3d_fallback_enabled = enabled
 		_:
 			push_warning("[GraphicsManager] set_effect_enabled: unknown effect '%s'." % effect_name)
 			return
@@ -138,6 +148,9 @@ func reset_all_effects_enabled() -> void:
 	lens_flare_enabled = true
 	light_shafts_enabled = true
 	rainbow_enabled = true
+	# rain_3d_fallback intentionally NOT reset — it is a debug A/B switch,
+	# defaults OFF, and "reset all effects ON" would force the legacy rig
+	# back on and surprise the designer.
 	_save_tier()
 	effect_toggles_changed.emit()
 	print("[GraphicsManager] All effects toggles reset to ENABLED.")
@@ -338,6 +351,7 @@ func _save_tier() -> void:
 		"lens_flare_enabled": lens_flare_enabled,
 		"light_shafts_enabled": light_shafts_enabled,
 		"rainbow_enabled": rainbow_enabled,
+		"rain_3d_fallback_enabled": rain_3d_fallback_enabled,
 	}, "\t"))
 	f.close()
 
@@ -362,5 +376,6 @@ func _load_tier() -> void:
 		lens_flare_enabled = bool(d.get("lens_flare_enabled", true))
 		light_shafts_enabled = bool(d.get("light_shafts_enabled", true))
 		rainbow_enabled = bool(d.get("rainbow_enabled", true))
+		rain_3d_fallback_enabled = bool(d.get("rain_3d_fallback_enabled", false))
 	else:
 		current_tier = DEFAULT_TIER

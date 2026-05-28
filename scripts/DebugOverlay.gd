@@ -1824,6 +1824,10 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			gm.set_effect_enabled("rainbow", not gm.rainbow_enabled)
 			_refresh_graphics_labels()
 			return
+		if _hits_button(_graphics_rain_fallback_btn, pos):
+			gm.set_effect_enabled("rain_3d_fallback", not gm.rain_3d_fallback_enabled)
+			_refresh_graphics_labels()
+			return
 		if _hits_button(_graphics_reset_btn, pos):
 			gm.reset_all_effects_enabled()
 			_refresh_graphics_labels()
@@ -1964,6 +1968,7 @@ var _graphics_selection_outline_btn: Button
 var _graphics_lens_flare_btn: Button
 var _graphics_light_shafts_btn: Button
 var _graphics_rainbow_btn: Button
+var _graphics_rain_fallback_btn: Button
 var _graphics_reset_btn: Button
 
 
@@ -1999,6 +2004,8 @@ func _build_commands_graphics_view() -> void:
 	_commands_graphics_view.add_child(_graphics_light_shafts_btn)
 	_graphics_rainbow_btn = _make_command_row("  · RAINBOW (after rain): ?")
 	_commands_graphics_view.add_child(_graphics_rainbow_btn)
+	_graphics_rain_fallback_btn = _make_command_row("  · RAIN 3D FALLBACK (debug A/B): ?")
+	_commands_graphics_view.add_child(_graphics_rain_fallback_btn)
 	_graphics_reset_btn = _make_command_row("RESET ALL TO ON")
 	_commands_graphics_view.add_child(_graphics_reset_btn)
 
@@ -2035,3 +2042,4 @@ func _refresh_graphics_labels() -> void:
 	_graphics_lens_flare_btn.text = "  · LENS FLARE: %s" % on_off.call(gm.lens_flare_enabled)
 	_graphics_light_shafts_btn.text = "  · LIGHT SHAFTS (per-weather): %s" % on_off.call(gm.light_shafts_enabled)
 	_graphics_rainbow_btn.text = "  · RAINBOW (after rain): %s" % on_off.call(gm.rainbow_enabled)
+	_graphics_rain_fallback_btn.text = "  · RAIN 3D FALLBACK (debug A/B): %s" % on_off.call(gm.rain_3d_fallback_enabled)
