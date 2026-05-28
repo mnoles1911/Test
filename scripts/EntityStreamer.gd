@@ -77,6 +77,9 @@ var _tick_accum: float = 0.0
 # ============================================================
 
 func _ready() -> void:
+	# Group membership so DebugOverlay + future game code can find the
+	# streamer without hardcoded node paths.
+	add_to_group("entity_streamer")
 	_resolve_player()
 	# First reconcile fires next _process tick — no need to do it in _ready
 	# (entities may not be registered yet from a save load).
