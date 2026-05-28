@@ -331,6 +331,21 @@ func set_active(submerged: bool) -> void:
 	# is in its current world frame.
 	if _bubble_burst != null:
 		_bubble_burst.restart()
+	# Horizon backdrop plane (group "horizon_plane"): hide on submerge,
+	# show on emerge. The plane patches the fluid mesher's chunk-boundary
+	# gaps from ABOVE water. Underwater it would either be visible from
+	# below (CULL_BACK is supposed to hide that but didn't in the v1
+	# attempt — reverted because of a "dark band 10 m below surface")
+	# OR cause a depth-fade artefact via depth-buffer occlusion. Easiest
+	# fix: the plane simply doesn't exist underwater. Looks-up-from-below
+	# stays clean (water back-face + sky), and any depth-fade math sees
+	# only real geometry. Dynamic group query — the plane is spawned by
+	# World3DBootstrap AFTER this autoload's _ready, so we can't cache
+	# the node ref at startup; one get_nodes_in_group call per flip is
+	# trivially cheap.
+	for plane_node in get_tree().get_nodes_in_group("horizon_plane"):
+		if plane_node is Node3D:
+			(plane_node as Node3D).visible = not submerged
 	# DIRECT ASSIGNMENT — Minecraft-style instant snap (C16 2026-05-20).
 	# No tween. The env params are set in the same frame as set_active
 	# fires, on the same frame Player3D detected the crossing, on the

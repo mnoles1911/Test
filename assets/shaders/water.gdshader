@@ -133,7 +133,28 @@ uniform float flow_normal_strength : hint_range(0.0, 0.5) = 0.12;
 // ============================================================
 // DEBUG
 // ============================================================
-uniform int debug_mode : hint_range(0, 6) = 0;
+// Modes:
+//   0 normal · 1 depth_t · 2 fresnel · 3 thickness · 4 surface-facing
+//   5 flow-vector · 6 MAGENTA proof-of-life
+//   7 RAW ALPHA grayscale (white = opaque, black = transparent) —
+//       added 2026-05-27 to bisect "is the gap a low-alpha pixel or a
+//       missing mesh fragment?" If the gap bands show BLACK in mode 7,
+//       the water mesh IS there and alpha is collapsing → fix in this
+//       shader. If the gap bands show NOTHING (background visible
+//       through them), the fluid mesh is absent for those LOD chunks
+//       → fix in Zylann fluid mesher / generator.
+//   8 LOD-DISTANCE band — colours each water fragment by distance
+//       from the player along the visible LOD rings:
+//         green   <  21 m  (LOD0, lod_distance=128 vox = 21.3 m)
+//         yellow  21..43m  (LOD1)
+//         orange  43..85m  (LOD2)
+//         red     85..170m (LOD3)
+//         purple  >170m    (DistantTerrain band, no water mesh past here)
+//       Matches the F11 terrain-LOD-debug shader so designer can
+//       overlay both. Reads `player_world_pos` global shader
+//       parameter (already pushed by World3DBootstrap each frame).
+uniform int debug_mode : hint_range(0, 8) = 0;
+global uniform vec3 player_world_pos;
 
 varying vec2 v_flow_uv;
 
@@ -586,6 +607,54 @@ void fragment() {
 		ALBEDO = vec3(1.0, 0.0, 1.0);
 		ALPHA = 1.0;
 		EMISSION = vec3(1.0, 0.0, 1.0);  // glow so it's unmissable even unlit
+	} else if (debug_mode == 7) {
+		// RAW ALPHA grayscale (2026-05-27). Render the full alpha calc
+		// as a grayscale value with ALPHA forced to 1 so it's always
+		// visible. The visible "gap bands" at LOD rings: if they show as
+		// BLACK STRIPES against white water in this mode, the water mesh
+		// IS rendering at those fragments and alpha is collapsing →
+		// the bug lives in this shader's alpha math (probably the
+		// `thickness` / Beer-Lambert term reading a different depth at
+		// LOD boundaries). If the gap bands show as the unchanged scene
+		// background (terrain colour bleeding through), the water mesh
+		// is ABSENT for those LOD chunks → bug lives in Zylann's fluid
+		// mesher or the C++ generator's per-LOD water emission.
+		ALBEDO = vec3(clamp(alpha, 0.0, 1.0));
+		ALPHA = 1.0;
+		EMISSION = vec3(0.0);
+	} else if (debug_mode == 8) {
+		// LOD-DISTANCE band (2026-05-27). Distance from the player along
+		// the visible LOD rings. Matches the F11 terrain LOD-debug
+		// shader's bands exactly so designer can overlay both: the gap
+		// bands should map onto a SPECIFIC LOD ring boundary (e.g.
+		// green→yellow at 21 m). Reads `player_world_pos` global
+		// (registered in project.godot [shader_globals]).
+		vec3 wpos_dbg = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float d_dbg = length(wpos_dbg - player_world_pos);
+		vec3 band_color;
+		if (d_dbg < 21.0) {
+			band_color = vec3(0.2, 0.9, 0.2);          // green   LOD0  <21m
+		} else if (d_dbg < 43.0) {
+			band_color = vec3(0.95, 0.95, 0.2);        // yellow  LOD1  21..43m
+		} else if (d_dbg < 85.0) {
+			band_color = vec3(1.0, 0.6, 0.15);         // orange  LOD2  43..85m
+		} else if (d_dbg < 170.0) {
+			band_color = vec3(0.95, 0.25, 0.25);       // red     LOD3  85..170m
+		} else {
+			band_color = vec3(0.65, 0.30, 0.95);       // purple  >170m DistantTerrain
+		}
+		// Dark gridline at each ring boundary so the band edges are
+		// unmissable even on a flat surface.
+		float ring_marker = 0.0;
+		float[5] ring_bounds = float[](21.0, 43.0, 85.0, 170.0, 256.0);
+		for (int i = 0; i < 5; i++) {
+			if (abs(d_dbg - ring_bounds[i]) < 0.4) {
+				ring_marker = 1.0;
+			}
+		}
+		ALBEDO = mix(band_color, vec3(0.0), ring_marker);
+		ALPHA = 1.0;
+		EMISSION = vec3(0.0);
 	} else {
 		// §2c camouflage: on truly vertical seam side faces, replace
 		// the dark Fresnel-driven `surface` with the top-water tint

@@ -591,6 +591,14 @@ func _ready() -> void:
 		call_deferred("_seed_test_pond")
 		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
 		# Horizon backdrop plane attempt reverted 2026-05-26: it did not
+		# Horizon backdrop plane: re-enabled 2026-05-27 after locking the
+		# diagnosis via [WaterLookRay] probe — chunk-mesh-stitching gaps
+		# in the fluid surface, not low-alpha pixels. Plane hides them
+		# from above; UnderwaterFilter hides the plane on submerge so
+		# the dark-band issue that reverted the v1 attempt can't happen.
+		_spawn_horizon_plane(OCEAN_SURFACE_Y)
+		# Stale comment below kept for context — diagnosis is now clear.
+		# (Original 2026-05-27 deferral note follows.)
 		# fix the LOD1+ water-surface line artefact (those lines are not
 		# mesh gaps showing the sky — they're a reflection-normal
 		# discontinuity in water.gdshader at adjacent-LOD chunk seams)
@@ -1054,50 +1062,95 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 
 
 func _spawn_horizon_plane(sea_level_y: float) -> void:
-	# Single huge flat plane just under the water top. Translucent
-	# `cull_back` so it only renders from above (the camera sees its
-	# upward face filling water-mesh gaps) and not from underwater
-	# (where the player would otherwise see its underside as a fake
-	# ceiling). Material colour matches the water shader's
-	# deep_water_color so the patched gap blends with the water
-	# around it.
+	# Single huge flat plane just under the water top. Hides the chunk-
+	# mesh-stitching gaps in the fluid surface (designer-confirmed
+	# 2026-05-27: water voxels ARE in the buffer at the gap locations,
+	# the fluid mesher just isn't emitting faces at adjacent-chunk
+	# boundaries; see [WaterLookRay] shoreline probe + mode 7 raw-alpha
+	# evidence that the gaps are missing fragments, not low-alpha pixels).
+	#
+	# The previous attempt at this fix was reverted because of an
+	# underwater "dark band" 10 m below the surface. Root cause was the
+	# plane being visible (or its depth being readable) from below water,
+	# interacting with the water shader's depth-fade. The fix that lands
+	# the plane safely:
+	#   1. cull_back to hide the underside (was already in v1).
+	#   2. add_to_group("horizon_plane") + UnderwaterFilter.set_active
+	#      toggles `.visible` off when submerged, so the plane simply
+	#      doesn't exist underwater (can't cause any depth-fade artefact
+	#      by construction — empty depth = no occlusion).
+	#   3. render_priority = -2 so the plane sorts AFTER everything else
+	#      (water shell wins z-fight wherever they overlap; the plane
+	#      only renders where no water-shell quad exists at all).
+	#   4. SHADOW_CASTING_SETTING_OFF (was already in v1).
 	if _horizon_plane != null:
 		return
 	var plane := MeshInstance3D.new()
 	plane.name = "HorizonPlane"
+	plane.add_to_group("horizon_plane")
 	var plane_mesh := PlaneMesh.new()
 	plane_mesh.size = Vector2(HORIZON_PLANE_SIZE_M, HORIZON_PLANE_SIZE_M)
 	plane.mesh = plane_mesh
-	var mat := StandardMaterial3D.new()
-	# deep_water_color from the underwater filter notes — the colour
-	# the bottom of a lake should be reading at distance.
-	mat.albedo_color = Color(0.02, 0.06, 0.11, 1.0)
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	plane.material_override = mat
+	# Apply the SAME water shader material the chunk-fluid uses (v2
+	# 2026-05-27). v1 used a solid opaque deep_water_color StandardMaterial3D
+	# which patched the chunk-seam transparent gaps but showed up as a
+	# VISIBLY DARKER PATCH against the surrounding chunk water (because
+	# the water shader adds Fresnel sky sheen + water_tint_color + flow
+	# normal animation that the solid colour didn't have) — the patches
+	# read as a horizontal line/band at every chunk-seam, exactly what
+	# the designer reported. Using water_material.tres makes the plane
+	# render as water — chunk-seam patches blend invisibly into the
+	# surrounding chunk water surface (same shader, same uniforms,
+	# same look).
+	var water_mat: Material = load("res://assets/shaders/water_material.tres") as Material
+	if water_mat == null:
+		# Fall back to the v1 deep_water_color material rather than leave
+		# the plane untextured (worst-case visual is the v1 darker patch).
+		push_warning("[World3D] horizon plane: water_material.tres failed to load; using deep_water_color fallback.")
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.02, 0.06, 0.11, 1.0)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.cull_mode = BaseMaterial3D.CULL_BACK
+		mat.render_priority = -2
+		plane.material_override = mat
+	else:
+		plane.material_override = water_mat
 	plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	plane.position = Vector3(0.0, sea_level_y + HORIZON_PLANE_Y_OFFSET_M, 0.0)
 	add_child(plane)
 	_horizon_plane = plane
-	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, tracks player XZ)." % plane.position.y)
+	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, water_material.tres, tracks player XZ, hidden on submerge)." % plane.position.y)
 
 
 func _process(delta: float) -> void:
 	# Per-frame: push the player's world position into the LOD band
 	# debug shader so the coloured rings track the player. Uses a
-	# GLOBAL shader parameter (registered lazily on first F11 press)
+	# GLOBAL shader parameter (declared in project.godot [shader_globals])
 	# instead of writing to a ShaderMaterial directly — Zylann
 	# duplicates `terrain.material` per chunk, so per-material writes
 	# don't propagate. Globals do.
-	if _lod_debug_on and _lod_debug_global_registered:
-		_diag_resolve_refs()
-		if _diag_player != null:
-			RenderingServer.global_shader_parameter_set(
-				LOD_DEBUG_GLOBAL_PARAM, _diag_player.global_position
-			)
+	#
+	# Pushed UNCONDITIONALLY each frame (2026-05-27, was gated on the
+	# F11 LOD-debug toggle): the water shader's new debug_mode 8 also
+	# reads this global, and gating on _lod_debug_on left mode 8's
+	# rings frozen at world origin during designer testing. Cost is
+	# trivial (one Vector3 global write per frame, no per-chunk fan-out).
+	_diag_resolve_refs()
+	if _diag_player != null:
+		RenderingServer.global_shader_parameter_set(
+			LOD_DEBUG_GLOBAL_PARAM, _diag_player.global_position
+		)
 
-	# Horizon backdrop plane follow disabled — see _spawn_horizon_plane
-	# comment above for why the plane was reverted.
+	# Horizon backdrop plane: track player on XZ each frame so the 2km
+	# plane is always centered under the player and covers visible water.
+	# Y stays fixed at sea_level + HORIZON_PLANE_Y_OFFSET_M (set at
+	# spawn). Re-enabled 2026-05-27.
+	if _horizon_plane != null and _diag_player != null:
+		_horizon_plane.position = Vector3(
+			_diag_player.global_position.x,
+			_horizon_plane.position.y,
+			_diag_player.global_position.z,
+		)
 
 	# 1 Hz diagnostic line for the LOD-streaming investigation.
 	# Prints player position, instantaneous speed (m/s), VoxelViewer
