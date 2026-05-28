@@ -1706,31 +1706,6 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 			return
 		return
 
-
-# Entity-streamer test aid. Spawns a persistent Goblin 5 m in front of
-# the player via EntityStreamer.spawn_persistent so the designer can walk
-# away (past the unload radius) and walk back to verify the streamer
-# brings the entity back in with preserved state.
-func _spawn_test_goblin() -> void:
-	var streamer: Node = get_tree().get_first_node_in_group("entity_streamer")
-	if streamer == null:
-		log_action("entity-streamer: NO EntityStreamer node in scene (group 'entity_streamer')")
-		return
-	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
-	if player == null:
-		log_action("entity-streamer: NO player in scene")
-		return
-	var scene_path := "res://scenes/enemies/Goblin.tscn"
-	if not ResourceLoader.exists(scene_path):
-		log_action("entity-streamer: missing %s" % scene_path)
-		return
-	var fwd: Vector3 = -player.global_transform.basis.z
-	var spawn_pos: Vector3 = player.global_position + fwd * 5.0
-	var t := Transform3D(Basis(), spawn_pos)
-	var rec = streamer.call("spawn_persistent", scene_path, t, {"health": 50})
-	if rec != null:
-		log_action("entity-streamer: spawned test Goblin at %s (id=%s)" % [spawn_pos.round(), rec.entity_id])
-
 	# DELETE A SAVE sub-view: BACK or per-row DELETE.
 	if _commands_view == CommandView.DELETE_SAVE:
 		if _hits_button(_delete_save_back_btn, pos):
@@ -1939,3 +1914,28 @@ func _cycle_f7_vox_per_m() -> void:
 	var new_scale: float = float(entry.get("scale", 1.0 / 6.0))
 	_f7_next_index = (_f7_next_index + 1) % F7_CYCLE.size()
 	_apply_terrain_scale_hotkey(new_scale, "F7  (%d vox/m)" % vox_per_m)
+
+
+# Entity-streamer test aid. Spawns a persistent Goblin 5 m in front of
+# the player via EntityStreamer.spawn_persistent so the designer can walk
+# away (past the unload radius) and walk back to verify the streamer
+# brings the entity back in with preserved state.
+func _spawn_test_goblin() -> void:
+	var streamer: Node = get_tree().get_first_node_in_group("entity_streamer")
+	if streamer == null:
+		log_action("entity-streamer: NO EntityStreamer node in scene (group 'entity_streamer')")
+		return
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player == null:
+		log_action("entity-streamer: NO player in scene")
+		return
+	var scene_path := "res://scenes/enemies/Goblin.tscn"
+	if not ResourceLoader.exists(scene_path):
+		log_action("entity-streamer: missing %s" % scene_path)
+		return
+	var fwd: Vector3 = -player.global_transform.basis.z
+	var spawn_pos: Vector3 = player.global_position + fwd * 5.0
+	var t := Transform3D(Basis(), spawn_pos)
+	var rec = streamer.call("spawn_persistent", scene_path, t, {"health": 50})
+	if rec != null:
+		log_action("entity-streamer: spawned test Goblin at %s (id=%s)" % [spawn_pos.round(), rec.entity_id])
