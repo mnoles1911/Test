@@ -153,7 +153,7 @@ var carve_volume_size: int = 3
 # every physics frame from the camera raycast.
 var _aim_outline: MeshInstance3D
 var _aim_outline_mesh: BoxMesh
-var _aim_outline_material: StandardMaterial3D
+var _aim_outline_material: Material  # ShaderMaterial (default v2) or StandardMaterial3D (v1 fallback)
 
 var _held_log_counter: int = 0
 # Throttle counter for held-swing diagnostic prints â€” only print
