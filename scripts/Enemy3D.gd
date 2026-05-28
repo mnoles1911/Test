@@ -164,7 +164,65 @@ func _ready() -> void:
 		push_warning("[Enemy3D] No node in 'player' group found — detection will not work.")
 
 
+# =============================================================
+# ENTITY STREAMING (AI tier + record round-trip)
+# =============================================================
+# EntityStreamer drives `set_ai_tier` based on distance to the player.
+# Tier 0 (ACTIVE) is normal play. Tier 1 (AWAKE) keeps physics but drops
+# logic to 10Hz. Tier 2 (SLEEPING) disables physics_process entirely; the
+# enemy still occupies space but doesn't run AI or detection.
+
+var _ai_tier: int = 0  # AITier.ACTIVE
+const _AI_AWAKE_INTERVAL: float = 0.1  # 10Hz when tier == AWAKE
+var _ai_tick_accum: float = 0.0
+
+
+func set_ai_tier(tier: int) -> void:
+	if _is_dead:
+		return
+	_ai_tier = tier
+	# Sleeping = stop running physics entirely; the body stays in the
+	# tree but doesn't run detection, gravity, or contact damage. Wakes
+	# up on tier promote.
+	if tier >= 2:  # SLEEPING
+		set_physics_process(false)
+	else:
+		set_physics_process(true)
+
+
+func to_entity_record() -> Dictionary:
+	# Snapshot the dynamic state EntityStreamer should save off. Adding
+	# fields here is forward-compatible — from_entity_record uses .get
+	# with defaults.
+	return {
+		"health": health,
+		"state": int(current_state),
+		"is_dead": _is_dead,
+	}
+
+
+func from_entity_record(blob: Dictionary) -> void:
+	if blob == null or blob.is_empty():
+		return
+	health = int(blob.get("health", max_health))
+	current_state = int(blob.get("state", State.IDLE))
+	# Dead-on-restore — skip the live setup (no detection, no contact
+	# damage) but keep the node in the tree so corpse loot still works.
+	if bool(blob.get("is_dead", false)):
+		_is_dead = true
+		set_physics_process(false)
+
+
 func _physics_process(delta: float) -> void:
+	# Tier AWAKE — gate work to a 10Hz cadence. ACTIVE runs every frame.
+	# (Tier SLEEPING never reaches here; set_ai_tier disables _physics_process.)
+	if _ai_tier == 1:  # AWAKE
+		_ai_tick_accum += delta
+		if _ai_tick_accum < _AI_AWAKE_INTERVAL:
+			return
+		delta = _ai_tick_accum
+		_ai_tick_accum = 0.0
+
 	if _is_dead:
 		# Dead enemies poll for corpse interaction (E to loot) instead
 		# of running movement / detection logic. The interact area

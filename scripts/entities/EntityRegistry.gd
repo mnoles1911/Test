@@ -42,7 +42,9 @@ var _session_prefix: String = ""
 func _ready() -> void:
 	# Generate a per-session prefix so the same world loaded twice doesn't
 	# collide IDs across sessions if the user later imports/merges saves.
-	_session_prefix = "e_%d_" % (Time.get_unix_time_from_system() % 1000000)
+	# get_unix_time_from_system returns a float; cast to int for the
+	# modulo (% doesn't accept float operands).
+	_session_prefix = "e_%d_" % (int(Time.get_unix_time_from_system()) % 1000000)
 	print("[EntityRegistry] Ready — session prefix '%s'." % _session_prefix)
 
 
@@ -61,8 +63,9 @@ static func chunk_key_for_position(pos: Vector3) -> Vector2i:
 
 # Register a brand-new record (or re-register an existing one moved between
 # chunks). Assigns an entity_id if missing. Returns the (possibly newly-
-# generated) id.
-func register(record: EntityRecord) -> String:
+# generated) id. `record` is an EntityRecord (untyped because the script
+# has no class_name — see EntityRecord.gd header).
+func register(record) -> String:
 	if record == null:
 		push_warning("[EntityRegistry] register(null) — ignored.")
 		return ""

@@ -1,5 +1,10 @@
-class_name EntityRecord
 extends Resource
+# NOTE: no `class_name` — path-preloaded everywhere (same rule as
+# scripts/graphics/ShaderProfile.gd and scripts/WaterMaterial.gd). The
+# headless test harness does NOT rescan global classes, so a class_name
+# would cause the autoload to fail with "script does not inherit from
+# Node" the first time the headless runner imports the parent
+# EntityRegistry.
 # EntityRecord — POD snapshot of one persistent entity.
 #
 # The "state of the world" the player has interacted with — every persistent
@@ -56,8 +61,12 @@ func to_dict() -> Dictionary:
 
 # Reverse of to_dict. Robust against missing keys (returns reasonable
 # defaults) so an EntityRecord saved with an older schema still loads.
-static func from_dict(d: Dictionary) -> EntityRecord:
-	var r := EntityRecord.new()
+# Untyped return because EntityRecord has no class_name (headless rule).
+# Calls (load(...) as GDScript).new() because a `static func` cannot use
+# the bare `new()` shorthand (no `self` for the script to bind to).
+static func from_dict(d: Dictionary):
+	var Script := load("res://scripts/entities/EntityRecord.gd")
+	var r = Script.new()
 	r.entity_id = String(d.get("entity_id", ""))
 	r.scene_path = String(d.get("scene_path", ""))
 	var p: Array = d.get("pos", [0.0, 0.0, 0.0])
