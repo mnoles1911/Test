@@ -310,6 +310,10 @@ rainbow_factor={
 "type": "float",
 "value": 0.0
 }
+wetness_factor={
+"type": "float",
+"value": 0.0
+}
 
 [voxel]
 

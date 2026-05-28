@@ -936,51 +936,107 @@ func _state_wetness(state_id: int) -> float:
 
 
 func _update_wet_terrain_visual(wetness: float) -> void:
-	# Layer A — screen tint always-on overlay.
+	# Layer A — screen tint always-on overlay (blue-grey rain mood).
 	if _rain_overlay != null and _rain_overlay.has_method("set_intensity"):
 		_rain_overlay.set_intensity(wetness)
 
-	# Layer B — terrain material override. Apply once on the first
-	# wet frame and animate albedo + roughness via the material's
-	# properties. Remove it (set null) when wetness returns to 0 so
-	# the default vertex-color rendering takes back over.
-	var terrain: Node = _find_voxel_terrain()
-	if terrain == null:
-		return
-	if not (terrain is GeometryInstance3D):
-		# Zylann's VoxelLodTerrain extends VoxelNode → Node3D, NOT
-		# GeometryInstance3D, so `material_override` doesn't exist on
-		# it. Layer A (the RainOverlay screen tint) already ran above
-		# and gives us the wet-look feedback; just return.
-		#
-		# Earlier this branch only returned when wetness was already
-		# near zero, then fell through to the cast on line below. The
-		# `as` cast on a non-GeometryInstance3D returned null and the
-		# next assignment crashed with "assignment of property...
-		# 'material_override'... on a base object of type 'Nil'".
-		return
-	if wetness <= 0.001:
-		if _wet_terrain_active:
-			(terrain as GeometryInstance3D).material_override = null
-			_wet_terrain_active = false
-		return
+	# Layer B — push the wetness global to terrain_voxel.gdshader. The
+	# OLD path tried StandardMaterial3D `material_override` on the terrain
+	# node but Zylann's VoxelLodTerrain isn't a GeometryInstance3D, so the
+	# old code dead-returned without ever applying material darkening.
+	# This global drives the wet-sheen shader path in terrain_voxel.gdshader
+	# (lower roughness, slight albedo darken) which actually works.
+	RenderingServer.global_shader_parameter_set(&"wetness_factor", wetness)
 
-	if _wet_terrain_material == null:
-		_wet_terrain_material = StandardMaterial3D.new()
-		# vertex_color_use_as_albedo lets the underlying voxel-color
-		# information through, so we still see grass-vs-stone tints.
-		_wet_terrain_material.vertex_color_use_as_albedo = true
-		_wet_terrain_material.metallic = 0.05
+	# Layer C — splash particles. Built lazily on first wet tick; emits
+	# under the player as flat short-lived ring billboards.
+	_update_rain_splashes(wetness)
 
-	# albedo darkens slightly with wetness; roughness drops so the sun
-	# picks out a wet sheen on highlights.
-	var darkening: float = lerpf(1.0, 0.85, wetness)
-	_wet_terrain_material.albedo_color = Color(darkening, darkening, darkening, 1.0)
-	_wet_terrain_material.roughness = lerpf(0.9, 0.3, wetness)
 
-	if not _wet_terrain_active:
-		(terrain as GeometryInstance3D).material_override = _wet_terrain_material
-		_wet_terrain_active = true
+# ------------------------------------------------------------
+# Rain splash particles (Weather rework Phase B)
+# ------------------------------------------------------------
+
+# A small GPUParticles3D rig that emits short-lived flat ring billboards
+# on the voxel surface beneath the camera. Density modulated by wetness.
+# Lazy-built — never spawned in a CLEAR-only world.
+var _rain_splashes: GPUParticles3D = null
+const _SPLASH_MAX_AMOUNT: int = 80
+
+
+func _update_rain_splashes(wetness: float) -> void:
+	# Drive amount by wetness. At wetness 0 → particles still emit at
+	# minimum 1 (GPUParticles3D rejects 0), but emitting=false; so the
+	# overhead at CLEAR is one inert node.
+	if wetness > 0.001 and _rain_splashes == null:
+		_rain_splashes = _build_rain_splashes()
+		add_child(_rain_splashes)
+	if _rain_splashes == null:
+		return
+	var amount: int = clampi(int(round(wetness * _SPLASH_MAX_AMOUNT)), 1, _SPLASH_MAX_AMOUNT)
+	if _rain_splashes.amount != amount:
+		_rain_splashes.amount = amount
+	_rain_splashes.emitting = wetness > 0.001
+	# Follow the camera at ground level — splash particles emit from a
+	# flat box centred on the player so they appear "on the ground around
+	# Roland". The ParticleProcessMaterial gravity is 0 (rings stay put
+	# and just fade out), so no falling cone.
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam != null:
+		# Drop the splash emitter to ground-ish — slightly below the camera
+		# so the rings land on terrain rather than mid-air.
+		_rain_splashes.global_position = cam.global_position - Vector3(0.0, 1.4, 0.0)
+
+
+func _build_rain_splashes() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.name = "RainSplashes"
+	p.amount = 1
+	p.lifetime = 0.45
+	p.preprocess = 0.0
+	p.fixed_fps = 30
+	p.local_coords = false
+	p.visibility_aabb = AABB(Vector3(-12, -2, -12), Vector3(24, 4, 24))
+
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = Vector3(8.0, 0.0, 8.0)
+	mat.gravity = Vector3.ZERO
+	mat.initial_velocity_min = 0.0
+	mat.initial_velocity_max = 0.0
+	mat.scale_min = 0.06
+	mat.scale_max = 0.14
+	# Quick scale-up over lifetime so the ring grows like a real splash.
+	mat.scale_curve = _build_splash_scale_curve()
+	# Fade alpha from 1 -> 0 over lifetime (alpha is baked into the mesh
+	# material color; ParticleProcessMaterial colour ramp would also work
+	# but a constant colour + alpha decay via a Curve keeps this simple.)
+	p.process_material = mat
+
+	# Flat ring billboard, almost-white with translucent alpha.
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(0.30, 0.30)
+	var mesh_mat := StandardMaterial3D.new()
+	mesh_mat.albedo_color = Color(0.85, 0.92, 1.0, 0.65)
+	mesh_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	mesh.material = mesh_mat
+	p.draw_pass_1 = mesh
+	return p
+
+
+func _build_splash_scale_curve() -> CurveTexture:
+	# Quick growth from 0.4 -> 1.0 over the particle lifetime so rings
+	# appear, expand, and fade out (the alpha decay is handled by the
+	# mesh material's base alpha + the particle's natural lifetime cut).
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 0.4))
+	curve.add_point(Vector2(0.6, 1.0))
+	curve.add_point(Vector2(1.0, 1.2))
+	var tex := CurveTexture.new()
+	tex.curve = curve
+	return tex
 
 
 # ------------------------------------------------------------
