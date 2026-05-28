@@ -878,6 +878,55 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
+- **Weather rework — deferred from PR #244 Phase K bundle (2026-05-27).**
+  Three designer-reported issues that surfaced in playtest of the Phase K
+  bundle that need a deeper rework, not a patch. Bundle together as one
+  cohesive "weather feel" pass.
+  - **Rain visual rework.** Current rain is `GPUParticles3D` billboards
+    (thin `QuadMesh` streaks) falling from a 200×40×200 emit box above
+    the player. v3 patch attempts (thicker streaks, brighter colour,
+    `_apply_rain_alpha_by_density` per-particle alpha modulation) were
+    reverted — the whole system needs redesign, not tuning. Designer
+    verdict 2026-05-27: "the visual itself needs a deep rework."
+    Possible directions: full-screen rain post-process shader
+    (`canvas_item`, scrolling streak texture, density-modulated alpha,
+    optional aim-direction parallax); proper splash/ripple particles on
+    voxel surface impacts; wet-surface roughness mod on terrain shader
+    during heavy rain. Treat as a dedicated session, not a quick fix.
+  - **Rain audio crossfade rework.** Audio bed is currently a simple
+    linear-dB `volume_db` tween over 30 s (`AMBIENT_CROSSFADE_S`).
+    Designer report 2026-05-27: "the rain bed is not a build up. its a
+    hard switch and it the audio switch occurs at least 5 seconds after
+    the rain visuals appear." Two problems: (a) linear-dB reads
+    perceptually as on/off (a v3 attempt at amplitude-domain tween via
+    `linear_to_db` + a lower `AMBIENT_TARGET_DB = -14` was also
+    reverted — same complaint), and (b) audible onset lags visual
+    onset by ~5 s. Likely needs: explicit envelope shape (delay → ramp
+    curve, not linear), perceptual-loudness ramp (try an
+    equal-power-style or `pow(t, 2.2)` shape), sub-bus EQ during the
+    ramp (low-pass that opens as level rises so the bed "approaches"
+    rather than fades in), and timing aligned to (or slightly ahead
+    of) visual onset.
+  - **God rays (light shafts).** Per-state `god_ray_multiplier` writing
+    to `DirectionalLight3D.light_volumetric_fog_energy` is too subtle
+    to read. A v2 attempt at 3.5× multiplier was also imperceptible —
+    reverted to 1.5×. Likely the per-light energy alone isn't enough;
+    `WorldEnvironment.volumetric_fog_*` (length / density / albedo)
+    needs co-tuning so the sun's rays have actual fog to scatter
+    through. Investigate alongside the existing underwater volumetric
+    fog setup (which DOES read well) for what made that work.
+  - **Rainbow visibility.** State machine + global shader param push
+    work correctly (1 Hz log confirms `factor` ramps 0→1 over 30 s and
+    holds for 60 s). The shader code in `sky_atmosphere.gdshader`
+    draws an arc at 38-45° around the antisolar point with a 6-colour
+    spectrum, but the arc isn't visible in-engine after a heavy-rain →
+    clear transition. Debug with the F12 view-direction overlay; check
+    that the antisolar point projection is in-frame for the test
+    camera angle, that `rainbow_factor` is actually reaching the
+    sky-pass shader (vs. only the clouds pass), and that the spectrum
+    colours aren't being darkened to invisibility by the day/night
+    `night_factor` lerp.
+
 - **WeatherManager polish — deferred from PR #132 code review (2026-05-04).**
   Self-review surfaced these. Each is functionally tolerable today; bundle
   for a future cleanup pass.

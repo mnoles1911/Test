@@ -324,7 +324,7 @@ var _ambient_settle_timer: float = 0.0
 var _ambient_gust_time: float = 0.0
 const AMBIENT_AUDIO_DIR: String = "res://assets/audio/ambient/"
 const AMBIENT_CROSSFADE_S: float = 30.0  # Phase K bundle 2026-05-27: was 5s; designer report — audio finished fading in ~5s while the visual transition took 30s, reading as "audio jumps instantly." Match the visual TRANSITION_DURATION_S so the bed crossfade and the visual lerp stay in sync.
-const AMBIENT_TARGET_DB: float = -14.0          # Phase K bundle v3 2026-05-27: -8 was "very clearly either on or off" per designer. Lowered to -14 + perceptually-linear fade-in (linear_to_db tween on amplitude 0..1) so the bed feels like a gradual rain build, not a hard onset.
+const AMBIENT_TARGET_DB: float = -8.0           # comfortable bed level. Phase K v3 attempt at -14 + linear_to_db tween didn't fix the designer-reported "still feels like a hard switch" — reverted. See DESIGNER_TODO "Weather rework" for the deferred audio crossfade work (likely needs delay-then-ramp envelope + sub-mix bus EQ during ramp, not just a volume tween).
 # Wind ambience gusts — the wind bed's volume swells and lulls instead
 # of droning flat. Depth in dB the volume dips below AMBIENT_TARGET_DB
 # at the bottom of a lull.
@@ -942,24 +942,15 @@ func _swap_ambient_audio(key: String) -> void:
 	_ambient_player = incoming
 
 	# Fade in the new player, if any. Independent tween — no shared
-	# state with the fade-out.
+	# state with the fade-out. Linear-dB tween over 30s; the perceptual
+	# curve still feels like a hard switch (designer-verified 2026-05-27)
+	# — a proper fix needs an envelope (delay + ramp shape + sub-bus EQ
+	# during ramp), tracked in DESIGNER_TODO "Weather rework". The v3
+	# attempt at linear_to_db amplitude tween + lower target dB was
+	# reverted because designer feedback was unchanged.
 	if incoming != null:
-		# Perceptually-linear fade-in via tween_method on a 0..1 amplitude
-		# value mapped to dB through linear_to_db (Phase K bundle fix
-		# 2026-05-27). Designer report: even with the 30 s tween,
-		# volume_db tweening LINEARLY in dB sounds like "silent for 25 s
-		# then on for 5 s" — because dB is logarithmic, half-way through
-		# the linear-dB tween (-44 dB) is barely audible. Tweening
-		# amplitude 0..1 and converting per-step via linear_to_db gives
-		# a perceptually-linear ramp the listener actually hears as
-		# gradually building. Clamp the input above 0.001 so
-		# linear_to_db doesn't return -INF on the first frame.
 		var fade_in := create_tween()
-		fade_in.tween_method(
-			func(amp: float) -> void:
-				if is_instance_valid(incoming):
-					incoming.volume_db = linear_to_db(maxf(0.001, amp)) + AMBIENT_TARGET_DB,
-			0.0, 1.0, AMBIENT_CROSSFADE_S)
+		fade_in.tween_property(incoming, "volume_db", AMBIENT_TARGET_DB, AMBIENT_CROSSFADE_S)
 
 	# Fade out the outgoing player on its own tween that queue_frees it
 	# at the end. The captured `outgoing` reference is bound to this
@@ -1177,15 +1168,6 @@ func _update_particles() -> void:
 		# gravity vector; the result is rain that visibly slants when
 		# the wind is strong.
 		_apply_wind_to_particles(_rain_particles, _live_wind_strength * 0.3)
-		# Phase K bundle v3 (2026-05-27). Designer report: rain visual
-		# "began falling immediately on the weather change" while clouds
-		# and audio took the full 30 s to fade. Even though _live_rain_
-		# density was lerping, per-particle alpha stayed at 0.75 — a few
-		# visible streaks at low count read as "full rain" already. Fix:
-		# modulate per-particle alpha by density-fraction so opacity
-		# ramps with count, not just count. At 0% density = invisible,
-		# 100% = full-alpha streaks.
-		_apply_rain_alpha_by_density(_rain_particles, _live_rain_density, _state_rain_density(State.HEAVY_RAIN))
 
 	if _snow_particles != null:
 		_snow_particles.amount = maxi(1, snow_amount)
@@ -1193,7 +1175,6 @@ func _update_particles() -> void:
 		# Snow drifts more than rain at the same wind strength
 		# because the lifetime is much longer; multiplier stays small.
 		_apply_wind_to_particles(_snow_particles, _live_wind_strength * 0.5)
-		_apply_rain_alpha_by_density(_snow_particles, _live_snow_density, _state_snow_density(State.SNOW))
 
 
 func _state_rain_density(state_id: int) -> float:
@@ -1246,15 +1227,15 @@ func _build_rain_particles() -> GPUParticles3D:
 	p.process_material = mat
 
 	# Thin vertical streak — a tall narrow quad is the cheapest
-	# representation that still reads as falling rain at speed.
-	# v3 (2026-05-27): mesh size 0.02×0.35 → 0.05×0.70 and color
-	# brightened/alpha bumped so streaks read clearly when the player
-	# aims the camera downward (designer report: rain visual not
-	# distinctive enough). Adds visibility without changing the count.
+	# representation that still reads as falling rain at speed. Size /
+	# colour / per-particle alpha-by-density tuning is queued for the
+	# DESIGNER_TODO "Weather rework" — partial v3 tweaks (thicker
+	# streaks + density-modulated alpha) were reverted because the
+	# whole visual needs a deeper rework per designer 2026-05-27.
 	var mesh := QuadMesh.new()
-	mesh.size = Vector2(0.05, 0.70)
+	mesh.size = Vector2(0.02, 0.35)
 	var mesh_mat := StandardMaterial3D.new()
-	mesh_mat.albedo_color = Color(0.85, 0.92, 1.0, 0.90)
+	mesh_mat.albedo_color = Color(0.7, 0.8, 0.95, 0.75)
 	mesh_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mesh_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mesh_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
@@ -1262,40 +1243,6 @@ func _build_rain_particles() -> GPUParticles3D:
 	mesh.material = mesh_mat
 	p.draw_pass_1 = mesh
 	return p
-
-
-# Phase K bundle v3 (2026-05-27). Modulate per-particle albedo alpha by
-# (live_density / target_density) so the rain/snow visual fades in
-# WITH the count, not at full opacity from the first emitted particle.
-# Combined with the existing _live_*_density lerp, this makes the
-# visual ramp track the 30 s transition the same way cloud_coverage,
-# audio, and god_ray_multiplier do — designer wants all four to feel
-# linked.
-func _apply_rain_alpha_by_density(p: GPUParticles3D, live_density: float, target_density: float) -> void:
-	if p == null:
-		return
-	var mesh = p.draw_pass_1
-	if mesh == null:
-		return
-	var mat = mesh.material
-	if mat == null or not (mat is StandardMaterial3D):
-		return
-	var smat: StandardMaterial3D = mat as StandardMaterial3D
-	# Recover the original full-strength alpha from the mesh material.
-	# We cached it in the build function; with the v3 colour above this
-	# is 0.90 for rain, 0.90 for snow.
-	const ALPHA_FULL: float = 0.90
-	var frac: float = 0.0
-	if target_density > 0.001:
-		frac = clampf(live_density / target_density, 0.0, 1.0)
-	var c: Color = smat.albedo_color
-	var new_a: float = ALPHA_FULL * frac
-	# Idempotent skip if no meaningful change (avoid touching the
-	# material every frame at steady state).
-	if absf(c.a - new_a) < 0.005:
-		return
-	c.a = new_a
-	smat.albedo_color = c
 
 
 func _build_snow_particles() -> GPUParticles3D:
