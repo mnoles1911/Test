@@ -252,20 +252,31 @@ void sky() {
 		if (t_band >= 0.0 && t_band <= 1.0) {
 			// Map t_band 0..1 to violet→red. Standard rainbow spectrum
 			// reversed because the OUTER edge is red, INNER is violet.
-			// 6 anchor colours; lerp between adjacent pair.
-			vec3 spectrum[6] = {
-				vec3(0.58, 0.00, 0.83),  // violet (inner, t=0)
-				vec3(0.00, 0.00, 1.00),  // blue
-				vec3(0.00, 1.00, 0.00),  // green
-				vec3(1.00, 1.00, 0.00),  // yellow
-				vec3(1.00, 0.50, 0.00),  // orange
-				vec3(1.00, 0.00, 0.00)   // red (outer, t=1)
-			};
-			float seg_f = t_band * 5.0;
+			// 6 anchor colours; lerp between adjacent pair via an
+			// explicit segment-pick (Godot GDSL does NOT support C-style
+			// `vec3 arr[6] = { ... };` initializer-list syntax inside a
+			// function body — must use the constructor form
+			// `vec3[6](v, v, ...)` OR open-code the lookup. Open-code is
+			// the safer choice here: smaller compiled shader, no
+			// array-indexing edge cases on older GPU drivers).
+			vec3 c0 = vec3(0.58, 0.00, 0.83);  // violet (inner, t_band=0)
+			vec3 c1 = vec3(0.00, 0.00, 1.00);  // blue
+			vec3 c2 = vec3(0.00, 1.00, 0.00);  // green
+			vec3 c3 = vec3(1.00, 1.00, 0.00);  // yellow
+			vec3 c4 = vec3(1.00, 0.50, 0.00);  // orange
+			vec3 c5 = vec3(1.00, 0.00, 0.00);  // red (outer, t_band=1)
+			float seg_f = clamp(t_band, 0.0, 1.0) * 5.0;
 			int seg = int(floor(seg_f));
 			if (seg > 4) seg = 4;
 			float seg_t = seg_f - float(seg);
-			vec3 rainbow_col = mix(spectrum[seg], spectrum[seg + 1], seg_t);
+			vec3 a;
+			vec3 b;
+			if (seg == 0)      { a = c0; b = c1; }
+			else if (seg == 1) { a = c1; b = c2; }
+			else if (seg == 2) { a = c2; b = c3; }
+			else if (seg == 3) { a = c3; b = c4; }
+			else               { a = c4; b = c5; }
+			vec3 rainbow_col = mix(a, b, seg_t);
 			// Soft AA at band edges so the rainbow doesn't have a hard
 			// stripe boundary.
 			float edge_aa = min(t_band, 1.0 - t_band) * 4.0;
