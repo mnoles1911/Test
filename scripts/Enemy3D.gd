@@ -302,13 +302,15 @@ func _on_damaged(_amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 # OVERKILL — gib explosion + time-slow + camera kick (Phase 5)
 # =============================================================
 
-const OVERKILL_DAMAGE_THRESHOLD: int = 80
+const OVERKILL_DAMAGE_THRESHOLD: int = 50
 ## At/above this single-hit damage on a lethal blow, the enemy gibs
 ## (visual hidden, GibChunks spawn radially) and the global time-slow
 ## + camera kick fire. Below the threshold, the enemy topples normally.
-## 80 lines up with the charged-spear damage ceiling (60 charged + a
-## few perks) so charged kills satisfyingly explode and tap kills
-## quietly topple.
+## 50 = a fully-charged spear (60 dmg) on a fresh goblin (50 HP) reliably
+## triggers it; a light tap (30 dmg) does not. Originally specced at 80
+## per design/COMBAT_NEXT_PHASES.md but charged-spear damage caps at 60
+## in v1, so 80 was unreachable. Re-raise toward 80+ once perks /
+## ashsteel spear push charged damage higher.
 
 const TIME_SLOW_SCALE: float = 0.05
 const TIME_SLOW_DURATION_S: float = 0.15
