@@ -316,6 +316,20 @@ var _wet_terrain_active: bool = false
 # fade-out tween that queue_frees them when done. No shared finaliser,
 # so rapid swaps can't race on a single _finalise callback.
 var _ambient_player: AudioStreamPlayer = null
+# Dedicated audio bus + low-pass effect for the rain/wind bed. Built lazily
+# on first ambient swap so a CLEAR-only world never touches the audio bus
+# layout. The low-pass cutoff is swept by the active fade-in envelope
+# (`WeatherEnvelopeProfile.resolve_lowpass_hz`) so the bed feels like it
+# is "approaching" rather than just appearing.
+const _WEATHER_BUS_NAME: String = "WeatherAmbient"
+var _weather_bus_idx: int = -1
+var _weather_lowpass_effect: AudioEffectLowPassFilter = null
+# One envelope profile drives every state's crossfade for now (designer can
+# author per-state profiles later if needed). Defaults killed the 5 s lag
+# the designer reported on PR #244 by setting lead_seconds = 0.
+var _envelope_profile: WeatherEnvelopeProfile = null
+# Active fade-in tween (so we can preempt it on a rapid swap).
+var _ambient_fade_in_tween: Tween = null
 var _ambient_current_key: String = ""
 var _ambient_warned_missing: Dictionary = {}   # key -> true once warned
 # Wind-gust state. _ambient_settle_timer counts down the crossfade so
@@ -903,34 +917,46 @@ func _update_wet_terrain_visual(wetness: float) -> void:
 # ------------------------------------------------------------
 
 func _swap_ambient_audio(key: String) -> void:
-	# Idempotent — if the new key matches what's already playing, no-op.
+	# Weather rework 2026-05 (Phase C) — envelope-driven crossfade.
+	# Replaces the linear-dB volume_db tween that designer reported as a
+	# perceptual on/off switch (PR #244). The new envelope adds:
+	#   - lead_seconds = 0    (kills the ~5 s audio/visual onset lag)
+	#   - curve_pow = 2.2     (perceptually-linear loudness ramp, NOT
+	#                          linear-dB — a real build-up)
+	#   - low-pass sweep      (cutoff 800 Hz at t=0 -> 22 kHz at t=1 so
+	#                          the bed feels like it is approaching from
+	#                          a distance, not just appearing)
+	#
+	# See scripts/WeatherEnvelopeProfile.gd + design/WEATHER_REWORK_2026-05.md.
 	if key == _ambient_current_key:
 		return
 	_ambient_current_key = key
 
-	# A new bed is crossfading in — hold gust modulation off until the
-	# fade-in tween has settled (see _update_wind_gust).
-	_ambient_settle_timer = AMBIENT_CROSSFADE_S
+	var profile: WeatherEnvelopeProfile = _ensure_envelope_profile()
+	_ensure_weather_audio_bus()
 
-	# Capture the outgoing player. _ambient_player advances to the new
-	# one (or null) immediately; the captured reference gets its own
-	# fade-out tween. Each tween operates on its own bound players, so
-	# rapid swaps spawn independent tweens that never race on shared
-	# state. The previous design used a shared _finalise_ambient_swap
-	# callback that could run twice on rapid swaps and null out the
-	# active player.
+	# Gust hold-off — match the fade-in length so the wind bed doesn't
+	# pulse gusts mid-build-up.
+	_ambient_settle_timer = profile.get_lead_seconds(false) + profile.get_fade_seconds(false)
+
+	# Stop any in-flight fade-in (the incoming bed about to be replaced
+	# stops ramping; we'll fade it out on volume-only and free it).
+	if _ambient_fade_in_tween != null and _ambient_fade_in_tween.is_valid():
+		_ambient_fade_in_tween.kill()
+		_ambient_fade_in_tween = null
+
 	var outgoing: AudioStreamPlayer = _ambient_player
 	var incoming: AudioStreamPlayer = null
 
-	# Empty key (CLEAR) → no incoming player; just fade the outgoing
-	# one to silence and queue_free it.
 	if not key.is_empty():
 		var path: String = AMBIENT_AUDIO_DIR + key + ".ogg"
 		if ResourceLoader.exists(path):
 			var stream: AudioStream = load(path) as AudioStream
 			if stream != null:
 				incoming = AudioStreamPlayer.new()
-				incoming.bus = "Master"
+				# Route through the dedicated weather bus so the envelope's
+				# low-pass sweep affects the bed (and only the bed).
+				incoming.bus = _WEATHER_BUS_NAME
 				incoming.volume_db = -80.0
 				incoming.stream = stream
 				add_child(incoming)
@@ -941,25 +967,85 @@ func _swap_ambient_audio(key: String) -> void:
 
 	_ambient_player = incoming
 
-	# Fade in the new player, if any. Independent tween — no shared
-	# state with the fade-out. Linear-dB tween over 30s; the perceptual
-	# curve still feels like a hard switch (designer-verified 2026-05-27)
-	# — a proper fix needs an envelope (delay + ramp shape + sub-bus EQ
-	# during ramp), tracked in DESIGNER_TODO "Weather rework". The v3
-	# attempt at linear_to_db amplitude tween + lower target dB was
-	# reverted because designer feedback was unchanged.
-	if incoming != null:
-		var fade_in := create_tween()
-		fade_in.tween_property(incoming, "volume_db", AMBIENT_TARGET_DB, AMBIENT_CROSSFADE_S)
+	# Snap the bus low-pass cutoff DOWN to the start-of-ramp value
+	# immediately so the bed enters muffled. The fade-in tween will sweep
+	# it back up to the steady-state cutoff over fade_seconds.
+	if _weather_lowpass_effect != null and incoming != null:
+		_weather_lowpass_effect.cutoff_hz = profile.get_lowpass_low(false)
 
-	# Fade out the outgoing player on its own tween that queue_frees it
-	# at the end. The captured `outgoing` reference is bound to this
-	# tween only — even if more swaps fire before this completes, this
-	# tween still queue_frees its specific outgoing player.
+	# Fade in: tween_method on a 0..1 progress driver so we can push both
+	# volume_db AND cutoff_hz from the same tick. lead_seconds defers the
+	# start of the ramp; with lead_seconds = 0 (the default) ramping
+	# begins immediately so the audio onset matches the visual transition.
+	if incoming != null:
+		var lead: float = profile.get_lead_seconds(false)
+		var fade: float = profile.get_fade_seconds(false)
+		_ambient_fade_in_tween = create_tween()
+		if lead > 0.001:
+			_ambient_fade_in_tween.tween_interval(lead)
+		# Captures: player + profile bound to this fade.
+		var fade_step := func(progress: float) -> void:
+			if not is_instance_valid(incoming):
+				return
+			incoming.volume_db = profile.resolve_db(progress, AMBIENT_TARGET_DB, false)
+			if _weather_lowpass_effect != null:
+				_weather_lowpass_effect.cutoff_hz = profile.resolve_lowpass_hz(progress, false)
+		_ambient_fade_in_tween.tween_method(fade_step, 0.0, 1.0, fade)
+
+	# Fade out the outgoing bed — volume only (the low-pass sweep belongs
+	# to the incoming bed). The captured `outgoing` reference is bound to
+	# this tween only; rapid swaps spawn their own independent tweens.
 	if outgoing != null and is_instance_valid(outgoing):
+		# Mirror the new envelope's out-direction shape if the profile has
+		# overrides; otherwise use fade_seconds and the in-direction curve.
+		var out_fade: float = profile.get_fade_seconds(true)
 		var fade_out := create_tween()
-		fade_out.tween_property(outgoing, "volume_db", -80.0, AMBIENT_CROSSFADE_S)
+		var out_step := func(progress: float) -> void:
+			if not is_instance_valid(outgoing):
+				return
+			# progress runs 0 -> 1; we want db to ramp from current down
+			# to -60 (effectively silent without abrupt -80 attack).
+			outgoing.volume_db = lerpf(AMBIENT_TARGET_DB, -60.0, progress)
+		fade_out.tween_method(out_step, 0.0, 1.0, out_fade)
 		fade_out.tween_callback(outgoing.queue_free)
+
+
+# Resolves (and caches) the envelope profile used for all ambient crossfades.
+# Currently one shared profile; per-state overrides can be wired later by
+# replacing this with a lookup keyed on the incoming `key`.
+func _ensure_envelope_profile() -> WeatherEnvelopeProfile:
+	if _envelope_profile == null:
+		_envelope_profile = WeatherEnvelopeProfile.new()
+		# Defaults baked into the resource match the rework spec.
+	return _envelope_profile
+
+
+# Builds the dedicated audio bus the first time we need it. The bus has
+# one AudioEffectLowPassFilter the envelope sweeps. Idempotent across
+# repeated calls; finds an existing bus by name if one already exists.
+func _ensure_weather_audio_bus() -> void:
+	if _weather_bus_idx >= 0 and _weather_bus_idx < AudioServer.bus_count:
+		return
+	var idx: int = AudioServer.get_bus_index(_WEATHER_BUS_NAME)
+	if idx == -1:
+		AudioServer.add_bus()
+		idx = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(idx, _WEATHER_BUS_NAME)
+		AudioServer.set_bus_send(idx, "Master")
+	_weather_bus_idx = idx
+	# Find or create the low-pass effect (first effect on the bus).
+	var found: AudioEffectLowPassFilter = null
+	var n_effects: int = AudioServer.get_bus_effect_count(idx)
+	for i in range(n_effects):
+		var eff: AudioEffect = AudioServer.get_bus_effect(idx, i)
+		if eff is AudioEffectLowPassFilter:
+			found = eff as AudioEffectLowPassFilter
+			break
+	if found == null:
+		found = AudioEffectLowPassFilter.new()
+		found.cutoff_hz = 22050.0
+		AudioServer.add_bus_effect(idx, found)
+	_weather_lowpass_effect = found
 
 
 func _update_wind_gust(delta: float) -> void:
