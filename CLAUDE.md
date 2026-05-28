@@ -1,551 +1,271 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repo. **Read `git log` for milestone detail; this file is for rules + load-bearing facts only.**
 
-# Game One — Project Bible
+# Game One
 
-## What I'm building
-A 3D voxel narrative RPG — Veloren meets Skyrim in atmosphere and open-world scale. Real-time action combat (Witcher 3 / Dark Souls style), 1-vs-many, first + third-person cameras, co-op multiplayer for 1-4 friends. Voxel world in Godot 4.6.2 with Zylann's Voxel Tools. **Renderer: Forward+ on desktop** (migrated 2026-05-13; `rendering_method.mobile` stays Compatibility). GDScript is the default for UI / glue / signals / one-shot setup; **C++ GDExtension is the perf escape hatch and is used proactively wherever it would meaningfully improve performance — don't wait for a profiler to mandate it.** The per-block voxel generator is the canonical port. Game one of a planned trilogy adapted from a 200-page source manuscript.
+3D voxel narrative RPG (Veloren + Skyrim atmosphere). Godot 4.6.2, Zylann Voxel Tools, Forward+ on desktop. Real-time action combat, 1-vs-many, co-op for 1-4. **GDScript default; C++ GDExtension proactively for perf** (don't gate behind profiler measurement). Game one of a planned trilogy from a 200-page source manuscript. Migration plan: `design/3D_VOXEL_MIGRATION.md`.
 
-**Engine:** 3D voxel since 2026-04-30 (pivoted from 2D pixel art). Full migration plan in `design/3D_VOXEL_MIGRATION.md`.
+I am a writer + game designer, not a programmer — explain code in plain English, comment heavily. World is Mira-Thal (LOTR-scale fantasy); `lore/INDEX.md` is the canon directory.
 
-## My background
-I am a writer and game designer, not a programmer. Explain code in plain English before writing it. Keep scripts heavily commented. Prefer simple, readable solutions.
+**Folders:** `/scenes /scripts /addons/dialogic /assets /dialogue /lore /design /tools /extensions/voxel_gen /memory`.
 
-## Genre and tone
-Epic fantasy, grounded emotional stakes — LOTR scale, single-protagonist intimacy. World is Mira-Thal, third age. See `lore/WORLD.md` + `lore/INDEX.md`.
+## Milestone history (one-liners; details in `git log`)
 
-## Core systems
-- Player: CharacterBody3D, 8-dir XZ movement
-- World: VoxelLodTerrain (Zylann) + MagicaVoxel props
-- Camera: SpringArm3D over-shoulder, ~15° elevation, lock-on for 1-vs-many
-- Dialogue: Dialogic 2 plugin
-- Combat: real-time action in-world (Hades style), 1-vs-many
-- Game state: GameState.gd autoload
-- Transitions: TransitionManager autoload
-- Audio: AudioManager.gd autoload — positional SFX (footsteps, dig, water, weather, fire); music + full design in `design/AUDIO_DESIGN.md`
+- **04-30 PR#43:** 2D → 3D voxel pivot.
+- **05-03 to 12:** destructible voxel slice; Copper Isles demo; Combat v1 (Goblin/Spear/BloodVFX); Skills (PR#201); MP (PR#180); cubic generator C++.
+- **05-13 to 16:** HeightmapGeneratorBase (#203); Profiler.real_us (#207); WaterChunkMesher C++ (#214, later deleted).
+- **05-18 native-fluid pivot:** water = `VoxelBlockyModelFluid` ids 16–23, 8 levels, mesher auto-slopes. Legacy id 5 kept for old saves. Plan: `design/WATER_STAGE6_PLAN.md`.
+- **05-19/20:** UnderwaterFilter (instant-snap submerge, vol fog, god rays); AgX tonemap + SSAO/SSIL/PSSM/MSAA. **Never flip `bake_tangents`** (breaks water meshes).
+- **05-21/22:** AudioManager + 548 SFX takes; GraphicsManager 5 tiers; procedural sky/clouds/stars (`sky_atmosphere.gdshader`); `AtmosphereProfile`; tangent-free `terrain_voxel.gdshader`.
+- **05-22/26 PR#240:** DistantTerrain streaming heightmesh replaces baked HorizonSkirt. LOD outrun fixed (PrefetchViewer deleted, `VIEWER_LOOKAHEAD_MAX_OFFSET_M=0`). F11/F12 debug.
+- **05-27 PR#241:** Four C++ ports — `VoxelGravityCpp` (131→2.8 ms, 46× win), `EmissiveLightCpp` v1, `EmissiveBakedCpp` (Phase J), `WaterFlowCpp`. All parity-gated. Y-fastest byte layout.
+- **05-27 PR#243:** LOD1+ water surface line FIX (horizon plane + UnderwaterFilter group-toggle + WaterDiag backtick / Shift+backtick / debug_mode 7-8).
+- **05-27 PR#244:** Phase K bundle — selection outline, cloud-phase accumulator, DebugOverlay GRAPHICS sub-view, lens flare, rainbow (all gated).
+- **05-27 PR#245 Weather rework:** designer playtest deferred all visuals — rain shader / wet terrain / splashes / god rays gated OFF by default; audio envelope crossfade stays live. Multi-session iteration needed. `design/WEATHER_REWORK_2026-05.md`.
+- **05-27 PR#246 EntityStreamer:** `EntityRegistry` (per-chunk + JSON save/load) + 4-tier AI sleep (ACTIVE/AWAKE/SLEEPING/OFFLOADED). Goblin/NPC/VoxelDrop retrofitted. Headless `entity` gate 66 checks. `design/ENTITY_STREAMING.md`.
+- **05-28 PR#247 Combat Phase 5:** charged-spear (hold LMB ≥50 dmg) → gib explosion (12 GibChunks, radial impulse) + 0.15 s time-slow + camera kick + spear reparents to chunk. ThrowableHandler charge mechanic added (Phase 3 finish). Overkill threshold = 50 (re-raise once charged dmg passes 80 via perks).
 
-## Folder structure
-- /scenes — .tscn files
-- /scripts — .gd files
-- /addons/dialogic — Dialogic 2 plugin (do not edit; manage via Asset Library)
-- /assets/portraits — 256×320 dialogue portraits
-- /assets/voxel, /assets/models, /assets/audio, /assets/npcs — referenced in design docs, **not yet on disk**; create as needed
-- /dialogue — Dialogic timelines (.dtl) + `CHARACTER_VOICES.md`, `PRONUNCIATION.md`, `STYLE.md`
-- /lore — narrative canon (start at lore/INDEX.md)
-- /design — implementation reference
-- /tools — pipeline scripts (TTS, draft stripping); see `tools/README.md`
+**Outstanding pickups** (see `DESIGNER_TODO.md`): Blender Roland model, MagicaVoxel props, surface decoration, region-boundary profile auto-swap, 5 PHOTO-flagged voxel textures, Zylann `ShaderMaterialPool::recycle` assertion on F11 toggle path, water leveling sim variant choice.
 
-## Milestone history
-Read `git log` for detail. Highest-impact milestones to know about:
-- **2026-04-30 (PR #43):** 2D → 3D voxel pivot.
-- **2026-05-03–05:** destructible voxel slice — VoxelLodTerrain + SQLite deltas, edit/gravity/water managers, NoEditZones, swimming, day/night, weather, voxel-cell flow sim.
-- **2026-05-06–10:** Copper Isles demo + textured tileset; mesher migrated to `VoxelMesherBlocky`; sea level Y=125. **Caveat:** delivered EXR is a single continent, not the lore-spec archipelago — re-source pending.
-- **2026-05-10–11:** six tiered voxel-generation rules; Voxel Combat v1 (Enemy3D/Goblin/ThrowableSpear/BloodVFX); cubic generator ported to C++.
-- **2026-05-12:** Copper Isles generator ported to C++; Skill system (PR #201) — 12 skills, 300 perks, trainers, Speech checks; multiplayer MP-1/2/3 (PR #180) — transport, player presence, voxel edit replication.
-- **2026-05-13:** `HeightmapGeneratorBase` extracted (PR #203); Profiler real_us measurement reliable (PR #207).
-- **2026-05-14:** WaterChunkMesher C++ port + viewer-offset smoothing + thread-count Settings slider (PR #214).
-- **2026-05-16–18:** Water Voxel V2 (transparent `CHANNEL_TYPE`-5 voxel water, PR #217) + flow-Y/jitter/flood-coverage polish + shallow-water shader readability (PR #222) + Phase 0/1 codec + connectivity fill + buoyancy #13 (PR #224).
-- **2026-05-18 (native-fluid pivot, branch `water-native-fluid-pivot`):** the custom smooth-surface-mesher spike (PR #225, closed) was superseded by engine-native `VoxelBlockyFluid`/`VoxelBlockyModelFluid`. Water = 8 per-level fluid models (`CHANNEL_TYPE` 16–23) via `scripts/WaterMaterial.gd`; mesher auto-slopes the surface + feeds flow to the shader (no custom mesher; `water_chunk_mesher` C++ deleted; #15 hand-rolled foam removed). Generator emits the fluid id + DATA5 source byte for infinite oceans (#14); `dip_when_flowing_down` gives waterfalls (#12). Built phase-by-phase under a **hybrid headless verification** harness (`tools/headless/`), parity-bit-exact for the C++ changes; all designer-visual gates pending one end-of-build review. Plan: `design/WATER_STAGE6_PLAN.md`, `design/WATER_NATIVE_FLUID_GATE0_RESULTS.md`.
-- **2026-05-19–20 (full underwater experience: vol fog + god rays + back-face + variety + depth gradient + Minecraft-snap + bubble burst, PR #232 on branch `underwater-volumetric-fog-rays`):** Built in 18 sub-commits (initial + C1..C18) across two days. *Initial:* `scripts/UnderwaterFilter.gd` drives `WorldEnvironment.volumetric_fog_*` and `Sun.light_volumetric_fog_energy` on submerge, lerped each frame between `*_noon` and `*_night` anchors via `clamp(sun.light_energy / sun_noon_energy_ref, 0, 1)` — day/night-coupled visibility + sun-driven god rays through the water column. Co-exists safely with `DayNightCycle` (DNC only writes classic `fog_*`, never `volumetric_fog_*`). *C1 — back-face branch:* `water.gdshader` `if (!FRONT_FACING && debug_mode==0)` renders underside as `deep_water_color` + sun-direction-driven glint (UnderwaterFilter pushes live `sun_direction_world`), modulated by the wave-perturbed normal so the bright patch shimmers with surface motion. Fog albedo aligned to `deep_water_color (0.02,0.06,0.11)`; densities 0.55/1.10; `volumetric_fog_length: 80 → 48`. *C2 — animated FogVolume:* `assets/shaders/underwater_fog.gdshader` (`shader_type fog`) modulates DENSITY with 3-octave scrolling 3D value noise on `UnderwaterFogVolume` (group `underwater_fog_volume`) — drifting variety on the flat baseline. *C3 — particulates:* `GPUParticles3D UnderwaterParticulates` under Player3D (group `underwater_particulates`) — ~200 unshaded billboards, slow upward drift, `local_coords=false` so the player swims through them. *C4 — screen wobble + CA:* `underwater_overlay.gdshader` (`shader_type canvas_item`) on TintRect — noise-driven SCREEN_UV displacement (~6 px @ 1080p) + RGB sampled at tiny offsets in the wobble direction (~1.5 px chromatic aberration). *C6:* water shader `shadows_disabled` (fixes the sun-shaped shadow disc on god rays — water polygon was shadow-casting onto the vol-fog along the camera-to-sun column); underside glint dot product fix; underside alpha raised. *C7–C8:* underwater fog / particle / wobble tune passes; brightness down, wobble +15%. *C9:* submerge gap fix + underside ripple via wave-perturbed normal. *C11 — depth gradient:* UnderwaterFilter snapshots player Y (+0.85 head-offset) at submerge as the water-surface reference, then in `_process` lerps env `volumetric_fog_density` by `depth / depth_full_dark_meters` (shallow = bright + clear at `0.45×`, deep = dim + thick at `1.30×`); pushes `underwater_depth_meters` + `depth_for_full_dark` into `water_material.tres` so the underside attenuates with depth, and `water_surface_y` + `depth_full_density_meters` into the FogVolume material for matched density ramping. Ripple intensity ×5; small non-zero `volumetric_fog_emission` baseline + raised `ambient_inject` (0.3 → 0.5) so dawn/dusk underwater isn't pitch-black at low sun angles. *C12 — camera-triggered submerge:* `UnderwaterFilter.set_active` keyed off the CAMERA's water state, not the player head, so first-person and third-person flip at the exact same surface crossing. *C13:* HOTFIX — filter lead direction was inverted. *C14:* asymmetric filter lead + faster emerge transition. *C15–C16 — Minecraft-style instant snap:* the tween cross-fade was stripped entirely; env params (`volumetric_fog_density/albedo/emission/sky_affect/ambient_inject` and `sun.light_volumetric_fog_energy`) are assigned directly on the same frame the camera crosses the surface — zero perceptible ramp, kills the prior flicker. `_tween` retained as null shim for legacy refs; the `*_transition_seconds` exports are kept for .tscn back-compat but no longer read by any code path. *C17–C18 — bubble burst:* `GPUParticles3D UnderwaterBubbleBurst` (group `underwater_bubble_burst`, `one_shot=true`) — `restart()` fires on every `set_active` flip in both directions, masking the instant snap perceptually + pairing with the existing splash SFX. Phase 4f (per-pixel screen-space water lerp / bisected-view effect) explicitly deferred in `design/WATER_SHADER_V3_PLAN.md`; 4b (caustics), 4c (per-biome fog), 4d (planar reflection), 4e (audio coupling) also deferred. Scene plumbing groups: `world_environment`, `sun_light`, `underwater_fog_volume`, `underwater_particulates`, `underwater_bubble_burst`.
-- **2026-05-20 (graphics pass — AgX tonemap + lighting punch + AA, PR #234 on branch `feat/graphics-pass`):** A separate graphics-quality pass run in parallel with the Water V3 work, rebased onto main on top of #231/#232 (one `World3D.tscn` tonemap conflict, resolved in favour of AgX with all #232 vol-fog settings preserved). *Phase A — tonemap:* ACES → **AgX**, `tonemap_exposure` 0.87, white 6.0, with an Adjustments counter-grade (contrast 1.05, saturation 1.15) so AgX doesn't read washed-out; the hand-tuned per-hour sun/sky colours in `DayNightCycle.gd` and weather fog were deliberately NOT rewritten — countered at the grade stage instead. *Phase B — lighting punch:* **SSAO** strengthened to block scale, **SSIL** enabled, glow threshold 1.4 → 1.1; Sun/Moon shadows Orthogonal → **PSSM 4-split** (+`shadow_normal_bias` 1.0). *Phase D — AA:* **MSAA 3D 4×** + screen-space roughness limiter (clean block silhouettes, no texture blur). TAA kept on (it denoises SSAO/SSIL on Forward+); SDFGI left off (low ROI on the overhang-less heightmap). *Phase C (normal maps) SHELVED — load-bearing constraint:* `bake_tangents` is library-global; turning it on forces a tangent array on the runtime-injected `VoxelBlockyModelFluid` water models (which supply none) → Vulkan rejects every water chunk mesh. **Any future per-pixel surface detail must use a tangent-free custom terrain `ShaderMaterial` with `dFdx/dFdy` derivative or triplanar bump — never flip `bake_tangents`.** Testing round 1 fixes: `tonemap_exposure` 1.0 → 0.87 (world too bright), Sun/Moon orb depth-occlusion (`no_depth_test` was false → orbs drew through terrain), atlas mipmaps + `NEAREST_WITH_MIPMAPS_ANISOTROPIC` (LOD3+ whitish flicker). Full phase record + per-phase `git revert` rollback table + the Phase F+ Complementary-inspired roadmap: `design/GRAPHICS_PASS_2026-05-19.md`. Deferred: LOD terracing/seams (top remaining visual issue), tangent-free normal maps, planar/SSR water reflection, dynamic clouds.
-- **2026-05-21 (audio/SFX system, merged from `claude/lotr-music-prompts-YKMPl`):** `AudioManager` autoload — single SFX API `play(id, world_pos)` / `play_loop(id) -> handle` / `stop_loop(handle)`, resolves `assets/audio/sfx/<folder>/<id>[.ogg|_NN.ogg]` with random variation pick + id-prefix bus routing + per-trigger pitch/volume jitter, and **no-ops with one warning until the file is curated in** (call sites wire safely before assets land). Wired: campfire loop, NoEditZone-reject, surface-aware footsteps (real voxel-material detection), voxel dig strike + continuous dig loop, weather-ambience bed, water enter/exit/submerge/surface SFX + ambience bed. Generation pipeline `tools/render_sfx.py` (ElevenLabs; ~9 cr/s + 20 cr/gen cost model); 548 raw `.mp3` takes committed across 5 categories (locomotion/voxel/weather/water/fire). Docs: `design/SFX_LIBRARY.md`, `SFX_PROMPTS.md`, `MUSIC_PROMPTS.md`. **Pending:** Combat SFX (Cat 02, ~9.6k credits — next billing cycle) + the curation/quality pass (audition + prune raw takes, optional `.ogg` conversion). `SFX_PROMPTS.md` §8 is the live record; audio is functional-but-rough by designer verdict — flagged for a future polish pass.
-- **2026-05-22 (graphics Phases F/H/K — quality tiers + procedural sky + night-sky bug fix, PR #235; docs PR #236; audio import sidecars PR #237):** *Phase F:* `scripts/graphics/ShaderProfile.gd` (Resource — one tier's render knobs; **no `class_name`**, path-preloaded so the headless harness still parses it, same rule as `WaterMaterial.gd`) + `scripts/graphics/GraphicsManager.gd` **autoload** (registered before `Settings`). Five presets POTATO/LOW/MEDIUM/HIGH/ULTRA; **HIGH is the default and mirrors `World3D.tscn`'s shipped Environment/Viewport/light settings exactly** (first-run look unchanged); choice persists to `user://graphics.json`; `apply_current()` pushes MSAA/TAA/SSAO/SSIL/SDFGI/glow/shadow-split/vol-fog into the live `WorldEnvironment` + root `Viewport` + every `DirectionalLight3D`, every step null-guarded; `World3DBootstrap._ready()` calls it once the scene is in the tree. Settings UI gained a GRAPHICS QUALITY cycle button. *Phase H:* procedural volumetric clouds — the old `sky_blend.gdshader` was extended then **renamed to `assets/shaders/sky_atmosphere.gdshader`** (a stale-compiled-shader-cache workaround that stuck — Godot can't have a stale cache entry for a filename it never compiled); asset-free hash-FBM clouds on a flat ceiling, drifting via TIME, lit by the scene sun through `LIGHT0`; `cloud_coverage` + `cloud_speed` added to all six `WeatherManager.STATE_PROFILES` (CLEAR = 0 = genuinely clear) and pushed each tick via `DayNightCycle`. *Phase K (night-sky slice only):* procedural stars (3D-direction hash, rotate with the day), aurora (confined ribbon, smooth 7-in-game-day colour cycle teal→green→violet), nebula (localised tangent-frame blob, constant colour, drifts 30 % of the azimuth per 7 days) — all scaled by an explicit `night_factor` `DayNightCycle` pushes (the shader's old `LIGHT0` day/night inference proved unreliable). *Bright-night-sky bug:* the night sky rendered midday-bright; root cause was **not** the sky shader but the fog — the `WeatherManager` fog override colour and `Environment.volumetric_fog_albedo` were never day/night-aware, so a constant pale fog washed the sky via aerial perspective + `volumetric_fog_sky_affect`. `DayNightCycle` now lerps both toward dark night palettes by `night_factor`; designer-confirmed midnight genuinely dark, midday unchanged. Full record + the open Phase K items (lens flare/outline/rainbow/light-shafts), the Phase F tier-rebalance, and the stopgap wind-gust audio: `design/GRAPHICS_PASS_2026-05-19.md`.
-- **2026-05-22 (graphics Phases G/I/J — atmosphere profile + tangent-free terrain relief + coloured voxel lighting, PR #238):** the rest of the Phase F+ roadmap, headless-gated, squash-merged. *Phase G:* `scripts/graphics/AtmosphereProfile.gd` — a Resource holding the 16 time-of-day colour anchors; `DayNightCycle.gd`'s scattered colour `const`s are gone, `_apply()` reads `_atmo.<field>` resolved in `_ready()` from a new `atmosphere` export (null → a default profile reproducing the shipped look exactly — no `World3D.tscn` edit). New `DayNightCycle.set_atmosphere_profile()` swaps the palette at runtime. **Deviation:** `WeatherManager.STATE_PROFILES` per-state fog was deliberately NOT folded in — it is already a cohesive designer table. *Phase I:* `assets/shaders/terrain_voxel.gdshader` — a `shader_type spatial` shader replacing the 14 solid voxel models' shared StandardMaterial3D. Reproduces it exactly (atlas albedo, 0.5 alpha-scissor, nearest-mipmap-anisotropic, matte) and adds **tangent-free** per-pixel surface relief — a 3D-noise height field, normal bumped from screen-space derivatives (Mikkelsen surface-gradient), **no vertex tangents** so it never touches `bake_tangents` and is water-safe (the shelved Phase C goal, done right). `VoxelMaterial.gd` gained `emission_enabled`/`emission_color`/`emission_energy`/`surface_roughness` data fields; `World3DBootstrap._terrain_material_for()` gives a voxel model its own shader-material variant only when it is emissive or non-default roughness (shared-batch otherwise). *Phase J:* `scripts/EmissiveLightManager.gd` — new **autoload** (after `VoxelGravityManager`). Emissive voxels cast coloured light: discovered edit-driven (bulk-reads the region around each `VoxelEditManager.edit_applied` via `VoxelTool.copy()`) + a periodic vicinity sweep, clustered on a coarse grid, streamed as a capped set of coloured `OmniLight3D`s around the player. `copper_ore.tres` flagged emissive as the showcase. **Architecture (designer-approved):** real `OmniLight3D`s, NOT the roadmap's C++ floodfill-into-3D-texture — Forward+'s clustered renderer makes engine-native lights the right call; trade-off is line-of-sight light (no corner-wrap). *Designer testing caught one bug:* the first build lit copper buried in solid rock — shadowless cluster lights bled brightness up through the terrain as a player-following radius — fixed so only air-exposed emissive voxels register a light (`EmissiveLightManager._has_air_neighbor`). Designer-verified: the brightness bug is gone, glowing ore confirmed, and the separately-flagged dark-shadowed-blocks are resolved by the ULTRA tier's SDFGI. Full record + designer visual checklist: `design/GRAPHICS_PASS_2026-05-19.md`.
-
-- **2026-05-22 (DistantTerrain — streaming smooth-heightmesh LOD overhaul, branch `feat/distant-terrain-lod`):** Fixed LOD terracing / hard LOD seams. Two-layer terrain: *near (~0–85 m)* Zylann blocky voxels (still editable, `lod_count`=4, `view_distance`=512 vox); *far* `DistantTerrain` — a streaming smooth heightmesh. New C++ `DistantTerrainMesher` (`extensions/voxel_gen/`, 1:1 port of the retired `SkirtBaker.gd`) + `scripts/DistantTerrainManager.gd` (Node3D, bootstrap-spawned, no `class_name`) streaming concentric LOD rings that follow the player with a Bayer-dither LOD-swap cross-fade. Seam-free by construction: aprons plug T-junction cracks, both layers share one height function (smooth mesh sits ~1.5 m below true ground so blocky wins the depth test in the overlap). Retired baked `HorizonSkirt` + `SkirtBaker` + 21 MB `copper_isles_skirt.res`. Headless-gated via the new `distant` selector. **Follow-up landed in the 2026-05-26 entry below.**
-
-- **2026-05-26 (LOD streaming "outrun" fix + debug tooling, PR #240 squash-merged 887af3a):** Closed out the DistantTerrain branch with the streaming work that finally made the player stop "outrunning LOD0 after 10 s of sprinting." Two root-cause fixes plus the diagnostic tools that found them. *Fix 1 — unit bug:* `Player3D.VIEWER_LOOKAHEAD_MAX_OFFSET_M` 40.0 → 0.0. The original comment claimed "40 m is ~31 % of the 128 m LOD0 ring" but `terrain.lod_distance = 128` is in VOXELS, not metres — at 6 vox/m the ring is ~21 m, so the 40 m offset was pushing the main viewer 188 % of the ring radius AHEAD of the player; the player was standing OUTSIDE their own LOD0 ring whenever they moved. *Fix 2 — anti-feature:* `scripts/PrefetchViewer.gd` DELETED + its scene node removed from `Player3D.tscn`. The multi-viewer prefetch train (3 inner VoxelViewers ahead of the player) thrashed Zylann's clipbox scheduler — 4 viewers issuing independent LOD0 chunk loads at sprint speed produced continuous cancel-restart cycles. *Capture proof:* `detect_us` p99 465 ms → 14 ms (32×), `dropped_block_loads` peak 30,000+/s → 0, Player3D >10 ms spike frames 135 → 9. *Designer verdict:* "performance feels good and the player cannot out run the LOD streaming." *New debug tooling kept:* **F11** toggles `assets/shaders/terrain_lod_debug.gdshader` (flat-colours every voxel surface by distance-from-player LOD band: green LOD0 0-21m / yellow LOD1 21-42m / orange LOD2 42-85m / red LOD3 85-171m / purple beyond, dark gridlines at boundaries). Uses a **`RenderingServer` global shader parameter `player_world_pos`** because Zylann duplicates `terrain.material` per chunk — per-material `set_shader_parameter` writes don't propagate, globals do. **F12** continues to toggle Zylann's built-in debug draws (`debug_draw_active_mesh_blocks` + `debug_draw_viewer_clipboxes` + `debug_draw_octree_nodes`) and now also spawns `scripts/_dev/LodBoxOverlay.gd` — one filled translucent cube per VoxelViewer at LOD0 ring size, unique colour per viewer. *Other tunes in the same commit:* `DistantTerrain` shader gained `uniform vec3 albedo_tint` defaulted to `(0.70, 0.85, 0.55)` — fixed the bright-skirt-ghosting-through-hill-silhouettes bug + biased the heightmesh slightly green to match the near grass-top + dirt-side atlas at the blocky→smooth handoff. `scenes/World3D.tscn` `diag_enabled = true` by default so F11/F12 + the 1 Hz `[DIAG]` line work without an Inspector toggle. *New profile analyser:* `tools/_analyze_capture.py` — standalone Python pass over the F3 profiler JSON, used to confirm the streaming fix and identify the now-leading hotspots: `VoxelGravityManager` (130 ms blast spikes during powder-charge use, C++ port candidate — backlog Target #1 now) and `EmissiveLightManager` (18 ms periodic vicinity sweeps). *Deferred:* LOD1+ water-surface "transparent line" artefact — confirmed in-session NOT to be mesh gaps showing sky (the original diagnosis); root cause is a **reflection-normal discontinuity inside `water.gdshader` at adjacent-LOD chunk seams**. A horizon backdrop plane was tried and rejected (didn't fix the lines + caused an underwater dark band 10.3-10.5 m below surface); the plane spawn code stays in `World3DBootstrap.gd` as `_spawn_horizon_plane` but is not called. Real fix needs a dedicated water-shader session.
-
-- **2026-05-26 (VGM + ELM C++ ports, MERGED 2026-05-27 as PR #241 squash `ab27a63`):** Closed both of the post-streaming-fix capture's top autoload spikes by porting the per-voxel inner loops to native. **`VoxelGravityCpp`** (`extensions/voxel_gen/src/voxel_gravity_cpp.{h,cpp}`) owns the 110k-cell buffer iteration + 6-conn anchor flood-fill + fall-behavior partition + cluster-component BFS that was producing 130 ms blast spikes; **`EmissiveLightCpp`** owns the per-voxel emissive classification + `_has_air_neighbor` gate + coarse-cell dedupe that was producing 18 ms periodic-sweep spikes. Both extend `godot::Resource` (godot-cpp can't subclass Zylann/Node — the existing port pattern). **Boundary:** GD autoload still owns all SceneTree work (terrain lookup, `VoxelTool.copy`, `NoEditZoneRegistry` queries, `queue_set_voxels_bulk`, `FallingVoxelCluster` spawn, `OmniLight3D` streaming); C++ does pure per-voxel analysis only. **Return shape:** `PackedInt32Array` STREAMS, not nested `Dictionary[Vector3i, int]` — a 4096-voxel cluster (the per-bubble cap) would have marshalled ~4096 Variant pairs each blast as a Dict, undoing a large fraction of the win; flat `[x,y,z,packed,...]` segmented by a separate `cluster_counts` array is ~5× cheaper and decouples C++ from VEM's write-Dict convention. **Headless gates:** new `gravity` and `emissive` selectors in `tools/headless/runner.gd` synthesise VoxelBuffer scenarios in-process (no scene load) and diff C++ against `scripts/_dev/GravityReference.gd` / `EmissiveReference.gd` SEMANTICALLY (set-for-set — iteration order doesn't affect parity). VGM scenario exercises all four paths (bottom anchor + 2x2x2 cluster + 1x1x3 LOOSE sand column + 2x2x1 PICKUP_DROP dirt patch, 783 solids total); ELM scenario covers an exposed emissive chain + a single exposed cube + a BURIED emissive voxel sealed in a 3x3x3 stone shell that must NOT report (the `_has_air_neighbor` gate). Both gates PASS. **Wiring:** `VoxelGravityManager._process_bubble`'s bulk-read path now calls `_run_cpp_partition` after `tool.copy` and short-circuits the GD inner loop entirely; `EmissiveLightManager._scan_region` calls C++ for the now_lit set, then walks `_emissive_voxels` for removals. Both autoloads resolve the C++ class at `_ready` via `ClassDB.instantiate`, print `using C++ partition/scan` vs `using GD fallback`, and keep the original GD inner loop available when the DLL is missing. **NoEditZone perf preserved:** the mask is built only when the registry's AABB pre-flight says zones overlap the bubble; common case (no zones in bubble) hands C++ an empty `PackedByteArray` and skips per-voxel zone queries entirely. **Closing profile (2026-05-27, post-merge):** `WORLD.VoxelGravityManager` 2.8 ms max / 8 µs avg over 9276 ticks / 0 spikes at any threshold (was 131 ms max with 3+ `>100 ms` per session — **46× win**). `WORLD.EmissiveLightManager` no longer appears in attribution (parked by the baked manager that supersedes it). Full receipt + commit chain in `memory/project_vgm_elm_cpp_port.md`; key lessons (stream-over-Dict, deterministic sort for cross-language parity) in `design/LESSONS_LEARNED.md` 2026-05-26.
-
-- **2026-05-27 (Phase J baked emissive light + WaterFlow C++ port + pixel-art texture pipeline correction, MERGED 2026-05-27 as PR #241 squash `ab27a63`):** Two follow-up perf-shape ports on top of the 2026-05-26 VGM/ELM work. *Phase J baked light (the original spec from `design/GRAPHICS_PASS_2026-05-19.md` Phase J that v1 deferred in favour of OmniLight3D streaming):* new C++ `EmissiveBakedCpp.bake_light_volume` does a 6-conn BFS floodfill from every emissive voxel into an N^3 RGBA8 cell grid, gated on "cell centre voxel is air" so the BFS stops at solid rock — fixes the wall-bleed-through cosmetic the designer flagged 2026-05-26 with the v1 system. Integer math throughout for byte-exact GD↔C++ parity, FIFO queue + fixed +x/-x/+y/-y/+z/-z neighbour order so first-visit-during-BFS is deterministic across implementations, per-step Q12 fixed-point falloff (3482 ≈ 0.85), channel-wise max-blend across emitters. New `EmissiveBakedLightManager` autoload owns the 3D texture (`ImageTexture3D`), the four global shader parameters (`baked_light_tex` / `baked_light_origin_world` / `baked_light_inv_volume_m` / `baked_light_strength`) and the bake driver (5 Hz tick; rebakes on cell-grid-snapped player slide + `edit_applied` inside the volume + a 2 s safety net). At startup it DISABLES the v1 `EmissiveLightManager` (clears its `_emissive_voxels`/`_lights`, parks `_process`) so the two systems don't double-light. `assets/shaders/terrain_voxel.gdshader` adds the four global uniforms (default `inv_volume_m=0` keeps the shader visually inert until the autoload pushes a real volume — World3D.tscn unchanged). Volume sizing: 32×32×32 cells × 4 voxels = ~21.3 m cube around the player, 128 KB texture, 2 MB transient buffer per bake. *WaterFlowCpp.scan_settle_region:* the heaviest water hot loop (per-cell `tool.get_voxel` × scan_cap × 7 face-touches = ~7000 Variant calls per tick when active) ported to native — bulk channel read via `get_channel_as_byte_array` (one call), tight native scan, returns a `PackedInt32Array` stream of hit voxel coords + the new settle-y cursor. GD `WaterFlowManager._process_water_settle` snapshots the settle AABB + 1-voxel padding into a `VoxelBuffer`, delegates, then iterates returned hits and calls `_bucket_push(p, true)` exactly like the legacy path. Pending/retry honoured via Dictionary lookups (cheap at typical dict sizes). Currently dormant in the 2026-05-26 capture but ready for when the player digs through aquifers. *Critical implementation detail:* Zylann's `VoxelBuffer.get_channel_as_byte_array` returns bytes in **Y-fastest layout** — `byte_index = (y + x*sy + z*sx*sy) * bytes_per_voxel` — NOT the X-fastest layout I assumed first. Confirmed by a marker-voxel probe; the wall-bleed-through parity probe failed loudly until both impls were corrected. bytes_per_voxel derived from `byte_count / voxel_count` so the same code works at 8-bit production CHANNEL_TYPE and 16-bit Zylann-default channels. *Two new headless gates:* `baked_light` and `water_flow`, both set-for-set parity green; total four parity gates (`gravity`, `emissive`, `baked_light`, `water_flow`) all green. *Designer iteration on baked-light brightness:* three rounds of tuning (`bake_strength` 4.0 → 0.5 → 0.15 → 0.10; `max_bfs_steps` 12 → 4 → 2; `falloff_q12` 3482 → 2048 → 1024) before landing the "subtle local glow" target — exposed copper face gets a faint amber tint in the immediate cell + neighbour ring; nothing further. Cosmetic wall-bleed-through the v1 OmniLight3D had is gone by construction. *Pixel-art texture pipeline correction:* designer flagged copper_ore in-game looked nothing like its source PNG; root cause was NB / general-purpose-diffusion outputs are photo-style 1024×1024 (continuous gradients) and the builder's NEAREST 64× downscale samples one essentially-random pixel per cell → noise. Kept NEAREST (project bible calls for pixel art); added a `_warn_if_not_pixel_art` heuristic to `tools/build_texture_atlas.py` and rewrote `tools/AI_TEXTURE_PROMPTS.md` to lead with pixel-art-specific generators (Retrodiffusion, PixelLab.ai, Aseprite) and demote NB / DALL-E to "fallback only." 5 of 15 current sources flag as PHOTO input and need regen with the recommended tools. *Closing profile (2026-05-27, post-merge):* `WORLD.EmissiveBakedLight` 8.0 ms max / 5 ms avg / 0 spikes >10 ms; `WORLD.WaterFlowManager` dormant in the capture (didn't fire — settle scan ready for when the player digs aquifers). Full receipt: `memory/project_baked_light_and_water_flow.md`.
-
-Outstanding pickups: Blender Roland model, MagicaVoxel prop exports, surface decoration pass, ambient weather audio, region-boundary profile auto-swap, regen 5 PHOTO-flagged voxel textures with a pixel-art-specific generator (`grass_top`, `gravel_all`, `log_side`, `leaves_all`, `copper_ore_all`), Zylann `ShaderMaterialPool::recycle` assertion in the F11 LOD-debug toggle path (introduced in PR #240; surfaced more visibly post-#241 when the F11 toggle was exercised more), water leveling sim improvements (Variant A or B from `design/WATER_LEVELING_PLAN.md` — designer decision pending). See `DESIGNER_TODO.md`. **The LOD1+ water surface line artefact is FIXED on `fix/water-lod-seam` branch (2026-05-27) via re-enabled horizon backdrop plane wearing `water_material.tres` + UnderwaterFilter group-toggle on submerge; new WaterDiag probes on backtick (look-ray) + Shift+backtick (force-fill) + shader debug_mode 7 (raw alpha) + debug_mode 8 (LOD bands).**
-
-## Art specification (3D VOXEL)
-- **Voxel scale:** 6 voxels/m (locked 2026-05-03; ~16.7 cm/block, player ~11 voxels tall).
-- **Terrain:** `VoxelLodTerrain` + `VoxelMesherBlocky` reading `CHANNEL_TYPE` (8-bit material id) backed by `VoxelBlockyLibrary`. Procedural baseline from `CubicHeightmapGenerator`. Atlas at `assets/voxels/texture_packs/default/` — 16 px tile × 64 cols (1024×1024). **Destructible by default**; `NoEditZone` Area3D volumes are the exception. Edits stored as deltas in `VoxelStreamSQLite`.
-- **World scale:** Mira 12 km × 10 km (compression 125:1). Thal ~7 km × 5.5 km.
-- **Props/buildings:** MagicaVoxel → .glb. Narratively load-bearing structures sit inside NoEditZones.
-- **Player-built:** schematic props (Carpentry Bench) + per-voxel Build Mode.
-- **Characters:** Blender low-poly .glb (200–500 tris). Portraits unchanged for dialogue.
-- **Camera:** SpringArm3D over-shoulder, ~15° elevation, lock-on.
-- **Lighting:** OmniLight3D + DirectionalLight3D + WorldEnvironment SSAO + fog.
-- **Canonical refs:** `design/3D_VOXEL_MIGRATION.md`, `design/ART_PIPELINE.md`, `design/ART_DIRECTION.md`.
+## Art spec
+6 voxels/m (~16.7 cm/block). `VoxelLodTerrain` + `VoxelMesherBlocky` reading `CHANNEL_TYPE` (8-bit material id) via `VoxelBlockyLibrary`. Atlas 16 px × 64 cols (1024²). **Destructible by default**; `NoEditZone` Area3Ds are the exception. Edits → `VoxelStreamSQLite`. Mira 12×10 km; Thal 7×5.5 km. Props MagicaVoxel→.glb. Characters Blender low-poly .glb (200–500 tris). Canonical: `design/3D_VOXEL_MIGRATION.md`, `ART_PIPELINE.md`, `ART_DIRECTION.md`.
 
 ## What I never want
 - Systems built before I need them.
-- C# — never. GDScript is the default for non-perf code; C++ GDExtension is the perf escape hatch and should be used **proactively** wherever it would meaningfully improve performance, not gated behind a profiler measurement.
+- C# — never. GDScript by default; C++ GDExtension proactively for perf.
 
-## Files requiring regular maintenance
+## Maintenance: when in doubt, also update
+- `lore/INDEX.md` + relevant lore on any narrative change.
+- The relevant `design/*.md` on any system change (1:1 doc per system).
+- `DESIGNER_TODO.md` for new editor/asset work.
+- `CLAUDE.md` only for: milestone completes; canonical contradictions; new load-bearing rule.
 
-Review and update whenever making significant additions or changes:
+## Lore + design refs
+Canon in `/lore`, start `INDEX.md`. **Lore wins when lore vs design conflict.** Implementation in `/design` (one .md per system: COMBAT_DESIGN_3D, ENEMY_AI, SKILLS_AND_PROGRESSION, INVENTORY_AND_EQUIPMENT_SYSTEM, ITEM_LIBRARY, CRAFTING, MINING_TIME_SCALING, WEATHER_AND_ENVIRONMENT, SAVE_SYSTEM, SWIMMING_AND_WATER, MULTIPLAYER, HUD_AND_UI, INPUT_AND_CONTROLS, FACTION_SYSTEM, QUEST_SYSTEM, NPC_SYSTEM, COMPANION_SYSTEM, AUDIO_DESIGN, ENTITY_STREAMING, …). **`design/PROFILER_AND_DIAGNOSTICS.md` — read before guessing at perf.**
 
-| File | Update when... |
-|---|---|
-| lore/INDEX.md | Any new lore file added or scope changes |
-| lore/REFERENCE.md | New characters, locations, factions, timeline events |
-| lore/CHARACTERS_COMPANIONS.md / CHARACTERS_NPCS.md | Companion/NPC details change |
-| lore/WORLD_GEOGRAPHY.md + MAP_GENERATION_GUIDE.md | New locations, terrain, settlements |
-| design/3D_VOXEL_MIGRATION.md | Edit verbs, NoEditZone rules, mesh-bake, LOD radii change |
-| design/MINING_TIME_SCALING.md | New voxel material, baselines tuned, tool-tier scaling |
-| design/SYSTEMS_DESIGN.md | Companion roster, factions, new systems |
-| design/ART_DIRECTION.md / ART_PIPELINE.md / ASSET_PIPELINE_AI.md | New locations, palette/shader decisions, pipeline tools |
-| design/GRAPHICS_PASS_2026-05-19.md | A graphics phase ships, a roadmap item (F+) completes or shifts, a deferred follow-up resolves |
-| design/COMBAT_NEXT_PHASES.md | Combat/enemy roadmap item completes or shifts |
-| design/ITEM_LIBRARY.md / CRAFTING.md | New recipes, items, stations |
-| design/SKILLS_AND_PROGRESSION.md | New perks, sub-skills, trainers, XP tuning |
-| design/TTS_PIPELINE.md | Render tooling lands, voice IDs lock, schema changes |
-| design/FACTION_SYSTEM.md / QUEST_SYSTEM.md / MINI_GAMES.md | System rules change |
-| design/INPUT_AND_CONTROLS.md | New Input Map action (also update DESIGNER_TODO Section 1) |
-| design/NPC_SYSTEM.md / LOCKPICKING.md | Tier rules, mechanics change |
-| dialogue/CHARACTER_VOICES.md / PRONUNCIATION.md | New voiced character or proper noun |
-| DESIGNER_TODO.md | New doc requires editor/asset work; tasks complete |
-| design/COPPER_ISLES_BAKE_NOTES.md / COPPER_ISLES_DEMO_HEIGHTMAP.md | Zylann probe results, bake decisions, island layout |
-| extensions/voxel_gen/ + memory/project_voxel_gen_cpp_port.md | New tier ported, new POD field, new C++ Resource, parity harness extended |
-| design/PROFILER_AND_DIAGNOSTICS.md | New autoload wrapped, new category, new diagnostic pattern, capture-JSON schema |
-| CLAUDE.md (this file) | Milestone complete; canonical contradictions; new systems/design docs |
+## Current state
+Godot 4.6.2. 3D voxel open world: VoxelLodTerrain streaming, edits by default, NoEditZones protect settlements, 12×10 km Mira. **3D core scripts:** `Player3D`, `CameraRig`, `HUDOverlay`, `JournalUI`, `World3DBootstrap` (**all world-load wiring goes here**), `VoxelDrop`, `DistantTerrainManager`. **Combat v1:** `Enemy3D` base + `enemies/Goblin.gd` + `ThrowableSpear` + `BloodVFX` autoload + `GibChunk` (Phase 5). See `design/COMBAT_NEXT_PHASES.md` for what's next.
+
+**2D legacy still on disk (retiring):** `Player.gd`, `World.tscn`, `Combat.tscn`, etc.
+
+**Not yet implemented:** Combat next phases (Mixamo rigs, melee foundation, group AI, Ashfallen), `SchematicLibrary` (player construction), `QuestManager`, `CompanionManager`, LOD-bake-on-eviction.
+
+**Manual setup:** `DESIGNER_TODO.md` Section 1.
 
 ---
 
-## Lore reference
-All canon lives in /lore. Start at `lore/INDEX.md` for the directory map. Key files: `WORLD.md`, `WORLD_GEOGRAPHY.md`, `MAP_GENERATION_GUIDE.md`, `CHARACTERS_*.md`, `BACKSTORY_*.md`, `GAME1_PART1.md` / `GAME1_PART2.md`, `PEOPLES.md`, `GUILDS_*.md`, `HISTORY_*.md`, `SIDE_QUESTS_GAME*.md`, `LEVEL_LAYOUTS_ACT*.md`, `locations/` (25+ entries), `REFERENCE.md`. **Always check INDEX.md before adding new lore files to avoid duplication.**
+## C++ GDExtension perf
 
-## Design reference
-Implementation docs live in /design. When lore and design conflict, lore wins. Index:
+`extensions/voxel_gen/` — used **proactively** for CPU work iterating thousands+/frame. Build: `python -m SCons platform=windows target=template_debug use_mingw=yes -j8` from `extensions/voxel_gen/` (close Godot first). Reload Godot after.
 
-- **World & systems:** SYSTEMS_DESIGN, COMBAT_DESIGN_3D, ENEMY_AI, SKILLS_AND_PROGRESSION, INVENTORY_AND_EQUIPMENT_SYSTEM, ITEM_LIBRARY, CRAFTING, MINING_TIME_SCALING, REST_AND_CAMP, INVESTIGATION_SYSTEM, LOCKPICKING, WEATHER_AND_ENVIRONMENT, SAVE_SYSTEM, DEATH_AND_RESPAWN, SWIMMING_AND_WATER, MULTIPLAYER.
-- **Player systems:** HUD_AND_UI, INPUT_AND_CONTROLS, ACCESSIBILITY_AND_SETTINGS, WORLD_NAVIGATION, AUDIO_DESIGN.
-- **Companion & NPC:** COMPANION_SYSTEM, CONVERSATION_SYSTEM, NPC_SYSTEM, BARK_LIBRARY, NPC_DIALOGUE_LIBRARY, JOURNAL_UI.
-- **World & narrative:** FACTION_SYSTEM, QUEST_SYSTEM, ECONOMY_AND_VENDORS, MINI_GAMES.
-- **Art & pipeline:** ART_DIRECTION, CAMERA_AND_PERSPECTIVE, TECH_STACK, ART_PIPELINE, ASSET_PIPELINE_AI, 3D_VOXEL_MIGRATION.
-- **Planning & ops:** MILESTONE_ROADMAP, ENDGAME_CHOICES, DIALOGIC_SETUP, TTS_PIPELINE, LESSONS_LEARNED, PROFILER_AND_DIAGNOSTICS, COPPER_ISLES_DEMO_HEIGHTMAP, COPPER_ISLES_BAKE_NOTES, WATER_STAGE6_PLAN (native-fluid pivot decision record), WATER_NATIVE_FLUID_GATE0_RESULTS (frozen probe results), WATER_SHADER_V3_PLAN (current shader spec + Phase 4b–4f deferred items).
+**Port pattern:** godot-cpp can't subclass Zylann → C++ extends `godot::Resource` + thin GDScript adapter extends `VoxelGeneratorScript` and forwards via Variant call.
 
-`design/PROFILER_AND_DIAGNOSTICS.md` — **read this before guessing at perf issues**; the answer is usually in a recent capture.
+**Profiler:** `engine.real_us` (PR#207), not `proc_us`.
 
-## Current project state
+**Done:** `CubicHeightmapGeneratorCpp`, `CopperIslesHeightmapGeneratorCpp`, `HeightmapGeneratorBase`, `VoxelGravityCpp`, `EmissiveLightCpp` v1, `EmissiveBakedCpp` (Phase J — supersedes v1), `WaterFlowCpp`. All have GD fallback when DLL missing.
 
-Godot 4.6.2. 3D pivot complete. Open world plan confirmed: VoxelLodTerrain streaming, editable/destructible terrain by default, edits as deltas in `VoxelStreamSQLite`, NoEditZones protect settlements/landmarks, 12km × 10km Mira, third-person over-shoulder, low-poly Blender characters.
+**Reusable patterns (PR #241):**
+1. Bulk-read Zylann channels via `get_channel_as_byte_array` (one Variant call). Per-voxel `Variant::call` from C++ is slower than GDScript-native.
+2. Byte layout is **Y-fastest**: `byte_index = (y + x*sy + z*sx*sy) * bytes_per_voxel`.
+3. Return per-voxel results as `PackedInt32Array` streams (not `Dictionary[Vector3i, int]`).
+4. Cross-language sort: pick a total ordering — never rely on unstable sorts agreeing across languages.
 
-System design corpus complete (combat, AI, companions, factions, quests, economy, save, death, weather, HUD, input, accessibility, audio, navigation, lockpicking, destructible terrain — all in `/design`). Pipeline tooling in `tools/README.md` (requires `ELEVENLABS_API_KEY`).
+**Next targets:** WaterFlowManager `_flow_chunk` + `_process_connectivity_fill` (only if a capture spikes); Zylann `ShaderMaterialPool::recycle` assertion on F11 (correctness, not perf).
 
-**2D legacy on disk (retiring as 3D replaces):** `Player.gd`, `CampfireFlicker.gd`, `DialogueTrigger.gd`, `CombatTrigger.gd`, `Combat.gd`; `Player.tscn`, `World.tscn`, `Combat.tscn`.
+**NOT worth porting:** Zylann internals (mesher, streaming, LOD octree), VEM queue, LOD-bake-on-eviction.
 
-**3D core in place:** `Player3D` (8-dir XZ + sprint/crouch + HP/endurance), `CameraRig` (SpringArm3D over-shoulder + freelook F2 + zoom + lock-on), `HUDOverlay`, `JournalUI` (6-tab scene at `scenes/ui/Journal.tscn`), `CampfireFlicker3D`, `SpawnPoint3D` / `RoomTrigger3D` / `DialogueTrigger3D`, `World3D.tscn`, `World3DBootstrap.gd` (**all world-load wiring goes here**), `VoxelDrop.gd` (RigidBody3D pickup), `CopperIslesHeightmapGenerator.gd` (now C++ via adapter), `CopperIslesTestBootstrap.gd`, `DistantTerrainManager.gd` (streaming smooth distant-terrain heightmesh — Node3D, bootstrap-spawned, replaced the baked HorizonSkirt 2026-05-22).
-
-**NPCs:** `NPC.gd` (Tier 1–3 base; bark + E-press dialogue + disposition + schedule), `NPCData.gd` (Resource: npc_id, Tier, disposition, barks, schedule), `NPCScheduleEntry.gd`.
-
-**Combat v1:** `Enemy3D.gd` (base, IDLE/ALERT/COMBAT, take_damage, die, corpse loot), `enemies/Goblin.gd`, `throwables/ThrowableSpear.gd` (synchronous damage path + `call_deferred` for freeze/reparent — Godot forbids those inside `body_entered`), `BloodVFX.gd` autoload (burst/dust/drip/pool — `PlaneMesh` not `Decal` for renderer compat). See `design/COMBAT_NEXT_PHASES.md` for what's next.
-
-**Voxel + world (autoloaded):**
-- `VoxelEditManager` — async edit queue, NoEditZone gate, EditedChunkRegistry, `WORLD_GENERATOR_VERSION` stamping. **Always route writes through here.** Emits `edit_applied`. MP-aware (host validates + broadcasts; clients forward via RPC).
-- `NoEditZoneRegistry` — registers `no_edit_zone` group Area3Ds.
-- `CubicHeightmapGeneratorCpp` + `CubicHeightmapGeneratorAdapter.gd` — C++ generator (Mira) since 2026-05-11; adapter forwards `_generate_block` + `set_ore_materials` / `set_disk_materials` / `get_ground_voxel_y_at`.
-- `WorldClock` — in-game time (240 real s = 1 game hour). Pauses during Dialogic.
-- `BarkManager`, `WaterFlowManager` (flow tick **disabled** since native-fluid pivot — static water only; see `design/SWIMMING_AND_WATER.md`), ~~`WaterChunkMesher`~~ (**DELETED 2026-05-16** — water is now Zylann-native `VoxelBlockyModelFluid` at `CHANNEL_TYPE` ids 16–23 drawn by the terrain mesher; no separate water mesher, no horizon plane; see `design/WATER_STAGE6_PLAN.md` for the pivot record), `WaterByteCodec` (legacy DATA5 layout — only used by the deferred flow rewrite), `UnderwaterFilter` (PR #232 — Minecraft-style instant snap; drives `WorldEnvironment.volumetric_fog_*` + `Sun.light_volumetric_fog_energy` + depth gradient + bubble burst; resolves via groups `world_environment`, `sun_light`, `underwater_fog_volume`, `underwater_particulates`, `underwater_bubble_burst`), `NoEditZone.gd` (`blocks_water_flow=true` default), `DayNightCycle`, `EditToolHandler` (pickaxe/axe/shovel), `ThrowableHandler`, `PowderCharge`, `VoxelGravityManager` (16 m flood-fill on `edit_applied`; per-voxel inner loop in C++ via `VoxelGravityCpp` since PR #241), `EmissiveLightManager` (v1 — emissive voxels cast coloured `OmniLight3D`s; **PARKED at startup by `EmissiveBakedLightManager` since PR #241** but kept on disk as fallback), `EmissiveBakedLightManager` (Phase J v2 — `EmissiveBakedCpp` BFS-floodfills a 3D `ImageTexture3D` the terrain shader samples; replaces v1; PR #241), `FallingVoxelCluster` + `VoxelClusterBuilder`, `VoxelMaterial.gd` + `VoxelMaterialRegistry`, `WeatherManager` (six-state, fog/wind/particles/lightning), `RainOverlay`, `WeatherLocationProfile`, `WeatherZone`.
-
-**Dev tools (`scripts/_dev/`, `scenes/_dev/`):** `WorldBakeController` + `BakeWorld.tscn` (Copper Isles) + `BakeWorld3D.tscn` (Mira); `ParityProbe` (C++ math primitive parity shim, retained for next port); `CombatTestBootstrap` + `CombatTest.tscn`.
-
-**Specified but not yet implemented:** Combat next phases (see COMBAT_NEXT_PHASES.md), `SchematicLibrary` autoload (player construction), `EntityRegistry` + `EntityStreamer` (stub on disk — only prints chunk-enter events; full logic deferred to Phase 6-3D), `QuestManager`, `CompanionManager`, LOD-bake-on-eviction caching (deferred until perf demands).
-
-Manual setup still required: see `DESIGNER_TODO.md` Section 1.
+**Port process:** parity harness FIRST (`@tool` EditorScript in `scripts/_dev/`, bit-exact), POD snapshot for Resource data, sub-phases each ending green. Receipt: `memory/project_voxel_gen_cpp_port.md`.
 
 ---
 
-## C++ GDExtension perf opportunities
+## Workflow
 
-C++ GDExtension at `extensions/voxel_gen/` is used **proactively** for any CPU work that would benefit from native-speed execution — voxel BFS/floodfills, per-frame grid math, large data marshalling, anything iterating thousands+ of items per frame. GDScript stays the default for UI, glue code, signals, scene bootstrap, and one-shot setup. The list below is a payoff-ordered backlog, not a "wait for the profiler" gate. Build: `python -m SCons platform=windows target=template_debug use_mingw=yes -j8` from `extensions/voxel_gen/` (close Godot first or scons fails on DLL replace).
+**No CLI build/lint/test** for the Godot side — open in Godot 4.6.2, run a scene, check Output. Key scenes: `World3D.tscn` (Mira), `CopperIslesTest.tscn` (F7 cycles scale), `scenes/_dev/CombatTest.tscn` (combat dev arena, spear pre-equipped), `scenes/_dev/BakeWorld{3D,}.tscn`.
 
-godot-cpp can't subclass Zylann classes → port pattern is **C++ extends `godot::Resource` + thin GDScript adapter extends `VoxelGeneratorScript`** and forwards by Variant call. Mirror this for any future port.
+**Headless harness:** `tools/headless/run.ps1 <selector>` runs Godot's `_console.exe` (plain win64 exe = GUI-subsystem, won't pipe stdout) with `tools/headless/runner.gd` as a SceneTree script. Selectors: `gate0 codec wmat shader phase7 spike phase2 gen distant gravity emissive baked_light water_flow entity`. Exit 0 = pass. **Scope: data/logic/parity only** — dummy renderer, no GPU. Visuals need designer in editor.
 
-**Profiler measurement:** use `engine.real_us` from PR #207, not `proc_us` (the latter plateaus across many frames and is unreliable for p99 work).
-
-**Done:** `CubicHeightmapGeneratorCpp`, `CopperIslesHeightmapGeneratorCpp`, `HeightmapGeneratorBase` (PR #203 — extracted ~500 shared lines), `WaterChunkMesherCpp` (PR #214 — greedy 2D run-merge + ArrayMesh build), **`VoxelGravityCpp` + `EmissiveLightCpp` (v1) + `EmissiveBakedCpp` (Phase J 3D-texture floodfill, supersedes v1 OmniLight3D) + `WaterFlowCpp` (settle-loop scan)** — all four shipped in PR #241 (2026-05-27, squash `ab27a63`). All autoloads delegate to C++ with a GD fallback when the DLL is missing. Closing profile post-merge: VGM 131 ms → 2.8 ms max (**46× win**), EmissiveBakedLight 8.0 ms max steady-state.
-
-**Reusable patterns established by PR #241:** (1) Bulk-read Zylann channels via `get_channel_as_byte_array` (one Variant call) instead of per-voxel `get_voxel` — per-voxel `Variant::call` from C++ is measurably slower than GDScript-native. (2) Layout is **Y-fastest**: `byte_index = (y + x*sy + z*sx*sy) * bytes_per_voxel`. (3) Return per-voxel results as `PackedInt32Array` streams, not `Dictionary[Vector3i, int]` (Dict marshalling at scale is invisible-but-real overhead). (4) Cross-language sort: pick a total ordering (e.g. `(y, x, z)` lex) — never depend on either language's unstable sort agreeing with the other's.
-
-**Next targets, payoff-vs-effort order (post PR #241):**
-
-1. **`WaterFlowManager.gd`** remaining hot loops (M). `_process_water_settle` is in C++; `_flow_chunk` chunk gravity + `_process_connectivity_fill` BFS frontier are still GDScript. Dormant in the 2026-05-27 capture (no flow events fired); re-measure once the player actively digs through aquifers and either becomes the new top spike or stays cheap. Worth deferring until the data justifies it.
-2. **Zylann `ShaderMaterialPool::recycle` assertion** in the F11 LOD-debug toggle path. Not a perf issue but a correctness one — the pool doesn't have a `_template_material` registered for one of the swapped-back per-cube atlas materials. Introduced in PR #240, surfaced more visibly post-#241 when F11 was exercised. Investigate `World3DBootstrap._inject_atlas_materials_into_library` + the F11 swap (`_lod_debug_material` assignment to `terrain.material`).
-
-**NOT worth porting:** `VoxelMesherBlocky` (already Zylann C++); chunk streaming / LOD octree (Zylann main-thread work, not optimisable from outside); `VoxelEditManager` queue (already cheap; bound by Zylann's VoxelTool write path); LOD-bake-on-eviction caching (C++ generator already shrunk the motivating cost).
-
-**Process for any future port:**
-1. Pick a target with a clearly-bounded function surface; prefer pure-math hot loops over anything touching the SceneTree (worker threads can't).
-2. Write the parity harness FIRST as a `@tool` EditorScript in `scripts/_dev/`. Use `ParityProbe` for math primitives; per-chunk byte diffs for VoxelBuffers. Bit-exact output is the only acceptable gate.
-3. POD snapshot infra if C++ needs Resource data from GDScript (mirror `set_ore_materials(Array[Dictionary])`).
-4. Land in sub-phases each ending in a green parity harness — never commit a phase that breaks parity, even if you "know" the diff is benign.
-5. Adapter forwards every public method the bootstrap calls.
-
-See `memory/project_voxel_gen_cpp_port.md` for the full receipt of the cubic generator port.
+**Git:** one fix per branch; one file per commit for large `.tscn/.gd` (avoids stream timeouts); cherry-pick over rebase when squash-merged history conflicts; never amend published commits (fix-then-new-commit if hook fails); push with `git push -u origin <branch>`.
 
 ---
 
-## Godot workflow
+## Critical GDScript patterns (non-negotiable)
 
-No CLI build, lint, or test for the Godot side. To verify changes:
-1. Open project in Godot 4.6.2.
-2. Run the relevant scene:
-   - `World3D.tscn` — Mira (C++ generator via adapter).
-   - `CopperIslesTest.tscn` — Copper Isles; F7 cycles terrain scale.
-   - `scenes/_dev/BakeWorld.tscn` / `BakeWorld3D.tscn` — UI-driven bake; must run in-game.
-   - `scenes/_dev/CombatTest.tscn` — combat dev arena, F1 debug menu, spear pre-equipped.
-3. Check Output panel.
-
-C++ extension build: see above. After build, reload Godot. When a port is in flight, parity-check via the port's `@tool` harness in `scripts/_dev/` (File → Run).
-
-**Headless Godot (reversed 2026-05-18 — native-fluid pivot).** The old
-"no headless setup" rule no longer holds. A hybrid harness exists:
-`tools/headless/runner.gd` (a `SceneTree` script) + `tools/headless/run.ps1`,
-run as
-`<Godot_v4.6.2…_console.exe> --headless --path <proj> --script res://tools/headless/runner.gd -- <selector>`
-(use the **`_console.exe`** build — the plain win64 exe is GUI-subsystem
-and won't pipe stdout). Selectors: `gate0` (Zylann fluid API probe),
-`codec` (WaterByteCodec parity, shares the in-editor `@tool` lib so
-File→Run still works), `wmat`/`phase2`/`phase7` (WaterMaterial + library
-+ save contracts), `gen` (C++ generator parity-harness — baseline file
-then bit-exact verify), `shader` (shader compiles, foam gone), `spike`
-(does `VoxelLodTerrain` stream headless — yes). Exit code 0=pass.
-**Scope:** headless = data/logic/parity ONLY (dummy renderer: no GPU,
-no shaders execute, nothing rasterizes). Anything *visual* (does water
-slope/flow/fall, shader look, F-key debug views, perf via `engine.real_us`)
-still needs the designer running the editor. Use the harness for
-parity/contract checks every change; keep the in-editor loop for visuals.
-
----
-
-## Git workflow patterns
-
-- **One fix per branch.** Small, focused branches review and cherry-pick cleanly.
-- **One file per commit** for large .tscn / .gd files (avoids stream idle timeouts on push).
-- **Cherry-pick over rebase** when a branch has conflicting squash-merged history.
-- **Never amend published commits.** If a hook fails, fix it and create a new commit.
-- Always push with `git push -u origin <branch-name>`.
-
----
-
-## Critical GDScript patterns
-
-**Player input MUST go through `_can_take_input()` (MP-2):**
+### Player input → `_can_take_input()` (MP-2)
 ```gdscript
-# WRONG — remote replicas of other players will consume our local keyboard.
-var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-
-# RIGHT — gate first. In OFFLINE mode _can_take_input() returns true.
 var input_dir: Vector2 = Vector2.ZERO
 if _can_take_input():
     input_dir = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 ```
-`_can_take_input()` is `true` when `MultiplayerManager.is_offline()` OR `get_multiplayer_authority() == multiplayer.get_unique_id()`. Every `Input.*` site in Player3D, EditToolHandler, ThrowableHandler must guard.
+True in OFFLINE or when local peer owns this body. Raw `Input.*` lets remote replicas eat the local keyboard. Every `Input.*` in Player3D / EditToolHandler / ThrowableHandler must guard.
 
-**Voxel edits MUST go through `VoxelEditManager` — never raw `VoxelTool`:**
+### Voxel edits → `VoxelEditManager`, never raw `VoxelTool`
 ```gdscript
-# WRONG — bypasses NoEditZone check, async budget, EditedChunkRegistry,
-# VoxelGravityManager (carved support won't trigger falling scans), AND
-# MP routing (clients no-op, host doesn't broadcast).
-var tool := voxel_terrain.get_voxel_tool()
-tool.do_sphere(world_pos, radius)
-
-# RIGHT — public queue_* functions handle NoEditZone gate, async queueing,
-# registry tracking, LOD-bake invalidation, edit_applied emission, and
-# MP-3 RPC routing (clients forward to host; host validates + broadcasts).
-VoxelEditManager.queue_edit_sphere(world_pos, radius, voxel_value)
-# Returns false if NoEditZone rejected (caller may bark "This place doesn't yield to me.").
+VoxelEditManager.queue_edit_sphere(world_pos, radius, voxel_value)  # false if NoEditZone rejected
 ```
-MP-3 routing lives at the bottom of `VoxelEditManager.gd`. In OFFLINE mode the MP gates short-circuit.
+Raw VoxelTool bypasses NoEditZone, async budget, EditedChunkRegistry, gravity, `edit_applied`, MP-3 RPC. MP routing at bottom of `VoxelEditManager.gd`; OFFLINE short-circuits.
 
-**Skill XP MUST go through `SkillManager.add_xp(skill, amount)`:**
+### Skill XP → `SkillManager`
 ```gdscript
-# WRONG — bypasses level-up, perk-point grants, active-perk event dispatch,
-# and the level_up signal JournalUI watches.
-GameState._skill_levels["sword"] = 50
-
-# WRONG — deprecated domain-prefixed shim.
-GameState.add_skill_xp(GameState.SkillDomain.CRAFTING, "mining", 5)
-
-# RIGHT — single entry point.
 SkillManager.add_xp("mining", 5.0)
-
-# Dispatch perk-mutable events explicitly:
 SkillManager.dispatch("on_voxel_broken", {"skill": "mining", "tool_id": "iron_pickaxe"})
 ```
-Canonical skills in `SkillManager.SKILLS`: `sword`, `throwables`, `bow`, `mining`, `felling`, `excavation`, `demolition`, `lockpicking`, `alchemy`, `smithing`, `vitality`, `speech`.
+Direct `GameState._skill_levels[...] = N` bypasses level-up, perks, signals. Skills: `sword throwables bow mining felling excavation demolition lockpicking alchemy smithing vitality speech`.
 
-**UI buttons / sliders need MANUAL `_input` dispatch — `Button.pressed` and `HSlider.value_changed` do NOT fire in this project:**
+### UI: manual `_input` dispatch only
+`Button.pressed` and `HSlider.value_changed` **do NOT fire** — Dialogic consumes `InputEventMouseButton` globally. Reference: `PauseMenu._input / _dispatch_click / _hits`. Implement manual dispatch from commit 1 of any new UI. See LESSONS_LEARNED 2026-05-03/09.
+
+### Voxel material lookup via the registry
 ```gdscript
-# WRONG — silently never fires. Dialogic's input subsystem consumes
-# InputEventMouseButton globally; layout/anchors/mouse_filter are NOT the cause.
-my_button.pressed.connect(_on_pressed)
-my_slider.value_changed.connect(_on_slider_changed)
-
-# RIGHT — manual dispatch. Reference impl: PauseMenu._input / _dispatch_click / _hits.
-func _input(event: InputEvent) -> void:
-    if not (event is InputEventMouseButton): return
-    var mb := event as InputEventMouseButton
-    if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT: return
-    _dispatch_click(mb.position)
-
-func _dispatch_click(pos: Vector2) -> void:
-    if _hits(_my_button, pos):
-        _on_my_button_pressed()
-        return
-    if _my_slider.visible and _my_slider.get_global_rect().has_point(pos):
-        var rect := _my_slider.get_global_rect()
-        var t: float = clampf((pos.x - rect.position.x) / rect.size.x, 0.0, 1.0)
-        _my_slider.value = _my_slider.min_value + t * (_my_slider.max_value - _my_slider.min_value)
-
-func _hits(ctrl: Control, pos: Vector2) -> bool:
-    if ctrl == null or not ctrl.visible: return false
-    if ctrl is Button and (ctrl as Button).disabled: return false
-    return ctrl.get_global_rect().has_point(pos)
+var mat_id := VoxelMaterialRegistry.material_id_from_packed(packed_voxel)
+var mat := VoxelMaterialRegistry.get_by_id(mat_id)
+# write: VoxelMaterialRegistry.pack_voxel(mat_id, color)
 ```
-Non-negotiable. Implement manual dispatch from the first commit on any new UI. See LESSONS_LEARNED 2026-05-03 + 2026-05-09.
+Never decode alpha by hand (`packed & 0xFF`).
 
-**Other essentials:**
+### Water is native Zylann fluid
 ```gdscript
-# Autoload check before Dialogic:
-if get_node_or_null("/root/Dialogic"):
-    Dialogic.start("timeline_name")
-
-# Frame-rate-independent deceleration:
-velocity = velocity.move_toward(Vector3.ZERO, DECEL * delta)  # NOT * SPEED
-
-# One-shot signal:
-Dialogic.timeline_ended.connect(_on_done, CONNECT_ONE_SHOT)
-
-# OmniLight3D property: .light_energy (NOT .energy — that's PointLight2D).
-
-# Capsule CollisionShape3D: offset upward by half its height (Y = +0.85 for 1.7m).
-
-# 2D input → 3D XZ:
-var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-var direction: Vector3 = Vector3(input_dir.x, 0.0, input_dir.y)
-# Never map input_dir.y → velocity.y. Ground plane is XZ; Y is gravity only.
-
-# Camera-relative movement (Player3D uses this):
-var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
-# CameraRig rotates the body to match camera yaw; transform.basis carries that.
+const WaterMaterial := preload("res://scripts/WaterMaterial.gd")  # NO class_name (headless-safe)
+WaterMaterial.is_water_type(t)                  # replaces every `== 5`
+WaterMaterial.render_id_for_level(level, dir)   # sim level → CHANNEL_TYPE id
 ```
+8 fluid models, levels 1..8 → ids 16..23 (full=23). Injected at runtime in `World3DBootstrap.add_model()` — `.tres` doesn't restore on load; bootstrap is source of truth. Legacy id 5 retained for pre-pivot saves. **`WaterByteCodec`/`DATA5` is sim truth; `CHANNEL_TYPE` is render projection.** Player queries: `WaterFlowManager.is_position_in_water / get_water_level_at`.
 
-**Voxel material lookup — go through the registry, never decode alpha by hand:**
-```gdscript
-# WRONG — hardcodes the encoding.
-var material_id: int = packed_voxel & 0xFF
-
-# RIGHT — registry owns encoding.
-var material_id: int = VoxelMaterialRegistry.material_id_from_packed(packed_voxel)
-var material: VoxelMaterial = VoxelMaterialRegistry.get_by_id(material_id)
-```
-Same for writes: `VoxelMaterialRegistry.pack_voxel(mat_id, color)`.
-
-**Water is NATIVE Zylann fluid (`VoxelBlockyModelFluid`), `CHANNEL_TYPE` ids 16–23 (native-fluid pivot, 2026-05-18):**
-```gdscript
-# NEVER hardcode the water id. The single authority is
-# scripts/WaterMaterial.gd (path-preload it — it has NO class_name so
-# it stays headless-safe; do NOT add one):
-#   const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
-#   WaterMaterial.is_water_type(t)               # replaces every `== 5`
-#   WaterMaterial.render_id_for_level(level, dir) # sim level -> TYPE id
-# Water = 8 VoxelBlockyModelFluid models, level 1..8 -> CHANNEL_TYPE id
-# 16..23 (full = 23), one shared VoxelBlockyFluid (dip_when_flowing_down
-# = waterfalls #12). Injected at RUNTIME by World3DBootstrap via
-# VoxelBlockyLibrary.add_model() — blocky_library.tres is UNCHANGED
-# (bootstrap is source of truth, dodges the .tres-doesn't-restore bug).
-# The Zylann blocky mesher AUTO-SLOPES the surface between differing
-# levels (smooth fill/flow front) and feeds flow to the shader via UV —
-# NO custom mesher, NO horizon plane (water_chunk_mesher C++ deleted).
-# Legacy cube id 5 is retained ONLY so pre-pivot saves still read as
-# water (is_water_type(5)==true); the C++ generator now emits id 23 +
-# WaterByteCodec.SOURCE_BYTE(24) in CHANNEL_DATA5 for infinite-source
-# oceans (#14). DATA5/WaterByteCodec is the SIM SOURCE OF TRUTH (level/
-# source/dir); CHANNEL_TYPE is a pure render projection of it.
-# Player water queries still go through WaterFlowManager
-# .is_position_in_water / .get_water_level_at (now fluid-id aware).
-WaterMaterial.is_water_type(buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE))
-# Plan: design/WATER_STAGE6_PLAN.md + design/WATER_NATIVE_FLUID_GATE0_RESULTS.md.
-# Zylann still reserves DATA0–4 for TYPE/SDF/COLOR/INDICES/WEIGHTS.
-```
-
-**`VoxelBuffer CHANNEL_COLOR` must be 32-bit BEFORE chunks stream** — default 8-bit truncates the packed RGBA+mat_id to just the R byte (terrain renders near-black). Done once in `World3DBootstrap._ready()`:
+### `VoxelBuffer CHANNEL_COLOR` must be 32-bit before chunks stream
 ```gdscript
 if "format" in terrain:
     var fmt := VoxelFormat.new()
     fmt.set_channel_depth(VoxelBuffer.CHANNEL_COLOR, VoxelBuffer.DEPTH_32_BIT)
     terrain.format = fmt
-# NEVER call set_channel_depth() inside _generate_block — invalidates buffer storage.
 ```
+8-bit truncates packed RGBA+mat_id to just R (near-black terrain). **NEVER call `set_channel_depth()` inside `_generate_block`** — invalidates buffer storage.
 
-**`VoxelGeneratorScript._generate_block` runs on a worker thread — no SceneTree access:**
-```gdscript
-# WRONG inside _generate_block — crashes / returns null on Zylann worker threads.
-var registry = get_node_or_null("/root/NoEditZoneRegistry")
+### `_generate_block` runs on a worker thread
+No SceneTree access. Cache plain-data snapshot on main thread, push into generator, read locally inside `_generate_block`. See `NoEditZoneRegistry.get_water_blocking_aabbs_snapshot()`.
 
-# RIGHT — cache a plain-data snapshot on main thread, push into generator,
-# read from local Array inside _generate_block. See NoEditZoneRegistry.get_water_blocking_aabbs_snapshot().
-```
-
-**`Dictionary[int, PackedByteArray]` mutation requires read-modify-write** (indexing returns a copy in Godot 4):
+### `Dictionary[int, PackedByteArray]` → read-modify-write
 ```gdscript
 var bmp: PackedByteArray = my_dict.get(key, PackedByteArray())
 bmp[index] = value
 my_dict[key] = bmp
 ```
+Godot 4 indexing returns a copy.
 
-**Some Zylann `VoxelLodTerrain` properties are INT — verify with read-back:**
+### Zylann `VoxelLodTerrain` properties: read-back after `.set()`
 ```gdscript
-# WRONG — collision_update_delay is INT; set() truncates 0.1 → 0, then every
-# stream-in/out fires a main-thread collision rebuild (100+ ms frame spikes).
-terrain.set("collision_update_delay", 0.1)
-
-# RIGHT — pass integer milliseconds, ALWAYS read back.
-terrain.set("collision_update_delay", 100)
+terrain.set("collision_update_delay", 100)  # int ms; 0.1 truncates to 0 → per-frame rebuild
 print("actual=%s" % terrain.get("collision_update_delay"))
 ```
-Generic rule: when configuring `VoxelLodTerrain` programmatically, read the value back. Some properties also clamp silently (`mesh_block_size = 32` was clamped to 16 in some scenes until verified). Bootstraps print readbacks as policy.
+Properties also silently clamp (`mesh_block_size=32` was clamped to 16 in some scenes). Bootstraps print readbacks as policy.
 
-**Per-autoload perf attribution via `Profiler.record` + `HUDOverlay.profile_record`:**
+### Per-autoload perf attribution
 ```gdscript
 func _process(delta: float) -> void:
     var _t0 := Time.get_ticks_usec()
     _process_inner(delta)
-    var _elapsed: int = Time.get_ticks_usec() - _t0
-    HUDOverlay.profile_record("AutoloadName", _elapsed)
+    var _us := Time.get_ticks_usec() - _t0
+    HUDOverlay.profile_record("AutoloadName", _us)
     var prof := get_node_or_null("/root/Profiler")
-    if prof != null:
-        prof.record("CATEGORY", "AutoloadName", _elapsed)
-
-func _process_inner(delta: float) -> void:
-    # original body
-    ...
+    if prof != null: prof.record("CATEGORY", "AutoloadName", _us)
 ```
-Categories: `WORLD`, `WATER`, `WEATHER`, `PHYS`, `OTHER`. Wrappers add ~1 µs. `Performance.TIME_PROCESS` correlates with `worst_ms` but doesn't attribute by script.
+Categories: `WORLD WATER WEATHER PHYS OTHER`.
 
-**Profiler overlay (F3):** `Tab` cycle pages, `P` pause, `C` capture JSON (auto-wipes prior; one file at most in `user://`), `S` save, `Q` clear, `← →` timeline cursor. Keyboard-only because `Button.pressed` doesn't fire.
+### Diagnostic hotkeys
+- **F3** Profiler: Tab cycle, P pause, C capture JSON, S save, Q clear, ←/→ timeline. (Keyboard-only — `Button.pressed` doesn't fire.)
+- **F4/F5/F6** WaterDiag: panel + 1Hz `[WaterDiag]` line / `[WaterInspect]` 3×3 dump / cycle `water.gdshader debug_mode` (0 normal · 1 depth · 2 fresnel · 3 thickness · 4 surface-facing). Recipes in `design/PROFILER_AND_DIAGNOSTICS.md`.
+- **Capture JSON:** `%APPDATA%\Godot\app_userdata\Game One\profile_capture_<msec>.json`. Capture-from-frame-1 via `Profiler.gd capture_on_startup: true` → flip back after.
 
-**Water diagnostics (`WaterDiag` autoload — F4/F5/F6):** the standing tool for all water polish — read it before hand-bisecting water with shader tweaks.
-- **F4** toggles the on-screen Water panel; while visible it also prints a consolidated `[WaterDiag]` line once/sec (pasteable). Reports in_water/submerged, level, queried surface-Y + Δ to player, sea/horizon Y, flow-sim on/off, current shader debug_mode, query µs, expected LOD.
-- **F5** one-shot `[WaterInspect]` dump: 3×3 mesh-block-spaced columns under the camera with water-top voxelY, water count, and **Y-delta vs centre** — equal `top=` across neighbours = coplanar; differing `top=` at the block step = the distant dark-grid LOD-seam mismatch (root-caused 2026-05-17).
-- **F6** cycles the water `water.gdshader` `debug_mode` live: **0** normal · **1** depth_t (white=deep) · **2** fresnel · **3** thickness (opaque grey, no blend) · **4** surface-facing (white=up-facing top, black=vertical side/riser). These four are permanent diagnostics — do not remove them. Full recipes in `design/PROFILER_AND_DIAGNOSTICS.md`.
-
-**Profiler capture path:** `C:\Users\Matt Noles\AppData\Roaming\Godot\app_userdata\Game One\profile_capture_<msec>.json`. JSON includes per-frame `attribution`, `engine` (proc_us/real_us/draws/prims/vram_mb), `zylann` (detect_us/io_us/mesh_us/blocked_lods/dropped_loads/dropped_meshs). Capture-from-frame-1 via `scripts/Profiler.gd` `capture_on_startup: true` + `startup_capture_seconds` — **flip back to false after**.
-
-**Diagnostic workflow:** if the user pastes a capture JSON path + `[PERF]` / `[DIAG]` log lines, that's a complete packet. Use the recipes in `design/PROFILER_AND_DIAGNOSTICS.md` to correlate JSON spikes with `[PERF] worst=` and `[DIAG] time_detect_required_blocks=`, then propose ONE specific change.
-
-**Zylann blocky-library properties: use the methods, NOT `.set()`, AND re-apply at runtime:**
+### Zylann blocky-library: methods, NOT `.set()`
 ```gdscript
-# WRONG — silently no-ops. The property name appears in get_property_list()
-# but Zylann routes actual storage through method pairs; .set() writes to a
-# virtual bag the gdextension only reads for serialization. Result: all-white
-# terrain with full-atlas UVs.
-model.set("tile_top", Vector2i(2, 0))
-model.set("material_override_0", atlas_mat)
-
-# RIGHT — call the method.
-model.call("set_tile", 3, Vector2i(2, 0))   # 3 = SIDE_POSITIVE_Y
+model.call("set_tile", 3, Vector2i(2, 0))            # 3 = SIDE_POSITIVE_Y
 model.call("set_material_override", 0, atlas_mat)
 ```
-And: even with the methods, values WRITE to `.tres` but DO NOT RESTORE on load. **Re-apply at runtime** (see `World3DBootstrap._inject_atlas_materials_into_library`). The `.tres` is a build artifact; the bootstrap is source of truth. SIDE enum: NEG_X=0, POS_X=1, NEG_Y=2, POS_Y=3, NEG_Z=4, POS_Z=5.
+`.set("tile_top", ...)` silently no-ops (Zylann routes through method pairs; `.set` writes a virtual bag only used for serialization → all-white terrain). Values WRITE to `.tres` but DO NOT RESTORE on load — re-apply at runtime in `World3DBootstrap._inject_atlas_materials_into_library`. SIDE: NEG_X=0, POS_X=1, NEG_Y=2, POS_Y=3, NEG_Z=4, POS_Z=5.
 
-**`VoxelLodTerrain.material` overrides every per-cube `material_override_0`** — leave it null when using textured cube models. Per-cube material_override_0 (set by `World3DBootstrap`) drives rendering.
-
-**Probe a gdextension class before guessing its API:** write a probe EditorScript that prints `get_property_list()` AND `get_method_list()`. Property lists alone mislead — Zylann's `VoxelBlockyModelCube` exposes `tile_top` as a listed property but storage routes through `set_tile()`. See `tools/probe_zylann_blocky.gd`.
+### Other essentials
+- `VoxelLodTerrain.material` overrides every per-cube `material_override_0` — leave null for textured cubes.
+- `OmniLight3D.light_energy` (NOT `.energy` — that's PointLight2D).
+- Capsule CollisionShape3D offset upward by half-height (Y=+0.85 for 1.7m).
+- 2D→3D XZ: `Vector3(input.x, 0, input.y)`. Never `input.y → velocity.y`.
+- Camera-relative: `(transform.basis * Vector3(input.x, 0, input.y)).normalized()`.
+- Frame-rate-independent decel: `velocity = velocity.move_toward(Vector3.ZERO, DECEL * delta)`.
+- Dialogic check: `if get_node_or_null("/root/Dialogic"): Dialogic.start(...)`.
+- One-shot signal: `sig.connect(fn, CONNECT_ONE_SHOT)`.
+- **Probe gdextension API before guessing** — `get_property_list()` AND `get_method_list()`. Property lists alone mislead.
+- **Static funcs** can't use bare `new()` — `load(path).new()`.
+- **`Time.get_unix_time_from_system()` returns float** — `int(...) % N` for modulo.
+- **No `class_name` on Resources path-preloaded by autoloads** (`WaterMaterial.gd`, `ShaderProfile.gd`, `EntityRecord.gd`) — headless harness doesn't rescan globals; autoload fails with "script does not inherit from Node" otherwise.
+- **GDSL: no `return` inside `fragment()`**; restructure as if/else.
+- **GDSL function-scope arrays:** use constructor `vec3[6](...)` or open-code, not C-style `vec3 arr[6] = {...}`.
+- **`func` is a module-scope boundary** — when inserting helper functions mid-file via Edit, place AFTER the parent function's last line (not between its branches), or following code becomes orphaned inside the new function's body.
 
 ---
 
 ## Critical scene hierarchies
 
-Load-bearing — scripts use hardcoded `$NodeName` references.
+Load-bearing — scripts use hardcoded `$NodeName`.
 
 **Player3D / CameraRig:**
 ```
-Player3D (CharacterBody3D + Player3D.gd)
+Player3D (CharacterBody3D)
 └── CameraTarget (Node3D)
-    └── SpringArm3D (+ CameraRig.gd)
+    └── SpringArm3D (CameraRig.gd)
         └── Camera3D
 ```
-CameraRig walks `get_parent().get_parent()` to reach the CharacterBody3D. Don't add wrapper nodes.
+CameraRig walks `get_parent().get_parent()` to reach body — don't add wrappers. Two modes: **Standard** (mouse rotates body; W → camera) and **Freelook** (hold F2 — orbits arm, re-centers on release).
 
-Two camera modes: **Standard** (mouse rotates Player3D body — W always toward camera) and **Freelook** (hold `freelook_camera`, default F2 — orbits arm without rotating Roland; re-centers on release).
-
-**NPC (NPC.gd):**
+**NPC:**
 ```
 NPCNode (CharacterBody3D + NPC.gd)
-├── MeshInstance3D
-├── CollisionShape3D
-├── BarkArea (Area3D)          ← must be named exactly "BarkArea"
-│   └── CollisionShape3D
-└── InteractArea (Area3D)      ← must be named exactly "InteractArea"
-    └── CollisionShape3D
+├── MeshInstance3D + CollisionShape3D
+├── BarkArea (Area3D)          ← name MUST be "BarkArea"
+└── InteractArea (Area3D)      ← name MUST be "InteractArea"
 ```
-Assign an `NPCData` resource from `/assets/npcs/` in the Inspector. Tier 0 background NPCs are plain Node3D, no NPC.gd.
+Assign `NPCData` resource in Inspector. Tier 0 NPCs = plain Node3D, no script.
 
-**VoxelLodTerrain (World3D.tscn):**
+**World3D.tscn terrain:**
 ```
-World3D (Node3D)
+World3D
 ├── VoxelLodTerrain
-│   ├── generator: VoxelGeneratorScript (CubicHeightmapGeneratorAdapter.gd)
-│   │   └── cpp_impl: CubicHeightmapGeneratorCpp
+│   ├── generator: CubicHeightmapGeneratorAdapter → cpp_impl: CubicHeightmapGeneratorCpp
 │   ├── stream: VoxelStreamSQLite
 │   └── mesher: VoxelMesherBlocky
 ├── VoxelViewer (child of Player3D)
-├── EntityStreamer
-└── ...
+└── EntityStreamer
 ```
 
-**NoEditZone authoring (settlement / interior):**
-```
-SettlementRoot (Node3D)
-├── NoEditZone (Area3D, group: "no_edit_zone")
-│   └── CollisionShape3D (Box/Convex, ~50–100m buffer)
-├── BuildingProp (MeshInstance3D — MagicaVoxel .glb)
-└── ...
-```
-Every settlement, dungeon entrance, and lore landmark sits under a NoEditZone. Writes inside are silently rejected and trigger Roland's bark *"This place doesn't yield to me."*
+**NoEditZone:** `NoEditZone` Area3D in group `no_edit_zone` with ~50–100m buffer CollisionShape3D, under any settlement/dungeon/landmark root. Writes inside silently rejected → Roland barks *"This place doesn't yield to me."*
 
 ---
 
-## Autoload registration status
+## Autoloads
 
-Registered in `project.godot`, in load order:
-`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`, `NetTransport`, `MultiplayerManager`, `GraphicsManager`, `Settings`, `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`, `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`, `JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `AudioManager`, `NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `EmissiveLightManager`, `EmissiveBakedLightManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`, `WaterDiag`.
+Load order in `project.godot`:
+`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`, `NetTransport`, `MultiplayerManager`, `GraphicsManager`, `Settings`, `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`, `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`, `JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `AudioManager`, `NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `EmissiveLightManager`, `EmissiveBakedLightManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`, `WaterDiag`, `EntityRegistry`.
 
-Key facts:
-- **MultiplayerManager:** owns SceneTree's `multiplayer_peer`. **In OFFLINE mode `is_host()` returns true** so single-player authority gates work without modification. `PlayerSpawner` (not autoloaded; attached to dev/world scenes) parents one `RemotePlayer.tscn` per non-local peer. Local Player3D stays full-fat with `_can_take_input()` gating.
-- **VoxelEditManager + WaterFlowManager** are MP-aware: VEM clients forward via 3 RPCs (`_rpc_request_edit` / `_rpc_replicate_edit` / `_rpc_edit_rejected`), host validates + broadcasts, 60 req/s per-peer rate limit. WFM `_physics_process` early-returns if not host; water byte changes ride VEM replication.
-- **SkillManager** is the single entry point for XP grants, perk picks, Legendary reset, active-perk event dispatch. `PerkRegistry` walks `assets/skills/perks/` at startup (300 PerkData). `FactionManager.is_friendly(faction)` is the `≥75` gate trainers use. `SpeechCheckBroker` presents KCD2 visible-but-greyed Speech modal (also handles Dialogic Signal events `speech_check:DC:success:fail`).
-- **Colors** + **UIStyles** — `Colors` (`assets/ui/Colors.gd`) is single source of truth for the Voxelmark palette (oak/parchment/iron/gold/HP/STAM + 5 rarity tiers). `UIStyles` (`assets/ui/UIStyles.gd`, `RefCounted`, not autoloaded — `UIStyles.foo()`) builds StyleBox/FontVariation from those constants. CSS source-of-truth: `assets/ui/css/menus_shared.css`.
-- **JournalUI** autoload points at the **scene** `res://scenes/ui/Journal.tscn`, not the script directly.
-- **AudioManager:** single SFX entry point — `play(id, world_pos)` / `play_loop(id) -> handle` / `stop_loop(handle)`. Resolves `assets/audio/sfx/<folder>/<id>[.ogg|_NN.ogg]`, random-picks variations, routes to the SFX bus by id-prefix, applies per-trigger pitch/volume jitter on one-shots, and **no-ops with a single warning until the file is placed** — so call sites can be wired before assets are curated. Subscribes to `WeatherManager` / `VoxelEditManager` signals **deferred + guarded**, so its early load slot (right after `ProfilerOverlay`, before those managers) is safe.
-- **GraphicsManager:** owns the player-facing quality tier (`ShaderProfile` presets POTATO/LOW/MEDIUM/HIGH/ULTRA). Persists to `user://graphics.json`; `apply_current()` pushes the tier into the live `WorldEnvironment` + root `Viewport` + every `DirectionalLight3D`, each step null-guarded so it is menu- and headless-safe. HIGH is the default and mirrors `World3D.tscn` exactly. `World3DBootstrap` calls `apply_current()` at the end of `_ready()`. `ShaderProfile.gd` has no `class_name` on purpose (path-preloaded — headless-harness-safe, same rule as `WaterMaterial.gd`).
+**Key behaviours:**
+- `MultiplayerManager`: in OFFLINE mode `is_host() == true` (single-player gates work unmodified). `VoxelEditManager` + `WaterFlowManager` MP-aware (host validates + broadcasts, 60 req/s/peer; non-host early-returns).
+- `SkillManager`: single XP entry point + perk events. `PerkRegistry` loads 300 perks. `FactionManager.is_friendly()` = `≥75` gate. `SpeechCheckBroker` = KCD2-style Speech modal.
+- `Colors` (`assets/ui/Colors.gd`) = Voxelmark palette. `UIStyles` (`assets/ui/UIStyles.gd`, RefCounted, not autoloaded) builds StyleBox/FontVariation. CSS at `assets/ui/css/menus_shared.css`.
+- `JournalUI` autoload → scene `res://scenes/ui/Journal.tscn`.
+- `AudioManager`: `play(id, world_pos)` / `play_loop(id)→handle` / `stop_loop(handle)`. Resolves `assets/audio/sfx/<folder>/<id>[.ogg|_NN.ogg]`. No-ops with one warning until file present — safe to wire call sites before assets land.
+- `GraphicsManager`: 5-tier presets (HIGH = `World3D.tscn` baseline). Persists `user://graphics.json`. Per-effect toggles for outline/lens flare/rainbow/light shafts/rain visuals (rain + light_shafts default OFF per 2026-05-27 designer playtest).
+- `EmissiveBakedLightManager`: reads globals from `project.godot [shader_globals]` (`baked_light_tex / _origin_world / _inv_volume_m / _strength`). **NEVER call `RenderingServer.global_shader_parameter_add/_get/_get_list`** — editor-only, errors in shipped builds. Declare in `[shader_globals]`; runtime only `_set`.
 
-**Load-order rules to preserve:**
-- `NetTransport` before `MultiplayerManager` (MM resolves NetTransport in `_ready`).
-- `MultiplayerManager` before gameplay autoloads that read its API in `_ready` (today: `WaterFlowManager`).
-- `Colors` before any UI autoload (`PauseMenu`, `HUDOverlay`, `JournalUI` reference `Colors.*` in `_ready`).
-- `InventoryManager` before `VoxelMaterialRegistry` (registry validates `yield_item_id` against `ITEM_REGISTRY`).
-- `VoxelMaterialRegistry` before `VoxelEditManager` (EditToolHandler queries on every swing).
-- `NoEditZoneRegistry` before `VoxelEditManager` (manager queries on every edit).
-- `VoxelEditManager` before `VoxelGravityManager` (subscribes to `edit_applied` in `_ready`).
-- `VoxelEditManager` + `VoxelMaterialRegistry` before `EmissiveLightManager` (connects to `edit_applied` and reads the emissive-material set in `_ready`).
-- `EmissiveLightManager` before `EmissiveBakedLightManager` (the baked autoload disables the v1 in its `_ready` by walking `/root/EmissiveLightManager`; the v1 must already be loaded for the disable to land).
-- `EmissiveBakedLightManager` reads from `RenderingServer` global shader parameters declared in `project.godot [shader_globals]` (`baked_light_tex` / `baked_light_origin_world` / `baked_light_inv_volume_m` / `baked_light_strength`). **Do NOT call `RenderingServer.global_shader_parameter_add` / `_get` / `_get_list` at runtime — those are editor-only APIs and will print "this function should never be used outside the editor" + error in shipped builds. Declare globals in `[shader_globals]`; runtime code only ever calls `_set`.**
-- `VoxelEditManager` + `NoEditZoneRegistry` before `WaterFlowManager` (subscribes + queries every flow tick).
-- `WorldClock` before `WeatherManager` (subscribes to `hour_changed`).
-- `WaterFlowManager` before `WeatherManager` (pushes wind into water shader every frame).
+**Load-order rules (violations break things):**
+- `NetTransport` < `MultiplayerManager` < gameplay autoloads reading MM in `_ready` (today: `WaterFlowManager`).
+- `Colors` < any UI autoload.
+- `InventoryManager` < `VoxelMaterialRegistry` (validates `yield_item_id`).
+- `VoxelMaterialRegistry` + `NoEditZoneRegistry` < `VoxelEditManager`.
+- `VoxelEditManager` < `VoxelGravityManager` / `EmissiveLightManager` / `WaterFlowManager` (they subscribe to `edit_applied`).
+- `EmissiveLightManager` < `EmissiveBakedLightManager` (baked disables v1 in `_ready`).
+- `WorldClock` < `WeatherManager` (subscribes to `hour_changed`).
+- `WaterFlowManager` < `WeatherManager` (pushes wind).
 
-**NOT yet registered (add in Project Settings → Autoload when those land):**
-- `scripts/SchematicLibrary.gd` → `SchematicLibrary` (built when player construction lands).
+**Not yet registered:** `SchematicLibrary`. Unregistered-autoload refs MUST guard with `get_node_or_null`.
 
-Scripts that reference unregistered autoloads must guard with `get_node_or_null`.
-
-### Dev-scene group convention
-
-Dev test scenes opt out of gameplay UI via:
+**Dev scenes opt out of gameplay UI:**
 ```gdscript
-add_to_group("dev_scene")
+add_to_group("dev_scene")  # in scene's bootstrap _ready()
 ```
-**HUDOverlay, PauseMenu, JournalUI, SaveNotification** check `GameState.is_dev_scene()` and stay dormant. Other autoloads (TransitionManager, Settings, DebugOverlay, voxel/water/weather) keep running. Add the group call to any new dev scene's bootstrap `_ready()`.
-
----
+HUDOverlay / PauseMenu / JournalUI / SaveNotification check `GameState.is_dev_scene()` and stay dormant.
