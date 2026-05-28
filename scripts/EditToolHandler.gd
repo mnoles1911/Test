@@ -218,24 +218,36 @@ func _ready() -> void:
 
 
 func _build_aim_outline() -> void:
-	# Translucent emissive box rendered at the voxel volume currently
-	# under the aim ray. Bright cyan + emission so it pops against
-	# any terrain colour (grass green, dirt brown, stone grey, sand
-	# tan all have low cyan content). Drawn double-sided so the
-	# player sees the box even from inside (e.g. if they're looking
-	# at the voxel they're standing on).
-	_aim_outline_material = StandardMaterial3D.new()
-	_aim_outline_material.albedo_color = Color(0.25, 0.95, 1.0, 0.30)
-	_aim_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_aim_outline_material.emission_enabled = true
-	_aim_outline_material.emission = Color(0.30, 1.0, 1.0, 1.0)
-	_aim_outline_material.emission_energy_multiplier = 1.6
-	_aim_outline_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Avoid z-fighting with terrain: render slightly in front via the
-	# render priority + a tiny disable_depth_write so the outline
-	# blends rather than punches through.
-	_aim_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_aim_outline_material.disable_receive_shadows = true
+	# Edge-only outline on the targeted voxel BoxMesh (v2 2026-05-27).
+	# v1 was a translucent emissive cyan FILL — designer wanted Minecraft-
+	# style WIREFRAME edges, not a solid see-through cube. Switched to a
+	# ShaderMaterial that draws the 12 cube edges only (see
+	# assets/shaders/selection_outline.gdshader). Bright cyan + emission
+	# so it pops against any terrain tint. cull_disabled + depth_test_off
+	# so the player sees the outline from inside the box AND through
+	# occluding terrain — matches v1's effective visibility.
+	#
+	# If the shader fails to load (asset import order edge case), fall
+	# back to the v1 StandardMaterial3D fill so the player still has SOME
+	# targeting feedback. The shader is asset-pipeline simple (no atlas
+	# dep, no textures) so load failures are unlikely.
+	var shader: Shader = load("res://assets/shaders/selection_outline.gdshader") as Shader
+	if shader != null:
+		var smat := ShaderMaterial.new()
+		smat.shader = shader
+		_aim_outline_material = smat
+	else:
+		push_warning("[EditToolHandler] selection_outline.gdshader missing; falling back to v1 fill material.")
+		var fallback := StandardMaterial3D.new()
+		fallback.albedo_color = Color(0.25, 0.95, 1.0, 0.30)
+		fallback.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		fallback.emission_enabled = true
+		fallback.emission = Color(0.30, 1.0, 1.0, 1.0)
+		fallback.emission_energy_multiplier = 1.6
+		fallback.cull_mode = BaseMaterial3D.CULL_DISABLED
+		fallback.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		fallback.disable_receive_shadows = true
+		_aim_outline_material = fallback
 
 	_aim_outline_mesh = BoxMesh.new()
 	# Default size â€” overwritten each frame in _update_aim_outline().
@@ -255,6 +267,13 @@ func _update_aim_outline() -> void:
 	# player is actually aiming at a voxel within reach. All other
 	# states hide.
 	if _aim_outline == null:
+		return
+	# Respect the GraphicsManager debug toggle (Phase K bundle, 2026-05-27).
+	# Designer can hide the outline from the DebugOverlay GRAPHICS sub-view
+	# without touching any other effect; master toggle folds in too.
+	var gm := get_node_or_null("/root/GraphicsManager")
+	if gm != null and not gm.is_effect_enabled("selection_outline"):
+		_aim_outline.visible = false
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_aim_outline.visible = false

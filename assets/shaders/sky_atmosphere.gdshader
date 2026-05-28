@@ -64,6 +64,22 @@ uniform float nebula_strength : hint_range(0.0, 2.0) = 1.0;
 // DayNightCycle advances this slowly so the nebula drifts over weeks.
 uniform float nebula_rotation = 0.0;
 
+// === Rainbow-after-rain (Phase K bundle, 2026-05-27) =================
+// `rainbow_factor` is a GLOBAL shader parameter declared in
+// project.godot [shader_globals]. WeatherManager pushes 0..1 to it
+// based on a state machine that triggers on rain → clear transitions:
+// ramps 0→1 over 30s, holds 60s, ramps 1→0 over 60s. Toggle-respecting
+// (forced 0 when GraphicsManager.is_effect_enabled("rainbow") = false).
+//
+// The rainbow forms a circle of radius 42° around the antisolar point
+// (-LIGHT0_DIRECTION). Drawn only on the sky-facing side of the
+// rainbow's angular band; thin (~2° wide); colour cycles red (outside,
+// 42°) → orange → yellow → green → blue → violet (inside, 40°).
+// Multiplied by rainbow_factor and the day mix so it fades into
+// nothing at night when there'd be no sunlight to refract.
+global uniform float rainbow_factor;
+uniform float rainbow_band_strength : hint_range(0.0, 2.0) = 0.85;
+
 // Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
 	float u = atan(dir.z, dir.x) / (2.0 * 3.14159265) + 0.5;
@@ -219,6 +235,46 @@ void sky() {
 		vec3 star_dir = rotate_x(EYEDIR, star_rotation);
 		float star_horizon = smoothstep(0.0, 0.12, up);
 		sky_col += vec3(stars(star_dir) * star_brightness * night * star_horizon);
+	}
+
+	// --- Layer 2.5: rainbow-after-rain (Phase K bundle 2026-05-27) ---
+	// Forms an arc centred on the antisolar point at ~42° radius. Visible
+	// only when (a) rainbow_factor > 0 (WeatherManager state machine
+	// active), (b) the sun is enabled (no sun = no light to refract),
+	// (c) it's day (rainbows don't form at night). Multiplied by `day`
+	// so the band fades automatically with the day cycle even mid-arc.
+	if (rainbow_factor > 0.001 && LIGHT0_ENABLED && day > 0.05 && up > -0.10) {
+		vec3 antisolar = -LIGHT0_DIRECTION;
+		float cos_theta = clamp(dot(EYEDIR, antisolar), -1.0, 1.0);
+		float theta_deg = degrees(acos(cos_theta));
+		// 40° inner edge, 42° outer edge — primary rainbow.
+		float t_band = (theta_deg - 40.0) / 2.0;  // 0 at inner, 1 at outer
+		if (t_band >= 0.0 && t_band <= 1.0) {
+			// Map t_band 0..1 to violet→red. Standard rainbow spectrum
+			// reversed because the OUTER edge is red, INNER is violet.
+			// 6 anchor colours; lerp between adjacent pair.
+			vec3 spectrum[6] = {
+				vec3(0.58, 0.00, 0.83),  // violet (inner, t=0)
+				vec3(0.00, 0.00, 1.00),  // blue
+				vec3(0.00, 1.00, 0.00),  // green
+				vec3(1.00, 1.00, 0.00),  // yellow
+				vec3(1.00, 0.50, 0.00),  // orange
+				vec3(1.00, 0.00, 0.00)   // red (outer, t=1)
+			};
+			float seg_f = t_band * 5.0;
+			int seg = int(floor(seg_f));
+			if (seg > 4) seg = 4;
+			float seg_t = seg_f - float(seg);
+			vec3 rainbow_col = mix(spectrum[seg], spectrum[seg + 1], seg_t);
+			// Soft AA at band edges so the rainbow doesn't have a hard
+			// stripe boundary.
+			float edge_aa = min(t_band, 1.0 - t_band) * 4.0;
+			float band_alpha = clamp(edge_aa, 0.0, 1.0);
+			// Final additive contribution. day folds out the colour as
+			// the sky darkens; rainbow_factor is the WeatherManager ramp.
+			sky_col += rainbow_col * (band_alpha * rainbow_band_strength
+									* rainbow_factor * day);
+		}
 	}
 
 	// --- Layer 3: cloud layer (drawn last so clouds sit in front) ---

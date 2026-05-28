@@ -71,6 +71,14 @@ const STATE_PROFILES: Dictionary = {
 		"ambient_audio":    "",
 		"cloud_coverage":   0.0,
 		"cloud_speed":      0.012,
+		# Multiplier on the sun's BASELINE light_volumetric_fog_energy
+		# (snapshot once at _ready from the scene-shipped value, then
+		# multiplied per tick by the live god_ray_multiplier). Phase K
+		# bundle 2026-05-27. 1.5 = sharp shafts in clear weather (the
+		# scene's "intended" look bumped a bit because clear sky has
+		# the most light to scatter). Respected only when
+		# GraphicsManager.is_effect_enabled("light_shafts") = true.
+		"god_ray_multiplier": 1.5,
 	},
 	State.OVERCAST: {
 		"fog_color":        Color(0.6, 0.65, 0.7),
@@ -81,6 +89,7 @@ const STATE_PROFILES: Dictionary = {
 		"ambient_audio":    "wind_med",
 		"cloud_coverage":   0.92,
 		"cloud_speed":      0.04,
+		"god_ray_multiplier": 0.6,  # heavy cloud cover → diffused, modest shafts
 	},
 	State.LIGHT_RAIN: {
 		"fog_color":        Color(0.55, 0.6, 0.65),
@@ -91,6 +100,7 @@ const STATE_PROFILES: Dictionary = {
 		"ambient_audio":    "rain_light",
 		"cloud_coverage":   0.6,
 		"cloud_speed":      0.05,
+		"god_ray_multiplier": 0.3,  # mostly diffused through rain particles
 	},
 	State.HEAVY_RAIN: {
 		"fog_color":        Color(0.4, 0.45, 0.5),
@@ -101,6 +111,7 @@ const STATE_PROFILES: Dictionary = {
 		"ambient_audio":    "rain_heavy",
 		"cloud_coverage":   1.0,
 		"cloud_speed":      0.08,
+		"god_ray_multiplier": 0.0,  # no shafts in a downpour
 	},
 	State.FOG: {
 		"fog_color":        Color(0.75, 0.75, 0.78),
@@ -111,6 +122,7 @@ const STATE_PROFILES: Dictionary = {
 		"ambient_audio":    "wind_low",
 		"cloud_coverage":   0.35,
 		"cloud_speed":      0.01,
+		"god_ray_multiplier": 0.4,  # some scatter through the fog volume
 	},
 	State.SNOW: {
 		"fog_color":        Color(0.85, 0.88, 0.92),
@@ -121,6 +133,7 @@ const STATE_PROFILES: Dictionary = {
 		"ambient_audio":    "wind_low",
 		"cloud_coverage":   0.75,
 		"cloud_speed":      0.03,
+		"god_ray_multiplier": 0.5,  # snow sparkles in sun shafts
 	},
 }
 
@@ -231,6 +244,27 @@ var _live_rain_density: float = 0.0
 var _live_snow_density: float = 0.0
 var _live_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
 var _live_cloud_speed: float = STATE_PROFILES[State.CLEAR]["cloud_speed"]
+var _live_god_ray_multiplier: float = STATE_PROFILES[State.CLEAR]["god_ray_multiplier"]  # Phase K bundle 2026-05-27
+
+# Rainbow-after-rain (Phase K bundle, 2026-05-27).
+# State machine: detect a transition rainy → CLEAR/OVERCAST, ramp
+# rainbow_factor 0 → 1 over RAMP_UP_S, hold for HOLD_S, ramp 1 → 0
+# over RAMP_DOWN_S, idle. Pushed to global shader parameter
+# `rainbow_factor` (declared in project.godot [shader_globals]).
+# sky_atmosphere.gdshader reads it and renders the rainbow arc.
+const RAINBOW_RAMP_UP_S: float = 30.0
+const RAINBOW_HOLD_S: float = 60.0
+const RAINBOW_RAMP_DOWN_S: float = 60.0
+enum RainbowState { IDLE, RAMPING_UP, HOLDING, RAMPING_DOWN }
+var _rainbow_state: int = RainbowState.IDLE
+var _rainbow_factor: float = 0.0
+var _rainbow_elapsed: float = 0.0
+# Sun light_volumetric_fog_energy baseline — snapshot at first apply
+# from the scene-shipped sun. The per-state god_ray_multiplier is a
+# MULTIPLIER on this baseline, not an absolute. snapshot exists so we
+# can restore the baseline if the player turns light_shafts off via
+# the DebugOverlay GRAPHICS sub-view.
+var _sun_baseline_volfog_energy: float = -1.0  # -1 = not yet snapshotted
 
 # Blend origins for the transition tween. Snapshotted from _live_* every
 # time the target state changes. Without this, mid-transition target
@@ -248,6 +282,7 @@ var _blend_origin_rain_density: float = 0.0
 var _blend_origin_snow_density: float = 0.0
 var _blend_origin_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
 var _blend_origin_cloud_speed: float = STATE_PROFILES[State.CLEAR]["cloud_speed"]
+var _blend_origin_god_ray_multiplier: float = STATE_PROFILES[State.CLEAR]["god_ray_multiplier"]  # Phase K bundle 2026-05-27
 
 # Particle systems. Spawned lazily on the first transition that needs
 # them so a CLEAR-only world never builds the rigs. Position follows
@@ -359,6 +394,7 @@ func _seed_initial_state() -> void:
 	_live_snow_density = _state_snow_density(current_state)
 	_live_cloud_coverage = profile["cloud_coverage"]
 	_live_cloud_speed = profile["cloud_speed"]
+	_live_god_ray_multiplier = profile.get("god_ray_multiplier", 1.0)  # Phase K bundle 2026-05-27
 	_snapshot_blend_origins()
 	# Kick the audio crossfade off so the seeded state has its bed.
 	_swap_ambient_audio(String(profile["ambient_audio"]))
@@ -377,6 +413,7 @@ func _snapshot_blend_origins() -> void:
 	_blend_origin_snow_density = _live_snow_density
 	_blend_origin_cloud_coverage = _live_cloud_coverage
 	_blend_origin_cloud_speed = _live_cloud_speed
+	_blend_origin_god_ray_multiplier = _live_god_ray_multiplier  # Phase K bundle 2026-05-27
 
 
 func _process(delta: float) -> void:
@@ -431,6 +468,10 @@ func _process_inner(delta: float) -> void:
 	_live_snow_density = lerpf(_blend_origin_snow_density, _state_snow_density(_target_state), t)
 	_live_cloud_coverage = lerpf(_blend_origin_cloud_coverage, target_profile["cloud_coverage"], t)
 	_live_cloud_speed = lerpf(_blend_origin_cloud_speed, target_profile["cloud_speed"], t)
+	_live_god_ray_multiplier = lerpf(
+		_blend_origin_god_ray_multiplier,
+		float(target_profile.get("god_ray_multiplier", 1.0)),
+		t)
 	weather_intensity_changed.emit(_live_wetness)
 
 	# Push fog into DayNightCycle's override slot. We try to find the
@@ -453,6 +494,23 @@ func _process_inner(delta: float) -> void:
 	var env_node: WorldEnvironment = _find_world_environment()
 	if env_node != null and env_node.environment != null:
 		env_node.environment.ambient_light_energy = _live_ambient_dim
+
+	# Phase K bundle (2026-05-27): light shafts per weather state.
+	# Multiply the sun's BASELINE light_volumetric_fog_energy (snapshot
+	# once from the scene-shipped value) by the live god_ray_multiplier.
+	# Respects GraphicsManager.is_effect_enabled("light_shafts"): when
+	# false, restore the baseline directly so the sun's god ray energy
+	# returns to scene defaults. UnderwaterFilter's on-submerge override
+	# of the same property is independent — it overwrites this each
+	# frame the camera is under water and our write re-applies the
+	# moment the camera surfaces. No coordination needed.
+	_apply_light_shafts_to_sun()
+
+	# Phase K bundle (2026-05-27): rainbow-after-rain factor tick. Pure
+	# state machine driven by elapsed time; pushes to the
+	# `rainbow_factor` global shader parameter every frame (declared in
+	# project.godot [shader_globals], read by sky_atmosphere.gdshader).
+	_tick_rainbow(delta)
 
 	# Wind direction drift. Resample heading periodically; lerp toward
 	# the current target every frame.
@@ -614,6 +672,7 @@ func load_save_data(data: Dictionary) -> void:
 	_live_snow_density = _state_snow_density(current_state)
 	_live_cloud_coverage = profile["cloud_coverage"]
 	_live_cloud_speed = profile["cloud_speed"]
+	_live_god_ray_multiplier = profile.get("god_ray_multiplier", 1.0)  # Phase K bundle 2026-05-27
 	_snapshot_blend_origins()
 
 
@@ -637,6 +696,7 @@ func clear_persistent_state() -> void:
 	_live_snow_density = 0.0
 	_live_cloud_coverage = profile["cloud_coverage"]
 	_live_cloud_speed = profile["cloud_speed"]
+	_live_god_ray_multiplier = profile.get("god_ray_multiplier", 1.0)  # Phase K bundle 2026-05-27
 	_snapshot_blend_origins()
 
 
@@ -662,6 +722,17 @@ func _resolve_active_state() -> void:
 	# stays as the formal "from" for reporting purposes; the lerp
 	# itself reads from _blend_origin_*.
 	_snapshot_blend_origins()
+	# Phase K bundle (2026-05-27): if we're leaving a rainy state for a
+	# clearer one, kick off the rainbow-after-rain ramp. Skipped if a
+	# rainbow is already in flight (a flicker rain → clear → rain → clear
+	# inside ~150s shouldn't reset it from scratch — keep the existing
+	# arc fading naturally).
+	var was_rainy: bool = _target_state == State.LIGHT_RAIN or _target_state == State.HEAVY_RAIN
+	var becoming_clear: bool = resolved == State.CLEAR or resolved == State.OVERCAST
+	if was_rainy and becoming_clear and _rainbow_state == RainbowState.IDLE:
+		_rainbow_state = RainbowState.RAMPING_UP
+		_rainbow_elapsed = 0.0
+		print("[WeatherManager] Rainbow starting (rain → clear transition).")
 	_target_state = resolved
 	_transition_progress = 0.0
 	# Kick the audio crossfade off NOW so it lines up with the start
@@ -1233,3 +1304,74 @@ func _find_world_environment() -> WorldEnvironment:
 			_cached_env = child
 			return _cached_env
 	return null
+
+
+# ============================================================
+# Phase K bundle (2026-05-27): light shafts per weather + rainbow
+# ============================================================
+
+func _find_sun() -> DirectionalLight3D:
+	# Sun is in group "sun_light" — set in scenes/World3D.tscn on the
+	# Sun DirectionalLight3D. Same convention UnderwaterFilter uses.
+	var n: Node = get_tree().get_first_node_in_group("sun_light")
+	return n as DirectionalLight3D if n is DirectionalLight3D else null
+
+
+func _apply_light_shafts_to_sun() -> void:
+	var sun: DirectionalLight3D = _find_sun()
+	if sun == null:
+		return
+	# First-tick snapshot of the scene-shipped baseline so the per-state
+	# multiplier has a meaningful unit to scale.
+	if _sun_baseline_volfog_energy < 0.0:
+		_sun_baseline_volfog_energy = sun.light_volumetric_fog_energy
+	# Toggle: when disabled, restore the baseline directly.
+	var gm := get_node_or_null("/root/GraphicsManager")
+	if gm != null and not gm.is_effect_enabled("light_shafts"):
+		sun.light_volumetric_fog_energy = _sun_baseline_volfog_energy
+		return
+	# Multiply baseline by the live weather multiplier. Note:
+	# UnderwaterFilter overwrites this same property each frame the
+	# camera is submerged; our write re-applies the moment the camera
+	# surfaces — no coordination needed.
+	sun.light_volumetric_fog_energy = _sun_baseline_volfog_energy * _live_god_ray_multiplier
+
+
+const RAINBOW_GLOBAL_PARAM: StringName = &"rainbow_factor"
+
+
+func _tick_rainbow(delta: float) -> void:
+	# Run the rainbow state machine. Always pushes a value to the global
+	# shader param so the sky shader stays in sync; the value is 0 when
+	# the GraphicsManager toggle is off, regardless of state.
+	match _rainbow_state:
+		RainbowState.IDLE:
+			_rainbow_factor = 0.0
+		RainbowState.RAMPING_UP:
+			_rainbow_elapsed += delta
+			_rainbow_factor = clampf(_rainbow_elapsed / RAINBOW_RAMP_UP_S, 0.0, 1.0)
+			if _rainbow_elapsed >= RAINBOW_RAMP_UP_S:
+				_rainbow_state = RainbowState.HOLDING
+				_rainbow_elapsed = 0.0
+		RainbowState.HOLDING:
+			_rainbow_factor = 1.0
+			_rainbow_elapsed += delta
+			if _rainbow_elapsed >= RAINBOW_HOLD_S:
+				_rainbow_state = RainbowState.RAMPING_DOWN
+				_rainbow_elapsed = 0.0
+		RainbowState.RAMPING_DOWN:
+			_rainbow_elapsed += delta
+			_rainbow_factor = clampf(1.0 - (_rainbow_elapsed / RAINBOW_RAMP_DOWN_S), 0.0, 1.0)
+			if _rainbow_elapsed >= RAINBOW_RAMP_DOWN_S:
+				_rainbow_state = RainbowState.IDLE
+				_rainbow_factor = 0.0
+				print("[WeatherManager] Rainbow finished.")
+
+	# Toggle gate on the shader-side value. The state machine keeps
+	# ticking either way so a toggle-off mid-rainbow still ends in
+	# the correct state when re-enabled.
+	var gm := get_node_or_null("/root/GraphicsManager")
+	var pushed: float = _rainbow_factor
+	if gm != null and not gm.is_effect_enabled("rainbow"):
+		pushed = 0.0
+	RenderingServer.global_shader_parameter_set(RAINBOW_GLOBAL_PARAM, pushed)

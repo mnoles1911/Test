@@ -50,7 +50,7 @@ var _player_state_tab: VBoxContainer
 # Commands tab — three sub-views inside the COMMANDS tab. Only one
 # is visible at a time; the rest are hidden. Sub-views switch by
 # clicking a command in the list, and BACK in a sub-view returns.
-enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP, VIEW_DIST, WEATHER }
+enum CommandView { LIST, DELETE_SAVE, TELEPORT, TIME_SKIP, VIEW_DIST, WEATHER, GRAPHICS }
 var _commands_view: CommandView = CommandView.LIST
 
 # Sub-view containers.
@@ -60,6 +60,7 @@ var _commands_teleport_view: VBoxContainer
 var _commands_time_view: VBoxContainer
 var _commands_view_dist_view: VBoxContainer
 var _commands_weather_view: VBoxContainer
+var _commands_graphics_view: VBoxContainer  # Phase K bundle 2026-05-27
 
 # Command list buttons.
 var _btn_delete_all: Button
@@ -72,6 +73,7 @@ var _btn_instant_mine: Button
 var _btn_view_dist: Button
 var _btn_weather: Button
 var _btn_clean_screenshot: Button
+var _btn_graphics: Button  # Phase K bundle 2026-05-27 — opens GRAPHICS sub-view
 
 # Clean-screenshot mode (designer-requested 2026-05-20). When true,
 # DebugOverlay forces all gameplay/dev HUD chrome invisible —
@@ -354,6 +356,7 @@ func _build_commands_tab() -> void:
 	_build_commands_time_view()
 	_build_commands_view_dist_view()
 	_build_commands_weather_view()
+	_build_commands_graphics_view()  # Phase K bundle 2026-05-27
 	_show_command_list()
 
 
@@ -392,11 +395,12 @@ func _build_commands_list_view() -> void:
 	_btn_clean_screenshot = _make_command_row("TOGGLE CLEAN SCREENSHOT")
 	_btn_view_dist       = _make_command_row("VIEW DISTANCE...")
 	_btn_weather         = _make_command_row("WEATHER...")
+	_btn_graphics        = _make_command_row("GRAPHICS / POST-FX...")
 
 	for b in [_btn_delete_all, _btn_delete_one, _btn_teleport,
 			_btn_advance_day, _btn_advance_time, _btn_fly_mode,
 			_btn_instant_mine, _btn_clean_screenshot,
-			_btn_view_dist, _btn_weather]:
+			_btn_view_dist, _btn_weather, _btn_graphics]:
 		_commands_list_view.add_child(b)
 	_refresh_fly_mode_label()
 	_refresh_instant_mine_label()
@@ -576,6 +580,8 @@ func _show_command_list() -> void:
 		_commands_view_dist_view.visible = false
 	if _commands_weather_view != null:
 		_commands_weather_view.visible = false
+	if _commands_graphics_view != null:
+		_commands_graphics_view.visible = false
 	# Sync fly-mode label in case the player toggled it via some
 	# other route (or returned from a save where fly was on).
 	_refresh_fly_mode_label()
@@ -1082,6 +1088,8 @@ func _show_weather_view() -> void:
 	_commands_time_view.visible = false
 	_commands_view_dist_view.visible = false
 	_commands_weather_view.visible = true
+	if _commands_graphics_view != null:
+		_commands_graphics_view.visible = false
 	_refresh_weather_labels()
 
 
@@ -1694,6 +1702,9 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 		if _hits_button(_btn_weather, pos):
 			_show_weather_view()
 			return
+		if _hits_button(_btn_graphics, pos):
+			_show_graphics_view()
+			return
 		return
 
 	# DELETE A SAVE sub-view: BACK or per-row DELETE.
@@ -1780,6 +1791,43 @@ func _dispatch_commands_click(pos: Vector2) -> void:
 					log_action("DEV: set weather → %s" % state_name)
 					_refresh_weather_labels()
 				return
+
+	# GRAPHICS / POST-FX sub-view (Phase K bundle 2026-05-27). Each row
+	# is a toggle; flip-then-refresh. GraphicsManager.set_effect_enabled
+	# persists + emits effect_toggles_changed → labels refresh via the
+	# signal hook (no manual refresh needed here, but call anyway for
+	# the immediate UI response — signal is queued, not synchronous).
+	if _commands_view == CommandView.GRAPHICS:
+		var gm := get_node_or_null("/root/GraphicsManager")
+		if _hits_button(_graphics_back_btn, pos):
+			_show_command_list()
+			return
+		if gm == null:
+			return
+		if _hits_button(_graphics_master_btn, pos):
+			gm.set_effect_enabled("master_post_processing", not gm.master_post_processing_enabled)
+			_refresh_graphics_labels()
+			return
+		if _hits_button(_graphics_selection_outline_btn, pos):
+			gm.set_effect_enabled("selection_outline", not gm.selection_outline_enabled)
+			_refresh_graphics_labels()
+			return
+		if _hits_button(_graphics_lens_flare_btn, pos):
+			gm.set_effect_enabled("lens_flare", not gm.lens_flare_enabled)
+			_refresh_graphics_labels()
+			return
+		if _hits_button(_graphics_light_shafts_btn, pos):
+			gm.set_effect_enabled("light_shafts", not gm.light_shafts_enabled)
+			_refresh_graphics_labels()
+			return
+		if _hits_button(_graphics_rainbow_btn, pos):
+			gm.set_effect_enabled("rainbow", not gm.rainbow_enabled)
+			_refresh_graphics_labels()
+			return
+		if _hits_button(_graphics_reset_btn, pos):
+			gm.reset_all_effects_enabled()
+			_refresh_graphics_labels()
+			return
 
 	# TIME-SKIP sub-view: BACK / ADVANCE / focus on a LineEdit.
 	if _commands_view == CommandView.TIME_SKIP:
@@ -1904,3 +1952,86 @@ func _cycle_f7_vox_per_m() -> void:
 	var new_scale: float = float(entry.get("scale", 1.0 / 6.0))
 	_f7_next_index = (_f7_next_index + 1) % F7_CYCLE.size()
 	_apply_terrain_scale_hotkey(new_scale, "F7  (%d vox/m)" % vox_per_m)
+
+
+# ============================================================
+# Phase K bundle (2026-05-27) — GRAPHICS / POST-FX sub-view
+# ============================================================
+
+var _graphics_back_btn: Button
+var _graphics_master_btn: Button
+var _graphics_selection_outline_btn: Button
+var _graphics_lens_flare_btn: Button
+var _graphics_light_shafts_btn: Button
+var _graphics_rainbow_btn: Button
+var _graphics_reset_btn: Button
+
+
+func _build_commands_graphics_view() -> void:
+	# Toggle list: master + per-effect (selection outline / lens flare /
+	# light shafts / rainbow). Each button label shows current state
+	# (ON / OFF); click flips it via GraphicsManager.set_effect_enabled.
+	# `effect_toggles_changed` signal refreshes the labels automatically.
+	_commands_graphics_view = VBoxContainer.new()
+	_commands_graphics_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_commands_graphics_view.add_theme_constant_override("separation", 6)
+	_commands_graphics_view.visible = false
+	_commands_tab.add_child(_commands_graphics_view)
+
+	_graphics_back_btn = _make_command_row("← BACK")
+	_commands_graphics_view.add_child(_graphics_back_btn)
+
+	var hint := Label.new()
+	hint.text = "Toggle post-processing effects. MASTER overrides every individual switch — when OFF, all effects act as if their own toggle is OFF. State persists across runs (user://graphics.json)."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55, 1))
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_commands_graphics_view.add_child(hint)
+
+	_graphics_master_btn = _make_command_row("MASTER POST-PROCESSING: ?")
+	_commands_graphics_view.add_child(_graphics_master_btn)
+	_graphics_selection_outline_btn = _make_command_row("  · SELECTION OUTLINE: ?")
+	_commands_graphics_view.add_child(_graphics_selection_outline_btn)
+	_graphics_lens_flare_btn = _make_command_row("  · LENS FLARE: ?")
+	_commands_graphics_view.add_child(_graphics_lens_flare_btn)
+	_graphics_light_shafts_btn = _make_command_row("  · LIGHT SHAFTS (per-weather): ?")
+	_commands_graphics_view.add_child(_graphics_light_shafts_btn)
+	_graphics_rainbow_btn = _make_command_row("  · RAINBOW (after rain): ?")
+	_commands_graphics_view.add_child(_graphics_rainbow_btn)
+	_graphics_reset_btn = _make_command_row("RESET ALL TO ON")
+	_commands_graphics_view.add_child(_graphics_reset_btn)
+
+	# Subscribe to the toggle-changed signal so any flip (by us OR by
+	# another caller) refreshes the labels.
+	var gm := get_node_or_null("/root/GraphicsManager")
+	if gm != null and gm.has_signal("effect_toggles_changed"):
+		gm.effect_toggles_changed.connect(_refresh_graphics_labels)
+
+
+func _show_graphics_view() -> void:
+	_commands_view = CommandView.GRAPHICS
+	_commands_list_view.visible = false
+	_commands_delete_save_view.visible = false
+	_commands_teleport_view.visible = false
+	_commands_time_view.visible = false
+	_commands_view_dist_view.visible = false
+	_commands_weather_view.visible = false
+	_commands_graphics_view.visible = true
+	_refresh_graphics_labels()
+
+
+func _refresh_graphics_labels() -> void:
+	if _graphics_master_btn == null:
+		return
+	var gm := get_node_or_null("/root/GraphicsManager")
+	if gm == null:
+		_graphics_master_btn.text = "GraphicsManager not loaded"
+		return
+	var on_off = func(b: bool) -> String:
+		return "ON" if b else "OFF"
+	_graphics_master_btn.text = "MASTER POST-PROCESSING: %s" % on_off.call(gm.master_post_processing_enabled)
+	_graphics_selection_outline_btn.text = "  · SELECTION OUTLINE: %s" % on_off.call(gm.selection_outline_enabled)
+	_graphics_lens_flare_btn.text = "  · LENS FLARE: %s" % on_off.call(gm.lens_flare_enabled)
+	_graphics_light_shafts_btn.text = "  · LIGHT SHAFTS (per-weather): %s" % on_off.call(gm.light_shafts_enabled)
+	_graphics_rainbow_btn.text = "  · RAINBOW (after rain): %s" % on_off.call(gm.rainbow_enabled)
