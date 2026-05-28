@@ -85,6 +85,16 @@ const STATE_PROFILES: Dictionary = {
 		# separate WorldEnvironment property, not just sun energy) — see
 		# DESIGNER_TODO Outstanding pickups.
 		"god_ray_multiplier": 1.5,
+		# Weather rework 2026-05 Phase D — co-tune the WorldEnvironment
+		# volumetric fog properties per state so the sun has a body of fog
+		# to scatter through. Sun's per-light multiplier alone (PR #244)
+		# was imperceptible — designer fix path. Default Godot fog density
+		# is 0.05 and length 64; we deliberately diverge per state.
+		# CLEAR: just enough density to read god rays without hazing the
+		# world, warm-tinted to mimic sunlit dust scattering.
+		"vol_fog_density": 0.035,
+		"vol_fog_length":  80.0,
+		"vol_fog_albedo":  Color(1.00, 0.95, 0.85, 1.0),
 	},
 	State.OVERCAST: {
 		"fog_color":        Color(0.6, 0.65, 0.7),
@@ -96,6 +106,9 @@ const STATE_PROFILES: Dictionary = {
 		"cloud_coverage":   0.92,
 		"cloud_speed":      0.04,
 		"god_ray_multiplier": 0.6,  # heavy cloud cover → diffused, modest shafts
+		"vol_fog_density": 0.020,
+		"vol_fog_length":  64.0,
+		"vol_fog_albedo":  Color(0.70, 0.75, 0.80, 1.0),
 	},
 	State.LIGHT_RAIN: {
 		"fog_color":        Color(0.55, 0.6, 0.65),
@@ -107,6 +120,9 @@ const STATE_PROFILES: Dictionary = {
 		"cloud_coverage":   0.6,
 		"cloud_speed":      0.05,
 		"god_ray_multiplier": 0.3,  # mostly diffused through rain particles
+		"vol_fog_density": 0.010,
+		"vol_fog_length":  40.0,
+		"vol_fog_albedo":  Color(0.55, 0.60, 0.65, 1.0),
 	},
 	State.HEAVY_RAIN: {
 		"fog_color":        Color(0.4, 0.45, 0.5),
@@ -118,6 +134,9 @@ const STATE_PROFILES: Dictionary = {
 		"cloud_coverage":   1.0,
 		"cloud_speed":      0.08,
 		"god_ray_multiplier": 0.0,  # no shafts in a downpour
+		"vol_fog_density": 0.005,
+		"vol_fog_length":  20.0,
+		"vol_fog_albedo":  Color(0.40, 0.45, 0.50, 1.0),
 	},
 	State.FOG: {
 		"fog_color":        Color(0.75, 0.75, 0.78),
@@ -129,6 +148,9 @@ const STATE_PROFILES: Dictionary = {
 		"cloud_coverage":   0.35,
 		"cloud_speed":      0.01,
 		"god_ray_multiplier": 0.4,  # some scatter through the fog volume
+		"vol_fog_density": 0.060,
+		"vol_fog_length":  100.0,
+		"vol_fog_albedo":  Color(0.75, 0.75, 0.78, 1.0),
 	},
 	State.SNOW: {
 		"fog_color":        Color(0.85, 0.88, 0.92),
@@ -140,6 +162,9 @@ const STATE_PROFILES: Dictionary = {
 		"cloud_coverage":   0.75,
 		"cloud_speed":      0.03,
 		"god_ray_multiplier": 0.5,  # snow sparkles in sun shafts
+		"vol_fog_density": 0.025,
+		"vol_fog_length":  60.0,
+		"vol_fog_albedo":  Color(0.85, 0.88, 0.92, 1.0),
 	},
 }
 
@@ -251,6 +276,12 @@ var _live_snow_density: float = 0.0
 var _live_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
 var _live_cloud_speed: float = STATE_PROFILES[State.CLEAR]["cloud_speed"]
 var _live_god_ray_multiplier: float = STATE_PROFILES[State.CLEAR]["god_ray_multiplier"]  # Phase K bundle 2026-05-27
+# Weather rework Phase D — interpolated WorldEnvironment volumetric fog
+# values per state. Snapshotted baseline lets us restore the scene-shipped
+# look when GraphicsManager.light_shafts is toggled off.
+var _live_vol_fog_density: float = STATE_PROFILES[State.CLEAR]["vol_fog_density"]
+var _live_vol_fog_length: float = STATE_PROFILES[State.CLEAR]["vol_fog_length"]
+var _live_vol_fog_albedo: Color = STATE_PROFILES[State.CLEAR]["vol_fog_albedo"]
 
 # Rainbow-after-rain (Phase K bundle, 2026-05-27).
 # State machine: detect a transition rainy → CLEAR/OVERCAST, ramp
@@ -272,6 +303,14 @@ var _rainbow_log_accum: float = 0.0  # 1 Hz log throttle
 # can restore the baseline if the player turns light_shafts off via
 # the DebugOverlay GRAPHICS sub-view.
 var _sun_baseline_volfog_energy: float = -1.0  # -1 = not yet snapshotted
+# Phase D — same snapshot pattern for the WorldEnvironment volumetric fog
+# triple (density / length / albedo). Captured first tick from the
+# scene-shipped Environment so GraphicsManager light_shafts toggle can
+# restore the original look.
+var _env_baseline_vol_fog_density: float = -1.0  # -1 = not yet snapshotted
+var _env_baseline_vol_fog_length: float = -1.0
+var _env_baseline_vol_fog_albedo: Color = Color(1, 1, 1, 1)
+var _env_baseline_snapshotted: bool = false
 
 # Blend origins for the transition tween. Snapshotted from _live_* every
 # time the target state changes. Without this, mid-transition target
@@ -290,6 +329,9 @@ var _blend_origin_snow_density: float = 0.0
 var _blend_origin_cloud_coverage: float = STATE_PROFILES[State.CLEAR]["cloud_coverage"]
 var _blend_origin_cloud_speed: float = STATE_PROFILES[State.CLEAR]["cloud_speed"]
 var _blend_origin_god_ray_multiplier: float = STATE_PROFILES[State.CLEAR]["god_ray_multiplier"]  # Phase K bundle 2026-05-27
+var _blend_origin_vol_fog_density: float = STATE_PROFILES[State.CLEAR]["vol_fog_density"]
+var _blend_origin_vol_fog_length: float = STATE_PROFILES[State.CLEAR]["vol_fog_length"]
+var _blend_origin_vol_fog_albedo: Color = STATE_PROFILES[State.CLEAR]["vol_fog_albedo"]
 
 # Particle systems. Spawned lazily on the first transition that needs
 # them so a CLEAR-only world never builds the rigs. Position follows
@@ -416,6 +458,9 @@ func _seed_initial_state() -> void:
 	_live_cloud_coverage = profile["cloud_coverage"]
 	_live_cloud_speed = profile["cloud_speed"]
 	_live_god_ray_multiplier = profile.get("god_ray_multiplier", 1.0)  # Phase K bundle 2026-05-27
+	_live_vol_fog_density = profile.get("vol_fog_density", 0.035)
+	_live_vol_fog_length = profile.get("vol_fog_length", 64.0)
+	_live_vol_fog_albedo = profile.get("vol_fog_albedo", Color(1, 1, 1, 1))
 	_snapshot_blend_origins()
 	# Kick the audio crossfade off so the seeded state has its bed.
 	_swap_ambient_audio(String(profile["ambient_audio"]))
@@ -435,6 +480,9 @@ func _snapshot_blend_origins() -> void:
 	_blend_origin_cloud_coverage = _live_cloud_coverage
 	_blend_origin_cloud_speed = _live_cloud_speed
 	_blend_origin_god_ray_multiplier = _live_god_ray_multiplier  # Phase K bundle 2026-05-27
+	_blend_origin_vol_fog_density = _live_vol_fog_density
+	_blend_origin_vol_fog_length = _live_vol_fog_length
+	_blend_origin_vol_fog_albedo = _live_vol_fog_albedo
 
 
 func _process(delta: float) -> void:
@@ -493,6 +541,17 @@ func _process_inner(delta: float) -> void:
 		_blend_origin_god_ray_multiplier,
 		float(target_profile.get("god_ray_multiplier", 1.0)),
 		t)
+	_live_vol_fog_density = lerpf(
+		_blend_origin_vol_fog_density,
+		float(target_profile.get("vol_fog_density", 0.035)),
+		t)
+	_live_vol_fog_length = lerpf(
+		_blend_origin_vol_fog_length,
+		float(target_profile.get("vol_fog_length", 64.0)),
+		t)
+	_live_vol_fog_albedo = _blend_origin_vol_fog_albedo.lerp(
+		target_profile.get("vol_fog_albedo", Color(1, 1, 1, 1)),
+		t)
 	weather_intensity_changed.emit(_live_wetness)
 
 	# Push fog into DayNightCycle's override slot. We try to find the
@@ -526,6 +585,12 @@ func _process_inner(delta: float) -> void:
 	# frame the camera is under water and our write re-applies the
 	# moment the camera surfaces. No coordination needed.
 	_apply_light_shafts_to_sun()
+	# Weather rework 2026-05 Phase D — co-tune the WorldEnvironment
+	# volumetric fog so the sun has a body of fog to scatter through. Sun
+	# energy alone (the Phase K bundle attempt) was imperceptible. Gated
+	# on the same GraphicsManager.light_shafts toggle; skipped when
+	# UnderwaterFilter is active (it owns volumetric_fog_* under water).
+	_apply_god_rays_to_env()
 
 	# Phase K bundle (2026-05-27): rainbow-after-rain factor tick. Pure
 	# state machine driven by elapsed time; pushes to the
@@ -694,6 +759,9 @@ func load_save_data(data: Dictionary) -> void:
 	_live_cloud_coverage = profile["cloud_coverage"]
 	_live_cloud_speed = profile["cloud_speed"]
 	_live_god_ray_multiplier = profile.get("god_ray_multiplier", 1.0)  # Phase K bundle 2026-05-27
+	_live_vol_fog_density = profile.get("vol_fog_density", 0.035)
+	_live_vol_fog_length = profile.get("vol_fog_length", 64.0)
+	_live_vol_fog_albedo = profile.get("vol_fog_albedo", Color(1, 1, 1, 1))
 	_snapshot_blend_origins()
 
 
@@ -718,6 +786,9 @@ func clear_persistent_state() -> void:
 	_live_cloud_coverage = profile["cloud_coverage"]
 	_live_cloud_speed = profile["cloud_speed"]
 	_live_god_ray_multiplier = profile.get("god_ray_multiplier", 1.0)  # Phase K bundle 2026-05-27
+	_live_vol_fog_density = profile.get("vol_fog_density", 0.035)
+	_live_vol_fog_length = profile.get("vol_fog_length", 64.0)
+	_live_vol_fog_albedo = profile.get("vol_fog_albedo", Color(1, 1, 1, 1))
 	_snapshot_blend_origins()
 
 
@@ -1521,6 +1592,53 @@ func _apply_light_shafts_to_sun() -> void:
 	# camera is submerged; our write re-applies the moment the camera
 	# surfaces — no coordination needed.
 	sun.light_volumetric_fog_energy = _sun_baseline_volfog_energy * _live_god_ray_multiplier
+
+
+# Weather rework Phase D — push per-state WorldEnvironment volumetric fog
+# values (density, length, albedo). The per-light sun multiplier alone
+# (PR #244) was imperceptible because the volumetric fog volume the sun
+# scatters through was the same density across every weather state — i.e.
+# the sun was lighting up the same amount of fog whether it was CLEAR or
+# HEAVY_RAIN. This function actually varies how much fog the sun has to
+# scatter through, which is what makes god rays appear/disappear per state.
+#
+# Coexists with UnderwaterFilter, which OWNS volumetric_fog_* while the
+# camera is submerged. We snapshot the scene-shipped baseline on first
+# tick and skip our writes whenever UnderwaterFilter is active so the
+# two don't fight. On surfacing, UnderwaterFilter writes the surface
+# defaults once; our next tick takes over with the live weather values.
+func _apply_god_rays_to_env() -> void:
+	var env_node: WorldEnvironment = _find_world_environment()
+	if env_node == null or env_node.environment == null:
+		return
+	var env: Environment = env_node.environment
+
+	# First-tick snapshot so GraphicsManager.light_shafts toggle can
+	# restore the scene baseline exactly.
+	if not _env_baseline_snapshotted:
+		_env_baseline_vol_fog_density = env.volumetric_fog_density
+		_env_baseline_vol_fog_length = env.volumetric_fog_length
+		_env_baseline_vol_fog_albedo = env.volumetric_fog_albedo
+		_env_baseline_snapshotted = true
+
+	# Toggle off → restore the baseline and return.
+	var gm := get_node_or_null("/root/GraphicsManager")
+	if gm != null and not gm.is_effect_enabled("light_shafts"):
+		env.volumetric_fog_density = _env_baseline_vol_fog_density
+		env.volumetric_fog_length = _env_baseline_vol_fog_length
+		env.volumetric_fog_albedo = _env_baseline_vol_fog_albedo
+		return
+
+	# Don't fight UnderwaterFilter while the camera is submerged — it
+	# overwrites these same three properties each frame with depth-modulated
+	# values. Same group-resolution UnderwaterFilter uses for sun_light.
+	var uw: Node = get_tree().get_first_node_in_group("underwater_filter")
+	if uw != null and "_filter_active" in uw and bool(uw.get("_filter_active")):
+		return
+
+	env.volumetric_fog_density = _live_vol_fog_density
+	env.volumetric_fog_length = _live_vol_fog_length
+	env.volumetric_fog_albedo = _live_vol_fog_albedo
 
 
 const RAINBOW_GLOBAL_PARAM: StringName = &"rainbow_factor"
