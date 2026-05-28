@@ -339,31 +339,15 @@ void fragment() {
 	// transmittance in §3 (physical model), after up_face is known.
 
 	// === 2. FLOW + NORMAL ==========================================
-	vec3 n_geo = normalize(NORMAL);
-	// GEOMETRIC up-ness, captured for §2b/§2c face classification (is
-	// this a top face or a vertical side sliver?). MUST be sourced from
-	// the per-vertex NORMAL, not the shaded `n` below — the wave-rippled
-	// shaded normal isn't a face-orientation cue.
-	float geo_ny = n_geo.y;
-	//
-	// LOD-SEAM FIX (2026-05-27, fix/water-lod-seam). The shading normal
-	// `n` is now derived purely from a flat (0,1,0) base + the world-XZ
-	// wave gradient, NOT from per-vertex NORMAL. WHY: Zylann's fluid
-	// mesher triangulates the auto-sloped fluid surface at different
-	// densities per LOD ring (LOD0 mesh_block=16, LOD1+=32), so adjacent
-	// chunks at a LOD seam interpolate slightly different NORMAL vectors
-	// at the same world-XZ position. The previous shader did
-	// `n = NORMAL + wave_grad → norm`, which propagated that mismatch →
-	// ndv differed across the seam → Fresnel, refraction offset, and
-	// depth-fade alpha all differed → a visible "transparent line" along
-	// every LOD chunk boundary on every body of water (designer-reported
-	// 2026-05-22, deferred from PR #240 as needing a water-shader session).
-	// World-XZ-derived normals are identical at the same world position
-	// regardless of which LOD chunk owns the fragment, killing the seam.
-	// Geometric SLOPE is still visible because the GEOMETRY slopes — we
-	// just stop letting per-vertex normals drive lighting. §2c camouflage
-	// continues to override side-face colour using geo_ny.
-	vec3 n = vec3(0.0, 1.0, 0.0);
+	vec3 n = normalize(NORMAL);
+	// GEOMETRIC up-ness, captured BEFORE the wave perturbation below.
+	// The §2b LOD-seam suppression must key off the real face
+	// orientation (is this a top face or a vertical side sliver?), NOT
+	// the wave-rippled normal — otherwise the v10 noise waves tilt the
+	// top normal, the distance-gated seam test mistakes wavy tops for
+	// side slivers, and ALL mid/far water turns transparent (the
+	// 2026-05-19 "way too see-through" regression).
+	float geo_ny = n.y;
 	float flow_strength = 0.0;
 	vec2 flow_dir = decode_flow(v_flow_uv, flow_strength);
 	// Wave height captured at OUTER scope so the back-face branch can
@@ -383,13 +367,10 @@ void fragment() {
 		float hx = _water_h(P + vec2(e, 0.0), fdir, T);
 		float hz = _water_h(P + vec2(0.0, e), fdir, T);
 		wave_height = h;  // capture for back-face branch
-		// Upness keyed off the GEOMETRIC normal (face classification);
-		// the shaded `n` starts at (0,1,0) so reading n.y here would be
-		// ~1 on every fragment and remove the side-face gating.
-		float upness = clamp(geo_ny, 0.0, 1.0);
+		float upness = clamp(n.y, 0.0, 1.0);
 		float amp = flow_motion_strength * upness * (0.45 + 0.55 * flow_strength);
-		// World-XZ height gradient → flat-up + wave perturbation. Same
-		// world position → same `n` regardless of LOD triangulation.
+		// World-space height gradient → normal perturbation. Tops only
+		// (upness), so the #222 LOD-seam side slivers stay untouched.
 		n = normalize(n + vec3(h - hx, 0.0, h - hz) * (flow_normal_strength * 8.0 * amp));
 	}
 
@@ -605,12 +586,7 @@ void fragment() {
 		ALBEDO = vec3(clamp(thickness / max(depth_fade_distance, 0.01), 0.0, 1.0));
 		ALPHA = 1.0;
 	} else if (debug_mode == 4) {
-		// Surface-facing diagnostic: white = top face, black = vertical
-		// side sliver. Uses GEOMETRIC normal (geo_ny) — the shaded `n`
-		// starts at (0,1,0) post the 2026-05-27 LOD-seam fix, so n.y
-		// would be ~1 everywhere and the diagnostic would lose its
-		// top-vs-side signal.
-		ALBEDO = vec3(clamp(geo_ny, 0.0, 1.0)); ALPHA = 1.0;
+		ALBEDO = vec3(clamp(n.y, 0.0, 1.0)); ALPHA = 1.0;
 	} else if (debug_mode == 5) {
 		// Flow vector: hue = direction (atan2 of decoded XZ flow),
 		// brightness = flow strength. Still water -> black. The Phase
