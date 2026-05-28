@@ -936,21 +936,37 @@ func _state_wetness(state_id: int) -> float:
 
 
 func _update_wet_terrain_visual(wetness: float) -> void:
+	# Designer-deferred 2026-05-27: the entire weather visual stack is
+	# OFF by default. When the GraphicsManager `rain_visuals` toggle is
+	# off (default), we zero everything out instead of applying it.
+	var rain_visuals_on: bool = _rain_visuals_enabled()
+	var effective_wetness: float = wetness if rain_visuals_on else 0.0
+
 	# Layer A — screen tint always-on overlay (blue-grey rain mood).
 	if _rain_overlay != null and _rain_overlay.has_method("set_intensity"):
-		_rain_overlay.set_intensity(wetness)
+		_rain_overlay.set_intensity(effective_wetness)
 
-	# Layer B — push the wetness global to terrain_voxel.gdshader. The
-	# OLD path tried StandardMaterial3D `material_override` on the terrain
-	# node but Zylann's VoxelLodTerrain isn't a GeometryInstance3D, so the
-	# old code dead-returned without ever applying material darkening.
-	# This global drives the wet-sheen shader path in terrain_voxel.gdshader
-	# (lower roughness, slight albedo darken) which actually works.
-	RenderingServer.global_shader_parameter_set(&"wetness_factor", wetness)
+	# Layer B — push the wetness global to terrain_voxel.gdshader.
+	# When the toggle is OFF we force the global to 0 so the terrain
+	# shader's wet-sheen branch stays dormant.
+	RenderingServer.global_shader_parameter_set(&"wetness_factor", effective_wetness)
 
-	# Layer C — splash particles. Built lazily on first wet tick; emits
-	# under the player as flat short-lived ring billboards.
-	_update_rain_splashes(wetness)
+	# Layer C — splash particles. Always pass the effective (zeroable)
+	# wetness so the rig stays inert when the toggle is off.
+	_update_rain_splashes(effective_wetness)
+
+
+# Helper — single source of truth for "should weather visuals render?"
+# (rain shader, splash particles, wet-surface mod). Replies to false when
+# GraphicsManager.rain_visuals is off or the autoload isn't available.
+# Reflects the 2026-05-27 designer playtest defer; the audio crossfade
+# stays live regardless of this gate.
+func _rain_visuals_enabled() -> bool:
+	if get_node_or_null("/root/GraphicsManager") == null:
+		return false
+	if not GraphicsManager.has_method("is_effect_enabled"):
+		return false
+	return GraphicsManager.is_effect_enabled("rain_visuals")
 
 
 # ------------------------------------------------------------
@@ -1383,6 +1399,11 @@ func _update_snow_particles() -> void:
 # over a water column).
 func _update_rain_overlay() -> void:
 	if _rain_overlay == null or not _rain_overlay.has_method("set_rain"):
+		return
+	# Designer-deferred 2026-05-27: rain visual stack OFF by default.
+	# When the toggle is OFF the shader gets density=0 and early-outs.
+	if not _rain_visuals_enabled():
+		_rain_overlay.set_rain(0.0, 0.0, Vector2.ZERO, 1.0)
 		return
 	# Density normalised against the same _MAX_WETNESS_DENSITY the wetness
 	# field uses, so density=1 at full HEAVY_RAIN.

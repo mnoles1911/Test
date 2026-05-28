@@ -878,10 +878,38 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
-- **Weather rework — IMPLEMENTED on `weather/rain-rework` branch.** All
-  four items from the Phase K deferred list landed. Full plan +
-  per-phase approach in `design/WEATHER_REWORK_2026-05.md`. Designer
-  testing checklist for the PR:
+- **Weather rework — FRAMEWORK BUILT, ALL VISUALS DEFAULT-OFF.**
+  Designer playtest verdict (2026-05-27): "rain visuals look really
+  bad… god rays are not visible… needs hours of player iteration and
+  VFX and SFX work on another day." All visual phases (A rain shader,
+  B wet-terrain + splashes, D god rays) gated behind GraphicsManager
+  toggles defaulting OFF — scene baseline preserved, system inert.
+  Phase C (audio crossfade envelope) stays live as an objective
+  improvement over the linear-dB tween, even if it also needs more
+  iteration. Phase E (rainbow shader) stays live but the test was at
+  midday so antisolar was below horizon — arc is geometrically
+  invisible at high-sun angles even with a working shader.
+
+  **What this means:** the foundation is on disk and ready for a
+  dedicated multi-session iteration pass. Each phase is one
+  GraphicsManager toggle flip away from being live for tuning. To
+  iterate later:
+  1. F1 → COMMANDS → GRAPHICS / POST-FX. Flip RAIN VISUALS ON to
+     start tuning the rain shader / wet-surface / splash particles.
+     Phase A still needs redesign per "looks really bad" — likely
+     wants an artist-authored streak texture instead of pure
+     procedural.
+  2. Flip LIGHT SHAFTS ON to start tuning god rays per-state
+     (`vol_fog_density / _length / _albedo` in `STATE_PROFILES`).
+  3. Rainbow: trigger via FORCE RAINBOW NOW and stand at dawn or
+     dusk where antisolar is above horizon (azimuth + elevation
+     logged each second so designer knows where to face).
+  4. Audio: tune `WeatherEnvelopeProfile` (lead_seconds /
+     fade_seconds / curve_pow / lowpass sweep) or author per-state
+     resources.
+
+  Original per-phase implementation testing checklist for the future
+  iteration session:
   - **Rain visual (Phase A).** Set HEAVY_RAIN via DebugOverlay WEATHER
     sub-view. Confirm: streaks come in gradually over the 30 s
     transition (not on/off); streaks remain visible at every camera

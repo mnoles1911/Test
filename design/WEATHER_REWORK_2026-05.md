@@ -1,5 +1,20 @@
 # Weather rework — May 2026
 
+> **STATUS 2026-05-27 — FRAMEWORK SHIPPED, ALL VISUALS DEFAULT-OFF.**
+> Designer playtest verdict: "rain visuals look really bad… god rays
+> are not visible… needs hours of player iteration and VFX and SFX
+> work on another day." Phases A (rain shader), B (wet terrain +
+> splashes), and D (god rays) are gated behind GraphicsManager toggles
+> defaulting OFF. Phase C (audio envelope) is live as an objective
+> improvement. Phase E (rainbow) is live but designer happened to test
+> at midday when the antisolar point is below the horizon — the arc is
+> geometrically invisible at high-sun angles regardless of the shader.
+>
+> When a future iteration session resumes this work, flip RAIN VISUALS
+> + LIGHT SHAFTS in F1 → GRAPHICS / POST-FX to bring the systems back
+> live for tuning. The framework underneath each phase is on disk and
+> doesn't need re-implementation.
+
 Scope: address the four "Weather rework" items deferred from PR #244
 (see `DESIGNER_TODO.md` Section 9 → "Weather rework").
 
