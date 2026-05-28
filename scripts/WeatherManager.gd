@@ -78,7 +78,14 @@ const STATE_PROFILES: Dictionary = {
 		# scene's "intended" look bumped a bit because clear sky has
 		# the most light to scatter). Respected only when
 		# GraphicsManager.is_effect_enabled("light_shafts") = true.
-		"god_ray_multiplier": 1.5,
+		# Phase K bundle v2 (2026-05-27): bumped 1.5 → 3.5 after designer
+		# report: "I cant really tell. either its not working or its not
+		# strong enough to see. I wanted god light rays coming down from
+		# the sun." 1.5 was a perceptually-modest boost above the scene
+		# baseline; 3.5 produces visibly volumetric shafts in CLEAR
+		# weather without changing the ambient lighting curve (which
+		# DayNightCycle owns independently).
+		"god_ray_multiplier": 3.5,
 	},
 	State.OVERCAST: {
 		"fog_color":        Color(0.6, 0.65, 0.7),
@@ -259,6 +266,7 @@ enum RainbowState { IDLE, RAMPING_UP, HOLDING, RAMPING_DOWN }
 var _rainbow_state: int = RainbowState.IDLE
 var _rainbow_factor: float = 0.0
 var _rainbow_elapsed: float = 0.0
+var _rainbow_log_accum: float = 0.0  # 1 Hz log throttle
 # Sun light_volumetric_fog_energy baseline — snapshot at first apply
 # from the scene-shipped sun. The per-state god_ray_multiplier is a
 # MULTIPLIER on this baseline, not an absolute. snapshot exists so we
@@ -316,7 +324,7 @@ var _ambient_warned_missing: Dictionary = {}   # key -> true once warned
 var _ambient_settle_timer: float = 0.0
 var _ambient_gust_time: float = 0.0
 const AMBIENT_AUDIO_DIR: String = "res://assets/audio/ambient/"
-const AMBIENT_CROSSFADE_S: float = 5.0
+const AMBIENT_CROSSFADE_S: float = 30.0  # Phase K bundle 2026-05-27: was 5s; designer report — audio finished fading in ~5s while the visual transition took 30s, reading as "audio jumps instantly." Match the visual TRANSITION_DURATION_S so the bed crossfade and the visual lerp stay in sync.
 const AMBIENT_TARGET_DB: float = -8.0          # comfortable bed level
 # Wind ambience gusts — the wind bed's volume swells and lulls instead
 # of droning flat. Depth in dB the volume dips below AMBIENT_TARGET_DB
@@ -1187,6 +1195,21 @@ func _build_rain_particles() -> GPUParticles3D:
 	p.preprocess = 0.3   # so particles are present on first frame
 	p.fixed_fps = 30
 	p.local_coords = false
+	# Phase K bundle (2026-05-27). Designer report: aiming the camera DOWN
+	# made rain particles disappear. Cause: Godot frustum-culls GPUParticles3D
+	# by the node's `visibility_aabb`; without an explicit one, the auto-
+	# computed AABB matches only the emitter region. With local_coords=false
+	# the falling particles travel ~15 m below the emitter (gravity -25,
+	# lifetime 0.6 → 15 m fall), but the auto-AABB doesn't extend to cover
+	# the fall extent. When the camera pitch + position puts the emitter
+	# behind the frustum, the whole particle system is culled — rain
+	# vanishes even though the player is still IN it. Fix: set an explicit
+	# generous AABB covering the full emission + fall volume around the
+	# emitter so culling only happens when the player is genuinely 100 m+
+	# away (which can't happen — emitter follows the camera).
+	p.visibility_aabb = AABB(
+		Vector3(-PARTICLE_EMISSION_BOX.x - 5.0, -25.0, -PARTICLE_EMISSION_BOX.z - 5.0),
+		Vector3((PARTICLE_EMISSION_BOX.x + 5.0) * 2.0, 35.0, (PARTICLE_EMISSION_BOX.z + 5.0) * 2.0))
 
 	var mat := ParticleProcessMaterial.new()
 	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
@@ -1223,6 +1246,13 @@ func _build_snow_particles() -> GPUParticles3D:
 	p.preprocess = 2.0
 	p.fixed_fps = 30
 	p.local_coords = false
+	# Phase K bundle (2026-05-27). Same visibility_aabb fix as
+	# _build_rain_particles — snow also disappears on aim-down without
+	# an explicit AABB. Snow falls only -1.5 × 4 = 6 m below the emitter
+	# so the AABB Y-extent can be smaller than rain's.
+	p.visibility_aabb = AABB(
+		Vector3(-PARTICLE_EMISSION_BOX.x - 5.0, -8.0, -PARTICLE_EMISSION_BOX.z - 5.0),
+		Vector3((PARTICLE_EMISSION_BOX.x + 5.0) * 2.0, 18.0, (PARTICLE_EMISSION_BOX.z + 5.0) * 2.0))
 
 	var mat := ParticleProcessMaterial.new()
 	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
@@ -1350,6 +1380,14 @@ func _tick_rainbow(delta: float) -> void:
 		RainbowState.RAMPING_UP:
 			_rainbow_elapsed += delta
 			_rainbow_factor = clampf(_rainbow_elapsed / RAINBOW_RAMP_UP_S, 0.0, 1.0)
+			# 1 Hz progress log — confirms the state machine is advancing
+			# and the value pushed to the shader matches what the designer
+			# can see in-engine (visible arc opacity ≈ rainbow_factor).
+			_rainbow_log_accum += delta
+			if _rainbow_log_accum >= 1.0:
+				_rainbow_log_accum = 0.0
+				print("[WeatherManager] Rainbow ramping up: factor=%.2f (%.1f s / %.1f s)" % [
+					_rainbow_factor, _rainbow_elapsed, RAINBOW_RAMP_UP_S])
 			if _rainbow_elapsed >= RAINBOW_RAMP_UP_S:
 				_rainbow_state = RainbowState.HOLDING
 				_rainbow_elapsed = 0.0

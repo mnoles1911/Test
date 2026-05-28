@@ -23,9 +23,9 @@ uniform vec2 sun_screen_uv = vec2(-1.0, -1.0);
 uniform float sun_visibility : hint_range(0.0, 1.0) = 1.0;
 
 uniform vec3 flare_color : source_color = vec3(1.00, 0.92, 0.72);
-uniform float halo_radius : hint_range(0.02, 0.6) = 0.18;
-uniform float halo_strength : hint_range(0.0, 4.0) = 1.6;
-uniform float ghost_strength : hint_range(0.0, 2.0) = 0.45;
+uniform float halo_radius : hint_range(0.02, 0.6) = 0.28;       // v2 0.18 -> 0.28 (designer "barely visible" report 2026-05-27)
+uniform float halo_strength : hint_range(0.0, 6.0) = 3.0;        // v2 1.6 -> 3.0 (designer "barely visible" report 2026-05-27)
+uniform float ghost_strength : hint_range(0.0, 2.0) = 0.65;       // v2 0.45 -> 0.65 (designer "barely visible" report 2026-05-27)
 // Aspect ratio (width / height) so circular falloff stays circular on
 // non-square viewports. Script pushes this each frame.
 uniform float viewport_aspect : hint_range(0.5, 4.0) = 1.778;

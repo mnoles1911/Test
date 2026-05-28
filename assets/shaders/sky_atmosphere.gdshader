@@ -41,6 +41,16 @@ uniform float cloud_scale = 0.8;
 // via DayNightCycle.set_cloud_speed(); this default only applies when no
 // weather system is running.
 uniform float cloud_scroll_speed = 0.03;
+// Accumulated cloud-scroll PHASE in arbitrary units (Phase K bundle fix
+// 2026-05-27). DayNightCycle pushes this each frame as
+// `cloud_phase += delta * cloud_scroll_speed`. The shader uses this
+// instead of `TIME * cloud_scroll_speed` because the latter produces a
+// visible jerk every time `cloud_scroll_speed` changes mid-frame (the
+// product retroactively re-evaluates the ENTIRE elapsed TIME at the new
+// speed, warping the cloud position by ~TIME × ΔSpeed in one frame —
+// designer-reported during the rain → clear weather transition test).
+// Accumulating preserves smooth scrolling across speed changes.
+uniform float cloud_phase = 0.0;
 uniform float cloud_softness : hint_range(0.01, 0.5) = 0.12;
 uniform vec3 cloud_lit_color : source_color = vec3(1.0, 0.98, 0.95);
 uniform vec3 cloud_shadow_color : source_color = vec3(0.46, 0.51, 0.62);
@@ -78,7 +88,7 @@ uniform float nebula_rotation = 0.0;
 // Multiplied by rainbow_factor and the day mix so it fades into
 // nothing at night when there'd be no sunlight to refract.
 global uniform float rainbow_factor;
-uniform float rainbow_band_strength : hint_range(0.0, 2.0) = 0.85;
+uniform float rainbow_band_strength : hint_range(0.0, 3.0) = 1.50;  // Phase K bundle 2026-05-27: 0.85 -> 1.50 designer-bumped for visibility
 
 // Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
@@ -247,8 +257,12 @@ void sky() {
 		vec3 antisolar = -LIGHT0_DIRECTION;
 		float cos_theta = clamp(dot(EYEDIR, antisolar), -1.0, 1.0);
 		float theta_deg = degrees(acos(cos_theta));
-		// 40° inner edge, 42° outer edge — primary rainbow.
-		float t_band = (theta_deg - 40.0) / 2.0;  // 0 at inner, 1 at outer
+		// 38° inner edge, 45° outer edge — wider than the physical 40-42°
+		// primary rainbow so it's actually visible at typical play
+		// distances (designer reported the 2° band was too narrow to
+		// see). 7° wide reads as an obvious arc without crossing into
+		// "neon stripe" territory.
+		float t_band = (theta_deg - 38.0) / 7.0;  // 0 at inner, 1 at outer
 		if (t_band >= 0.0 && t_band <= 1.0) {
 			// Map t_band 0..1 to violet→red. Standard rainbow spectrum
 			// reversed because the OUTER edge is red, INNER is violet.
@@ -296,7 +310,10 @@ void sky() {
 		// makes the clouds surge and ease instead of sliding at a
 		// dead-flat rate (natural variance on top of the weather speed).
 		float gust = sin(TIME * 0.07) * 0.08 + sin(TIME * 0.17 + 2.0) * 0.04;
-		float drift = TIME * cloud_scroll_speed + gust;
+		// drift = accumulated phase (pushed from DayNightCycle, smooth
+		// across speed changes — see uniform comment above) + a small
+		// time-modulated gust on top.
+		float drift = cloud_phase + gust;
 		vec2 cuv = plane * cloud_scale + vec2(drift, drift * 0.6);
 
 		float density = cloud_fbm(cuv);

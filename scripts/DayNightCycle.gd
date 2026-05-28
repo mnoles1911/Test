@@ -212,6 +212,17 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Phase K bundle (2026-05-27). Advance cloud-phase EVERY FRAME (not at
+	# the 10 Hz gate below) so the sky shader's drift is smooth across
+	# weather transitions. The phase is the integral of cloud_scroll_speed
+	# over real time — adding `delta * speed` per frame gives a continuous
+	# trajectory even when `speed` changes (e.g. during a 30 s
+	# clear→storm transition). Push to the shader each frame; one global
+	# shader write is trivial.
+	_cloud_phase += delta * _cloud_speed_live
+	if _sky_mat != null:
+		_sky_mat.set_shader_parameter("cloud_phase", _cloud_phase)
+
 	# Gate _apply() to 10 Hz. Sun motion at 0.0625°/real-second is well
 	# below the per-frame visible-change threshold, and the lerps for
 	# sun energy / color / sky tint span minutes of game time — none of
@@ -566,7 +577,22 @@ func set_cloud_coverage(coverage: float) -> void:
 # Public API used by WeatherManager — pushes the weather-driven cloud
 # drift speed into the sky shader. Each weather state carries its own
 # cloud_speed in STATE_PROFILES (calm clear day vs. fast-moving storm).
+# The sky shader uses an accumulated cloud_phase (see _process tick) to
+# avoid the TIME-multiplied speed-change jerk; this setter just records
+# the current speed value the accumulator integrates each frame.
 func set_cloud_speed(speed: float) -> void:
-	if _sky_mat == null:
-		return
-	_sky_mat.set_shader_parameter("cloud_scroll_speed", maxf(0.0, speed))
+	_cloud_speed_live = maxf(0.0, speed)
+	if _sky_mat != null:
+		_sky_mat.set_shader_parameter("cloud_scroll_speed", _cloud_speed_live)
+
+
+# Phase K bundle fix (2026-05-27). The sky shader's drift formula used to
+# be `TIME * cloud_scroll_speed + gust`, which produced a visible jerk
+# every time cloud_scroll_speed changed mid-frame (the entire elapsed
+# TIME was re-multiplied at the new speed → instant warp of the cloud
+# position by ~TIME × ΔSpeed). Fix: accumulate the phase on the CPU
+# each frame and push to the shader; the shader uses `cloud_phase +
+# gust` so speed changes only affect FUTURE motion, not retroactively
+# warp position. Smooth across the 30 s weather-transition tween.
+var _cloud_speed_live: float = 0.012
+var _cloud_phase: float = 0.0

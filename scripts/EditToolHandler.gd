@@ -329,6 +329,14 @@ func _update_aim_outline() -> void:
 		(Vector3(box_vmin) + Vector3(box_vmax) + Vector3.ONE) * 0.5 / VOXELS_PER_METER
 	)
 	_aim_outline.global_position = centre_world
+	# Phase K bundle v2 (2026-05-27): push the BoxMesh half-extents to the
+	# outline shader so its object-space edge detection knows where the cube
+	# faces sit. Without this the v2 shader assumes a 1m³ box (default
+	# uniform) and outlines collapse / disappear when carve_volume_size != 6.
+	if _aim_outline_material is ShaderMaterial:
+		var half: float = size_m * 1.02 * 0.5
+		(_aim_outline_material as ShaderMaterial).set_shader_parameter(
+			"mesh_half_size", Vector3(half, half, half))
 	_aim_outline.visible = true
 
 
