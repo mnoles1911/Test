@@ -147,7 +147,7 @@ System design corpus complete (combat, AI, companions, factions, quests, economy
 
 **Dev tools (`scripts/_dev/`, `scenes/_dev/`):** `WorldBakeController` + `BakeWorld.tscn` (Copper Isles) + `BakeWorld3D.tscn` (Mira); `ParityProbe` (C++ math primitive parity shim, retained for next port); `CombatTestBootstrap` + `CombatTest.tscn`.
 
-**Specified but not yet implemented:** Combat next phases (see COMBAT_NEXT_PHASES.md), `SchematicLibrary` autoload (player construction), `EntityRegistry` + `EntityStreamer` (stub on disk — only prints chunk-enter events; full logic deferred to Phase 6-3D), `QuestManager`, `CompanionManager`, LOD-bake-on-eviction caching (deferred until perf demands).
+**Specified but not yet implemented:** Combat next phases (see COMBAT_NEXT_PHASES.md), `SchematicLibrary` autoload (player construction), `QuestManager`, `CompanionManager`, LOD-bake-on-eviction caching (deferred until perf demands). **EntityRegistry + EntityStreamer** are IMPLEMENTED on `gameplay/entity-streamer` branch — per-chunk record store with JSON save/load + 4-tier AI sleep system (ACTIVE/AWAKE/SLEEPING/OFFLOADED); Goblin/NPC/VoxelDrop retrofitted to the `set_ai_tier` + `to/from_entity_record` protocol; headless `entity` parity gate green (66 checks). Full spec: `design/ENTITY_STREAMING.md`.
 
 Manual setup still required: see `DESIGNER_TODO.md` Section 1.
 
@@ -509,7 +509,7 @@ Every settlement, dungeon entrance, and lore landmark sits under a NoEditZone. W
 ## Autoload registration status
 
 Registered in `project.godot`, in load order:
-`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`, `NetTransport`, `MultiplayerManager`, `GraphicsManager`, `Settings`, `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`, `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`, `JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `AudioManager`, `NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `EmissiveLightManager`, `EmissiveBakedLightManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`, `WaterDiag`.
+`GameState`, `Colors`, `TransitionManager`, `SaveNotification`, `PauseMenu`, `NetTransport`, `MultiplayerManager`, `GraphicsManager`, `Settings`, `DebugOverlay`, `FlagScheduler`, `InventoryManager`, `PerkRegistry`, `FactionManager`, `VoxelMaterialRegistry`, `SkillManager`, `JournalUI`, `HUDOverlay`, `Profiler`, `ProfilerOverlay`, `AudioManager`, `NoEditZoneRegistry`, `VoxelEditManager`, `VoxelGravityManager`, `EmissiveLightManager`, `EmissiveBakedLightManager`, `WaterFlowManager`, `Dialogic`, `SpeechCheckBroker`, `BarkManager`, `WorldClock`, `WeatherManager`, `BloodVFX`, `WaterDiag`, `EntityRegistry`.
 
 Key facts:
 - **MultiplayerManager:** owns SceneTree's `multiplayer_peer`. **In OFFLINE mode `is_host()` returns true** so single-player authority gates work without modification. `PlayerSpawner` (not autoloaded; attached to dev/world scenes) parents one `RemotePlayer.tscn` per non-local peer. Local Player3D stays full-fat with `_can_take_input()` gating.
