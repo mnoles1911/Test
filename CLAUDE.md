@@ -28,14 +28,13 @@ I am a writer + game designer, not a programmer. Explain code in plain English, 
 Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
 
 - **Open PRs:**
-  - **#247 `combat/phase-5-gibs`** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge mechanic. Awaiting designer playtest.
-  - **#246 `gameplay/entity-streamer`** — `EntityRegistry` + 4-tier AI sleep + Goblin/NPC/VoxelDrop retrofit. Headless 66 checks green; awaiting merge.
-  - **#245 `weather/rain-rework`** — rain shader + audio envelope + god ray framework. **Designer deferred all visuals; gated OFF by default.** Has CLAUDE.md conflict from this reorg — rebase needed before merge.
-  - **#239 `claude/game-combat-design-Z5oLa`** — Directional Melee Combat v1 (sword + shield, parry/block, lock-on, HUD). **Awaiting review — do NOT build melee work on a different branch without checking this first.**
+  - **#247 `combat/phase-5-gibs`** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge mechanic. **Has entity-streamer merged in** (Goblin/NPC/VoxelDrop respect `set_ai_tier`). Awaiting designer playtest.
+  - **#246 `gameplay/entity-streamer`** — superseded into PR #247; will auto-close when combat ships. Tracking only.
+  - **#239 `claude/game-combat-design-Z5oLa`** — Directional Melee Combat v1 (sword + shield, parry/block, lock-on, HUD). **Awaiting review — do NOT build melee work on a different branch without checking this first.** May conflict with PR #247's gibs (it scheduled gibs for v1.1 phase 7).
 - **Default-OFF features (do not flip without designer direction):**
-  - `GraphicsManager.rain_visuals_enabled = false` (PR #245 — rain shader + splash particles + wet-surface mod).
-  - `GraphicsManager.light_shafts_enabled = false` (PR #245 — per-state vol-fog god rays).
-- **Last merged:** PR #244 (Phase K bundle — selection outline, cloud cohesion, lens flare, rainbow shader, DebugOverlay GRAPHICS sub-view).
+  - `GraphicsManager.rain_visuals_enabled = false` — rain shader + splash particles + wet-surface mod (PR #245, merged but gated).
+  - `GraphicsManager.light_shafts_enabled = false` — per-state vol-fog god rays (PR #245, merged but gated).
+- **Recently merged:** PR #245 (weather rework framework — visuals default-off, audio envelope live), PR #244 (Phase K bundle — selection outline, cloud cohesion, lens flare, rainbow shader, DebugOverlay GRAPHICS sub-view).
 
 ## Deprecated / superseded (do NOT implement from these)
 
