@@ -28,7 +28,7 @@ I am a writer + game designer, not a programmer. Explain code in plain English, 
 Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
 
 - **Open PRs:**
-  - **#247 `combat/phase-5-gibs`** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge mechanic. **Has entity-streamer merged in** (Goblin/NPC/VoxelDrop respect `set_ai_tier`). Awaiting designer playtest.
+  - **#247 `combat/phase-5-gibs`** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge mechanic. **Has entity-streamer merged in** (Goblin/NPC/VoxelDrop respect `set_ai_tier`). **Designer playtest PASSED 2026-05-29** — ready to merge (resolve the #239 melee-gibs conflict first).
   - **#246 `gameplay/entity-streamer`** — superseded into PR #247; will auto-close when combat ships. Tracking only.
   - **#239 `claude/game-combat-design-Z5oLa`** — Directional Melee Combat v1 (sword + shield, parry/block, lock-on, HUD). **Awaiting review — do NOT build melee work on a different branch without checking this first.** May conflict with PR #247's gibs (it scheduled gibs for v1.1 phase 7).
 - **Default-OFF features (do not flip without designer direction):**
