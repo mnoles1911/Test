@@ -89,6 +89,18 @@ func _ready() -> void:
 	if get_node_or_null("/root/InventoryManager"):
 		InventoryManager.equip("weapon", "spear")
 
+	# Spawn an EntityStreamer so the F1 "SPAWN TEST GOBLIN" debug command
+	# works in this dev scene. World3D.tscn ships one as a scene child;
+	# CombatTest.tscn does not, so the streamer is added programmatically
+	# here. Joins the "entity_streamer" group on _ready so
+	# DebugOverlay._spawn_test_goblin resolves it via
+	# get_first_node_in_group without a hardcoded node path.
+	var streamer_script: Script = load("res://scripts/EntityStreamer.gd")
+	if streamer_script != null:
+		var streamer: Node3D = streamer_script.new()
+		streamer.name = "EntityStreamer"
+		add_child(streamer)
+
 	# Build the on-screen debug menu.
 	_build_debug_menu()
 
