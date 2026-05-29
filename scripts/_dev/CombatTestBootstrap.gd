@@ -199,6 +199,15 @@ func _reset_enemies() -> void:
 	# Uses queue_free so the freeing happens at end-of-frame; the
 	# spawning happens in the same call so the next frame the player
 	# sees three goblins regardless of what was on screen before.
+	#
+	# Also clears EntityRegistry of any test goblins spawned via the
+	# F1 "SPAWN TEST GOBLIN" debug command — otherwise the streamer
+	# would re-spawn them on the next reconcile, defeating the reset.
+	# A dev-arena clear is safe; production save/load uses its own path.
+	if get_node_or_null("/root/EntityRegistry") != null \
+			and EntityRegistry.has_method("clear"):
+		EntityRegistry.clear()
+
 	var existing := get_tree().get_nodes_in_group("enemy")
 	for n in existing:
 		if is_instance_valid(n):

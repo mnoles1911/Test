@@ -177,13 +177,19 @@ func _reconcile() -> void:
 					_try_spawn_live(rec)
 
 	# Pass 2 — demote / free anything outside the unload radius.
-	# Walk _live snapshot since we may erase mid-iteration.
+	# Walk _live snapshot since we may erase mid-iteration. Note: we read
+	# the dict value untyped first; a typed `var node: Node3D = ...` would
+	# error on assignment if the underlying Object was freed (the typed
+	# cast happens BEFORE is_instance_valid could catch it). This bites
+	# whenever external code (e.g. CombatTest R-reset) queue_free's an
+	# entity-streamer-owned node without going through _evict_live.
 	for id in _live.keys():
-		var node: Node3D = _live.get(id, null)
-		if not is_instance_valid(node):
+		var raw_node: Variant = _live.get(id, null)
+		if raw_node == null or not is_instance_valid(raw_node):
 			_live.erase(id)
 			_last_tier_by_id.erase(id)
 			continue
+		var node: Node3D = raw_node
 		var c: Vector2i = _world_to_chunk(node.global_position)
 		var dx: int = abs(c.x - _player_chunk.x)
 		var dz: int = abs(c.y - _player_chunk.y)
@@ -192,9 +198,10 @@ func _reconcile() -> void:
 
 	# Pass 3 — for each surviving live entity, pick its tier by distance.
 	for id in _live.keys():
-		var node: Node3D = _live.get(id, null)
-		if not is_instance_valid(node):
+		var raw_node3: Variant = _live.get(id, null)
+		if raw_node3 == null or not is_instance_valid(raw_node3):
 			continue
+		var node: Node3D = raw_node3
 		var dist: float = node.global_position.distance_to(_player.global_position)
 		var tier: int = _tier_for_distance(dist)
 		var prev: int = _last_tier_by_id.get(id, -1)
