@@ -878,54 +878,71 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
-- **Weather rework — deferred from PR #244 Phase K bundle (2026-05-27).**
-  Three designer-reported issues that surfaced in playtest of the Phase K
-  bundle that need a deeper rework, not a patch. Bundle together as one
-  cohesive "weather feel" pass.
-  - **Rain visual rework.** Current rain is `GPUParticles3D` billboards
-    (thin `QuadMesh` streaks) falling from a 200×40×200 emit box above
-    the player. v3 patch attempts (thicker streaks, brighter colour,
-    `_apply_rain_alpha_by_density` per-particle alpha modulation) were
-    reverted — the whole system needs redesign, not tuning. Designer
-    verdict 2026-05-27: "the visual itself needs a deep rework."
-    Possible directions: full-screen rain post-process shader
-    (`canvas_item`, scrolling streak texture, density-modulated alpha,
-    optional aim-direction parallax); proper splash/ripple particles on
-    voxel surface impacts; wet-surface roughness mod on terrain shader
-    during heavy rain. Treat as a dedicated session, not a quick fix.
-  - **Rain audio crossfade rework.** Audio bed is currently a simple
-    linear-dB `volume_db` tween over 30 s (`AMBIENT_CROSSFADE_S`).
-    Designer report 2026-05-27: "the rain bed is not a build up. its a
-    hard switch and it the audio switch occurs at least 5 seconds after
-    the rain visuals appear." Two problems: (a) linear-dB reads
-    perceptually as on/off (a v3 attempt at amplitude-domain tween via
-    `linear_to_db` + a lower `AMBIENT_TARGET_DB = -14` was also
-    reverted — same complaint), and (b) audible onset lags visual
-    onset by ~5 s. Likely needs: explicit envelope shape (delay → ramp
-    curve, not linear), perceptual-loudness ramp (try an
-    equal-power-style or `pow(t, 2.2)` shape), sub-bus EQ during the
-    ramp (low-pass that opens as level rises so the bed "approaches"
-    rather than fades in), and timing aligned to (or slightly ahead
-    of) visual onset.
-  - **God rays (light shafts).** Per-state `god_ray_multiplier` writing
-    to `DirectionalLight3D.light_volumetric_fog_energy` is too subtle
-    to read. A v2 attempt at 3.5× multiplier was also imperceptible —
-    reverted to 1.5×. Likely the per-light energy alone isn't enough;
-    `WorldEnvironment.volumetric_fog_*` (length / density / albedo)
-    needs co-tuning so the sun's rays have actual fog to scatter
-    through. Investigate alongside the existing underwater volumetric
-    fog setup (which DOES read well) for what made that work.
-  - **Rainbow visibility.** State machine + global shader param push
-    work correctly (1 Hz log confirms `factor` ramps 0→1 over 30 s and
-    holds for 60 s). The shader code in `sky_atmosphere.gdshader`
-    draws an arc at 38-45° around the antisolar point with a 6-colour
-    spectrum, but the arc isn't visible in-engine after a heavy-rain →
-    clear transition. Debug with the F12 view-direction overlay; check
-    that the antisolar point projection is in-frame for the test
-    camera angle, that `rainbow_factor` is actually reaching the
-    sky-pass shader (vs. only the clouds pass), and that the spectrum
-    colours aren't being darkened to invisibility by the day/night
-    `night_factor` lerp.
+- **Weather rework — FRAMEWORK BUILT, ALL VISUALS DEFAULT-OFF.**
+  Designer playtest verdict (2026-05-27): "rain visuals look really
+  bad… god rays are not visible… needs hours of player iteration and
+  VFX and SFX work on another day." All visual phases (A rain shader,
+  B wet-terrain + splashes, D god rays) gated behind GraphicsManager
+  toggles defaulting OFF — scene baseline preserved, system inert.
+  Phase C (audio crossfade envelope) stays live as an objective
+  improvement over the linear-dB tween, even if it also needs more
+  iteration. Phase E (rainbow shader) stays live but the test was at
+  midday so antisolar was below horizon — arc is geometrically
+  invisible at high-sun angles even with a working shader.
+
+  **What this means:** the foundation is on disk and ready for a
+  dedicated multi-session iteration pass. Each phase is one
+  GraphicsManager toggle flip away from being live for tuning. To
+  iterate later:
+  1. F1 → COMMANDS → GRAPHICS / POST-FX. Flip RAIN VISUALS ON to
+     start tuning the rain shader / wet-surface / splash particles.
+     Phase A still needs redesign per "looks really bad" — likely
+     wants an artist-authored streak texture instead of pure
+     procedural.
+  2. Flip LIGHT SHAFTS ON to start tuning god rays per-state
+     (`vol_fog_density / _length / _albedo` in `STATE_PROFILES`).
+  3. Rainbow: trigger via FORCE RAINBOW NOW and stand at dawn or
+     dusk where antisolar is above horizon (azimuth + elevation
+     logged each second so designer knows where to face).
+  4. Audio: tune `WeatherEnvelopeProfile` (lead_seconds /
+     fade_seconds / curve_pow / lowpass sweep) or author per-state
+     resources.
+
+  Original per-phase implementation testing checklist for the future
+  iteration session:
+  - **Rain visual (Phase A).** Set HEAVY_RAIN via DebugOverlay WEATHER
+    sub-view. Confirm: streaks come in gradually over the 30 s
+    transition (not on/off); streaks remain visible at every camera
+    angle including looking straight down; streaks lean with wind
+    direction; vanish when player submerges. Old GPUParticles3D rig
+    available behind the `rain_3d_fallback` toggle for A/B comparison.
+  - **Rain audio (Phase C).** Same trigger. Confirm: audio onset is
+    immediate (no ~5 s lag vs the visual); ramp feels like a build-up,
+    not a switch; bed sounds "muffled → open" as the low-pass sweep
+    completes. Designer may want to tune `WeatherEnvelopeProfile` knobs
+    (curve_pow, lowpass_hz_low/high, fade_seconds) — author per-state
+    Resources if a state needs a different feel.
+  - **God rays (Phase D).** Set CLEAR at midday. Confirm: visible
+    volumetric shafts where the sun cuts through occluding geometry
+    (tree trunks, building edges). Set HEAVY_RAIN — shafts should
+    fully vanish. UnderwaterFilter on-submerge override still works.
+  - **Rainbow (Phase E).** Set HEAVY_RAIN → wait 30 s → set CLEAR.
+    Watch the `[WeatherManager] Rainbow ramping up: ... antisolar
+    az=X° el=Y°` log line — face that azimuth + look slightly up.
+    Should see the arc form over 30 s. If invisible, hit the
+    DebugOverlay WEATHER sub-view "RAINBOW DEBUG" toggle to draw the
+    band at full alpha regardless of state, confirming the geometry.
+    "FORCE RAINBOW NOW" triggers without needing the rain transition.
+  - **Wet terrain (Phase B follow-on).** Same HEAVY_RAIN trigger.
+    Stone / dirt / grass surfaces should darken slightly and pick up
+    a specular sheen from the sun (roughness drop). Small splash ring
+    particles appear on the ground around the player.
+
+  Authoring opportunity: per-state `WeatherEnvelopeProfile` Resources
+  in `assets/weather/envelopes/` once the designer wants per-bed feel
+  (e.g. fog rolls in slowly with a tighter low-pass; rain crashes in
+  with a brighter cutoff). Plumb `STATE_PROFILES["envelope"]` ->
+  `_swap_ambient_audio` picks the profile by state.
 
 - **WeatherManager polish — deferred from PR #132 code review (2026-05-04).**
   Self-review surfaced these. Each is functionally tolerable today; bundle

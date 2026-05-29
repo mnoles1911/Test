@@ -75,6 +75,15 @@ global uniform float baked_light_strength;
 // throw-away diagnostic; defaults to 0 in project.godot [shader_globals].
 global uniform float debug_emissive_magenta;
 
+// --- Wetness (Weather rework 2026-05 Phase B) ---
+// 0 = bone dry, 1 = drenched. WeatherManager pushes this each tick from
+// _live_wetness. At 1.0 the terrain reads with specular sheen from the
+// sun (roughness 0.85 -> 0.30) and slight darkening (albedo x 0.85).
+// The old WeatherManager StandardMaterial3D `material_override` path was
+// disabled because Zylann VoxelLodTerrain isn't a GeometryInstance3D —
+// this global-driven shader is the replacement that actually works.
+global uniform float wetness_factor;
+
 varying vec3 v_world_pos;
 
 // --- 3D value noise -------------------------------------------------
@@ -119,6 +128,20 @@ void fragment() {
 	METALLIC = 0.0;
 	ROUGHNESS = surface_roughness;
 	EMISSION = emission_tint * emission_strength;
+
+	// Weather rework 2026-05 Phase B — wetness modulation. wetness_factor
+	// is 0 at CLEAR / OVERCAST / FOG / SNOW and ramps to 1 at HEAVY_RAIN
+	// over the 30 s transition. Two visible effects:
+	//   1. Albedo darkens (water absorbs more light than dry stone) — a
+	//      modest 0.85x at full wet so colour identity stays.
+	//   2. Roughness drops from `surface_roughness` toward 0.30 so the
+	//      sun picks out specular highlights on wet stone, dirt, and
+	//      grass. Combined with PR #244's cloud system this reads as
+	//      "the world is wet" without an additional mesh layer.
+	if (wetness_factor > 0.001) {
+		ALBEDO *= mix(1.0, 0.85, wetness_factor);
+		ROUGHNESS = mix(ROUGHNESS, 0.30, wetness_factor);
+	}
 
 	// F10 debug override: paint emissive voxels flat magenta so the
 	// designer can locate ore at a glance. Only emissive variants

@@ -70,8 +70,23 @@ var current_tier: int = DEFAULT_TIER
 @export var master_post_processing_enabled: bool = true
 @export var selection_outline_enabled: bool = true
 @export var lens_flare_enabled: bool = true
-@export var light_shafts_enabled: bool = true
+# Weather rework 2026-05-27 designer playtest verdict: god rays still
+# imperceptible even with the per-state WorldEnvironment.volumetric_fog
+# co-tune. Deferred for multi-session iteration. Default OFF so the new
+# env vol_fog writes don't take effect; scene baseline is preserved.
+@export var light_shafts_enabled: bool = false
 @export var rainbow_enabled: bool = true
+# Weather rework 2026-05 (Phase A) — keep the GPUParticles3D rain rig as
+# a fallback so the v1 visual can be A/B'd against the new screen-space
+# shader. Defaults OFF — the new shader is the shipping path.
+@export var rain_3d_fallback_enabled: bool = false
+# Weather rework 2026-05-27 designer playtest verdict: "rain visuals
+# look really bad. just turn off all the rain visuals." Master gate
+# for the new screen-space rain shader + splash particles + wet-surface
+# terrain modulation. Defaults OFF; the entire visual stack is dormant
+# until a future iteration session enables it. Audio crossfade rework
+# stays live — it's an objective improvement over the linear-dB tween.
+@export var rain_visuals_enabled: bool = false
 
 # Signal fired whenever any effect toggle changes so subscribers can
 # react without polling. DebugOverlay flips → GraphicsManager emits →
@@ -94,6 +109,10 @@ func _ready() -> void:
 ## so callers don't have to AND-with master themselves. `effect` is the
 ## name of one of the @export bools above (without the `_enabled` suffix).
 func is_effect_enabled(effect_name: String) -> bool:
+	# rain_3d_fallback is independent of master_post_processing — it is a
+	# debug A/B switch, not an FX layer. Check it before the master gate.
+	if effect_name == "rain_3d_fallback":
+		return rain_3d_fallback_enabled
 	if not master_post_processing_enabled:
 		return false
 	match effect_name:
@@ -105,6 +124,8 @@ func is_effect_enabled(effect_name: String) -> bool:
 			return light_shafts_enabled
 		"rainbow":
 			return rainbow_enabled
+		"rain_visuals":
+			return rain_visuals_enabled
 		_:
 			push_warning("[GraphicsManager] is_effect_enabled: unknown effect '%s'." % effect_name)
 			return false
@@ -123,6 +144,10 @@ func set_effect_enabled(effect_name: String, enabled: bool) -> void:
 			light_shafts_enabled = enabled
 		"rainbow":
 			rainbow_enabled = enabled
+		"rain_3d_fallback":
+			rain_3d_fallback_enabled = enabled
+		"rain_visuals":
+			rain_visuals_enabled = enabled
 		_:
 			push_warning("[GraphicsManager] set_effect_enabled: unknown effect '%s'." % effect_name)
 			return
@@ -136,11 +161,17 @@ func reset_all_effects_enabled() -> void:
 	master_post_processing_enabled = true
 	selection_outline_enabled = true
 	lens_flare_enabled = true
-	light_shafts_enabled = true
+	# light_shafts + rain_visuals intentionally NOT reset to ON — both
+	# default OFF per the 2026-05-27 designer playtest. RESET ALL TO ON
+	# would surprise the designer by re-enabling visuals they explicitly
+	# turned off as needing multi-session iteration.
+	# light_shafts_enabled stays at current value
+	# rain_visuals_enabled stays at current value
 	rainbow_enabled = true
+	# rain_3d_fallback intentionally NOT reset — debug A/B switch.
 	_save_tier()
 	effect_toggles_changed.emit()
-	print("[GraphicsManager] All effects toggles reset to ENABLED.")
+	print("[GraphicsManager] Reset selection_outline / lens_flare / rainbow / master to ENABLED (light_shafts + rain_visuals + rain_3d_fallback preserved).")
 
 
 # =============================================================
@@ -338,6 +369,8 @@ func _save_tier() -> void:
 		"lens_flare_enabled": lens_flare_enabled,
 		"light_shafts_enabled": light_shafts_enabled,
 		"rainbow_enabled": rainbow_enabled,
+		"rain_3d_fallback_enabled": rain_3d_fallback_enabled,
+		"rain_visuals_enabled": rain_visuals_enabled,
 	}, "\t"))
 	f.close()
 
@@ -360,7 +393,12 @@ func _load_tier() -> void:
 		master_post_processing_enabled = bool(d.get("master_post_processing_enabled", true))
 		selection_outline_enabled = bool(d.get("selection_outline_enabled", true))
 		lens_flare_enabled = bool(d.get("lens_flare_enabled", true))
-		light_shafts_enabled = bool(d.get("light_shafts_enabled", true))
+		# Defaults for light_shafts + rain_visuals changed to false 2026-05-27
+		# (designer-deferred). Missing key in older user://graphics.json
+		# reads as the new default.
+		light_shafts_enabled = bool(d.get("light_shafts_enabled", false))
 		rainbow_enabled = bool(d.get("rainbow_enabled", true))
+		rain_3d_fallback_enabled = bool(d.get("rain_3d_fallback_enabled", false))
+		rain_visuals_enabled = bool(d.get("rain_visuals_enabled", false))
 	else:
 		current_tier = DEFAULT_TIER

@@ -88,7 +88,12 @@ uniform float nebula_rotation = 0.0;
 // Multiplied by rainbow_factor and the day mix so it fades into
 // nothing at night when there'd be no sunlight to refract.
 global uniform float rainbow_factor;
-uniform float rainbow_band_strength : hint_range(0.0, 3.0) = 1.50;  // Phase K bundle 2026-05-27: 0.85 -> 1.50 designer-bumped for visibility
+uniform float rainbow_band_strength : hint_range(0.0, 3.0) = 2.50;  // Weather rework 2026-05-27 Phase E: 1.50 -> 2.50 + draw AFTER clouds (was hidden behind 1.0-alpha cloud cover during rain → clear)
+// Debug uniform — when > 0.5, the rainbow band is drawn at FULL alpha
+// regardless of rainbow_factor / day / LIGHT0_ENABLED so the designer can
+// confirm the angular geometry (38° inner / 45° outer around antisolar)
+// is computing correctly. Push from WeatherManager via global shader param.
+global uniform float rainbow_debug;
 
 // Equirectangular UV for the panorama textures.
 vec2 equirect_uv(vec3 dir) {
@@ -247,61 +252,6 @@ void sky() {
 		sky_col += vec3(stars(star_dir) * star_brightness * night * star_horizon);
 	}
 
-	// --- Layer 2.5: rainbow-after-rain (Phase K bundle 2026-05-27) ---
-	// Forms an arc centred on the antisolar point at ~42° radius. Visible
-	// only when (a) rainbow_factor > 0 (WeatherManager state machine
-	// active), (b) the sun is enabled (no sun = no light to refract),
-	// (c) it's day (rainbows don't form at night). Multiplied by `day`
-	// so the band fades automatically with the day cycle even mid-arc.
-	if (rainbow_factor > 0.001 && LIGHT0_ENABLED && day > 0.05 && up > -0.10) {
-		vec3 antisolar = -LIGHT0_DIRECTION;
-		float cos_theta = clamp(dot(EYEDIR, antisolar), -1.0, 1.0);
-		float theta_deg = degrees(acos(cos_theta));
-		// 38° inner edge, 45° outer edge — wider than the physical 40-42°
-		// primary rainbow so it's actually visible at typical play
-		// distances (designer reported the 2° band was too narrow to
-		// see). 7° wide reads as an obvious arc without crossing into
-		// "neon stripe" territory.
-		float t_band = (theta_deg - 38.0) / 7.0;  // 0 at inner, 1 at outer
-		if (t_band >= 0.0 && t_band <= 1.0) {
-			// Map t_band 0..1 to violet→red. Standard rainbow spectrum
-			// reversed because the OUTER edge is red, INNER is violet.
-			// 6 anchor colours; lerp between adjacent pair via an
-			// explicit segment-pick (Godot GDSL does NOT support C-style
-			// `vec3 arr[6] = { ... };` initializer-list syntax inside a
-			// function body — must use the constructor form
-			// `vec3[6](v, v, ...)` OR open-code the lookup. Open-code is
-			// the safer choice here: smaller compiled shader, no
-			// array-indexing edge cases on older GPU drivers).
-			vec3 c0 = vec3(0.58, 0.00, 0.83);  // violet (inner, t_band=0)
-			vec3 c1 = vec3(0.00, 0.00, 1.00);  // blue
-			vec3 c2 = vec3(0.00, 1.00, 0.00);  // green
-			vec3 c3 = vec3(1.00, 1.00, 0.00);  // yellow
-			vec3 c4 = vec3(1.00, 0.50, 0.00);  // orange
-			vec3 c5 = vec3(1.00, 0.00, 0.00);  // red (outer, t_band=1)
-			float seg_f = clamp(t_band, 0.0, 1.0) * 5.0;
-			int seg = int(floor(seg_f));
-			if (seg > 4) seg = 4;
-			float seg_t = seg_f - float(seg);
-			vec3 a;
-			vec3 b;
-			if (seg == 0)      { a = c0; b = c1; }
-			else if (seg == 1) { a = c1; b = c2; }
-			else if (seg == 2) { a = c2; b = c3; }
-			else if (seg == 3) { a = c3; b = c4; }
-			else               { a = c4; b = c5; }
-			vec3 rainbow_col = mix(a, b, seg_t);
-			// Soft AA at band edges so the rainbow doesn't have a hard
-			// stripe boundary.
-			float edge_aa = min(t_band, 1.0 - t_band) * 4.0;
-			float band_alpha = clamp(edge_aa, 0.0, 1.0);
-			// Final additive contribution. day folds out the colour as
-			// the sky darkens; rainbow_factor is the WeatherManager ramp.
-			sky_col += rainbow_col * (band_alpha * rainbow_band_strength
-									* rainbow_factor * day);
-		}
-	}
-
 	// --- Layer 3: cloud layer (drawn last so clouds sit in front) ---
 	if (up > 0.01) {
 		// Project the view ray onto a flat horizontal cloud layer.
@@ -341,6 +291,68 @@ void sky() {
 		float horizon_fade = smoothstep(0.02, 0.32, up);
 		float alpha = cloud * cloud_opacity * horizon_fade;
 		sky_col = mix(sky_col, cloud_rgb, alpha);
+	}
+
+	// --- Layer 4: rainbow-after-rain (Weather rework 2026-05 Phase E) ---
+	// Drawn AFTER clouds so partial cloud cover during a rain → clear
+	// transition doesn't hide the arc behind 1.0-alpha cloud rgb. Forms a
+	// circle of radius ~42° around the antisolar point (-LIGHT0_DIRECTION).
+	// Conditions: rainbow_factor > 0 (WeatherManager state machine active),
+	// sun enabled (no light = no refraction), day > 0.05 (rainbows don't
+	// form at night), looking at or above horizon. `rainbow_debug` (global
+	// uniform) > 0.5 overrides every gate so the designer can see the band
+	// geometry in any conditions.
+	bool rainbow_visible = rainbow_factor > 0.0001 && LIGHT0_ENABLED && day > 0.05 && up > -0.10;
+	if (rainbow_visible || rainbow_debug > 0.5) {
+		vec3 antisolar = -LIGHT0_DIRECTION;
+		float cos_theta = clamp(dot(EYEDIR, antisolar), -1.0, 1.0);
+		float theta_deg = degrees(acos(cos_theta));
+		// 38° inner edge, 45° outer edge — wider than the physical 40-42°
+		// primary rainbow so it's actually visible at typical play
+		// distances. 7° wide reads as an obvious arc without crossing
+		// into "neon stripe" territory.
+		float t_band = (theta_deg - 38.0) / 7.0;  // 0 inner, 1 outer
+		if (t_band >= 0.0 && t_band <= 1.0) {
+			// Map t_band 0..1 to violet→red. Standard rainbow spectrum
+			// reversed because the OUTER edge is red, INNER is violet.
+			// 6 anchor colours; open-coded if/else-if chain rather than
+			// array indexing (GDSL doesn't support C-style
+			// `vec3 arr[6] = {...}` init in function scope).
+			vec3 c0 = vec3(0.58, 0.00, 0.83);  // violet (inner, t_band=0)
+			vec3 c1 = vec3(0.00, 0.00, 1.00);  // blue
+			vec3 c2 = vec3(0.00, 1.00, 0.00);  // green
+			vec3 c3 = vec3(1.00, 1.00, 0.00);  // yellow
+			vec3 c4 = vec3(1.00, 0.50, 0.00);  // orange
+			vec3 c5 = vec3(1.00, 0.00, 0.00);  // red (outer, t_band=1)
+			float seg_f = clamp(t_band, 0.0, 1.0) * 5.0;
+			int seg = int(floor(seg_f));
+			if (seg > 4) seg = 4;
+			float seg_t = seg_f - float(seg);
+			vec3 a;
+			vec3 b;
+			if (seg == 0)      { a = c0; b = c1; }
+			else if (seg == 1) { a = c1; b = c2; }
+			else if (seg == 2) { a = c2; b = c3; }
+			else if (seg == 3) { a = c3; b = c4; }
+			else               { a = c4; b = c5; }
+			vec3 rainbow_col = mix(a, b, seg_t);
+			float edge_aa = min(t_band, 1.0 - t_band) * 4.0;
+			float band_alpha = clamp(edge_aa, 0.0, 1.0);
+			// In debug mode, draw at full alpha + ignore day/factor so we
+			// can see WHERE the arc would form regardless of weather state.
+			float contribution;
+			if (rainbow_debug > 0.5) {
+				contribution = band_alpha;
+			} else {
+				// max(day, 0.4) clamp prevents the rainbow from being
+				// fully zeroed at dusk (designer noted it should still be
+				// visible at low sun angles when atmospheric scattering
+				// would actually make a real rainbow MORE vivid).
+				contribution = band_alpha * rainbow_band_strength
+				             * rainbow_factor * max(day, 0.4);
+			}
+			sky_col += rainbow_col * contribution;
+		}
 	}
 
 	COLOR = sky_col;
