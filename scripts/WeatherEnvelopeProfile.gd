@@ -1,6 +1,12 @@
-class_name WeatherEnvelopeProfile
 extends Resource
 # WeatherEnvelopeProfile — how an ambient audio bed fades in / out.
+#
+# **NOTE: no `class_name`** — referenced from `WeatherManager.gd` (an
+# autoload) via path-preload. The headless harness doesn't rescan global
+# classes, so a `class_name` here would cause WeatherManager to fail to
+# parse during headless runs. Same rule as `WaterMaterial.gd`,
+# `ShaderProfile.gd`, `EntityRecord.gd`. See
+# `design/PATTERNS_AND_GOTCHAS.md`.
 #
 # Replaces the linear-dB Tween.tween_property(volume_db, ...) from PR #244
 # which the designer reported as "still feels like a hard switch" + audio

@@ -369,6 +369,9 @@ var _weather_lowpass_effect: AudioEffectLowPassFilter = null
 # One envelope profile drives every state's crossfade for now (designer can
 # author per-state profiles later if needed). Defaults killed the 5 s lag
 # the designer reported on PR #244 by setting lead_seconds = 0.
+# WeatherEnvelopeProfile has no `class_name` (headless-harness-safe per
+# design/PATTERNS_AND_GOTCHAS.md). Path-preload to use as a type.
+const WeatherEnvelopeProfile := preload("res://scripts/WeatherEnvelopeProfile.gd")
 var _envelope_profile: WeatherEnvelopeProfile = null
 # Active fade-in tween (so we can preempt it on a rapid swap).
 var _ambient_fade_in_tween: Tween = null
