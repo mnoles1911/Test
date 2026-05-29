@@ -39,13 +39,19 @@ Update this block whenever a branch opens / closes. **Read it before assuming a 
 
 ## Deprecated / superseded (do NOT implement from these)
 
-Files that still exist but look canonical without being it. Always check this list before implementing against an older-looking plan.
+Files that still exist on disk but look canonical without being it.
 
-- **`design/WATER_VOXEL_V2_PLAN.md`** — superseded by the **native-fluid pivot** (`WATER_STAGE6_PLAN.md` is the actual record). Water is now Zylann `VoxelBlockyModelFluid` at ids 16–23, not the V2 transparent voxel scheme.
-- **`scripts/WaterChunkMesher.gd`** — **DELETED 2026-05-16**. Any doc / comment referencing it is stale.
-- **`scripts/EmissiveLightManager.gd` v1 OmniLight3D streaming** — kept on disk as fallback but **parked at startup by `EmissiveBakedLightManager`** (Phase J). New emissive work goes through the baked manager, not v1.
-- **`scripts/HorizonSkirt.gd` / `scripts/_dev/SkirtBaker.gd`** — retired 2026-05-22 by `DistantTerrainManager` streaming heightmesh. Any doc referencing the baked skirt is stale.
-- **`scripts/_dev/`, `scripts/_prototypes/`, `scenes/_prototypes/`** — throwaway / parity / experimental code. Don't pattern new work after files in these directories without checking they're current.
+- **`scripts/EmissiveLightManager.gd`** — v1 OmniLight3D-streaming emissive system. Still on disk as a fallback BUT parked at startup by `EmissiveBakedLightManager` (Phase J). New emissive work goes through the **baked** manager (3D-texture floodfill), not v1.
+
+**Already deleted** (don't recreate; old design docs / comments may reference them but the files are gone):
+- `scripts/WaterChunkMesher.gd` — deleted 2026-05-16 in the native-fluid pivot.
+- `scripts/HorizonSkirt.gd`, `scripts/_dev/SkirtBaker.gd`, `assets/heightmaps/copper_isles_skirt.res` — retired 2026-05-22, replaced by streaming `DistantTerrainManager`.
+- `design/WATER_VOXEL_V2_PLAN.md` — removed; `design/WATER_STAGE6_PLAN.md` is the actual record of the pivot.
+
+## Directory conventions
+
+- **`scripts/_dev/`** is production glue + dev tools — generator adapters (`CubicHeightmapGeneratorAdapter`), parity references (`GravityReference`, `EmissiveReference`), dev-scene bootstraps, F12 debug helpers. Actively used by `World3D.tscn` and the headless harness. **NOT throwaway.**
+- **`scripts/_prototypes/`, `scenes/_prototypes/`** — actual throwaway / spike code. Don't pattern new work from here without checking it's current.
 
 ## Top-level reference files
 
