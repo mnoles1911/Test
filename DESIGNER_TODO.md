@@ -190,16 +190,13 @@ Scene building and node configuration that has to be done in the editor.
   pass — note which tier looks wrong and how.
   Reference: `design/GRAPHICS_PASS_2026-05-19.md` → "Phases F / H / K — SHIPPED".
 
-- [ ] **Visual gate — graphics Phases G / I / J** (branch `feat/graphics-phases-g-i-j`)
-  The rest of the graphics roadmap shipped 2026-05-22: G (AtmosphereProfile
-  refactor), I (tangent-free per-pixel terrain relief + emission/roughness),
-  J (emissive voxels cast coloured `OmniLight3D` light). Headless-gated;
-  all three need an in-editor visual check. Run `World3D.tscn` and work
-  through the **"END-OF-BUILD VISUAL CHECKLIST — Phases G / I / J"** in
-  `design/GRAPHICS_PASS_2026-05-19.md` (items G1, I1, I2, J1, J2). The
-  headline test: dig down into stone, mine into a copper-ore vein — it
-  should glow warm amber and light the tunnel around it. Report anything
-  that looks off; tuning knobs are listed inline in the checklist.
+- [x] **Visual gate — graphics Phases G / I / J** — PASSED (2026-05-22, PR #238)
+  G (AtmosphereProfile), I (tangent-free terrain relief), J (emissive
+  voxels cast coloured light) all verified in-editor. Designer testing
+  caught one bug — emissive copper buried in solid rock lit the surface
+  through the terrain in a player-following radius — fixed so only
+  air-exposed emissive voxels register a light. Glowing ore, the
+  day-cycle, and ULTRA-tier SDFGI global illumination all confirmed good.
 
 - [ ] **Build `scenes/NPC_Template.tscn`**
   Create once; duplicate for every new NPC going forward.
@@ -242,6 +239,15 @@ Scene building and node configuration that has to be done in the editor.
 - [ ] **Add `SpawnPoint3D` nodes for each NPC schedule location**
   Each `NPCScheduleEntry.location_id` must match the exact name of a `SpawnPoint3D`
   node in the scene. Add each to the `spawn_points` group via Node panel → Groups tab.
+
+- [x] **Verify + tune the DistantTerrain streaming heightmesh** — DONE
+  via PR #240 (2026-05-26). The branch closed with `lod_count=4`,
+  `view_distance=512 vox`, `DistantTerrainManager.inner_cull_radius=130 m`,
+  `albedo_tint=(0.70, 0.85, 0.55)`. The streaming pipeline went from "outrun
+  LOD0 in 10 s" to "designer confirmed cannot out run the streaming." The
+  bright-skirt-ghosting-through-hills bug fixed by the new shader tint.
+  Outstanding: LOD1+ water-surface line artefact (separate water-shader work,
+  not a DistantTerrain issue — see CLAUDE.md 2026-05-26 milestone).
 
 ---
 
@@ -872,6 +878,72 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
+- **Weather rework — FRAMEWORK BUILT, ALL VISUALS DEFAULT-OFF.**
+  Designer playtest verdict (2026-05-27): "rain visuals look really
+  bad… god rays are not visible… needs hours of player iteration and
+  VFX and SFX work on another day." All visual phases (A rain shader,
+  B wet-terrain + splashes, D god rays) gated behind GraphicsManager
+  toggles defaulting OFF — scene baseline preserved, system inert.
+  Phase C (audio crossfade envelope) stays live as an objective
+  improvement over the linear-dB tween, even if it also needs more
+  iteration. Phase E (rainbow shader) stays live but the test was at
+  midday so antisolar was below horizon — arc is geometrically
+  invisible at high-sun angles even with a working shader.
+
+  **What this means:** the foundation is on disk and ready for a
+  dedicated multi-session iteration pass. Each phase is one
+  GraphicsManager toggle flip away from being live for tuning. To
+  iterate later:
+  1. F1 → COMMANDS → GRAPHICS / POST-FX. Flip RAIN VISUALS ON to
+     start tuning the rain shader / wet-surface / splash particles.
+     Phase A still needs redesign per "looks really bad" — likely
+     wants an artist-authored streak texture instead of pure
+     procedural.
+  2. Flip LIGHT SHAFTS ON to start tuning god rays per-state
+     (`vol_fog_density / _length / _albedo` in `STATE_PROFILES`).
+  3. Rainbow: trigger via FORCE RAINBOW NOW and stand at dawn or
+     dusk where antisolar is above horizon (azimuth + elevation
+     logged each second so designer knows where to face).
+  4. Audio: tune `WeatherEnvelopeProfile` (lead_seconds /
+     fade_seconds / curve_pow / lowpass sweep) or author per-state
+     resources.
+
+  Original per-phase implementation testing checklist for the future
+  iteration session:
+  - **Rain visual (Phase A).** Set HEAVY_RAIN via DebugOverlay WEATHER
+    sub-view. Confirm: streaks come in gradually over the 30 s
+    transition (not on/off); streaks remain visible at every camera
+    angle including looking straight down; streaks lean with wind
+    direction; vanish when player submerges. Old GPUParticles3D rig
+    available behind the `rain_3d_fallback` toggle for A/B comparison.
+  - **Rain audio (Phase C).** Same trigger. Confirm: audio onset is
+    immediate (no ~5 s lag vs the visual); ramp feels like a build-up,
+    not a switch; bed sounds "muffled → open" as the low-pass sweep
+    completes. Designer may want to tune `WeatherEnvelopeProfile` knobs
+    (curve_pow, lowpass_hz_low/high, fade_seconds) — author per-state
+    Resources if a state needs a different feel.
+  - **God rays (Phase D).** Set CLEAR at midday. Confirm: visible
+    volumetric shafts where the sun cuts through occluding geometry
+    (tree trunks, building edges). Set HEAVY_RAIN — shafts should
+    fully vanish. UnderwaterFilter on-submerge override still works.
+  - **Rainbow (Phase E).** Set HEAVY_RAIN → wait 30 s → set CLEAR.
+    Watch the `[WeatherManager] Rainbow ramping up: ... antisolar
+    az=X° el=Y°` log line — face that azimuth + look slightly up.
+    Should see the arc form over 30 s. If invisible, hit the
+    DebugOverlay WEATHER sub-view "RAINBOW DEBUG" toggle to draw the
+    band at full alpha regardless of state, confirming the geometry.
+    "FORCE RAINBOW NOW" triggers without needing the rain transition.
+  - **Wet terrain (Phase B follow-on).** Same HEAVY_RAIN trigger.
+    Stone / dirt / grass surfaces should darken slightly and pick up
+    a specular sheen from the sun (roughness drop). Small splash ring
+    particles appear on the ground around the player.
+
+  Authoring opportunity: per-state `WeatherEnvelopeProfile` Resources
+  in `assets/weather/envelopes/` once the designer wants per-bed feel
+  (e.g. fog rolls in slowly with a tighter low-pass; rain crashes in
+  with a brighter cutoff). Plumb `STATE_PROFILES["envelope"]` ->
+  `_swap_ambient_audio` picks the profile by state.
+
 - **WeatherManager polish — deferred from PR #132 code review (2026-05-04).**
   Self-review surfaced these. Each is functionally tolerable today; bundle
   for a future cleanup pass.
@@ -903,14 +975,16 @@ a short pitch; promote to a real section when scope is committed.
     shutdown ordering quirks could surface a write to a freed Tween.
     Low-risk; address if it ever shows up in the log.
 
-- **HorizonSkirt — triplanar texturing for distant terrain (Copper Isles + future regions).**
-  Today the baked skirt mesh (`assets/voxel/copper_isles_skirt.res`,
-  `scripts/_dev/SkirtBaker.gd` + `scripts/HorizonSkirt.gd`) reads as
-  vertex-colour bands with per-vertex noise. Lit by Cascaded Shadow
-  Maps and shaded as 3-stop elevation gradient (forest → rock →
-  snowcap), it's a clear upgrade over the original flat-grey, but it
-  still reads as "low-LOD distant terrain" up close — uniformly tinted
-  slopes without surface texture detail.
+- **DistantTerrain — triplanar texturing for the distant heightmesh.**
+  (Was "HorizonSkirt triplanar texturing"; the baked HorizonSkirt was
+  retired 2026-05-22 — this now applies to the streaming
+  `DistantTerrainManager` heightmesh, which inherited the skirt's
+  vertex-colour palette via `assets/shaders/distant_terrain.gdshader`.)
+  The distant heightmesh reads as vertex-colour bands with per-vertex
+  noise — a 3-stop elevation gradient (forest → rock → snowcap) plus a
+  slope-to-rock shift. Coherent at distance, but it reads as untextured
+  "low-LOD terrain" if the player gets near the blocky↔smooth handoff
+  band — uniformly tinted slopes without surface texture detail.
   
   Production open-worlds (Skyrim, BotW, Horizon, Witcher 3) push
   past this with **triplanar texturing**: project a small set of

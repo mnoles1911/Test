@@ -235,62 +235,86 @@ func _on_damaged(amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 		DebugOverlay.log_action("Goblin %s wounded (%d) → HP %d" % [name, amount, health])
 
 
-func _on_died(damage_at_kill: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
-	# Phase 5 will branch on damage_at_kill (topple vs. explosion),
-	# spawn FallingVoxelCluster, etc. v1 placeholder behavior:
-	#   - Lay the visual flat (rotate forward 90°) so it reads as a
-	#     fallen body rather than vanishing
-	#   - Rotate the chest socket alongside the visual so any
-	#     embedded spears pivot with the body and end up pointing
-	#     up out of the corpse's back (face-down body)
-	#   - Darken the color and kill the eye glow so it looks dead
-	#   - Stop the wound drip
-	#   - Drop a Layer C blood pool at the kill site
+func _on_died(damage_at_kill: int, hit_dir: Vector3, hit_point: Vector3) -> void:
+	# Phase 5 (Combat) — branch on damage_at_kill:
+	#   damage >= OVERKILL_DAMAGE_THRESHOLD (80):  GIB EXPLOSION
+	#     - Hide the visual + eye glow
+	#     - Spawn GIB_CHUNK_COUNT chunks with radial outward impulse
+	#     - Reparent any embedded spears to a random gib chunk so they
+	#       visibly travel with the explosion rather than floating where
+	#       the (now hidden) corpse was
+	#     - Enemy3D.die() already fired the time-slow + camera kick
+	#       before calling us (lines up the explosion with the punch)
+	#   damage <  OVERKILL_DAMAGE_THRESHOLD: topple (v1 behaviour)
+	#     - Lay the visual flat, rotate chest socket so embedded spears
+	#       pivot with the body, darken to corpse-grey
+	# In both cases: kill the eye glow, stop the wound drip, drop a
+	# Layer C blood pool.
 	# Enemy3D.die() handles the eventual queue_free via
-	# corpse_lifetime_seconds (default 5 minutes) and spawns the
-	# corpse-interaction Area3D for E-press loot.
-	if _visual != null:
-		# Rotate -90° on X (faceplant forward), then sink so the
-		# now-horizontal box rests on the ground rather than floating
-		# at original chest height. Box was 0.5×1.8×0.4 with origin
-		# at Y=0.9; after the X-rotation its vertical extent becomes
-		# 0.4, half-height 0.2, so origin Y=0.2 puts the bottom on
-		# the ground.
-		_visual.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-		_visual.position = Vector3(0.0, 0.2, 0.0)
-		# Darken to dead-grey-green so the corpse reads visually
-		# distinct from living goblins still in the area.
-		var corpse_mat: StandardMaterial3D = StandardMaterial3D.new()
-		corpse_mat.albedo_color = Color(0.18, 0.22, 0.14, 1.0)
-		_visual.material_override = corpse_mat
-	if _chest_socket != null:
-		# Rotate the chest socket the same -90° X so any spears
-		# parented inside it pivot with the body. The spear's local
-		# transform (relative to ChestSocket) doesn't change — only
-		# its global transform follows the rotation. A spear that
-		# was sticking horizontally through the chest now points
-		# vertically up from the corpse's back, like an arrow buried
-		# in a fallen body.
-		#
-		# Drop the socket to the chest height of the lying-down
-		# body (~0.5 m) so the spear ends up at the right place
-		# spatially.
-		_chest_socket.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-		_chest_socket.position = Vector3(0.0, 0.5, 0.0)
-	if _eye_glow != null:
-		_eye_glow.visible = false
+	# corpse_lifetime_seconds and spawns the corpse-interaction Area3D
+	# for E-press loot (gibs are still part of the corpse — looting
+	# returns embedded spears from whatever chunk they ride).
+
+	var overkill: bool = damage_at_kill >= OVERKILL_DAMAGE_THRESHOLD
+
+	if overkill:
+		# Hide the visual + eye glow. Body chunks ARE the corpse now.
+		if _visual != null:
+			_visual.visible = false
+		if _eye_glow != null:
+			_eye_glow.visible = false
+		# Spawn the chunks via the Enemy3D base helper. Skin = goblin
+		# green, core = darker red (interior body voxels).
+		var skin := Color(0.20, 0.55, 0.18, 1.0)
+		var core := Color(0.55, 0.10, 0.10, 1.0)
+		var chunks: Array = _spawn_gib_explosion(global_position, hit_point, hit_dir, skin, core)
+		# Reparent any embedded spears in the ChestSocket onto random
+		# gib chunks so the spear visibly tumbles with the explosion.
+		# Children are freed-by-reparent so we iterate over a copy.
+		if _chest_socket != null and not chunks.is_empty():
+			var embedded := _chest_socket.get_children()
+			for child in embedded:
+				if child is ThrowableSpear:
+					var target_chunk: RigidBody3D = chunks[randi() % chunks.size()]
+					var spear: Node3D = child as Node3D
+					var world_xform: Transform3D = spear.global_transform
+					spear.get_parent().remove_child(spear)
+					target_chunk.add_child(spear)
+					spear.global_transform = world_xform
+	else:
+		# Non-overkill topple — original v1 behaviour preserved.
+		if _visual != null:
+			# Rotate -90° on X (faceplant forward), then sink so the
+			# now-horizontal box rests on the ground rather than floating
+			# at original chest height. Box was 0.5×1.8×0.4 with origin
+			# at Y=0.9; after the X-rotation its vertical extent becomes
+			# 0.4, half-height 0.2, so origin Y=0.2 puts the bottom on
+			# the ground.
+			_visual.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+			_visual.position = Vector3(0.0, 0.2, 0.0)
+			var corpse_mat: StandardMaterial3D = StandardMaterial3D.new()
+			corpse_mat.albedo_color = Color(0.18, 0.22, 0.14, 1.0)
+			_visual.material_override = corpse_mat
+		if _chest_socket != null:
+			# Rotate the chest socket the same -90° X so any spears
+			# parented inside it pivot with the body. The spear's local
+			# transform (relative to ChestSocket) doesn't change — only
+			# its global transform follows the rotation.
+			_chest_socket.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+			_chest_socket.position = Vector3(0.0, 0.5, 0.0)
+		if _eye_glow != null:
+			_eye_glow.visible = false
+
 	if get_node_or_null("/root/BloodVFX"):
 		BloodVFX.stop_drip(self)
 		# Pool grows larger and faster on overkill — a charged-spear
-		# kill (60+ dmg) leaves more visible mess than a finishing tap.
-		# Dialed up 2026-05-13 for the "aggressive blood" goal: pools
-		# are now 3-4.5 m across, growing to full size in 1.5-2.5 s
-		# so the kill instantly reads as gory rather than a slow stain.
+		# kill leaves more visible mess than a finishing tap.
 		var size: float = 4.5 if damage_at_kill >= 50 else 3.0
 		var grow: float = 1.5 if damage_at_kill >= 50 else 2.5
 		BloodVFX.spawn_pool(global_position, size, grow)
 	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("Goblin %s killed (%d dmg)" % [name, damage_at_kill])
+		var verdict: String = "OVERKILL" if overkill else "kill"
+		DebugOverlay.log_action("Goblin %s %s (%d dmg)" % [name, verdict, damage_at_kill])
 
 
 ## Override of Enemy3D._loot_corpse. Walks the chest socket's child

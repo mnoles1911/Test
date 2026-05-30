@@ -278,6 +278,28 @@ func frame_finalize() -> void:
 		var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 		var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
 		var vram_mb: int = int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / (1024 * 1024))
+		# Added 2026-05-25 (streaming-throughput probe): the worst spike
+		# in the prior capture had real=104 ms but only ~16 ms attributed
+		# to wrapped scripts and ~0 ms in Zylann's detect/io/mesh. The 87 ms
+		# gap is engine-side — but we couldn't tell WHICH engine subsystem.
+		# These four narrow the field:
+		#   render_objs    — total visible objects this frame; a jump
+		#                    correlates with a draw burst from streaming
+		#                    chunks arriving.
+		#   phys_pairs     — collision pairs Bullet/Jolt is currently
+		#                    tracking. Rises sharply when newly-streamed
+		#                    chunks add CollisionShape3D bodies.
+		#   phys_active    — active rigid/character bodies in the scene.
+		#   phys_islands   — separate physics simulation islands.
+		# If a spike correlates with a phys_pairs jump → collision-shape
+		# rebuild is the bottleneck. If it correlates with a render_objs /
+		# draws jump → render submission. If neither, the cost is in
+		# shadow-atlas rebuild / SDFGI cascade integration (no Performance
+		# monitor exposes those directly).
+		var render_objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+		var phys_pairs: int = int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))
+		var phys_active: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS))
+		var phys_islands: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ISLAND_COUNT))
 
 		var record: Dictionary = {
 			"frame": _frame_count_total,
@@ -290,6 +312,10 @@ func frame_finalize() -> void:
 				"draws": draws,
 				"prims": prims,
 				"vram_mb": vram_mb,
+				"render_objs": render_objs,
+				"phys_pairs": phys_pairs,
+				"phys_active": phys_active,
+				"phys_islands": phys_islands,
 			},
 		}
 		# Zylann main-thread budgets. Pull from the live VoxelLodTerrain
@@ -299,6 +325,15 @@ func frame_finalize() -> void:
 		var zstats: Dictionary = _read_zylann_stats()
 		if not zstats.is_empty():
 			record["zylann"] = zstats
+		# Per-LOD chunk counts + viewer telemetry (added 2026-05-26).
+		# Both are cheap (a few Variant calls + a small tree walk) and
+		# only paid during capture mode.
+		var lod_stats: Dictionary = read_zylann_per_lod_stats()
+		if not lod_stats.is_empty():
+			record["lod_counts"] = lod_stats
+		var vt: Dictionary = read_viewer_telemetry()
+		if vt.has("viewers") and not (vt["viewers"] as Array).is_empty():
+			record["viewers"] = vt
 		_capture_buffer.append(record)
 
 	# Roll the 1s window if it's elapsed.
@@ -435,6 +470,122 @@ func _walk_for_terrain(node: Node) -> Node:
 		if found != null:
 			return found
 	return null
+
+
+# --- Viewer telemetry (added 2026-05-26) -------------------------------
+#
+# Captures every VoxelViewer in the scene per frame so we can detect:
+#   • A viewer that lags the player (lead < 0 in motion direction)
+#   • A viewer offset in the WRONG world direction (alignment dot < 0
+#     means viewer is behind the player relative to motion — the exact
+#     bug fixed in commit a76d3ae, would have shown alignment ≈ -1.0
+#     when the player faced any direction except world -Z)
+#   • view_distance drift / a viewer accidentally pinned at the wrong
+#     size (e.g. the spawn-load shrink not being restored)
+#
+# Returns a dict that's cheap to JSON-serialise:
+#   {
+#     player_position: Vector3,
+#     player_velocity: Vector3,
+#     viewers: [
+#       {
+#         path: String (NodePath from root, for distinguishing two viewers),
+#         global_position: Vector3,
+#         view_distance: int,
+#         offset_from_player: Vector3,
+#         distance_to_player_m: float,
+#         alignment: float    # dot(offset_dir, vel_dir); +1=lead, -1=lag, 0=perp / idle
+#       },
+#       ...
+#     ]
+#   }
+#
+# Alignment is meaningless when the player is idle (vel ≈ 0); the
+# caller should treat |vel| < 0.5 as "alignment N/A" and surface "—".
+
+func read_viewer_telemetry() -> Dictionary:
+	var out: Dictionary = {"viewers": []}
+	# Find the player. We use the "player" group (Player3D.tscn adds itself).
+	var tree: SceneTree = Engine.get_main_loop()
+	var player: Node3D = tree.get_first_node_in_group("player") as Node3D
+	if player == null:
+		return out
+	var p_pos: Vector3 = player.global_position
+	var p_vel: Vector3 = Vector3.ZERO
+	if player is CharacterBody3D:
+		p_vel = (player as CharacterBody3D).velocity
+	out["player_position"] = p_pos
+	out["player_velocity"] = p_vel
+	var horiz: Vector3 = Vector3(p_vel.x, 0.0, p_vel.z)
+	var horiz_len: float = horiz.length()
+
+	# Walk the tree for every VoxelViewer. Cheap — typically ≤3 in scene
+	# (main viewer + PrefetchViewer + any bake-tool phantom viewer).
+	var viewers: Array = []
+	_walk_for_viewers(tree.root, viewers)
+	for v in viewers:
+		var node: Node3D = v as Node3D
+		var v_pos: Vector3 = node.global_position
+		var offset: Vector3 = v_pos - p_pos
+		var offset_h: Vector3 = Vector3(offset.x, 0.0, offset.z)
+		var offset_h_len: float = offset_h.length()
+		var align: float = 0.0
+		if horiz_len > 0.5 and offset_h_len > 0.05:
+			align = horiz.normalized().dot(offset_h.normalized())
+		var vd: int = 0
+		if "view_distance" in node:
+			vd = int(node.get("view_distance"))
+		out["viewers"].append({
+			"path": str(node.get_path()),
+			"global_position": v_pos,
+			"view_distance": vd,
+			"offset_from_player": offset,
+			"distance_to_player_m": offset.length(),
+			"alignment": align,
+		})
+	return out
+
+
+func _walk_for_viewers(node: Node, out: Array) -> void:
+	if node.get_class() == "VoxelViewer":
+		out.append(node)
+	for child in node.get_children():
+		_walk_for_viewers(child, out)
+
+
+# --- Per-LOD chunk counts (added 2026-05-26) ---------------------------
+#
+# Probes the live VoxelLodTerrain for any per-LOD counters it exposes.
+# Zylann's _debug_get_block_count() returns a per-LOD int array in
+# recent builds (verified in tools/headless/runner.gd:247 probe list).
+# get_data_block_count() exists on older builds as a single int.
+#
+# Both probes degrade silently when missing, returning whatever subset
+# Zylann happens to expose in this build. The point of the LOD
+# distribution is to confirm or refute "chunks ahead are stuck at LOD2
+# while LOD3 keeps growing" — without this we're guessing.
+#
+# Returns a flat dict like:
+#   {
+#     loaded_per_lod: [1234, 567, 89, 12],   # one int per LOD index
+#     data_block_count: 23456,
+#   }
+# Either or both keys may be absent.
+
+func read_zylann_per_lod_stats() -> Dictionary:
+	if _zylann_terrain == null or not is_instance_valid(_zylann_terrain):
+		_zylann_terrain = _find_voxel_terrain()
+	if _zylann_terrain == null:
+		return {}
+	var out: Dictionary = {}
+	if _zylann_terrain.has_method("_debug_get_block_count"):
+		var v = _zylann_terrain.call("_debug_get_block_count")
+		# Zylann returns either a Dictionary, an Array, or an int depending
+		# on build. Store whatever we get under a stable key.
+		out["loaded_per_lod"] = v
+	if _zylann_terrain.has_method("get_data_block_count"):
+		out["data_block_count"] = int(_zylann_terrain.call("get_data_block_count"))
+	return out
 
 
 func capture_start() -> void:

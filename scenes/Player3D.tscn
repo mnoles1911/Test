@@ -20,7 +20,6 @@
 [ext_resource type="Script" path="res://scripts/EditToolHandler.gd" id="3_edit_tool"]
 [ext_resource type="Script" path="res://scripts/ThrowableHandler.gd" id="4_throwable"]
 [ext_resource type="Script" path="res://scripts/UnderwaterFilter.gd" id="5_underwater"]
-[ext_resource type="Script" path="res://scripts/PrefetchViewer.gd" id="6_prefetch"]
 [ext_resource type="ShaderMaterial" uid="uid://b8uwoverlay001" path="res://assets/shaders/underwater_overlay_material.tres" id="7_uw_overlay"]
 [ext_resource type="Script" path="res://scripts/MeleeHandler.gd" id="8_melee"]
 
@@ -224,21 +223,22 @@ current = true
 ;     radius. Bump up if a vista needs more voxel-rendered terrain
 ;     at the cost of movement framerate.
 ;
+;   2700 voxels (~450 m): cut 2026-05-22 for the DistantTerrain LOD
+;     overhaul — but this still streamed a huge coarse-LOD3 annulus
+;     (lod_count 4 only LOD-covers ~1024 voxels), the real cause of the
+;     10-15 s LOD resolve times.
+;   1100 voxels (~183 m): cut 2026-05-22 — matched to lod_count 4's
+;     actual LOD coverage (LOD3 outer ~1024 voxels) so NO wasteful
+;     coarse annulus streams. ~5x fewer chunks: the near band resolves
+;     fast and the (Zylann-capped 21 m) LOD0 ring tracks the player.
+;     DistantTerrainManager's smooth heightmesh covers everything past
+;     it. Tune with F12 — push higher for a bigger blocky band at a
+;     streaming cost; a small coarse annulus past 1024 voxels is
+;     tolerable, the 1024-2700 one was not.
+;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
 ; more visible distance (at the cost of streaming load).
-view_distance = 8000
-
-[node name="PrefetchViewer" type="Node3D" parent="."]
-; Velocity-scaled SECONDARY VoxelViewer (see scripts/PrefetchViewer.gd).
-; Loads chunks ahead of the player's movement direction so they're
-; already in memory when the main viewer's sphere reaches them.
-; Trade-off: more steady-state main-thread detect cost vs less spike
-; cost crossing chunk boundaries. Defaults are scaled for the 4.5/8.5
-; m/s walk/sprint anchors; see @export panel in the Inspector.
-;
-; Disables itself automatically when the player is moving slowly
-; (< min_active_speed_mps), so idle costs nothing.
-script = ExtResource("6_prefetch")
+view_distance = 1100
 
 [node name="EditToolHandler" type="Node3D" parent="."]
 ; Handles "swing tool, edit voxel" input. Reads the equipped weapon

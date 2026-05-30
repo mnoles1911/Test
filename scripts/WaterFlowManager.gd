@@ -294,6 +294,13 @@ var _prof: Node = null
 # attribution wrapper. null when the Profiler autoload is absent.
 
 
+# C++ port of the per-cell water-settle scan
+# (extensions/voxel_gen/src/water_flow_cpp.cpp). When null, the autoload
+# falls back to the original GD per-cell tool.get_voxel loop. Resolved
+# in _ready via ClassDB.instantiate.
+var _cpp_water: Resource = null
+
+
 # ============================================================
 # Lifecycle
 # ============================================================
@@ -310,6 +317,19 @@ func _ready() -> void:
 	# (_read_water_byte_at) doesn't do a /root lookup on every call —
 	# the player hits this path ~4×/physics frame.
 	_prof = get_node_or_null("/root/Profiler")
+
+	# Resolve the C++ port for the per-cell settle-region scan
+	# (extensions/voxel_gen/src/water_flow_cpp.cpp). The autoload stays
+	# functional without it — _process_water_settle falls back to the
+	# legacy per-cell GD loop when _cpp_water is null.
+	if ClassDB.class_exists("WaterFlowCpp"):
+		_cpp_water = ClassDB.instantiate("WaterFlowCpp")
+		if _cpp_water != null:
+			print("[WaterFlowManager] using C++ settle scan (WaterFlowCpp).")
+		else:
+			print("[WaterFlowManager] WaterFlowCpp registered but instantiate failed; using GD fallback.")
+	else:
+		print("[WaterFlowManager] WaterFlowCpp not registered; using GD fallback.")
 
 	# Water Voxel V2 (2026-05-16): WaterChunkMesher + the horizon plane
 	# are DELETED. Water is now a normal transparent TYPE block (id 5)
@@ -1181,28 +1201,61 @@ func _process_water_settle(tool: VoxelTool) -> void:
 		_settle_y = _settle_min.y
 		_settle_found = 0
 	var y_top: int = mini(_settle_max.y, sea_y)
-	var scanned: int = 0
-	while _settle_y <= y_top and scanned < SETTLE_SCAN_PER_TICK:
-		for x in range(_settle_min.x, _settle_max.x + 1):
-			for z in range(_settle_min.z, _settle_max.z + 1):
-				scanned += 1
-				var p: Vector3i = Vector3i(x, _settle_y, z)
-				if _voxel_center_world(p).distance_to(_player_pos) > ACTIVE_RADIUS_M + CHUNK_SIZE_M:
-					continue
-				if _pending_water.has(p):
-					continue
-				if int(_fill_retry.get(p, 0)) >= FILL_MAX_RETRY:
-					continue   # permanently unfillable (e.g. NoEditZone) — let the sweep converge
-				if tool.get_voxel(p) != 0:
-					continue   # solid or already water — fine
-				# AIR at/below sea level inside the filled region. If it
-				# touches water it is a hole / not yet level → re-fill it.
-				for d in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1), Vector3i(0, 1, 0)]:
-					if WaterMaterial.is_water_type(tool.get_voxel(p + d)):
-						_bucket_push(p, true)
-						_settle_found += 1
-						break
-		_settle_y += 1
+
+	# ----- C++ FAST PATH -----------------------------------------------
+	# WaterFlowCpp.scan_settle_region replaces the per-cell tool.get_voxel
+	# inner loop (up to ~7 Variant calls per cell × scan_cap) with one
+	# bulk-channel read + a tight native scan. GD still owns the
+	# _bucket_push wiring and the settle bookkeeping.
+	if _cpp_water != null and tool.has_method("copy"):
+		var copy_min: Vector3i = Vector3i(_settle_min.x, _settle_y, _settle_min.z) - Vector3i(1, 1, 1)
+		# We need the current Y stripe plus its +/- 1 Y neighbours for the
+		# face-touch test, so the copied buffer's Y extent must cover from
+		# _settle_y - 1 up to y_top + 1.
+		var copy_max: Vector3i = Vector3i(_settle_max.x, y_top, _settle_max.z) + Vector3i(1, 1, 1)
+		var copy_size: Vector3i = copy_max - copy_min + Vector3i.ONE
+		var snap: VoxelBuffer = VoxelBuffer.new()
+		snap.create(copy_size.x, copy_size.y, copy_size.z)
+		var type_mask: int = 1 << VoxelBuffer.CHANNEL_TYPE
+		tool.copy(copy_min, snap, type_mask)
+		var result: Dictionary = _cpp_water.scan_settle_region(
+			snap, copy_min, copy_max, _settle_y, y_top,
+			SETTLE_SCAN_PER_TICK,
+			_player_pos, ACTIVE_RADIUS_M + CHUNK_SIZE_M, VOXELS_PER_METER,
+			_pending_water, _fill_retry, FILL_MAX_RETRY)
+		var hits: PackedInt32Array = result["hits"]
+		@warning_ignore("integer_division")
+		var hit_count: int = hits.size() / 3
+		for i in range(hit_count):
+			var p_hit: Vector3i = Vector3i(hits[i * 3], hits[i * 3 + 1], hits[i * 3 + 2])
+			_bucket_push(p_hit, true)
+			_settle_found += 1
+		_settle_y = int(result["next_y"])
+		# fall through to the "did we finish?" tail below
+	else:
+		# ----- GD fallback path (legacy per-cell loop) ----------------
+		var scanned: int = 0
+		while _settle_y <= y_top and scanned < SETTLE_SCAN_PER_TICK:
+			for x in range(_settle_min.x, _settle_max.x + 1):
+				for z in range(_settle_min.z, _settle_max.z + 1):
+					scanned += 1
+					var p: Vector3i = Vector3i(x, _settle_y, z)
+					if _voxel_center_world(p).distance_to(_player_pos) > ACTIVE_RADIUS_M + CHUNK_SIZE_M:
+						continue
+					if _pending_water.has(p):
+						continue
+					if int(_fill_retry.get(p, 0)) >= FILL_MAX_RETRY:
+						continue   # permanently unfillable (e.g. NoEditZone) — let the sweep converge
+					if tool.get_voxel(p) != 0:
+						continue   # solid or already water — fine
+					# AIR at/below sea level inside the filled region. If it
+					# touches water it is a hole / not yet level → re-fill it.
+					for d in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1), Vector3i(0, 1, 0)]:
+						if WaterMaterial.is_water_type(tool.get_voxel(p + d)):
+							_bucket_push(p, true)
+							_settle_found += 1
+							break
+			_settle_y += 1
 	if _settle_y > y_top:
 		# Finished a full bottom-up pass over the region.
 		if _settle_found == 0:

@@ -87,6 +87,36 @@ F6 the target scene. Output shows:
 otherwise, and the auto-wipe will clobber a capture you wanted to
 keep across runs.
 
+## LOD streaming diagnostics (F11 / F12, since 2026-05-26)
+
+Added during the PR #240 streaming-fix session. Both toggles live on
+`World3DBootstrap._input` and are gated by `diag_enabled` (now `true`
+by default in `World3D.tscn`).
+
+| Key | What it does |
+|---|---|
+| **F11** | Toggle the **LOD band debug shader** (`assets/shaders/terrain_lod_debug.gdshader`). Flat-colours every voxel surface by distance-from-player: green LOD0 (0–21 m) / yellow LOD1 (21–42 m) / orange LOD2 (42–85 m) / red LOD3 (85–171 m) / purple beyond. Dark gridlines at the boundaries. Bands track the player live. |
+| **F12** | Toggle Zylann's built-in debug draws (`debug_draw_active_mesh_blocks` + `debug_draw_viewer_clipboxes` + `debug_draw_octree_nodes`) AND spawn `scripts/_dev/LodBoxOverlay.gd` — one filled translucent cube per VoxelViewer at LOD0 ring size, unique colour per viewer. Less essential than F11 in practice; useful when investigating multi-viewer setups. |
+
+**F11 implementation note (load-bearing for any similar tool):** the
+shader uses a **`RenderingServer` global shader parameter**, not a
+per-material uniform. Zylann's `VoxelLodTerrain` duplicates
+`terrain.material` per chunk under the hood, so `set_shader_parameter`
+writes to the cached `ShaderMaterial` don't propagate. The bootstrap
+registers `player_world_pos` lazily on first F11 press via
+`RenderingServer.global_shader_parameter_add(...,
+GLOBAL_VAR_TYPE_VEC3, ...)`, then writes per-frame via
+`global_shader_parameter_set(...)`. The shader reads it as `global
+uniform vec3 player_world_pos`. Same pattern applies to any future
+per-frame value that has to reach a Zylann-rendered shader.
+
+**Use F11 when:** investigating LOD ring geometry, validating viewer
+position fixes, debugging "is the player inside their own LOD0 ring?"
+questions. The 2026-05-26 session's headline fix
+(`VIEWER_LOOKAHEAD_MAX_OFFSET_M: 40 → 0`) was confirmed in seconds by
+running F11 + sprinting and watching the green disc stay centred on
+the player.
+
 ## Water diagnostics (`WaterDiag` autoload — F4/F5/F6)
 
 `scripts/WaterDiag.gd` (CanvasLayer autoload, layer 6) is the standing

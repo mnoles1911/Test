@@ -194,7 +194,65 @@ func _ready() -> void:
 		push_warning("[Enemy3D] No node in 'player' group found — detection will not work.")
 
 
+# =============================================================
+# ENTITY STREAMING (AI tier + record round-trip)
+# =============================================================
+# EntityStreamer drives `set_ai_tier` based on distance to the player.
+# Tier 0 (ACTIVE) is normal play. Tier 1 (AWAKE) keeps physics but drops
+# logic to 10Hz. Tier 2 (SLEEPING) disables physics_process entirely; the
+# enemy still occupies space but doesn't run AI or detection.
+
+var _ai_tier: int = 0  # AITier.ACTIVE
+const _AI_AWAKE_INTERVAL: float = 0.1  # 10Hz when tier == AWAKE
+var _ai_tick_accum: float = 0.0
+
+
+func set_ai_tier(tier: int) -> void:
+	if _is_dead:
+		return
+	_ai_tier = tier
+	# Sleeping = stop running physics entirely; the body stays in the
+	# tree but doesn't run detection, gravity, or contact damage. Wakes
+	# up on tier promote.
+	if tier >= 2:  # SLEEPING
+		set_physics_process(false)
+	else:
+		set_physics_process(true)
+
+
+func to_entity_record() -> Dictionary:
+	# Snapshot the dynamic state EntityStreamer should save off. Adding
+	# fields here is forward-compatible — from_entity_record uses .get
+	# with defaults.
+	return {
+		"health": health,
+		"state": int(current_state),
+		"is_dead": _is_dead,
+	}
+
+
+func from_entity_record(blob: Dictionary) -> void:
+	if blob == null or blob.is_empty():
+		return
+	health = int(blob.get("health", max_health))
+	current_state = int(blob.get("state", State.IDLE))
+	# Dead-on-restore — skip the live setup (no detection, no contact
+	# damage) but keep the node in the tree so corpse loot still works.
+	if bool(blob.get("is_dead", false)):
+		_is_dead = true
+		set_physics_process(false)
+
+
 func _physics_process(delta: float) -> void:
+	# Tier AWAKE — gate work to a 10Hz cadence. ACTIVE runs every frame.
+	# (Tier SLEEPING never reaches here; set_ai_tier disables _physics_process.)
+	if _ai_tier == 1:  # AWAKE
+		_ai_tick_accum += delta
+		if _ai_tick_accum < _AI_AWAKE_INTERVAL:
+			return
+		delta = _ai_tick_accum
+		_ai_tick_accum = 0.0
+
 	if _is_dead:
 		# Dead enemies poll for corpse interaction (E to loot) instead
 		# of running movement / detection logic. The interact area
@@ -353,6 +411,30 @@ func _on_damaged(_amount: int, _hit_dir: Vector3, _hit_point: Vector3) -> void:
 	pass
 
 
+# =============================================================
+# OVERKILL — gib explosion + time-slow + camera kick (Phase 5)
+# =============================================================
+
+const OVERKILL_DAMAGE_THRESHOLD: int = 50
+## At/above this single-hit damage on a lethal blow, the enemy gibs
+## (visual hidden, GibChunks spawn radially) and the global time-slow
+## + camera kick fire. Below the threshold, the enemy topples normally.
+## 50 = a fully-charged spear (60 dmg) on a fresh goblin (50 HP) reliably
+## triggers it; a light tap (30 dmg) does not. Originally specced at 80
+## per design/COMBAT_NEXT_PHASES.md but charged-spear damage caps at 60
+## in v1, so 80 was unreachable. Re-raise toward 80+ once perks /
+## ashsteel spear push charged damage higher.
+
+const TIME_SLOW_SCALE: float = 0.05
+const TIME_SLOW_DURATION_S: float = 0.15
+const GIB_CHUNK_COUNT: int = 12
+const GIB_IMPULSE_BASE: float = 0.9
+const GIB_IMPULSE_RANDOM: float = 0.5
+const GIB_VERTICAL_BOOST: float = 0.4
+
+const _GibChunk := preload("res://scripts/GibChunk.gd")
+
+
 ## Public entry point for death. Called automatically by take_damage()
 ## when health reaches zero, but exposed publicly so debug tools can
 ## kill instantly without going through health math.
@@ -369,6 +451,13 @@ func die(damage_at_kill: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vec
 	_is_dead = true
 	# Stop any pending physics so the corpse doesn't keep walking.
 	velocity = Vector3.ZERO
+	# Phase 5 — overkill lethal hits fire the global time-slow + camera
+	# kick BEFORE _on_died so the subclass's gib spawn lands during
+	# the slow window (looks like the explosion crystallises in slow-mo
+	# at the moment of impact). The brief 0.15 s pause is well below
+	# combat reaction time so it reads as punch, not pause.
+	if damage_at_kill >= OVERKILL_DAMAGE_THRESHOLD:
+		_trigger_overkill_feedback()
 	# Fire signal first so listeners (ThrowableSpear) can react before
 	# the visual swap happens.
 	died.emit(damage_at_kill)
@@ -387,6 +476,89 @@ func die(damage_at_kill: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vec
 	# loot). Dev arena Reset bypasses this timer.
 	var timer := get_tree().create_timer(corpse_lifetime_seconds)
 	timer.timeout.connect(queue_free)
+
+
+# =============================================================
+# GIB EXPLOSION HELPER  (Phase 5)
+# =============================================================
+# Subclasses call this from _on_died on overkill. Spawns
+# GIB_CHUNK_COUNT GibChunks at `world_pos` with radial outward impulse
+# from `hit_point` toward each chunk, plus a small upward boost so the
+# explosion has visible loft.
+#
+# Returns the array of spawned GibChunks so the subclass can reparent
+# embedded items (spears) to them.
+func _spawn_gib_explosion(world_pos: Vector3, hit_point: Vector3, hit_dir: Vector3,
+		skin_color: Color, core_color: Color, count: int = GIB_CHUNK_COUNT) -> Array:
+	var spawned: Array = []
+	var parent: Node = get_parent()
+	if parent == null:
+		return spawned
+	# Direction of the incoming hit, used as the explosion's primary
+	# bias so chunks fly more strongly away from the kill blow.
+	var hit_axis: Vector3 = hit_dir
+	if hit_axis.length_squared() < 0.001:
+		hit_axis = Vector3(0, 0, -1)
+	hit_axis = hit_axis.normalized()
+	for i in range(count):
+		# Spawn slightly above / around the body centre so chunks don't
+		# all originate from a single point.
+		var spawn_offset := Vector3(
+			randf_range(-0.2, 0.2),
+			randf_range(0.5, 1.2),
+			randf_range(-0.2, 0.2))
+		var spawn_pos: Vector3 = world_pos + spawn_offset
+		# Outward radial direction from the hit point, plus the
+		# hit-axis bias (50/50 weighted), normalised then vertically
+		# boosted so chunks arc up before falling.
+		var radial: Vector3 = (spawn_pos - hit_point)
+		if radial.length_squared() < 0.001:
+			radial = Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
+		radial = radial.normalized()
+		var dir: Vector3 = (radial + hit_axis * 0.5).normalized()
+		dir.y = maxf(dir.y, 0.0) + GIB_VERTICAL_BOOST
+		dir = dir.normalized()
+		var speed: float = GIB_IMPULSE_BASE + randf() * GIB_IMPULSE_RANDOM
+		# 50/50 skin (outer body colour) vs core (red interior).
+		var color: Color = skin_color if randf() < 0.5 else core_color
+		var chunk: RigidBody3D = _GibChunk.new()
+		chunk.name = "GibChunk_%d" % i
+		parent.add_child(chunk)
+		chunk.global_position = spawn_pos
+		chunk.call("configure", color, dir * speed)
+		spawned.append(chunk)
+	return spawned
+
+
+# Fire the global "lethal punch" feedback — brief time-slow + camera
+# kick. Called once per overkill kill from die(). Restoration of
+# Engine.time_scale uses a `process_mode = PROCESS` SceneTreeTimer so
+# the unscaled-real-time elapsed is what we measure (the duration is
+# in scaled seconds; a 0.15 s scaled duration at 0.05× time-scale =
+# 3 s of real time, perceived as a momentary stutter).
+#
+# Idempotent across rapid kills: each call kills any in-flight restore
+# tween and starts fresh.
+func _trigger_overkill_feedback() -> void:
+	# Engine.time_scale is global — read original, push the slow, queue
+	# the restore.
+	var original_scale: float = Engine.time_scale
+	# Skip if we're already in a slow window (a second lethal during
+	# the first slow would otherwise stack and never restore).
+	if original_scale <= TIME_SLOW_SCALE + 0.001:
+		return
+	Engine.time_scale = TIME_SLOW_SCALE
+	# Restore via a SceneTreeTimer. ignore_time_scale=true so the timer
+	# measures REAL seconds, not scaled — without it the restore would
+	# fire after TIME_SLOW_DURATION_S / TIME_SLOW_SCALE = 3 s of real
+	# time, which is way too long.
+	var restore_timer := get_tree().create_timer(TIME_SLOW_DURATION_S, true, false, true)
+	restore_timer.timeout.connect(func() -> void:
+		Engine.time_scale = original_scale)
+	# Camera kick — find the CameraRig via group; safe-no-op if absent.
+	var cam_rig: Node = get_tree().get_first_node_in_group("camera_rig")
+	if cam_rig != null and cam_rig.has_method("kick"):
+		cam_rig.call("kick", 0.08, 0.18)
 
 
 # =============================================================

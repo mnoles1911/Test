@@ -13,6 +13,10 @@
 //       cliff_threshold_for_angle_voxels). Retained between ports so each
 //       new C++ port can extend a parity harness against the GDScript
 //       original.
+//   VoxelGravityCpp — autoload C++ partition for VoxelGravityManager
+//       (Phase 0 stub; real flood-fill + cluster BFS lands in Phase 2).
+//   EmissiveLightCpp — autoload C++ scan for EmissiveLightManager
+//       (Phase 0 stub; real classification lands in Phase 4).
 // (WaterChunkMesherCpp removed 2026-05-18 by the native-fluid pivot —
 //  it had ZERO GDScript references; the Zylann blocky mesher now draws
 //  water as native VoxelBlockyModelFluid models, no separate water
@@ -21,8 +25,13 @@
 #include "register_types.h"
 #include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
+#include "distant_terrain_mesher.h"
+#include "emissive_baked_cpp.h"
+#include "emissive_light_cpp.h"
 #include "heightmap_generator_base.h"
 #include "parity_probe.h"
+#include "voxel_gravity_cpp.h"
+#include "water_flow_cpp.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -43,6 +52,17 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
     ClassDB::register_abstract_class<HeightmapGeneratorBase>();
     ClassDB::register_class<CubicHeightmapGeneratorCpp>();
     ClassDB::register_class<CopperIslesHeightmapGeneratorCpp>();
+    // DistantTerrainMesher — standalone heightmesh builder for the
+    // streaming distant-terrain LOD system. Not a generator; needs no
+    // ordering vs the HeightmapGeneratorBase chain above.
+    ClassDB::register_class<DistantTerrainMesher>();
+    // VoxelGravityCpp / EmissiveLightCpp / EmissiveBakedCpp — standalone
+    // autoload helpers. No ordering vs the generator chain (no shared
+    // inheritance).
+    ClassDB::register_class<VoxelGravityCpp>();
+    ClassDB::register_class<EmissiveLightCpp>();
+    ClassDB::register_class<EmissiveBakedCpp>();
+    ClassDB::register_class<WaterFlowCpp>();
 }
 
 void uninitialize_voxel_gen_module(ModuleInitializationLevel p_level) {

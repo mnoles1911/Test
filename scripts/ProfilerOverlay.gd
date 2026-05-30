@@ -282,6 +282,18 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# F9 — streaming-diagnostic one-shot dump. Always fires (no overlay
+	# required, matches F3/F5/F6 always-on convention). Prints a single
+	# multi-line snapshot to Output: every VoxelViewer's position +
+	# alignment + view_distance, Zylann queue depths, per-LOD chunk
+	# counts where available, and the most recent spike attribution.
+	# Added 2026-05-26 — the kind of dump you reach for when "streaming
+	# feels slow" but the per-second [PERF] line doesn't pinpoint why.
+	if k.keycode == KEY_F9:
+		_dump_stream_diag()
+		get_viewport().set_input_as_handled()
+		return
+
 	if not _visible:
 		return
 
@@ -325,6 +337,104 @@ func _input(event: InputEvent) -> void:
 				_timeline_cursor = maxi(_timeline_cursor - 1, 0)
 				_timeline_bars_node.queue_redraw()
 				get_viewport().set_input_as_handled()
+
+
+func _dump_stream_diag() -> void:
+	# One-shot, console-friendly snapshot. Designed to be pasted into
+	# chat as-is when reporting a streaming issue. Sections, in order:
+	#   1) Viewers: positions, view_distances, lead/alignment vs player
+	#   2) Zylann main-thread stats: detect/io/mesh budgets, drops,
+	#      blocked LODs, per-LOD chunk counts
+	#   3) Last spike: frame + top attribution buckets
+	#
+	# All data is pulled live from /root/Profiler. Cheap (~ms), never
+	# blocks input.
+	var prof: Node = Engine.get_main_loop().root.get_node_or_null("Profiler")
+	if prof == null:
+		print("[F9 StreamDiag] /root/Profiler not loaded — dev scene?")
+		return
+	print("=== [F9 StreamDiag] @ %d ms ===" % Time.get_ticks_msec())
+
+	# --- Viewers ---
+	if prof.has_method("read_viewer_telemetry"):
+		var vt: Dictionary = prof.call("read_viewer_telemetry")
+		var p_pos: Vector3 = vt.get("player_position", Vector3.ZERO)
+		var p_vel: Vector3 = vt.get("player_velocity", Vector3.ZERO)
+		var p_speed: float = Vector3(p_vel.x, 0.0, p_vel.z).length()
+		print("  player: pos=(%.1f, %.1f, %.1f)  horiz_speed=%.1f m/s" % [
+			p_pos.x, p_pos.y, p_pos.z, p_speed,
+		])
+		var viewers: Array = vt.get("viewers", [])
+		if viewers.is_empty():
+			print("  viewers: NONE in scene")
+		else:
+			for v in viewers:
+				var flag: String = ""
+				if p_speed > 0.5 and v["alignment"] < 0.3:
+					flag = "   !!! MISALIGNED — viewer is not leading player"
+				print("  viewer %s:" % v["path"])
+				print("    pos=(%.1f, %.1f, %.1f)  vd=%d vox  lead=%.1f m  align=%+.3f%s" % [
+					v["global_position"].x, v["global_position"].y, v["global_position"].z,
+					v["view_distance"], v["distance_to_player_m"], v["alignment"], flag,
+				])
+
+	# --- Zylann stats ---
+	if prof.has_method("_read_zylann_stats"):
+		var z: Dictionary = prof.call("_read_zylann_stats")
+		if z.is_empty():
+			print("  zylann: no VoxelLodTerrain in scene")
+		else:
+			print("  zylann main-thread budgets:")
+			print("    detect_us=%.2f ms  io_us=%.2f ms  mesh_us=%.2f ms  update_us=%.2f ms" % [
+				z.get("detect_us", 0) / 1000.0,
+				z.get("io_us", 0) / 1000.0,
+				z.get("mesh_us", 0) / 1000.0,
+				z.get("update_us", 0) / 1000.0,
+			])
+			print("    blocked_lods=%d  dropped_loads=%d  dropped_meshs=%d" % [
+				z.get("blocked_lods", 0), z.get("dropped_loads", 0), z.get("dropped_meshs", 0),
+			])
+	if prof.has_method("read_zylann_per_lod_stats"):
+		var lc: Dictionary = prof.call("read_zylann_per_lod_stats")
+		if not lc.is_empty():
+			print("  zylann chunk counts:")
+			if "loaded_per_lod" in lc:
+				print("    loaded_per_lod = %s" % str(lc["loaded_per_lod"]))
+			if "data_block_count" in lc:
+				print("    data_block_count = %d" % int(lc["data_block_count"]))
+
+	# --- Last spike (most recent >33 ms frame from the ring) ---
+	if prof.has_method("get_last_spike"):
+		var spike: Dictionary = prof.call("get_last_spike")
+		if not spike.is_empty():
+			print("  last spike: frame=%d  total=%.1f ms" % [
+				int(spike.get("frame", -1)), int(spike.get("total_us", 0)) / 1000.0,
+			])
+			var attr: Dictionary = spike.get("attribution", {})
+			if not attr.is_empty():
+				var entries: Array = []
+				for kk in attr.keys():
+					entries.append([kk, attr[kk]])
+				entries.sort_custom(func(a, b): return a[1] > b[1])
+				for i in range(mini(5, entries.size())):
+					var us: int = entries[i][1]
+					if us < 200:
+						continue
+					print("    %s = %.2f ms" % [entries[i][0], us / 1000.0])
+	print("=== /F9 StreamDiag ===")
+	# Re-assert mouse capture (2026-05-26). Pressing F9 during gameplay
+	# was popping the mouse out of the test scene window — Godot's
+	# stdout-flush + focus-grab during a large console burst seems to
+	# release MOUSE_MODE_CAPTURED on Windows. Re-assert it AFTER the
+	# print burst finishes so the player isn't yanked out of FPS look
+	# control. Only re-assert if we WERE captured; never silently
+	# capture from CAPTURED-state to avoid stealing the cursor while
+	# the player is intentionally using a menu (mouse_mode == VISIBLE).
+	if Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
+		# Player is in a menu / pause — leave alone.
+		pass
+	else:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
 func _toggle() -> void:

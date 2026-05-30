@@ -27,6 +27,59 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # touching this script.
 
 
+# --- Surface-slab voxel_bounds clamp (2026-05-25) -------------------
+# Zylann streams fully 3D voxel volumes by default — chunks top to
+# bottom regardless of where the heightmap surface actually is. For a
+# heightmap world like Mira that wastes generation + meshing + memory +
+# EmissiveLightManager scan time on enormous volumes of buried rock that
+# the player never sees and rarely digs. Clamping `terrain.voxel_bounds`
+# in Y to a realistic surface slab makes Zylann never even request
+# chunks outside that band — pure win.
+#
+# Units are VOXEL coordinates (not world metres). With the canonical 1/6
+# terrain scale, voxel Y * (1/6) = world Y metres.
+#
+# Mira's cubic generator: sea level ~ voxel Y 72 (= 12 m world); macro
+# noise centred around offset 60 with +/-100 swing; max ground rarely
+# above voxel Y ~180. The defaults below give:
+#   floor   voxel Y -200 = -33 m world (digging room below sea floor)
+#   ceiling voxel Y +500 =  83 m world (headroom above any peak)
+# Bump `terrain_voxel_y_min` lower if a player wants to dig deeper than
+# 27 m below sea floor; bump `terrain_voxel_y_max` higher if a new
+# generator tuning pushes peaks past 83 m world.
+@export var terrain_voxel_y_min: int = -200
+@export var terrain_voxel_y_max: int = 500
+
+# Terrain shadow casting. Default OFF (2026-05-25 streaming-throughput
+# probe). Every streamed VoxelLodTerrain mesh chunk submitting to the
+# directional PSSM shadow atlas is one of the largest engine-side costs
+# during traversal — and the profile capture's 87 ms unattributed
+# main-thread gap during fast movement is consistent with shadow-map
+# rebuilds. Tradeoff: terrain hills / cliffs won't shadow each other.
+# Other shadow-receivers (Roland, trees, NPCs) still cast onto terrain.
+# Flip to true in the Inspector for an A/B comparison capture.
+@export var terrain_casts_shadow: bool = false
+
+# Terrain-level view_distance cap (voxels). Zylann uses the MIN of every
+# VoxelViewer's view_distance AND this terrain-level cap to decide what
+# streams. The Player3D VoxelViewer is at 1100 vox; this terrain-level
+# cap is the hard limit that gates them all.
+#
+# Back to 512 vox (~85 m) on 2026-05-26 after the Option A pivot —
+# this is Zylann's own default and the value that paired with the
+# original lod_count=4 across the project history. Sized for
+# lod_count=4's LOD pyramid: LOD0 (0-21 m), LOD1 (21-43 m),
+# LOD2 (43-85 m) all fit cleanly inside this radius; LOD3 only
+# barely streams. DistantTerrain smooth heightmesh covers everything
+# past 85 m out to the vista.
+#
+# Bump up only if a vista absolutely needs more blocky terrain at
+# the cost of streaming load. Chunk count scales with view_distance²
+# — 720 vs 512 is ~2× chunks, which was tolerable at lod_count=4
+# (the LOD pyramid thins the outer rings) but blew up at lod_count=1.
+@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 512
+
+
 # =============================================================
 # DIAGNOSTIC STATE — LOD / streaming investigation 2026-05-07
 # =============================================================
@@ -59,6 +112,45 @@ var _diag_acc_time: float = 0.0
 var _diag_last_player_pos: Vector3 = Vector3.ZERO
 var _diag_last_player_pos_valid: bool = false
 var _diag_debug_draw_on: bool = false
+
+# Colored filled-cube overlay for the LOD0 box of every active
+# VoxelViewer. Spawned in _ready, toggled on F12 alongside the Zylann
+# built-in debug draws. Distinct per-viewer colors make it obvious
+# when the train's LOD0 corridor is offset away from the player.
+const LodBoxOverlayScript := preload("res://scripts/_dev/LodBoxOverlay.gd")
+var _lod_box_overlay: Node3D = null
+
+# F11 — LOD band debug shader. Swaps terrain.material between null
+# (normal per-cube atlas rendering) and a distance-band ShaderMaterial
+# that flat-colours every voxel by LOD ring around the player.
+# Lets the designer SEE on the world surface where LOD transitions
+# are happening as they move.
+const LodDebugShaderPath := "res://assets/shaders/terrain_lod_debug.gdshader"
+const LOD_DEBUG_GLOBAL_PARAM := "player_world_pos"
+var _lod_debug_material: ShaderMaterial = null
+var _lod_debug_on: bool = false
+var _emissive_magenta_on: bool = false  # F10 toggle
+var _lod_debug_global_registered: bool = false
+
+# Sea-level horizon backdrop plane. The 2026-05-18 native-fluid pivot
+# deleted the original horizon plane mesh — the assumption was Zylann's
+# VoxelBlockyModelFluid would stitch chunk faces cleanly. It does at
+# LOD0, but at LOD0↔LOD1 boundaries (and LOD1↔LOD2) adjacent fluid
+# meshes have slightly misaligned top faces, opening thin transparent
+# slits along chunk borders that show the sky through the lake surface.
+#
+# Visible only at distance (when the player crosses into LOD1+ range)
+# and only on flat water bodies aligned to sea level — exactly when
+# the gap-vs-sky contrast is worst.
+#
+# The fix: a single huge flat blue plane just under the water top,
+# tracking the player. When the camera looks at a chunk seam, the
+# slit now shows the dark blue backdrop instead of sky. The seam
+# is no longer perceptible.
+const HORIZON_PLANE_SIZE_M: float = 2000.0
+const HORIZON_PLANE_Y_OFFSET_M: float = -0.3  # below water top so it z-orders correctly
+var _horizon_plane: MeshInstance3D = null
+var _lens_flare: CanvasLayer = null  # Phase K bundle 2026-05-27
 
 # Cache-miss telemetry — see HeightmapGeneratorBase.get_generated_block_count().
 # The adapter exposes this method via the cpp_impl Resource. Drill through
@@ -212,6 +304,53 @@ func _ready() -> void:
 	if "lod_distance" in terrain:
 		terrain.set("lod_distance", 128.0)
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
+	# NOTE: lod_distance + secondary_lod_distance are both HARD-CAPPED at
+	# 128 by Zylann — re-confirmed for the CLIPBOX streaming system on
+	# 2026-05-22 (a sweep up to 2048 all clamped to 128). The LOD0 ring is
+	# therefore fixed at ~21 m world (128 voxels x the 1/6 terrain scale);
+	# the way to keep the near band crisp is FAST streaming (a tight
+	# view_distance matched to the LOD coverage), not a bigger ring.
+	#
+	# lod_count: 4 — the proven good-perf LOD baseline (2026-05-26
+	# session conclusion). Full pivot history one-line:
+	#   lod_count=4 (good perf, cascade pops) -> 1+vd=720 (no pops,
+	#   FPS 20, z.det 5.7s spikes) -> 2+vd=720 (rescued perf, designer
+	#   disliked LOD1) -> 1+vd=480 (tighter bubble, perf still bad) ->
+	#   THIS: back to 4+vd=512 (the original known-good config) PLUS
+	#   the session's foundational fixes still in place:
+	#     - VoxelViewer-direction fix (a76d3ae): chunks ahead of the
+	#       player are now correctly prioritized, regardless of body
+	#       rotation. This was the root cause of "outwalk the streamer"
+	#       feel that originally drove us toward lod_count=1.
+	#     - PrefetchViewer sprint anchor tightened to 7.0 m/s (matches
+	#       actual sustained sprint speed).
+	#     - Viewer telemetry (read_viewer_telemetry, F9 dump,
+	#       [VIEWERS] log line) so future misaligned-viewer bugs
+	#       can't hide.
+	#     - save_generator_output=false (skip waste-writes for
+	#       procedural world).
+	#
+	# Enforced here because the editor strips .tscn LOD values on save.
+	if "lod_count" in terrain:
+		terrain.set("lod_count", 4)
+		print("[World3D] terrain.lod_count set to 4 (LOD baseline; actual=%s)" % terrain.get("lod_count"))
+	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
+	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
+	# enormous volumes of buried rock. See the @export comment at the top
+	# of this file. Modify only Y; keep X/Z at Zylann's default
+	# (effectively infinite). Read back to confirm the values landed.
+	if "voxel_bounds" in terrain:
+		var bounds: AABB = terrain.get("voxel_bounds")
+		bounds.position.y = float(terrain_voxel_y_min)
+		bounds.size.y = float(terrain_voxel_y_max - terrain_voxel_y_min)
+		terrain.set("voxel_bounds", bounds)
+		var actual: AABB = terrain.get("voxel_bounds")
+		print("[World3D] terrain.voxel_bounds Y clamped: %d..%d voxels (actual y=%d..%d, x=%d..%d, z=%d..%d)" % [
+			terrain_voxel_y_min, terrain_voxel_y_max,
+			int(actual.position.y), int(actual.position.y + actual.size.y),
+			int(actual.position.x), int(actual.position.x + actual.size.x),
+			int(actual.position.z), int(actual.position.z + actual.size.z),
+		])
 	# Streaming system: 0 = LEGACY_OCTREE (default), 1 = CLIPBOX.
 	# CLIPBOX walks a clipped box of chunks rather than a full octree
 	# per viewer — typically 2-5× faster main-thread cost than the
@@ -233,6 +372,49 @@ func _ready() -> void:
 	if "lod_fade_duration" in terrain:
 		terrain.set("lod_fade_duration", 1.0)
 		print("[World3D] terrain.lod_fade_duration set to 1.0 (actual=%s)" % terrain.get("lod_fade_duration"))
+
+	# stream.save_generator_output = false for World3D (procedural Mira).
+	# The working SQLite is wiped on every fresh run (see the "Fresh run —
+	# wiped" log line above), so every chunk we serialize to it on
+	# generation is data the next launch immediately discards. SQLite
+	# writes are single-threaded and can throttle the streaming pipeline.
+	# The C++ generator regenerates a chunk in microseconds; regen on
+	# revisit is as fast or faster than reading from cache. Player edits
+	# still persist (they save as deltas regardless of this flag).
+	#
+	# 2026-05-25 streaming-throughput pass: profile capture showed ~480 ms
+	# main-thread spikes during streaming with attribution totalling only
+	# ~1-3 ms — i.e. the cost is downstream of the meshing (GPU / SDFGI /
+	# SQLite). Removing the SQLite write removes one of those candidates.
+	if terrain.stream != null and "save_generator_output" in terrain.stream:
+		terrain.stream.set("save_generator_output", false)
+		print("[World3D] stream.save_generator_output = false (skip SQLite writes for the procedural wipe-each-run world; actual=%s)" % terrain.stream.get("save_generator_output"))
+
+	# Terrain shadow casting — see the @export comment at the top of
+	# this file. Setting GeometryInstance3D.SHADOW_CASTING_SETTING_OFF (0)
+	# stops every streamed mesh chunk from being re-submitted to the
+	# directional shadow atlas during traversal. Receivers (Roland,
+	# NPCs, props) still cast shadows ONTO the terrain.
+	if "cast_shadow" in terrain:
+		var desired_shadow: int = 1 if terrain_casts_shadow else 0
+		terrain.set("cast_shadow", desired_shadow)
+		print("[World3D] terrain.cast_shadow set to %d (%s; actual=%s)" % [
+			desired_shadow,
+			"ON" if terrain_casts_shadow else "OFF — streaming-throughput probe",
+			terrain.get("cast_shadow"),
+		])
+
+	# Terrain-level view_distance — see the @export comment for the
+	# wider rationale. We don't set it during spawn (the spawn-shrink
+	# path below saves and overrides it); this is the value the spawn
+	# path restores to once the loading raycast succeeds.
+	if "view_distance" in terrain:
+		terrain.set("view_distance", terrain_view_distance_voxels)
+		print("[World3D] terrain.view_distance set to %d voxels (~%d m; actual=%s)" % [
+			terrain_view_distance_voxels,
+			int(terrain_view_distance_voxels / 6.0),
+			terrain.get("view_distance"),
+		])
 
 	# DIAGNOSTIC — dump every public property on VoxelLodTerrain so we
 	# can hunt for a "max mesh blocks applied per frame" or similar
@@ -409,6 +591,27 @@ func _ready() -> void:
 		# call_deferred keeps load-order forgiving).
 		call_deferred("_seed_test_pond")
 		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
+		# Horizon backdrop plane attempt reverted 2026-05-26: it did not
+		# Horizon backdrop plane: re-enabled 2026-05-27 after locking the
+		# diagnosis via [WaterLookRay] probe — chunk-mesh-stitching gaps
+		# in the fluid surface, not low-alpha pixels. Plane hides them
+		# from above; UnderwaterFilter hides the plane on submerge so
+		# the dark-band issue that reverted the v1 attempt can't happen.
+		_spawn_horizon_plane(OCEAN_SURFACE_Y)
+		# Lens flare (Phase K bundle, 2026-05-27). One CanvasLayer with
+		# a full-screen ColorRect that paints a sun-aligned halo + ghost
+		# string. Respects GraphicsManager.is_effect_enabled("lens_flare").
+		_spawn_lens_flare()
+		# Stale comment below kept for context — diagnosis is now clear.
+		# (Original 2026-05-27 deferral note follows.)
+		# fix the LOD1+ water-surface line artefact (those lines are not
+		# mesh gaps showing the sky — they're a reflection-normal
+		# discontinuity in water.gdshader at adjacent-LOD chunk seams)
+		# AND it caused a pitch-black band between Y=10.3–10.5 when the
+		# camera was underwater looking up at the plane's underside.
+		# The line fix needs a proper shader-level investigation; not
+		# something a backdrop plane can paper over.
+		# _spawn_horizon_plane(OCEAN_SURFACE_Y)
 	else:
 		push_warning("[World3D] WaterFlowManager autoload not registered; water disabled.")
 
@@ -470,6 +673,19 @@ func _ready() -> void:
 	# World3D.tscn ships with, so a first-time player sees no change.
 	if get_node_or_null("/root/GraphicsManager"):
 		GraphicsManager.apply_current()
+
+	# --- Streaming distant terrain (smooth heightmesh past the blocky band) ---
+	# Replaces the baked HorizonSkirt: a ring of LOD'd smooth heightmesh
+	# chunks that follow the player, built in C++ by DistantTerrainMesher
+	# from the same world generator. Parented to this (unscaled) world
+	# root, NOT the 1/6-scaled VoxelLodTerrain — the mesh is world-metres.
+	# Loaded by path (no class_name) so this bootstrap stays headless-safe.
+	var distant_script := load("res://scripts/DistantTerrainManager.gd")
+	if distant_script != null:
+		var distant: Node3D = distant_script.new()
+		distant.name = "DistantTerrain"
+		add_child(distant)
+		distant.call("setup_from_terrain", terrain)
 
 
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
@@ -842,8 +1058,124 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 		print("[WaterFluidDiag] lib.get_materials() count=%d classes=%s" % [
 			(_mats.size() if _mats is Array else -1), str(_mat_classes)])
 
+	# Spawn the LOD0 box overlay (filled coloured cubes per VoxelViewer,
+	# toggled on F12 alongside Zylann's built-in debug draws). Default
+	# hidden — zero per-frame cost until F12 enables it.
+	_lod_box_overlay = LodBoxOverlayScript.new()
+	_lod_box_overlay.name = "LodBoxOverlay"
+	add_child(_lod_box_overlay)
+
+
+func _spawn_horizon_plane(sea_level_y: float) -> void:
+	# Single huge flat plane just under the water top. Hides the chunk-
+	# mesh-stitching gaps in the fluid surface (designer-confirmed
+	# 2026-05-27: water voxels ARE in the buffer at the gap locations,
+	# the fluid mesher just isn't emitting faces at adjacent-chunk
+	# boundaries; see [WaterLookRay] shoreline probe + mode 7 raw-alpha
+	# evidence that the gaps are missing fragments, not low-alpha pixels).
+	#
+	# The previous attempt at this fix was reverted because of an
+	# underwater "dark band" 10 m below the surface. Root cause was the
+	# plane being visible (or its depth being readable) from below water,
+	# interacting with the water shader's depth-fade. The fix that lands
+	# the plane safely:
+	#   1. cull_back to hide the underside (was already in v1).
+	#   2. add_to_group("horizon_plane") + UnderwaterFilter.set_active
+	#      toggles `.visible` off when submerged, so the plane simply
+	#      doesn't exist underwater (can't cause any depth-fade artefact
+	#      by construction — empty depth = no occlusion).
+	#   3. render_priority = -2 so the plane sorts AFTER everything else
+	#      (water shell wins z-fight wherever they overlap; the plane
+	#      only renders where no water-shell quad exists at all).
+	#   4. SHADOW_CASTING_SETTING_OFF (was already in v1).
+	if _horizon_plane != null:
+		return
+	var plane := MeshInstance3D.new()
+	plane.name = "HorizonPlane"
+	plane.add_to_group("horizon_plane")
+	var plane_mesh := PlaneMesh.new()
+	plane_mesh.size = Vector2(HORIZON_PLANE_SIZE_M, HORIZON_PLANE_SIZE_M)
+	plane.mesh = plane_mesh
+	# Apply the SAME water shader material the chunk-fluid uses (v2
+	# 2026-05-27). v1 used a solid opaque deep_water_color StandardMaterial3D
+	# which patched the chunk-seam transparent gaps but showed up as a
+	# VISIBLY DARKER PATCH against the surrounding chunk water (because
+	# the water shader adds Fresnel sky sheen + water_tint_color + flow
+	# normal animation that the solid colour didn't have) — the patches
+	# read as a horizontal line/band at every chunk-seam, exactly what
+	# the designer reported. Using water_material.tres makes the plane
+	# render as water — chunk-seam patches blend invisibly into the
+	# surrounding chunk water surface (same shader, same uniforms,
+	# same look).
+	var water_mat: Material = load("res://assets/shaders/water_material.tres") as Material
+	if water_mat == null:
+		# Fall back to the v1 deep_water_color material rather than leave
+		# the plane untextured (worst-case visual is the v1 darker patch).
+		push_warning("[World3D] horizon plane: water_material.tres failed to load; using deep_water_color fallback.")
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.02, 0.06, 0.11, 1.0)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.cull_mode = BaseMaterial3D.CULL_BACK
+		mat.render_priority = -2
+		plane.material_override = mat
+	else:
+		plane.material_override = water_mat
+	plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	plane.position = Vector3(0.0, sea_level_y + HORIZON_PLANE_Y_OFFSET_M, 0.0)
+	add_child(plane)
+	_horizon_plane = plane
+	print("[World3D] Spawned horizon backdrop plane at Y=%.2f (2km × 2km, water_material.tres, tracks player XZ, hidden on submerge)." % plane.position.y)
+
+
+func _spawn_lens_flare() -> void:
+	# Phase K bundle (2026-05-27). LensFlare CanvasLayer with a
+	# full-screen ColorRect + lens_flare.gdshader. Self-contained:
+	# the script finds its own camera + sun via groups, projects the
+	# sun position to screen UV each frame, and paints a halo + ghost
+	# string. Hides itself when GraphicsManager.is_effect_enabled(
+	# "lens_flare") is false (subscribed via effect_toggles_changed).
+	if _lens_flare != null:
+		return
+	var script: Script = load("res://scripts/LensFlare.gd") as Script
+	if script == null:
+		push_warning("[World3D] LensFlare.gd missing — lens flare disabled.")
+		return
+	_lens_flare = CanvasLayer.new()
+	_lens_flare.name = "LensFlare"
+	_lens_flare.set_script(script)
+	add_child(_lens_flare)
+
 
 func _process(delta: float) -> void:
+	# Per-frame: push the player's world position into the LOD band
+	# debug shader so the coloured rings track the player. Uses a
+	# GLOBAL shader parameter (declared in project.godot [shader_globals])
+	# instead of writing to a ShaderMaterial directly — Zylann
+	# duplicates `terrain.material` per chunk, so per-material writes
+	# don't propagate. Globals do.
+	#
+	# Pushed UNCONDITIONALLY each frame (2026-05-27, was gated on the
+	# F11 LOD-debug toggle): the water shader's new debug_mode 8 also
+	# reads this global, and gating on _lod_debug_on left mode 8's
+	# rings frozen at world origin during designer testing. Cost is
+	# trivial (one Vector3 global write per frame, no per-chunk fan-out).
+	_diag_resolve_refs()
+	if _diag_player != null:
+		RenderingServer.global_shader_parameter_set(
+			LOD_DEBUG_GLOBAL_PARAM, _diag_player.global_position
+		)
+
+	# Horizon backdrop plane: track player on XZ each frame so the 2km
+	# plane is always centered under the player and covers visible water.
+	# Y stays fixed at sea_level + HORIZON_PLANE_Y_OFFSET_M (set at
+	# spawn). Re-enabled 2026-05-27.
+	if _horizon_plane != null and _diag_player != null:
+		_horizon_plane.position = Vector3(
+			_diag_player.global_position.x,
+			_horizon_plane.position.y,
+			_diag_player.global_position.z,
+		)
+
 	# 1 Hz diagnostic line for the LOD-streaming investigation.
 	# Prints player position, instantaneous speed (m/s), VoxelViewer
 	# position, and the XZ distance between them ("viewer lag"). If
@@ -932,8 +1264,55 @@ func _input(event: InputEvent) -> void:
 			_diag_terrain.set("debug_draw_active_mesh_blocks", _diag_debug_draw_on)
 			_diag_terrain.set("debug_draw_viewer_clipboxes", _diag_debug_draw_on)
 			_diag_terrain.set("debug_draw_octree_nodes", _diag_debug_draw_on)
+			# Also toggle the colored fill overlay so the LOD0 boxes are
+			# obvious even when several viewers overlap.
+			if _lod_box_overlay != null and _lod_box_overlay.has_method("set_visible_overlay"):
+				_lod_box_overlay.call("set_visible_overlay", _diag_debug_draw_on)
 			var _state_str: String = "ON" if _diag_debug_draw_on else "OFF"
-			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes)" % _state_str)
+			print("[DIAG] terrain debug draws %s (active_mesh_blocks + viewer_clipboxes + octree_nodes + LOD0 fill cubes)" % _state_str)
+		elif event.keycode == KEY_F10:
+			# F10 — paint all emissive voxels flat magenta so the
+			# designer can locate ore at a glance. The shader checks
+			# the `debug_emissive_magenta` global; only emissive
+			# variants (copper_ore today) react.
+			_emissive_magenta_on = not _emissive_magenta_on
+			RenderingServer.global_shader_parameter_set(
+				"debug_emissive_magenta",
+				1.0 if _emissive_magenta_on else 0.0,
+			)
+			var _mag_str: String = "ON — emissive voxels (copper_ore) painted magenta" if _emissive_magenta_on else "OFF"
+			print("[DIAG] F10 emissive-magenta debug %s" % _mag_str)
+		elif event.keycode == KEY_F11:
+			# F11 — LOD band debug shader. Recolours every voxel
+			# surface by LOD ring (green/yellow/orange/red/purple)
+			# so transitions on the world surface are unmistakable.
+			_diag_resolve_refs()
+			if _diag_terrain == null:
+				return
+			_lod_debug_on = not _lod_debug_on
+			if _lod_debug_on:
+				if _lod_debug_material == null:
+					var sh: Shader = load(LodDebugShaderPath) as Shader
+					if sh == null:
+						push_warning("[DIAG] could not load %s" % LodDebugShaderPath)
+						_lod_debug_on = false
+						return
+					_lod_debug_material = ShaderMaterial.new()
+					_lod_debug_material.shader = sh
+				# The global shader parameter `player_world_pos` is now
+				# DECLARED in project.godot under [shader_globals] —
+				# global_shader_parameter_get / _add are EDITOR-ONLY
+				# (severe-perf warning + runtime error). One-shot mark
+				# "registered" here so the per-frame _set path keeps
+				# working; the [shader_globals] declaration guarantees
+				# the parameter exists with a Vector3.ZERO default.
+				if not _lod_debug_global_registered:
+					_lod_debug_global_registered = true
+				_diag_terrain.set("material", _lod_debug_material)
+				print("[DIAG] LOD band debug shader ON — green=LOD0 (0–21m) · yellow=LOD1 (21–42m) · orange=LOD2 (42–85m) · red=LOD3 (85–171m) · purple=beyond")
+			else:
+				_diag_terrain.set("material", null)
+				print("[DIAG] LOD band debug shader OFF — restored per-cube atlas materials")
 
 
 func _diag_resolve_refs() -> void:

@@ -55,6 +55,16 @@ var _panel_visible: bool = false
 var _root: Control = null
 var _label: Label = null
 
+# water_changed/sec counter (2026-05-27). Subscribes to
+# WaterFlowManager.water_changed at _ready and tallies emissions over
+# rolling 1 s windows. Surfaces in the F4 panel — high values during
+# idle = chunk mesh rebuild churn (the per-chunk water mesh redraws
+# faster than the eye, contributes to "the gap pops in/out as I move")
+# while a near-zero idle reading means the water meshes are stable and
+# the gap is structural (LOD-stitching), not redraw thrash.
+var _water_changed_window_count: int = 0
+var _water_changed_per_sec: int = 0
+
 # F5 inspector on-screen result — shown for INSPECT_SHOW_SECONDS even
 # when the F4 panel is hidden, so F5 has visible in-game feedback
 # (its data also still goes to the Output log).
@@ -77,7 +87,19 @@ func _ready() -> void:
 	# Process even while the SceneTree is paused (Dialogic/pause) so the
 	# panel keeps reporting — diagnostics must not freeze with the game.
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	print("[WaterDiag] ready — F4 panel · F5 inspect · F6 cycle shader debug_mode.")
+	# Subscribe to water_changed for the per-sec emission counter (F4
+	# panel). Guarded — WaterFlowManager may not have loaded in dev
+	# scenes that opt out.
+	var wfm := get_node_or_null("/root/WaterFlowManager")
+	if wfm != null and wfm.has_signal("water_changed"):
+		wfm.water_changed.connect(_on_water_changed)
+	print("[WaterDiag] ready — F4 panel · F5 inspect · F6 cycle shader debug_mode · ` (backtick) look-ray · Shift+` FORCE-FILL.")
+
+
+func _on_water_changed(_chunk_coord: Vector3i) -> void:
+	# Pure tally — no logic. The 1 s window counter is read in _process
+	# and reset there.
+	_water_changed_window_count += 1
 
 
 func _build_panel() -> void:
@@ -144,6 +166,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F6:
 			_cycle_shader_debug_mode()
 			get_viewport().set_input_as_handled()
+		# NB on key choice: every F-key in this project is taken or
+		# reserved.  F1 DebugOverlay · F2 freelook · F3 ProfilerOverlay
+		# panel · F4-F6 WaterDiag · F7 Copper scale · F8 Godot EDITOR
+		# Stop-Scene (intercepted before reaching us) · F9 ProfilerOverlay
+		# StreamDiag (calls set_input_as_handled, blocks us) · F10
+		# World3DBootstrap emissive magenta · F11 LOD debug shader · F12
+		# Zylann debug draws. So the water probes live on BACKTICK (top-
+		# left of every keyboard, never bound anywhere). Plain ` =
+		# look-ray; Shift+` = force-fill.
+		KEY_QUOTELEFT:
+			if k.shift_pressed:
+				# Brute-force write SOURCE_BYTE into every voxel in a 32 m
+				# XZ box around the player, below sea level. Bypasses the
+				# connectivity-fill / settle sim entirely. If the gap-lines
+				# survive a successful force-fill, the bug is the mesher's
+				# chunk stitching, not the fill sim.
+				_force_fill_around_player()
+			else:
+				# Look-ray probe via WaterFlowManager public API (no raw
+				# VoxelTool calls). Prints a 5x5 XZ grid at sea level to the
+				# inspect overlay + log so we can see whether the gap-lines
+				# correspond to chunks where the BUFFER says no water
+				# (generator/sim bug) or to chunks where the buffer has water
+				# but the MESHER didn't emit faces (chunk-stitching bug).
+				printerr("[WaterLookRay] ` keypress received — deferring probe")
+				call_deferred("_dump_lookray_probe")
+			get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
@@ -170,6 +219,9 @@ func _process(delta: float) -> void:
 	_sec_accum += delta
 	if _sec_accum >= 1.0:
 		_sec_accum = 0.0
+		# Roll the water_changed window.
+		_water_changed_per_sec = _water_changed_window_count
+		_water_changed_window_count = 0
 		print("[WaterDiag] " + _format(snap).replace("\n", "  |  "))
 
 
@@ -234,14 +286,14 @@ func _format(d: Dictionary) -> String:
 	var p: Vector3 = d["pos"]
 	var surf_y = d["surf_y"]
 	var surf_txt := ("%.2f (Δ%.2f m)" % [surf_y, d["surf_dist"]]) if not is_nan(surf_y) else "none ±%d vox" % SURFACE_SCAN_VOXELS
-	return "WATER DIAG  (F4 panel · F5 inspect · F6 shader mode)\n" + \
+	return "WATER DIAG  (F4 panel · F5 inspect · F6 shader · ` look-ray · Shift+` force-fill)\n" + \
 		"pos        %.1f, %.1f, %.1f\n" % [p.x, p.y, p.z] + \
 		"in_water   %s    submerged %s\n" % [str(d["in_water"]), str(d["submerged"])] + \
 		"level      %d / 8\n" % int(d["level"]) + \
 		"surface Y  %s\n" % surf_txt + \
 		"sea level  Y=%.2f world   horizon Y=%.2f\n" % [d["sea_y_world"], d["horizon_y"]] + \
-		"flow sim   %s\n" % str(d["flow_sim"]) + \
-		"shader dbg %d   (0 norm 1 depth 2 fres 3 thick 4 face)\n" % int(d["dbg"]) + \
+		"flow sim   %s   water_changed/s %d\n" % [str(d["flow_sim"]), _water_changed_per_sec] + \
+		"shader dbg %d   (0 norm 1 depth 2 fres 3 thick 4 face 5 flow 6 mag 7 ALPHA 8 LOD)\n" % int(d["dbg"]) + \
 		"query      %.1f us   expected LOD %d @ %.0f m" % [d["query_us"], int(d["exp_lod"]), (0.0 if is_nan(d["cam_dist"]) else d["cam_dist"])]
 
 
@@ -420,12 +472,13 @@ func _cycle_shader_debug_mode() -> void:
 		print("[WaterDiag] cannot cycle debug_mode — water_material.tres not loaded")
 		return
 	var cur := _get_shader_debug_mode()
-	# 0..6 (was % 5 → modes 5 & 6 were UNREACHABLE via F6; 6 = the
-	# 2026-05-19 magenta proof-of-life probe).
-	var nxt := (cur + 1) % 7
+	# 0..8 (was % 7; modes 7+8 added 2026-05-27 for the LOD-gap-band
+	# diagnosis: 7 = raw ALPHA grayscale, 8 = LOD-distance band).
+	var nxt := (cur + 1) % 9
 	_water_mat.set_shader_parameter("debug_mode", nxt)
 	var names := ["0 normal", "1 depth_t", "2 fresnel", "3 thickness",
-		"4 surface-facing", "5 flow-vector", "6 MAGENTA proof-of-life"]
+		"4 surface-facing", "5 flow-vector", "6 MAGENTA proof-of-life",
+		"7 RAW ALPHA grayscale", "8 LOD-distance band"]
 	print("[WaterDiag] water shader debug_mode → %s" % names[nxt])
 
 
@@ -504,3 +557,167 @@ func _expected_lod(dist_m: float) -> int:
 	if ld <= 0.0 or dist_m < ld:
 		return 0
 	return int(floor(log(dist_m / ld) / log(2.0))) + 1
+
+
+# ============================================================
+# F8 — LOOK-RAY PROBE
+# ============================================================
+# Walk a ray from the camera through screen-centre out to 250 m,
+# sampling the voxel TYPE at fixed distances. For each sample reports:
+#   d_m     — distance along the ray from camera (metres)
+#   wpos    — world position of the sample
+#   voxel   — voxel-grid coord at that world position
+#   TYPE    — CHANNEL_TYPE value at that voxel (raw id)
+#   wat     — Y if WaterMaterial.is_water_type(TYPE), N otherwise
+#   col3x3  — 3×3 cluster water-count at (vx-1..+1, vz-1..+1) around the
+#             sample column (vy fixed) — guards against the ray skimming
+#             between voxel centres and producing a false N
+#   expLOD  — expected Zylann LOD ring at this distance (lod_distance
+#             ring-doubling approximation)
+#
+# Purpose: when the screen shows a "transparent gap" at LOD-distance,
+# this directly answers "is the WATER VOXEL THERE in the buffer at that
+# distance?" If voxel data shows wat=Y across all samples but the
+# screen shows a gap → fluid mesher is dropping the mesh at LOD>0
+# (shipping bug in Zylann fluid). If voxel data shows wat=N at the gap
+# distance but Y close to camera → C++ generator isn't emitting water
+# at that LOD (regression in heightmap_generator_base.cpp). Either
+# way, this probe DECIDES which file owns the fix.
+
+# v1 (2026-05-27) walked a ray from the camera and called
+# VoxelTool.get_voxel at each step. Crashed the editor with zero stdout
+# even with view_distance guards and is_area_editable pre-flights.
+# v2 dropped the raw VoxelTool path entirely and probes via
+# WaterFlowManager.is_position_in_water / .get_water_level_at — public
+# APIs Player3D already hits every physics frame. No raw tool calls,
+# no look-ray walk, no AABB construction. LOOKRAY_DISTANCES is gone.
+
+
+func _dump_lookray_probe() -> void:
+	# v2 (2026-05-27): EVERYTHING is routed through stderr (printerr)
+	# because v1's stdout prints were being buffered and lost on the
+	# crash. Every potentially-failing call gets a "BEFORE" line so the
+	# last surviving log line tells us exactly which step died.
+	printerr("[WaterLookRay] v2 BEGIN")
+	var lines: Array[String] = []
+
+	# Step 1: get a Player Node3D (group "player"). Avoid the camera —
+	# v1 used cam.global_basis.z which depends on first-person vs third-
+	# person camera state. Player position is unambiguous.
+	printerr("[WaterLookRay] step 1: find player")
+	var player := _find_player()
+	if player == null:
+		printerr("[WaterLookRay] FAIL: no player node in 'player' group")
+		_emit_lookray(lines, "no player node (group 'player') — cannot probe")
+		_show_inspect(lines)
+		return
+	var ppos: Vector3 = player.global_position
+	printerr("[WaterLookRay] player world=(%s, %s, %s)" % [ppos.x, ppos.y, ppos.z])
+
+	# Step 2: get terrain. Bypass VoxelTool entirely (v1's get_voxel
+	# was the prime crash suspect) and use the SAME read path the rest
+	# of WaterDiag already uses successfully (WaterFlowManager queries).
+	printerr("[WaterLookRay] step 2: resolve WaterFlowManager")
+	var wfm := get_node_or_null("/root/WaterFlowManager")
+	if wfm == null:
+		printerr("[WaterLookRay] FAIL: no WaterFlowManager autoload")
+		_emit_lookray(lines, "no WaterFlowManager — cannot probe")
+		_show_inspect(lines)
+		return
+
+	# Step 3: probe a small XZ grid at sea level around the player. Use
+	# WaterFlowManager.is_position_in_water and .get_water_level_at —
+	# both are PUBLIC API designed to be called from anywhere safely
+	# (Player3D hits them every physics frame). No raw VoxelTool calls.
+	printerr("[WaterLookRay] step 3: probe 5x5 grid at sea level")
+	var sea_voxY: int = _sea_voxel_y()
+	var sea_world_y: float = float(sea_voxY) / VOXELS_PER_METER
+	_emit_lookray(lines, "F8 PROBE at player (%.1f, %.1f, %.1f) sea_voxY=%d (worldY=%.2f)" % [
+		ppos.x, ppos.y, ppos.z, sea_voxY, sea_world_y])
+	_emit_lookray(lines, "  5x5 grid at sea-level world Y=%.2f, stride 4 m (= 24 voxels)" % sea_world_y)
+	# Grid header
+	var header: String = "       "
+	for ix in [-2, -1, 0, 1, 2]:
+		header += "  x%+3d " % (int(ix) * 4)
+	_emit_lookray(lines, header)
+	for iz in [-2, -1, 0, 1, 2]:
+		var row: String = "z%+3d   " % (int(iz) * 4)
+		for ix in [-2, -1, 0, 1, 2]:
+			var probe_pos := Vector3(
+				ppos.x + float(ix) * 4.0,
+				sea_world_y + 0.1,   # just above sea level so query lands on a water voxel
+				ppos.z + float(iz) * 4.0,
+			)
+			var in_water: bool = bool(wfm.is_position_in_water(probe_pos))
+			var lvl: int = int(wfm.get_water_level_at(probe_pos))
+			# "W" = is_position_in_water true; "." = false; level appended.
+			var cell: String = ("W%d" % lvl) if in_water else (". " if lvl == 0 else "?%d" % lvl)
+			row += "  %4s" % cell
+		_emit_lookray(lines, row)
+	_emit_lookray(lines, "  KEY: W8 = full water, W1-7 = partial, . = no water")
+	_emit_lookray(lines, "  READ: all 'W' cells visible on screen as continuous water surface = mesher OK.")
+	_emit_lookray(lines, "        any '.' cells inside a body shown as continuous water = mesher emits geometry")
+	_emit_lookray(lines, "          where buffer says no water (= over-mesh, not the gap bug).")
+	_emit_lookray(lines, "        all 'W' but gap-lines still visible = mesher MISSING faces at chunk boundaries")
+	_emit_lookray(lines, "          (= the chunk-mesh-stitching diagnosis — fix in mesher/cull layer).")
+	printerr("[WaterLookRay] v2 END — probe printed %d lines" % lines.size())
+	_show_inspect(lines)
+
+
+func _emit_lookray(lines: Array[String], s: String) -> void:
+	print("[WaterLookRay] " + s)
+	lines.append(s)
+
+
+# ============================================================
+# F9 — FORCE-FILL (developer)
+# ============================================================
+# Brute-force write WaterByteCodec.SOURCE_BYTE (level 8 + source bit)
+# into every voxel in a ±32 m XZ box around the player, clipped to
+# Y <= sea level. queue_set_water_box writes BOTH CHANNEL_TYPE (id 23
+# fluid full) AND CHANNEL_DATA5 (SOURCE_BYTE) so the fluid mesher and
+# the sim both see "full source water" everywhere in the box. Bypasses
+# the connectivity fill, settle pass, retry queue — anything that
+# might be leaving holes from the sim side.
+#
+# Bisection: AFTER force-fill, if the LOD-distance gap bands SURVIVE
+# (still visible in mode 0 or mode 7), the bug is structural at the
+# mesher/generator layer (Zylann fluid LOD-stitching). If they
+# VANISH, the bug is the sim leaving partial fills (settle/fill rate
+# too slow). The two layers are testable in isolation.
+const FORCE_FILL_RADIUS_M: float = 32.0
+const FORCE_FILL_DEPTH_M: float = 16.0
+
+
+func _force_fill_around_player() -> void:
+	var player := _find_player()
+	if player == null:
+		print("[WaterForceFill] no player found; aborting")
+		return
+	if get_node_or_null("/root/VoxelEditManager") == null \
+			or get_node_or_null("/root/WaterFlowManager") == null:
+		print("[WaterForceFill] water autoloads missing; aborting")
+		return
+	var pos: Vector3 = player.global_position
+	var sea_y: int = _sea_voxel_y()
+	var pv: Vector3i = _world_to_voxel(pos)
+	var half: int = int(FORCE_FILL_RADIUS_M * VOXELS_PER_METER)
+	var depth: int = int(FORCE_FILL_DEPTH_M * VOXELS_PER_METER)
+	var vox_min := Vector3i(pv.x - half, pv.y - depth, pv.z - half)
+	var vox_max := Vector3i(pv.x + half, sea_y + 1, pv.z + half)  # excl on max
+	# Clamp Y so we never fill above sea level (the water TYPE block
+	# above sea is the LOD-gap-band the test is trying to characterise;
+	# filling above would mask the symptom).
+	if vox_max.y <= vox_min.y:
+		print("[WaterForceFill] player above sea level (pv.y=%d, sea_y=%d) — nothing to fill" % [pv.y, sea_y])
+		return
+	var ok: bool = VoxelEditManager.queue_set_water_box(vox_min, vox_max, WaterByteCodec.SOURCE_BYTE)
+	var vol: int = (vox_max.x - vox_min.x) * (vox_max.y - vox_min.y) * (vox_max.z - vox_min.z)
+	print("[WaterForceFill] queue_set_water_box %s..%s (~%d voxels, ~%.1f m³ at %.1f vox/m)  ok=%s" % [
+		str(vox_min), str(vox_max), vol,
+		(vox_max - vox_min).x / VOXELS_PER_METER * (vox_max - vox_min).y / VOXELS_PER_METER * (vox_max - vox_min).z / VOXELS_PER_METER,
+		VOXELS_PER_METER, str(ok)])
+	if not ok:
+		print("[WaterForceFill] queue REJECTED — NoEditZone or queue-full. Move player away from settlement / wait a tick / retry.")
+	else:
+		print("[WaterForceFill] WATCH: if the LOD-distance gap bands SURVIVE after this fills (give the mesher a few seconds), the bug is in the fluid MESHER at LOD>0, not the fill sim.")

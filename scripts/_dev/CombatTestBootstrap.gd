@@ -24,8 +24,14 @@ extends Node3D
 #          Matches the project-wide convention used by DebugOverlay
 #          and LockpickTestBootstrap. The keybinds keep working when
 #          the menu is hidden.
-#     F8 — kill nearest goblin (charged-spear-equivalent damage = 60)
-#     F9 — wound nearest goblin (light-spear-equivalent damage = 30)
+#     F10 — kill nearest goblin (charged-spear-equivalent damage = 60)
+#           NOTE: this was F8, but F8 is Godot's built-in "Stop running
+#           scene" shortcut. With the game embedded in the editor (the
+#           4.6 default), the editor swallows the transport keys
+#           (F5/F6/F7/F8) before they reach the game — so pressing F8
+#           stopped the scene instead of dealing damage. F10 is not a
+#           transport key, so it passes through to the running game.
+#     F9  — wound nearest goblin (light-spear-equivalent damage = 30)
 #     R  — Reset enemies: free all current goblins (alive or corpses)
 #          and respawn three fresh ones at the original triangle
 #          positions. Restores the arena to first-frame state without
@@ -101,6 +107,18 @@ func _ready() -> void:
 		# Old throwables-only loadout (kept for reference):
 		# InventoryManager.equip("weapon", "spear")
 
+	# Spawn an EntityStreamer so the F1 "SPAWN TEST GOBLIN" debug command
+	# works in this dev scene. World3D.tscn ships one as a scene child;
+	# CombatTest.tscn does not, so the streamer is added programmatically
+	# here. Joins the "entity_streamer" group on _ready so
+	# DebugOverlay._spawn_test_goblin resolves it via
+	# get_first_node_in_group without a hardcoded node path.
+	var streamer_script: Script = load("res://scripts/EntityStreamer.gd")
+	if streamer_script != null:
+		var streamer: Node3D = streamer_script.new()
+		streamer.name = "EntityStreamer"
+		add_child(streamer)
+
 	# Build the on-screen debug menu.
 	_build_debug_menu()
 
@@ -127,8 +145,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			# LockpickTestBootstrap). Keybinds remain active when the
 			# menu is hidden.
 			_toggle_debug_menu()
-		KEY_F8:
+		KEY_F10:
 			# One-shot kill nearest goblin (full charged-spear damage).
+			# F10 (not F8) — F8 is the editor's Stop shortcut and gets
+			# eaten by the embedded game window before it reaches here.
 			_apply_debug_damage(60)
 		KEY_F9:
 			# Wound nearest goblin (light-spear damage).
@@ -192,7 +212,7 @@ func _build_debug_menu() -> void:
 
 	var label := Label.new()
 	label.text = "[ COMBAT TEST DEBUG — F1 ]\n"
-	label.text += "  F8 — Kill nearest\n"
+	label.text += "  F10 — Kill nearest\n"
 	label.text += "  F9 — Wound nearest\n"
 	label.text += "  R  — Reset enemies\n"
 	label.text += "  K  — Print loadout\n"
@@ -224,6 +244,15 @@ func _reset_enemies() -> void:
 	# Uses queue_free so the freeing happens at end-of-frame; the
 	# spawning happens in the same call so the next frame the player
 	# sees three goblins regardless of what was on screen before.
+	#
+	# Also clears EntityRegistry of any test goblins spawned via the
+	# F1 "SPAWN TEST GOBLIN" debug command — otherwise the streamer
+	# would re-spawn them on the next reconcile, defeating the reset.
+	# A dev-arena clear is safe; production save/load uses its own path.
+	if get_node_or_null("/root/EntityRegistry") != null \
+			and EntityRegistry.has_method("clear"):
+		EntityRegistry.clear()
+
 	var existing := get_tree().get_nodes_in_group("enemy")
 	for n in existing:
 		if is_instance_valid(n):

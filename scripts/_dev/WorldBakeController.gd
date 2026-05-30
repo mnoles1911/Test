@@ -10,8 +10,9 @@ extends Node3D
 #   * Which SQLite file the stream writes to
 #   * Whether the result ships as a baseline (Copper Isles yes; Mira no —
 #     World3D is pure procedural with per-save delta SQLites)
-#   * Whether a horizon skirt is baked (Copper Isles only — Mira's noise
-#     terrain doesn't need a static skirt)
+#
+# (The horizon-skirt bake was retired 2026-05-22 — the streaming
+# DistantTerrainManager heightmesh replaced the baked static skirt.)
 #
 # What this does in plain English:
 #
@@ -169,11 +170,6 @@ const VERTICAL_STEP_M: float = 200.0
 ## ships a baseline; Mira (BakeWorld3D) does not — its bake is purely an
 ## investigative perf measurement and the result is discarded.
 @export var show_copy_button: bool = true
-
-## Toggle for the "Bake horizon skirt" button. Copper Isles uses a baked
-## low-LOD skirt mesh to render distant peaks beyond the chunk stream
-## radius. Mira's procedural noise terrain doesn't use a skirt.
-@export var show_skirt_button: bool = true
 
 ## Path printed in the diagnostics "Update X with these findings"
 ## footer. Each scene points this at its own bake-notes doc so the
@@ -482,18 +478,13 @@ func _build_ui() -> void:
 
 	vbox.add_child(_make_divider())
 
-	# Copy + Skirt are scene-specific; hidden on Mira (BakeWorld3D.tscn)
-	# via the @export toggles. Mira's bake is investigative-only, no
-	# shipping baseline and no horizon skirt.
+	# Copy is scene-specific; hidden on Mira (BakeWorld3D.tscn) via the
+	# @export toggle. Mira's bake is investigative-only, no shipping
+	# baseline.
 	if show_copy_button:
 		_btn_copy = _make_button("3. Copy bake DB → %s" % final_baseline_path)
 		_btn_copy.pressed.connect(_on_copy_to_assets)
 		vbox.add_child(_btn_copy)
-
-	if show_skirt_button:
-		var btn_bake_skirt: Button = _make_button("4. Bake horizon skirt → assets/voxel/copper_isles_skirt.res")
-		btn_bake_skirt.pressed.connect(_on_bake_skirt)
-		vbox.add_child(btn_bake_skirt)
 
 	# Manual flush — useful when debugging persistence issues. Calls
 	# save_modified_blocks on the terrain immediately so you can
@@ -1203,47 +1194,6 @@ func _on_force_save() -> void:
 		_format_filesize(size_after),
 		_format_filesize(size_after - size_before),
 	])
-
-
-func _on_bake_skirt() -> void:
-	# Bake the low-LOD horizon skirt for the entire 5 km × 5 km region.
-	# Saves to res://assets/voxel/copper_isles_skirt.res so it ships in
-	# the PCK and gets loaded by HorizonSkirt at runtime. Cheap enough
-	# (~12k triangles) to bake synchronously — done in a few seconds.
-	if _running:
-		_set_status("Bake in progress; cancel first.")
-		return
-	var generator: Resource = _get_generator()
-	if generator == null:
-		_set_status("Skirt bake: generator not found.")
-		return
-	# Force the EXR to load (and the max-gray scan to run) before we
-	# sample heights — without this the first 1000+ get_ground_voxel_y_at
-	# calls would each trigger a load attempt.
-	if generator.has_method("_ensure_image"):
-		generator.call("_ensure_image")
-	_set_status("Baking horizon skirt...")
-	await get_tree().process_frame
-	# Bake area extends 1.5 km past the heightmap edge so the player
-	# standing on a peak doesn't see the skirt cut off short. The
-	# generator returns deep-ocean ground for out-of-bounds samples,
-	# so the extension reads as flat sea-floor — fine since the water
-	# horizon plane covers it visually.
-	var mesh: ArrayMesh = SkirtBaker.bake_mesh(
-		generator,
-		Vector2(-4000.0, -4000.0),
-		Vector2(4000.0, 4000.0),
-		VOXELS_PER_METRE,
-	)
-	if mesh == null:
-		_set_status("Skirt bake failed — see Output panel.")
-		return
-	const SKIRT_PATH: String = "res://assets/voxel/copper_isles_skirt.res"
-	var err: int = ResourceSaver.save(mesh, SKIRT_PATH)
-	if err == OK:
-		_set_status("Skirt baked → %s" % SKIRT_PATH)
-	else:
-		_set_status("Skirt save failed (err=%d)" % err)
 
 
 func _on_copy_to_assets() -> void:

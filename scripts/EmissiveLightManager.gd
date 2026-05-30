@@ -1,4 +1,23 @@
 extends Node
+# ======================================================================
+# DEPRECATED — v1 OmniLight3D-streaming emissive system.
+#
+# Superseded by `EmissiveBakedLightManager` (Phase J v2) which BFS-
+# floodfills a 3D `ImageTexture3D` the terrain shader samples. The baked
+# system disables this one at startup (`EmissiveBakedLight] disabled
+# EmissiveLightManager v1` log line).
+#
+# Kept on disk as a FALLBACK only — used if EmissiveBakedCpp DLL is
+# missing. Do NOT extend this file for new emissive features. New work
+# goes into `scripts/EmissiveBakedLightManager.gd` +
+# `extensions/voxel_gen/src/emissive_baked_cpp.{h,cpp}`.
+#
+# Known v1 cosmetic limitation that motivated the v2 supersession:
+# shadowless cluster lights bled brightness up through terrain (light
+# leaked across walls). Phase J fixes this by construction (BFS stops
+# at solid voxels) — see PR #241 receipt in `memory/`.
+# ======================================================================
+#
 # EmissiveLightManager — emissive voxels cast coloured light.
 #
 # Phase J of the graphics roadmap (design/GRAPHICS_PASS_2026-05-19.md).
@@ -93,7 +112,17 @@ extends Node
 @export_range(8, 40, 1) var vicinity_scan_radius_voxels: int = 24
 # Half-side of the vicinity sweep box, in voxels (6 voxels = 1 m). The
 # sweep bulk-reads one box this big around the player each interval —
-# the cost is iterating the buffer, so keep it modest.
+# the cost is iterating the buffer, so keep it modest. The box is
+# sliced into 8 octants and drained one per tick (see
+# _queue_vicinity_scan) so a 24-voxel radius costs ~5 ms per tick spread
+# over 8 ticks instead of one ~38 ms frame stall.
+
+@export_range(0.0, 8.0, 0.5) var vicinity_movement_threshold_m: float = 1.0
+# Movement gate. If the player has moved less than this many metres
+# since the last vicinity sweep, skip the new sweep — the box would
+# cover almost the same voxels. Standing still: one scan after the
+# player arrives, then idle. Moving: the gate is opened by the player's
+# own motion. Set to 0 to disable the gate (sweep on every interval).
 
 
 # =============================================================
@@ -121,8 +150,13 @@ const _SCAN_QUEUE_MAX: int = 24
 # Largest box (per axis) a single scan may cover — guards the buffer
 # allocation against a runaway request.
 const _MAX_SCAN_SIDE: int = 72
-# At most this many queued scans are drained per tick.
-const _MAX_SCANS_PER_TICK: int = 2
+# At most this many queued scans are drained per tick. Vicinity sweeps
+# are sliced into 8 octants in _queue_vicinity_scan, so a value of 1
+# spreads each sweep over 8 ticks (~1.6 s) — keeping each tick's scan
+# work well under the 16 ms frame budget. Profiler capture 2026-05-25:
+# the old un-sliced sweep cost 38 ms in a single frame; sliced + 1/tick
+# is ~5 ms per tick, invisible.
+const _MAX_SCANS_PER_TICK: int = 1
 
 # Face-neighbour offsets — used to test whether an emissive voxel is
 # exposed to air (and therefore worth lighting).
@@ -135,10 +169,25 @@ const _FACE_NEIGHBOURS: Array[Vector3i] = [
 var _terrain: Node = null
 var _terrain_id: int = 0
 
+# C++ scan impl (extensions/voxel_gen/src/emissive_light_cpp.cpp). Owns
+# the per-voxel classification + _has_air_neighbor gate + coarse-cell
+# dedupe. The autoload still owns OmniLight3D node creation/streaming,
+# camera lookup, _resolve_terrain, and the diff-against-existing-state.
+# When this is null (DLL missing), _scan_region falls back to the
+# original full-GD path.
+var _cpp: Resource = null
+const _EmissiveRef := preload("res://scripts/_dev/EmissiveReference.gd")
+
 # 10 Hz-ish heavy-work gate, mirroring DayNightCycle / WeatherManager.
 const _TICK_S: float = 0.2
 var _tick_accum: float = 0.0
 var _periodic_accum: float = 0.0
+
+# Movement-gate state. _last_vicinity_pos is the camera position the
+# last vicinity sweep was centred on; _vicinity_first forces the first
+# sweep to always run (otherwise it would be gated against ZERO).
+var _last_vicinity_pos: Vector3 = Vector3.ZERO
+var _vicinity_first: bool = true
 
 
 # =============================================================
@@ -173,6 +222,21 @@ func _ready() -> void:
 		VoxelEditManager.edit_applied.connect(_on_edit_applied)
 	else:
 		push_warning("[EmissiveLightManager] VoxelEditManager missing — edit-driven lighting off.")
+
+	# Resolve the C++ scan impl + push the emissive id set.
+	if ClassDB.class_exists("EmissiveLightCpp"):
+		_cpp = ClassDB.instantiate("EmissiveLightCpp")
+		if _cpp != null:
+			var ids: PackedInt32Array = PackedInt32Array()
+			for id in _emissive_mats.keys():
+				ids.append(int(id))
+			_cpp.set_emissive_material_ids(ids)
+			_cpp.set_cell_size_voxels(cell_size_voxels)
+			print("[EmissiveLightManager] using C++ scan (EmissiveLightCpp).")
+		else:
+			print("[EmissiveLightManager] EmissiveLightCpp registered but instantiate failed; using GD fallback.")
+	else:
+		print("[EmissiveLightManager] EmissiveLightCpp not registered; using GD fallback.")
 
 	print("[EmissiveLightManager] active — %d emissive material(s)." % _emissive_mats.size())
 
@@ -237,9 +301,26 @@ func _queue_vicinity_scan() -> void:
 	var cam: Camera3D = _get_camera()
 	if cam == null:
 		return
-	var g: Vector3i = _world_to_voxel(cam.global_position)
+	var pos: Vector3 = cam.global_position
+	# Movement gate — skip if the player hasn't moved enough since the
+	# last sweep. The scan box would otherwise cover almost the same
+	# voxels we already know about (the lights are cached in _lights and
+	# _emissive_voxels and persist for the session).
+	if not _vicinity_first \
+			and vicinity_movement_threshold_m > 0.0 \
+			and pos.distance_to(_last_vicinity_pos) < vicinity_movement_threshold_m:
+		return
+	_vicinity_first = false
+	_last_vicinity_pos = pos
+	# Slice the (2r)³ box into 8 (r)³ octants. With _MAX_SCANS_PER_TICK=1
+	# the drain spreads the work across 8 ticks (~1.6 s) — each tick
+	# handles ~r³ voxels instead of the (2r)³ all-at-once frame stall.
+	var g: Vector3i = _world_to_voxel(pos)
 	var r: int = vicinity_scan_radius_voxels
-	_queue_scan(g - Vector3i(r, r, r), Vector3i(r * 2, r * 2, r * 2))
+	for dx in [-r, 0]:
+		for dy in [-r, 0]:
+			for dz in [-r, 0]:
+				_queue_scan(g + Vector3i(dx, dy, dz), Vector3i(r, r, r))
 
 
 func _queue_scan(min_v: Vector3i, side: Vector3i) -> void:
@@ -276,27 +357,69 @@ func _scan_region(min_v: Vector3i, side: Vector3i) -> void:
 	# A voxel can have become emissive (mined into / placed), stopped
 	# being emissive (mined away), or be unchanged.
 	var affected: Dictionary = {}
-	for x in range(side.x):
-		for y in range(side.y):
-			for z in range(side.z):
-				var g: Vector3i = min_v + Vector3i(x, y, z)
-				var mid: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) & 0xFF
-				# Only EXPOSED emissive voxels light the world. A glowing
-				# voxel sealed in solid rock is skipped — cluster lights
-				# are shadowless, so lighting a buried voxel just bleeds
-				# brightness up through the terrain (the "near terrain
-				# too bright, light follows the player" bug). Copper
-				# therefore stays dark underground until it is mined into.
-				var now_lit: bool = _emissive_mats.has(mid) \
-						and _has_air_neighbor(buf, x, y, z, side)
-				var was: bool = _emissive_voxels.has(g)
-				if now_lit:
-					if not was or _emissive_voxels[g] != mid:
-						_emissive_voxels[g] = mid
+
+	if _cpp != null:
+		# FAST PATH — C++ classifies every voxel + applies the
+		# _has_air_neighbor gate, returning the full set of currently-
+		# lit emissive cells in the region. GD then diffs against
+		# _emissive_voxels to compute add / remove / change.
+		var result: Dictionary = _cpp.scan_region(buf, min_v, side)
+		var now_lit_stream: PackedInt32Array = result["now_lit"]
+		var lit_set: Dictionary = {}
+		@warning_ignore("integer_division")
+		var n: int = now_lit_stream.size() / 4
+		for i in range(n):
+			var g: Vector3i = Vector3i(
+				now_lit_stream[i * 4],
+				now_lit_stream[i * 4 + 1],
+				now_lit_stream[i * 4 + 2],
+			)
+			var mid: int = now_lit_stream[i * 4 + 3]
+			lit_set[g] = mid
+			var was: bool = _emissive_voxels.has(g)
+			if not was or _emissive_voxels[g] != mid:
+				_emissive_voxels[g] = mid
+				affected[_cell_of(g)] = true
+		# Removals: walk _emissive_voxels for entries inside the
+		# scanned region that aren't in this scan's now_lit. The walk
+		# is O(|_emissive_voxels|); the dict holds dozens to hundreds
+		# of entries in practice, not thousands, so it stays cheap.
+		var region_end: Vector3i = min_v + side
+		var to_erase: Array = []
+		for g_v in _emissive_voxels.keys():
+			var g: Vector3i = g_v
+			if g.x < min_v.x or g.y < min_v.y or g.z < min_v.z:
+				continue
+			if g.x >= region_end.x or g.y >= region_end.y or g.z >= region_end.z:
+				continue
+			if lit_set.has(g):
+				continue
+			to_erase.append(g)
+		for g in to_erase:
+			_emissive_voxels.erase(g)
+			affected[_cell_of(g)] = true
+	else:
+		# GD fallback — original per-voxel inner loop.
+		for x in range(side.x):
+			for y in range(side.y):
+				for z in range(side.z):
+					var g: Vector3i = min_v + Vector3i(x, y, z)
+					var mid: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE) & 0xFF
+					# Only EXPOSED emissive voxels light the world. A
+					# glowing voxel sealed in solid rock is skipped —
+					# cluster lights are shadowless, so lighting a
+					# buried voxel just bleeds brightness up through the
+					# terrain. Copper stays dark underground until mined into.
+					var now_lit: bool = _emissive_mats.has(mid) \
+							and _has_air_neighbor(buf, x, y, z, side)
+					var was: bool = _emissive_voxels.has(g)
+					if now_lit:
+						if not was or _emissive_voxels[g] != mid:
+							_emissive_voxels[g] = mid
+							affected[_cell_of(g)] = true
+					elif was:
+						_emissive_voxels.erase(g)
 						affected[_cell_of(g)] = true
-				elif was:
-					_emissive_voxels.erase(g)
-					affected[_cell_of(g)] = true
 
 	for cell in affected:
 		_rebuild_cell(cell)

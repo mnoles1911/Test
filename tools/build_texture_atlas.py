@@ -17,12 +17,21 @@ into a single atlas.png, and emits a manifest.json mapping
 material_id -> face tile coordinates that the Godot side reads at
 startup.
 
-We use NEAREST (not LANCZOS) because the target is pixel art: the AI
-source images are generated as upscaled pixel-art renders (clean
-square pixels on a 32x grid in a 512x512 canvas, per
-tools/AI_TEXTURE_PROMPTS.md), so the only correct downscale is the
-one that preserves the existing pixel grid. LANCZOS would average
-adjacent source pixels and produce blurry mush at 16x16.
+Downscale uses NEAREST because the target is pixel art. The pipeline
+assumes source PNGs are pixel-art-on-grid renders: a 16x16 (or 32x32)
+underlying tile upscaled to 1024x1024 so each output pixel is a
+64x64 (or 32x32) flat block of one colour. On that input NEAREST
+samples one source pixel per output tile pixel, preserving the grid
+exactly — no averaging, no anti-aliasing, no blur.
+
+Designer 2026-05-27: if your source PNG is a photo-style texture
+(continuous gradients, no clean pixel grid), NEAREST will sample 16
+essentially-random pixels and produce noise. The build will print a
+WARN line for any source whose mean-2x2-block-variance suggests
+non-pixel-art input — switch to a pixel-art generator (Retrodiffusion,
+PixelLab.ai, or hand-paint in Aseprite) rather than changing the
+downscale algorithm. See tools/AI_TEXTURE_PROMPTS.md for the
+recommended generation workflow.
 
 Two faces are auto-built and do NOT need to exist in source/:
   - grass_side.png is composited from dirt_all + grass_top (top-edge
@@ -203,6 +212,49 @@ def chroma_key_white(img, threshold=200, softness=40):
     return img
 
 
+def _warn_if_not_pixel_art(img, tile_size, name):
+    """
+    Heuristic: if the source is pixel-art-on-grid, each (src_w/tile_size)
+    by (src_h/tile_size) cell should be a flat block of one colour (low
+    intra-cell variance). If most cells have high intra-cell variance
+    the source is a photo / painterly texture and NEAREST will discard
+    everything but one pixel per cell — producing noise.
+
+    We sample a 16x16 subgrid (not the full tile_size grid — that would
+    be slow on 1024x1024 sources) and flag if mean cell-variance is
+    above a permissive threshold (covers obvious photo input without
+    false-positiving slightly-hand-shaky pixel art).
+    """
+    src_w, src_h = img.size
+    cell_w = src_w // 16
+    cell_h = src_h // 16
+    if cell_w < 4 or cell_h < 4:
+        return  # tiny source — heuristic won't be reliable
+    rgb = img.convert("RGB")
+    high_variance_cells = 0
+    total_cells = 0
+    threshold = 15.0   # ~1.5 levels of 0-255 stddev per channel
+    for cy in range(16):
+        for cx in range(16):
+            total_cells += 1
+            cell = rgb.crop((cx * cell_w, cy * cell_h,
+                             cx * cell_w + cell_w, cy * cell_h + cell_h))
+            stat = ImageStat.Stat(cell)
+            # mean per-channel stddev across R/G/B; high = lots of
+            # within-cell colour variation (= NOT a flat pixel-art cell).
+            mean_stddev = sum(stat.stddev) / 3.0
+            if mean_stddev > threshold:
+                high_variance_cells += 1
+    pct = (high_variance_cells / total_cells) * 100.0
+    if pct >= 50.0:
+        print(f"  WARN: {name} looks like PHOTO input ({pct:.0f}% of cells "
+              f"have intra-cell variance > {threshold:.0f}). NEAREST will "
+              f"sample one source pixel per cell -> noise.")
+        print(f"        Regenerate this material with a pixel-art generator "
+              f"(Retrodiffusion / PixelLab.ai) or hand-paint in Aseprite. "
+              f"See tools/AI_TEXTURE_PROMPTS.md.")
+
+
 def load_pack_meta(pack_dir):
     with open(os.path.join(pack_dir, "pack.json")) as f:
         return json.load(f)
@@ -251,6 +303,15 @@ def load_source_images(source_dir, tile_size):
             img = chroma_key_white(img)
             print(f"  {name}: white background -> alpha (chroma key applied)")
         if img.size != (tile_size, tile_size):
+            # Detect photo-style input before downscaling — see module
+            # docstring. We sample the source on the assumed pixel-art
+            # grid (tile_size cells, each cell is src_w/tile_size px
+            # wide). If most cells have low internal variance, the
+            # source IS pixel art and NEAREST is correct. If most cells
+            # have high internal variance, the source is a photo and
+            # NEAREST will produce noise — warn the designer to swap
+            # the source rather than the algorithm.
+            _warn_if_not_pixel_art(img, tile_size, name)
             img = img.resize((tile_size, tile_size), Image.NEAREST)
         loaded[name] = img
     return loaded

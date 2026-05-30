@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dcombat3st1v1"]
 
-[ext_resource type="Script" uid="uid://l2y3a6xh3p4b" path="res://scripts/_dev/CombatTestBootstrap.gd" id="1_bootstrap"]
+[ext_resource type="Script" uid="uid://donur323x6b4y" path="res://scripts/_dev/CombatTestBootstrap.gd" id="1_bootstrap"]
 [ext_resource type="PackedScene" uid="uid://dgoblin01v1" path="res://scenes/enemies/Goblin.tscn" id="2_goblin"]
 [ext_resource type="PackedScene" uid="uid://dp3l1roland3d" path="res://scenes/Player3D.tscn" id="3_player"]
 
@@ -24,13 +24,13 @@ fog_light_color = Color(0.7, 0.6, 0.5, 1)
 fog_density = 0.005
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
-size = Vector3(60, 0.5, 60)
+size = Vector3(400, 0.5, 400)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
 albedo_color = Color(0.43, 0.32, 0.2, 1)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
-size = Vector2(60, 60)
+size = Vector2(400, 400)
 
 [node name="CombatTest" type="Node3D" unique_id=1826951766]
 script = ExtResource("1_bootstrap")

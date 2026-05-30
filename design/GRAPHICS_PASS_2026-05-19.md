@@ -142,11 +142,17 @@ New follow-ups surfaced by testing (flagged, NOT fixed):
 
 ## Deferred follow-ups (flagged, not done)
 
-- **LOD terracing / hard LOD seams** — the screenshot's single biggest visual
-  problem; you deferred it this pass. `lod_distance` capped 128, `lod_fade_duration`
-  Zylann-capped, 6 LODs, hard radial transitions. Cross-ref `memory`
-  project_lod_pop_tiers. Deserves a dedicated pass. **The #1b flicker likely
-  belongs to this pass.**
+- **LOD terracing / hard LOD seams** — **RESOLVED 2026-05-22** by the
+  DistantTerrain overhaul (branch `feat/distant-terrain-lod`). The blocky
+  Zylann band shrank to ~450 m (`view_distance` 8000→2700, World3D
+  `lod_count` 6→4) and a streaming smooth-heightmesh — `scripts/Distant`
+  `TerrainManager.gd` + C++ `DistantTerrainMesher` (`extensions/voxel_gen/`)
+  + `assets/shaders/distant_terrain.gdshader` — now covers everything
+  past it, replacing both the far blocky LODs and the baked HorizonSkirt.
+  Seam-free by construction (perimeter skirt aprons + Bayer-dither
+  LOD-swap fade). Full record: the CLAUDE.md 2026-05-22 milestone entry.
+  Designer in-editor tuning of view_distance / lod_count / inner_cull is
+  tracked in `DESIGNER_TODO.md`.
 - **Normal maps via tangent-free shader** — the only water-safe route to
   per-pixel surface detail (derivative/triplanar bump in a custom terrain
   ShaderMaterial preserving NEAREST + alpha-scissor). Non-trivial; own pass.
@@ -213,7 +219,7 @@ settles it in a single run.
 
 ---
 
-## Phases G / I / J — SHIPPED 2026-05-22 (branch `feat/graphics-phases-g-i-j`)
+## Phases G / I / J — SHIPPED 2026-05-22 (PR #238)
 
 The remainder of the Phase F+ roadmap, built in one pass on top of the
 F/H/K work. One commit per phase; headless-gated; one batched in-editor
@@ -264,7 +270,21 @@ cluster lights (one per coarse cell), not one per voxel. Walk ~30 m
 away — distant cluster lights stream out, no perf cliff. F3 profiler:
 `EmissiveLightManager` should be cheap.
 
-Per-phase rollback is one `git revert <commit>` from the branch.
+### Designer verification — 2026-05-22 (PASSED)
+
+Run in-editor by the designer after merge. **G** day-cycle and **I**
+terrain relief read correctly; **J** glowing copper ore confirmed. One
+bug found and fixed: the first build lit emissive copper *buried in
+solid rock* — cluster lights are shadowless, so that brightness bled
+up through the terrain as a radius that followed the player. Fixed so
+only voxels with an air-exposed face register a light
+(`_has_air_neighbor` in `EmissiveLightManager`); re-tested, gone.
+Global illumination — the dark-shadowed-blocks the designer flagged —
+is the **SDFGI** enabled by the **ULTRA** graphics tier; confirmed
+good on ULTRA.
+
+Phases G/I/J landed as a single squash commit — PR #238 (`e8dfac9`);
+revert that commit to roll back the whole pass.
 
 ### Still open after this pass
 
@@ -330,18 +350,30 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   triplanar bump — which is exactly how Complementary generates normals
   (`lib/util/dFdxdFdy.glsl`). Never touches `bake_tangents`. GDScript +
   `.gdshader`. **Effort: medium–large.**
-- **Phase J — Colored lighting (voxel floodfill).** **SHIPPED 2026-05-22**
-  — see the "Phases G / I / J — SHIPPED" section above; built with
-  engine-native `OmniLight3D`s rather than the C++ floodfill sketched
-  here (designer-approved architecture call). The biggest single
-  visual jump and the one piece that genuinely needs C++: a BFS floodfill
-  from emissive voxels into a 3D storage texture, triggered on
-  `VoxelEditManager.edit_applied`, scoped to a radius around the edit —
-  the same shape of work as `VoxelGravityManager`'s flood-fill. C++
-  GDExtension in `extensions/voxel_gen/` + thin GDScript adapter + a
-  manager autoload that uploads the storage texture to a shader global;
-  the terrain shader samples it for indirect block light. Forward+
-  storage textures. **Effort: large.**
+- **Phase J — Colored lighting (voxel floodfill).** **SHIPPED 2026-05-22
+  (v1, OmniLight3D)** → **SUPERSEDED 2026-05-27 by v2 (C++ floodfill,
+  PR #241).** The original sketch in this roadmap (C++ BFS floodfill
+  from emissive voxels into a 3D storage texture sampled by the
+  terrain shader) was deferred for v1 in favour of engine-native
+  `OmniLight3D`s. Designer testing 2026-05-26 found the v1's
+  shadowless cluster lights bled brightness through ~5-15 voxels of
+  rock to the surface — physics-correct for `shadow_enabled = false`,
+  cosmetically wrong. The v1 also regressed perf when its `scan_region`
+  C++ port used per-voxel `Variant::call("get_voxel")` instead of a
+  bulk channel read (47.6 ms peak vs 18 ms GD-native pre-port). PR
+  #241 shipped the original sketch as designed: `EmissiveBakedCpp`
+  (BFS gated on "cell-centre voxel is air", `PackedByteArray` RGBA8
+  output) + `EmissiveBakedLightManager` autoload (owns
+  `ImageTexture3D` + four `[shader_globals]` declarations) +
+  `terrain_voxel.gdshader` sampler. The v1 autoload (`EmissiveLightManager`)
+  stays on disk; the v2 disables it at `_ready` so they don't
+  double-light, and reverting just the v2 autoload re-enables the v1
+  cleanly. Defaults after three rounds of designer tuning:
+  `cells_per_axis = 32`, `cell_size_voxels = 4` (~21 m cube),
+  `max_bfs_steps = 2`, `falloff_q12 = 1024` (0.25/step), `bake_strength = 0.10`.
+  All `@export`; live-tunable from the Inspector. Closing profile
+  2026-05-27: `WORLD.EmissiveBakedLight` 8.0 ms max / 5 ms avg / 0
+  spikes >10 ms across 285 ticks. **DONE.**
 - **Phase K — Atmospheric polish.** **PARTIAL — SHIPPED 2026-05-22 (PR #235):**
   the night-sky slice (stars / aurora / nebula) is done; see the
   "Phases F / H / K — SHIPPED" section above. **Still open:** lens flare,
@@ -349,7 +381,7 @@ ROI — H unblocks later water/sky work; J is the biggest single payoff.
   weather state. Each a small, independent `.gdshader` / `canvas_item`
   task — pick off opportunistically.
 
-**LOD terracing / hard LOD seams** (top item in Deferred follow-ups
-above) is *not* in this roadmap — it is a voxel-streaming problem, not a
-shader-look problem, and deserves its own pass first; it is currently the
-single biggest visual issue and will undercut any of F–K if left.
+**LOD terracing / hard LOD seams** — **RESOLVED 2026-05-22** (the
+DistantTerrain overhaul; see the Deferred-follow-ups note above). It was
+a voxel-streaming problem, not a shader-look one, so it got its own
+dedicated pass rather than a slot in this shader roadmap.

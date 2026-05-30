@@ -145,6 +145,10 @@ var _player: CharacterBody3D
 func _ready() -> void:
 	spring_length = arm_length
 	_pitch = -deg_to_rad(elevation_degrees)
+	# Combat Phase 5 — group membership so Enemy3D._trigger_overkill_feedback
+	# can find the rig via get_first_node_in_group("camera_rig") without
+	# a hardcoded node path.
+	add_to_group("camera_rig")
 
 	# Walk up the hierarchy: SpringArm3D → CameraTarget → Player3D
 	_player = get_parent().get_parent() as CharacterBody3D
@@ -402,3 +406,40 @@ func set_charge_pinch(t: float) -> void:
 		return
 	var clamped: float = clampf(t, 0.0, 1.0)
 	camera.fov = lerpf(_CHARGE_FOV_BASE, _CHARGE_FOV_PINCHED, clamped)
+
+
+# Combat Phase 5 — camera kick on lethal hits.
+# Tweens Camera3D.position along a random unit vector and back so the
+# screen "punches" at the moment of a kill. Magnitude in metres of
+# camera-local displacement; duration is the total round-trip time
+# (kick out for the first half, return for the second).
+#
+# Safe to call when no Camera3D is attached (menus, headless).
+func kick(magnitude: float = 0.08, duration: float = 0.18) -> void:
+	var camera: Camera3D = get_node_or_null("Camera3D")
+	if camera == null:
+		return
+	# Random direction biased toward the camera's local +/- X / Y so
+	# the kick is sideways/vertical (a forward kick wouldn't read on
+	# screen). Local space → no need to convert with the camera basis.
+	var dir := Vector3(
+		randf_range(-1.0, 1.0),
+		randf_range(-1.0, 1.0),
+		0.0).normalized()
+	if dir.length_squared() < 0.001:
+		dir = Vector3.RIGHT  # safety fallback
+	var rest_pos: Vector3 = camera.position
+	var kick_pos: Vector3 = rest_pos + dir * magnitude
+	# Kill any existing kick tween so rapid lethal hits don't stack
+	# offsets that never return to baseline.
+	if _kick_tween != null and _kick_tween.is_valid():
+		_kick_tween.kill()
+		camera.position = rest_pos
+	_kick_tween = create_tween()
+	_kick_tween.tween_property(camera, "position", kick_pos, duration * 0.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_kick_tween.tween_property(camera, "position", rest_pos, duration * 0.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+var _kick_tween: Tween = null
