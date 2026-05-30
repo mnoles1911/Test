@@ -27,14 +27,14 @@ I am a writer + game designer, not a programmer. Explain code in plain English, 
 
 Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
 
-- **Open PRs:**
-  - **#247 `combat/phase-5-gibs`** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge mechanic. **Has entity-streamer merged in** (Goblin/NPC/VoxelDrop respect `set_ai_tier`). **Designer playtest PASSED 2026-05-29** — ready to merge (resolve the #239 melee-gibs conflict first).
-  - **#246 `gameplay/entity-streamer`** — superseded into PR #247; will auto-close when combat ships. Tracking only.
-  - **#239 `claude/game-combat-design-Z5oLa`** — Directional Melee Combat v1 (sword + shield, parry/block, lock-on, HUD). **Awaiting review — do NOT build melee work on a different branch without checking this first.** May conflict with PR #247's gibs (it scheduled gibs for v1.1 phase 7).
+- **Open PRs:** none in the combat / gameplay track — the whole combat slice shipped 2026-05-30. (Old multiplayer-stack drafts #182–#199 still exist but are dormant; ignore unless resuming MP.)
 - **Default-OFF features (do not flip without designer direction):**
   - `GraphicsManager.rain_visuals_enabled = false` — rain shader + splash particles + wet-surface mod (PR #245, merged but gated).
   - `GraphicsManager.light_shafts_enabled = false` — per-state vol-fog god rays (PR #245, merged but gated).
-- **Recently merged:** PR #245 (weather rework framework — visuals default-off, audio envelope live), PR #244 (Phase K bundle — selection outline, cloud cohesion, lens flare, rainbow shader, DebugOverlay GRAPHICS sub-view).
+- **Recently merged:**
+  - **PR #239 (Directional Melee v1, 2026-05-30)** — sword + shield, four-direction mouse-flick attacks (**flick TOWARD where the blow comes from** — UP=overhead, DOWN=thrust, LEFT/RIGHT=that-side sweep), charged 2× + feint, RMB tap=parry / hold=directional block + `auto_block` toggle, `ParryChainTracker`, `EnemyAttackPool` telegraphs, `HUDDirectionArrows` + `HUDCombatRadar`. **Lock-on was prototyped then removed — combat is pure free-aim.**
+  - **PR #247 (Combat Phase 5 + entity streamer, 2026-05-30)** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge; `EntityRegistry`/`EntityStreamer` (folds in the closed #246). Gibs + melee coexist on `Goblin`/`Enemy3D`. CombatTest debug-kill is **F10** (F8 is the editor Stop shortcut).
+  - PR #245 (weather rework framework — visuals default-off, audio envelope live), PR #244 (Phase K bundle — selection outline, cloud cohesion, lens flare, rainbow shader, DebugOverlay GRAPHICS sub-view).
 
 ## Deprecated / superseded (do NOT implement from these)
 

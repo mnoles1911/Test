@@ -388,7 +388,11 @@ func _check_contact_damage() -> void:
 ## PowderCharge AOE, by the debug F8 key, and eventually by melee
 ## hitboxes. hit_dir is the direction the damage came from (for blood
 ## spurt direction); hit_point is the world position of the impact.
-func take_damage(amount: int, hit_dir: Vector3, hit_point: Vector3) -> void:
+func take_damage(amount: int, hit_dir: Vector3 = Vector3.FORWARD, hit_point: Vector3 = Vector3.ZERO) -> void:
+	# hit_dir / hit_point default to the same sentinels as die() so non-melee
+	# damage sources that don't know a direction can call take_damage(amount)
+	# with one argument — e.g. FallingVoxelCluster crushing an enemy. Melee /
+	# spear hits pass real values so the gib explosion fires along the blow.
 	if _is_dead:
 		return
 	health -= amount
