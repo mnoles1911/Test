@@ -878,6 +878,72 @@ a short pitch; promote to a real section when scope is committed.
   - Not blocking; pencil in for post-Act-I when player
     construction has been exercised.
 
+- **Weather rework — FRAMEWORK BUILT, ALL VISUALS DEFAULT-OFF.**
+  Designer playtest verdict (2026-05-27): "rain visuals look really
+  bad… god rays are not visible… needs hours of player iteration and
+  VFX and SFX work on another day." All visual phases (A rain shader,
+  B wet-terrain + splashes, D god rays) gated behind GraphicsManager
+  toggles defaulting OFF — scene baseline preserved, system inert.
+  Phase C (audio crossfade envelope) stays live as an objective
+  improvement over the linear-dB tween, even if it also needs more
+  iteration. Phase E (rainbow shader) stays live but the test was at
+  midday so antisolar was below horizon — arc is geometrically
+  invisible at high-sun angles even with a working shader.
+
+  **What this means:** the foundation is on disk and ready for a
+  dedicated multi-session iteration pass. Each phase is one
+  GraphicsManager toggle flip away from being live for tuning. To
+  iterate later:
+  1. F1 → COMMANDS → GRAPHICS / POST-FX. Flip RAIN VISUALS ON to
+     start tuning the rain shader / wet-surface / splash particles.
+     Phase A still needs redesign per "looks really bad" — likely
+     wants an artist-authored streak texture instead of pure
+     procedural.
+  2. Flip LIGHT SHAFTS ON to start tuning god rays per-state
+     (`vol_fog_density / _length / _albedo` in `STATE_PROFILES`).
+  3. Rainbow: trigger via FORCE RAINBOW NOW and stand at dawn or
+     dusk where antisolar is above horizon (azimuth + elevation
+     logged each second so designer knows where to face).
+  4. Audio: tune `WeatherEnvelopeProfile` (lead_seconds /
+     fade_seconds / curve_pow / lowpass sweep) or author per-state
+     resources.
+
+  Original per-phase implementation testing checklist for the future
+  iteration session:
+  - **Rain visual (Phase A).** Set HEAVY_RAIN via DebugOverlay WEATHER
+    sub-view. Confirm: streaks come in gradually over the 30 s
+    transition (not on/off); streaks remain visible at every camera
+    angle including looking straight down; streaks lean with wind
+    direction; vanish when player submerges. Old GPUParticles3D rig
+    available behind the `rain_3d_fallback` toggle for A/B comparison.
+  - **Rain audio (Phase C).** Same trigger. Confirm: audio onset is
+    immediate (no ~5 s lag vs the visual); ramp feels like a build-up,
+    not a switch; bed sounds "muffled → open" as the low-pass sweep
+    completes. Designer may want to tune `WeatherEnvelopeProfile` knobs
+    (curve_pow, lowpass_hz_low/high, fade_seconds) — author per-state
+    Resources if a state needs a different feel.
+  - **God rays (Phase D).** Set CLEAR at midday. Confirm: visible
+    volumetric shafts where the sun cuts through occluding geometry
+    (tree trunks, building edges). Set HEAVY_RAIN — shafts should
+    fully vanish. UnderwaterFilter on-submerge override still works.
+  - **Rainbow (Phase E).** Set HEAVY_RAIN → wait 30 s → set CLEAR.
+    Watch the `[WeatherManager] Rainbow ramping up: ... antisolar
+    az=X° el=Y°` log line — face that azimuth + look slightly up.
+    Should see the arc form over 30 s. If invisible, hit the
+    DebugOverlay WEATHER sub-view "RAINBOW DEBUG" toggle to draw the
+    band at full alpha regardless of state, confirming the geometry.
+    "FORCE RAINBOW NOW" triggers without needing the rain transition.
+  - **Wet terrain (Phase B follow-on).** Same HEAVY_RAIN trigger.
+    Stone / dirt / grass surfaces should darken slightly and pick up
+    a specular sheen from the sun (roughness drop). Small splash ring
+    particles appear on the ground around the player.
+
+  Authoring opportunity: per-state `WeatherEnvelopeProfile` Resources
+  in `assets/weather/envelopes/` once the designer wants per-bed feel
+  (e.g. fog rolls in slowly with a tighter low-pass; rain crashes in
+  with a brighter cutoff). Plumb `STATE_PROFILES["envelope"]` ->
+  `_swap_ambient_audio` picks the profile by state.
+
 - **WeatherManager polish — deferred from PR #132 code review (2026-05-04).**
   Self-review surfaced these. Each is functionally tolerable today; bundle
   for a future cleanup pass.

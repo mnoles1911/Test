@@ -48,11 +48,130 @@ var _profiles: Array[ShaderProfile] = []
 # The currently-selected tier (a Tier value / index into _profiles).
 var current_tier: int = DEFAULT_TIER
 
+# Per-effect toggles (Phase K bundle, 2026-05-27). Each defaults to ON;
+# designer can disable any individually via the DebugOverlay GRAPHICS
+# sub-view. Persisted alongside the tier in user://graphics.json so
+# choices survive runs. Master_post_processing is the "all off" switch
+# the designer asked for — flipping it false short-circuits every
+# per-effect check (effects act as if their own toggle is false).
+#
+# Effects honoured (in commit order):
+#   selection_outline — EditToolHandler hides _aim_outline when false
+#   lens_flare        — LensFlare CanvasLayer.visible = false
+#   light_shafts      — WeatherManager skips the per-state god_ray
+#                        multiplier push; sun's volumetric fog energy
+#                        stays at its baseline (Underwater filter's
+#                        on-submerge ramp is independent and unaffected)
+#   rainbow           — sky_atmosphere shader rainbow_factor pinned to 0
+#
+# General rule for new effects: add a flag here, add an `is_effect_enabled`
+# getter (combined with master), wire the consumer to call it, surface
+# in DebugOverlay GRAPHICS sub-view.
+@export var master_post_processing_enabled: bool = true
+@export var selection_outline_enabled: bool = true
+@export var lens_flare_enabled: bool = true
+# Weather rework 2026-05-27 designer playtest verdict: god rays still
+# imperceptible even with the per-state WorldEnvironment.volumetric_fog
+# co-tune. Deferred for multi-session iteration. Default OFF so the new
+# env vol_fog writes don't take effect; scene baseline is preserved.
+@export var light_shafts_enabled: bool = false
+@export var rainbow_enabled: bool = true
+# Weather rework 2026-05 (Phase A) — keep the GPUParticles3D rain rig as
+# a fallback so the v1 visual can be A/B'd against the new screen-space
+# shader. Defaults OFF — the new shader is the shipping path.
+@export var rain_3d_fallback_enabled: bool = false
+# Weather rework 2026-05-27 designer playtest verdict: "rain visuals
+# look really bad. just turn off all the rain visuals." Master gate
+# for the new screen-space rain shader + splash particles + wet-surface
+# terrain modulation. Defaults OFF; the entire visual stack is dormant
+# until a future iteration session enables it. Audio crossfade rework
+# stays live — it's an objective improvement over the linear-dB tween.
+@export var rain_visuals_enabled: bool = false
+
+# Signal fired whenever any effect toggle changes so subscribers can
+# react without polling. DebugOverlay flips → GraphicsManager emits →
+# WeatherManager / EditToolHandler / LensFlare etc. apply the change
+# on the next frame.
+signal effect_toggles_changed()
+
 
 func _ready() -> void:
 	_build_profiles()
 	_load_tier()
 	print("[GraphicsManager] Ready — tier = %s." % tier_name(current_tier))
+
+
+# =============================================================
+# EFFECT TOGGLE PUBLIC API  (Phase K bundle, 2026-05-27)
+# =============================================================
+
+## True if `effect` should currently render. Folds in the master switch
+## so callers don't have to AND-with master themselves. `effect` is the
+## name of one of the @export bools above (without the `_enabled` suffix).
+func is_effect_enabled(effect_name: String) -> bool:
+	# rain_3d_fallback is independent of master_post_processing — it is a
+	# debug A/B switch, not an FX layer. Check it before the master gate.
+	if effect_name == "rain_3d_fallback":
+		return rain_3d_fallback_enabled
+	if not master_post_processing_enabled:
+		return false
+	match effect_name:
+		"selection_outline":
+			return selection_outline_enabled
+		"lens_flare":
+			return lens_flare_enabled
+		"light_shafts":
+			return light_shafts_enabled
+		"rainbow":
+			return rainbow_enabled
+		"rain_visuals":
+			return rain_visuals_enabled
+		_:
+			push_warning("[GraphicsManager] is_effect_enabled: unknown effect '%s'." % effect_name)
+			return false
+
+
+## Flip one effect toggle. Persists + emits effect_toggles_changed.
+func set_effect_enabled(effect_name: String, enabled: bool) -> void:
+	match effect_name:
+		"master_post_processing":
+			master_post_processing_enabled = enabled
+		"selection_outline":
+			selection_outline_enabled = enabled
+		"lens_flare":
+			lens_flare_enabled = enabled
+		"light_shafts":
+			light_shafts_enabled = enabled
+		"rainbow":
+			rainbow_enabled = enabled
+		"rain_3d_fallback":
+			rain_3d_fallback_enabled = enabled
+		"rain_visuals":
+			rain_visuals_enabled = enabled
+		_:
+			push_warning("[GraphicsManager] set_effect_enabled: unknown effect '%s'." % effect_name)
+			return
+	_save_tier()
+	effect_toggles_changed.emit()
+	print("[GraphicsManager] %s -> %s." % [effect_name, str(enabled)])
+
+
+## Reset every per-effect toggle (master included) to ON.
+func reset_all_effects_enabled() -> void:
+	master_post_processing_enabled = true
+	selection_outline_enabled = true
+	lens_flare_enabled = true
+	# light_shafts + rain_visuals intentionally NOT reset to ON — both
+	# default OFF per the 2026-05-27 designer playtest. RESET ALL TO ON
+	# would surprise the designer by re-enabling visuals they explicitly
+	# turned off as needing multi-session iteration.
+	# light_shafts_enabled stays at current value
+	# rain_visuals_enabled stays at current value
+	rainbow_enabled = true
+	# rain_3d_fallback intentionally NOT reset — debug A/B switch.
+	_save_tier()
+	effect_toggles_changed.emit()
+	print("[GraphicsManager] Reset selection_outline / lens_flare / rainbow / master to ENABLED (light_shafts + rain_visuals + rain_3d_fallback preserved).")
 
 
 # =============================================================
@@ -235,11 +354,24 @@ func _build_profiles() -> void:
 # =============================================================
 
 func _save_tier() -> void:
+	# Renamed conceptually to _save_state — also persists the per-effect
+	# toggles added 2026-05-27. Backwards-compatible: missing fields read
+	# as their defaults (all true), so an existing user://graphics.json
+	# from before the toggles existed loads cleanly.
 	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f == null:
 		push_warning("[GraphicsManager] Could not write %s." % SETTINGS_PATH)
 		return
-	f.store_string(JSON.stringify({"quality_tier": current_tier}, "\t"))
+	f.store_string(JSON.stringify({
+		"quality_tier": current_tier,
+		"master_post_processing_enabled": master_post_processing_enabled,
+		"selection_outline_enabled": selection_outline_enabled,
+		"lens_flare_enabled": lens_flare_enabled,
+		"light_shafts_enabled": light_shafts_enabled,
+		"rainbow_enabled": rainbow_enabled,
+		"rain_3d_fallback_enabled": rain_3d_fallback_enabled,
+		"rain_visuals_enabled": rain_visuals_enabled,
+	}, "\t"))
 	f.close()
 
 
@@ -254,8 +386,19 @@ func _load_tier() -> void:
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	if parsed is Dictionary:
+		var d: Dictionary = parsed as Dictionary
 		current_tier = clampi(
-			int((parsed as Dictionary).get("quality_tier", DEFAULT_TIER)),
+			int(d.get("quality_tier", DEFAULT_TIER)),
 			0, _profiles.size() - 1)
+		master_post_processing_enabled = bool(d.get("master_post_processing_enabled", true))
+		selection_outline_enabled = bool(d.get("selection_outline_enabled", true))
+		lens_flare_enabled = bool(d.get("lens_flare_enabled", true))
+		# Defaults for light_shafts + rain_visuals changed to false 2026-05-27
+		# (designer-deferred). Missing key in older user://graphics.json
+		# reads as the new default.
+		light_shafts_enabled = bool(d.get("light_shafts_enabled", false))
+		rainbow_enabled = bool(d.get("rainbow_enabled", true))
+		rain_3d_fallback_enabled = bool(d.get("rain_3d_fallback_enabled", false))
+		rain_visuals_enabled = bool(d.get("rain_visuals_enabled", false))
 	else:
 		current_tier = DEFAULT_TIER

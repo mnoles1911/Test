@@ -307,6 +307,18 @@ debug_emissive_magenta={
 "type": "float",
 "value": 0.0
 }
+rainbow_factor={
+"type": "float",
+"value": 0.0
+}
+wetness_factor={
+"type": "float",
+"value": 0.0
+}
+rainbow_debug={
+"type": "float",
+"value": 0.0
+}
 
 [voxel]
 
