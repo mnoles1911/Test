@@ -7,7 +7,7 @@ How enemies perceive the world, decide what to do, and fight.
 > `design/SKILLS_AND_PROGRESSION.md` for how Roland's progression affects enemy difficulty.
 > `design/COMBAT_NEXT_PHASES.md` for what's actually implemented today vs. what remains, plus the prioritized order for building Ashfallen / Wolf / Bear and the group AI / attack-token system described below.
 
-> **Implementation status:** `Enemy3D` base class (state machine + damage / death + corpse looting) and `Goblin` v1 are live as of May 2026. Goblin uses a stripped-down "walk toward player + contact damage" loop — full attack pool, group alerts, swarm override, and fleeing all per spec but not yet built. Ashfallen, Wolf, Bear specs below are unimplemented.
+> **Implementation status (2026-05-25):** `Enemy3D` base + `Goblin` + `EnemyAttackPool` (READY/WINDUP/STRIKE/RECOVERY/STAGGERED, weighted attack table, yellow/red telegraph, `committed_attack` signal, `stagger(duration)`) all live in directional-melee v1 (PR #239). Goblin runs the directional attack pool (50% jab, 35% swing, 15% unblockable leap). Still pending: group-AI attack token, group alerts, swarm-override at 4+, fleeing on last-standing, Ashfallen/Wolf/Bear. See `design/COMBAT_NEXT_PHASES.md` for the prioritised roadmap.
 
 ---
 

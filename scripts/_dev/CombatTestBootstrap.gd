@@ -54,13 +54,16 @@ extends Node3D
 
 const _GOBLIN_SCENE: PackedScene = preload("res://scenes/enemies/Goblin.tscn")
 
-## Triangle formation matching the original placement in
-## CombatTest.tscn. Reset Enemies respawns goblins at these exact
-## positions so the encounter is reproducible across resets.
+## Tight triangle so a single 110° wide-arc sweep can hit all three.
+## Front-left and front-right 2.4 m apart at z=-2 (capsules don't
+## overlap at 0.4 m radius each), back-center at z=-2.5 — all three
+## within the 2 m sword reach when the player stands at roughly z=-1.
+## Designer test 2026-05-25: the previous (-3, +3, -6) spread was
+## 6 m wide and made sweep testing impossible.
 const _GOBLIN_SPAWN_POSITIONS: Array[Vector3] = [
-	Vector3(-3.0, 0.0, -2.0),
-	Vector3(3.0, 0.0, -2.0),
-	Vector3(0.0, 0.0, -6.0),
+	Vector3(-1.2, 0.0, -2.0),
+	Vector3(1.2, 0.0, -2.0),
+	Vector3(0.0, 0.0, -2.5),
 ]
 
 
@@ -88,12 +91,21 @@ func _ready() -> void:
 	# MOUSE_MODE_CAPTURED to register look input.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	# Equip the spear so LMB throws it. The InventoryManager autoload
-	# already added 5× spear to the debug starting inventory; we just
-	# move it into the weapon slot so ThrowableHandler routes LMB to
-	# the spear scene rather than to the equipped shovel.
+	# Equip the sword + shield loadout for directional melee testing.
+	# The sword routes LMB through MeleeHandler (instead of EditToolHandler /
+	# ThrowableHandler) and the shield raises during RMB hold / parry tap.
+	# Both items are added here on demand so the dev arena doesn't depend
+	# on the starting-inventory order (and so swapping back to spear is
+	# trivial — comment out these three lines + uncomment the spear line).
 	if get_node_or_null("/root/InventoryManager"):
-		InventoryManager.equip("weapon", "spear")
+		if not InventoryManager.has_item("iron_sword"):
+			InventoryManager.add_item("iron_sword", 1)
+		if not InventoryManager.has_item("iron_shield"):
+			InventoryManager.add_item("iron_shield", 1)
+		InventoryManager.equip("weapon", "iron_sword")
+		InventoryManager.equip("offhand", "iron_shield")
+		# Old throwables-only loadout (kept for reference):
+		# InventoryManager.equip("weapon", "spear")
 
 	# Spawn an EntityStreamer so the F1 "SPAWN TEST GOBLIN" debug command
 	# works in this dev scene. World3D.tscn ships one as a scene child;
@@ -145,6 +157,27 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Reset Enemies: clear current goblins (alive + corpses)
 			# and respawn three fresh ones at the original positions.
 			_reset_enemies()
+		KEY_K:
+			# Print equipped weapon + offhand to console — verification
+			# probe for the sword/shield Phase 0 setup.
+			_print_loadout()
+		KEY_N:
+			# Toggle "passive goblins" mode — disables EnemyAttackPool
+			# attacks AND combat detection so the goblins stand still as
+			# practice dummies. Lets the user verify directional swings
+			# in isolation (Phase 1) without being shoved or attacked.
+			_toggle_passive_goblins()
+		KEY_M:
+			# Print MeleeHandler internal state — current swing phase,
+			# pending parry windows, chain count. Useful when a parry
+			# silently fails and you want to know why.
+			_print_melee_state()
+		KEY_B:
+			# Toggle Bannerlord-style auto-block on the player's
+			# MeleeHandler. When ON, holding RMB blocks any direction
+			# regardless of mouse flick — the difficulty option for
+			# players who don't want to learn directional reads.
+			_toggle_auto_block()
 		KEY_Q:
 			# Quit the game window. Dev arena only — no save.
 			_quit_game()
@@ -182,6 +215,10 @@ func _build_debug_menu() -> void:
 	label.text += "  F10 — Kill nearest\n"
 	label.text += "  F9 — Wound nearest\n"
 	label.text += "  R  — Reset enemies\n"
+	label.text += "  K  — Print loadout\n"
+	label.text += "  M  — Print melee state\n"
+	label.text += "  N  — Passive goblins ON/OFF\n"
+	label.text += "  B  — Auto-block ON/OFF\n"
 	label.text += "  Q  — Quit"
 	label.add_theme_color_override("font_color", Color(0.92, 0.88, 0.78, 1.0))
 	panel.add_child(label)
@@ -225,11 +262,118 @@ func _reset_enemies() -> void:
 		var goblin := _GOBLIN_SCENE.instantiate() as Node3D
 		add_child(goblin)
 		goblin.global_position = spawn_pos
+		# Preserve passive-goblins toggle across resets.
+		if _passive_goblins:
+			# Deferred so the goblin's _ready (Goblin.gd) runs first and
+			# sets up its _visual + EnemyAttackPool before we tweak ranges.
+			call_deferred("_apply_passive_to", goblin)
 
 	if get_node_or_null("/root/DebugOverlay"):
 		DebugOverlay.log_action("[CombatTest] Reset — %d goblins respawned" % _GOBLIN_SPAWN_POSITIONS.size())
 	else:
 		print("[CombatTest] Reset — %d goblins respawned" % _GOBLIN_SPAWN_POSITIONS.size())
+
+
+var _passive_goblins: bool = false
+
+
+func _toggle_passive_goblins() -> void:
+	# Toggle a "training dummies" mode — goblins detect nothing and the
+	# AttackPool is frozen. Lets the designer isolate-test directional
+	# swings (Phase 1) before adding the enemy-attack feedback loop
+	# (Phase 3). Reset (R) respawns them in the same mode.
+	_passive_goblins = not _passive_goblins
+	for n in get_tree().get_nodes_in_group("enemy"):
+		_apply_passive_to(n)
+	var msg := "Passive goblins ON — they stand as dummies" if _passive_goblins else "Passive goblins OFF — combat AI live"
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("[CombatTest] " + msg)
+	else:
+		print("[CombatTest] " + msg)
+
+
+func _apply_passive_to(n: Node) -> void:
+	if n == null or not is_instance_valid(n):
+		return
+	# Make the goblin behave like a stationary dummy. Setting alert_range
+	# / combat_range to 0 keeps it permanently IDLE; freezing
+	# _stagger_remaining keeps the AttackPool in STAGGERED (no attacks)
+	# without dying. Restoring on toggle-off uses authored defaults.
+	if _passive_goblins:
+		n.set("alert_range_meters", 0.0)
+		n.set("combat_range_meters", 0.0)
+		# Force back to IDLE if currently in COMBAT.
+		if "current_state" in n and n.has_method("_set_state"):
+			n.call("_set_state", Enemy3D.State.IDLE)
+	else:
+		# Restore defaults from Enemy3D base.
+		n.set("alert_range_meters", 10.0)
+		n.set("combat_range_meters", 5.0)
+
+
+func _toggle_auto_block() -> void:
+	# Flip MeleeHandler.auto_block on Player3D. With auto_block ON, holding
+	# RMB blocks any incoming attack at full effectiveness regardless of
+	# the player's mouse direction — Bannerlord's "Auto Block" difficulty
+	# option. Production UI integration lives in Settings; this debug key
+	# is for testing the mechanic in CombatTest.
+	var player := _find_player()
+	if player == null:
+		print("[CombatTest] no player")
+		return
+	var melee: Node = player.get_node_or_null("MeleeHandler")
+	if melee == null:
+		print("[CombatTest] no MeleeHandler")
+		return
+	var current: bool = bool(melee.get("auto_block"))
+	melee.set("auto_block", not current)
+	var msg := "Auto-block ON — any RMB hold blocks any direction" if not current else "Auto-block OFF — directional blocking required"
+	if get_node_or_null("/root/DebugOverlay"):
+		DebugOverlay.log_action("[CombatTest] " + msg)
+	else:
+		print("[CombatTest] " + msg)
+
+
+func _print_melee_state() -> void:
+	var player := _find_player()
+	if player == null:
+		print("[CombatTest] no player")
+		return
+	var melee: Node = player.get_node_or_null("MeleeHandler")
+	if melee == null:
+		print("[CombatTest] no MeleeHandler")
+		return
+	var phase: int = int(melee.get("_swing_phase"))
+	var phase_name: String = ["IDLE", "WINDUP", "STRIKE", "RECOVERY"][phase]
+	var pending: Dictionary = melee.get("_pending_attacks") as Dictionary
+	var chain_count: int = 0
+	var pc: Variant = melee.get("parry_chain")
+	if pc != null:
+		chain_count = int(pc.current_chain_count)
+	var held_dir: int = int(melee.get("_held_swing_direction"))
+	var auto_next: int = int(melee.get("_auto_alternate_next"))
+	var auto_blk: bool = bool(melee.get("auto_block"))
+	print("[CombatTest] MELEE STATE: phase=%s pending_parries=%d chain=x%d block_active=%s held_dir=%d auto_alt_next=%d auto_block=%s" % [
+		phase_name, pending.size(), chain_count, str(melee.get("_block_active")),
+		held_dir, auto_next, str(auto_blk),
+	])
+
+
+func _print_loadout() -> void:
+	# Phase 0 verification: confirm the sword/shield ended up in the right
+	# slots and the InventoryManager type metadata reads back correctly.
+	if not get_node_or_null("/root/InventoryManager"):
+		print("[CombatTest] InventoryManager autoload not present")
+		return
+	var weapon: String = InventoryManager.get_equipped("weapon")
+	var offhand: String = InventoryManager.get_equipped("offhand")
+	var w_type: String = ""
+	var o_type: String = ""
+	if weapon != "" and InventoryManager.ITEM_REGISTRY.has(weapon):
+		w_type = InventoryManager.ITEM_REGISTRY[weapon].get("type", "")
+	if offhand != "" and InventoryManager.ITEM_REGISTRY.has(offhand):
+		o_type = InventoryManager.ITEM_REGISTRY[offhand].get("type", "")
+	print("[CombatTest] LOADOUT: weapon='%s' (type=%s)  offhand='%s' (type=%s)" % [weapon, w_type, offhand, o_type])
 
 
 func _quit_game() -> void:

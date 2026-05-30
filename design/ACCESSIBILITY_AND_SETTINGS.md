@@ -80,7 +80,7 @@ Audio settings write directly to Godot's AudioServer bus volume. They persist in
 | **Keybindings** | See `design/INPUT_AND_CONTROLS.md` | Full remap UI — every action listed, click to rebind |
 | **Controller vibration** | On | Enables/disables controller rumble (haptic feedback) |
 | **Controller stick deadzone** | 0.15 | 0.05–0.35 slider; higher values prevent drift on worn controllers |
-| **Mouse sensitivity** | 50 | 0–100 slider; affects lock-on target cycling and menu navigation speed |
+| **Mouse sensitivity** | 50 | 0–100 slider; affects camera rotation and menu navigation speed |
 | **Invert Y (controller)** | Off | Inverts right stick vertical axis for camera tilt |
 
 ### Keybinding UI
@@ -103,8 +103,9 @@ Every action from `design/INPUT_AND_CONTROLS.md` appears in the keybinding list.
 | **High contrast HUD** | Off | Off / On | Increases contrast on HP/Endurance bars and quick slot indicators |
 | **HUD scale** | 100% | 75% / 100% / 125% / 150% | Scales all HUD elements |
 | **Hold vs toggle — sprint** | Hold | Hold / Toggle | Toggle sprint means one press to start, one to stop |
-| **Hold vs toggle — lock-on** | Toggle | Hold / Toggle | Hold lock-on releases when the button is released |
 | **Hold vs toggle — block** | Hold | Hold / Toggle | Toggle block stays active until pressed again |
+| **Auto-block** | Off | Off / On | Bannerlord-style passive blocking — any RMB hold blocks any direction at full effectiveness. Removes the directional read requirement. |
+| **Direction input mode** | Mouse | Mouse / WASD modifier | How attack direction is selected — mouse flick (default) vs WASD held + LMB |
 | **Screen shake** | Normal | Off / Reduced / Normal | Camera shake on large hits and explosions; Off for vestibular sensitivity |
 | **Vignette on low HP** | On | On / Off | The screen-edge darkening at low HP; Off removes it |
 | **Combat timing assistance** | Off | Off / Lenient | Lenient: parry and power attack charge windows are 25% wider. Does not affect other systems. |

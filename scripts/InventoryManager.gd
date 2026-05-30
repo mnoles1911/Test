@@ -56,8 +56,16 @@ const ITEM_REGISTRY: Dictionary = {
 	"henrietta_notes": {"name": "Henrietta's Notes","type": "key_item",  "description": "Folded paper, handwriting small and fast. She knew more than she said."},
 
 	# Weapons
-	"iron_sword":      {"name": "Iron Sword",      "type": "weapon",     "description": "Standard Brotherhood blade. Better maintained than most."},
+	# Melee weapons (type: "melee_weapon") route LMB through MeleeHandler
+	# instead of EditToolHandler or ThrowableHandler. combat_damage is the
+	# LIGHT-swing damage; power_damage is the charged release (2× per design).
+	"iron_sword":      {"name": "Iron Sword",      "type": "melee_weapon", "description": "Standard Brotherhood blade. Better maintained than most.", "combat_damage": 15, "power_damage": 30, "endurance_light": 8.0, "endurance_charged": 18.0},
 	"ashsteel_blade":  {"name": "Ashsteel Blade",  "type": "weapon",     "description": "Forged from Ashsteel. Burns cold. The edge never dulls."},
+
+	# Shields (type: "shield") sit in the offhand slot. MeleeHandler raises
+	# the ShieldPivot during RMB hold and orients it to the chosen block
+	# direction. Matched-direction hit → 0 dmg, mismatched → chip fraction.
+	"iron_shield":     {"name": "Iron Shield",     "type": "shield", "description": "A round, iron-banded shield. Battered, reliable, heavy on the arm.", "block_reduction_matched": 1.0, "block_reduction_mismatched": 0.4, "endurance_per_block": 12.0},
 
 	# Edit-verb tools — go in the weapon slot. tool_target_materials is
 	# the list of voxel-material tags this tool can affect; using the
@@ -304,6 +312,7 @@ func get_items_of_type(type_filter: String) -> Array:
 
 var _equipped: Dictionary = {
 	"weapon": "",    # item_id of the equipped weapon, or ""
+	"offhand": "",   # shield (sword + shield loadout) — MeleeHandler reads this
 	"armor":  "",
 	"accessory": "",
 }
@@ -437,6 +446,7 @@ func reset_to_defaults() -> void:
 	_inventory.clear()
 	_equipped = {
 		"weapon": "",
+		"offhand": "",
 		"armor":  "",
 		"accessory": "",
 	}

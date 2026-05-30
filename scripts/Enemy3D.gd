@@ -139,6 +139,36 @@ signal died(damage_at_kill: int)
 ## "unknown source"; the router falls back to its current_weapon_skill.
 var last_hit_skill: String = ""
 
+## Fired whenever current_state changes. LockOnManager (Phase 4) subscribes
+## to know when an enemy enters / leaves COMBAT for engagement / disengage
+## decisions. Args are the State enum values for old + new.
+signal state_changed(old: int, new: int)
+
+
+# =============================================================
+# PHASE 3 ADDITIONS — committed-attack signal + stagger + contact
+# damage suppression. EnemyAttackPool (composed into Goblin) drives
+# the new attack state machine and pokes these fields on this base.
+# =============================================================
+
+## Fires when a subclass's EnemyAttackPool starts a windup. Args:
+## direction (MouseDirectionSampler.DIR_*), time_to_impact seconds,
+## is_unblockable (red telegraph). MeleeHandler subscribes to update
+## its parry window + last-incoming-attack default; LockOnManager
+## subscribes to re-prioritise the camera target. Subclasses MUST emit
+## this from their AttackPool so Phase 4/5 UX works.
+signal committed_attack(direction: int, time_to_impact: float, is_unblockable: bool)
+
+## When true, _check_contact_damage skips the per-frame contact tick.
+## EnemyAttackPool sets it during WINDUP/STRIKE so a goblin in melee
+## range doesn't double-dip (touch tick + sword swing). Cleared in
+## RECOVERY/READY.
+var _contact_damage_suppressed: bool = false
+
+## Stagger countdown. Successful player parry sets this; while > 0 the
+## subclass's AttackPool stays in STAGGERED (no movement, no attacks).
+var _stagger_remaining: float = 0.0
+
 
 # =============================================================
 # REFERENCES
@@ -239,6 +269,11 @@ func _physics_process(delta: float) -> void:
 	if _contact_cooldown_remaining > 0.0:
 		_contact_cooldown_remaining -= delta
 
+	# Tick down the stagger lockout. When it reaches zero the AttackPool
+	# can return to READY on its next own tick.
+	if _stagger_remaining > 0.0:
+		_stagger_remaining = maxf(0.0, _stagger_remaining - delta)
+
 	# Update detection state based on distance to player.
 	_update_detection_state()
 
@@ -289,13 +324,28 @@ func _update_detection_state() -> void:
 
 
 ## Change state and notify subclasses via _on_state_changed so they can
-## update visuals (eye glow, posture, etc).
+## update visuals (eye glow, posture, etc). Also emits state_changed
+## so LockOnManager / HUD can subscribe without subclassing.
 func _set_state(new_state: State) -> void:
 	if new_state == current_state:
 		return
 	var old: State = current_state
 	current_state = new_state
 	_on_state_changed(old, new_state)
+	state_changed.emit(int(old), int(new_state))
+
+
+## Public: lock this enemy out of attacks for `duration` seconds.
+## Called by MeleeHandler after a successful player parry. Subclass
+## AttackPool reads _stagger_remaining each tick and stays in STAGGERED
+## while it's > 0.
+func stagger(duration: float) -> void:
+	if duration <= 0.0 or _is_dead:
+		return
+	_stagger_remaining = maxf(_stagger_remaining, duration)
+	# Suppress contact damage during the lockout too — the goblin
+	# shouldn't ding the player just by being adjacent post-parry.
+	_contact_damage_suppressed = true
 
 
 # Subclasses override this for visual reactions.
@@ -309,6 +359,11 @@ func _on_state_changed(_old: State, _new: State) -> void:
 
 func _check_contact_damage() -> void:
 	if _player == null:
+		return
+	# Suppressed by EnemyAttackPool during WINDUP/STRIKE/RECOVERY so the
+	# subclass's directional swing is the only damage source. Also set
+	# by stagger() so a parried goblin doesn't passively damage Roland.
+	if _contact_damage_suppressed:
 		return
 	# Cheap proximity check — if the player is within 1.2 m we count it
 	# as contact. (Capsule-vs-capsule physics overlap would be more

@@ -168,8 +168,10 @@ load as you approach, bark as you pass. Aldenholt reads as a city from a distanc
 
 ## Phase 7-3D — Real-Time Combat
 
-**Goal:** Roland fights. Lock-on, attack, dodge, block. One real enemy type.
+**Goal:** Roland fights. Directional attack, parry/block, dodge. One real enemy type.
 The combat system is what makes Act I's Archive and chapel encounters playable.
+
+**Status (May 2026):** Voxel Combat v1 + Directional Melee v1 (PR #239) shipped. Bannerlord-style free-aim, hold-flick-release attack, directional parry/block. Lock-on was prototyped + removed 2026-05-25. See `design/COMBAT_NEXT_PHASES.md`.
 
 ### Code deliverables
 

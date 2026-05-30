@@ -1,8 +1,8 @@
 # Combat Design — 3D Voxel
 
-> **Status: DRAFT design spec (what we want).** First-pass scoping document for the real-time 3D combat system. Replaces the M3 turn-based 2D combat scene entirely. References: Hades, Kingdom Come: Deliverance 2 (KCD2), Hyper Light Drifter, Ghost of Tsushima.
+> **Status: design spec.** Real-time 3D combat system. Replaces the M3 turn-based 2D combat scene entirely. Primary reference: **Mount & Blade: Bannerlord** (directional hold-flick-release, free-aim, no lock-on). Secondary: KCD2 (parry timing), Hades (encounter pacing), Ghost of Tsushima (stance feel).
 >
-> **Implementation status:** Voxel Combat v1 shipped May 2026 (spear-only, Goblin enemy, blood VFX, dev arena). Full melee, parry, lock-on, attack-token AI, and other enemy types remain unbuilt. See `design/COMBAT_NEXT_PHASES.md` for the prioritized roadmap and current status of each system below.
+> **Implementation status:** Voxel Combat v1 (spear, May 2026) + Directional Melee v1 (PR #239, May 2026) shipped. The directional melee covers hold-flick-release attacks, directional parry/block with real damage reduction, parry chain, riposte sweep, wide-arc cone, free-aim camera, sword + shield loadout, HUD direction arrows + radar. Remaining: finishers, audio, perk, Settings UI; attack-token group AI; non-Goblin enemy types; Bannerlord-style damage depth (weight + skill + momentum + hit zone). See `design/COMBAT_NEXT_PHASES.md` for the prioritized roadmap. **Lock-on was removed 2026-05-25 — pure free-aim is the model.**
 
 ---
 
@@ -21,7 +21,7 @@
 
 - **Dodge / roll** — short directional burst with i-frames. Resource cost (stamina). Slightly weaker than KCD2's dodge — Roland is a tired traveller, not a martial artist.
 - **Sprint** — sustained run, depletes stamina. Cannot attack while sprinting; must stop or transition into charge attack.
-- **Lock-on** — toggleable. When locked, camera adjusts to keep target framed; movement strafes around target. Default off — Roland faces movement direction otherwise.
+- **Free-aim** (no lock-on). Mouse drives Roland's facing continuously. Strafing + positioning is the primary depth axis in 1-vs-many — same as Bannerlord. Lock-on was prototyped then removed 2026-05-25 because the auto-rotation fought mouse-driven facing.
 
 ### Attacking — Length-of-Click Power System
 
@@ -229,7 +229,7 @@ These will inform the next code milestones; flagged here so they aren't surprise
 - **Animation tree per enemy type** — wolves need leap, bears need charge, goblins need swarm flee/attack swap. ~20 unique animation states across the four enemy types.
 - **Companion AI** — behavior tree or state machine with three order states (engage / hold / retreat). Companion inventory access requires an interaction UI screen (can reuse/extend JournalUI item tab pattern).
 - **Stamina HUD** — new UI element; probably bar under HP, with stamina-cost previews on dodge/sprint/power-attack.
-- **Lock-on camera blend** — `SpringArm3D` needs a "look at target" mode that smoothly blends into / out of fixed mode.
+- ~~**Lock-on camera blend**~~ — removed 2026-05-25; free-aim only.
 - **Save points as world objects** — beds and campfires become interactable nodes that call `GameState.save_game()` directly. Saviour Schnapps becomes an inventory item that triggers save on use.
 - **Equipment condition tracking** — `InventoryManager` needs a `condition` field per item (float 0–1), modified by use and restored by sharpening/repair kits. Smithing tier stored as an enum on the item resource.
 - **Smithing skill gate** — Crafting progression must expose a `smithing_tier_unlocked` value that the crafting UI checks before showing masterwork recipes.
