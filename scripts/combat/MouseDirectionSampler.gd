@@ -6,12 +6,23 @@ extends RefCounted
 #   Mount & Blade-style directional combat needs a quick read on "which way
 #   did the player just flick the mouse?" right at the moment they press the
 #   attack/parry button. This RefCounted accumulates recent mouse motion in
-#   a rolling window and, when asked, picks one of four directions:
+#   a rolling window and, when asked, picks one of four directions.
 #
-#     OVERHEAD — mouse moved UP    (chop / down strike / high parry)
-#     LEFT     — mouse moved LEFT  (left sweep / left parry)
-#     RIGHT    — mouse moved RIGHT (right sweep / right parry — the default)
-#     THRUST   — mouse moved DOWN  (jab / stab / low parry)
+#   Designer model (2026-05-29): "flick TOWARD where the sword comes FROM."
+#   The flick points at the origin of the strike, and the sword travels from
+#   there toward the enemy (screen centre):
+#
+#     flick UP    → OVERHEAD — sword chops down from the top (high parry)
+#     flick DOWN  → THRUST   — forward stab / jab (low parry)
+#     flick LEFT  → sword comes from the LEFT, sweeps to centre (left parry)
+#     flick RIGHT → sword comes from the RIGHT, sweeps to centre (right parry)
+#
+#   Naming caveat: a LEFT flick returns the DIR_RIGHT *enum*, because that
+#   enum's pose is the left-to-right sweep (the strike that ORIGINATES on the
+#   left). The DIR_LEFT/DIR_RIGHT enum names track the sword's travel/landing
+#   side; the flick selects the origin side. See the pose tables in
+#   MeleeHandler.gd. Hit detection is a forward-centred cone, so left vs right
+#   is purely cosmetic — only the visible swing pose differs.
 #
 #   A live instance is owned by MeleeHandler (which feeds it every mouse
 #   motion event) and queried at the press moment. Plain RefCounted, no
@@ -97,15 +108,19 @@ func sample() -> int:
 		# distinct sentinel lets the caller distinguish "no flick" from
 		# "deliberate RIGHT flick."
 		return DIR_NONE
-	# Mouse y is positive DOWN (Godot screen convention). Convert:
-	#   sum.x > 0 → moved RIGHT (left-to-right horizontal swing)
-	#   sum.x < 0 → moved LEFT  (right-to-left horizontal swing)
-	#   sum.y > 0 → moved DOWN  → OVERHEAD (downward chop — sword comes down)
-	#   sum.y < 0 → moved UP    → THRUST   (forward stab — sword punches forward)
+	# Mouse y is positive DOWN (Godot screen convention). Designer model
+	# (2026-05-29): "flick TOWARD where the sword comes FROM."
+	#   sum.y < 0 → flick UP    → OVERHEAD (sword comes from the top, chops down)
+	#   sum.y > 0 → flick DOWN  → THRUST   (forward stab / jab)
+	#   sum.x < 0 → flick LEFT  → DIR_RIGHT pose (sword comes from the left,
+	#                             sweeps left→right toward centre)
+	#   sum.x > 0 → flick RIGHT → DIR_LEFT pose (sword comes from the right,
+	#                             sweeps right→left toward centre)
 	#
-	# Designer mapping (test 2026-05-25): flick the mouse downward to chop
-	# down, flick up to stab forward. This inverts the Bannerlord/KCD
-	# convention but matches the intuition "the sword moves where I flick."
+	# This restores the Bannerlord/KCD-style intuition (flick the side the
+	# blow originates from), reversing the 2026-05-25 "sword moves where I
+	# flick" experiment. The DIR_LEFT/DIR_RIGHT enum names track the sword's
+	# travel/landing side, so a LEFT flick deliberately returns DIR_RIGHT.
 	#
 	# Pick the dominant axis. The 10° overlap window is implicit — we
 	# only switch from horizontal to vertical (or vice versa) when one
@@ -114,9 +129,10 @@ func sample() -> int:
 	var abs_x: float = absf(sum.x)
 	var abs_y: float = absf(sum.y)
 	if abs_x >= abs_y:
-		return DIR_RIGHT if sum.x > 0.0 else DIR_LEFT
-	# Flick DOWN (sum.y > 0) → OVERHEAD; flick UP → THRUST.
-	return DIR_OVERHEAD if sum.y > 0.0 else DIR_THRUST
+		# flick RIGHT → DIR_LEFT (right-originating sweep); flick LEFT → DIR_RIGHT.
+		return DIR_LEFT if sum.x > 0.0 else DIR_RIGHT
+	# flick DOWN → THRUST; flick UP → OVERHEAD.
+	return DIR_THRUST if sum.y > 0.0 else DIR_OVERHEAD
 
 
 # Convenience for the parry path: returns true if the recently-sampled
