@@ -55,6 +55,7 @@ WorldClock="*res://scripts/WorldClock.gd"
 WeatherManager="*res://scripts/WeatherManager.gd"
 BloodVFX="*res://scripts/BloodVFX.gd"
 WaterDiag="*res://scripts/WaterDiag.gd"
+EntityRegistry="*res://scripts/entities/EntityRegistry.gd"
 
 [dialogic]
 

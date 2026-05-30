@@ -1,4 +1,23 @@
 extends Node
+# ======================================================================
+# DEPRECATED — v1 OmniLight3D-streaming emissive system.
+#
+# Superseded by `EmissiveBakedLightManager` (Phase J v2) which BFS-
+# floodfills a 3D `ImageTexture3D` the terrain shader samples. The baked
+# system disables this one at startup (`EmissiveBakedLight] disabled
+# EmissiveLightManager v1` log line).
+#
+# Kept on disk as a FALLBACK only — used if EmissiveBakedCpp DLL is
+# missing. Do NOT extend this file for new emissive features. New work
+# goes into `scripts/EmissiveBakedLightManager.gd` +
+# `extensions/voxel_gen/src/emissive_baked_cpp.{h,cpp}`.
+#
+# Known v1 cosmetic limitation that motivated the v2 supersession:
+# shadowless cluster lights bled brightness up through terrain (light
+# leaked across walls). Phase J fixes this by construction (BFS stops
+# at solid voxels) — see PR #241 receipt in `memory/`.
+# ======================================================================
+#
 # EmissiveLightManager — emissive voxels cast coloured light.
 #
 # Phase J of the graphics roadmap (design/GRAPHICS_PASS_2026-05-19.md).

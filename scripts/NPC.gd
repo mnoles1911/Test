@@ -59,6 +59,46 @@ var _bark_cooldowns: Dictionary = {}
 # Default cooldown used when NPCData.bark_triggers doesn't specify one.
 const _DEFAULT_BARK_COOLDOWN: float = 45.0
 
+# Entity streaming — AI tier set by EntityStreamer. 0 = ACTIVE; higher
+# tiers progressively quiet the NPC.
+var _ai_tier: int = 0
+
+
+# Entity streaming protocol — distant NPCs freeze their per-frame work
+# entirely. Bark areas + interact areas stay live so triggers still fire
+# when the player approaches; the moment a player triggers an Area3D
+# overlap the streamer's next reconcile lifts the NPC back to ACTIVE.
+func set_ai_tier(tier: int) -> void:
+	_ai_tier = tier
+	if tier >= 2:  # SLEEPING
+		set_physics_process(false)
+		set_process(false)
+	else:
+		set_physics_process(true)
+		set_process(true)
+
+
+func to_entity_record() -> Dictionary:
+	# Save the small mutable state — disposition is persisted, schedule
+	# index can be re-derived from npc_data + WorldClock so we don't
+	# stash it here. npc_data itself is identified by resource_path so a
+	# reload picks up the same character.
+	return {
+		"npc_data_path": npc_data.resource_path if npc_data != null else "",
+		"disposition": current_disposition,
+	}
+
+
+func from_entity_record(blob: Dictionary) -> void:
+	if blob == null or blob.is_empty():
+		return
+	var data_path: String = String(blob.get("npc_data_path", ""))
+	if data_path != "" and ResourceLoader.exists(data_path):
+		var d: Resource = load(data_path)
+		if d is NPCData:
+			npc_data = d
+	current_disposition = clampi(int(blob.get("disposition", current_disposition)), 0, 100)
+
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 func _ready() -> void:

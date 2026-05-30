@@ -81,6 +81,8 @@ var _color: Color = Color(0.5, 0.5, 0.5, 1.0)
 var _picked_up: bool = false
 var _settled: bool = false
 var _spawn_time: float = 0.0
+# Entity-streaming AI tier (EntityStreamer.set_ai_tier). 0 = ACTIVE.
+var _ai_tier: int = 0
 # `_mesh_local_origin_y` is captured AFTER the body settles so the
 # bob animation oscillates around the resting y, not around 0.
 var _mesh_local_origin_y: float = 0.0
@@ -97,6 +99,50 @@ func setup(p_item_id: String, p_color: Color, p_count: int) -> void:
 	item_id = p_item_id
 	_color = p_color
 	item_count = maxi(p_count, 1)
+
+
+# ============================================================
+# Entity streaming protocol (EntityStreamer / EntityRegistry)
+# ============================================================
+
+# Tier downgrade — distant drops have their RigidBody3D put to sleep so
+# they don't run physics. Pickup still works because the EntityStreamer
+# only ever puts a drop to sleep when it's well outside the player's
+# pickup_radius. ACTIVE / AWAKE both stay physics-on.
+func set_ai_tier(tier: int) -> void:
+	_ai_tier = tier
+	if tier >= 2:  # SLEEPING
+		sleeping = true
+		freeze = true
+	else:
+		freeze = false
+		sleeping = false
+
+
+func to_entity_record() -> Dictionary:
+	return {
+		"item_id": item_id,
+		"count": item_count,
+		"color": [_color.r, _color.g, _color.b, _color.a],
+		"picked_up": _picked_up,
+	}
+
+
+func from_entity_record(blob: Dictionary) -> void:
+	if blob == null or blob.is_empty():
+		return
+	item_id = String(blob.get("item_id", item_id))
+	item_count = maxi(int(blob.get("count", item_count)), 1)
+	var c: Array = blob.get("color", [])
+	if c.size() >= 3:
+		var a_alpha: float = 1.0
+		if c.size() >= 4:
+			a_alpha = float(c[3])
+		_color = Color(float(c[0]), float(c[1]), float(c[2]), a_alpha)
+	if bool(blob.get("picked_up", false)):
+		# Drop was already collected before chunk evict — destroy on
+		# next frame rather than re-spawn an already-collected item.
+		call_deferred("queue_free")
 
 
 # ============================================================
