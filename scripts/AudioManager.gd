@@ -280,6 +280,68 @@ func _folder_for(id: String) -> String:
 	return ""
 
 
+# ============================================================
+# Underwater muffle (water-polish PR 5)
+# ============================================================
+# A low-pass filter on the SFX + Ambient buses (NOT Master — UI clicks
+# and music stay crisp) that kicks in while the player's head is under
+# water. Same lazy ensure-the-effect pattern as WeatherManager's
+# weather bus. Idempotent + cheap: the effects are created once and
+# then just enabled/disabled.
+
+const _MUFFLE_CUTOFF_HZ: float = 700.0
+const _MUFFLE_BUSES: Array = ["SFX", "Ambient"]
+var _muffle_effects: Array = []          # AudioEffectLowPassFilter per bus
+var _muffle_active: bool = false
+var _underwater_loop_handle: int = -1
+
+
+func set_underwater_muffle(active: bool) -> void:
+	# Called by UnderwaterFilter.set_active on BOTH transitions (the
+	# death/teleport path routes through it too, so we can't get stuck
+	# muffled). Idempotent.
+	if active == _muffle_active:
+		return
+	_muffle_active = active
+	_ensure_muffle_effects()
+	for i in range(_MUFFLE_BUSES.size()):
+		var bus_idx: int = AudioServer.get_bus_index(_MUFFLE_BUSES[i])
+		if bus_idx == -1 or i >= _muffle_effects.size():
+			continue
+		# Enable/disable rather than add/remove — toggling is allocation-
+		# free and keeps effect order stable.
+		for e in range(AudioServer.get_bus_effect_count(bus_idx)):
+			if AudioServer.get_bus_effect(bus_idx, e) == _muffle_effects[i]:
+				AudioServer.set_bus_effect_enabled(bus_idx, e, active)
+				break
+	# Underwater ambience bed: a soft bubble/pressure loop while
+	# submerged. No-op (with a one-time push_warning from play_loop's
+	# missing-asset path) until audio/sfx/underwater_ambience.ogg is
+	# rendered — see DESIGNER_TODO.
+	if active:
+		_underwater_loop_handle = play_loop("underwater_ambience")
+	elif _underwater_loop_handle != -1:
+		stop_loop(_underwater_loop_handle)
+		_underwater_loop_handle = -1
+
+
+func _ensure_muffle_effects() -> void:
+	if not _muffle_effects.is_empty():
+		return
+	for bus_name_v in _MUFFLE_BUSES:
+		var bus_idx: int = AudioServer.get_bus_index(bus_name_v)
+		if bus_idx == -1:
+			push_warning("[AudioManager] underwater muffle: bus '%s' missing — skipped" % bus_name_v)
+			_muffle_effects.append(null)
+			continue
+		var lp := AudioEffectLowPassFilter.new()
+		lp.cutoff_hz = _MUFFLE_CUTOFF_HZ
+		AudioServer.add_bus_effect(bus_idx, lp)
+		# Start DISABLED — the effect only engages on submerge.
+		AudioServer.set_bus_effect_enabled(bus_idx, AudioServer.get_bus_effect_count(bus_idx) - 1, false)
+		_muffle_effects.append(lp)
+
+
 func _bus_for(id: String, override: String) -> String:
 	if override != "":
 		return override

@@ -561,8 +561,22 @@ func _shader() -> int:
 			print("[SHADERPARAM] %s = %s  (.tres OVERRIDE — wins)" % [w, str(ov)])
 		else:
 			print("[SHADERPARAM] %s = <shader default> (.tres does not set it)" % w)
-	var ok := (not has_foam) and has_flow and n_dbg >= 5
-	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5])
+	# Water-polish PR 3: the terrain shader (caustics live there) must
+	# also load and expose the caustics block + its shader globals.
+	var t_path := "res://assets/shaders/terrain_voxel.gdshader"
+	var t_ok := false
+	if ResourceLoader.exists(t_path):
+		var t_sh = load(t_path)
+		if t_sh != null:
+			var t_code: String = t_sh.get("code")
+			t_ok = t_code.find("water_caustics_strength") != -1 \
+				and t_code.find("water_sea_level_world_y") != -1 \
+				and t_code.find("c_fbm") != -1
+			print("[SHADER] terrain_voxel.gdshader loaded; code_len=%d caustics_block=%s" % [t_code.length(), t_ok])
+	else:
+		print("[SHADER] terrain_voxel.gdshader missing")
+	var ok := (not has_foam) and has_flow and n_dbg >= 5 and t_ok
+	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s terrain_caustics=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5, t_ok])
 	return 0 if ok else 1
 
 

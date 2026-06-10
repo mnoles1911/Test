@@ -116,6 +116,41 @@ float relief_height(vec3 p) {
 	return vnoise(p) * 0.65 + vnoise(p * 2.7) * 0.35;
 }
 
+// ---- Lakebed caustics (water-polish PR 3 / Phase 4b) -------------------
+// 2D value-noise fbm copied from water.gdshader's _h12/_vnoise/_fbm
+// (GDSL has no includes; the copy is the accepted pattern here). Two
+// counter-drifting fbm fields; where they nearly agree, a bright ridge
+// appears — the classic cheap caustic. Strength + sea level arrive as
+// shader GLOBALS (declared in project.godot [shader_globals]; written
+// at runtime via RenderingServer.global_shader_parameter_set ONLY).
+global uniform float water_caustics_strength;
+global uniform float water_sea_level_world_y;
+
+float c_h12(vec2 p) {
+	p = fract(p * vec2(123.34, 456.21));
+	p += dot(p, p + 45.32);
+	return fract(p.x * p.y);
+}
+float c_vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(c_h12(i), c_h12(i + vec2(1.0, 0.0)), u.x),
+	           mix(c_h12(i + vec2(0.0, 1.0)), c_h12(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+// 2 octaves only — this runs on every submerged terrain fragment.
+float c_fbm(vec2 p) {
+	float s = 0.0;
+	float a = 0.5;
+	mat2 r = mat2(vec2(0.80, -0.60), vec2(0.60, 0.80));
+	for (int i = 0; i < 2; i++) {
+		s += a * c_vnoise(p);
+		p = r * p * 2.03 + 7.1;
+		a *= 0.5;
+	}
+	return s;
+}
+
 void vertex() {
 	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
@@ -141,6 +176,24 @@ void fragment() {
 	if (wetness_factor > 0.001) {
 		ALBEDO *= mix(1.0, 0.85, wetness_factor);
 		ROUGHNESS = mix(ROUGHNESS, 0.30, wetness_factor);
+	}
+
+	// Lakebed caustics (water-polish PR 3): dancing light ridges on
+	// terrain BELOW sea level, fading out with depth (sunlight dies
+	// ~6 m down). water_caustics_strength is the master dial — 0 (the
+	// default, and the GraphicsManager 'caustics' toggle's OFF state)
+	// skips the whole block at uniform control flow, so the shader is
+	// visually + cost identical to pre-PR-3 until enabled. Branchless
+	// inside: depth fade clamps to zero above the surface.
+	if (water_caustics_strength > 0.0) {
+		float c_depth = water_sea_level_world_y - v_world_pos.y;
+		float c_fade = clamp(c_depth / 0.5, 0.0, 1.0)        // hard-on just below surface
+		             * clamp(1.0 - c_depth / 6.0, 0.0, 1.0); // gone by 6 m down
+		float c1 = c_fbm(v_world_pos.xz * 2.1 + vec2(TIME * 0.35, TIME * 0.21));
+		float c2 = c_fbm(v_world_pos.xz * 2.3 - vec2(TIME * 0.27, TIME * 0.33));
+		float ridge = clamp(1.0 - abs(c1 - c2) * 4.0, 0.0, 1.0);
+		float caustic = pow(ridge, 3.0);
+		EMISSION += vec3(0.35, 0.55, 0.65) * caustic * c_fade * water_caustics_strength;
 	}
 
 	// F10 debug override: paint emissive voxels flat magenta so the

@@ -594,6 +594,14 @@ func _ready() -> void:
 		# current into the water DIR bits. Deferred for the same
 		# load-order reason as the pond; re-stamping is idempotent.
 		call_deferred("_stamp_river_flow_volumes")
+		# Water-polish PR 3: tell the terrain shader where the water
+		# surface sits so lakebed caustics know what counts as
+		# "submerged". Runtime _set only (declared in [shader_globals]).
+		RenderingServer.global_shader_parameter_set(
+			"water_sea_level_world_y", OCEAN_SURFACE_Y)
+		if get_node_or_null("/root/GraphicsManager") != null \
+				and GraphicsManager.has_method("_apply_caustics_global"):
+			GraphicsManager._apply_caustics_global()
 		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
 		# Horizon backdrop plane attempt reverted 2026-05-26: it did not
 		# Horizon backdrop plane: re-enabled 2026-05-27 after locking the

@@ -1131,3 +1131,19 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
   'spawned cluster' line in Output and the whole tree tips as one
   piece (previously fell in slices). Tune `sever_follow_max_height_m`
   on VoxelGravityManager if any authored tree exceeds 12 m.
+
+## Water polish (PRs 3-5, 2026-06-10)
+
+- **Caustics (PR 3, default OFF):** flip `caustics` in the DebugOverlay
+  GRAPHICS view, then eyeball a shallow pond at noon — dancing light
+  ridges on the lakebed, fading out by ~6 m depth. Dial: the 0.6
+  strength constant in GraphicsManager._apply_caustics_global.
+- **Per-biome underwater fog (PR 4):** add a Node3D with
+  scripts/WaterBiomeZone.gd over the swamp water, size `extent` to the
+  body, tune the green-murk anchors (defaults are already swampy).
+  Submerge inside it -> green murk; outside -> scene defaults.
+- **Underwater audio (PR 5):** SFX + Ambient buses low-pass to 700 Hz
+  while submerged (live now). The bubble ambience bed needs an asset:
+  render `underwater_ambience` via tools/render_sfx.py into
+  assets/audio/sfx/water/ — until then submerge logs a one-time
+  missing-asset warning and stays silent.
