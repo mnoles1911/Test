@@ -287,3 +287,24 @@ Both actions can share keys with jump/crouch because Player3D checks swim state 
 | Greatwood forest pool | ~2000m x, ~1800m z | Deep, still; used in Aelorin lore scenes (Act II) |
 
 Deeper ocean (Shroud Sea, Caer Brannoch approach) is handled as a transition boundary — no open-water swimming across it. The player boards a vessel for the Brotherhood voyage arc.
+
+
+## W5 — partial-level water queries (2026-06-10, finite-water track)
+
+`is_position_in_water` is now HEIGHT-AWARE: a level-N cell (finite
+water, DATA5 bits 0-3) only counts as wet up to N/8 of the voxel's
+height (`WaterByteCodec.is_inside_water_column`, gated in the `codec`
+selector). Consequences, all intentional:
+
+- Wading through a shallow player-made pool (level <= 3) never
+  triggers swim mode — Roland's pivot/chest/head probes simply read
+  dry. Level-8 / ocean / legacy water behaves exactly as before.
+- The camera no longer gets the underwater filter while standing over
+  a shallow pool. **Designer acceptance:** wade vs swim feel.
+- `get_water_level_at` returns REAL levels (1-8) for finite water
+  instead of always 8.
+- WaterDiag F4 shows `units N/8 (src|finite, dir D)` + the live ledger
+  conservation audit; F5 adds a "body total" BFS — the in-game eyeball
+  for "did any water leak" (compare with [FlowDiag-finite] units).
+
+Design + ledger architecture: `WATER_FINITE_SIM_PLAN.md`.

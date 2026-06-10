@@ -459,7 +459,13 @@ func is_position_in_water(world_pos: Vector3) -> bool:
 	# here — a cell in _cells without a CHANNEL_DATA5 byte would be a
 	# bug, and adding _cells fallback would mask such bugs.
 	var byte: int = _read_water_byte_at(world_pos)
-	return WaterByteCodec.is_water(byte)
+	if not WaterByteCodec.is_water(byte):
+		return false
+	# W5: HEIGHT-AWARE. A level-N cell only holds water up to N/8 of
+	# the voxel — a point in the air gap above a shallow pool is DRY.
+	# frac_y = where inside the voxel this point sits (0 bottom, 1 top).
+	var frac_y: float = world_pos.y * VOXELS_PER_METER - floorf(world_pos.y * VOXELS_PER_METER)
+	return WaterByteCodec.is_inside_water_column(byte, frac_y)
 
 
 func get_water_level_at(world_pos: Vector3) -> int:
@@ -485,12 +491,14 @@ func _read_water_byte_at(world_pos: Vector3) -> int:
 
 
 func _read_water_byte_at_impl(world_pos: Vector3) -> int:
-	# Water Voxel V2: water is a CHANNEL_TYPE=5 block. Read TYPE at the
-	# voxel containing world_pos; if it's the water block, synthesise a
-	# full WaterByteCodec source byte so every existing consumer
-	# (is_position_in_water / get_water_level_at / velocity gradient)
-	# keeps working unchanged. Returns 0 (no water) otherwise, or if
-	# the terrain/tool isn't bound (briefly during world load).
+	# W5 (finite-water track): read the REAL DATA5 byte so partial
+	# levels are visible to every consumer (wading vs swimming, diag,
+	# currents). TYPE is still the cheap is-it-water-at-all gate; only
+	# when TYPE says water do we pay the second read for DATA5.
+	# Legacy water (TYPE water, DATA5 == 0 — generator ocean before the
+	# DATA5 backfill, pre-Stage-6 saves) synthesises a full SOURCE_BYTE,
+	# preserving the old behaviour exactly. Returns 0 for no water or
+	# if the terrain/tool isn't bound (briefly during world load).
 	if get_node_or_null("/root/VoxelEditManager") == null:
 		return 0
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
@@ -501,9 +509,14 @@ func _read_water_byte_at_impl(world_pos: Vector3) -> int:
 		return 0
 	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
 	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	if WaterMaterial.is_water_type(tool.get_voxel(voxel_pos)):
+	if not WaterMaterial.is_water_type(tool.get_voxel(voxel_pos)):
+		return 0
+	tool.channel = VoxelBuffer.CHANNEL_DATA5
+	var d5: int = tool.get_voxel(voxel_pos)
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	if d5 == 0:
 		return WaterByteCodec.SOURCE_BYTE
-	return 0
+	return d5
 
 
 func get_flow_velocity_at(world_pos: Vector3) -> Vector3:
