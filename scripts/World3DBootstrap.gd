@@ -590,6 +590,10 @@ func _ready() -> void:
 		# _physics_process so even an immediate enqueue is fine, but
 		# call_deferred keeps load-order forgiving).
 		call_deferred("_seed_test_pond")
+		# W7: stamp every designer-placed RiverFlowVolume's steady
+		# current into the water DIR bits. Deferred for the same
+		# load-order reason as the pond; re-stamping is idempotent.
+		call_deferred("_stamp_river_flow_volumes")
 		print("[World3D] Configured horizon plane Y=%.1f; test pond queued." % OCEAN_SURFACE_Y)
 		# Horizon backdrop plane attempt reverted 2026-05-26: it did not
 		# Horizon backdrop plane: re-enabled 2026-05-27 after locking the
@@ -1064,6 +1068,14 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	_lod_box_overlay = LodBoxOverlayScript.new()
 	_lod_box_overlay.name = "LodBoxOverlay"
 	add_child(_lod_box_overlay)
+
+
+func _stamp_river_flow_volumes() -> void:
+	# Queue the DIR stamp for every RiverFlowVolume in the scene (see
+	# scripts/RiverFlowVolume.gd). Cheap when the scene has none.
+	for node in get_tree().get_nodes_in_group("river_flow_volume"):
+		if node.has_method("stamp"):
+			node.stamp()
 
 
 func _spawn_horizon_plane(sea_level_y: float) -> void:

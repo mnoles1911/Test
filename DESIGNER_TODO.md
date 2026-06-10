@@ -1107,3 +1107,18 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
 - [ ] `assets/audio/ambient/rain_light.ogg` (LIGHT_RAIN)
 - [ ] `assets/audio/ambient/rain_heavy.ogg` (HEAVY_RAIN)
 - [ ] `assets/audio/ambient/thunder_distant.ogg` (per-strike rumble, ~3 s)
+
+## River currents (W7, 2026-06-10)
+
+- Place `RiverFlowVolume` nodes (scripts/RiverFlowVolume.gd) over each
+  story-river stretch (the Aldwater first): add a Node3D, attach the
+  script, point `flow_direction` downstream, size `extent` to the
+  channel. Bootstrap stamps them at world load; swim in to feel the
+  push. Diagonal stretches = a chain of volumes alternating cardinals.
+- In-engine acceptance for the finite-water rework: pour a 3x3x3 of
+  buckets on flat ground -> wide shallow LEVEL pool within seconds,
+  `[FlowDiag-finite] conserve=OK`; scoop back -> pool shrinks. Blast a
+  sub-sea crater -> ocean refill unchanged. Wade a shallow pool -> no
+  swim mode, no underwater filter (intentional, W5).
+- Rebuild the Windows DLL (extensions/voxel_gen, scons platform=windows)
+  to restore the C++ settle scan (W2 changed its source-gate inputs).

@@ -515,6 +515,41 @@ func queue_set_water_box(voxel_min: Vector3i, voxel_max: Vector3i, water_byte: i
 	return true
 
 
+func queue_set_water_dir_box(voxel_min: Vector3i, voxel_max: Vector3i, dir: int) -> bool:
+	# W7 (finite-water track): stamp a flow DIRECTION onto every WATER
+	# voxel in the box — level and source bits are PRESERVED (read-
+	# modify-write in the drain). Non-water voxels are skipped, so a
+	# volume can safely straddle a river bank. Used by RiverFlowVolume
+	# (designer-authored steady currents); see get_flow_velocity_at.
+	# voxel_min inclusive, voxel_max exclusive (water_box semantics).
+	if _mp_is_client():
+		_mp_send_request_to_host({
+			"type": "water_dir_box", "voxel_min": voxel_min,
+			"voxel_max": voxel_max, "dir": dir,
+		})
+		return true
+	var center_voxel: Vector3 = (Vector3(voxel_min) + Vector3(voxel_max)) * 0.5
+	var world_center: Vector3 = center_voxel / VOXELS_PER_METER
+	if get_node_or_null("/root/NoEditZoneRegistry") != null:
+		if NoEditZoneRegistry.is_water_flow_blocked_at(world_center):
+			return false
+	if _edit_queue.size() >= max_queue_length:
+		push_warning("VoxelEditManager: queue full, dropping water-dir-box edit")
+		return false
+	_edit_queue.append({
+		"type": "water_dir_box",
+		"voxel_min": voxel_min,
+		"voxel_max": voxel_max,
+		"dir": clampi(dir, 0, 7),
+	})
+	if _mp_is_host_with_peers():
+		_mp_broadcast_replica({
+			"type": "water_dir_box", "voxel_min": voxel_min,
+			"voxel_max": voxel_max, "dir": clampi(dir, 0, 7),
+		})
+	return true
+
+
 func queue_set_voxels_bulk(voxel_writes: Array, label: String = "bulk") -> bool:
 	# MP-3 routing — see queue_edit_sphere for the pattern.
 	if _mp_is_client():
@@ -847,6 +882,41 @@ func _apply_edit(cmd: Dictionary) -> void:
 			var wb_center: Vector3 = (wb_world_min + wb_world_max) * 0.5
 			water_changed_at.emit(wb_center, _world_to_chunk(wb_center), wb_aabb)
 
+		"water_dir_box":
+			# W7: read-modify-write — only the DIR bits change; level +
+			# source are preserved, and non-water voxels are untouched.
+			# TYPE is re-projected per voxel so the renderer can pick a
+			# flow-aware model if one exists for that level.
+			var wd_min: Vector3i = cmd["voxel_min"]
+			var wd_max: Vector3i = cmd["voxel_max"]
+			var wd_dir: int = int(cmd["dir"])
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			# Editability guard — see "water_set" above for why.
+			var wd_box := AABB(Vector3(wd_min), Vector3(wd_max - wd_min))
+			if not _try_requeue_if_not_editable(tool, wd_box, cmd):
+				return
+			for wx in range(wd_min.x, wd_max.x):
+				for wy in range(wd_min.y, wd_max.y):
+					for wz in range(wd_min.z, wd_max.z):
+						var wp := Vector3i(wx, wy, wz)
+						tool.channel = VoxelBuffer.CHANNEL_DATA5
+						var d5: int = tool.get_voxel(wp)
+						if not WaterByteCodec.is_water(d5):
+							continue   # air/solid — volumes may straddle banks
+						var nd5: int = WaterByteCodec.set_dir(d5, wd_dir)
+						if nd5 == d5:
+							continue   # already stamped — keep re-stamps cheap
+						tool.value = nd5
+						tool.do_box(Vector3(wp), Vector3(wp) + Vector3.ONE)
+						tool.channel = VoxelBuffer.CHANNEL_TYPE
+						tool.value = WaterMaterial.render_id_for_level(WaterByteCodec.level_of(nd5), WaterByteCodec.dir_of(nd5))
+						tool.do_box(Vector3(wp), Vector3(wp) + Vector3.ONE)
+			var wd_world_min: Vector3 = Vector3(wd_min) / VOXELS_PER_METER
+			var wd_world_max: Vector3 = Vector3(wd_max) / VOXELS_PER_METER
+			_mark_chunks_in_aabb(wd_world_min, wd_world_max)
+			var wd_center: Vector3 = (wd_world_min + wd_world_max) * 0.5
+			water_changed_at.emit(wd_center, _world_to_chunk(wd_center), AABB(wd_world_min, wd_world_max - wd_world_min))
+
 		"bulk":
 			# Bulk single-voxel write — cluster re-deposit (and cluster
 			# carve) path. We emit edit_applied ONCE for the whole batch
@@ -1105,6 +1175,9 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 		"water_box":
 			var wb_size: Vector3i = cmd["voxel_max"] - cmd["voxel_min"]
 			return maxi(1, wb_size.x * wb_size.y * wb_size.z)
+		"water_dir_box":
+			var wd_size: Vector3i = cmd["voxel_max"] - cmd["voxel_min"]
+			return maxi(1, wd_size.x * wd_size.y * wd_size.z)
 		"bulk":
 			return cmd.get("writes", []).size()
 		_:
@@ -1309,6 +1382,14 @@ func _mp_apply_replica(cmd: Dictionary) -> void:
 					"voxel_max": cmd.get("voxel_max", Vector3i.ZERO),
 					"water_byte": int(cmd.get("water_byte", 0)) & 0xFF,
 				})
+		"water_dir_box":
+			if _edit_queue.size() < max_queue_length:
+				_edit_queue.append({
+					"type": "water_dir_box",
+					"voxel_min": cmd.get("voxel_min", Vector3i.ZERO),
+					"voxel_max": cmd.get("voxel_max", Vector3i.ZERO),
+					"dir": int(cmd.get("dir", 0)),
+				})
 		"bulk":
 			# Replica bulk writes are trusted whole — no per-voxel
 			# NoEditZone re-check.
@@ -1371,6 +1452,12 @@ func _rpc_request_edit(cmd: Dictionary) -> void:
 				cmd.get("voxel_min", Vector3i.ZERO),
 				cmd.get("voxel_max", Vector3i.ZERO),
 				int(cmd.get("water_byte", 0)),
+			)
+		"water_dir_box":
+			ok = queue_set_water_dir_box(
+				cmd.get("voxel_min", Vector3i.ZERO),
+				cmd.get("voxel_max", Vector3i.ZERO),
+				int(cmd.get("dir", 0)),
 			)
 		"bulk":
 			ok = queue_set_voxels_bulk(cmd.get("writes", []), String(cmd.get("label", "bulk")))

@@ -308,3 +308,12 @@ selector). Consequences, all intentional:
   for "did any water leak" (compare with [FlowDiag-finite] units).
 
 Design + ledger architecture: `WATER_FINITE_SIM_PLAN.md`.
+
+## W7 — real currents (2026-06-10)
+
+`get_flow_velocity_at` priority: (1) DATA5 DIR bits — written live by
+the finite sim while water moves (fades to STILL on settle) and
+stamped permanently by designer `RiverFlowVolume` nodes; speed =
+FLOW_MAX_SPEED x level/8. (2) Fallback: level gradient across
+water->water pairs ONLY — the old solid/air-as-level-0 behaviour that
+pushed swimmers into shore walls is gone. Oceans still push nothing.

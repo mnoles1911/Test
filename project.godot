@@ -59,12 +59,8 @@ EntityRegistry="*res://scripts/entities/EntityRegistry.gd"
 
 [dialogic]
 
-directories/dch_directory={
-"Henrietta": "res://addons/dialogic/characters/Henrietta.dch"
-}
-directories/dtl_directory={
-"henrietta_archive": "res://dialogue/henrietta_archive.dtl"
-}
+directories/dch_directory={}
+directories/dtl_directory={}
 layout/style_directory={
 "Test_Style": "res://addons/dialogic/styles/Test_Style.tres"
 }

@@ -520,37 +520,51 @@ func _read_water_byte_at_impl(world_pos: Vector3) -> int:
 
 
 func get_flow_velocity_at(world_pos: Vector3) -> Vector3:
-	# Compute a 3D current vector from the level gradient in the 4
-	# horizontal neighbors. Direction = sum over neighbors of (dir ×
-	# max(0, self_level - neighbor_level)); magnitude scaled by max
-	# delta and capped at FLOW_MAX_SPEED.
+	# W7 (finite-water track): the current the player / floating bodies
+	# feel at this point. Two sources, in priority order:
 	#
-	# In the middle of an ocean (every neighbor at level 8 too), the
-	# vector cancels to zero — oceans don't push. Currents only
-	# happen at transitions: a river flowing toward an ocean (river
-	# at level 7, ocean cell at level 8) generates a downstream push.
+	#   1. The DATA5 DIR bits. The finite sim writes the real flow
+	#      direction while water moves (and resets it to STILL on
+	#      settle), and RiverFlowVolume stamps designer-authored steady
+	#      currents into permanent rivers. Speed scales with how much
+	#      water is here (level/8) so a trickle pushes less than a
+	#      channel, capped at FLOW_MAX_SPEED.
+	#
+	#   2. Fallback: the level gradient across the 4 horizontal
+	#      neighbours — but ONLY across water->water pairs. (The old
+	#      version treated solids and air as "level 0", which pushed
+	#      swimmers INTO shore walls — the deepest water always
+	#      "flowed" toward the beach. Solid/air neighbours now simply
+	#      don't participate.) In a level ocean every delta is 0, so
+	#      oceans don't push, exactly as before.
 	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
-	var self_level: int = _level_at_voxel(voxel_pos)
+	var here: int = _read_water_byte_at(world_pos)
+	if not WaterByteCodec.is_water(here):
+		return Vector3.ZERO
+	var self_level: int = WaterByteCodec.level_of(here)
+
+	# 1. Real flow direction (sim-written or RiverFlowVolume-stamped).
+	var dir_code: int = WaterByteCodec.dir_of(here)
+	if dir_code != WaterByteCodec.DIR_STILL and dir_code != WaterByteCodec.DIR_RSVD:
+		var off: Vector3i = WaterByteCodec.dir_to_offset(dir_code)
+		return Vector3(off) * FLOW_MAX_SPEED * (float(self_level) / float(MAX_LEVEL))
+
+	# 2. Water->water gradient fallback.
 	if self_level <= MIN_LEVEL:
 		return Vector3.ZERO
-
 	var accum := Vector3.ZERO
 	var max_delta: int = 0
 	for dir in _LATERAL_DIRS:
-		var neighbor: Vector3i = voxel_pos + dir
-		var n_level: int = _level_at_voxel(neighbor)
+		var n_level: int = _level_at_voxel(voxel_pos + dir)
+		if n_level <= 0:
+			continue   # solid or air — not part of the water surface
 		var delta: int = self_level - n_level
-		# Push AWAY from higher-level neighbors (water flows from high
-		# to low). Positive delta means neighbor is lower → push toward
-		# neighbor.
 		if delta > 0:
 			accum += Vector3(dir) * float(delta)
 			if delta > max_delta:
 				max_delta = delta
-
 	if max_delta == 0 or accum.length_squared() < 0.0001:
 		return Vector3.ZERO
-	# Scale: max delta MAX_LEVEL → max FLOW_MAX_SPEED. Linear ramp.
 	var scale: float = (float(max_delta) / float(MAX_LEVEL)) * FLOW_MAX_SPEED
 	return accum.normalized() * scale
 
@@ -569,18 +583,21 @@ const _LATERAL_DIRS: Array = [
 
 func _level_at_voxel(voxel_pos: Vector3i) -> int:
 	# Voxel-space variant of get_water_level_at, for use inside the
-	# flow loop where world↔voxel conversions would be wasteful.
-	# Reads CHANNEL_DATA first (the new authoritative store), then
-	# falls back to _cells for transient flow cells.
+	# gradient loop where world↔voxel conversions would be wasteful.
+	# W7: returns the REAL level (1-8) for water voxels — legacy water
+	# (TYPE water, DATA5 0) reads as a full 8 — and 0 for solid/air
+	# (callers must treat 0 as "not water", never as "lower water").
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
 		if terrain != null:
 			var tool: VoxelTool = terrain.get_voxel_tool()
 			if tool != null:
-				# Water Voxel V2: TYPE-5 block reads as full level 8.
 				tool.channel = VoxelBuffer.CHANNEL_TYPE
 				if WaterMaterial.is_water_type(tool.get_voxel(voxel_pos)):
-					return MAX_LEVEL
+					tool.channel = VoxelBuffer.CHANNEL_DATA5
+					var d5: int = tool.get_voxel(voxel_pos)
+					tool.channel = VoxelBuffer.CHANNEL_TYPE
+					return MAX_LEVEL if d5 == 0 else WaterByteCodec.level_of(d5)
 	if _cells.has(voxel_pos):
 		return (_cells[voxel_pos] as int) & _LEVEL_MASK
 	return 0

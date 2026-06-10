@@ -183,8 +183,8 @@ the world to make flow decisions.
 | W3 | `FiniteWaterCore.gd` pure reference + `finite` headless gate (conservation / levelness / reach / evap / absorption / determinism) | **SHIPPED** |
 | W4 | Engine integration: bucket places finite water; `_step_finite()` in the tick; `[FlowDiag]` ledger line; verified multi-pass projection reconcile; `finite_world` e2e gate | **SHIPPED** |
 | W5 | Height-aware `is_position_in_water` (partial levels = wading); WaterDiag units + body totals | **SHIPPED** |
-| W6 | C++ port of the step inner loop (`FiniteWaterCpp`) + tick-by-tick bit-exact parity gate | pending |
-| W7 | Currents: `get_flow_velocity_at` reads sim-written DIR (+ fixed water-pair gradient fallback); `RiverFlowVolume` stamping for permanent rivers | pending |
+| W6 | C++ port of the step inner loop (`FiniteWaterCpp`) + tick-by-tick bit-exact parity gate | **DEFERRED** — the GD core comfortably covers the gameplay scale (256 cells/tick dial; 216-unit collapse settles in 13 ticks). Port when a profiler capture spikes, per extensions/voxel_gen/CLAUDE.md. The parity contract is already defined: `FiniteWaterCore.state_signature()` tick-by-tick. |
+| W7 | Currents: `get_flow_velocity_at` reads sim-written DIR (+ fixed water-pair gradient fallback); `RiverFlowVolume` stamping for permanent rivers | **SHIPPED** |
 
 ## Headless gate scenarios (`finite` selector, PR W3)
 
