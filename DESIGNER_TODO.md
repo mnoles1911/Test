@@ -1122,3 +1122,12 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
   swim mode, no underwater filter (intentional, W5).
 - Rebuild the Windows DLL (extensions/voxel_gen, scons platform=windows)
   to restore the C++ settle scan (W2 changed its source-gate inputs).
+- Buoyancy acceptance (PR 7): fell a tree into a pond — the log
+  cluster should bob up, drift, and settle as a floating raft; mine
+  stone into the same pond — it sinks. Tune per-material
+  `density_relative_to_water` in assets/voxels/materials/*.tres to
+  taste (< 1 floats).
+- Tree-sever acceptance (PR 6): chop a tall tree at the base — ONE
+  'spawned cluster' line in Output and the whole tree tips as one
+  piece (previously fell in slices). Tune `sever_follow_max_height_m`
+  on VoxelGravityManager if any authored tree exceeds 12 m.

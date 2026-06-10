@@ -962,6 +962,7 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 			material.yield_item_id,
 			material.color_low,
 			material.yield_quantity,
+			material.density_relative_to_water,
 		)
 
 	# --- Award flat-skill XP through SkillManager ---
@@ -981,7 +982,7 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 			})
 
 
-func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, count: int) -> void:
+func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, count: int, density: float = 2.5) -> void:
 	# Spawn a single VoxelDrop pickup at the carve site. Parented to
 	# the World3D root (not the player) so the drop stays where it
 	# fell when the player walks away. queue_free is handled by the
@@ -1005,7 +1006,7 @@ func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, c
 	# IMPORTANT: setup() must come BEFORE add_child() so item_id /
 	# count / colour are set when _ready fires (the visual is built
 	# from those values).
-	drop.setup(drop_item_id, color, count)
+	drop.setup(drop_item_id, color, count, density)
 	world_root.add_child(drop)
 	drop.global_position = world_pos
 

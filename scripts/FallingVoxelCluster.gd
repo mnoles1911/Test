@@ -134,6 +134,22 @@ var _damage_multiplier_mat: float = 1.0
 # (max across the cluster — the deadliest material wins). Multiplied
 # INTO the impact-damage formula in _on_body_entered.
 
+# --- Buoyancy (voxel-physics PR 7) ---
+var _density_mat: float = 2.5
+# Average density-relative-to-water across constituent voxels (set in
+# configure). < 1 = the cluster floats; >= 1 sinks at reduced speed.
+var _base_gravity_scale: float = 1.0
+# gravity_scale as computed at configure time (dry). Restored when the
+# cluster leaves water.
+var _in_water: bool = false
+var _water_poll_frame: int = 0
+const WATER_POLL_EVERY_N_FRAMES: int = 6
+# is_position_in_water costs a couple of voxel reads; every 6 physics
+# frames (10 Hz) is plenty for entering/leaving water.
+var _float_still_seconds: float = 0.0
+const FLOAT_SETTLE_SPEED: float = 0.2     # |v_y| below this counts as "still"
+const FLOAT_SETTLE_SECONDS: float = 3.0   # still this long -> re-deposit (raft)
+
 
 # =============================================================
 # NODE REFERENCES (assigned in _ready from the scene tree)
@@ -152,6 +168,7 @@ func configure(
 	edit_origin_world: Vector3,
 	gravity_scale_material: float = 1.0,
 	damage_multiplier_material: float = 1.0,
+	density_material: float = 2.5,
 ) -> void:
 	# Called by VoxelGravityManager exactly once, immediately after
 	# the cluster scene is instanced and added to the world. After
@@ -176,6 +193,7 @@ func configure(
 	_spawn_world_y = global_position.y
 	_gravity_scale_mat = gravity_scale_material
 	_damage_multiplier_mat = damage_multiplier_material
+	_density_mat = maxf(0.1, density_material)
 
 	if _voxel_snapshot.is_empty():
 		# Defensive — shouldn't happen, but a zero-voxel cluster has
@@ -232,6 +250,7 @@ func configure(
 	# the standard 20 m/s²; a heavy ore mix falls noticeably faster.
 	custom_integrator = false  # we still want default linear/angular damping
 	gravity_scale = (GRAVITY * _gravity_scale_mat) / _project_gravity_magnitude()
+	_base_gravity_scale = gravity_scale
 
 	# Damping — minimal linear (clusters fall like rocks, not feathers),
 	# modest angular (so a tipped cluster doesn't spin chaotically once
@@ -312,7 +331,46 @@ func _physics_process(delta: float) -> void:
 		queue_free()
 		return
 
-	# Failsafe timeout.
+	# --- Buoyancy (PR 7): poll water every 6 physics frames. ---
+	_water_poll_frame += 1
+	if _water_poll_frame >= WATER_POLL_EVERY_N_FRAMES:
+		_water_poll_frame = 0
+		var wfm := get_node_or_null("/root/WaterFlowManager")
+		var now_in_water: bool = wfm != null and wfm.is_position_in_water(global_position)
+		if now_in_water != _in_water:
+			_in_water = now_in_water
+			if _in_water:
+				# Archimedes, voxel edition: effective gravity scales by
+				# (1 - 1/density). Density 2.5 stone -> sinks at 60%
+				# speed; density 0.7 log -> NEGATIVE (floats up); the
+				# heavy damping sells the through-water drag.
+				gravity_scale = _base_gravity_scale * (1.0 - 1.0 / _density_mat)
+				linear_damp = 2.0
+				_float_still_seconds = 0.0
+			else:
+				gravity_scale = _base_gravity_scale
+				linear_damp = 0.0
+
+	# Floater settle: a buoyant cluster bobbing at the surface never
+	# sleeps on terrain, so the normal sleep path can't end it. Once
+	# it has been vertically still for a few seconds, re-deposit it in
+	# place — a felled log becomes a little raft of log voxels at the
+	# waterline.
+	if _in_water and _density_mat < 1.0:
+		if absf(linear_velocity.y) < FLOAT_SETTLE_SPEED:
+			_float_still_seconds += delta
+			if _float_still_seconds >= FLOAT_SETTLE_SECONDS:
+				print("[FallingVoxelCluster] floated still for %.1fs — re-deposit raft at %s" % [
+					_float_still_seconds, global_position])
+				_settle_and_redeposit()
+				return
+		else:
+			_float_still_seconds = 0.0
+		# While floating, HOLD the generic timeout — drifting on a
+		# current is healthy behaviour, not a stuck body.
+		return
+
+	# Failsafe timeout (dry clusters only — floaters handled above).
 	if _seconds_alive >= SETTLE_TIMEOUT_SECONDS:
 		print("[FallingVoxelCluster] settle timeout (%.1fs) — force re-deposit at %s" % [
 			_seconds_alive, global_position

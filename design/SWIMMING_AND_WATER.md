@@ -317,3 +317,18 @@ stamped permanently by designer `RiverFlowVolume` nodes; speed =
 FLOW_MAX_SPEED x level/8. (2) Fallback: level gradient across
 water->water pairs ONLY — the old solid/air-as-level-0 behaviour that
 pushed swimmers into shore walls is gone. Oceans still push nothing.
+
+## PR 7 — buoyancy (2026-06-10, voxel-physics track)
+
+VoxelMaterial gains `density_relative_to_water` (< 1 floats: log 0.7,
+leaves 0.4, snow 0.9; > 1 sinks: sand 1.6, dirt 1.8, stone 2.5
+default). Falling clusters average it across constituents; in water
+(height-aware is_position_in_water poll, 10 Hz) effective gravity =
+base x (1 - 1/density) — negative for floaters — with linear_damp 2.0
+for drag. A floating cluster that stays vertically still for 3 s
+re-deposits in place (a felled log becomes a raft of log voxels at the
+waterline); while floating, the generic settle timeout is held so a
+log can drift on a RiverFlowVolume current. VoxelDrops use the same
+rule (a raw_log pickup bobs; iron ore sinks). A log in a level-2
+puddle GROUNDS rather than floats — correct, the puddle is only 1/4
+voxel deep.

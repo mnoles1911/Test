@@ -806,6 +806,7 @@ func _handle_pickup_voxels(
 			"item_id": material.yield_item_id,
 			"color": material.color_low,
 			"count": material.yield_quantity,
+			"density": material.density_relative_to_water,
 		})
 		drops_queued += 1
 	if not carve_writes.is_empty():
@@ -828,7 +829,7 @@ func _drain_pending_drops() -> void:
 	while spawned < max_drop_spawns_per_frame and not _pending_drops.is_empty():
 		var d: Dictionary = _pending_drops.pop_front()
 		var drop: VoxelDrop = VoxelDrop.new()
-		drop.setup(d["item_id"], d["color"], int(d["count"]))
+		drop.setup(d["item_id"], d["color"], int(d["count"]), float(d.get("density", 2.5)))
 		world_root.add_child(drop)
 		drop.global_position = d["pos"]
 		spawned += 1
@@ -954,10 +955,12 @@ func _handle_cluster(
 	#                      crushing element.
 	var gravity_scale_avg: float = 1.0
 	var damage_multiplier_max: float = 1.0
+	var density_avg: float = 2.5
 	var mat_registry := get_node_or_null("/root/VoxelMaterialRegistry")
 	if mat_registry != null:
 		var sum_g: float = 0.0
 		var max_d: float = 0.0
+		var sum_density: float = 0.0
 		var count: int = 0
 		for v_pos_v in absolute_voxels.keys():
 			var packed: int = absolute_voxels[v_pos_v]
@@ -967,15 +970,19 @@ func _handle_cluster(
 				sum_g += material.gravity_scale
 				if material.damage_multiplier > max_d:
 					max_d = material.damage_multiplier
+				sum_density += material.density_relative_to_water
 				count += 1
 		if count > 0:
 			gravity_scale_avg = sum_g / float(count)
 			damage_multiplier_max = max_d
+			# AVERAGE density, like gravity_scale: a log with a bit of
+			# stone in it floats low; mostly-stone sinks. (PR 7 buoyancy.)
+			density_avg = sum_density / float(count)
 
 	# Spawn at the cluster's world centroid.
 	var centroid_world: Vector3 = VoxelClusterBuilder.compute_centroid_world(absolute_voxels)
 	cluster.global_position = centroid_world
-	cluster.configure(absolute_voxels, edit_world_pos, gravity_scale_avg, damage_multiplier_max)
+	cluster.configure(absolute_voxels, edit_world_pos, gravity_scale_avg, damage_multiplier_max, density_avg)
 
 	_active_clusters.append(cluster)
 	cluster_spawned.emit(cluster)
@@ -1246,6 +1253,7 @@ func _handle_pickup_stream(pickup_stream: PackedInt32Array, bubble_min_v: Vector
 			"item_id": material.yield_item_id,
 			"color": material.color_low,
 			"count": material.yield_quantity,
+			"density": material.density_relative_to_water,
 		})
 		drops_queued += 1
 	if not carve_writes.is_empty():
