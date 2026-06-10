@@ -16,7 +16,7 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 
 ### World systems
 - `WEATHER_AND_ENVIRONMENT.md`, `WEATHER_REWORK_2026-05.md` (current rework status).
-- `SWIMMING_AND_WATER.md`, `WATER_STAGE6_PLAN.md` (native-fluid pivot record), `WATER_SHADER_V3_PLAN.md`, `WATER_LEVELING_PLAN.md`.
+- `SWIMMING_AND_WATER.md`, `WATER_STAGE6_PLAN.md` (native-fluid pivot record), `WATER_SHADER_V3_PLAN.md`, **`WATER_FINITE_SIM_PLAN.md`** (current water sim — finite volume-conserving model, 2026-06-10), `WATER_LEVELING_PLAN.md` (rejected/superseded).
 - `DAY_NIGHT_CYCLE.md` (if present), `LIGHTING.md`.
 - `SAVE_SYSTEM.md`, `DEATH_AND_RESPAWN.md`, `REST_AND_CAMP.md`.
 - `WORLD_NAVIGATION.md`.

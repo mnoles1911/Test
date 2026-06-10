@@ -1,10 +1,20 @@
 # Water Leveling — Sim Plan (2026-05-27, design only, no code yet)
 
-> **Status:** DESIGN. Decision pending — choose Variant A or B (or
-> reject). Implementation is queued behind: (1) designer testing the
-> 2026-05-27 diagnostics bundle (F8 look-ray, F9 force-fill, shader
-> modes 7+8) to confirm where the LOD-gap-bands originate, AND (2)
-> designer green-lighting one of the variants below.
+> **Status: REJECTED / SUPERSEDED (2026-06-10).** The designer declined
+> both variants in favour of a fundamentally different water model: a
+> **finite, volume-conserving fluid sim** (placed water collapses and
+> levels out; total volume is conserved; oceans stay infinite-source).
+> The replacement design — including the post-mortem of the old
+> `_flow_chunk` automaton this plan was patching around — lives in
+> **`WATER_FINITE_SIM_PLAN.md`**. The two bugs diagnosed below remain a
+> useful record of why level-8-everywhere + a gated settle pass produced
+> bumpy, holey surfaces; the fix is now the finite sim, not Variant A/B.
+>
+> Original status (historical): DESIGN. Decision pending — choose
+> Variant A or B (or reject). Implementation queued behind: (1) designer
+> testing the 2026-05-27 diagnostics bundle (F8 look-ray, F9 force-fill,
+> shader modes 7+8) to confirm where the LOD-gap-bands originate, AND
+> (2) designer green-lighting one of the variants below.
 
 ## The two interacting bugs in `WaterFlowManager`
 
