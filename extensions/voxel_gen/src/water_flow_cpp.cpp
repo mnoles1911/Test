@@ -10,12 +10,16 @@ using namespace godot;
 
 namespace {
 constexpr int CHANNEL_TYPE = 0;
+constexpr int CHANNEL_DATA5 = 5;
 
 // Mirrors scripts/WaterMaterial.gd. Locked contract — gated by the
 // headless `wmat` selector.
 constexpr int LEGACY_WATER_ID = 5;
 constexpr int WATER_FLUID_BASE_ID = 16;
 constexpr int WATER_LEVEL_COUNT = 8;
+
+// Mirrors scripts/WaterByteCodec.gd (locked by the `codec` selector).
+constexpr int WATER_SOURCE_BIT = 0x10;
 
 inline bool is_water_type(int t) {
     return t == LEGACY_WATER_ID
@@ -106,6 +110,21 @@ Dictionary WaterFlowCpp::scan_settle_region(
         return out;
     }
 
+    // W2 (finite-water track): the settle scan is part of the OCEAN
+    // subsystem, so a hit requires the touching water to be INFINITE
+    // (DATA5 source bit set). DATA5 == 0 on a water TYPE is legacy
+    // water and conservatively counts as source. The caller's copy()
+    // must include CHANNEL_DATA5 in its mask; if the channel is absent
+    // (empty array) every water neighbour decodes as legacy-source,
+    // which reproduces the pre-W2 behaviour.
+    Variant d5_v = p_buf.call("get_channel_as_byte_array", CHANNEL_DATA5);
+    PackedByteArray d5_bytes;
+    if (d5_v.get_type() == Variant::PACKED_BYTE_ARRAY) {
+        d5_bytes = d5_v;
+    }
+    const uint8_t *d5_ptr = d5_bytes.is_empty() ? nullptr : d5_bytes.ptr();
+    const int bpv5 = d5_bytes.is_empty() ? 0 : (d5_bytes.size() / voxel_count);
+
     // Convert region coords -> buffer-local coords. Buffer minimum
     // corner sits at region_min; out-of-buffer cells are treated as
     // "solid" (the GD original's behaviour through tool.get_voxel
@@ -119,6 +138,19 @@ Dictionary WaterFlowCpp::scan_settle_region(
         }
         const int idx = (by + bx * sy + bz * sx * sy) * bpv;
         return ch_ptr[idx] & 0xFF;
+    };
+    auto d5_get = [&](int rx, int ry, int rz) -> int {
+        if (d5_ptr == nullptr || bpv5 <= 0) {
+            return 0;  // channel not copied => everything reads legacy (source)
+        }
+        const int bx = rx - p_region_min.x;
+        const int by = ry - p_region_min.y;
+        const int bz = rz - p_region_min.z;
+        if (bx < 0 || by < 0 || bz < 0 || bx >= sx || by >= sy || bz >= sz) {
+            return 0;
+        }
+        const int idx = (by + bx * sy + bz * sx * sy) * bpv5;
+        return d5_ptr[idx] & 0xFF;
     };
 
     // Pre-square the radius — distance compare in metres^2 vs the
@@ -162,16 +194,23 @@ Dictionary WaterFlowCpp::scan_settle_region(
                 if (t != 0) {
                     continue;
                 }
-                // Any face-neighbour water -> hit.
+                // Any face-neighbour SOURCE water -> hit. Finite water
+                // (DATA5 level set, source bit clear) must not feed the
+                // ocean re-fill — see design/WATER_FINITE_SIM_PLAN.md.
                 bool touches = false;
                 for (int o = 0; o < 6; ++o) {
-                    const int nt = buf_get(x + NEIGHBOURS[o].dx,
-                                            y + NEIGHBOURS[o].dy,
-                                            z + NEIGHBOURS[o].dz);
+                    const int nx = x + NEIGHBOURS[o].dx;
+                    const int ny = y + NEIGHBOURS[o].dy;
+                    const int nz = z + NEIGHBOURS[o].dz;
+                    const int nt = buf_get(nx, ny, nz);
                     if (nt < 0) {
                         continue;  // out of buffer -> treat as non-water
                     }
-                    if (is_water_type(nt)) {
+                    if (!is_water_type(nt)) {
+                        continue;
+                    }
+                    const int nd5 = d5_get(nx, ny, nz);
+                    if (nd5 == 0 || (nd5 & WATER_SOURCE_BIT) != 0) {
                         touches = true;
                         break;
                     }

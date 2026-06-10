@@ -1241,11 +1241,25 @@ func _water_flow() -> int:
 	for y in range(sy):
 		for z in range(sz):
 			buf.set_voxel(1, 11, y, z, VoxelBuffer.CHANNEL_TYPE)
-	# 4x4x4 water block.
+	# 4x4x4 water block. Legacy id 5 with DATA5 = 0 — under the W2
+	# source gate, legacy water conservatively counts as SOURCE, so all
+	# the original expected hits stay valid.
 	for x in range(1, 5):
 		for y in range(2, 6):
 			for z in range(1, 5):
 				buf.set_voxel(5, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+
+	# W2 source-gate cases (design/WATER_FINITE_SIM_PLAN.md):
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	# FINITE water (DATA5 level 4, source bit CLEAR) at (8,2,8). Its air
+	# neighbour (9,2,8) must NOT become a hit — finite water never feeds
+	# the ocean settle re-fill.
+	buf.set_voxel(WM.render_id_for_level(4, WaterByteCodec.DIR_STILL), 8, 2, 8, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(WaterByteCodec.pack(4, false, WaterByteCodec.DIR_STILL), 8, 2, 8, VoxelBuffer.CHANNEL_DATA5)
+	# Explicit SOURCE water (DATA5 source bit SET) at (8,5,8). Its air
+	# neighbour (9,5,8) MUST be a hit.
+	buf.set_voxel(WM.render_id_for_level(8, WaterByteCodec.DIR_STILL), 8, 5, 8, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(WaterByteCodec.SOURCE_BYTE, 8, 5, 8, VoxelBuffer.CHANNEL_DATA5)
 
 	# Expected hits: air cells at face-neighbours of the water block.
 	# (5, 2, 1) is +X-neighbour of (4, 2, 1) water.
@@ -1313,6 +1327,16 @@ func _water_flow() -> int:
 	if ref_set.has("5,3,3") or cpp_set.has("5,3,3"):
 		fails += 1
 		print("[WFLOW] FAIL retry-cap cell (5,3,3) leaked into hits")
+
+	# W2 source gate: air next to FINITE water must not be a hit; air
+	# next to explicit SOURCE water must be one. Checked on BOTH
+	# implementations (set equality above would let a shared bug pass).
+	if ref_set.has("9,2,8") or cpp_set.has("9,2,8"):
+		fails += 1
+		print("[WFLOW] FAIL finite-water neighbour (9,2,8) wrongly re-filled")
+	if not ref_set.has("9,5,8") or not cpp_set.has("9,5,8"):
+		fails += 1
+		print("[WFLOW] FAIL source-water neighbour (9,5,8) missing from hits")
 
 	if fails == 0:
 		print("[WFLOW] RESULT=PASS — C++ scan_settle_region matches GD reference set-for-set; pending+retry honoured.")

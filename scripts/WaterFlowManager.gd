@@ -1005,7 +1005,12 @@ func _process_connectivity_fill(tool: VoxelTool) -> void:
 			continue   # solid terrain blocks the void here
 		# AIR, sub-sea, in range, connected → convert it to water. Bottom-
 		# up ordering is implicit: this IS the lowest reachable cell.
-		var ok: bool = VoxelEditManager.queue_set_water_voxel(c, WaterByteCodec.pack(WaterByteCodec.MAX_LEVEL, false, WaterByteCodec.DIR_STILL))
+		# W2 (design/WATER_FINITE_SIM_PLAN.md): the connectivity fill is
+		# the OCEAN subsystem — it writes SOURCE_BYTE (infinite water),
+		# never finite water. The ocean refilling a blast crater stays
+		# infinite by construction; finite (player-placed) water is a
+		# separate subsystem that never routes through this fill.
+		var ok: bool = VoxelEditManager.queue_set_water_voxel(c, WaterByteCodec.SOURCE_BYTE)
 		if not ok:
 			# Rejected: queue-full (transient) or NoEditZone (permanent).
 			# Retry a bounded number of times so a transient drop self-
@@ -1080,7 +1085,10 @@ func _process_water_settle(tool: VoxelTool) -> void:
 		var copy_size: Vector3i = copy_max - copy_min + Vector3i.ONE
 		var snap: VoxelBuffer = VoxelBuffer.new()
 		snap.create(copy_size.x, copy_size.y, copy_size.z)
-		var type_mask: int = 1 << VoxelBuffer.CHANNEL_TYPE
+		# W2: DATA5 rides along so the native scan can tell INFINITE
+		# (source-bit) water from finite water — only source water may
+		# feed the ocean re-fill. See design/WATER_FINITE_SIM_PLAN.md.
+		var type_mask: int = (1 << VoxelBuffer.CHANNEL_TYPE) | (1 << VoxelBuffer.CHANNEL_DATA5)
 		tool.copy(copy_min, snap, type_mask)
 		var result: Dictionary = _cpp_water.scan_settle_region(
 			snap, copy_min, copy_max, _settle_y, y_top,
@@ -1113,9 +1121,11 @@ func _process_water_settle(tool: VoxelTool) -> void:
 					if tool.get_voxel(p) != 0:
 						continue   # solid or already water — fine
 					# AIR at/below sea level inside the filled region. If it
-					# touches water it is a hole / not yet level → re-fill it.
+					# touches INFINITE (source) water it is a hole / not yet
+					# level → re-fill it. Finite water never feeds the ocean
+					# re-fill (W2, design/WATER_FINITE_SIM_PLAN.md).
 					for d in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1), Vector3i(0, 1, 0)]:
-						if WaterMaterial.is_water_type(tool.get_voxel(p + d)):
+						if _is_source_water_at(tool, p + d):
 							_bucket_push(p, true)
 							_settle_found += 1
 							break
@@ -1163,9 +1173,31 @@ func _seed_fill_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:
 				if tool.get_voxel(p) != 0:
 					continue   # only AIR cells can seed the fill
 				for d in dirs:
-					if WaterMaterial.is_water_type(tool.get_voxel(p + d)):
+					# W2: only INFINITE (source) water seeds the ocean fill.
+					# A finite pond next to the carve must NOT trigger an
+					# infinite refill out of itself — the finite sim handles
+					# that water (design/WATER_FINITE_SIM_PLAN.md).
+					if _is_source_water_at(tool, p + d):
 						_bucket_push(p, true)   # force: a fresh carve must (re)seed even if visited
 						break
+
+
+func _is_source_water_at(tool: VoxelTool, voxel_pos: Vector3i) -> bool:
+	# OCEAN-subsystem feed test (W2, design/WATER_FINITE_SIM_PLAN.md).
+	# True iff the voxel holds water AND that water is INFINITE:
+	#   - DATA5 source bit set (generator ocean, designer headwaters), or
+	#   - DATA5 == 0 on a water TYPE (legacy water from before DATA5
+	#     backfill / old saves) — conservatively counts as source.
+	# Finite water (level set, source bit clear) returns false: it must
+	# never feed the infinite connectivity fill or the settle re-fill.
+	# Leaves tool.channel on CHANNEL_TYPE (the callers' loop channel).
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	if not WaterMaterial.is_water_type(tool.get_voxel(voxel_pos)):
+		return false
+	tool.channel = VoxelBuffer.CHANNEL_DATA5
+	var d5: int = tool.get_voxel(voxel_pos)
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	return d5 == 0 or WaterByteCodec.is_source(d5)
 
 
 func _is_water_blocked_at_voxel(voxel_pos: Vector3i) -> bool:
