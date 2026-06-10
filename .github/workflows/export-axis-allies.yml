@@ -1,0 +1,47 @@
+# One-tap export of the Axis & Allies game (the axis-allies-1940/ subfolder)
+# into its own standalone GitHub repo — runnable entirely from the GitHub
+# mobile app (Actions tab -> Run workflow).
+#
+# SETUP (once, from your phone):
+#   1. Create an EMPTY repo, e.g. mnoles1911/axis-allies-global-1940
+#   2. Make a Personal Access Token (classic, scope: repo) and add it to THIS
+#      repo as an Actions secret named EXPORT_TOKEN
+#   3. Actions tab -> "Export Axis & Allies to a standalone repo" -> Run workflow
+#
+# It force-pushes the subfolder's current contents to the target repo's main
+# branch, so re-running it keeps the standalone repo in sync.
+name: Export Axis & Allies to a standalone repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "owner/name of the EMPTY repo to push the game into"
+        required: true
+        default: mnoles1911/axis-allies-global-1940
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v4
+
+      - name: Push the axis-allies-1940 subfolder to the target repo
+        env:
+          TOKEN: ${{ secrets.EXPORT_TOKEN }}
+          TARGET: ${{ github.event.inputs.target_repo }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Missing EXPORT_TOKEN secret. Add a classic PAT (repo scope) named EXPORT_TOKEN."
+            exit 1
+          fi
+          cd axis-allies-1940
+          rm -rf .git
+          git init -b main
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Axis & Allies Global 1940 — standalone export"
+          git push --force "https://x-access-token:${TOKEN}@github.com/${TARGET}.git" main
+          echo "Pushed to https://github.com/${TARGET}"
