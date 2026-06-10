@@ -7,14 +7,16 @@ compatibility_minimum = "4.4"
 ; Paths are relative to this manifest file. SCons writes binaries with
 ; godot-cpp's full suffix encoding (platform.target.arch).
 ;
-; Phase 0 only ships Windows binaries (the dev machine). Linux + macOS
-; entries are stubbed and commented — they'll light up when CI is added.
+; Windows binaries are built on the dev machine; Linux entries are live
+; so headless Linux sessions (remote Claude Code / future CI) can build
+; with `scons platform=linux target=template_debug` and run the parity
+; selectors. macOS stays stubbed until someone needs it.
 
 windows.debug.x86_64   = "bin/libvoxel_gen.windows.template_debug.x86_64.dll"
 windows.release.x86_64 = "bin/libvoxel_gen.windows.template_release.x86_64.dll"
 
-; linux.debug.x86_64   = "bin/libvoxel_gen.linux.template_debug.x86_64.so"
-; linux.release.x86_64 = "bin/libvoxel_gen.linux.template_release.x86_64.so"
+linux.debug.x86_64   = "bin/libvoxel_gen.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "bin/libvoxel_gen.linux.template_release.x86_64.so"
 
 ; macos.debug   = "bin/libvoxel_gen.macos.template_debug.framework/libvoxel_gen.macos.template_debug"
 ; macos.release = "bin/libvoxel_gen.macos.template_release.framework/libvoxel_gen.macos.template_release"
