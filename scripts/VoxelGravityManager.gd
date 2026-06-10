@@ -70,6 +70,14 @@ extends Node
 # is 16^3 = 4096 voxels — keeping clusters within one chunk's worth
 # means re-deposit fits comfortably in a single per-frame budget.
 
+@export var sever_follow_max_height_m: float = 12.0
+# Tree-sever follow-up (voxel-physics PR 6): when a severed cluster
+# touches the analysis bubble's ROOF, keep following the connected
+# solids upward in an extension box this tall, so a chopped tree
+# detaches as ONE cluster instead of bubble-height salami slices.
+# 12 m covers every authored tree; anything taller aborts conservative
+# (falls in slices, exactly like before this feature). 0 disables.
+
 @export var min_cluster_voxels: int = 2
 # Skip single-voxel "clusters." A lone floating voxel just disappears
 # (we still carve it from terrain). Spawning a rigid body for one cube
@@ -163,6 +171,7 @@ var _cpp: Resource = null
 # fallback when _cpp is null. Path-preload (not class_name) so it stays
 # headless-safe.
 const _GravityRef := preload("res://scripts/_dev/GravityReference.gd")
+const _SeverFollowLib := preload("res://scripts/_dev/SeverFollowLib.gd")
 
 
 # =============================================================
@@ -597,7 +606,7 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 
 	# --- Spawn a falling cluster per group ---
 	for cluster_voxels in clusters:
-		_handle_cluster(cluster_voxels, min_v, edit_world_pos, terrain)
+		_handle_cluster(cluster_voxels, min_v, max_v.y, edit_world_pos, terrain)
 
 	if perf_log_enabled:
 		t_after_cluster = Time.get_ticks_usec()
@@ -845,6 +854,7 @@ func _find_world_root_for_drops() -> Node:
 func _handle_cluster(
 	cluster_voxels: Dictionary,
 	bubble_min_v: Vector3i,
+	bubble_top_voxel_y: int,
 	edit_world_pos: Vector3,
 	terrain: VoxelLodTerrain,
 ) -> void:
@@ -864,6 +874,20 @@ func _handle_cluster(
 	for v_pos_v in cluster_voxels.keys():
 		var v_local: Vector3i = v_pos_v
 		absolute_voxels[bubble_min_v + v_local] = cluster_voxels[v_local]
+
+	# Tree-sever follow-up (PR 6): a cluster that reaches the bubble's
+	# ROOF probably continues above it (a felled tree's trunk + crown).
+	# Follow the connected solids upward in one bounded extension box
+	# so the whole tree comes down as ONE cluster. Conservative: any
+	# doubt (touches the box walls/top, over budget) keeps the original
+	# cluster — i.e. exactly the pre-PR-6 salami behaviour.
+	absolute_voxels = _extend_cluster_upward(absolute_voxels, bubble_top_voxel_y, terrain)
+	n = absolute_voxels.size()
+	if n > max_cluster_voxels:
+		print("[VoxelGravityManager] extended cluster too large (%d > %d), leaving in place" % [
+			n, max_cluster_voxels
+		])
+		return
 
 	# --- Carve from terrain via VoxelEditManager bulk write ---
 	# Going through the manager keeps EditedChunkRegistry in sync with
@@ -960,6 +984,66 @@ func _handle_cluster(
 	])
 
 
+func _extend_cluster_upward(
+	absolute_voxels: Dictionary,
+	bubble_top_voxel_y: int,
+	terrain: VoxelLodTerrain,
+) -> Dictionary:
+	# If the cluster touches the bubble roof, bulk-snapshot a box above
+	# it (footprint + 2 voxels of padding, sever_follow_max_height_m
+	# tall) and continue the 6-connected BFS upward through it (pure
+	# loop in scripts/_dev/SeverFollowLib.gd — headless-gated by the
+	# `sever` selector). Returns the MERGED voxel dict on success, or
+	# the original dict unchanged on any conservative abort.
+	if sever_follow_max_height_m <= 0.0:
+		return absolute_voxels
+	# Does anything sit on the roof? Collect the roof cells while at it.
+	var roof_cells: Array = []
+	var foot_min := Vector3i(0x7fffffff, 0, 0x7fffffff)
+	var foot_max := Vector3i(-0x7fffffff, 0, -0x7fffffff)
+	for v_pos_v in absolute_voxels.keys():
+		var v: Vector3i = v_pos_v
+		foot_min.x = mini(foot_min.x, v.x)
+		foot_min.z = mini(foot_min.z, v.z)
+		foot_max.x = maxi(foot_max.x, v.x)
+		foot_max.z = maxi(foot_max.z, v.z)
+		if v.y == bubble_top_voxel_y:
+			roof_cells.append(v)
+	if roof_cells.is_empty():
+		return absolute_voxels   # fully inside the bubble — nothing above
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null or not tool.has_method("copy"):
+		return absolute_voxels   # no bulk read available — keep old behaviour
+	var ext_height: int = int(ceilf(sever_follow_max_height_m * VOXELS_PER_METER))
+	var ext_min := Vector3i(foot_min.x - 2, bubble_top_voxel_y + 1, foot_min.z - 2)
+	var ext_max := Vector3i(foot_max.x + 2, bubble_top_voxel_y + ext_height, foot_max.z + 2)
+	var size: Vector3i = ext_max - ext_min + Vector3i.ONE
+	var buf := VoxelBuffer.new()
+	buf.create(size.x, size.y, size.z)
+	tool.copy(ext_min, buf, 1 << VoxelBuffer.CHANNEL_TYPE)
+	# Seeds: the cell directly above each roof voxel.
+	var seeds: Array = []
+	for rc_v in roof_cells:
+		seeds.append((rc_v as Vector3i) + Vector3i(0, 1, 0))
+	var res: Dictionary = _SeverFollowLib.continue_bfs(
+		buf, ext_min, seeds, max_cluster_voxels - absolute_voxels.size())
+	if bool(res["touched_side"]):
+		print("[VoxelGravityManager] sever-follow abort: extension reached box side wall (possible anchored arch)")
+		return absolute_voxels
+	if bool(res["touched_top"]):
+		print("[VoxelGravityManager] sever-follow abort: taller than %0.1f m cap (or over voxel budget)" % sever_follow_max_height_m)
+		return absolute_voxels
+	var ext: Dictionary = res["voxels"]
+	if ext.is_empty():
+		return absolute_voxels   # roof contact but only air above
+	var merged: Dictionary = absolute_voxels.duplicate()
+	for p in ext.keys():
+		merged[p] = ext[p]
+	print("[VoxelGravityManager] sever-follow: merged %d voxels above the bubble roof (cluster %d -> %d)" % [
+		ext.size(), absolute_voxels.size(), merged.size()])
+	return merged
+
+
 # =============================================================
 # C++ FAST PATH
 # =============================================================
@@ -1051,7 +1135,7 @@ func _run_cpp_partition(
 					cluster_voxels[cursor + 2],
 				)] = cluster_voxels[cursor + 3]
 				cursor += 4
-			_handle_cluster(cluster_voxel_dict, bubble_min_v, edit_world_pos, terrain)
+			_handle_cluster(cluster_voxel_dict, bubble_min_v, bubble_max_v.y, edit_world_pos, terrain)
 			cluster_count += 1
 
 	var t_end: int = Time.get_ticks_usec()

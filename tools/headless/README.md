@@ -25,6 +25,8 @@ Exit code 0 = pass.
 | `phase7` | Save round-trip contracts |
 | `gen` | C++ generator parity harness — writes a baseline file, then re-runs and bit-exact verifies |
 | `finite` | `FiniteWaterCore` finite-water sim gates: conservation invariant, levelness, 18-voxel reach, evaporation, ocean absorption, determinism |
+| `finite_world` | End-to-end finite-water gate in the real World3D scene (pour, settle, audit voxels vs ledger) |
+| `sever` | Tree-sever upward-follow BFS gates (SeverFollowLib) |
 | `shader` | Shader compile + the foam removal contract |
 | `spike` | Does `VoxelLodTerrain` stream headless? (Yes — confirmed by this selector) |
 

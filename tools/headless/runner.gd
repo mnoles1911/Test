@@ -82,6 +82,8 @@ func _initialize() -> void:
 			quit(_water_flow())
 		"finite":
 			quit(_finite())
+		"sever":
+			quit(_sever())
 		"entity":
 			quit(_entity())
 		"spike", "phase2", "gen", "distant", "finite_world":
@@ -1525,6 +1527,77 @@ func _wflow_stream_to_set(s: PackedInt32Array) -> Dictionary:
 	for i in range(n):
 		d["%d,%d,%d" % [s[i * 3], s[i * 3 + 1], s[i * 3 + 2]]] = true
 	return d
+
+
+# ============================================================
+# SEVER — SeverFollowLib.continue_bfs gates (voxel-physics PR 6).
+# Synthetic VoxelBuffer worlds; pure data, no terrain.
+# ============================================================
+const _SeverLib := preload("res://scripts/_dev/SeverFollowLib.gd")
+
+func _sever() -> int:
+	var fails: int = 0
+	# Extension box: 9 x 20 x 9 voxels at ext_min (100, 50, 100).
+	var ext_min := Vector3i(100, 50, 100)
+	var size := Vector3i(9, 20, 9)
+
+	# Scenario 1: a 1x10x1 stone column in the middle, fully inside the
+	# box -> all 10 voxels merged, no abort flags.
+	var buf := VoxelBuffer.new()
+	buf.create(size.x, size.y, size.z)
+	for y in range(0, 10):
+		buf.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	var res: Dictionary = _SeverLib.continue_bfs(buf, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	if bool(res["touched_side"]) or bool(res["touched_top"]):
+		fails += 1
+		print("[SEVER] FAIL inside-column: spurious abort flag (side=%s top=%s)" % [res["touched_side"], res["touched_top"]])
+	if (res["voxels"] as Dictionary).size() != 10:
+		fails += 1
+		print("[SEVER] FAIL inside-column: merged %d voxels, expected 10" % (res["voxels"] as Dictionary).size())
+
+	# Scenario 2: a column reaching the box TOP -> touched_top abort.
+	var buf2 := VoxelBuffer.new()
+	buf2.create(size.x, size.y, size.z)
+	for y in range(0, size.y):
+		buf2.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	var res2: Dictionary = _SeverLib.continue_bfs(buf2, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	if not bool(res2["touched_top"]):
+		fails += 1
+		print("[SEVER] FAIL top-column: expected touched_top abort")
+
+	# Scenario 3: a T-beam whose arm reaches the box SIDE wall ->
+	# touched_side abort (possible anchored arch).
+	var buf3 := VoxelBuffer.new()
+	buf3.create(size.x, size.y, size.z)
+	for y in range(0, 6):
+		buf3.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	for x in range(0, size.x):
+		buf3.set_voxel(1, x, 5, 4, VoxelBuffer.CHANNEL_TYPE)
+	var res3: Dictionary = _SeverLib.continue_bfs(buf3, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	if not bool(res3["touched_side"]):
+		fails += 1
+		print("[SEVER] FAIL t-beam: expected touched_side abort")
+
+	# Scenario 4: water above the trunk is NOT traversed (and doesn't
+	# connect the trunk to anything beyond it).
+	var buf4 := VoxelBuffer.new()
+	buf4.create(size.x, size.y, size.z)
+	for y in range(0, 4):
+		buf4.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	buf4.set_voxel(5, 4, 4, 4, VoxelBuffer.CHANNEL_TYPE)    # legacy water id
+	buf4.set_voxel(23, 4, 5, 4, VoxelBuffer.CHANNEL_TYPE)   # fluid id (level 8)
+	buf4.set_voxel(1, 4, 6, 4, VoxelBuffer.CHANNEL_TYPE)    # stone beyond the water
+	var res4: Dictionary = _SeverLib.continue_bfs(buf4, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	var v4: Dictionary = res4["voxels"]
+	if v4.size() != 4:
+		fails += 1
+		print("[SEVER] FAIL water-block: merged %d voxels, expected 4 (water must not ride or connect)" % v4.size())
+
+	if fails == 0:
+		print("[SEVER] RESULT=PASS — 4 scenarios: inside-column merge, top abort, side-wall abort, water exclusion.")
+		return 0
+	print("[SEVER] RESULT=FAIL — %d check(s) failed." % fails)
+	return 1
 
 
 # ============================================================
