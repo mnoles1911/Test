@@ -123,11 +123,19 @@ var _merged_sources: Dictionary = {}
 # snapshot refreshes, the core must remember these itself so the very
 # next tick already treats them as infinite.
 
+var _external_changed: Dictionary = {}
+# Vector3i -> true. Cells mutated OUTSIDE step() (place / ingest /
+# remove). The next step() folds these into its change stream so the
+# owner has exactly ONE projection path — no special-case writes at
+# call sites, no cell can be shown stale because a placement happened
+# between ticks.
+
 # Conservation counters (the audit trail).
-var placed: int = 0        # units ever introduced via place()
+var placed: int = 0        # units ever introduced via place()/ingest()
 var evaporated: int = 0    # orphaned 1-unit cells that timed out
 var absorbed: int = 0      # units that fell/flowed into source water
 var merged: int = 0        # units in cells that joined the ocean
+var removed: int = 0       # units scooped back out (bucket fill)
 
 
 # ============================================================
@@ -153,6 +161,7 @@ func place(pos: Vector3i, units: int) -> int:
 				_dist[p] = 0   # fresh water starts a fresh spread budget
 			placed += add
 			remaining -= add
+			_external_changed[p] = true
 			_activate_with_neighbours(p)
 		k += 1
 	return maxi(0, units) - remaining
@@ -176,7 +185,45 @@ func ingest(pos: Vector3i, units: int) -> void:
 	_ledger[pos] = clampi(units, 1, MAX_UNITS_PER_CELL)
 	_dist[pos] = 0
 	placed += int(_ledger[pos])
+	_external_changed[pos] = true
 	_activate_with_neighbours(pos)
+
+
+func remove(pos: Vector3i, max_units: int) -> int:
+	# Scoop water back out (bucket fill). Takes up to max_units from
+	# this cell, then from the cells stacked directly above it (you
+	# scoop from the top of a column's worth of standing water at this
+	# spot, but a single call never drains more than one bucket).
+	# Returns the units actually removed; they are ledgered so the
+	# conservation audit still balances.
+	var got: int = 0
+	var k: int = 0
+	while got < max_units and k < 16:
+		var p: Vector3i = pos + Vector3i(0, k, 0)
+		if _ledger.has(p):
+			var u: int = int(_ledger[p])
+			var take: int = mini(u, max_units - got)
+			got += take
+			if take >= u:
+				_clear_cell(p)
+			else:
+				_ledger[p] = u - take
+			_external_changed[p] = true
+			_wake_ledger_neighbours(p)
+			_activate_with_neighbours(p)
+		k += 1
+	removed += got
+	return got
+
+
+func projected_byte(pos: Vector3i) -> int:
+	# Public read of "what DATA5 byte should the world show here" — the
+	# owner uses this to re-queue writes the edit queue rejected.
+	return _projected_byte(pos)
+
+
+func has_cell(pos: Vector3i) -> bool:
+	return _ledger.has(pos)
 
 
 func total_units() -> int:
@@ -190,6 +237,12 @@ func is_settled() -> bool:
 	return _active.is_empty()
 
 
+func has_pending_changes() -> bool:
+	# True while anything still needs a tick: cells to simulate OR
+	# externally-mutated cells whose projection hasn't been flushed.
+	return not _active.is_empty() or not _external_changed.is_empty()
+
+
 func units_at(pos: Vector3i) -> int:
 	return int(_ledger.get(pos, 0))
 
@@ -197,7 +250,7 @@ func units_at(pos: Vector3i) -> int:
 func conservation_delta() -> int:
 	# 0 when the books balance. Anything else is a bug — the engine
 	# integration prints a loud warning if this ever goes nonzero.
-	return total_units() - (placed - evaporated - absorbed - merged)
+	return total_units() - (placed - evaporated - absorbed - merged - removed)
 
 
 func stats() -> Dictionary:
@@ -208,6 +261,7 @@ func stats() -> Dictionary:
 		"evaporated": evaporated,
 		"absorbed": absorbed,
 		"merged": merged,
+		"removed": removed,
 	}
 
 
@@ -236,6 +290,11 @@ func step(budget: int) -> Dictionary:
 	#            anything else = pack(units, false, dir).
 	#   stats:   the conservation counters (see stats()).
 	var changed: Dictionary = {}   # Vector3i -> true
+	# Fold in cells mutated between ticks (place / ingest / remove) so
+	# their projection rides the same change stream as sim moves.
+	for p in _external_changed.keys():
+		changed[p] = true
+	_external_changed.clear()
 
 	var worklist: Array = _active.keys()
 	worklist.sort_custom(_cell_order)
@@ -307,6 +366,7 @@ func _step_cell(c: Vector3i, changed: Dictionary) -> void:
 				_wake_ledger_neighbours(c)
 				return
 			_ledger[c] = u
+			changed[c] = true   # partial drop still changed OUR level
 
 	# RULE 2 — lateral equalization. Only donors with >= 2 units, and
 	# only while standing on something (solid / source / full water) —

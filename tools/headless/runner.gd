@@ -49,6 +49,13 @@ var _spike_frames: int = 0
 var _spike_max_frames: int = 240          # ~4 s at 60 fps physics
 var _spike_world: Node = null
 
+# finite_world end-to-end state (see _finite_world_tick/_report).
+var _fw_placed: bool = false
+var _fw_place_frame: int = -1
+var _fw_origin: Vector3i = Vector3i.ZERO
+var _fw_fail: String = ""
+var _fw_quiet_frames: int = 0
+
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -77,8 +84,18 @@ func _initialize() -> void:
 			quit(_finite())
 		"entity":
 			quit(_entity())
-		"spike", "phase2", "gen", "distant":
+		"spike", "phase2", "gen", "distant", "finite_world":
 			_spike_mode = selector
+			if selector == "finite_world":
+				# Worst case: stream (~240) + collapse on a slope + the
+				# 40-tick evaporation countdown for stranded films + the
+				# 3-pass projection reconcile (~2 s spacing each) + queue
+				# drain. The run finishes EARLY once quiet (see
+				# _finite_world_tick), so the budget is only a ceiling.
+				# NOTE _process counts IDLE frames, which spin much faster
+				# than PHYSICS frames in headless — the ceiling must be
+				# generous because the sim ticks on physics frames.
+				_spike_max_frames = 20000
 			_spike_active = true   # finishes in _process()
 		_:
 			push_error("[RUNNER] unknown selector: %s" % selector)
@@ -90,10 +107,13 @@ func _process(_delta: float) -> bool:
 		return true
 	if _spike_world == null:
 		_spike_begin()
+	if _spike_mode == "finite_world":
+		_finite_world_tick()
 	_spike_frames += 1
 	if _spike_frames >= _spike_max_frames:
 		match _spike_mode:
 			"phase2": quit(_phase2_report())
+			"finite_world": quit(_finite_world_report())
 			"gen": quit(_gen_report())
 			"distant": quit(_distant_report())
 			_: quit(_spike_report())
@@ -281,6 +301,157 @@ func _spike_report() -> int:
 	print("[SPIKE] terrain=%s %s" % [terrain.get_class(), " ".join(detail)])
 	print("[SPIKE] RESULT=%s streams_headless=%s" % ["PASS" if streamed else "NO", "yes" if streamed else "no"])
 	return 0 if streamed else 0   # never hard-fail: this answers a question, doesn't gate
+
+
+# ============================================================
+# FINITE_WORLD — end-to-end W4 gate: pour a 3x3x3 bucket dump into the
+# REAL World3D scene headless, pump the live autoload stack (finite sim
+# tick -> VoxelEditManager queue -> terrain voxels), then read the
+# world back and audit it against the ledger. This is the closest a
+# no-GPU run gets to the designer\'s acceptance test.
+# ============================================================
+
+func _finite_world_tick() -> void:
+	# Called every _process frame while the scene pumps.
+	if _fw_placed:
+		# Finish early once everything is quiet for half a second:
+		# sim settled, projections flushed, AND the VoxelEditManager
+		# queue drained (the world read in the report must see the
+		# final voxels, not in-flight writes).
+		var wfm_q: Node = get_root().get_node_or_null("/root/WaterFlowManager")
+		var vem_q: Node = get_root().get_node_or_null("/root/VoxelEditManager")
+		if wfm_q != null and vem_q != null \
+				and not wfm_q._finite_busy() and vem_q._edit_queue.is_empty():
+			_fw_quiet_frames += 1
+			if _fw_quiet_frames >= 60:
+				_spike_frames = _spike_max_frames - 1   # report next frame
+		else:
+			_fw_quiet_frames = 0
+		return
+	if _fw_fail != "" or _spike_frames < 240:
+		return   # give terrain ~4 s to stream around the spawn
+	var wfm: Node = get_root().get_node_or_null("/root/WaterFlowManager")
+	var vem: Node = get_root().get_node_or_null("/root/VoxelEditManager")
+	if wfm == null or vem == null:
+		_fw_fail = "autoloads_missing"
+		return
+	var terrain = vem.get_terrain()
+	if terrain == null:
+		return   # not bound yet — try again next frame
+	var tool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	# Find the ground column near the spawn (player spawns at XZ 0,0).
+	# Probe a spot a couple of metres out so we don\'t pour on the player.
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var px: int = 18   # voxel coords (3 m out at 6 vox/m)
+	var pz: int = 18
+	var ground_y: int = -1
+	for y in range(400, 72, -1):
+		if tool.get_voxel(Vector3i(px, y, pz)) != 0:
+			ground_y = y
+			break
+	if ground_y < 0:
+		return   # terrain not streamed at the probe column yet — retry
+	_fw_origin = Vector3i(px - 1, ground_y + 1, pz - 1)
+	# The designer\'s scenario: a 3x3x3 cube of water (27 cells x 8
+	# units = 216). Poured as 9 columns of 24 units.
+	var total: int = 0
+	for dx in range(3):
+		for dz in range(3):
+			total += int(wfm.place_finite_water(
+				Vector3i(_fw_origin.x + dx, _fw_origin.y, _fw_origin.z + dz), 24))
+	if total != 216:
+		_fw_fail = "placed_%d_of_216 (probe ground_y=%d)" % [total, ground_y]
+		return
+	_fw_placed = true
+	_fw_place_frame = _spike_frames
+	print("[FWORLD] poured 216 units at %s (ground voxel y=%d); letting it settle..." % [str(_fw_origin), ground_y])
+
+
+func _finite_world_report() -> int:
+	if _fw_fail != "":
+		print("[FWORLD] RESULT=FAIL reason=%s" % _fw_fail)
+		return 1
+	if not _fw_placed:
+		print("[FWORLD] RESULT=FAIL reason=terrain_never_streamed_probe_column")
+		return 1
+	var wfm: Node = get_root().get_node_or_null("/root/WaterFlowManager")
+	var vem: Node = get_root().get_node_or_null("/root/VoxelEditManager")
+	var terrain = vem.get_terrain()
+	var tool = terrain.get_voxel_tool()
+	var fails: int = 0
+
+	# 1. The sim must have gone quiet (settled + projection flushed).
+	if wfm._finite_busy():
+		print("[FWORLD] FAIL sim still busy after %d frames (active=%d unprojected=%d)" % [
+			_spike_frames, int(wfm._finite.stats()["active"]), wfm._unprojected.size()])
+		for ac in wfm._finite._active.keys():
+			print("[FWORLD]   active cell %s: u=%d dist=%d ttl=%d dir=%d" % [
+				str(ac), int(wfm._finite._ledger.get(ac, 0)), int(wfm._finite._dist.get(ac, -1)),
+				int(wfm._finite._evap_ttl.get(ac, -1)), int(wfm._finite._dir.get(ac, 0))])
+		for up in wfm._unprojected.keys():
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			print("[FWORLD]   unprojected %s sched=%s want=0x%02x have=0x%02x tick_no=%d" % [
+				str(up), str(wfm._unprojected[up]), wfm._finite.projected_byte(up),
+				tool.get_voxel(up), wfm._finite_tick_no])
+			tool.channel = VoxelBuffer.CHANNEL_TYPE
+		fails += 1
+
+	# 2. Conservation audit on the ledger.
+	if int(wfm._finite.conservation_delta()) != 0:
+		print("[FWORLD] FAIL conservation delta=%d stats=%s" % [
+			int(wfm._finite.conservation_delta()), str(wfm._finite.stats())])
+		fails += 1
+
+	# 3. The pool must have SPREAD (more cells than the 9 poured columns
+	#    held) — the whole point of the finite model.
+	var ledger: Dictionary = wfm._finite._ledger
+	if ledger.size() < 27:
+		print("[FWORLD] FAIL pool covers %d cells — did not collapse/spread" % ledger.size())
+		fails += 1
+
+	# 4. World agreement: every ledger cell\'s DATA5 byte and TYPE id in
+	#    the REAL terrain must match the ledger\'s projection. This is
+	#    the end-to-end proof: sim -> queue -> voxels, nothing lost.
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	var world_units: int = 0
+	var mismatches: int = 0
+	for cell in ledger.keys():
+		tool.channel = VoxelBuffer.CHANNEL_DATA5
+		var d5: int = tool.get_voxel(cell)
+		tool.channel = VoxelBuffer.CHANNEL_TYPE
+		var t: int = tool.get_voxel(cell)
+		var want_level: int = int(ledger[cell])
+		world_units += WaterByteCodec.level_of(d5)
+		if WaterByteCodec.level_of(d5) != want_level or WaterByteCodec.is_source(d5):
+			mismatches += 1
+			if mismatches <= 5:
+				print("[FWORLD] FAIL world DATA5 at %s = 0x%02x, ledger wants level %d (non-source)" % [
+					str(cell), d5, want_level])
+		if t != WM.render_id_for_level(want_level, WaterByteCodec.DIR_STILL) and not WM.is_water_type(t):
+			mismatches += 1
+			if mismatches <= 5:
+				print("[FWORLD] FAIL world TYPE at %s = %d, not a water id for level %d" % [
+					str(cell), t, want_level])
+	if mismatches > 0:
+		print("[FWORLD] FAIL %d ledger/world mismatches" % mismatches)
+		fails += 1
+	var ledger_units: int = int(wfm._finite.total_units())
+	if world_units != ledger_units:
+		print("[FWORLD] FAIL world holds %d units where ledger says %d" % [world_units, ledger_units])
+		fails += 1
+
+	var player = _spike_world.get_node_or_null("Player3D")
+	if player != null:
+		print("[FWORLD] player at %s" % str(player.global_position))
+	print("[FWORLD] settled: cells=%d ledger_units=%d world_units=%d stats=%s (settle took <= %d frames)" % [
+		ledger.size(), ledger_units, world_units, str(wfm._finite.stats()), _spike_frames - _fw_place_frame])
+	if fails == 0:
+		print("[FWORLD] RESULT=PASS — 216 poured units collapsed, spread, and landed in the real terrain intact.")
+		return 0
+	print("[FWORLD] RESULT=FAIL — %d check(s) failed." % fails)
+	return 1
 
 
 # ============================================================

@@ -4,6 +4,10 @@ extends Node
 # WaterMaterial.gd for why it has no class_name).
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# The finite, volume-conserving water sim (W4 — the ledger-authority
+# core; design/WATER_FINITE_SIM_PLAN.md). Path preload, no class_name.
+const FiniteWaterCore := preload("res://scripts/FiniteWaterCore.gd")
+
 # WaterFlowManager — autoload for Minecraft-style voxel water.
 #
 # What this is in plain English:
@@ -191,6 +195,55 @@ const WATER_FILL_CELLS_PER_TICK: int = 12
 # leave a cave half-full or holey.
 
 
+const FINITE_CELL_UPDATES_PER_TICK: int = 256
+# THE FINITE-SIM DIAL — max ledger cells stepped per 4 Hz tick. Same
+# philosophy as WATER_FILL_CELLS_PER_TICK: spilled cells stay active
+# and are processed next tick (lowest first), so a low value just slows
+# the collapse, it can never lose water. Clamped under the
+# _MAX_FLOW_BUDGET_PER_TICK write ceiling by construction (each stepped
+# cell queues at most a handful of writes).
+
+var _finite: RefCounted = FiniteWaterCore.new()
+# The finite-water ledger sim. ITS DICTIONARY IS THE AUTHORITY for all
+# player-placed / inland water; DATA5+TYPE in the voxel world are a
+# write-only projection of it (the post-mortem lesson — see
+# design/WATER_FINITE_SIM_PLAN.md).
+
+var _unprojected: Dictionary = {}
+# Vector3i -> Vector2i(passes_left, next_check_tick). Finite cells
+# whose WORLD byte is not yet TRUSTED to match the ledger. Every
+# changed cell enters this set; it leaves only after the read-back
+# matched the ledger on RECONCILE_PASSES separate checks spaced
+# RECONCILE_SPACING_TICKS apart.
+#
+# Why not fire-and-forget, and why multiple passes: writes can land
+# LATE and OUT OF ORDER — VoxelEditManager's water_set drain requeues
+# commands whose chunk isn't editable yet, and the finite_world
+# headless gate caught world bytes REVERTING to an older write's value
+# seconds after a single verification had passed. The ledger is the
+# authority, so the cure is patience, not plumbing: keep re-checking,
+# and re-issue the ledger's CURRENT truth whenever the world disagrees.
+# A mismatch resets the pass count. This read-back is projection
+# reconciliation ONLY — the SIM never reads the world to make flow
+# decisions (the post-mortem rule).
+# No TTL, no retry cap: a dropped write can never become a hole, it
+# just lands late. Cells outside the active radius stay in the set,
+# frozen, until the player returns.
+
+const RECONCILE_PASSES: int = 3
+const RECONCILE_SPACING_TICKS: int = 8   # ~2 s at 4 Hz between passes
+
+var _finite_tick_no: int = 0
+# Non-wrapping finite-sim tick counter (drives reconcile scheduling).
+
+var _finite_tool: VoxelTool = null
+# Borrowed per-tick terrain tool for the finite sim's solid/source
+# callbacks. Refreshed at every entry point; never cached across frames.
+
+var _finite_conserve_warned: bool = false
+# One-shot guard so a (should-be-impossible) conservation break warns
+# loudly once per session instead of spamming every diag window.
+
 var _pending_water: Dictionary = {}
 # Vector3i (voxel coord) → int (ticks remaining). #5 front-advance fix
 # (2026-05-17). Flood/gravity writes go through VoxelEditManager's
@@ -346,7 +399,7 @@ func _physics_process_inner() -> void:
 	# driven by dirty chunks any more. Gating only on _dirty_chunks here
 	# was what stalled the fill after one tick (the "needs a re-mine
 	# kick" bug). Goes cheap-idle the moment all three are empty.
-	if not _dirty_chunks.is_empty() or _frontier_count() > 0 or not _pending_water.is_empty() or _settle_dirty:
+	if not _dirty_chunks.is_empty() or _frontier_count() > 0 or not _pending_water.is_empty() or _settle_dirty or _finite_busy():
 		_run_flow_tick()
 
 
@@ -606,6 +659,12 @@ func clear_persistent_state() -> void:
 	# reloads with the rest of the terrain.
 	_cells.clear()
 	_dirty_chunks.clear()
+	# W4: a fresh save must not inherit the previous session's finite
+	# ledger. Saved finite water persists as DATA5 chunk deltas and is
+	# re-adopted lazily when something disturbs it (_finite_wake_from_aabb).
+	_finite = FiniteWaterCore.new()
+	_unprojected.clear()
+	_finite_conserve_warned = false
 
 
 # ============================================================
@@ -850,13 +909,14 @@ func _run_flow_tick_v2() -> void:
 	# Y-bucketed connectivity frontier (_fill_buckets), not dirty chunks.
 	_process_connectivity_fill(tool)
 	_process_water_settle(tool)   # "water finds its level" — runs only when fill is idle
+	_step_finite(tool)            # finite (player-placed) water — W4
 
 	# Throttled diagnostic (~every 8 ticks ≈ 2 s) — only when the sim
 	# actually did something, so the Output panel isn't flooded.
 	_diag_flow_ticks += 1
 	if _diag_flow_ticks >= 8:
 		_diag_flow_ticks = 0
-		if _diag_flow_flood > 0 or _frontier_count() > 0 or not snapshot.is_empty() or _settle_dirty:
+		if _diag_flow_flood > 0 or _frontier_count() > 0 or not snapshot.is_empty() or _settle_dirty or _finite_busy():
 			var _mwy_s: String = str(_diag_flow_max_write_y) if _diag_flow_any_write else "n/a"
 			# Settle state — unambiguous "is the equalize pass still working
 			# / has the surface converged". on(...) = sweeping (cursor Y of
@@ -882,6 +942,25 @@ func _run_flow_tick_v2() -> void:
 				str(_diag_flow_worst_above), _diag_flow_rej_above_sea,
 				_diag_flow_rej_unfed, _lvl_s, str(_world_to_voxel(_player_pos)),
 			])
+			# Finite-water ledger line — the live conservation audit. The
+			# books MUST balance: units == placed - evap - absorbed -
+			# merged - removed. If they ever don't, that is a real bug in
+			# FiniteWaterCore (the headless `finite` gate should have
+			# caught it) — warn loudly, once.
+			if _finite_busy() or _finite.placed > 0:
+				var fstats: Dictionary = _finite.stats()
+				var conserve_s: String = "OK"
+				if _finite.conservation_delta() != 0:
+					conserve_s = "BROKEN(%+d)" % _finite.conservation_delta()
+					if not _finite_conserve_warned:
+						_finite_conserve_warned = true
+						push_warning("[WaterFlowManager] FINITE WATER CONSERVATION BROKEN: delta=%d stats=%s" % [
+							_finite.conservation_delta(), str(fstats)])
+				print("[FlowDiag-finite] active=%d units=%d placed=%d evap=%d absorbed=%d merged=%d removed=%d unprojected=%d conserve=%s" % [
+					int(fstats["active"]), int(fstats["units"]), int(fstats["placed"]),
+					int(fstats["evaporated"]), int(fstats["absorbed"]), int(fstats["merged"]),
+					int(fstats["removed"]), _unprojected.size(), conserve_s,
+				])
 		_diag_flow_flood = 0
 		_diag_flow_gravity = 0
 		_diag_flow_any_write = false
@@ -1182,6 +1261,178 @@ func _seed_fill_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:
 						break
 
 
+# ============================================================
+# Finite water (W4) — engine glue around FiniteWaterCore.
+# The core is pure; everything terrain-shaped lives in this section.
+# Design: design/WATER_FINITE_SIM_PLAN.md.
+# ============================================================
+
+func place_finite_water(voxel_pos: Vector3i, units: int = 8) -> int:
+	# Pour player water into the world (bucket verb). Units land in the
+	# ledger immediately; the world write rides the next tick\'s change
+	# stream (<= 250 ms later). Returns units actually placed.
+	if not _finite_bind_world():
+		return 0
+	var got: int = _finite.place(voxel_pos, units)
+	_finite_tool = null
+	return got
+
+
+func scoop_water(world_pos: Vector3) -> bool:
+	# Bucket fill. Finite water is CONSERVED: scooping a player pool
+	# removes up to 8 units from the ledger (the pool visibly shrinks).
+	# Ocean / legacy / source water stays infinite — scooping it changes
+	# nothing. Returns true if the bucket may fill from this position.
+	var voxel_pos: Vector3i = _world_to_voxel(world_pos)
+	if _finite_bind_world():
+		var got: int = _finite.remove(voxel_pos, WaterByteCodec.MAX_LEVEL)
+		_finite_tool = null
+		if got > 0:
+			return true
+	# Not finite water here — fall back to "is there any water at all"
+	# (infinite sources fill the bucket for free, exactly as before).
+	return is_position_in_water(world_pos)
+
+
+func _finite_busy() -> bool:
+	# True while the finite sim still owes the world anything: cells to
+	# simulate, fresh placements to project, or rejected writes to retry.
+	return _finite.has_pending_changes() or not _unprojected.is_empty()
+
+
+func _finite_bind_world() -> bool:
+	# Point the core\'s world callbacks at the live terrain for the
+	# duration of one call/tick. Returns false (and leaves the sim
+	# untouched) when terrain isn\'t ready — water just waits.
+	if get_node_or_null("/root/VoxelEditManager") == null:
+		return false
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return false
+	_finite_tool = terrain.get_voxel_tool()
+	if _finite_tool == null:
+		return false
+	_finite.sea_y = get_sea_level_voxel_y()
+	if not _finite.solid_cb.is_valid():
+		_finite.solid_cb = Callable(self, "_finite_is_solid")
+		_finite.source_cb = Callable(self, "_finite_is_source")
+	return true
+
+
+func _finite_is_solid(p: Vector3i) -> bool:
+	# World callback for the core: does terrain block water here?
+	# NoEditZones that block water flow count as walls so designer-
+	# protected areas can\'t flood. Water TYPE blocks are NOT solid
+	# (they\'re either our own projection or source water — the source
+	# callback handles those).
+	if _finite_tool == null:
+		return true   # terrain gone mid-tick: freeze rather than leak
+	if _is_water_blocked_at_voxel(p):
+		return true
+	_finite_tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var t: int = _finite_tool.get_voxel(p)
+	if t == 0:
+		return false
+	return not WaterMaterial.is_water_type(t)
+
+
+func _finite_is_source(p: Vector3i) -> bool:
+	# World callback for the core: is there INFINITE water here? Mirrors
+	# _is_source_water_at but on the borrowed per-tick tool. Our own
+	# finite cells read as water TYPE with a non-source DATA5 byte and
+	# correctly return false.
+	if _finite_tool == null:
+		return false
+	_finite_tool.channel = VoxelBuffer.CHANNEL_TYPE
+	if not WaterMaterial.is_water_type(_finite_tool.get_voxel(p)):
+		return false
+	_finite_tool.channel = VoxelBuffer.CHANNEL_DATA5
+	var d5: int = _finite_tool.get_voxel(p)
+	_finite_tool.channel = VoxelBuffer.CHANNEL_TYPE
+	return d5 == 0 or WaterByteCodec.is_source(d5)
+
+
+func _step_finite(tool: VoxelTool) -> void:
+	# One finite-sim tick: step the core, project its change stream into
+	# the world through the normal edit queue (re-mesh + DATA5 persist +
+	# save-marking + MP replication all happen in VoxelEditManager\'s
+	# water_set drain), and retry anything the queue rejected earlier.
+	if not _finite_busy():
+		return
+	_finite_tool = tool
+	_finite.sea_y = get_sea_level_voxel_y()
+	if not _finite.solid_cb.is_valid():
+		_finite.solid_cb = Callable(self, "_finite_is_solid")
+		_finite.source_cb = Callable(self, "_finite_is_source")
+
+	_finite_tick_no += 1
+	var res: Dictionary = _finite.step(FINITE_CELL_UPDATES_PER_TICK)
+	var ch: PackedInt32Array = res["changes"]
+	@warning_ignore("integer_division")
+	var n: int = ch.size() / 4
+	for i in range(n):
+		var pos: Vector3i = Vector3i(ch[i * 4], ch[i * 4 + 1], ch[i * 4 + 2])
+		var byte: int = ch[i * 4 + 3]
+		VoxelEditManager.queue_set_water_voxel(pos, byte)
+		# Fresh change: needs the full reconcile schedule from scratch.
+		_unprojected[pos] = Vector2i(RECONCILE_PASSES, _finite_tick_no + 1)
+
+	# Verified projection (see _unprojected docs above): read each due
+	# cell's WORLD byte; match -> one pass done, re-check later;
+	# mismatch -> re-issue the ledger's CURRENT byte and start over.
+	# WRITE BARRIER: read-backs are only meaningful when no writes are
+	# in flight — skip the pass until the edit queue has drained (it
+	# drains every frame; this just delays a check a tick or two).
+	if not _unprojected.is_empty() and VoxelEditManager.is_edit_queue_empty():
+		var done: Array = []
+		for pos in _unprojected.keys():
+			var sched: Vector2i = _unprojected[pos]
+			if _finite_tick_no < sched.y:
+				continue   # not due yet
+			if _voxel_center_world(pos).distance_to(_player_pos) > ACTIVE_RADIUS_M + CHUNK_SIZE_M:
+				continue   # frozen until the player comes back
+			var want: int = _finite.projected_byte(pos)
+			_finite_tool.channel = VoxelBuffer.CHANNEL_DATA5
+			var have: int = _finite_tool.get_voxel(pos)
+			_finite_tool.channel = VoxelBuffer.CHANNEL_TYPE
+			if have == want:
+				if sched.x <= 1:
+					done.append(pos)   # trusted: matched on every pass
+				else:
+					_unprojected[pos] = Vector2i(sched.x - 1, _finite_tick_no + RECONCILE_SPACING_TICKS)
+			else:
+				VoxelEditManager.queue_set_water_voxel(pos, want)
+				_unprojected[pos] = Vector2i(RECONCILE_PASSES, _finite_tick_no + 1)
+		for pos in done:
+			_unprojected.erase(pos)
+	_finite_tool = null
+
+
+func _finite_wake_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:
+	# Terrain changed inside this box. Two duties (W4 activation path):
+	#   1. wake any ledger cells in/next to the box (their support may
+	#      just have been carved away),
+	#   2. ADOPT dormant finite water from a previous session: DATA5
+	#      bytes with a level but no source bit that we aren\'t tracking
+	#      (the ledger isn\'t saved — see the design doc; saved finite
+	#      water sleeps in DATA5 until an edit pokes it).
+	if not _finite_bind_world():
+		return
+	for x in range(vmin.x - 1, vmax.x + 2):
+		for y in range(vmin.y - 1, vmax.y + 2):
+			for z in range(vmin.z - 1, vmax.z + 2):
+				var pp: Vector3i = Vector3i(x, y, z)
+				if _finite.has_cell(pp):
+					_finite.activate(pp)
+					continue
+				_finite_tool.channel = VoxelBuffer.CHANNEL_DATA5
+				var d5: int = _finite_tool.get_voxel(pp)
+				if WaterByteCodec.is_water(d5) and not WaterByteCodec.is_source(d5):
+					_finite.ingest(pp, WaterByteCodec.level_of(d5))
+	_finite_tool.channel = VoxelBuffer.CHANNEL_TYPE
+	_finite_tool = null
+
+
 func _is_source_water_at(tool: VoxelTool, voxel_pos: Vector3i) -> bool:
 	# OCEAN-subsystem feed test (W2, design/WATER_FINITE_SIM_PLAN.md).
 	# True iff the voxel holds water AND that water is INFINITE:
@@ -1269,6 +1520,9 @@ func _on_edit_applied(_world_pos: Vector3, chunk_coord: Vector3i, edit_aabb: AAB
 	# (that whole TTL/fed front was the source of the stall + re-mine
 	# bugs and is gone).
 	_seed_fill_from_aabb(vmin, vmax)
+	# W4: wake ledger cells whose support may have been carved away and
+	# adopt dormant finite DATA5 water from older sessions.
+	_finite_wake_from_aabb(vmin, vmax)
 
 
 # ============================================================

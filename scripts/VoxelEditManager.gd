@@ -578,6 +578,14 @@ func mark_chunk_loaded_with_deltas(chunk_coords: Vector3i) -> void:
 	_edited_chunks[chunk_coords] = true
 
 
+func is_edit_queue_empty() -> bool:
+	# True when every queued edit (terrain AND water) has been applied.
+	# WaterFlowManager uses this as a write barrier: finite-water
+	# projection read-backs are only trusted when nothing is in flight,
+	# because the drain's requeue-on-not-editable can reorder writes.
+	return _edit_queue.is_empty()
+
+
 func get_terrain() -> VoxelLodTerrain:
 	# Read access to the active terrain node. Used by VoxelGravityManager
 	# to acquire a VoxelTool for reading voxel values during flood-fill

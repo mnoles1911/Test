@@ -487,10 +487,13 @@ func _handle_bucket_click(equipped: String) -> void:
 func _bucket_fill_at(world_pos: Vector3) -> void:
 	# If the target world position is inside any water cell or source
 	# region, swap the bucket â†’ bucket_filled. Otherwise no-op.
-	if not WaterFlowManager.is_position_in_water(world_pos):
+	# W4 (finite water): scoop_water REMOVES up to 8 units when the
+	# target is player-placed (finite) water — the pool visibly
+	# shrinks. Ocean / source water stays an infinite free fill.
+	if not WaterFlowManager.scoop_water(world_pos):
 		# Also try the player's feet â€” Roland is standing in water.
 		var player := get_parent() as CharacterBody3D
-		if player != null and WaterFlowManager.is_position_in_water(player.global_position):
+		if player != null and WaterFlowManager.scoop_water(player.global_position):
 			pass  # fall through to fill
 		else:
 			return
@@ -538,14 +541,18 @@ func _bucket_place_at(world_pos: Vector3) -> void:
 		else:
 			print("[EditToolHandler] This place doesn't yield to me.")
 		return
-	WaterFlowManager.add_source(voxel_pos)
+	# W4 (finite water): a bucket pours 8 UNITS of finite, conserved
+	# water that collapses and spreads (design/WATER_FINITE_SIM_PLAN.md).
+	# add_source (infinite headwater) remains available for designer
+	# authoring scripts, but the player verb is finite from here on.
+	WaterFlowManager.place_finite_water(voxel_pos, 8)
 	InventoryManager.remove_item("bucket_filled", 1)
 	InventoryManager.add_item("bucket", 1)
 	InventoryManager.equip("weapon", "bucket")
 	if get_node_or_null("/root/DebugOverlay"):
-		DebugOverlay.log_action("Bucket placed water source at %s." % voxel_pos)
+		DebugOverlay.log_action("Bucket poured water at %s." % voxel_pos)
 	else:
-		print("[EditToolHandler] Bucket placed water source.")
+		print("[EditToolHandler] Bucket poured water.")
 
 
 func _clear_target() -> void:

@@ -159,6 +159,21 @@ violation.
   Finite water is governed by the source bit, not by Y — a player
   puddle in a sealed cave below sea elevation stays finite.
 
+## Projection reconciliation (W4 lesson, caught by the `finite_world` gate)
+
+Fire-and-forget projection writes are NOT safe: the end-to-end gate
+caught world bytes REVERTING to an older write's value seconds after a
+single read-back verification had passed (VoxelEditManager's
+requeue-on-not-editable can reorder writes, and Zylann LOD updates can
+churn data blocks). The cure stays true to the ledger-authority rule:
+every changed cell remains "unprojected" until its world byte has
+matched the ledger on **3 separate read-backs ~2 s apart**
+(`RECONCILE_PASSES` / `RECONCILE_SPACING_TICKS`), with mismatches
+re-issuing the ledger's CURRENT byte and restarting the schedule.
+Read-backs only run when the edit queue is empty (write barrier), and
+only ever reconcile the projection — the sim itself still never reads
+the world to make flow decisions.
+
 ## Implementation sequence (PR track; statuses updated as PRs land)
 
 | PR | Scope | Status |
@@ -166,7 +181,7 @@ violation.
 | W1 | Post-mortem + delete the dead `_flow_chunk` automaton (~1000 LOC); this doc | **SHIPPED** |
 | W2 | Ocean boundary: fill writes `SOURCE_BYTE`; seeding requires SOURCE feed; settle requires SOURCE neighbour (GD ref + C++ parity) | pending |
 | W3 | `FiniteWaterCore.gd` pure reference + `finite` headless gate (conservation / levelness / reach / evap / absorption / determinism) | **SHIPPED** |
-| W4 | Engine integration: bucket places finite water; `_step_finite()` in the tick; `[FlowDiag]` ledger line | pending |
+| W4 | Engine integration: bucket places finite water; `_step_finite()` in the tick; `[FlowDiag]` ledger line; verified multi-pass projection reconcile; `finite_world` e2e gate | **SHIPPED** |
 | W5 | Height-aware `is_position_in_water` (partial levels = wading); WaterDiag units + body totals | pending |
 | W6 | C++ port of the step inner loop (`FiniteWaterCpp`) + tick-by-tick bit-exact parity gate | pending |
 | W7 | Currents: `get_flow_velocity_at` reads sim-written DIR (+ fixed water-pair gradient fallback); `RiverFlowVolume` stamping for permanent rivers | pending |
