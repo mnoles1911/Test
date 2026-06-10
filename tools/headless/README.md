@@ -24,6 +24,7 @@ Exit code 0 = pass.
 | `phase2` | Library injection contracts |
 | `phase7` | Save round-trip contracts |
 | `gen` | C++ generator parity harness — writes a baseline file, then re-runs and bit-exact verifies |
+| `finite` | `FiniteWaterCore` finite-water sim gates: conservation invariant, levelness, 18-voxel reach, evaporation, ocean absorption, determinism |
 | `shader` | Shader compile + the foam removal contract |
 | `spike` | Does `VoxelLodTerrain` stream headless? (Yes — confirmed by this selector) |
 

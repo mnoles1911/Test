@@ -165,7 +165,7 @@ violation.
 |---|---|---|
 | W1 | Post-mortem + delete the dead `_flow_chunk` automaton (~1000 LOC); this doc | **SHIPPED** |
 | W2 | Ocean boundary: fill writes `SOURCE_BYTE`; seeding requires SOURCE feed; settle requires SOURCE neighbour (GD ref + C++ parity) | pending |
-| W3 | `FiniteWaterCore.gd` pure reference + `finite` headless gate (conservation / levelness / reach / evap / absorption / determinism) | pending |
+| W3 | `FiniteWaterCore.gd` pure reference + `finite` headless gate (conservation / levelness / reach / evap / absorption / determinism) | **SHIPPED** |
 | W4 | Engine integration: bucket places finite water; `_step_finite()` in the tick; `[FlowDiag]` ledger line | pending |
 | W5 | Height-aware `is_position_in_water` (partial levels = wading); WaterDiag units + body totals | pending |
 | W6 | C++ port of the step inner loop (`FiniteWaterCpp`) + tick-by-tick bit-exact parity gate | pending |

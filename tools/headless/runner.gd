@@ -73,6 +73,8 @@ func _initialize() -> void:
 			quit(_baked_light())
 		"water_flow":
 			quit(_water_flow())
+		"finite":
+			quit(_finite())
 		"entity":
 			quit(_entity())
 		"spike", "phase2", "gen", "distant":
@@ -1352,6 +1354,270 @@ func _wflow_stream_to_set(s: PackedInt32Array) -> Dictionary:
 	for i in range(n):
 		d["%d,%d,%d" % [s[i * 3], s[i * 3 + 1], s[i * 3 + 2]]] = true
 	return d
+
+
+# ============================================================
+# FINITE — FiniteWaterCore conservation / levelness / reach /
+# evaporation / ocean-absorption / determinism gates.
+# Pure data: synthetic worlds via lambdas, no terrain, no SceneTree.
+# Spec: design/WATER_FINITE_SIM_PLAN.md "Headless gate scenarios".
+# ============================================================
+const _FiniteWaterCore := preload("res://scripts/FiniteWaterCore.gd")
+
+func _finite() -> int:
+	var fails: int = 0
+	fails += _finite_collapse()
+	fails += _finite_pit()
+	fails += _finite_evap()
+	fails += _finite_ocean()
+	fails += _finite_reach()
+	fails += _finite_determinism()
+	if fails == 0:
+		print("[FINITE] RESULT=PASS — all 6 scenarios green (conservation, levelness, reach, evaporation, absorption, determinism).")
+		return 0
+	print("[FINITE] RESULT=FAIL — %d scenario(s) failed." % fails)
+	return 1
+
+
+func _finite_new_core(floor_y: int) -> RefCounted:
+	# Flat infinite stone floor at/below floor_y, no ocean. Scenarios
+	# override the callables for walls/pits/sources as needed.
+	var core: RefCounted = _FiniteWaterCore.new()
+	core.solid_cb = func(p: Vector3i) -> bool: return p.y <= floor_y
+	core.source_cb = func(_p: Vector3i) -> bool: return false
+	return core
+
+
+func _finite_run(core: RefCounted, max_ticks: int, budget: int) -> int:
+	# Step until settled (or give up). Returns ticks taken, or -1.
+	for t in range(max_ticks):
+		core.step(budget)
+		if core.is_settled():
+			return t + 1
+	return -1
+
+
+func _finite_audit(core: RefCounted, tag: String) -> int:
+	# The conservation invariant — the whole point of the rework.
+	if core.conservation_delta() != 0:
+		print("[FINITE] FAIL %s: conservation broken, delta=%d stats=%s" % [
+			tag, core.conservation_delta(), str(core.stats())])
+		return 1
+	return 0
+
+
+func _finite_levelness(core: RefCounted, tag: String) -> int:
+	# Converged adjacent water cells may differ by at most 1 level
+	# (same supported Y). Also: no cell may exceed 8 units.
+	var fails: int = 0
+	var cells: Dictionary = {}
+	for p in core._ledger.keys():
+		cells[p] = int(core._ledger[p])
+		if cells[p] > 8 or cells[p] < 1:
+			print("[FINITE] FAIL %s: cell %s holds %d units (legal range 1-8)" % [tag, str(p), cells[p]])
+			fails += 1
+	for p in cells.keys():
+		for d in [Vector3i(1, 0, 0), Vector3i(0, 0, 1)]:
+			var n: Vector3i = p + d
+			if cells.has(n) and absi(cells[p] - cells[n]) > 1:
+				print("[FINITE] FAIL %s: levels not flat at %s (%d) vs %s (%d)" % [
+					tag, str(p), cells[p], str(n), cells[n]])
+				fails += 1
+	return mini(fails, 1)
+
+
+func _finite_collapse() -> int:
+	# Scenario 1: a 3x3x3 dump (216 units) on a flat floor collapses
+	# into a wide, shallow, LEVEL pool. The designer's acceptance case.
+	var core: RefCounted = _finite_new_core(0)
+	var total_in: int = 0
+	for x in range(5, 8):
+		for z in range(5, 8):
+			total_in += core.place(Vector3i(x, 1, z), 24)   # 3 cells of 8, stacked
+	var ticks: int = _finite_run(core, 400, 4096)
+	var fails: int = 0
+	if total_in != 216:
+		print("[FINITE] FAIL collapse: placed %d units, expected 216" % total_in)
+		fails += 1
+	if ticks < 0:
+		print("[FINITE] FAIL collapse: did not settle within 400 ticks")
+		fails += 1
+	if core.total_units() != 216:
+		print("[FINITE] FAIL collapse: %d units after settle, expected 216 (stats=%s)" % [
+			core.total_units(), str(core.stats())])
+		fails += 1
+	fails += _finite_audit(core, "collapse")
+	fails += _finite_levelness(core, "collapse")
+	# It must have actually SPREAD (≥ the 27 original columns' footprint)
+	# and stayed within reach of the 3x3 footprint.
+	var foot_count: int = 0
+	var max_man: int = 0
+	for p in core._ledger.keys():
+		foot_count += 1
+		var man: int = maxi(0, maxi(absi(p.x - 6) - 1, 0) + maxi(absi(p.z - 6) - 1, 0))
+		max_man = maxi(max_man, man)
+	if foot_count < 27:
+		print("[FINITE] FAIL collapse: pool covers %d cells — did not spread" % foot_count)
+		fails += 1
+	if max_man > core.SPREAD_REACH_VOXELS:
+		print("[FINITE] FAIL collapse: front reached %d voxels past the footprint (max %d)" % [
+			max_man, core.SPREAD_REACH_VOXELS])
+		fails += 1
+	print("[FINITE] collapse: ticks=%d cells=%d max_reach=%d stats=%s" % [
+		ticks, foot_count, max_man, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_pit() -> int:
+	# Scenario 2: dump beside a pit — the pit fills bottom-up, then the
+	# whole body levels. Floor at y=0 except a 3x3 pit (x/z 10..12)
+	# whose floor is y=-4.
+	var core: RefCounted = _FiniteWaterCore.new()
+	core.solid_cb = func(p: Vector3i) -> bool:
+		var in_pit_column: bool = p.x >= 10 and p.x <= 12 and p.z >= 10 and p.z <= 12
+		if in_pit_column:
+			return p.y <= -4
+		return p.y <= 0
+	core.source_cb = func(_p: Vector3i) -> bool: return false
+	# Dump right at the pit's rim so it pours in.
+	core.place(Vector3i(9, 1, 11), 64)
+	var ticks: int = _finite_run(core, 600, 4096)
+	var fails: int = 0
+	if ticks < 0:
+		print("[FINITE] FAIL pit: did not settle within 600 ticks")
+		fails += 1
+	fails += _finite_audit(core, "pit")
+	# The pit's bottom layer must be FULL before anything sits above it:
+	# after settling, every pit-bottom cell (y=-3) must hold 8 units if
+	# ANY cell above y=-3 holds water inside the pit.
+	var any_above: bool = false
+	for p in core._ledger.keys():
+		if p.x >= 10 and p.x <= 12 and p.z >= 10 and p.z <= 12 and p.y > -3:
+			any_above = true
+			break
+	if any_above:
+		for x in range(10, 13):
+			for z in range(10, 13):
+				if core.units_at(Vector3i(x, -3, z)) != 8:
+					print("[FINITE] FAIL pit: bottom cell (%d,-3,%d)=%d not full under standing water" % [
+						x, z, core.units_at(Vector3i(x, -3, z))])
+					fails += 1
+	print("[FINITE] pit: ticks=%d stats=%s" % [ticks, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_evap() -> int:
+	# Scenario 3: an orphaned 1-unit cell evaporates after exactly
+	# EVAP_TTL ticks, and the books still balance.
+	var core: RefCounted = _finite_new_core(0)
+	core.place(Vector3i(3, 1, 3), 1)
+	var gone_at: int = -1
+	for t in range(core.EVAP_TTL + 10):
+		core.step(4096)
+		if core.total_units() == 0:
+			gone_at = t + 1
+			break
+	var fails: int = 0
+	if gone_at != core.EVAP_TTL:
+		print("[FINITE] FAIL evap: evaporated at tick %d, expected exactly %d" % [gone_at, core.EVAP_TTL])
+		fails += 1
+	if core.evaporated != 1:
+		print("[FINITE] FAIL evap: evaporated counter=%d, expected 1" % core.evaporated)
+		fails += 1
+	fails += _finite_audit(core, "evap")
+	print("[FINITE] evap: gone_at=%d stats=%s" % [gone_at, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_ocean() -> int:
+	# Scenario 4: finite water poured against an ocean wall at/below
+	# sea level is swallowed (absorbed/merged), sources unchanged, books
+	# balanced. Ocean = every cell with x <= 0 at y <= sea_y.
+	var core: RefCounted = _finite_new_core(0)
+	core.sea_y = 10
+	core.source_cb = func(p: Vector3i) -> bool: return p.x <= 0 and p.y <= 10
+	core.place(Vector3i(1, 1, 5), 8)    # face-adjacent to the ocean wall
+	core.place(Vector3i(4, 1, 5), 16)   # two cells, must flow over + drain in
+	var ticks: int = _finite_run(core, 600, 4096)
+	var fails: int = 0
+	if ticks < 0:
+		print("[FINITE] FAIL ocean: did not settle within 600 ticks")
+		fails += 1
+	var swallowed: int = core.absorbed + core.merged
+	if swallowed <= 0:
+		print("[FINITE] FAIL ocean: nothing was absorbed/merged into the ocean")
+		fails += 1
+	fails += _finite_audit(core, "ocean")
+	print("[FINITE] ocean: ticks=%d stats=%s" % [ticks, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_reach() -> int:
+	# Scenario 5: keep pouring water at one spot (a "hose": 8 units per
+	# tick, 600 times = 4800 units) on an open plane. The front halts at
+	# exactly SPREAD_REACH_VOXELS and the pool deepens instead of
+	# smearing forever. Why 4800: with the slope-of-1 equilibrium and
+	# the 8-unit cap, pushing a level-1 rim all the way to radius 18
+	# takes ~3700 units — a single 1000-unit column correctly stops
+	# around radius 11 (verified when this gate was first written).
+	var core: RefCounted = _finite_new_core(0)
+	for i in range(600):
+		core.place(Vector3i(0, 1, 0), 8)
+		core.step(4096)
+	var ticks: int = _finite_run(core, 6000, 4096)
+	var fails: int = 0
+	if ticks < 0:
+		print("[FINITE] FAIL reach: did not settle within 6000 ticks")
+		fails += 1
+	if core.total_units() + core.evaporated != 4800:
+		print("[FINITE] FAIL reach: units+evaporated=%d, expected 4800 (stats=%s)" % [
+			core.total_units() + core.evaporated, str(core.stats())])
+		fails += 1
+	fails += _finite_audit(core, "reach")
+	var max_man: int = 0
+	for p in core._ledger.keys():
+		max_man = maxi(max_man, absi(p.x) + absi(p.z))
+	if max_man > core.SPREAD_REACH_VOXELS:
+		print("[FINITE] FAIL reach: water at %d voxels out, max is %d" % [max_man, core.SPREAD_REACH_VOXELS])
+		fails += 1
+	if max_man < core.SPREAD_REACH_VOXELS:
+		print("[FINITE] FAIL reach: front stopped at %d voxels, expected exactly %d (4800 units is plenty)" % [
+			max_man, core.SPREAD_REACH_VOXELS])
+		fails += 1
+	print("[FINITE] reach: ticks=%d max_reach=%d stats=%s" % [ticks, max_man, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_determinism() -> int:
+	# Scenario 6: the collapse scenario run twice must produce a
+	# byte-identical state signature after EVERY tick. This is also the
+	# contract the W6 C++ port will be held to.
+	var sigs_a: PackedStringArray = _finite_determinism_run()
+	var sigs_b: PackedStringArray = _finite_determinism_run()
+	if sigs_a.size() != sigs_b.size():
+		print("[FINITE] FAIL determinism: run lengths differ (%d vs %d)" % [sigs_a.size(), sigs_b.size()])
+		return 1
+	for i in range(sigs_a.size()):
+		if sigs_a[i] != sigs_b[i]:
+			print("[FINITE] FAIL determinism: state diverged at tick %d" % (i + 1))
+			return 1
+	print("[FINITE] determinism: %d ticks byte-identical across two runs." % sigs_a.size())
+	return 0
+
+
+func _finite_determinism_run() -> PackedStringArray:
+	var core: RefCounted = _finite_new_core(0)
+	for x in range(5, 8):
+		for z in range(5, 8):
+			core.place(Vector3i(x, 1, z), 24)
+	var sigs: PackedStringArray = PackedStringArray()
+	for t in range(400):
+		core.step(256)   # deliberately small budget — order under
+		                 # budget pressure is part of the contract
+		sigs.append(core.state_signature())
+		if core.is_settled():
+			break
+	return sigs
 
 
 func _emissive_populate_scenario(buf: VoxelBuffer, side: Vector3i) -> void:

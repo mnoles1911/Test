@@ -19,7 +19,7 @@
 
 param(
 	[Parameter(Mandatory = $true)]
-	[ValidateSet("gate0", "codec", "wmat", "shader", "phase7", "spike", "phase2", "gen", "distant", "gravity", "emissive", "baked_light", "water_flow", "entity")]
+	[ValidateSet("gate0", "codec", "wmat", "shader", "phase7", "spike", "phase2", "gen", "distant", "gravity", "emissive", "baked_light", "water_flow", "finite", "entity")]
 	[string]$Selector,
 
 	[string]$GodotBin = ""

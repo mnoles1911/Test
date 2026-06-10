@@ -31,6 +31,7 @@ GDScript code. **Read `../design/PATTERNS_AND_GOTCHAS.md` before writing new cod
 - **`AudioManager.gd`** — single SFX entry point (`play(id, world_pos)`, `play_loop(id) -> handle`, `stop_loop(handle)`).
 - **`WaterMaterial.gd`** — water type checks; **no `class_name`** (path-preload only — headless-safe).
 - **`WaterByteCodec.gd`** — sim source of truth for water (level/source/dir bits in DATA5).
+- **`FiniteWaterCore.gd`** — finite volume-conserving water sim (pure, SceneTree-free, ledger-authority; **no `class_name`** — path-preload). Gated by the headless `finite` selector. Design: `../design/WATER_FINITE_SIM_PLAN.md`.
 
 ## Autoload load order
 

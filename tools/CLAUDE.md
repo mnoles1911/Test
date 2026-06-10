@@ -28,7 +28,8 @@ Runs Godot's **`_console.exe`** (plain win64 exe is GUI-subsystem and won't pipe
 | `gravity` | `VoxelGravityCpp.analyze_bubble` parity vs reference |
 | `emissive` | `EmissiveLightCpp.scan_region` parity vs reference |
 | `baked_light` | `EmissiveBakedCpp.bake_light_volume` parity (BFS with wall blocking) |
-| `water_flow` | `WaterFlowCpp.scan_settle_region` parity |
+| `water_flow` | `WaterFlowCpp.scan_settle_region` parity (incl. W2 source-gate cases) |
+| `finite` | `FiniteWaterCore` — conservation / levelness / reach / evaporation / ocean-absorption / determinism |
 | `entity` | `EntityRegistry` save/load + chunk-index parity (66 checks) |
 
 **Scope:** data/logic/parity only — dummy renderer, no GPU, no shaders execute. Visuals still need the designer running the editor.
