@@ -52,9 +52,24 @@
   button.primary { background:var(--accent); color:#14210a; font-weight:bold; }
   .chip { background:#2a3138; border:none; color:var(--ink); font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer; }
   .chip:hover { background:#353d46; }
-  #stats { font-size:11px; opacity:.85; margin-top:12px; line-height:1.7; border-top:1px solid #ffffff14; padding-top:10px; }
+  #stats { font-size:11px; opacity:.85; margin-top:6px; line-height:1.7; border-top:1px solid #ffffff14; padding-top:10px; }
   #stats b { color:var(--accent); }
+  #busy { font-size:11px; color:#d8a35a; height:14px; margin-top:10px; }
   .hint { position:absolute; bottom:10px; left:12px; font-size:11px; opacity:.4; }
+  #panelToggle { position:absolute; top:10px; right:10px; z-index:11; display:none; width:auto; flex:none;
+    background:#2a3138cc; border:1px solid #000; border-radius:6px; padding:8px 12px; font-size:16px; color:var(--ink); cursor:pointer; }
+
+  /* Mobile / narrow: stack the panel above the canvas; toggle to hide it. */
+  @media (max-width: 760px) {
+    #app { flex-direction:column; }
+    #panel { width:100%; max-height:48vh; border-right:none; border-bottom:1px solid #000; }
+    #view { min-height:52vh; }
+    #panelToggle { display:block; }
+    #app.panel-hidden #panel { display:none; }
+    #app.panel-hidden #view { min-height:100vh; }
+    input[type=range] { height:26px; }            /* easier touch targets */
+    .lock { font-size:16px; }
+  }
   #ref-overlay { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; opacity:0; z-index:5; image-rendering:pixelated; }
   #view.dragging::after { content:"Drop reference image"; position:absolute; inset:12px; z-index:10; border:2px dashed var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:18px; background:#8fbf6f18; }
   #ref-thumb { width:100%; border:1px solid #000; border-radius:4px; margin-bottom:6px; image-rendering:pixelated; display:none; background:#000; }
@@ -82,6 +97,8 @@
         <button id="loadRef">📎 Image…</button>
         <button id="clearRef">✕ Clear</button>
       </div>
+      <button id="fitRef" class="primary" style="width:100%">✨ Fit dials to reference</button>
+      <p id="fitNote" class="sub" style="margin:6px 0 0"></p>
       <input type="file" id="refFile" accept="image/*" style="display:none">
     </details>
 
@@ -98,12 +115,14 @@
       </div>
     </details>
 
+    <div id="busy"></div>
     <div id="stats"></div>
   </div>
 
   <div id="view">
     <img id="ref-overlay" alt="">
-    <div class="hint">drag = orbit · scroll = zoom · drop image = reference</div>
+    <button id="panelToggle" title="Show/hide panel">☰</button>
+    <div class="hint">drag = orbit · pinch = zoom · drop image = reference</div>
   </div>
 </div>
 
@@ -123,6 +142,8 @@ import { Tree } from './vendor/ez-tree/tree.js';
 import { TreePreset, loadPreset } from './vendor/ez-tree/presets/index.js';
 import TreeOptions from './vendor/ez-tree/options.js';
 import { voxelize, MAT, WOOD_IDS, COLLAPSE } from './tree_voxelizer.js';
+import { growSpaceColonization } from './space_colonization.js';
+import { fitFromImage } from './reference_fit.js';
 
 const M_PER_VOXEL = 0.1, VOX_PER_M = 10;
 const m = v => (v * M_PER_VOXEL).toFixed(1) + 'm';
@@ -143,6 +164,7 @@ const PALETTE_NAMES = { 24:'bark', 25:'heartwood', 26:'deadwood', 27:'leaf_dark'
 const SCHEMA = [
   { group:'General', params:[
     { id:'seed', label:'Seed', min:1, max:9999, step:1, def:5 },
+    { id:'growthMode', label:'Growth', select:['ez-tree','Space colonization'], def:'ez-tree', noRandom:true },
   ]},
   { group:'Size', params:[
     { id:'heightM', label:'Tree height (m)', min:1, max:20, step:0.5, def:8 },
@@ -184,6 +206,15 @@ const SCHEMA = [
   { group:'Materials', params:[
     { id:'barkThickness', label:'Bark thickness', min:1, max:4, step:0.5, def:1 },
     { id:'deadwoodFraction', label:'Deadwood', min:0, max:0.5, step:0.05, def:0 },
+  ]},
+  { group:'Growth · space-col (when selected above)', params:[
+    { id:'scAttractors', label:'Attractors', min:100, max:1500, step:50, def:500 },
+    { id:'scCrownRadius', label:'Crown radius', min:4, max:30, step:1, def:12 },
+    { id:'scCrownHeight', label:'Crown height', min:4, max:30, step:1, def:14 },
+    { id:'scTrunkHeight', label:'Trunk height', min:2, max:30, step:1, def:8 },
+    { id:'scInfluence', label:'Influence radius', min:4, max:30, step:1, def:14 },
+    { id:'scKill', label:'Kill distance', min:1, max:8, step:0.5, def:3 },
+    { id:'scStep', label:'Step size', min:0.5, max:3, step:0.25, def:1.5 },
   ]},
 ];
 const PARAMS = {}; SCHEMA.forEach(g => g.params.forEach(p => PARAMS[p.id] = p));
@@ -293,12 +324,16 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 view.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.target.set(0, 40, 0);
-scene.add(new THREE.HemisphereLight('#cfe3ff', '#2a2418', 0.9));
-const sun = new THREE.DirectionalLight('#fff4d6', 1.2); sun.position.set(40, 80, 30); scene.add(sun);
+scene.add(new THREE.HemisphereLight('#cfe3ff', '#34301f', 1.05));   // sky/ground ambient
+const sun = new THREE.DirectionalLight('#fff4d6', 1.15); sun.position.set(40, 80, 30); scene.add(sun);
+const fill = new THREE.DirectionalLight('#9fb8d8', 0.35); fill.position.set(-30, 30, -40); scene.add(fill); // soft back-fill
 scene.add(new THREE.GridHelper(200, 20, 0x335533, 0x223322)); // 1 m cells
 
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
-const cubeMat = new THREE.MeshLambertMaterial({ vertexColors:true });
+// Per-voxel color comes from InstancedMesh.instanceColor (setColorAt). Do NOT
+// set vertexColors here — that makes the shader expect a geometry 'color'
+// attribute the box lacks, which reads as black and zeroes the instance color.
+const cubeMat = new THREE.MeshLambertMaterial();
 let mesh = null, meshGroup = null;
 
 function rebuildMesh(positions, materials, showDisc, discSet) {
@@ -329,30 +364,52 @@ function rebuildMesh(positions, materials, showDisc, discSet) {
 let regenTimer = null;
 function scheduleRegen() { syncLabels(); clearTimeout(regenTimer); regenTimer = setTimeout(regenerate, 120); }
 
-let lastTree = null;
-function regenerate() {
+// Voxelization runs in a worker so slider drags stay smooth on big trees.
+// Falls back to inline (synchronous) if module workers aren't available.
+let worker = null;
+try { worker = new Worker(new URL('./tree.worker.js', import.meta.url), { type:'module' }); } catch (e) { worker = null; }
+let voxReqId = 0; const voxPending = new Map();
+if (worker) worker.onmessage = (e) => { const cb = voxPending.get(e.data.reqId); if (cb) { voxPending.delete(e.data.reqId); cb(e.data); } };
+function runVoxelize(skeleton, leafAnchors, opts) {
+  return new Promise((resolve) => {
+    if (!worker) { resolve(voxelize(skeleton, leafAnchors, opts)); return; }
+    const reqId = ++voxReqId; voxPending.set(reqId, resolve);
+    worker.postMessage({ reqId, skeleton, leafAnchors, opts });
+  });
+}
+const busyEl = document.getElementById('busy');
+function setBusy(b) { busyEl.textContent = b ? '⏳ generating…' : ''; }
+
+let lastTree = null, regenToken = 0;
+async function regenerate() {
   syncLabels();
   const p = readParams();
-  // 1. ez-tree skeleton (main thread; cheap)
-  const tree = new Tree(buildEzOptions(p));
-  tree.generate();
+  const token = ++regenToken;
+  // 1. skeleton — ez-tree OR space colonization (both feed the same voxelizer)
+  let skeleton, leafAnchors, tree = null;
+  if (p.growthMode === 'Space colonization') {
+    const r = growSpaceColonization(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors;
+  } else {
+    tree = new Tree(buildEzOptions(p)); tree.generate();
+    skeleton = tree.skeleton; leafAnchors = tree.leafAnchors;
+  }
   lastTree = tree;
+  if (!skeleton.length) { setBusy(false); return; }
   // 2. scale so skeleton height -> target height in voxels
   let minY = 1e9, maxY = -1e9;
-  for (const br of tree.skeleton) for (const pt of br.points) { if (pt[1]<minY) minY=pt[1]; if (pt[1]>maxY) maxY=pt[1]; }
-  const skelH = Math.max(0.001, maxY - minY);
-  const voxelScale = (p.heightM * VOX_PER_M) / skelH;
-  // 3. voxelize
-  const { positions, materials, stats } = voxelize(tree.skeleton, tree.leafAnchors, buildVoxOptions(p, voxelScale));
-  // disconnected highlight set
+  for (const br of skeleton) for (const pt of br.points) { if (pt[1]<minY) minY=pt[1]; if (pt[1]>maxY) maxY=pt[1]; }
+  const voxelScale = (p.heightM * VOX_PER_M) / Math.max(0.001, maxY - minY);
+  // 3. voxelize (worker)
+  setBusy(true);
+  const { positions, materials, stats } = await runVoxelize(skeleton, leafAnchors, buildVoxOptions(p, voxelScale));
+  if (token !== regenToken) return; // a newer request superseded this one
+  setBusy(false);
   let discSet = null;
   const showDisc = document.getElementById('showDisc').checked;
   if (showDisc && stats.disconnected > 0) discSet = computeDisconnected(positions, materials);
   rebuildMesh(positions, materials, showDisc, discSet);
   lastExport = { positions, materials, stats, params: p };
-  // 4. smooth-mesh compare
-  updateMeshCompare(tree, voxelScale);
-  // 5. stats
+  updateMeshCompare(tree, voxelScale); // null tree (SC mode) just clears it
   controls.target.set(0, stats.sizeVox[1] * 0.5, 0);
   renderStats(stats);
 }
@@ -386,6 +443,7 @@ function computeDisconnected(positions, materials) {
 // ez-tree smooth mesh side-by-side (scaled to match the voxel tree height).
 function updateMeshCompare(tree, voxelScale) {
   if (meshGroup) { scene.remove(meshGroup); meshGroup = null; }
+  if (!tree) return; // space-colonization mode has no ez-tree mesh to compare
   if (!document.getElementById('showMesh').checked) return;
   meshGroup = tree; // Tree is a THREE.Group with branch + leaf meshes
   tree.scale.setScalar(voxelScale);
@@ -401,15 +459,13 @@ function randInRange(p) {
   const steps = Math.round((p.max - p.min) / p.step);
   return p.min + Math.round(Math.random() * steps) * p.step;
 }
-function randomizeGroup(g) {
-  for (const p of g.params) {
-    if (locks[p.id]) continue;
-    if (p.select) el[p.id].value = p.select[Math.floor(Math.random()*p.select.length)];
-    else el[p.id].value = randInRange(p);
-  }
-  scheduleRegen();
+function randomizeOne(p) {
+  if (locks[p.id] || p.noRandom) return;
+  if (p.select) el[p.id].value = p.select[Math.floor(Math.random()*p.select.length)];
+  else el[p.id].value = randInRange(p);
 }
-function randomizeAll() { SCHEMA.forEach(g => { for (const p of g.params) { if (locks[p.id]) continue; if (p.select) el[p.id].value = p.select[Math.floor(Math.random()*p.select.length)]; else el[p.id].value = randInRange(p); } }); scheduleRegen(); }
+function randomizeGroup(g) { g.params.forEach(randomizeOne); scheduleRegen(); }
+function randomizeAll() { SCHEMA.forEach(g => g.params.forEach(randomizeOne)); scheduleRegen(); }
 document.getElementById('randomize').addEventListener('click', randomizeAll);
 document.getElementById('showMesh').addEventListener('change', regenerate);
 document.getElementById('showDisc').addEventListener('change', regenerate);
@@ -482,6 +538,28 @@ document.getElementById('export').addEventListener('click', () => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `tree_${out.species}_seed${params.seed}.json`; a.click(); URL.revokeObjectURL(a.href);
 });
+
+// Fit dials to the current reference image (heuristic).
+document.getElementById('fitRef').addEventListener('click', () => {
+  const src = overlay.getAttribute('src');
+  const note = document.getElementById('fitNote');
+  if (!src) { note.textContent = 'Load a reference image first (📎 or drag one on).'; return; }
+  const img = new Image(); img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const res = fitFromImage(img);
+    if (res.error) { note.textContent = res.error; return; }
+    if (res.species) { applySpecies(res.species); speciesSel.value = res.species; }
+    for (const id in res.overrides) setVal(id, res.overrides[id]);
+    note.textContent = `→ ${res.species} · ` + Object.entries(res.overrides).map(([k,v]) => `${k}=${v}`).join(', ');
+    scheduleRegen();
+  };
+  img.onerror = () => { note.textContent = 'Could not read the image — try dragging it onto the view.'; };
+  img.src = src;
+});
+
+// Mobile: collapse the panel to maximize the canvas.
+document.getElementById('panelToggle').addEventListener('click', () =>
+  document.getElementById('app').classList.toggle('panel-hidden'));
 
 // ---------------------------------------------------------------------------
 // Resize + loop + boot
