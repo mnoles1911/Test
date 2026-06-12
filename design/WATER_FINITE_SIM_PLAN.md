@@ -17,7 +17,7 @@
 2. **Oceans stay infinite.** Blast a crater below sea level → the ocean
    refills it completely, exactly as today. The finite sim governs
    player-placed water and inland water above sea level.
-3. **Spread reach: 18 voxels** (~3 m at 6 vox/m) max horizontal flow
+3. **Spread reach: 30 voxels** (~3 m (30 voxels at 10 vox/m)) max horizontal flow
    distance across a level surface before the front stops advancing.
    Tunable constant (`SPREAD_REACH_VOXELS`).
 
@@ -58,7 +58,7 @@ DATA5 byte (persisted, `scripts/WaterByteCodec.gd` — layout unchanged):
 | 4 | **SOURCE = infinite** (ocean / designer headwaters / legacy water). The finite sim never simulates source cells. |
 | 5–7 | **dir** — written by the finite sim as it flows (real flow direction); reset to `DIR_STILL` when a cell settles. |
 
-Spread-distance (0..18) and evaporation TTL do **not** fit in DATA5 —
+Spread-distance (0..30) and evaporation TTL do **not** fit in DATA5 —
 they live only in the sim's in-memory records for *moving* fronts.
 **Not persisted:** after save/load, water is dormant until an edit or
 placement disturbs it; the disturbance grants a fresh reach budget.
@@ -93,7 +93,7 @@ Per non-source active cell `c` with `u(c) ≥ 1`:
    - finite water with `u(n) ≤ u(c) − 2` — **no reach check**
      (equalization inside an existing body must always be allowed or
      pools can't flatten);
-   - air, only if `dist(c) < SPREAD_REACH_VOXELS = 18` — new cell gets
+   - air, only if `dist(c) < SPREAD_REACH_VOXELS = 30` — new cell gets
      `u = 1`, `dist = dist(c) + 1`;
    - SOURCE at `y ≤ sea_y` → 1 unit absorbed per move.
    Move **1 unit** to the lowest-`u` eligible neighbour; fixed
@@ -191,18 +191,18 @@ the world to make flow decisions.
 1. **Collapse:** 3×3×3 dump (216 units) on a flat floor → converges in
    < 400 ticks; Σ units == 216; every adjacent connected water pair
    differs ≤ 1 level; max horizontal distance from the dump footprint
-   ≤ 18; no cell > 8.
+   ≤ 30; no cell > 8.
 2. **Pit:** dump beside a pit → pit fills bottom-up, then levels.
 3. **Evaporation:** ledge-drain leaves an isolated u==1 cell →
    evaporates after exactly `EVAP_TTL` ticks; ledger balances.
 4. **Ocean wall:** inflow into a SOURCE wall at `y ≤ sea_y` is absorbed;
    ledger.absorbed matches; source cells unchanged.
 5. **Reach:** 1000-unit column on an infinite plane → front halts at
-   exactly 18; the pool deepens instead.
+   exactly 30; the pool deepens instead.
 6. **Determinism:** identical run twice → byte-identical state every tick.
 
 ## Constants (all tunable, one place)
 
-`SPREAD_REACH_VOXELS = 18` (~3 m) · `EVAP_TTL = 40` ticks (~10 s) ·
+`SPREAD_REACH_VOXELS = 30` (~3 m) · `EVAP_TTL = 40` ticks (~10 s) ·
 `FINITE_CELL_UPDATES_PER_TICK = 256` · tick = existing 4 Hz ·
 write ceiling = existing `_MAX_FLOW_BUDGET_PER_TICK = 4096`.
