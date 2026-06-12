@@ -988,6 +988,19 @@ func _terrain_material_for(material_id: int, base_mat: ShaderMaterial,
 # 0.80 still does its anti-bloom job; it just no longer shifts hue.
 const _DISTANT_ALBEDO_TINT: float = 0.80   # must match albedo_tint default in distant_terrain.gdshader
 
+# Render-match darken for the GRASS skirt entries. The smooth skirt renders
+# at the flat atlas tile MEAN, but the near blocky grass renders DARKER than
+# its mean — the textured atlas has dark blade-gap pixels, SSAO adds contact
+# shadow, and the LOD0 flora casts micro-shadows; the smooth skirt receives
+# none of these. Without compensation the skirt reads as a paler twin and a
+# hard tone seam appears at the handoff (designer caught it on the GPU,
+# 2026-06-12). Multiplying the grass palette down by this factor matches the
+# skirt to the PERCEIVED brightness of the near grass. Stone/sand/snow read
+# fine at their mean (rock has little inter-texel shadow), so this applies to
+# vegetation only. Tune toward 1.0 if the skirt goes too dark, toward 0.7 if
+# the seam (lighter skirt) persists.
+const _DISTANT_GRASS_RENDER_MATCH: float = 0.82
+
 func _configure_distant_palette(distant: Node) -> void:
 	if distant == null or not distant.has_method("set_palette"):
 		return
@@ -1009,11 +1022,16 @@ func _configure_distant_palette(distant: Node) -> void:
 	#   c_hi  = snow mean
 	#   c_mid = lerp(grass, stone, 0.5) — a natural grass→scree mid-elevation tone
 	#   below_sea = kept dark blue-grey (reads as deep water — unchanged)
-	var grass_lo := _tint_compensate(grass_mean)
+	# Grass entries get the render-match darken (see the constant's note);
+	# rock/sand/snow stay at their mean. `mid` is half grass so it gets a
+	# half-strength darken.
+	var grass_match: Color = grass_mean * _DISTANT_GRASS_RENDER_MATCH
+	var mid_match: float = lerp(_DISTANT_GRASS_RENDER_MATCH, 1.0, 0.5)
+	var grass_lo := _tint_compensate(grass_match)
 	var stone_rock := _tint_compensate(stone_mean)
 	var sand_beach := _tint_compensate(sand_mean)
 	var snow_hi := _tint_compensate(snow_mean)
-	var mid := _tint_compensate(grass_mean.lerp(stone_mean, 0.5))
+	var mid := _tint_compensate(grass_mean.lerp(stone_mean, 0.5) * mid_match)
 	# below-sea: keep the existing deep-water colour, pre-divided too so it
 	# also renders at its intended value through the same tint.
 	var below_sea := _tint_compensate(Color(0.14, 0.18, 0.22, 1.0))
