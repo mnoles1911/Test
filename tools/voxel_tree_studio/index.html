@@ -524,6 +524,11 @@ function applyPreset(key) {
 }
 presetSel.addEventListener('change', () => applyPreset(presetSel.value));
 
+// Open on the first reference-backed design so the page shows a real tree
+// (and its reference overlay) instead of bare default sliders.
+const firstPreset = Object.keys(PRESETS)[0];
+if (firstPreset) { presetSel.value = firstPreset; applyPreset(firstPreset); }
+
 // Manual image load (file picker)
 const refFile = document.getElementById('refFile');
 document.getElementById('loadRef').addEventListener('click', () => refFile.click());
