@@ -365,16 +365,37 @@ let regenTimer = null;
 function scheduleRegen() { syncLabels(); clearTimeout(regenTimer); regenTimer = setTimeout(regenerate, 120); }
 
 // Voxelization runs in a worker so slider drags stay smooth on big trees.
-// Falls back to inline (synchronous) if module workers aren't available.
+// Falls back to inline (synchronous) if the worker is unavailable, errors, or
+// goes silent — so the tree always renders even if the worker fails to load.
 let worker = null;
 try { worker = new Worker(new URL('./tree.worker.js', import.meta.url), { type:'module' }); } catch (e) { worker = null; }
 let voxReqId = 0; const voxPending = new Map();
-if (worker) worker.onmessage = (e) => { const cb = voxPending.get(e.data.reqId); if (cb) { voxPending.delete(e.data.reqId); cb(e.data); } };
+function disableWorker() {
+  worker = null;
+  for (const [, entry] of voxPending) { clearTimeout(entry.timer); entry.inline(); }
+  voxPending.clear();
+}
+if (worker) {
+  worker.onmessage = (e) => {
+    const entry = voxPending.get(e.data.reqId); if (!entry) return;
+    voxPending.delete(e.data.reqId); clearTimeout(entry.timer);
+    if (e.data.ok) entry.finish(e.data); else entry.inline();
+  };
+  worker.onerror = () => disableWorker();   // worker broke -> inline from now on
+}
 function runVoxelize(skeleton, leafAnchors, opts) {
   return new Promise((resolve) => {
-    if (!worker) { resolve(voxelize(skeleton, leafAnchors, opts)); return; }
-    const reqId = ++voxReqId; voxPending.set(reqId, resolve);
-    worker.postMessage({ reqId, skeleton, leafAnchors, opts });
+    const inline = () => resolve(voxelize(skeleton, leafAnchors, opts));
+    if (!worker) { inline(); return; }
+    const reqId = ++voxReqId;
+    let done = false;
+    const finish = (data) => { if (!done) { done = true; resolve(data); } };
+    const inlineOnce = () => { if (!done) { done = true; inline(); } };
+    // If the worker doesn't answer in time (silent load failure), use inline.
+    const timer = setTimeout(() => { voxPending.delete(reqId); inlineOnce(); }, 3000);
+    voxPending.set(reqId, { finish, inline: inlineOnce, timer });
+    try { worker.postMessage({ reqId, skeleton, leafAnchors, opts }); }
+    catch (e) { clearTimeout(timer); voxPending.delete(reqId); inlineOnce(); }
   });
 }
 const busyEl = document.getElementById('busy');
@@ -544,7 +565,8 @@ document.getElementById('fitRef').addEventListener('click', () => {
   const src = overlay.getAttribute('src');
   const note = document.getElementById('fitNote');
   if (!src) { note.textContent = 'Load a reference image first (📎 or drag one on).'; return; }
-  const img = new Image(); img.crossOrigin = 'anonymous';
+  note.textContent = 'analyzing…';
+  const img = new Image();
   img.onload = () => {
     const res = fitFromImage(img);
     if (res.error) { note.textContent = res.error; return; }
