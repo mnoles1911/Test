@@ -34,6 +34,7 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 ### Art + pipeline
 - `ART_DIRECTION.md`, `ART_PIPELINE.md`, `ASSET_PIPELINE_AI.md`.
 - `3D_VOXEL_MIGRATION.md` — voxel scale (6/m), atlas, NoEditZones, edit deltas.
+- **`VISION_VOXEL_10CM.md`** — APPROVED art-direction vision for the 10cm re-architecture (R0–R4 PR track): reference shot descriptions, graphics-pillar-to-system map, hard perf constraints. Reference images live in `inspiration/` (drop the five PNGs there yourself — see `inspiration/README.md`).
 - `GRAPHICS_PASS_2026-05-19.md` — graphics phase record + roadmap.
 - `COPPER_ISLES_DEMO_HEIGHTMAP.md`, `COPPER_ISLES_BAKE_NOTES.md`.
 

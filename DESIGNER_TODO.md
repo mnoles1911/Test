@@ -278,6 +278,18 @@ Assets that require external tools (MagicaVoxel, Aseprite, Blender, etc.)
   These three clips unblock all scene movement and camera testing.
   Reference: `design/ART_PIPELINE.md` → Tool 3
 
+- [ ] **Drop the five 10cm-vision reference screenshots into `design/inspiration/`**
+  These were shared in the 2026-06-12 chat session. The agent cannot write chat images
+  to disk — you need to save them manually. Exact filenames (case-sensitive):
+  - `ref_01_grass_blades.png` — Lay of the Land riverbank: dense per-blade grass, voxel flowers, freshly dug dirt patch, teal water behind.
+  - `ref_02_waterfall_dig.png` — Lay of the Land player-dug shaft: teal waterfall pouring in, orange-sand walls, grey stone at the bottom.
+  - `ref_03_medieval_tower_vista.png` — Shader-grade render: round stone tower, broadleaf forest, cobble bridge, volcanic mountain background.
+  - `ref_04_vista_volcano.png` — High aerial view: volcano, forests, farmland, beaches, ocean, voxel-style clouds.
+  - `ref_05_golden_hour_godrays.png` — Golden hour: stone church tower, visible god rays, red-flowered riverbank, glowing lantern post.
+  Once they're in place, `design/VISION_VOXEL_10CM.md` has full written descriptions
+  alongside each image so the doc stands alone even if the images can't be displayed.
+  Reference: `design/inspiration/README.md`, `design/VISION_VOXEL_10CM.md`.
+
 ---
 
 ## Section 4 — TTS & Audio Production
