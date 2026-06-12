@@ -2,6 +2,10 @@ extends Node3D
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Single authority for the voxel grid scale. All scale literals in this
+# file read from here. See scripts/VoxelScale.gd for the full rationale.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # World3DBootstrap — wires up scene-level systems when the World3D
 # scene loads.
 #
@@ -258,6 +262,25 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
+	# --- Enforce scale alignment (VoxelScale contract) ---
+	# WHY: the .tscn file stores VoxelLodTerrain.transform as a raw
+	# number (0.166667 at the time of writing). The editor can't read
+	# a GDScript const at edit time, so the scene file stores the
+	# literal value and THIS block enforces that it actually matches
+	# VoxelScale.VOXEL_SIZE_M at runtime. If they ever drift — e.g.
+	# someone hand-edits the .tscn, or a future Godot serializes a
+	# slightly different float — we catch it immediately instead of
+	# getting silent scale bugs everywhere.
+	var terrain_scale_x: float = (terrain as Node3D).transform.basis.get_scale().x
+	if absf(terrain_scale_x - VoxelScale.VOXEL_SIZE_M) > 1e-4:
+		push_error("[World3D] VoxelLodTerrain.scale.x=%.6f does not match VoxelScale.VOXEL_SIZE_M=%.6f — correcting." % [
+			terrain_scale_x, VoxelScale.VOXEL_SIZE_M])
+		terrain.scale = Vector3.ONE * VoxelScale.VOXEL_SIZE_M
+		var applied: float = (terrain as Node3D).transform.basis.get_scale().x
+		print("[World3D] terrain scale corrected; applied=%.6f" % applied)
+	else:
+		print("[World3D] terrain scale OK: %.6f (matches VoxelScale.VOXEL_SIZE_M)" % terrain_scale_x)
+
 	# Configure the terrain's CHANNEL_TYPE storage depth. After the v13
 	# VoxelMesherBlocky migration we store material_id directly in
 	# CHANNEL_TYPE — 8-bit is sufficient (material_id range 0-254).
@@ -412,7 +435,7 @@ func _ready() -> void:
 		terrain.set("view_distance", terrain_view_distance_voxels)
 		print("[World3D] terrain.view_distance set to %d voxels (~%d m; actual=%s)" % [
 			terrain_view_distance_voxels,
-			int(terrain_view_distance_voxels / 6.0),
+			int(terrain_view_distance_voxels * VoxelScale.VOXEL_SIZE_M),
 			terrain.get("view_distance"),
 		])
 
@@ -1503,7 +1526,7 @@ func _snap_campfire_to_ground() -> void:
 		return
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+		terrain_scale = VoxelScale.VOXEL_SIZE_M  # fall-through: assume canonical scale
 	var voxels_per_m: float = 1.0 / terrain_scale
 	var generator = terrain.get("generator") if "generator" in terrain else null
 	if generator == null:
@@ -1566,7 +1589,7 @@ func _pre_snap_player_to_generator_ground() -> void:
 
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through safety: assume 6 vox/m
+		terrain_scale = VoxelScale.VOXEL_SIZE_M  # fall-through safety: assume canonical scale
 	var voxels_per_m: float = 1.0 / terrain_scale
 
 	var generator = terrain.get("generator") if "generator" in terrain else null
@@ -2082,7 +2105,7 @@ func _seed_test_pond() -> void:
 		return
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+		terrain_scale = VoxelScale.VOXEL_SIZE_M  # fall-through: assume canonical scale
 	var voxels_per_m: float = 1.0 / terrain_scale
 
 	# Pond footprint in WORLD metres, then → voxels. Centred at world

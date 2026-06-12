@@ -4,6 +4,10 @@ extends Node
 # WaterMaterial.gd for why it has no class_name).
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # The finite, volume-conserving water sim (W4 — the ledger-authority
 # core; design/WATER_FINITE_SIM_PLAN.md). Path preload, no class_name.
 const FiniteWaterCore := preload("res://scripts/FiniteWaterCore.gd")
@@ -89,7 +93,9 @@ const _TICK_MASK: int = 0x1FE0  # bits 5–12, shifted up
 # Chunk dimensions — must match VoxelEditManager.CHUNK_SIZE_VOXELS and
 # VoxelEditManager.VOXELS_PER_METER. Replicated here so this file
 # doesn't need to call into private helpers on another autoload.
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER — local name kept so call sites
+# inside this file stay unchanged. Single source of truth: VoxelScale.gd.
 const CHUNK_SIZE_VOXELS: int = 16
 const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER  # ≈ 2.667 m
 
@@ -1500,10 +1506,13 @@ func _chunk_in_active_radius(chunk: Vector3i) -> bool:
 
 
 func _voxel_center_world(voxel_pos: Vector3i) -> Vector3:
+	# Convert voxel-grid integer coords to world-space metres by
+	# multiplying by VOXEL_SIZE_M (from VoxelScale) and adding half a
+	# voxel so the result is the centre of the cell, not its corner.
 	return Vector3(
-		(float(voxel_pos.x) + 0.5) / 6.0,
-		(float(voxel_pos.y) + 0.5) / 6.0,
-		(float(voxel_pos.z) + 0.5) / 6.0,
+		(float(voxel_pos.x) + 0.5) * VoxelScale.VOXEL_SIZE_M,
+		(float(voxel_pos.y) + 0.5) * VoxelScale.VOXEL_SIZE_M,
+		(float(voxel_pos.z) + 0.5) * VoxelScale.VOXEL_SIZE_M,
 	)
 
 
@@ -1565,11 +1574,11 @@ func _world_to_voxel(world_pos: Vector3) -> Vector3i:
 	# back to a local computation.
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		return VoxelEditManager.world_to_voxel(world_pos)
-	# Fallback: use the locked 6 vox/m scale.
+	# Fallback: use the canonical scale from VoxelScale.
 	return Vector3i(
-		floori(world_pos.x * 6.0),
-		floori(world_pos.y * 6.0),
-		floori(world_pos.z * 6.0),
+		floori(world_pos.x * VoxelScale.VOXELS_PER_METER),
+		floori(world_pos.y * VoxelScale.VOXELS_PER_METER),
+		floori(world_pos.z * VoxelScale.VOXELS_PER_METER),
 	)
 
 

@@ -1,5 +1,9 @@
 extends Node
 
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # EmissiveBakedLightManager — Phase J done properly.
 #
 # What this does in plain English:
@@ -81,8 +85,11 @@ extends Node
 @export var verbose: bool = false
 
 # --- Constants -------------------------------------------------------
-const VOXEL_SIZE_M: float = 1.0 / 6.0    # match VoxelGravityManager
-const VOXELS_PER_METER: float = 6.0
+const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+# Mirrors VoxelScale.VOXEL_SIZE_M (edge length of one voxel in metres).
+# Local name kept so call sites inside this file stay unchanged.
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER. Single source of truth: VoxelScale.gd.
 
 const _GLOBAL_TEX: String = "baked_light_tex"
 const _GLOBAL_ORIGIN: String = "baked_light_origin_world"

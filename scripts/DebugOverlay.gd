@@ -193,6 +193,11 @@ var _frame_times_idx: int = 0
 # scale-test scene. Stored as (vox_per_metre, terrain_scale) pairs;
 # terrain_scale = 1 / vox_per_metre — keeping both pre-computed avoids
 # float-division noise in the comparison and read-back path.
+#
+# NOTE: index 0 (6 vox/m) is the current live scale and must match
+# VoxelScale.VOXELS_PER_METER in scripts/VoxelScale.gd. If VoxelScale
+# is updated for the 10-vox/m rearchitecture, flip entry 0 here too.
+# Entries 1 and 2 are deliberate exploration values — do NOT remove them.
 const F7_CYCLE: Array = [
 	{"vox_per_m": 6, "scale": 1.0 / 6.0},
 	{"vox_per_m": 8, "scale": 1.0 / 8.0},

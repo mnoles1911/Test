@@ -1,4 +1,9 @@
 extends RigidBody3D
+
+# Single authority for the voxel grid scale — the constant below mirrors
+# the value from VoxelScale. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # FallingVoxelCluster — one airborne chunk of voxels mid-fall.
 #
 # Spawned by VoxelGravityManager whenever flood-fill identifies a
@@ -31,9 +36,10 @@ extends RigidBody3D
 # CONFIGURATION (passed in by VoxelGravityManager.configure())
 # =============================================================
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
-# Edge length of one voxel in meters. Mirrors VoxelClusterBuilder
-# constant. Hardcoded here too so this file is parsable in isolation.
+const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+# Edge length of one voxel in metres. Mirrors VoxelScale.VOXEL_SIZE_M
+# and VoxelClusterBuilder.VOXEL_SIZE_M — local name kept so math
+# expressions in this file stay readable. Source of truth: VoxelScale.gd.
 
 const GRAVITY: float = 20.0
 # Must match Player3D.GRAVITY exactly so falling voxels accelerate at

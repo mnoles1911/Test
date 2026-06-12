@@ -2,6 +2,10 @@ extends CanvasLayer
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Single authority for the voxel grid scale — the constant below mirrors
+# the value from this file. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # WaterDiag.gd — the durable water diagnostics surface (2026-05-17).
 #
 # WHY THIS EXISTS (plain English):
@@ -37,7 +41,9 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # Water is CHANNEL_TYPE id 5 (Water Voxel V2). Mirror the constants the
 # manager uses so this file stays self-contained.
 const WATER_TYPE_ID: int = WaterMaterial.BODY_ID
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER. Local name kept so call sites
+# inside this file stay unchanged. Single source of truth: VoxelScale.gd.
 const HEAD_OFFSET_M: float = 1.6   # ~Roland eye height, for submersion test
 const WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
 

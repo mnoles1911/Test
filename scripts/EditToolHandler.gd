@@ -2,6 +2,10 @@
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Single authority for the voxel grid scale — local consts below mirror
+# values from VoxelScale. See scripts/VoxelScale.gd for the rationale.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # EditToolHandler â€” handles "swing tool, edit voxel" input.
 #
 # What this does in plain English:
@@ -306,8 +310,10 @@ func _update_aim_outline() -> void:
 	# helper so the outline exactly matches what an LMB press will
 	# remove — including the depth-bias along the surface normal.
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
-	const VOXELS_PER_METER: float = 6.0
-	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
+	# These local consts mirror VoxelScale — keeping local names so the
+	# math expressions below are readable. Source of truth: VoxelScale.gd.
+	const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+	const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
 	var centre_voxel: Vector3i = Vector3i(
 		floori(voxel_world_pos.x * VOXELS_PER_METER),
 		floori(voxel_world_pos.y * VOXELS_PER_METER),
@@ -641,9 +647,9 @@ func _tick_held_action(delta: float) -> void:
 	# stone voxel anywhere in the 3×3×3 box makes the swing as slow
 	# as a pure-stone carve, regardless of where the crosshair lies.
 	var centre_voxel: Vector3i = Vector3i(
-		floori(voxel_world_pos.x * 6.0),
-		floori(voxel_world_pos.y * 6.0),
-		floori(voxel_world_pos.z * 6.0),
+		floori(voxel_world_pos.x * VoxelScale.VOXELS_PER_METER),
+		floori(voxel_world_pos.y * VoxelScale.VOXELS_PER_METER),
+		floori(voxel_world_pos.z * VoxelScale.VOXELS_PER_METER),
 	)
 	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
 	var box_vmin: Vector3i = box[0]
@@ -900,7 +906,8 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 	# return -0.999... instead of -1.0 due to FP rounding, collapsing
 	# the 3×3×3 carve to 1×1×1 after truncation. Integer arithmetic
 	# avoids the conversion entirely.
-	const VOXELS_PER_METER: float = 6.0
+	# Local const mirrors VoxelScale — single source of truth is VoxelScale.gd.
+	const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
 	var centre_voxel: Vector3i = Vector3i(
 		floori(voxel_world_pos.x * VOXELS_PER_METER),
 		floori(voxel_world_pos.y * VOXELS_PER_METER),

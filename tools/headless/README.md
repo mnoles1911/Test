@@ -29,6 +29,7 @@ Exit code 0 = pass.
 | `sever` | Tree-sever upward-follow BFS gates (SeverFollowLib) |
 | `shader` | Shader compile + the foam removal contract |
 | `spike` | Does `VoxelLodTerrain` stream headless? (Yes — confirmed by this selector) |
+| `scale` | `VoxelScale.gd` contract: internal consistency + all refactored-script constants mirror it + World3D.tscn transform matches (PR R0) |
 
 ## Scope
 

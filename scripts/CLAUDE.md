@@ -29,6 +29,7 @@ GDScript code. **Read `../design/PATTERNS_AND_GOTCHAS.md` before writing new cod
 - **`Enemy3D.gd`** — combat base class (HP, state machine, contact damage, corpse loot, Phase 5 gib explosion).
 - **`HUDOverlay.gd`**, **`JournalUI.gd`**, **`PauseMenu.gd`**, **`DebugOverlay.gd`** — UI autoloads.
 - **`AudioManager.gd`** — single SFX entry point (`play(id, world_pos)`, `play_loop(id) -> handle`, `stop_loop(handle)`).
+- **`VoxelScale.gd`** — THE single authority for voxel grid scale (`VOXELS_PER_METER`, `VOXEL_SIZE_M`, helpers). **No `class_name`** (path-preload only — headless-safe). Never hardcode `6.0`/`0.166667`; read from here.
 - **`WaterMaterial.gd`** — water type checks; **no `class_name`** (path-preload only — headless-safe).
 - **`WaterByteCodec.gd`** — sim source of truth for water (level/source/dir bits in DATA5).
 - **`FiniteWaterCore.gd`** — finite volume-conserving water sim (pure, SceneTree-free, ledger-authority; **no `class_name`** — path-preload). Gated by the headless `finite` + `finite_world` selectors. Design: `../design/WATER_FINITE_SIM_PLAN.md`.

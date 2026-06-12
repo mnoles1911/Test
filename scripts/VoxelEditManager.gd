@@ -1,6 +1,10 @@
 extends Node
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file so there is only one place to change the
+# scale. See scripts/VoxelScale.gd for the full design rationale.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
 
 # VoxelEditManager — central authority for all voxel terrain edits.
 #
@@ -101,9 +105,11 @@ const WORLD_FLOOR_VOXEL_Y: int = -300
 # unbreakable. Mirror of the same constant in
 # `CubicHeightmapGenerator.WORLD_FLOOR_VOXEL_Y`. Keep them in sync.
 
-const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) / 6.0
-# Same value in world-space metres (6 vox/m). Used by world-coord
-# AABB checks below.
+const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) * VoxelScale.VOXEL_SIZE_M
+# Same value in world-space metres. Derived by multiplying the voxel
+# Y by VOXEL_SIZE_M (the per-voxel metre size from VoxelScale) rather
+# than dividing by 6.0 directly — this means the floor moves correctly
+# if the scale constant ever changes. Used by world-coord AABB checks.
 #
 # GameState.save_game() stamps this version into every save. On
 # load, mismatch is treated as a HARD ERROR — the procedural
@@ -1116,7 +1122,10 @@ func _mark_chunk(chunk_coords: Vector3i) -> void:
 # project-wide default. Each voxel block is ~16.67 cm (1/6 m) on a
 # side. The VoxelLodTerrain in World3D.tscn has transform.scale =
 # 0.166667 to match.
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER — keeping the local name so
+# every call site inside this file stays unchanged (e.g. world_pos *
+# VOXELS_PER_METER). The single source of truth is VoxelScale.gd.
 
 # Chunk side length in voxels. Zylann's default for VoxelLodTerrain is
 # 16 voxels. If you change `mesh_block_size` or `data_block_size` on

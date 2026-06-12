@@ -1,4 +1,10 @@
 extends Node3D
+
+# Single authority for the voxel grid scale — the export default below
+# mirrors the value from VoxelScale. configure() overrides it with the
+# live terrain's scale anyway. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # DistantTerrainManager — streams the smooth distant-terrain heightmesh.
 #
 # NOTE: deliberately NO `class_name`. World3DBootstrap / CopperIslesTest-
@@ -58,8 +64,10 @@ const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 @export var apron_base_depth: float = 8.0
 ## LOD-swap dither cross-fade duration, in seconds.
 @export var fade_seconds: float = 0.35
-## World voxels per metre (canonical 6.0) — overridden by configure().
-@export var voxels_per_metre: float = 6.0
+## World voxels per metre — default from VoxelScale, always overridden
+## by configure() which reads the live terrain's transform.scale.
+## Source of truth at runtime is what configure() sets, not this default.
+@export var voxels_per_metre: float = VoxelScale.VOXELS_PER_METER
 
 # --- Runtime state ---------------------------------------------------
 var _active: bool = false
@@ -94,8 +102,9 @@ func setup_from_terrain(terrain: Node) -> void:
 	# real HeightmapGeneratorBase, not the GDScript VoxelGeneratorScript
 	# adapter that forwards to it.
 	var cpp = gen.get("cpp_impl") if "cpp_impl" in gen else gen
-	# voxels-per-metre from the terrain's own scale (canonical 1/6 -> 6).
-	var vpm := 6.0
+	# voxels-per-metre from the terrain's own scale.
+	# Default from VoxelScale; overridden below if the terrain has a valid scale.
+	var vpm := VoxelScale.VOXELS_PER_METER
 	if terrain is Node3D:
 		var sx: float = (terrain as Node3D).transform.basis.get_scale().x
 		if sx > 0.0:

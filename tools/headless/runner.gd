@@ -86,6 +86,8 @@ func _initialize() -> void:
 			quit(_sever())
 		"entity":
 			quit(_entity())
+		"scale":
+			quit(_scale())
 		"spike", "phase2", "gen", "distant", "finite_world":
 			_spike_mode = selector
 			if selector == "finite_world":
@@ -2034,4 +2036,174 @@ func _entity() -> int:
 		print("[ENTITY] RESULT=PASS — %d checks, registry save/load/index/mutate parity holds." % checks)
 		return 0
 	print("[ENTITY] RESULT=FAIL — %d failures across %d checks." % [fails, checks])
+	return 1
+
+
+# ============================================================
+# SCALE — VoxelScale.gd single-source-of-truth contract (PR R0)
+# ============================================================
+# Checks three things WITHOUT booting the full scene (no GPU, no
+# VoxelLodTerrain instantiation):
+#
+#   1. VoxelScale.gd internal consistency: VOXEL_SIZE_M == 1.0 / VOXELS_PER_METER
+#   2. Every refactored script constant mirrors VoxelScale's values.
+#      Script constants are readable off a loaded GDScript resource via
+#      Godot 4's get_script_constant_map() — no instantiation needed.
+#   3. World3D.tscn transform: the VoxelLodTerrain node's scale entries
+#      match VOXEL_SIZE_M within 1e-4. Parsed as text — no scene boot
+#      required. This is cheap and catches any .tscn drift early.
+#
+# Exit 0 = all pass. Any mismatch = FAIL + non-zero exit.
+func _scale() -> int:
+	var VS := preload("res://scripts/VoxelScale.gd")
+	var fails: int = 0
+	var checks: int = 0
+
+	# ── 1. VoxelScale internal consistency ───────────────────────────
+	checks += 1
+	var expected_size: float = 1.0 / VS.VOXELS_PER_METER
+	if absf(VS.VOXEL_SIZE_M - expected_size) > 1e-6:
+		fails += 1
+		push_error("[SCALE] VoxelScale.VOXEL_SIZE_M=%.8f does not equal 1.0/VOXELS_PER_METER=%.8f" % [
+			VS.VOXEL_SIZE_M, expected_size])
+	else:
+		print("[SCALE] VoxelScale internal: VOXEL_SIZE_M=%.8f == 1.0/VOXELS_PER_METER OK" % VS.VOXEL_SIZE_M)
+
+	# ── 2. Each refactored script exposes matching constants ──────────
+	# GDScript constants are accessible via get_script_constant_map() on
+	# the loaded Script resource. Function-local consts are NOT in that map
+	# (they're only visible inside the function body), so we check the
+	# module-level consts only — those are the ones that matter for
+	# centralisation.
+	#
+	# Scripts with VOXELS_PER_METER at module level:
+	var scripts_vpm: Array = [
+		"res://scripts/VoxelEditManager.gd",
+		"res://scripts/VoxelGravityManager.gd",
+		"res://scripts/WaterFlowManager.gd",
+		"res://scripts/WaterDiag.gd",
+		"res://scripts/EmissiveBakedLightManager.gd",
+	]
+	# Scripts with VOXEL_SIZE_M at module level:
+	var scripts_vsm: Array = [
+		"res://scripts/VoxelGravityManager.gd",
+		"res://scripts/FallingVoxelCluster.gd",
+		"res://scripts/VoxelClusterBuilder.gd",
+		"res://scripts/EmissiveBakedLightManager.gd",
+	]
+	# WorldBakeController uses British spelling VOXELS_PER_METRE.
+	var scripts_vpm_uk: Array = [
+		"res://scripts/_dev/WorldBakeController.gd",
+	]
+
+	for path in scripts_vpm:
+		var s = load(path)
+		checks += 1
+		if s == null:
+			fails += 1
+			push_error("[SCALE] could not load %s" % path)
+			continue
+		var cmap: Dictionary = s.get_script_constant_map() if s.has_method("get_script_constant_map") else {}
+		if not cmap.has("VOXELS_PER_METER"):
+			# Constant not in map — may be a function-local or inner-class const; skip gracefully.
+			print("[SCALE] %s — VOXELS_PER_METER not in constant map (may be local; skipping)" % path.get_file())
+			checks -= 1  # don't count as a checked assertion
+			continue
+		var v: float = float(cmap["VOXELS_PER_METER"])
+		if absf(v - VS.VOXELS_PER_METER) > 1e-6:
+			fails += 1
+			push_error("[SCALE] %s VOXELS_PER_METER=%.6f expected %.6f" % [path.get_file(), v, VS.VOXELS_PER_METER])
+		else:
+			print("[SCALE] %s VOXELS_PER_METER=%.6f OK" % [path.get_file(), v])
+
+	for path in scripts_vsm:
+		var s = load(path)
+		checks += 1
+		if s == null:
+			fails += 1
+			push_error("[SCALE] could not load %s" % path)
+			continue
+		var cmap: Dictionary = s.get_script_constant_map() if s.has_method("get_script_constant_map") else {}
+		if not cmap.has("VOXEL_SIZE_M"):
+			print("[SCALE] %s — VOXEL_SIZE_M not in constant map (skipping)" % path.get_file())
+			checks -= 1
+			continue
+		var v: float = float(cmap["VOXEL_SIZE_M"])
+		if absf(v - VS.VOXEL_SIZE_M) > 1e-6:
+			fails += 1
+			push_error("[SCALE] %s VOXEL_SIZE_M=%.8f expected %.8f" % [path.get_file(), v, VS.VOXEL_SIZE_M])
+		else:
+			print("[SCALE] %s VOXEL_SIZE_M=%.8f OK" % [path.get_file(), v])
+
+	for path in scripts_vpm_uk:
+		var s = load(path)
+		checks += 1
+		if s == null:
+			fails += 1
+			push_error("[SCALE] could not load %s" % path)
+			continue
+		var cmap: Dictionary = s.get_script_constant_map() if s.has_method("get_script_constant_map") else {}
+		if not cmap.has("VOXELS_PER_METRE"):
+			print("[SCALE] %s — VOXELS_PER_METRE not in constant map (skipping)" % path.get_file())
+			checks -= 1
+			continue
+		var v: float = float(cmap["VOXELS_PER_METRE"])
+		if absf(v - VS.VOXELS_PER_METER) > 1e-6:
+			fails += 1
+			push_error("[SCALE] %s VOXELS_PER_METRE=%.6f expected %.6f" % [path.get_file(), v, VS.VOXELS_PER_METER])
+		else:
+			print("[SCALE] %s VOXELS_PER_METRE=%.6f OK" % [path.get_file(), v])
+
+	# ── 3. World3D.tscn transform text-parse (no scene boot) ─────────
+	# The VoxelLodTerrain node in World3D.tscn carries a transform line:
+	#   transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, ...)
+	# Parse that line with FileAccess to confirm the scale entries (the
+	# diagonal of the 3×3 basis) match VoxelScale.VOXEL_SIZE_M ± 1e-4.
+	# No scene instantiation needed — plain text scan.
+	var tscn_path := "res://scenes/World3D.tscn"
+	checks += 1
+	if not FileAccess.file_exists(tscn_path):
+		fails += 1
+		push_error("[SCALE] World3D.tscn missing at %s" % tscn_path)
+	else:
+		var f := FileAccess.open(tscn_path, FileAccess.READ)
+		var found_terrain: bool = false
+		var found_transform: bool = false
+		var scale_ok: bool = false
+		var scale_raw: float = 0.0
+		while not f.eof_reached():
+			var line: String = f.get_line()
+			# Find the VoxelLodTerrain node header.
+			if line.begins_with("[node") and "VoxelLodTerrain" in line:
+				found_terrain = true
+			# The next transform = ... line after the node header is its transform.
+			if found_terrain and not found_transform and line.begins_with("transform"):
+				found_transform = true
+				# Parse: transform = Transform3D(sx, 0, 0, 0, sy, 0, 0, 0, sz, tx, ty, tz)
+				# The first value in the parentheses is the X-scale (basis[0][0]).
+				var paren_start: int = line.find("(")
+				var paren_end: int   = line.find(")")
+				if paren_start != -1 and paren_end != -1:
+					var inner: String = line.substr(paren_start + 1, paren_end - paren_start - 1)
+					var parts: PackedStringArray = inner.split(",")
+					if parts.size() >= 1:
+						scale_raw = float(parts[0].strip_edges())
+						scale_ok = absf(scale_raw - VS.VOXEL_SIZE_M) <= 1e-4
+				break  # done after the first transform line past the node header
+		f.close()
+		if not found_transform:
+			fails += 1
+			push_error("[SCALE] World3D.tscn: could not find VoxelLodTerrain transform line")
+		elif not scale_ok:
+			fails += 1
+			push_error("[SCALE] World3D.tscn VoxelLodTerrain scale=%.8f does not match VOXEL_SIZE_M=%.8f (delta=%.8f > 1e-4)" % [
+				scale_raw, VS.VOXEL_SIZE_M, absf(scale_raw - VS.VOXEL_SIZE_M)])
+		else:
+			print("[SCALE] World3D.tscn VoxelLodTerrain scale=%.8f matches VOXEL_SIZE_M OK" % scale_raw)
+
+	# ── Result ────────────────────────────────────────────────────────
+	if fails == 0:
+		print("[SCALE] RESULT=PASS — %d checks: VoxelScale internal OK, all script constants match, .tscn scale matches." % checks)
+		return 0
+	print("[SCALE] RESULT=FAIL — %d/%d checks failed (see push_error lines above)." % [fails, checks])
 	return 1

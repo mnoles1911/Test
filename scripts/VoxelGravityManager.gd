@@ -1,4 +1,10 @@
 extends Node
+
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file so there is only one place to change the
+# scale. See scripts/VoxelScale.gd for the full design rationale.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # VoxelGravityManager — voxels obey gravity.
 #
 # How this works in plain English:
@@ -132,8 +138,12 @@ extends Node
 # CONSTANTS
 # =============================================================
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
-const VOXELS_PER_METER: float = 6.0
+const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+# Mirrors VoxelScale.VOXEL_SIZE_M (edge length of one voxel in metres).
+# Local name kept so call sites inside this file stay unchanged.
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER (number of voxels per world metre).
+# Single source of truth is VoxelScale.gd.
 
 const FALLING_CLUSTER_SCENE_PATH: String = "res://scenes/voxel/FallingVoxelCluster.tscn"
 

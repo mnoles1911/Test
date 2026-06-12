@@ -1,4 +1,9 @@
 extends Node3D
+
+# Single authority for the voxel grid scale — the constant below mirrors
+# the value from VoxelScale. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # WorldBakeController — generator-agnostic world bake driver.
 #
 # Attached to both scenes/_dev/BakeWorld.tscn (Copper Isles heightmap) and
@@ -182,10 +187,11 @@ const VERTICAL_STEP_M: float = 200.0
 const BAKE_DB_PATH: String = "user://baked_baseline_v14.sqlite"
 const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 
-# Voxels per world metre at the canonical terrain.transform.scale of
-# 1/6. Used to convert tile centres (world metres) into voxel-grid
-# coords for generator sampling.
-const VOXELS_PER_METRE: float = 6.0
+# Voxels per world metre. Mirrors VoxelScale.VOXELS_PER_METER —
+# British spelling preserved for this file's existing call sites.
+# Used to convert tile centres (world metres) into voxel-grid coords
+# for generator sampling. Single source of truth: VoxelScale.gd.
+const VOXELS_PER_METRE: float = VoxelScale.VOXELS_PER_METER
 
 
 # =============================================================
