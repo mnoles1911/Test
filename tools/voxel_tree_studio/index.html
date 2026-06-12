@@ -133,7 +133,7 @@
       <h2>Trunk</h2>
       <label>
         <div class="row"><span>Height</span><span class="val" id="trunkH-v"></span></div>
-        <input type="range" id="trunkH" min="4" max="40" value="14" step="1">
+        <input type="range" id="trunkH" min="4" max="150" value="48" step="1">
       </label>
       <label>
         <div class="row"><span>Thickness</span><span class="val" id="trunkR-v"></span></div>
@@ -153,7 +153,7 @@
       </label>
       <label>
         <div class="row"><span>Length</span><span class="val" id="branchLen-v"></span></div>
-        <input type="range" id="branchLen" min="2" max="14" value="5" step="1">
+        <input type="range" id="branchLen" min="2" max="30" value="9" step="1">
       </label>
     </div>
 
@@ -169,7 +169,7 @@
       </label>
       <label>
         <div class="row"><span>Radius</span><span class="val" id="canopyR-v"></span></div>
-        <input type="range" id="canopyR" min="2" max="16" value="7" step="1">
+        <input type="range" id="canopyR" min="2" max="50" value="24" step="1">
       </label>
       <label>
         <div class="row"><span>Vertical stretch</span><span class="val" id="canopyStretch-v"></span></div>
@@ -224,6 +224,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // ---------------------------------------------------------------------------
 const MAT_LOG = 10;
 const MAT_LEAVES = 11;
+
+// Project asset scale: 10 cm per voxel (10 voxels per meter). Everything the
+// designer sees is labelled in meters via this factor, and it rides along in
+// the export so the Godot importer places trees at the right size.
+const M_PER_VOXEL = 0.1;
+const m = v => (v * M_PER_VOXEL).toFixed(1) + 'm';
 
 // Stand-in colors (NOT the real atlas — judge shape here, color in Godot).
 const COLOR_LOG = new THREE.Color('#6b4a2b');
@@ -337,7 +343,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#0e1013');
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
-camera.position.set(28, 26, 34);
+camera.position.set(85, 70, 105);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -352,8 +358,9 @@ const sun = new THREE.DirectionalLight('#fff4d6', 1.2);
 sun.position.set(20, 40, 15);
 scene.add(sun);
 
-// ground grid for scale
-const grid = new THREE.GridHelper(80, 80, 0x335533, 0x223322);
+// ground grid for scale. 1 voxel = 1 unit = 0.1 m, so a 200-unit grid spans
+// 20 m; 20 divisions => each grid cell is 10 units = 1.0 m.
+const grid = new THREE.GridHelper(200, 20, 0x335533, 0x223322);
 scene.add(grid);
 
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -415,12 +422,12 @@ function readParams() {
 
 function syncLabels() {
   document.getElementById('seed-v').textContent = el.seed.value;
-  document.getElementById('trunkH-v').textContent = el.trunkH.value;
+  document.getElementById('trunkH-v').textContent = el.trunkH.value + ' · ' + m(+el.trunkH.value);
   document.getElementById('trunkR-v').textContent = el.trunkR.value;
   document.getElementById('lean-v').textContent = el.lean.value + '%';
   document.getElementById('branches-v').textContent = el.branches.value;
   document.getElementById('branchLen-v').textContent = el.branchLen.value;
-  document.getElementById('canopyR-v').textContent = el.canopyR.value;
+  document.getElementById('canopyR-v').textContent = el.canopyR.value + ' · ' + m(+el.canopyR.value);
   document.getElementById('canopyStretch-v').textContent = el.canopyStretch.value + '%';
   document.getElementById('density-v').textContent = el.density.value + '%';
   document.getElementById('rough-v').textContent = el.rough.value + '%';
@@ -441,9 +448,18 @@ function regenerate() {
     minY=Math.min(minY,y);maxY=Math.max(maxY,y);
     minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);
   }
+  const wV = maxX-minX+1, hV = maxY-minY+1, dV = maxZ-minZ+1;
+  const heavy = currentVoxels.size > 150000
+    ? `<br><span style="color:#d8a35a">⚠ ${currentVoxels.size.toLocaleString()} voxels — preview may lag; trees this dense are also heavy in-engine.</span>` : '';
   document.getElementById('stats').innerHTML =
-    `<b>${currentVoxels.size}</b> voxels &nbsp; (log <b>${logN}</b> · leaves <b>${leafN}</b>)<br>` +
-    `bounds <b>${maxX-minX+1} × ${maxY-minY+1} × ${maxZ-minZ+1}</b>`;
+    `<b>${currentVoxels.size.toLocaleString()}</b> voxels &nbsp; (log <b>${logN}</b> · leaves <b>${leafN}</b>)<br>` +
+    `bounds <b>${wV} × ${hV} × ${dV}</b> vox<br>` +
+    `real size <b>${m(wV)} W × ${m(hV)} H × ${m(dV)} D</b> &nbsp;<span style="opacity:.5">@ 10cm/vox</span>` +
+    heavy;
+
+  // Auto-frame: keep the orbit pivot at the tree's mid-height so taller
+  // trees stay centered without manual re-aiming.
+  controls.target.set(0, hV * 0.5, 0);
 }
 
 [...ids.map(i => el[i]), el.canopyShape].forEach(node =>
@@ -551,12 +567,15 @@ document.getElementById('export').addEventListener('click', () => {
     const [x,y,z] = k.split(',').map(Number);
     voxels.push({ x: x-minX, y: y-minY, z: z-minZ, m });
   }
+  const sizeV = [maxX-minX+1, maxY-minY+1, maxZ-minZ+1];
   const out = {
     format: 'mira-thal-voxel-tree',
     version: 1,
     note: 'm=10 log, m=11 leaves (VoxelMaterialRegistry ids). Trunk base at origin, +y up.',
+    voxel_size_m: M_PER_VOXEL,                              // 0.1 = 10cm/voxel
+    size: sizeV,                                            // in voxels
+    size_m: sizeV.map(n => +(n * M_PER_VOXEL).toFixed(2)),  // in meters
     params: readParams(),
-    size: [maxX-minX+1, maxY-minY+1, maxZ-minZ+1],
     voxels,
   };
   const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });

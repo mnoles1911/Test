@@ -791,6 +791,18 @@ C++ `CubicHeightmapGeneratorCpp` generator (was GDScript, ported 2026-05-11), `V
 
 Open questions that need an answer before their dependent systems can be built.
 
+- [ ] **Voxel scale migration: 6 vox/m (16.7 cm) → 10 vox/m (10 cm)**
+  Designer set the asset standard at **10 cm per voxel** (Voxel Tree Studio is
+  built to it). But the live terrain/engine is **6 voxels per meter (16.7 cm)**,
+  hard-coded in several load-bearing spots:
+  - `scripts/EditToolHandler.gd:309` — `VOXELS_PER_METER = 6.0`
+  - `scripts/FallingVoxelCluster.gd:34`, `scripts/VoxelClusterBuilder.gd:31` — `VOXEL_SIZE_M = 1.0/6.0`
+  - `scripts/Player3D.gd` — step/jump clearances tuned to 16.7 cm voxels
+  Until these are migrated to 10 cm, trees authored in the studio will import
+  ~67% larger than intended. This is an architectural change (re-tunes player
+  movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
+  Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
+
 - [ ] **Recipe placement map for Act I**
   Decide exactly which recipes Roland can find/learn in Act I. The Archive
   restricted section, Henrietta's quarters, and Old Mira the herbalist are the

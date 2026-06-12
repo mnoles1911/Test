@@ -41,13 +41,25 @@ reference on the fly without a preset.
 - Everything is opaque cubes — that's honest to how leaf voxels render
   in-engine (alpha-scissor cutout, one cube per leaf cell).
 
+## Scale: 10 cm per voxel
+
+All voxel assets are authored at **10 cm per voxel (10 voxels per meter)**. The
+studio labels trunk height, canopy radius, and overall size in **meters** so you
+design at real-world scale, and the scale is written into the export.
+
+> ⚠ The live terrain engine is currently **6 vox/m (16.7 cm)**. Until that's
+> migrated to 10 cm, an exported tree will import ~67% larger than designed.
+> Tracked in `DESIGNER_TODO.md` → Section 8 ("Voxel scale migration").
+
 ## Export format (the bridge to Godot)
 
 ```json
 {
   "format": "mira-thal-voxel-tree",
   "version": 1,
-  "size": [w, h, d],
+  "voxel_size_m": 0.1,          // 10 cm per voxel
+  "size":   [w, h, d],          // bounding box in voxels
+  "size_m": [w, h, d],          // bounding box in meters
   "params": { ...the slider values... },
   "voxels": [ { "x": 0, "y": 0, "z": 0, "m": 10 }, ... ]
 }
