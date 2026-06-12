@@ -170,6 +170,7 @@ Categories: `WORLD WATER WEATHER PHYS OTHER`.
 - **No `class_name` on Resources path-preloaded by autoloads** (`WaterMaterial.gd`, `ShaderProfile.gd`, `EntityRecord.gd`) — headless harness doesn't rescan globals; autoload fails with "script does not inherit from Node" otherwise.
 - **GDSL: no `return` inside `fragment()`** — restructure as if/else.
 - **GDSL function-scope arrays:** use constructor `vec3[6](...)` or open-code, not C-style `vec3 arr[6] = {...}`.
+- **Flora sway shader — use `fract(VERTEX.y)` for blade-local height, NOT `VERTEX.y`:** Zylann bakes blocky flora models into chunk meshes at each voxel's world altitude, so `VERTEX.y` in the sway shader is the voxel's absolute world Y (which may be large), not the blade's local height. Using raw `VERTEX.y` as the sway bend weight flings blades metres sideways. Correct: `float blade_t = fract(VERTEX.y)` gives a 0..1 value local to each voxel's 1-unit block (0 = base, ~1 = tip). This applies to both the real LOD0 flora quads AND the far-grass `MultiMesh` impostors that share `assets/shaders/flora_sway.gdshader`. (Fixed in PR #251 — do NOT revert to absolute `VERTEX.y`.).
 - **`func` is a module-scope boundary** — when inserting helper functions mid-file via Edit, place AFTER the parent function's last line (not between its branches), or following code becomes orphaned inside the new function's body.
 
 ### `RenderingServer` global shader parameters — editor-only setters
@@ -319,7 +320,7 @@ Parity harness FIRST (`@tool` EditorScript in `scripts/_dev/`, bit-exact), POD s
 
 `tools/headless/run.ps1 <selector>` runs Godot's `_console.exe` (plain win64 exe = GUI-subsystem, won't pipe stdout) with `tools/headless/runner.gd` as a SceneTree script. Selectors:
 
-`gate0 codec wmat shader phase7 spike phase2 gen distant gravity emissive baked_light water_flow entity`
+`gate0 codec wmat shader phase7 spike phase2 gen distant gravity emissive baked_light water_flow finite finite_world sever entity scale flora mining`
 
 Exit 0 = pass. **Scope: data/logic/parity only** — dummy renderer, no GPU. Visuals need designer in editor.
 

@@ -246,6 +246,8 @@ Scene building and node configuration that has to be done in the editor.
   `albedo_tint=(0.70, 0.85, 0.55)`. The streaming pipeline went from "outrun
   LOD0 in 10 s" to "designer confirmed cannot out run the streaming." The
   bright-skirt-ghosting-through-hills bug fixed by the new shader tint.
+  *(PR #251 R2 subsequently updated these to `lod_count=5`, `view_distance=864 vox`,
+  `inner_cull_radius=100 m` for the 10 vox/m scale — see R2 acceptance above.)*
   Outstanding: LOD1+ water-surface line artefact (separate water-shader work,
   not a DistantTerrain issue — see CLAUDE.md 2026-05-26 milestone).
 
@@ -1214,10 +1216,12 @@ designer runs in the editor (the headless harness only covers data/logic):
   confirm the green LOD0 disc stays centred on the player and the
   coloured bands step outward at roughly the expected radii (LOD0 ~12.8 m,
   doubling each ring). Mis-centred bands = a viewer-offset regression.
-- **Terrain collision ends at 12.8 m (known, not a bug):** projectiles /
-  AI beyond ~12.8 m have no terrain collision at this scale. Don't file
-  it — the fallback is a separate logged follow-up
-  (`design/3D_VOXEL_MIGRATION.md` "10 vox/m hard constraint").
+- **Terrain collision extends to ~51.2 m (LOD0+1+2, `collision_lod_count=3`):** projectiles /
+  AI beyond ~51.2 m have no terrain collision. Beyond ~12.8 m the shapes are
+  coarser (LOD1 = 2-voxel, LOD2 = 4-voxel), but the ground is there for
+  physics purposes. Nothing beyond ~51.2 m: the raycast-vs-generator fallback
+  for long-lived projectiles is a separate logged follow-up — don't build it
+  as part of unrelated work. (`design/3D_VOXEL_MIGRATION.md` "10 vox/m collision reality").
 
 ---
 
@@ -1263,3 +1267,100 @@ walk the grassland.
   runtime flora material in `World3DBootstrap._inject_flora_models_into_library`
   from the flat vertex-colour `StandardMaterial3D` to an atlas-sampling
   material with per-tile UVs on the cross-quad mesh.
+
+---
+
+## Section 12 — PR #251 acceptance (10cm re-architecture follow-ups)
+
+The R0–R4 commits are in and the headless gates are green.  These are the
+remaining **feel + visual** checks that need your eyes in the editor.
+
+### Far-grass impostors + wind sway acceptance
+
+`FarGrassManager.gd` fills the ~13–51 m band with GPU-instanced grass blades so
+the real LOD0 voxel grass no longer ends in a bald ring.
+
+- [ ] **Walk the grassland and look at the LOD1 band (~12–50 m out).** You
+  should see continuous grass coverage — no visible ring of bare terrain
+  between the crisp LOD0 blades and the DistantTerrain smooth mesh beyond.
+  If a seam is visible, note the camera distance; the inner cull radius on
+  `FarGrassManager` may need nudging.
+- [ ] **Move slowly and watch the near edge (~12 m).** As blades enter LOD0
+  range the impostor disappears and a real destructible blade should appear
+  in nearly the same spot (same hash). No popping, no sudden bare patch.
+- [ ] **Check sway direction.** Grass blades should sway gently in the
+  breeze — the tip bends more than the base. If blades snap metres sideways
+  or vibrate, something is re-introducing raw `VERTEX.y` into the sway
+  shader; see `design/PATTERNS_AND_GOTCHAS.md` → "Flora sway shader" gotcha.
+- [ ] **Toggle `GraphicsManager.far_grass_enabled` OFF via F1 → GRAPHICS.**
+  Confirm the impostor layer disappears and only the crisp LOD0 blades
+  remain within ~12 m. Re-enable and confirm seamless restoration. This is
+  the designer on/off valve — it defaults ON.
+
+### Mining rework acceptance (S/M/F presets, destroy preview)
+
+- [ ] **Scroll wheel while pickaxe equipped.** Confirm the carve size cycles
+  Small (1³) → Medium (3³) → Full (5³) → Small, with a HUD readout naming
+  the preset. The old default was a flat 3³; the new default (Full) is 5³.
+  If you prefer a different default size, say so and we flip one constant.
+- [ ] **Swing time scales with carve volume.** A Full (5³ = 125 voxels)
+  swing should take noticeably longer than a Small (1³ = 1 voxel) swing.
+  This is the physical-volume anchor — a 10cm carve and a 50cm carve no
+  longer cost the same swing time.
+- [ ] **Destroy preview highlights.** While aiming at the terrain with the
+  pickaxe equipped, the voxel faces you are about to remove should be
+  highlighted (outline or tint). Confirm the highlight covers exactly the
+  exposed faces of the upcoming carve box — not the buried rear faces.
+
+### Micro-detail pass acceptance (pebbles / twigs / trample / foam)
+
+- [ ] **Pebbles and twigs on the ground.** Walk slowly across dirt, grass,
+  and stone. You should see occasional small low-profile pebbles (grey) and
+  twigs (brown) sitting on the surface. They are walk-through (no collision)
+  and destructible (pickaxe removes them). Beaches/sand also get pebbles.
+  Density: ~1.5% pebbles, ~1% twigs on eligible surfaces.
+- [ ] **Dug-wall grain.** Mine a 5³ hole. The walls should look slightly
+  chewed — ~22% of the soft (dirt/grass/sand) voxels in the one-voxel shell
+  around the cut are removed deterministically, giving a rough edge.  Stone
+  walls stay crisp (precision mining is unaffected).
+- [ ] **Grass trample.** Walk across a dense grass patch while moving. The
+  blades at your feet should vanish as you pass over them (v1 just removes
+  them — no "flattened" model yet, that's deferred). Throttled to ~0.5 s
+  between removals, host-side only.
+- [ ] **Water foam (default OFF — requires a GPU toggle).** Flip
+  `GraphicsManager.water_foam_enabled` ON via F1 → GRAPHICS. Pour some
+  water or find a flowing river. Foam particles should appear at MOVING
+  cells near the player. Confirm: one pooled particle system repositions
+  across flow sites (not hundreds of nodes). Turn it back OFF if
+  performance drops; report the framerate delta.
+
+### Distant skirt color fix acceptance
+
+- [ ] **No pale seam at the blocky ↔ smooth terrain boundary.** Stand on
+  high ground and look at the ~86 m edge where crisp voxel terrain blends
+  into the `DistantTerrainManager` smooth mesh. The smooth mesh's grass
+  should blend the same green top + brown dirt side as the blocky terrain,
+  and steep faces should shade toward rock. The AO darken should match the
+  natural shadow depth of the near terrain.  If you see a bright or oddly
+  tinted band, note the camera angle and capture a screenshot.
+- [ ] **Slope gradient reads correctly.** On steep cliff faces in the
+  distant mesh (not the near voxels), the color should shift toward a grey
+  rock tone. Flat tops stay green. Confirm no flat-top cliffs are reading
+  as bare rock when they should be grass.
+
+### Fog tune
+
+- [ ] **Clear-weather haze.** In clear weather at midday, the view distance
+  should have less distance haze than before (fog was reduced in this pass).
+  If the horizon still feels too milky, it can be dialled further; if it
+  now looks too sharp (no atmospheric depth), it can be nudged back up.
+  Report your verdict.
+
+### C++ DLL restart reminder
+
+- [ ] **Fully restart Godot after any C++ DLL rebuild or real flora won't
+  appear.** If you rebuild `extensions/voxel_gen/` (SCons) and then just
+  hot-reload the project without closing Godot, the old DLL stays loaded in
+  memory — it has no flora scatter code, so grass and flowers will be absent
+  even though the generator build succeeded. Close Godot completely, then
+  reopen the project. This applies to any DLL rebuild, not just flora.

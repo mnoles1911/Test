@@ -25,7 +25,7 @@ Voxel scale is **10 voxels/m** (10 cm/block) since 2026-06-12 — the Lay-of-the
 - **Generator:** `CubicHeightmapGeneratorCpp` (C++ GDExtension) via `CubicHeightmapGeneratorAdapter.gd`.
 - **Stream:** `VoxelStreamSQLite` — per-save-slot delta DB.
 - **Edit routing:** every voxel write goes through `VoxelEditManager.queue_*` (NoEditZone gate + async queue + EditedChunkRegistry + LOD-bake invalidation + `edit_applied` signal + MP-3 RPC routing). **Never call raw `VoxelTool` directly.**
-- **Water:** `WaterFlowManager` (host-only 4 Hz sim) + `WaterChunkMesher` (C++ since PR #214, transparent surface meshes) reading `CHANNEL_DATA5` water bytes via `WaterByteCodec`.
+- **Water:** `WaterFlowManager` (host-only sim) + Zylann-native `VoxelBlockyModelFluid` meshes (ids 16–23) reading `CHANNEL_DATA5` water bytes via `WaterByteCodec`. (`WaterChunkMesher.gd` was deleted 2026-05-16 in the native-fluid pivot.)
 
 Full details in `CLAUDE.md` → "Voxel + world systems" and `design/TECH_STACK.md` → "Voxel Terrain".
 

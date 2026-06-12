@@ -57,8 +57,9 @@ Everything in the vision above maps to code that either already exists or is in 
 
 | Visual pillar | Owning system | Current state |
 |---|---|---|
-| 10cm destructible world | R0/R1/R2 of the re-architecture PR track | **In flight** — see MILESTONES.md |
+| 10cm destructible world | `VoxelScale.gd` + R0/R1/R2 scale flip + streaming/LOD retune (`collision_lod_count=3`) | **LIVE** (PR #251) — see MILESTONES.md |
 | Micro-voxel flora (per-blade grass, per-petal flowers) | R4 — real destructible voxel grass + flowers via `VoxelBlockyModelMesh` custom cross-quad meshes (ids 24–26), scattered by the C++ generator on grassland at LOD0 | **v1 LIVE** — see below |
+| Far-grass impostors + wind sway (~13–51 m band) | `scripts/FarGrassManager.gd` + `assets/shaders/flora_sway.gdshader` — GPU-instanced blades filling the LOD1/LOD2 ring; same hash as real grass for seamless handoff; `GraphicsManager.far_grass_enabled` **default ON** | **LIVE** (PR #251) |
 | 10cm micro-detail (pebbles/twigs, dug grain, grass trample, water foam) | D1–D4 micro-detail pass — pebble/twig scatter (ids 27–28), carve-time wall roughening, grass trample, flowing-water foam (default OFF) | **v1 LIVE** — see below |
 | Sky and day/night cycle | `scripts/DayNightCycle.gd` | **EXISTS** — 4-texture panorama blend, sun + moon `DirectionalLight3D` nodes |
 | Global illumination | SDFGI in the `World3D` `WorldEnvironment` node | **EXISTS, enabled** at ULTRA tier |
@@ -118,7 +119,7 @@ The world stops being an abstraction of a place and starts being a place.
 
 These are not design goals — they are fixed facts about the engine and the hardware target. Every implementation decision in the R-track has to work within them.
 
-**LOD0 collision ring:** Zylann Voxel Tools' LOD0 ring (the fully-simulated, collidable voxel zone around the player) caps at roughly 12.8m radius at 10 voxels/meter given the chunk grid. This is not a tunable — it's baked into how Zylann handles chunk count vs. voxel scale.
+**LOD0 collision ring:** Zylann Voxel Tools' LOD0 ring (the fully-detailed, highest-fidelity voxel zone) caps at roughly 12.8m radius at 10 voxels/meter given the chunk grid. The player always stands in this ring. **Terrain collision was extended to ~51.2 m via `collision_lod_count = 3`** (designer decision, 2026-06-12, set in `World3DBootstrap.gd`): LOD1 (12.8–25.6 m) and LOD2 (25.6–51.2 m) add coarser collision shapes (2-voxel and 4-voxel resolution respectively). Nothing beyond ~51.2 m has terrain collision — long-lived projectile raycast fallback is a logged follow-up. See `design/PATTERNS_AND_GOTCHAS.md` → "Terrain collision extends to ~51.2 m".
 
 **Volume cost:** Moving from 6/m to 10/m means roughly 4.6× more voxels in any given cubic meter. The perf budget is **median under 5ms per frame, p99 under 16ms** on the designer's RX 7800 XT. Every system in the R-track has to prove it fits before it ships.
 
