@@ -1199,6 +1199,7 @@ func _process(delta: float) -> void:
 	if _edit_volume_label != null:
 		var show_volume: bool = false
 		var volume_size: int = 3
+		var preset_name: String = ""
 		if edit_tool != null and "carve_volume_size" in edit_tool \
 				and get_node_or_null("/root/InventoryManager"):
 			var equipped: String = InventoryManager.get_equipped("weapon")
@@ -1207,11 +1208,24 @@ func _process(delta: float) -> void:
 			if equipped in ["iron_pickaxe", "iron_shovel", "iron_axe"]:
 				show_volume = true
 				volume_size = int(edit_tool.carve_volume_size)
+				# Preset name (Small / Medium / Full) from the handler's
+				# PRESET_NAMES map, keyed by its current carve_preset. Guard
+				# both members so an older handler build still falls back to
+				# a bare size-only readout instead of erroring.
+				if "carve_preset" in edit_tool and "PRESET_NAMES" in edit_tool:
+					preset_name = str(edit_tool.PRESET_NAMES.get(edit_tool.carve_preset, ""))
 		_edit_volume_label.visible = show_volume
 		if show_volume:
-			_edit_volume_label.text = "Volume: %dx%dx%d  [scroll]" % [
-				volume_size, volume_size, volume_size,
-			]
+			# "Volume: Medium 3x3x3  [scroll]" — preset name first so the
+			# player reads the intent, then the exact size in voxels.
+			if preset_name != "":
+				_edit_volume_label.text = "Volume: %s %dx%dx%d  [scroll]" % [
+					preset_name, volume_size, volume_size, volume_size,
+				]
+			else:
+				_edit_volume_label.text = "Volume: %dx%dx%d  [scroll]" % [
+					volume_size, volume_size, volume_size,
+				]
 
 	# Quick-slot bar visible only during gameplay (player in tree).
 	if _quick_root != null:

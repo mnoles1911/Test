@@ -26,6 +26,10 @@ extends SceneTree
 #            (BFS floodfill into a 3D RGBA8 cell grid). Wall scenario:
 #            two emitters separated by a solid wall must NOT bleed
 #            light across the wall.
+#   mining — EditToolHandler carve math (pure, no GPU): physical-volume
+#            swing-time anchor (BASELINE_VOLUME_M3 → baseline_voxels at
+#            the live scale, scale-proof), Small/Medium/Full preset
+#            sizing, _compute_carve_box exact N^3 bounds + depth-bias.
 #   water_flow — WaterFlowCpp.scan_settle_region byte-exact parity vs
 #            WaterFlowReference (the per-cell water-settle hot loop).
 #            Air pocket adjacent to a water source must produce the
@@ -94,6 +98,8 @@ func _initialize() -> void:
 			quit(_entity())
 		"scale":
 			quit(_scale())
+		"mining":
+			quit(_mining())
 		"spike", "phase2", "gen", "distant", "finite_world":
 			_spike_mode = selector
 			if selector == "finite_world":
@@ -2396,6 +2402,154 @@ func _entity() -> int:
 #      required. This is cheap and catches any .tscn drift early.
 #
 # Exit 0 = all pass. Any mismatch = FAIL + non-zero exit.
+# ============================================================
+# MINING — EditToolHandler carve-box + physical-volume-anchor math
+# ============================================================
+# Pure-logic gate (no GPU, no terrain) for the 2026-06-12 mining rework:
+#   • the physical-volume baseline anchor (BASELINE_VOLUME_M3 →
+#     baseline_voxels at the live scale) gives the intended swing-time
+#     multipliers, and is scale-proof;
+#   • _compute_carve_box produces an exact N×N×N voxel box for the three
+#     presets, with the DEPTH_BIASED anchor pushing the box INTO the
+#     terrain along the surface normal (preview == reality).
+func _mining() -> int:
+	var VS := preload("res://scripts/VoxelScale.gd")
+	var ETH := load("res://scripts/EditToolHandler.gd")
+	var fails: int = 0
+	var checks: int = 0
+
+	# Instantiate the handler. It's a Node3D; we only call PURE helpers
+	# (_compute_carve_box) + read its module constants — no _ready wiring,
+	# no SceneTree needed.
+	var eth = ETH.new()
+
+	# ── 1. Physical-volume baseline anchor ───────────────────────────
+	# baseline_voxels = BASELINE_VOLUME_M3 × VOXELS_PER_METER^3.
+	# Historic intent: this equals 8 at the OLD 6 vox/m, ~37 at 10 vox/m.
+	var cmap: Dictionary = ETH.get_script_constant_map()
+	checks += 1
+	if not cmap.has("BASELINE_VOLUME_M3"):
+		fails += 1
+		push_error("[MINING] EditToolHandler missing BASELINE_VOLUME_M3 const")
+	else:
+		var base_m3: float = float(cmap["BASELINE_VOLUME_M3"])
+		# The anchor is exactly 8 voxels at 6 vox/m: 8 / 6^3.
+		var expected_m3: float = 8.0 / 216.0
+		checks += 1
+		if absf(base_m3 - expected_m3) > 1e-9:
+			fails += 1
+			push_error("[MINING] BASELINE_VOLUME_M3=%.8f expected %.8f (8/216)" % [base_m3, expected_m3])
+		else:
+			print("[MINING] BASELINE_VOLUME_M3=%.6f m^3 (8 vox @ 6 vox/m) OK" % base_m3)
+		# At the OLD 6 vox/m the anchor must come back out to 8 voxels.
+		checks += 1
+		var base_vox_at_6: float = base_m3 * 6.0 * 6.0 * 6.0
+		if absf(base_vox_at_6 - 8.0) > 1e-6:
+			fails += 1
+			push_error("[MINING] anchor at 6 vox/m = %.4f voxels, expected 8" % base_vox_at_6)
+		else:
+			print("[MINING] anchor at 6 vox/m = %.2f voxels OK" % base_vox_at_6)
+		# At the LIVE scale (10 vox/m today) the anchor is ~37 voxels, and
+		# today's 5^3=125 default must feel like the old 3^3=27 default did
+		# at 6 vox/m (27/8 ≈ 3.375×). Assert the multiplier is in that band.
+		var vpm: float = VS.VOXELS_PER_METER
+		var base_vox_live: float = base_m3 * vpm * vpm * vpm
+		var full_mult: float = 125.0 / base_vox_live
+		var old_default_feel: float = 27.0 / 8.0  # 3^3 default at 6 vox/m
+		checks += 1
+		if absf(full_mult - old_default_feel) > 0.2:
+			fails += 1
+			push_error("[MINING] 5^3 multiplier=%.3f at %d vox/m; old 3^3 default felt %.3f — drifted" % [
+				full_mult, int(vpm), old_default_feel])
+		else:
+			print("[MINING] live anchor=%.1f vox; 5^3 swing mult=%.3f ≈ old 3^3 default %.3f OK" % [
+				base_vox_live, full_mult, old_default_feel])
+		# Small (1^3) must be a fast precision pick (well under baseline).
+		checks += 1
+		var small_mult: float = 1.0 / base_vox_live
+		if small_mult >= 0.1:
+			fails += 1
+			push_error("[MINING] Small (1 vox) multiplier=%.3f not a fast precision pick" % small_mult)
+		else:
+			print("[MINING] Small (1 vox) swing mult=%.4f (fast precision) OK" % small_mult)
+
+	# ── 2. Preset → size mapping ──────────────────────────────────────
+	# Small=1, Medium=3, Full=swing_carve_voxels_per_side export.
+	checks += 1
+	if not (eth.has_method("_apply_carve_preset")):
+		fails += 1
+		push_error("[MINING] EditToolHandler missing _apply_carve_preset")
+	else:
+		var full_side: int = int(eth.swing_carve_voxels_per_side)
+		var preset_enum: Dictionary = cmap.get("CarvePreset", {})
+		# Enum constants live in the script constant map as a Dictionary.
+		var p_small: int = int(preset_enum.get("SMALL", 0))
+		var p_medium: int = int(preset_enum.get("MEDIUM", 1))
+		var p_full: int = int(preset_enum.get("FULL", 2))
+		eth._apply_carve_preset(p_small)
+		checks += 1
+		if eth.carve_volume_size != 1:
+			fails += 1
+			push_error("[MINING] Small preset → carve_volume_size=%d expected 1" % eth.carve_volume_size)
+		eth._apply_carve_preset(p_medium)
+		checks += 1
+		if eth.carve_volume_size != 3:
+			fails += 1
+			push_error("[MINING] Medium preset → carve_volume_size=%d expected 3" % eth.carve_volume_size)
+		eth._apply_carve_preset(p_full)
+		checks += 1
+		if eth.carve_volume_size != full_side:
+			fails += 1
+			push_error("[MINING] Full preset → carve_volume_size=%d expected %d" % [eth.carve_volume_size, full_side])
+		else:
+			print("[MINING] presets Small=1 Medium=3 Full=%d OK" % full_side)
+
+	# ── 3. _compute_carve_box produces exact N×N×N bounds ────────────
+	# Centre voxel arbitrary; flat normal (no bias) → symmetric-ish box
+	# whose span is exactly N on every axis for N = 1, 3, 5.
+	var centre := Vector3i(100, 50, 200)
+	for n in [1, 3, 5]:
+		var box: Array = eth._compute_carve_box(centre, Vector3.UP, n)
+		var vmin: Vector3i = box[0]
+		var vmax: Vector3i = box[1]
+		var span: Vector3i = (vmax - vmin) + Vector3i.ONE
+		checks += 1
+		if span != Vector3i(n, n, n):
+			fails += 1
+			push_error("[MINING] N=%d carve box span=%s expected (%d,%d,%d)" % [n, str(span), n, n, n])
+		else:
+			print("[MINING] N=%d carve box span=%s (exactly N^3 voxels) OK" % [n, str(span)])
+
+	# ── 4. DEPTH_BIASED pushes the box INTO the terrain ──────────────
+	# Aiming at a +Y-facing floor (normal = up): the box must extend
+	# DOWNWARD (into the ground) from the surface voxel, never above it.
+	# With no Settings autoload, _get_mining_anchor() defaults to
+	# DEPTH_BIASED, so this exercises the real default path.
+	var box_y: Array = eth._compute_carve_box(centre, Vector3.UP, 5)
+	var ymin: int = (box_y[0] as Vector3i).y
+	var ymax: int = (box_y[1] as Vector3i).y
+	checks += 1
+	# Surface voxel sits at the TOP of the box (closest to the player
+	# above), so vmax.y must equal the centre voxel's y and the box runs
+	# downward. (half_hi for N=5 is 2; bias = -sign(+1)*2 = -2.)
+	if ymax > centre.y:
+		fails += 1
+		push_error("[MINING] DEPTH_BIASED up-normal: box top y=%d is ABOVE surface y=%d (should bias down)" % [ymax, centre.y])
+	else:
+		print("[MINING] DEPTH_BIASED up-normal: box y=[%d..%d] sits at/below surface %d OK" % [ymin, ymax, centre.y])
+
+	if eth is RefCounted:
+		pass
+	else:
+		eth.free()
+
+	if fails == 0:
+		print("[MINING] RESULT=PASS — %d checks: physical-volume anchor scale-proof, presets map 1/3/Full, carve box exact N^3, depth-bias digs in." % checks)
+		return 0
+	print("[MINING] RESULT=FAIL — %d/%d checks failed (see push_error)." % [fails, checks])
+	return 1
+
+
 func _scale() -> int:
 	var VS := preload("res://scripts/VoxelScale.gd")
 	var fails: int = 0

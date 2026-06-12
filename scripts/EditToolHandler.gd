@@ -70,6 +70,29 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
 
+# --- Mining-time baseline anchor (physical volume, scale-proof) ---
+#
+# WHY THIS EXISTS (plain English): mining time scales with how BIG a
+# bite you take. We need a "normal swing" reference to scale around.
+# The original reference was "an 8-voxel swing = 1.0x time" — but that
+# 8 was authored back when the world was 6 voxels per metre. At 6 vox/m,
+# 8 voxels is a physical hole of 8 / 6^3 = 8/216 ≈ 0.037 cubic metres.
+#
+# The bug: when we moved to 10 vox/m, the SAME 8-voxel anchor now
+# describes a much TINIER physical hole (8 / 1000 m^3), so digging the
+# same real-world-sized hole suddenly counted ~4.6x more voxels and
+# took ~4.6x longer. The anchor silently drifted because it was written
+# as a raw voxel count instead of a physical size.
+#
+# The fix: anchor on PHYSICAL VOLUME (cubic metres), then convert that
+# volume to "how many voxels is that at TODAY'S scale" every run. Now
+# the reference hole is always the same real size no matter the grid,
+# and this can never silently break again at any future scale.
+const BASELINE_VOLUME_M3: float = 8.0 / 216.0
+# The historic anchor: 8 voxels at the old 6 vox/m. 6^3 = 216 voxels
+# per cubic metre, so 8 of them was 8/216 ≈ 0.037 m^3. That physical
+# size is what a "1.0x normal swing" feels like — we keep THAT fixed.
+
 const WRONG_TOOL_SPEED_MULTIPLIER: float = 3.0
 # Mining a material with a non-preferred tool takes 3× the baseline
 # swing time. The material's `allowed_tools` list now acts as the
@@ -145,13 +168,53 @@ var _has_target: bool = false
 var _swing_time_on_target: float = 0.0
 # Accumulated seconds the player has been holding LMB against
 # `_current_target_voxel`. When it reaches the target voxel
-# material's `mining_time_seconds * (N³ / 8)` (volume-scaled), the
-# carve fires.
+# material's per-voxel time × (voxel_count / baseline_voxels)
+# (physical-volume-scaled — see BASELINE_VOLUME_M3), the carve fires.
 
-# Runtime carve volume â€” 1, 2, or 3 voxels per side. Player cycles
-# this with the mouse scroll wheel while a manual tool is equipped.
-# HUD reads this to show the "Volume: 1Ã—1Ã—1" line in the bottom-left.
-var carve_volume_size: int = 3
+# --- Carve-volume PRESETS (scroll wheel cycles these) ---
+#
+# WHY PRESETS (plain English): the old scroll wheel nudged the carve
+# size up/down by 1 voxel at a time (1..5). At 10 vox/m that's a lot of
+# tiny in-between sizes nobody picks, and "4x4x4" is meaningless to a
+# player. So we collapse it to THREE named choices the player cycles
+# through with the scroll wheel:
+#
+#   Small  = 1x1x1  — one 10 cm voxel. Precision: stairs, single ore.
+#   Medium = 3x3x3  — a ~0.3 m bite. The everyday dig.
+#   Full   = N^3    — the biggest bite this tool allows (N comes from
+#                     the swing_carve_voxels_per_side export, today 5,
+#                     so 5x5x5 ≈ 0.5 m). Kept as an export so a future
+#                     better tool tier can raise the Full size.
+#
+# IMPORTANT: `carve_volume_size` stays the single LIVE value (voxels
+# per side). EVERYTHING downstream — mining time, _compute_carve_box,
+# the carve itself, the HUD readout, the multiplayer paths — keeps
+# reading carve_volume_size unchanged. The preset enum is just a tidy
+# way to PICK that number; it never replaces it.
+enum CarvePreset { SMALL, MEDIUM, FULL }
+
+# Which preset is currently selected. Drives carve_volume_size via
+# _apply_carve_preset(). MEDIUM is the responsive everyday default.
+var carve_preset: int = CarvePreset.MEDIUM
+
+# Voxels-per-side for the Small and Medium presets. Full is dynamic
+# (reads the swing_carve_voxels_per_side export) so tool tiers can
+# raise it later without touching these.
+const PRESET_SMALL_SIZE: int = 1
+const PRESET_MEDIUM_SIZE: int = 3
+
+# Human-readable preset names for the HUD readout.
+const PRESET_NAMES: Dictionary = {
+	CarvePreset.SMALL:  "Small",
+	CarvePreset.MEDIUM: "Medium",
+	CarvePreset.FULL:   "Full",
+}
+
+# Runtime carve volume — voxels per side for the CURRENT preset. This
+# is the live value every consumer reads (mining time, _compute_carve_box,
+# the carve, the HUD readout, MP paths). Set by _apply_carve_preset();
+# defaults here are overwritten in _ready once the export is known.
+var carve_volume_size: int = PRESET_MEDIUM_SIZE
 
 # Aim-outline visualisation â€” a translucent emissive box drawn at
 # the voxel volume the player is currently aiming at. Only visible
@@ -161,6 +224,39 @@ var carve_volume_size: int = 3
 var _aim_outline: MeshInstance3D
 var _aim_outline_mesh: BoxMesh
 var _aim_outline_material: Material  # ShaderMaterial (default v2) or StandardMaterial3D (v1 fallback)
+
+# --- Destroy-preview surface highlight (2026-06-12) ---
+#
+# WHAT THIS IS (plain English): besides the wireframe BOX outline, the
+# designer wants the player to see the EXACT voxels that will vanish —
+# a faint glow painted on the real terrain surfaces inside the carve
+# box. So when you aim at a ridge and only the front 12 voxels are
+# solid (the rest is air), only those 12 light up — the preview equals
+# reality.
+#
+# How: every time the aimed box or preset changes, we read the carve
+# box's voxel types in one bulk copy (read-only — no VoxelEditManager
+# needed, that gateway is only for WRITES), then build a small ArrayMesh
+# of slightly-inflated quads for each solid voxel's faces that touch
+# air. One reused MeshInstance3D + one unshaded translucent material.
+var _destroy_highlight: MeshInstance3D
+var _destroy_highlight_mesh: ArrayMesh
+var _destroy_highlight_material: StandardMaterial3D
+
+# Throttle key — the box bounds + preset the highlight was last built
+# for. We only rebuild the (slightly expensive) per-voxel mesh when the
+# aimed box or the carve size actually changes, NOT every frame.
+var _highlight_built_vmin: Vector3i = Vector3i.ZERO
+var _highlight_built_vmax: Vector3i = Vector3i.ZERO
+var _highlight_has_build: bool = false
+
+# Highlight look — kept as consts so the designer can dial them. "Slightly
+# highlight" → a subtle white-yellow at ~12% alpha. INFLATE pushes the
+# quads just outside the real voxel faces so they don't z-fight the
+# terrain mesh.
+const HIGHLIGHT_COLOR: Color = Color(1.0, 0.97, 0.6)  # warm white-yellow
+const HIGHLIGHT_ALPHA: float = 0.12                    # ~12% — "slight"
+const HIGHLIGHT_INFLATE: float = 1.02                  # 2% outward puff
 
 var _held_log_counter: int = 0
 # Throttle counter for held-swing diagnostic prints â€” only print
@@ -213,15 +309,19 @@ func _ready() -> void:
 	if _camera_rig == null:
 		push_error("[EditToolHandler] CameraTarget/SpringArm3D not found under Player3D")
 
-	# Initial carve volume from the @export default. Player can change
-	# at runtime via scroll wheel; clamp to [1, swing_carve_voxels_per_side].
-	carve_volume_size = clampi(swing_carve_voxels_per_side, 1, swing_carve_voxels_per_side)
+	# Apply the starting preset (MEDIUM) → sets carve_volume_size. The
+	# player cycles presets at runtime via the scroll wheel.
+	_apply_carve_preset(carve_preset)
 
 	# Build the aim-outline mesh. top_level = true so global_position
 	# is world-space, not relative to the player's transform â€” the
 	# outline is anchored to where the player is aiming, not to
 	# Roland himself.
 	_build_aim_outline()
+
+	# Build the per-voxel destroy-preview highlight (the faint glow on the
+	# real voxels that will vanish). Separate node from the outline box.
+	_build_destroy_highlight()
 
 
 func _build_aim_outline() -> void:
@@ -275,6 +375,12 @@ func _update_aim_outline() -> void:
 	# states hide.
 	if _aim_outline == null:
 		return
+	# Hide the destroy-preview highlight up front. Every early-return
+	# below leaves it hidden; the success path at the end of this
+	# function turns it back on. One place to manage visibility instead
+	# of pasting the hide onto a dozen returns.
+	if _destroy_highlight != null:
+		_destroy_highlight.visible = false
 	# Respect the GraphicsManager debug toggle (Phase K bundle, 2026-05-27).
 	# Designer can hide the outline from the DebugOverlay GRAPHICS sub-view
 	# without touching any other effect; master toggle folds in too.
@@ -348,11 +454,227 @@ func _update_aim_outline() -> void:
 			"mesh_half_size", Vector3(half, half, half))
 	_aim_outline.visible = true
 
+	# Per-voxel destroy-preview highlight. Uses the SAME box (box_vmin /
+	# box_vmax) the outline and the real carve use, so the glow lands on
+	# exactly the voxels that will vanish — including the depth-bias
+	# anchoring. Throttled inside (rebuilds only when the box changes).
+	_update_destroy_highlight(box_vmin, box_vmax)
+
+
+func _build_destroy_highlight() -> void:
+	# One reusable MeshInstance3D + ArrayMesh for the surface highlight.
+	# Unshaded, additive-leaning translucent so it reads as a faint glow
+	# on top of the terrain. top_level so its world position is absolute
+	# (the mesh is built in WORLD space each rebuild, so the node itself
+	# stays at the origin). Hidden until the first valid aim.
+	_destroy_highlight_material = StandardMaterial3D.new()
+	_destroy_highlight_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_destroy_highlight_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Additive-ish blend so it brightens whatever's behind it ("glow")
+	# rather than flatly tinting — subtle at 12% alpha.
+	_destroy_highlight_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_destroy_highlight_material.albedo_color = Color(
+		HIGHLIGHT_COLOR.r, HIGHLIGHT_COLOR.g, HIGHLIGHT_COLOR.b, HIGHLIGHT_ALPHA)
+	_destroy_highlight_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_destroy_highlight_material.disable_receive_shadows = true
+	# Draw through occluding terrain so the player always sees the glow,
+	# matching the outline box's depth_test_disabled behaviour.
+	_destroy_highlight_material.no_depth_test = true
+
+	_destroy_highlight_mesh = ArrayMesh.new()
+
+	_destroy_highlight = MeshInstance3D.new()
+	_destroy_highlight.mesh = _destroy_highlight_mesh
+	_destroy_highlight.material_override = _destroy_highlight_material
+	_destroy_highlight.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_destroy_highlight.top_level = true
+	_destroy_highlight.global_position = Vector3.ZERO
+	_destroy_highlight.visible = false
+	add_child(_destroy_highlight)
+
+
+func _update_destroy_highlight(box_vmin: Vector3i, box_vmax: Vector3i) -> void:
+	# Build (or reuse) the faint glow on the REAL voxels inside the carve
+	# box that would be destroyed. Called from _update_aim_outline on the
+	# success path, so we already know a manual tool is equipped and the
+	# aim is valid.
+	#
+	# THROTTLE: only rebuild the mesh when the aimed box actually moved or
+	# resized. While the player holds a steady aim we just flip visibility
+	# on — the ArrayMesh rebuild (up to 125 voxels at Full) is cheap but
+	# there's no reason to redo it every single frame.
+	if _destroy_highlight == null:
+		return
+	if _highlight_has_build \
+			and _highlight_built_vmin == box_vmin \
+			and _highlight_built_vmax == box_vmax:
+		# Same box as last build — just show the existing mesh (only if
+		# it actually has geometry; an all-air box built no surfaces).
+		_destroy_highlight.visible = _destroy_highlight_mesh.get_surface_count() > 0
+		return
+
+	_highlight_built_vmin = box_vmin
+	_highlight_built_vmax = box_vmax
+	_highlight_has_build = true
+	_rebuild_destroy_highlight_mesh(box_vmin, box_vmax)
+
+
+func _rebuild_destroy_highlight_mesh(box_vmin: Vector3i, box_vmax: Vector3i) -> void:
+	# Read the carve box's CHANNEL_TYPE in one bulk copy (read-only — does
+	# NOT need VoxelEditManager; that gateway is only for WRITES), then emit
+	# slightly-inflated quads for every solid voxel face that is exposed to
+	# air. That set of faces IS "the surface that will be destroyed".
+	_destroy_highlight_mesh.clear_surfaces()
+	_destroy_highlight.visible = false
+
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+
+	# Bulk-read the box (plus a 1-voxel border so we can tell which faces
+	# touch air at the box edges). copy() fills a VoxelBuffer in one call.
+	var size: Vector3i = (box_vmax - box_vmin) + Vector3i.ONE
+	# Pad by 1 on every side → we need neighbour info for edge faces.
+	var pad_min: Vector3i = box_vmin - Vector3i.ONE
+	var pad_size: Vector3i = size + Vector3i(2, 2, 2)
+	var buf := VoxelBuffer.new()
+	buf.create(pad_size.x, pad_size.y, pad_size.z)
+	# VoxelTool.copy(dst_origin_in_world_voxels, buffer, channels_mask).
+	# CHANNEL_TYPE = bit (1 << CHANNEL_TYPE).
+	var mask: int = 1 << VoxelBuffer.CHANNEL_TYPE
+	tool.copy(pad_min, buf, mask)
+
+	# Helper: is the voxel at local buffer coords (lx,ly,lz) solid (non-air
+	# and non-water)? Coords are into the PADDED buffer (origin = pad_min).
+	# We read straight from the buffer (no SceneTree, fast).
+	var vsize: float = VoxelScale.VOXEL_SIZE_M
+
+	# Build the quad soup in WORLD space.
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+
+	# The six face directions + the two in-plane axes for each, so we can
+	# emit a correctly-wound quad. (dir, uaxis, vaxis).
+	var faces := [
+		[Vector3i(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1)],
+		[Vector3i(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)],
+		[Vector3i(0, 1, 0), Vector3(0, 0, 1), Vector3(1, 0, 0)],
+		[Vector3i(0, -1, 0), Vector3(1, 0, 0), Vector3(0, 0, 1)],
+		[Vector3i(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 1, 0)],
+		[Vector3i(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0)],
+	]
+
+	# Iterate the REAL carve box voxels (not the padding). Local index into
+	# the padded buffer is (world - pad_min); the carve box starts at +1.
+	for x in range(box_vmin.x, box_vmax.x + 1):
+		for y in range(box_vmin.y, box_vmax.y + 1):
+			for z in range(box_vmin.z, box_vmax.z + 1):
+				var lx: int = x - pad_min.x
+				var ly: int = y - pad_min.y
+				var lz: int = z - pad_min.z
+				if not _hl_is_solid(buf, lx, ly, lz):
+					continue
+				# This voxel will be destroyed. Emit a quad for each face
+				# that is exposed to air/water (i.e. its neighbour isn't
+				# solid) — that's the visible surface.
+				for face in faces:
+					var d: Vector3i = face[0]
+					if _hl_is_solid(buf, lx + d.x, ly + d.y, lz + d.z):
+						continue  # buried face — not a visible surface
+					_hl_emit_face(
+						verts, normals, indices,
+						Vector3(x, y, z), Vector3(d), face[1], face[2], vsize)
+
+	if verts.is_empty():
+		# Whole box is air (aim grazed off the surface). Nothing glows.
+		return
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	_destroy_highlight_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_destroy_highlight_mesh.surface_set_material(0, _destroy_highlight_material)
+	_destroy_highlight.global_position = Vector3.ZERO  # verts are world-space
+	_destroy_highlight.visible = true
+
+
+func _hl_is_solid(buf: VoxelBuffer, lx: int, ly: int, lz: int) -> bool:
+	# True if the voxel at padded-buffer local coords is solid terrain
+	# (non-air, non-water). Out-of-buffer reads count as air (treat the
+	# unknown beyond the padded region as empty so edge faces still show).
+	if lx < 0 or ly < 0 or lz < 0:
+		return false
+	if lx >= buf.get_size().x or ly >= buf.get_size().y or lz >= buf.get_size().z:
+		return false
+	var t: int = buf.get_voxel(lx, ly, lz, VoxelBuffer.CHANNEL_TYPE)
+	var mat_id: int = t & 0xFF
+	if mat_id == 0:
+		return false  # air
+	if WaterMaterial.is_water_type(mat_id):
+		return false  # water isn't mined by tools — don't preview it
+	return true
+
+
+func _hl_emit_face(
+	verts: PackedVector3Array, normals: PackedVector3Array, indices: PackedInt32Array,
+	voxel_index: Vector3, dir: Vector3, uaxis: Vector3, vaxis: Vector3, vsize: float,
+) -> void:
+	# Emit one slightly-inflated quad for a single voxel face, in WORLD
+	# space. The voxel spans [voxel_index, voxel_index+1] in voxel units;
+	# multiply by vsize (VOXEL_SIZE_M) to get metres. The face sits on the
+	# +dir side. We push it outward by (HIGHLIGHT_INFLATE-1)/2 of a voxel
+	# so the glow floats just proud of the terrain (no z-fighting) and
+	# reads as "the surface", per the design ask.
+	var inflate: float = (HIGHLIGHT_INFLATE - 1.0) * 0.5
+	# Voxel centre in voxel units, then the face centre offset along dir.
+	var centre: Vector3 = voxel_index + Vector3(0.5, 0.5, 0.5)
+	var face_centre: Vector3 = centre + dir * (0.5 + inflate)
+	# Half-quad extents along the two in-plane axes (inflated slightly).
+	var hu: Vector3 = uaxis * (0.5 * HIGHLIGHT_INFLATE)
+	var hv: Vector3 = vaxis * (0.5 * HIGHLIGHT_INFLATE)
+	# Four corners (in voxel units), converted to world metres via vsize.
+	var p0: Vector3 = (face_centre - hu - hv) * vsize
+	var p1: Vector3 = (face_centre + hu - hv) * vsize
+	var p2: Vector3 = (face_centre + hu + hv) * vsize
+	var p3: Vector3 = (face_centre - hu + hv) * vsize
+	var base: int = verts.size()
+	verts.push_back(p0); verts.push_back(p1); verts.push_back(p2); verts.push_back(p3)
+	normals.push_back(dir); normals.push_back(dir); normals.push_back(dir); normals.push_back(dir)
+	# Two triangles, wound so uaxis × vaxis faces along +dir (outward).
+	indices.push_back(base + 0); indices.push_back(base + 1); indices.push_back(base + 2)
+	indices.push_back(base + 0); indices.push_back(base + 2); indices.push_back(base + 3)
+
+
+func _apply_carve_preset(preset: int) -> void:
+	# Translate the chosen preset into the live carve_volume_size (voxels
+	# per side) that every consumer downstream reads. Small / Medium use
+	# fixed sizes; Full reads the swing_carve_voxels_per_side export so a
+	# future tool tier can raise it. We clamp Full to at least 1 defensively.
+	carve_preset = preset
+	match preset:
+		CarvePreset.SMALL:
+			carve_volume_size = PRESET_SMALL_SIZE
+		CarvePreset.MEDIUM:
+			carve_volume_size = PRESET_MEDIUM_SIZE
+		CarvePreset.FULL:
+			carve_volume_size = max(1, swing_carve_voxels_per_side)
+		_:
+			carve_volume_size = PRESET_MEDIUM_SIZE
+
 
 func _input(event: InputEvent) -> void:
-	# Scroll wheel cycles the carve volume size when a manual tool is
-	# equipped and the mouse is captured. accept_event() (via
-	# set_input_as_handled) prevents CameraRig from also seeing the
+	# Scroll wheel cycles the carve volume PRESET (Small → Medium → Full →
+	# Small …) when a manual tool is equipped and the mouse is captured.
+	# set_input_as_handled() prevents CameraRig from also seeing the
 	# scroll for camera-arm zoom.
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
@@ -368,12 +690,15 @@ func _input(event: InputEvent) -> void:
 	var equipped: String = InventoryManager.get_equipped("weapon")
 	if not (equipped in TOOL_SUB_SKILLS):
 		return
-	var max_size: int = max(1, swing_carve_voxels_per_side)
+	# Three presets, indices 0..2 — wrap with modulo so the wheel cycles
+	# endlessly in either direction. Wheel-up steps toward Full, wheel-down
+	# toward Small (matches the "scroll up = bigger" intuition).
+	var preset_count: int = PRESET_NAMES.size()
 	if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
-		carve_volume_size = clampi(carve_volume_size + 1, 1, max_size)
+		_apply_carve_preset((carve_preset + 1) % preset_count)
 		get_viewport().set_input_as_handled()
 	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		carve_volume_size = clampi(carve_volume_size - 1, 1, max_size)
+		_apply_carve_preset((carve_preset - 1 + preset_count) % preset_count)
 		get_viewport().set_input_as_handled()
 
 
@@ -673,14 +998,28 @@ func _tick_held_action(delta: float) -> void:
 		_clear_target()
 		return
 
-	# Mining-volume time scaling. The slowest per-voxel time is the
-	# swing time for the 2×2×2 (= 8 voxels) baseline. Scale
-	# proportionally to the actual voxel count being carved:
-	#   N=1 (1 vox)  → multiplier 1/8  = 0.125× (fast precision dig)
-	#   N=2 (8 vox)  → multiplier 8/8  = 1.0×   (baseline, unchanged)
-	#   N=3 (27 vox) → multiplier 27/8 ≈ 3.375× (slow bulk dig)
+	# Mining-volume time scaling (physical-volume anchored — see
+	# BASELINE_VOLUME_M3 above for the full story). The slowest
+	# per-voxel time is the swing time for ONE baseline-volume bite
+	# (a fixed ~0.037 m^3 hole). We scale proportionally to how many
+	# voxels the actual carve removes versus how many voxels that
+	# baseline hole is AT TODAY'S SCALE:
+	#
+	#   baseline_voxels = BASELINE_VOLUME_M3 × VOXELS_PER_METER^3
+	#                   = (8/216) × 10^3 ≈ 37 voxels at 10 vox/m
+	#                   = (8/216) × 6^3  =  8 voxels at the old 6 vox/m
+	#
+	#   multiplier = voxel_count / baseline_voxels
+	#
+	# So today's 5^3 = 125-voxel default swings at 125/37 ≈ 3.4× the
+	# per-voxel time — which is exactly how the old 3^3 = 27-voxel
+	# default FELT at 6 vox/m (27/8 ≈ 3.375×). A 1^3 Small carve is
+	# 1/37 ≈ 0.027× — a fast precision pick. Because the anchor is a
+	# physical size, this stays correct at any future grid scale.
 	var voxel_count: int = carve_volume_size * carve_volume_size * carve_volume_size
-	var volume_multiplier: float = float(voxel_count) / 8.0
+	var vpm: float = VoxelScale.VOXELS_PER_METER
+	var baseline_voxels: float = BASELINE_VOLUME_M3 * vpm * vpm * vpm
+	var volume_multiplier: float = float(voxel_count) / maxf(baseline_voxels, 0.0001)
 	var mine_secs: float = slowest_per_voxel * volume_multiplier
 
 	# DEV: instant-mine accelerator (DebugOverlay COMMANDS tab →
@@ -861,8 +1200,8 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	# Reads the same channel the generator writes (CHANNEL_TYPE).
 	# CRITICAL: VoxelTool.get_voxel takes voxel-grid coords (Vector3i),
 	# not world-space metres. We use VoxelEditManager.world_to_voxel
-	# which already does the conversion (multiplies by VOXELS_PER_METER
-	# = 6 and floors).
+	# which already does the conversion (multiplies by
+	# VoxelScale.VOXELS_PER_METER and floors).
 	if not get_node_or_null("/root/VoxelEditManager"):
 		return null
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
@@ -931,6 +1270,12 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 		else:
 			print("[EditToolHandler] This place doesn't yield to me.")
 		return
+
+	# The carve just turned these voxels to air. Invalidate the destroy-
+	# preview throttle so the highlight rebuilds next aim update against
+	# the NEW terrain (otherwise the glow would show stale, already-gone
+	# surfaces until the player moved their aim).
+	_highlight_has_build = false
 
 	# Dig SFX — one strike per accepted carve. Tool + material are both
 	# known here. No-op-safe: silent (one notice) until the vox_* .ogg/
