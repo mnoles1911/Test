@@ -1,77 +1,92 @@
 # Voxel Tree Studio
 
-In-browser sandbox for designing the **shape** of voxel trees for Mira-Thal,
-using Three.js. Drag sliders → the tree rebuilds live → spin it to judge the
-silhouette → **Export** a winner as JSON.
+A **fork of [ez-tree](https://github.com/dgreenheck/ez-tree)** (MIT) that renders
+realistic trees as **cubic voxels** and exports **game-ready assets** for the
+Godot/Zylann voxel game (Mira-Thal). Designers tune dials, pick a species,
+randomize, overlay a reference image, and export voxels.
 
-## How to use
+## Open it
 
-1. Open `index.html` in any modern browser (needs internet the first time — it
-   pulls Three.js from a CDN).
-2. Tune trunk / branches / canopy. Hit **🎲 Randomize** to jump seeds.
-3. When you like one, hit **⬇ Export JSON**. It downloads
-   `tree_seed<N>.json`.
+Open via the githack URL (ES modules need HTTP, not a local `file://` double-click):
 
-## Reference-image → design loop
+```
+https://raw.githack.com/mnoles1911/Test/claude/voxel-threejs-rendering-oc4akx/tools/voxel_tree_studio/index.html
+```
 
-The main workflow: design a tree to match a reference picture.
+Hard-refresh (Ctrl/Cmd+Shift+R) after each push.
 
-1. **Send Claude a reference image** of a voxel tree (in chat).
-2. Claude saves it under `references/` and adds a **preset** to `presets.js` —
-   its read of the trunk/canopy translated into slider values, plus the image
-   path and notes.
-3. In the studio, pick that preset from the **Design preset** dropdown. It
-   loads the tree **and** ghosts the reference over the 3D render. Use the
-   **Overlay opacity** slider to fade the reference in/out and judge the match.
-4. Tell Claude what's off ("canopy too round", "trunk too tall") — Claude
-   adjusts the numbers in `presets.js`, you reload and re-compare.
+## How it works
 
-You can also **drag any image onto the view** (or use *Load image…*) to set a
-reference on the fly without a preset.
+1. **ez-tree** grows a realistic recursive branch skeleton from the dials
+   (trunk flow, recursive forking, tropism/wind). Our fork captures the branch
+   centerlines + leaf anchors (see `vendor/ez-tree/VENDOR.md`).
+2. **`tree_voxelizer.js`** rasterizes the skeleton into cubes using a strictly
+   **6-connected** walk, and grows leaf clumps *outward from the wood*. This
+   guarantees the tree is one connected body — so it chops correctly in-engine
+   (mirrors `scripts/_dev/SeverFollowLib.gd`). A built-in connectivity check
+   reports any stragglers ("Highlight disconnected").
+3. Export writes the voxels as JSON for the (future) Godot importer.
 
-- `presets.js` — saved designs (reference-backed param sets). Editable by hand.
-- `references/` — the reference images themselves.
+## Controls
 
-## What you're looking at (and what you're NOT)
+- **Species preset** — ez-tree's built-in species (Oak/Pine/Ash/Aspen/Bush,
+  small/medium/large). Loads the dials, then tweak.
+- **Grouped dials** (Trunk / Branches / Forces / Foliage / Materials) — each
+  param has a **🔒 lock**; each group + the global button has a **🎲 randomize**
+  that only moves *unlocked* dials.
+- **Reference overlay** — drag an image onto the view (or *Image…*) and fade it
+  in with the opacity slider to match a silhouette.
+- **Show ez-tree smooth mesh** — overlays ez-tree's own mesh to compare the
+  voxel version against the smooth original.
+- **Export JSON** — rich palette by default; tick *Export as log/leaves only*
+  to collapse to the materials today's engine has.
 
-- **Judge here:** overall shape, height, canopy density, silhouette.
-- **Do NOT judge here:** final color or lighting. The browser colors are
-  stand-ins, not the real pixel-art atlas. Final look gets approved in the
-  Godot editor with the actual `blocky_library.tres` material.
-- Everything is opaque cubes — that's honest to how leaf voxels render
-  in-engine (alpha-scissor cutout, one cube per leaf cell).
+Scale is **10 cm/voxel**; sizes show in meters.
 
-## Scale: 10 cm per voxel
+## Materials (rich palette)
 
-All voxel assets are authored at **10 cm per voxel (10 voxels per meter)**. The
-studio labels trunk height, canopy radius, and overall size in **meters** so you
-design at real-world scale, and the scale is written into the export.
+| id | name | family |
+|----|------|--------|
+| 24 | bark | wood |
+| 25 | heartwood | wood |
+| 26 | deadwood | wood |
+| 27 | leaf_dark | leaves |
+| 28 | leaf_light | leaves |
 
-> ⚠ The live terrain engine is currently **6 vox/m (16.7 cm)**. Until that's
-> migrated to 10 cm, an exported tree will import ~67% larger than designed.
-> Tracked in `DESIGNER_TODO.md` → Section 8 ("Voxel scale migration").
+(16–23 are taken by native fluid models.) Until textures are authored these
+render with preview colors in the studio only; export can collapse them to
+`10`=log / `11`=leaves. See `DESIGNER_TODO.md` for the texture/registry steps.
 
-## Export format (the bridge to Godot)
+## Export format
 
 ```json
 {
   "format": "mira-thal-voxel-tree",
   "version": 1,
-  "voxel_size_m": 0.1,          // 10 cm per voxel
-  "size":   [w, h, d],          // bounding box in voxels
-  "size_m": [w, h, d],          // bounding box in meters
-  "params": { ...the slider values... },
-  "voxels": [ { "x": 0, "y": 0, "z": 0, "m": 10 }, ... ]
+  "voxel_size_m": 0.1,
+  "species": "Oak Medium",
+  "palette": { "24": "bark", "25": "heartwood", ... },
+  "size":   [w, h, d],
+  "size_m": [w, h, d],
+  "params": { ...the dials... },
+  "voxels": [ { "x":0, "y":0, "z":0, "m":24 }, ... ]
 }
 ```
 
-- `m` is a **VoxelMaterialRegistry id**: `10` = log, `11` = leaves — the same
-  ids `tools/build_blocky_library.gd` uses.
-- Trunk base sits at the origin `(0,0,0)`, `+y` is up.
+Trunk base at the origin, `+y` up.
 
-## Next step (not built yet)
+## Files
 
-A small Godot importer that reads one of these JSON files and stamps the
-voxels into the world via `VoxelEditManager` (or bakes a `VoxelBlockyModel`).
-That's the "deploy into the game" half — kept separate so shape iteration and
-engine integration stay decoupled.
+- `index.html` — UI + Three.js rendering + export.
+- `tree_voxelizer.js` — pure 6-connected voxelizer + connectivity check (the
+  part a Godot importer mirrors).
+- `vendor/ez-tree/` — our MIT fork of ez-tree's `src/lib` (see `VENDOR.md`).
+- `references/` — reference images for the overlay.
+
+## Not yet built (next)
+
+- **Fit to reference** — auto-tune dials from a reference image (heuristic).
+- **Web Worker** — offload voxelization for very large trees.
+- **Space colonization** growth mode.
+- The **Godot importer** (JSON → `VoxelEditManager.queue_set_voxels_bulk`) +
+  real bark/leaf textures wired into `tools/build_blocky_library.gd`.

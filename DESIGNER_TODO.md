@@ -803,6 +803,33 @@ Open questions that need an answer before their dependent systems can be built.
   movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
   Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
 
+- [ ] **Tree voxel materials — author textures + register ids 24–28**
+  The Voxel Tree Studio (`tools/voxel_tree_studio/`) emits a rich wood/leaf
+  palette. The ids are chosen to avoid the native fluid models at 16–23:
+
+  | id | name | family | render flags |
+  |----|------|--------|--------------|
+  | 24 | bark | wood | culling, opaque |
+  | 25 | heartwood | wood | culling, opaque |
+  | 26 | deadwood | wood | culling, opaque |
+  | 27 | leaf_dark | leaves | non-culling, alpha-scissor |
+  | 28 | leaf_light | leaves | non-culling, alpha-scissor |
+
+  To light these up in-engine: author 16px pixel-art tiles (see
+  `tools/AI_TEXTURE_PROMPTS.md`), add them to `tools/build_texture_atlas.py`,
+  create `VoxelMaterial` `.tres` resources, and add rows to `MATERIAL_TILES`
+  (+ `NON_CULLING_MATERIALS`/`TRANSPARENT_MATERIALS` for the leaf ids) in
+  `tools/build_blocky_library.gd`. Until then, export trees with the
+  "log/leaves only" toggle so they use existing ids 10/11.
+
+- [ ] **Raise the tree-felling sever caps for large trees (accurate physics)**
+  `VoxelGravityManager` caps a single falling cluster at `max_cluster_voxels`
+  (4096) and `sever_follow_max_height_m` (12 m). A realistic 10–15 m tree at
+  10 cm/voxel is far bigger than 4096 voxels, so it currently falls in slices
+  rather than as one body. Per design direction (prioritize accurate physics),
+  raise these caps (or make them scale-aware) so whole trees topple as one
+  connected cluster. Deliberate change — re-test sever performance after.
+
 - [ ] **Recipe placement map for Act I**
   Decide exactly which recipes Roland can find/learn in Act I. The Archive
   restricted section, Henrietta's quarters, and Old Mira the herbalist are the
