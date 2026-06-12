@@ -93,6 +93,29 @@ var current_tier: int = DEFAULT_TIER
 # layers: the designer flips it in the DebugOverlay GRAPHICS view,
 # eyeballs a shallow pond at noon, then decides.
 @export var caustics_enabled: bool = false
+# D4 (10cm micro-detail pass, 2026-06-12) — flowing-water foam: a single
+# pooled particle node that WaterFlowManager repositions across the active
+# MOVING flow sites near the player. Default OFF per the same default-OFF
+# precedent for new visual layers (rain / light_shafts / caustics): the
+# designer flips it on his GPU in the DebugOverlay GRAPHICS view, eyeballs a
+# river at noon, then decides. WaterFlowManager checks this BEFORE doing any
+# foam work, so it costs nothing headless or while off.
+@export var water_foam_enabled: bool = false
+# Far-grass impostor layer (FarGrassManager, 2026-06-12). GPU-instanced,
+# non-interactive grass that fills the LOD1/LOD2 rings (~13..51 m) so the
+# REAL LOD0 voxel grass no longer ends in a visible "bald ring" at the
+# ~12.8 m LOD0 boundary.
+#
+# DEFAULT ON — deliberately breaking the repo's "new visual layers default
+# OFF" rule (rain_visuals / light_shafts / caustics / water_foam all default
+# OFF). The rationale: those layers are NEW effects whose look is unproven.
+# This layer is different — it FIXES a seam in an ALREADY-SHIPPED, default-ON
+# feature (R4 destructible grass). Shipping it OFF would mean the bald ring
+# stays visible by default, i.e. the bug it fixes is the default state. The
+# designer explicitly approved this layer ON. Flipping it OFF is instant
+# (FarGrassManager frees + stops rebuilding its chunks) — useful for A/B'ing
+# the seam fix, which is exactly why the toggle exists.
+@export var far_grass_enabled: bool = true
 
 # Signal fired whenever any effect toggle changes so subscribers can
 # react without polling. DebugOverlay flips → GraphicsManager emits →
@@ -129,6 +152,11 @@ func is_effect_enabled(effect_name: String) -> bool:
 	# debug A/B switch, not an FX layer. Check it before the master gate.
 	if effect_name == "rain_3d_fallback":
 		return rain_3d_fallback_enabled
+	# far_grass is a GEOMETRY layer (the impostor lawn that continues the
+	# real voxel grass), NOT a post-process FX — the "all post FX off"
+	# master switch must not blank the lawn. Check it before the master gate.
+	if effect_name == "far_grass":
+		return far_grass_enabled
 	if not master_post_processing_enabled:
 		return false
 	match effect_name:
@@ -144,6 +172,10 @@ func is_effect_enabled(effect_name: String) -> bool:
 			return rain_visuals_enabled
 		"caustics":
 			return caustics_enabled
+		"water_foam":
+			return water_foam_enabled
+		# NOTE: "far_grass" is handled ABOVE the master gate (it's a geometry
+		# layer, not a post-FX) — see the early-return at the top.
 		_:
 			push_warning("[GraphicsManager] is_effect_enabled: unknown effect '%s'." % effect_name)
 			return false
@@ -169,6 +201,10 @@ func set_effect_enabled(effect_name: String, enabled: bool) -> void:
 		"caustics":
 			caustics_enabled = enabled
 			_apply_caustics_global()
+		"water_foam":
+			water_foam_enabled = enabled
+		"far_grass":
+			far_grass_enabled = enabled
 		_:
 			push_warning("[GraphicsManager] set_effect_enabled: unknown effect '%s'." % effect_name)
 			return
@@ -188,7 +224,13 @@ func reset_all_effects_enabled() -> void:
 	# turned off as needing multi-session iteration.
 	# light_shafts_enabled stays at current value
 	# rain_visuals_enabled stays at current value
+	# caustics_enabled / water_foam_enabled stay at current value (both
+	# default OFF per the new-visual-layer rule — same reasoning as above)
 	rainbow_enabled = true
+	# far_grass_enabled IS reset to ON — unlike the other new layers it
+	# defaults ON (it fixes the bald-ring seam in the shipped grass), so
+	# "reset all to ON" correctly restores the seam fix.
+	far_grass_enabled = true
 	# rain_3d_fallback intentionally NOT reset — debug A/B switch.
 	_save_tier()
 	effect_toggles_changed.emit()
@@ -393,6 +435,8 @@ func _save_tier() -> void:
 		"rainbow_enabled": rainbow_enabled,
 		"rain_3d_fallback_enabled": rain_3d_fallback_enabled,
 		"rain_visuals_enabled": rain_visuals_enabled,
+		"water_foam_enabled": water_foam_enabled,
+		"far_grass_enabled": far_grass_enabled,
 	}, "\t"))
 	f.close()
 
@@ -424,5 +468,11 @@ func _load_tier() -> void:
 		rainbow_enabled = bool(d.get("rainbow_enabled", true))
 		rain_3d_fallback_enabled = bool(d.get("rain_3d_fallback_enabled", false))
 		rain_visuals_enabled = bool(d.get("rain_visuals_enabled", false))
+		# D4 water foam — default OFF (new visual layer); designer flips it.
+		water_foam_enabled = bool(d.get("water_foam_enabled", false))
+		# Far grass — default ON (fixes the bald-ring seam in shipped grass).
+		# Missing key in an older user://graphics.json reads as ON, so the
+		# seam fix is on by default for existing players too.
+		far_grass_enabled = bool(d.get("far_grass_enabled", true))
 	else:
 		current_tier = DEFAULT_TIER
