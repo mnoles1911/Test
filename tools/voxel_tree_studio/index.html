@@ -47,6 +47,8 @@
   input[type=range] { width:100%; accent-color:var(--accent); }
   select { width:100%; background:#11151a; color:var(--ink); border:1px solid #000; padding:5px; font-family:inherit; font-size:11px; }
   .btns { display:flex; gap:8px; margin:8px 0; }
+  .quick { display:flex; flex-wrap:wrap; gap:6px; }
+  .quick button { flex:1 1 30%; padding:8px 4px; }
   button { flex:1; background:#2a3138; color:var(--ink); border:1px solid #000; padding:9px 6px; font-family:inherit; font-size:11px; cursor:pointer; border-radius:4px; }
   button:hover { background:#353d46; }
   button.primary { background:var(--accent); color:#14210a; font-weight:bold; }
@@ -105,6 +107,22 @@
       <button id="fitRef" class="primary" style="width:100%">✨ Fit dials with Claude vision</button>
       <p id="fitNote" class="sub" style="margin:6px 0 0"></p>
       <input type="file" id="refFile" accept="image/*" style="display:none">
+    </details>
+
+    <details open>
+      <summary><span>Quick adjust</span></summary>
+      <div class="quick">
+        <button data-quick="bigger">📈 Bigger</button>
+        <button data-quick="smaller">📉 Smaller</button>
+        <button data-quick="fuller">🌿 Fuller</button>
+        <button data-quick="sparser">🍂 Sparser</button>
+        <button data-quick="thickwood">🪵 Thicker wood</button>
+        <button data-quick="thinwood">🌱 Thinner wood</button>
+        <button data-quick="morebranch">🌲 More branches</button>
+        <button data-quick="fewerbranch">🪾 Fewer branches</button>
+        <button data-quick="gnarlier">🌬 Gnarlier</button>
+        <button data-quick="newshape">🎲 New shape</button>
+      </div>
     </details>
 
     <div id="groups"></div>
@@ -553,6 +571,22 @@ function randomizeOne(p) {
 function randomizeGroup(g) { g.params.forEach(randomizeOne); scheduleRegen(); }
 function randomizeAll() { SCHEMA.forEach(g => g.params.forEach(randomizeOne)); scheduleRegen(); }
 document.getElementById('randomize').addEventListener('click', randomizeAll);
+
+// Quick-adjust "easy buttons" — nudge groups of dials (respecting locks).
+function nudge(id, d) { if (!locks[id] && el[id]) setVal(id, +el[id].value + d); }
+const TREE_QUICK = {
+  bigger:      () => { nudge('heightM',2.5); nudge('trunkRadius',0.3); nudge('len1',2); nudge('len2',1); nudge('clusterSize',1); },
+  smaller:     () => { nudge('heightM',-2.5); nudge('trunkRadius',-0.3); nudge('len1',-2); nudge('len2',-1); nudge('clusterSize',-1); },
+  fuller:      () => { nudge('leafDensity',0.1); nudge('leafCount',1); nudge('clusterSize',1); nudge('lightGap',-0.08); nudge('children1',1); },
+  sparser:     () => { nudge('leafDensity',-0.1); nudge('leafCount',-1); nudge('clusterSize',-1); nudge('lightGap',0.08); nudge('children1',-1); },
+  thickwood:   () => { nudge('trunkRadius',0.4); nudge('branchRadiusRatio',0.05); nudge('barkThickness',0.5); },
+  thinwood:    () => { nudge('trunkRadius',-0.4); nudge('branchRadiusRatio',-0.05); nudge('barkThickness',-0.5); },
+  morebranch:  () => { nudge('children0',1); nudge('children1',1); nudge('children2',1); nudge('sections',1); },
+  fewerbranch: () => { nudge('children0',-1); nudge('children1',-1); nudge('children2',-1); },
+  gnarlier:    () => { nudge('gnarliness',0.05); nudge('twist',0.04); nudge('lean',0.1); },
+  newshape:    () => { if (!locks.seed) el.seed.value = 1 + Math.floor(Math.random()*9999); },
+};
+document.querySelectorAll('[data-quick]').forEach(b => b.addEventListener('click', () => { TREE_QUICK[b.getAttribute('data-quick')](); scheduleRegen(); }));
 document.getElementById('showMesh').addEventListener('change', regenerate);
 document.getElementById('showDisc').addEventListener('change', regenerate);
 
