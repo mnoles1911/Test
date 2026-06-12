@@ -48,6 +48,8 @@ Runs Godot's **`_console.exe`** (plain win64 exe is GUI-subsystem and won't pipe
 | `voxel_tree_studio/` (forked ez-tree, browser) | Realistic trees → **cubic voxels** → game-ready JSON. ez-tree skeleton (`vendor/ez-tree/`, MIT fork w/ skeleton hook) → `tree_voxelizer.js` (6-connected rasterizer + adjacency foliage + connectivity check) → InstancedMesh preview + export. Rich palette ids 24–28 (collapse to 10/11 optional). Plant types: tree/bush/fern/grass/groundcover/vine + space-colonization mode. Open via githack URL. |
 | `voxel_rock_studio/` (browser) | SDF voxel **rocks**. `rock_voxelizer.js` (superquadric + FBM + Worley faceting + scrape planes + flat bottom; materials by noise/strata; moss on top) → worker → InstancedMesh + export. Existing stone ids 1/7/9/12/14/15 + moss 32. **Claude vision** dial-fit (`claude_vision.js`, browser Messages API call, strict tool use, `claude-opus-4-8`). Importer (`scripts/_dev/VoxelTreeImporter.gd`) accepts tree + rock formats. |
 | `voxel_studio_common/` | Shared: `noise.js` (simplex/Worley/FBM), `voxel_core.js` (packing, 6-connected connectivity, normalize). |
+| `blender/import_voxel_json.py` | Import a studio JSON export into Blender as a welded surface mesh (face-culled, palette materials). Add-on + Scripting + headless CLI (`--render`/`--turntable`/`--save`). Pure `build_surface()` is bpy-free + unit-tested. Studio +Y up → Blender +Z up. |
+| `blender/run.sh` | Headless Blender runner (`blender --background --python …`) — also the way to drive Blender for ad-hoc modelling tasks. Needs Blender installed. |
 
 ## When adding a tool
 
