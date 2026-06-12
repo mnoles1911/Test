@@ -287,3 +287,48 @@ Both actions can share keys with jump/crouch because Player3D checks swim state 
 | Greatwood forest pool | ~2000m x, ~1800m z | Deep, still; used in Aelorin lore scenes (Act II) |
 
 Deeper ocean (Shroud Sea, Caer Brannoch approach) is handled as a transition boundary — no open-water swimming across it. The player boards a vessel for the Brotherhood voyage arc.
+
+
+## W5 — partial-level water queries (2026-06-10, finite-water track)
+
+`is_position_in_water` is now HEIGHT-AWARE: a level-N cell (finite
+water, DATA5 bits 0-3) only counts as wet up to N/8 of the voxel's
+height (`WaterByteCodec.is_inside_water_column`, gated in the `codec`
+selector). Consequences, all intentional:
+
+- Wading through a shallow player-made pool (level <= 3) never
+  triggers swim mode — Roland's pivot/chest/head probes simply read
+  dry. Level-8 / ocean / legacy water behaves exactly as before.
+- The camera no longer gets the underwater filter while standing over
+  a shallow pool. **Designer acceptance:** wade vs swim feel.
+- `get_water_level_at` returns REAL levels (1-8) for finite water
+  instead of always 8.
+- WaterDiag F4 shows `units N/8 (src|finite, dir D)` + the live ledger
+  conservation audit; F5 adds a "body total" BFS — the in-game eyeball
+  for "did any water leak" (compare with [FlowDiag-finite] units).
+
+Design + ledger architecture: `WATER_FINITE_SIM_PLAN.md`.
+
+## W7 — real currents (2026-06-10)
+
+`get_flow_velocity_at` priority: (1) DATA5 DIR bits — written live by
+the finite sim while water moves (fades to STILL on settle) and
+stamped permanently by designer `RiverFlowVolume` nodes; speed =
+FLOW_MAX_SPEED x level/8. (2) Fallback: level gradient across
+water->water pairs ONLY — the old solid/air-as-level-0 behaviour that
+pushed swimmers into shore walls is gone. Oceans still push nothing.
+
+## PR 7 — buoyancy (2026-06-10, voxel-physics track)
+
+VoxelMaterial gains `density_relative_to_water` (< 1 floats: log 0.7,
+leaves 0.4, snow 0.9; > 1 sinks: sand 1.6, dirt 1.8, stone 2.5
+default). Falling clusters average it across constituents; in water
+(height-aware is_position_in_water poll, 10 Hz) effective gravity =
+base x (1 - 1/density) — negative for floaters — with linear_damp 2.0
+for drag. A floating cluster that stays vertically still for 3 s
+re-deposits in place (a felled log becomes a raft of log voxels at the
+waterline); while floating, the generic settle timeout is held so a
+log can drift on a RiverFlowVolume current. VoxelDrops use the same
+rule (a raw_log pickup bobs; iron ore sinks). A log in a level-2
+puddle GROUNDS rather than floats — correct, the puddle is only 1/4
+voxel deep.

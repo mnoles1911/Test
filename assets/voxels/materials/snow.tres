@@ -19,3 +19,4 @@ gravity_scale = 0.7
 damage_multiplier = 0.3
 is_cliff_face_material = false
 min_altitude_voxels = 12000
+density_relative_to_water = 0.9

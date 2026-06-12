@@ -279,18 +279,79 @@ func _process(_delta: float) -> void:
 		_env.volumetric_fog_density = base_density * density_mult
 
 
+# --- Per-biome fog (water-polish PR 4) -------------------------------
+# Scene-default anchors, snapshotted once on first use so leaving a
+# biome zone restores exactly what the designer authored on this node.
+var _default_anchors: Dictionary = {}
+
+
+func _snapshot_default_anchors() -> void:
+	if not _default_anchors.is_empty():
+		return
+	_default_anchors = {
+		"density_noon": underwater_fog_density_noon,
+		"density_night": underwater_fog_density_night,
+		"albedo_noon": underwater_fog_albedo_noon,
+		"albedo_night": underwater_fog_albedo_night,
+		"emission_noon": underwater_fog_emission_noon,
+		"emission_night": underwater_fog_emission_night,
+		"tint": tint_color,
+	}
+
+
+func _apply_biome_zone(player: Node3D) -> void:
+	_snapshot_default_anchors()
+	var zone: Node3D = null
+	if player != null:
+		for z in get_tree().get_nodes_in_group("water_biome_zone"):
+			if z is Node3D and z.has_method("contains") and z.contains(player.global_position):
+				zone = z
+				break
+	if zone != null:
+		underwater_fog_density_noon = zone.fog_density_noon
+		underwater_fog_density_night = zone.fog_density_night
+		underwater_fog_albedo_noon = zone.fog_albedo_noon
+		underwater_fog_albedo_night = zone.fog_albedo_night
+		underwater_fog_emission_noon = zone.fog_emission_noon
+		underwater_fog_emission_night = zone.fog_emission_night
+		tint_color = zone.tint_color
+		print("[UnderwaterFilter] biome zone '%s' active." % zone.biome_name)
+	else:
+		underwater_fog_density_noon = _default_anchors["density_noon"]
+		underwater_fog_density_night = _default_anchors["density_night"]
+		underwater_fog_albedo_noon = _default_anchors["albedo_noon"]
+		underwater_fog_albedo_night = _default_anchors["albedo_night"]
+		underwater_fog_emission_noon = _default_anchors["emission_noon"]
+		underwater_fog_emission_night = _default_anchors["emission_night"]
+		tint_color = _default_anchors["tint"]
+	# The tint rect reads tint_color at submerge — push it now.
+	if _rect != null:
+		_rect.color = tint_color
+
+
 func set_active(submerged: bool) -> void:
 	# Idempotent — Player3D._update_water_state calls every frame; we
 	# only act when the state actually flips.
 	if _submerged == submerged:
 		return
 	_submerged = submerged
+	# Water-polish PR 5: muffle SFX/Ambient while the head is under.
+	# Both directions run through here (incl. death/teleport), so the
+	# muffle can never stick on.
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio != null and audio.has_method("set_underwater_muffle"):
+		audio.set_underwater_muffle(submerged)
 	# Snapshot the player's Y at submerge as the "water surface" reference
 	# for depth-gradient calculations in _process. Cheap, single read per
 	# submersion. Approximate — refined each new submersion if the player
 	# enters a different water body at a different Y.
 	if submerged:
 		var player := get_tree().get_first_node_in_group("player")
+		# Water-polish PR 4: per-biome fog. Resolve the first
+		# WaterBiomeZone containing the player and copy its anchors;
+		# no zone -> restore the scene defaults. Snap, not tween (you
+		# can't see both sides of the cut while underwater).
+		_apply_biome_zone(player as Node3D)
 		if player != null and player is Node3D:
 			_submerge_y_snapshot = (player as Node3D).global_position.y + 0.85
 			# +0.85 ≈ HEAD_OFFSET so the snapshot is the actual surface

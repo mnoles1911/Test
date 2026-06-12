@@ -95,10 +95,13 @@ var _mesh_inst: MeshInstance3D
 # from the configured colour + count.
 # ============================================================
 
-func setup(p_item_id: String, p_color: Color, p_count: int) -> void:
+func setup(p_item_id: String, p_color: Color, p_count: int, p_density: float = 2.5) -> void:
 	item_id = p_item_id
 	_color = p_color
 	item_count = maxi(p_count, 1)
+	# Buoyancy (PR 7): density relative to water of the source material.
+	# < 1 -> the drop bobs on the surface instead of sinking.
+	_density = maxf(0.1, p_density)
 
 
 # ============================================================
@@ -210,10 +213,31 @@ func _apply_initial_impulse() -> void:
 # Per-frame: pickup proximity + hover animation
 # ============================================================
 
+var _density: float = 2.5
+var _in_water: bool = false
+var _water_poll_frame: int = 0
+
+
 func _physics_process(delta: float) -> void:
 	if _picked_up:
 		return
 	_spawn_time += delta
+
+	# Buoyancy (PR 7) — same rule as FallingVoxelCluster, same 10 Hz
+	# poll. A raw_log drop bobs at the waterline; iron ore sinks.
+	_water_poll_frame += 1
+	if _water_poll_frame >= 6:
+		_water_poll_frame = 0
+		var wfm := get_node_or_null("/root/WaterFlowManager")
+		var now_in_water: bool = wfm != null and wfm.is_position_in_water(global_position)
+		if now_in_water != _in_water:
+			_in_water = now_in_water
+			if _in_water:
+				gravity_scale = 1.0 * (1.0 - 1.0 / _density)
+				linear_damp = 3.0
+			else:
+				gravity_scale = 1.0
+				linear_damp = 1.5
 
 	# Detect settle: horizontal speed has dropped below threshold
 	# AND we're not flying upward. Once settled, we capture the

@@ -87,6 +87,12 @@ var current_tier: int = DEFAULT_TIER
 # until a future iteration session enables it. Audio crossfade rework
 # stays live — it's an objective improvement over the linear-dB tween.
 @export var rain_visuals_enabled: bool = false
+# Water-polish PR 3 (2026-06-10) — lakebed caustics in
+# terrain_voxel.gdshader, driven by the water_caustics_strength shader
+# global. Default OFF per the default-OFF precedent for new visual
+# layers: the designer flips it in the DebugOverlay GRAPHICS view,
+# eyeballs a shallow pond at noon, then decides.
+@export var caustics_enabled: bool = false
 
 # Signal fired whenever any effect toggle changes so subscribers can
 # react without polling. DebugOverlay flips → GraphicsManager emits →
@@ -108,6 +114,16 @@ func _ready() -> void:
 ## True if `effect` should currently render. Folds in the master switch
 ## so callers don't have to AND-with master themselves. `effect` is the
 ## name of one of the @export bools above (without the `_enabled` suffix).
+func _apply_caustics_global() -> void:
+	# Push the toggle into the water_caustics_strength shader global.
+	# Runtime _set ONLY — the global is DECLARED in project.godot
+	# [shader_globals] (never call global_shader_parameter_add/_get,
+	# they're editor-only; see PATTERNS_AND_GOTCHAS).
+	RenderingServer.global_shader_parameter_set(
+		"water_caustics_strength",
+		0.6 if (caustics_enabled and master_post_processing_enabled) else 0.0)
+
+
 func is_effect_enabled(effect_name: String) -> bool:
 	# rain_3d_fallback is independent of master_post_processing — it is a
 	# debug A/B switch, not an FX layer. Check it before the master gate.
@@ -126,6 +142,8 @@ func is_effect_enabled(effect_name: String) -> bool:
 			return rainbow_enabled
 		"rain_visuals":
 			return rain_visuals_enabled
+		"caustics":
+			return caustics_enabled
 		_:
 			push_warning("[GraphicsManager] is_effect_enabled: unknown effect '%s'." % effect_name)
 			return false
@@ -148,6 +166,9 @@ func set_effect_enabled(effect_name: String, enabled: bool) -> void:
 			rain_3d_fallback_enabled = enabled
 		"rain_visuals":
 			rain_visuals_enabled = enabled
+		"caustics":
+			caustics_enabled = enabled
+			_apply_caustics_global()
 		_:
 			push_warning("[GraphicsManager] set_effect_enabled: unknown effect '%s'." % effect_name)
 			return
@@ -368,6 +389,7 @@ func _save_tier() -> void:
 		"selection_outline_enabled": selection_outline_enabled,
 		"lens_flare_enabled": lens_flare_enabled,
 		"light_shafts_enabled": light_shafts_enabled,
+		"caustics_enabled": caustics_enabled,
 		"rainbow_enabled": rainbow_enabled,
 		"rain_3d_fallback_enabled": rain_3d_fallback_enabled,
 		"rain_visuals_enabled": rain_visuals_enabled,
@@ -397,6 +419,8 @@ func _load_tier() -> void:
 		# (designer-deferred). Missing key in older user://graphics.json
 		# reads as the new default.
 		light_shafts_enabled = bool(d.get("light_shafts_enabled", false))
+		caustics_enabled = bool(d.get("caustics_enabled", false))
+		_apply_caustics_global()
 		rainbow_enabled = bool(d.get("rainbow_enabled", true))
 		rain_3d_fallback_enabled = bool(d.get("rain_3d_fallback_enabled", false))
 		rain_visuals_enabled = bool(d.get("rain_visuals_enabled", false))

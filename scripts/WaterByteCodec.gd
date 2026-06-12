@@ -115,6 +115,23 @@ static func is_water(byte: int) -> bool:
 	return (byte & LEVEL_MASK) > 0
 
 
+static func is_inside_water_column(byte: int, frac_y: float) -> bool:
+	# Height-aware point test (W5, finite-water track): is a point at
+	# fractional height `frac_y` inside THIS voxel (0.0 = the voxel's
+	# bottom face, 1.0 = its top face) actually underwater, given the
+	# voxel's water byte?
+	#
+	# A level-N cell is water only up to N/8 of the voxel's height —
+	# so wading through a level-2 puddle does NOT count as swimming,
+	# and the camera doesn't get the underwater filter from standing
+	# over a shallow pool. Level 8 (and legacy/source bytes) fill the
+	# whole voxel, which preserves the old behaviour for oceans.
+	var lvl: int = byte & LEVEL_MASK
+	if lvl <= 0:
+		return false
+	return frac_y <= float(lvl) / float(MAX_LEVEL)
+
+
 # ============================================================
 # Field mutators — return a NEW byte with one field replaced, the
 # others preserved. Phase 1+ flow sim uses these to retarget a cell's

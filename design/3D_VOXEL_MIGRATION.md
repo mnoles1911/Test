@@ -26,3 +26,17 @@ Voxel scale is locked at **6 voxels/m** (~16.7 cm/block). Playable Mira is 12 km
 - **Water:** `WaterFlowManager` (host-only 4 Hz sim) + `WaterChunkMesher` (C++ since PR #214, transparent surface meshes) reading `CHANNEL_DATA5` water bytes via `WaterByteCodec`.
 
 Full details in `CLAUDE.md` → "Voxel + world systems" and `design/TECH_STACK.md` → "Voxel Terrain".
+
+
+## Tree-sever follow-up (PR 6, 2026-06-10)
+
+Severed clusters that touch the gravity analysis bubble's roof now
+FOLLOW the connected solids upward (footprint+2 box,
+`sever_follow_max_height_m` = 12 m cap) so a chopped tree detaches as
+ONE falling cluster instead of bubble-height salami slices. Pure BFS in
+`scripts/_dev/SeverFollowLib.gd` (headless `sever` selector).
+Conservative aborts keep the old behaviour: extension touches the box
+side walls (possible anchored arch), exceeds the height cap, or blows
+`max_cluster_voxels`. Water never rides a cluster. Known pre-existing
+mismatch (recorded, unchanged): leaves with `fall_behavior = NEVER`
+still cluster via the partition comment at VoxelGravityManager.gd:533.

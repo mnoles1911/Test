@@ -254,6 +254,13 @@ func _sample() -> Dictionary:
 		d["query_us"] = _query_us_ema
 		d["submerged"] = wfm.is_position_in_water(pos + Vector3(0, HEAD_OFFSET_M, 0))
 		d["level"] = wfm.get_water_level_at(pos)
+		# W5 finite-water readout: raw byte fields + the ledger audit.
+		var byte: int = wfm._read_water_byte_at(pos)
+		d["w_source"] = WaterByteCodec.is_source(byte) if byte != 0 else false
+		d["w_dir"] = WaterByteCodec.dir_of(byte) if byte != 0 else 0
+		if "_finite" in wfm:
+			d["finite_stats"] = wfm._finite.stats()
+			d["finite_conserve"] = int(wfm._finite.conservation_delta())
 		if wfm.has_method("get_sea_level_voxel_y"):
 			d["sea_y_world"] = float(wfm.get_sea_level_voxel_y()) / VOXELS_PER_METER
 		if wfm.has_method("get_horizon_plane_y"):
@@ -405,7 +412,52 @@ func _dump_inspector() -> void:
 				("--" if top == -2147483648 else str(top)), cnt, delta_txt]
 		_emit(lines, "  grid dz=%+d  %s" % [dz, row])
 	_emit(lines, "  READ: equal 'top=' across the grid = coplanar (good); nonzero Δ at a block step = LOD-seam mismatch.")
+	# W5 finite-water audit: walk the connected water body under the
+	# inspect point and total its units — the in-game eyeball check for
+	# "did any water leak". Compare against [FlowDiag-finite] units for
+	# an isolated pool. Bounded BFS (cap 4096 cells), one-shot only.
+	if center_top != -2147483648:
+		var body := _body_total(tool, Vector3i(gx, center_top, gz))
+		_emit(lines, "  body total: %d units across %d finite cells (+%d source cells)%s" % [
+			int(body["units"]), int(body["cells"]), int(body["sources"]),
+			"  [CAPPED at 4096 — body is bigger]" if bool(body["capped"]) else ""])
 	_show_inspect(lines)
+
+
+func _body_total(tool: VoxelTool, start: Vector3i) -> Dictionary:
+	# 6-connected flood over water cells starting at `start`, summing
+	# DATA5 levels. Legacy water (TYPE water, DATA5 == 0) and source-bit
+	# cells are counted separately — they're infinite, not part of the
+	# conserved total.
+	var seen: Dictionary = {}
+	var queue: Array[Vector3i] = [start]
+	seen[start] = true
+	var units: int = 0
+	var cells: int = 0
+	var sources: int = 0
+	var capped: bool = false
+	while not queue.is_empty():
+		if seen.size() >= 4096:
+			capped = true
+			break
+		var c: Vector3i = queue.pop_back()
+		tool.channel = VoxelBuffer.CHANNEL_TYPE
+		if not WaterMaterial.is_water_type(tool.get_voxel(c)):
+			continue
+		tool.channel = VoxelBuffer.CHANNEL_DATA5
+		var d5: int = tool.get_voxel(c)
+		if d5 == 0 or WaterByteCodec.is_source(d5):
+			sources += 1
+		else:
+			units += WaterByteCodec.level_of(d5)
+			cells += 1
+		for d in [Vector3i(0, -1, 0), Vector3i(0, 1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var n: Vector3i = c + d
+			if not seen.has(n):
+				seen[n] = true
+				queue.append(n)
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	return {"units": units, "cells": cells, "sources": sources, "capped": capped}
 
 
 func _compass(dx_m: float, dz_m: float) -> String:

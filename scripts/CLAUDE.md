@@ -31,6 +31,9 @@ GDScript code. **Read `../design/PATTERNS_AND_GOTCHAS.md` before writing new cod
 - **`AudioManager.gd`** — single SFX entry point (`play(id, world_pos)`, `play_loop(id) -> handle`, `stop_loop(handle)`).
 - **`WaterMaterial.gd`** — water type checks; **no `class_name`** (path-preload only — headless-safe).
 - **`WaterByteCodec.gd`** — sim source of truth for water (level/source/dir bits in DATA5).
+- **`FiniteWaterCore.gd`** — finite volume-conserving water sim (pure, SceneTree-free, ledger-authority; **no `class_name`** — path-preload). Gated by the headless `finite` + `finite_world` selectors. Design: `../design/WATER_FINITE_SIM_PLAN.md`.
+- **`RiverFlowVolume.gd`** — designer-authored steady river current (stamps DATA5 DIR bits via `VoxelEditManager.queue_set_water_dir_box`; bootstrap calls `stamp()` on the `river_flow_volume` group at load).
+- **`WaterBiomeZone.gd`** — per-biome underwater fog/tint override box (group `water_biome_zone`; resolved by `UnderwaterFilter.set_active` at submerge).
 
 ## Autoload load order
 

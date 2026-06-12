@@ -17,3 +17,4 @@ yield_quantity = 1
 fall_behavior = 0
 gravity_scale = 1.0
 damage_multiplier = 0.0
+density_relative_to_water = 0.4

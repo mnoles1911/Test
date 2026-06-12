@@ -49,6 +49,13 @@ var _spike_frames: int = 0
 var _spike_max_frames: int = 240          # ~4 s at 60 fps physics
 var _spike_world: Node = null
 
+# finite_world end-to-end state (see _finite_world_tick/_report).
+var _fw_placed: bool = false
+var _fw_place_frame: int = -1
+var _fw_origin: Vector3i = Vector3i.ZERO
+var _fw_fail: String = ""
+var _fw_quiet_frames: int = 0
+
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -73,10 +80,24 @@ func _initialize() -> void:
 			quit(_baked_light())
 		"water_flow":
 			quit(_water_flow())
+		"finite":
+			quit(_finite())
+		"sever":
+			quit(_sever())
 		"entity":
 			quit(_entity())
-		"spike", "phase2", "gen", "distant":
+		"spike", "phase2", "gen", "distant", "finite_world":
 			_spike_mode = selector
+			if selector == "finite_world":
+				# Worst case: stream (~240) + collapse on a slope + the
+				# 40-tick evaporation countdown for stranded films + the
+				# 3-pass projection reconcile (~2 s spacing each) + queue
+				# drain. The run finishes EARLY once quiet (see
+				# _finite_world_tick), so the budget is only a ceiling.
+				# NOTE _process counts IDLE frames, which spin much faster
+				# than PHYSICS frames in headless — the ceiling must be
+				# generous because the sim ticks on physics frames.
+				_spike_max_frames = 20000
 			_spike_active = true   # finishes in _process()
 		_:
 			push_error("[RUNNER] unknown selector: %s" % selector)
@@ -88,10 +109,13 @@ func _process(_delta: float) -> bool:
 		return true
 	if _spike_world == null:
 		_spike_begin()
+	if _spike_mode == "finite_world":
+		_finite_world_tick()
 	_spike_frames += 1
 	if _spike_frames >= _spike_max_frames:
 		match _spike_mode:
 			"phase2": quit(_phase2_report())
+			"finite_world": quit(_finite_world_report())
 			"gen": quit(_gen_report())
 			"distant": quit(_distant_report())
 			_: quit(_spike_report())
@@ -282,6 +306,157 @@ func _spike_report() -> int:
 
 
 # ============================================================
+# FINITE_WORLD — end-to-end W4 gate: pour a 3x3x3 bucket dump into the
+# REAL World3D scene headless, pump the live autoload stack (finite sim
+# tick -> VoxelEditManager queue -> terrain voxels), then read the
+# world back and audit it against the ledger. This is the closest a
+# no-GPU run gets to the designer\'s acceptance test.
+# ============================================================
+
+func _finite_world_tick() -> void:
+	# Called every _process frame while the scene pumps.
+	if _fw_placed:
+		# Finish early once everything is quiet for half a second:
+		# sim settled, projections flushed, AND the VoxelEditManager
+		# queue drained (the world read in the report must see the
+		# final voxels, not in-flight writes).
+		var wfm_q: Node = get_root().get_node_or_null("/root/WaterFlowManager")
+		var vem_q: Node = get_root().get_node_or_null("/root/VoxelEditManager")
+		if wfm_q != null and vem_q != null \
+				and not wfm_q._finite_busy() and vem_q._edit_queue.is_empty():
+			_fw_quiet_frames += 1
+			if _fw_quiet_frames >= 60:
+				_spike_frames = _spike_max_frames - 1   # report next frame
+		else:
+			_fw_quiet_frames = 0
+		return
+	if _fw_fail != "" or _spike_frames < 240:
+		return   # give terrain ~4 s to stream around the spawn
+	var wfm: Node = get_root().get_node_or_null("/root/WaterFlowManager")
+	var vem: Node = get_root().get_node_or_null("/root/VoxelEditManager")
+	if wfm == null or vem == null:
+		_fw_fail = "autoloads_missing"
+		return
+	var terrain = vem.get_terrain()
+	if terrain == null:
+		return   # not bound yet — try again next frame
+	var tool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	# Find the ground column near the spawn (player spawns at XZ 0,0).
+	# Probe a spot a couple of metres out so we don\'t pour on the player.
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+	var px: int = 18   # voxel coords (3 m out at 6 vox/m)
+	var pz: int = 18
+	var ground_y: int = -1
+	for y in range(400, 72, -1):
+		if tool.get_voxel(Vector3i(px, y, pz)) != 0:
+			ground_y = y
+			break
+	if ground_y < 0:
+		return   # terrain not streamed at the probe column yet — retry
+	_fw_origin = Vector3i(px - 1, ground_y + 1, pz - 1)
+	# The designer\'s scenario: a 3x3x3 cube of water (27 cells x 8
+	# units = 216). Poured as 9 columns of 24 units.
+	var total: int = 0
+	for dx in range(3):
+		for dz in range(3):
+			total += int(wfm.place_finite_water(
+				Vector3i(_fw_origin.x + dx, _fw_origin.y, _fw_origin.z + dz), 24))
+	if total != 216:
+		_fw_fail = "placed_%d_of_216 (probe ground_y=%d)" % [total, ground_y]
+		return
+	_fw_placed = true
+	_fw_place_frame = _spike_frames
+	print("[FWORLD] poured 216 units at %s (ground voxel y=%d); letting it settle..." % [str(_fw_origin), ground_y])
+
+
+func _finite_world_report() -> int:
+	if _fw_fail != "":
+		print("[FWORLD] RESULT=FAIL reason=%s" % _fw_fail)
+		return 1
+	if not _fw_placed:
+		print("[FWORLD] RESULT=FAIL reason=terrain_never_streamed_probe_column")
+		return 1
+	var wfm: Node = get_root().get_node_or_null("/root/WaterFlowManager")
+	var vem: Node = get_root().get_node_or_null("/root/VoxelEditManager")
+	var terrain = vem.get_terrain()
+	var tool = terrain.get_voxel_tool()
+	var fails: int = 0
+
+	# 1. The sim must have gone quiet (settled + projection flushed).
+	if wfm._finite_busy():
+		print("[FWORLD] FAIL sim still busy after %d frames (active=%d unprojected=%d)" % [
+			_spike_frames, int(wfm._finite.stats()["active"]), wfm._unprojected.size()])
+		for ac in wfm._finite._active.keys():
+			print("[FWORLD]   active cell %s: u=%d dist=%d ttl=%d dir=%d" % [
+				str(ac), int(wfm._finite._ledger.get(ac, 0)), int(wfm._finite._dist.get(ac, -1)),
+				int(wfm._finite._evap_ttl.get(ac, -1)), int(wfm._finite._dir.get(ac, 0))])
+		for up in wfm._unprojected.keys():
+			tool.channel = VoxelBuffer.CHANNEL_DATA5
+			print("[FWORLD]   unprojected %s sched=%s want=0x%02x have=0x%02x tick_no=%d" % [
+				str(up), str(wfm._unprojected[up]), wfm._finite.projected_byte(up),
+				tool.get_voxel(up), wfm._finite_tick_no])
+			tool.channel = VoxelBuffer.CHANNEL_TYPE
+		fails += 1
+
+	# 2. Conservation audit on the ledger.
+	if int(wfm._finite.conservation_delta()) != 0:
+		print("[FWORLD] FAIL conservation delta=%d stats=%s" % [
+			int(wfm._finite.conservation_delta()), str(wfm._finite.stats())])
+		fails += 1
+
+	# 3. The pool must have SPREAD (more cells than the 9 poured columns
+	#    held) — the whole point of the finite model.
+	var ledger: Dictionary = wfm._finite._ledger
+	if ledger.size() < 27:
+		print("[FWORLD] FAIL pool covers %d cells — did not collapse/spread" % ledger.size())
+		fails += 1
+
+	# 4. World agreement: every ledger cell\'s DATA5 byte and TYPE id in
+	#    the REAL terrain must match the ledger\'s projection. This is
+	#    the end-to-end proof: sim -> queue -> voxels, nothing lost.
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	var world_units: int = 0
+	var mismatches: int = 0
+	for cell in ledger.keys():
+		tool.channel = VoxelBuffer.CHANNEL_DATA5
+		var d5: int = tool.get_voxel(cell)
+		tool.channel = VoxelBuffer.CHANNEL_TYPE
+		var t: int = tool.get_voxel(cell)
+		var want_level: int = int(ledger[cell])
+		world_units += WaterByteCodec.level_of(d5)
+		if WaterByteCodec.level_of(d5) != want_level or WaterByteCodec.is_source(d5):
+			mismatches += 1
+			if mismatches <= 5:
+				print("[FWORLD] FAIL world DATA5 at %s = 0x%02x, ledger wants level %d (non-source)" % [
+					str(cell), d5, want_level])
+		if t != WM.render_id_for_level(want_level, WaterByteCodec.DIR_STILL) and not WM.is_water_type(t):
+			mismatches += 1
+			if mismatches <= 5:
+				print("[FWORLD] FAIL world TYPE at %s = %d, not a water id for level %d" % [
+					str(cell), t, want_level])
+	if mismatches > 0:
+		print("[FWORLD] FAIL %d ledger/world mismatches" % mismatches)
+		fails += 1
+	var ledger_units: int = int(wfm._finite.total_units())
+	if world_units != ledger_units:
+		print("[FWORLD] FAIL world holds %d units where ledger says %d" % [world_units, ledger_units])
+		fails += 1
+
+	var player = _spike_world.get_node_or_null("Player3D")
+	if player != null:
+		print("[FWORLD] player at %s" % str(player.global_position))
+	print("[FWORLD] settled: cells=%d ledger_units=%d world_units=%d stats=%s (settle took <= %d frames)" % [
+		ledger.size(), ledger_units, world_units, str(wfm._finite.stats()), _spike_frames - _fw_place_frame])
+	if fails == 0:
+		print("[FWORLD] RESULT=PASS — 216 poured units collapsed, spread, and landed in the real terrain intact.")
+		return 0
+	print("[FWORLD] RESULT=FAIL — %d check(s) failed." % fails)
+	return 1
+
+
+# ============================================================
 # PHASE 7 — legacy-save + MP byte contract (data-level)
 # ============================================================
 # The risky halves of Phase 7 (buoyancy feel, MP host/client visuals)
@@ -386,8 +561,22 @@ func _shader() -> int:
 			print("[SHADERPARAM] %s = %s  (.tres OVERRIDE — wins)" % [w, str(ov)])
 		else:
 			print("[SHADERPARAM] %s = <shader default> (.tres does not set it)" % w)
-	var ok := (not has_foam) and has_flow and n_dbg >= 5
-	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5])
+	# Water-polish PR 3: the terrain shader (caustics live there) must
+	# also load and expose the caustics block + its shader globals.
+	var t_path := "res://assets/shaders/terrain_voxel.gdshader"
+	var t_ok := false
+	if ResourceLoader.exists(t_path):
+		var t_sh = load(t_path)
+		if t_sh != null:
+			var t_code: String = t_sh.get("code")
+			t_ok = t_code.find("water_caustics_strength") != -1 \
+				and t_code.find("water_sea_level_world_y") != -1 \
+				and t_code.find("c_fbm") != -1
+			print("[SHADER] terrain_voxel.gdshader loaded; code_len=%d caustics_block=%s" % [t_code.length(), t_ok])
+	else:
+		print("[SHADER] terrain_voxel.gdshader missing")
+	var ok := (not has_foam) and has_flow and n_dbg >= 5 and t_ok
+	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s terrain_caustics=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5, t_ok])
 	return 0 if ok else 1
 
 
@@ -1241,11 +1430,25 @@ func _water_flow() -> int:
 	for y in range(sy):
 		for z in range(sz):
 			buf.set_voxel(1, 11, y, z, VoxelBuffer.CHANNEL_TYPE)
-	# 4x4x4 water block.
+	# 4x4x4 water block. Legacy id 5 with DATA5 = 0 — under the W2
+	# source gate, legacy water conservatively counts as SOURCE, so all
+	# the original expected hits stay valid.
 	for x in range(1, 5):
 		for y in range(2, 6):
 			for z in range(1, 5):
 				buf.set_voxel(5, x, y, z, VoxelBuffer.CHANNEL_TYPE)
+
+	# W2 source-gate cases (design/WATER_FINITE_SIM_PLAN.md):
+	var WM := preload("res://scripts/WaterMaterial.gd")
+	# FINITE water (DATA5 level 4, source bit CLEAR) at (8,2,8). Its air
+	# neighbour (9,2,8) must NOT become a hit — finite water never feeds
+	# the ocean settle re-fill.
+	buf.set_voxel(WM.render_id_for_level(4, WaterByteCodec.DIR_STILL), 8, 2, 8, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(WaterByteCodec.pack(4, false, WaterByteCodec.DIR_STILL), 8, 2, 8, VoxelBuffer.CHANNEL_DATA5)
+	# Explicit SOURCE water (DATA5 source bit SET) at (8,5,8). Its air
+	# neighbour (9,5,8) MUST be a hit.
+	buf.set_voxel(WM.render_id_for_level(8, WaterByteCodec.DIR_STILL), 8, 5, 8, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(WaterByteCodec.SOURCE_BYTE, 8, 5, 8, VoxelBuffer.CHANNEL_DATA5)
 
 	# Expected hits: air cells at face-neighbours of the water block.
 	# (5, 2, 1) is +X-neighbour of (4, 2, 1) water.
@@ -1314,6 +1517,16 @@ func _water_flow() -> int:
 		fails += 1
 		print("[WFLOW] FAIL retry-cap cell (5,3,3) leaked into hits")
 
+	# W2 source gate: air next to FINITE water must not be a hit; air
+	# next to explicit SOURCE water must be one. Checked on BOTH
+	# implementations (set equality above would let a shared bug pass).
+	if ref_set.has("9,2,8") or cpp_set.has("9,2,8"):
+		fails += 1
+		print("[WFLOW] FAIL finite-water neighbour (9,2,8) wrongly re-filled")
+	if not ref_set.has("9,5,8") or not cpp_set.has("9,5,8"):
+		fails += 1
+		print("[WFLOW] FAIL source-water neighbour (9,5,8) missing from hits")
+
 	if fails == 0:
 		print("[WFLOW] RESULT=PASS — C++ scan_settle_region matches GD reference set-for-set; pending+retry honoured.")
 		return 0
@@ -1328,6 +1541,341 @@ func _wflow_stream_to_set(s: PackedInt32Array) -> Dictionary:
 	for i in range(n):
 		d["%d,%d,%d" % [s[i * 3], s[i * 3 + 1], s[i * 3 + 2]]] = true
 	return d
+
+
+# ============================================================
+# SEVER — SeverFollowLib.continue_bfs gates (voxel-physics PR 6).
+# Synthetic VoxelBuffer worlds; pure data, no terrain.
+# ============================================================
+const _SeverLib := preload("res://scripts/_dev/SeverFollowLib.gd")
+
+func _sever() -> int:
+	var fails: int = 0
+	# Extension box: 9 x 20 x 9 voxels at ext_min (100, 50, 100).
+	var ext_min := Vector3i(100, 50, 100)
+	var size := Vector3i(9, 20, 9)
+
+	# Scenario 1: a 1x10x1 stone column in the middle, fully inside the
+	# box -> all 10 voxels merged, no abort flags.
+	var buf := VoxelBuffer.new()
+	buf.create(size.x, size.y, size.z)
+	for y in range(0, 10):
+		buf.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	var res: Dictionary = _SeverLib.continue_bfs(buf, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	if bool(res["touched_side"]) or bool(res["touched_top"]):
+		fails += 1
+		print("[SEVER] FAIL inside-column: spurious abort flag (side=%s top=%s)" % [res["touched_side"], res["touched_top"]])
+	if (res["voxels"] as Dictionary).size() != 10:
+		fails += 1
+		print("[SEVER] FAIL inside-column: merged %d voxels, expected 10" % (res["voxels"] as Dictionary).size())
+
+	# Scenario 2: a column reaching the box TOP -> touched_top abort.
+	var buf2 := VoxelBuffer.new()
+	buf2.create(size.x, size.y, size.z)
+	for y in range(0, size.y):
+		buf2.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	var res2: Dictionary = _SeverLib.continue_bfs(buf2, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	if not bool(res2["touched_top"]):
+		fails += 1
+		print("[SEVER] FAIL top-column: expected touched_top abort")
+
+	# Scenario 3: a T-beam whose arm reaches the box SIDE wall ->
+	# touched_side abort (possible anchored arch).
+	var buf3 := VoxelBuffer.new()
+	buf3.create(size.x, size.y, size.z)
+	for y in range(0, 6):
+		buf3.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	for x in range(0, size.x):
+		buf3.set_voxel(1, x, 5, 4, VoxelBuffer.CHANNEL_TYPE)
+	var res3: Dictionary = _SeverLib.continue_bfs(buf3, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	if not bool(res3["touched_side"]):
+		fails += 1
+		print("[SEVER] FAIL t-beam: expected touched_side abort")
+
+	# Scenario 4: water above the trunk is NOT traversed (and doesn't
+	# connect the trunk to anything beyond it).
+	var buf4 := VoxelBuffer.new()
+	buf4.create(size.x, size.y, size.z)
+	for y in range(0, 4):
+		buf4.set_voxel(1, 4, y, 4, VoxelBuffer.CHANNEL_TYPE)
+	buf4.set_voxel(5, 4, 4, 4, VoxelBuffer.CHANNEL_TYPE)    # legacy water id
+	buf4.set_voxel(23, 4, 5, 4, VoxelBuffer.CHANNEL_TYPE)   # fluid id (level 8)
+	buf4.set_voxel(1, 4, 6, 4, VoxelBuffer.CHANNEL_TYPE)    # stone beyond the water
+	var res4: Dictionary = _SeverLib.continue_bfs(buf4, ext_min, [ext_min + Vector3i(4, 0, 4)], 4096)
+	var v4: Dictionary = res4["voxels"]
+	if v4.size() != 4:
+		fails += 1
+		print("[SEVER] FAIL water-block: merged %d voxels, expected 4 (water must not ride or connect)" % v4.size())
+
+	if fails == 0:
+		print("[SEVER] RESULT=PASS — 4 scenarios: inside-column merge, top abort, side-wall abort, water exclusion.")
+		return 0
+	print("[SEVER] RESULT=FAIL — %d check(s) failed." % fails)
+	return 1
+
+
+# ============================================================
+# FINITE — FiniteWaterCore conservation / levelness / reach /
+# evaporation / ocean-absorption / determinism gates.
+# Pure data: synthetic worlds via lambdas, no terrain, no SceneTree.
+# Spec: design/WATER_FINITE_SIM_PLAN.md "Headless gate scenarios".
+# ============================================================
+const _FiniteWaterCore := preload("res://scripts/FiniteWaterCore.gd")
+
+func _finite() -> int:
+	var fails: int = 0
+	fails += _finite_collapse()
+	fails += _finite_pit()
+	fails += _finite_evap()
+	fails += _finite_ocean()
+	fails += _finite_reach()
+	fails += _finite_determinism()
+	if fails == 0:
+		print("[FINITE] RESULT=PASS — all 6 scenarios green (conservation, levelness, reach, evaporation, absorption, determinism).")
+		return 0
+	print("[FINITE] RESULT=FAIL — %d scenario(s) failed." % fails)
+	return 1
+
+
+func _finite_new_core(floor_y: int) -> RefCounted:
+	# Flat infinite stone floor at/below floor_y, no ocean. Scenarios
+	# override the callables for walls/pits/sources as needed.
+	var core: RefCounted = _FiniteWaterCore.new()
+	core.solid_cb = func(p: Vector3i) -> bool: return p.y <= floor_y
+	core.source_cb = func(_p: Vector3i) -> bool: return false
+	return core
+
+
+func _finite_run(core: RefCounted, max_ticks: int, budget: int) -> int:
+	# Step until settled (or give up). Returns ticks taken, or -1.
+	for t in range(max_ticks):
+		core.step(budget)
+		if core.is_settled():
+			return t + 1
+	return -1
+
+
+func _finite_audit(core: RefCounted, tag: String) -> int:
+	# The conservation invariant — the whole point of the rework.
+	if core.conservation_delta() != 0:
+		print("[FINITE] FAIL %s: conservation broken, delta=%d stats=%s" % [
+			tag, core.conservation_delta(), str(core.stats())])
+		return 1
+	return 0
+
+
+func _finite_levelness(core: RefCounted, tag: String) -> int:
+	# Converged adjacent water cells may differ by at most 1 level
+	# (same supported Y). Also: no cell may exceed 8 units.
+	var fails: int = 0
+	var cells: Dictionary = {}
+	for p in core._ledger.keys():
+		cells[p] = int(core._ledger[p])
+		if cells[p] > 8 or cells[p] < 1:
+			print("[FINITE] FAIL %s: cell %s holds %d units (legal range 1-8)" % [tag, str(p), cells[p]])
+			fails += 1
+	for p in cells.keys():
+		for d in [Vector3i(1, 0, 0), Vector3i(0, 0, 1)]:
+			var n: Vector3i = p + d
+			if cells.has(n) and absi(cells[p] - cells[n]) > 1:
+				print("[FINITE] FAIL %s: levels not flat at %s (%d) vs %s (%d)" % [
+					tag, str(p), cells[p], str(n), cells[n]])
+				fails += 1
+	return mini(fails, 1)
+
+
+func _finite_collapse() -> int:
+	# Scenario 1: a 3x3x3 dump (216 units) on a flat floor collapses
+	# into a wide, shallow, LEVEL pool. The designer's acceptance case.
+	var core: RefCounted = _finite_new_core(0)
+	var total_in: int = 0
+	for x in range(5, 8):
+		for z in range(5, 8):
+			total_in += core.place(Vector3i(x, 1, z), 24)   # 3 cells of 8, stacked
+	var ticks: int = _finite_run(core, 400, 4096)
+	var fails: int = 0
+	if total_in != 216:
+		print("[FINITE] FAIL collapse: placed %d units, expected 216" % total_in)
+		fails += 1
+	if ticks < 0:
+		print("[FINITE] FAIL collapse: did not settle within 400 ticks")
+		fails += 1
+	if core.total_units() != 216:
+		print("[FINITE] FAIL collapse: %d units after settle, expected 216 (stats=%s)" % [
+			core.total_units(), str(core.stats())])
+		fails += 1
+	fails += _finite_audit(core, "collapse")
+	fails += _finite_levelness(core, "collapse")
+	# It must have actually SPREAD (≥ the 27 original columns' footprint)
+	# and stayed within reach of the 3x3 footprint.
+	var foot_count: int = 0
+	var max_man: int = 0
+	for p in core._ledger.keys():
+		foot_count += 1
+		var man: int = maxi(0, maxi(absi(p.x - 6) - 1, 0) + maxi(absi(p.z - 6) - 1, 0))
+		max_man = maxi(max_man, man)
+	if foot_count < 27:
+		print("[FINITE] FAIL collapse: pool covers %d cells — did not spread" % foot_count)
+		fails += 1
+	if max_man > core.SPREAD_REACH_VOXELS:
+		print("[FINITE] FAIL collapse: front reached %d voxels past the footprint (max %d)" % [
+			max_man, core.SPREAD_REACH_VOXELS])
+		fails += 1
+	print("[FINITE] collapse: ticks=%d cells=%d max_reach=%d stats=%s" % [
+		ticks, foot_count, max_man, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_pit() -> int:
+	# Scenario 2: dump beside a pit — the pit fills bottom-up, then the
+	# whole body levels. Floor at y=0 except a 3x3 pit (x/z 10..12)
+	# whose floor is y=-4.
+	var core: RefCounted = _FiniteWaterCore.new()
+	core.solid_cb = func(p: Vector3i) -> bool:
+		var in_pit_column: bool = p.x >= 10 and p.x <= 12 and p.z >= 10 and p.z <= 12
+		if in_pit_column:
+			return p.y <= -4
+		return p.y <= 0
+	core.source_cb = func(_p: Vector3i) -> bool: return false
+	# Dump right at the pit's rim so it pours in.
+	core.place(Vector3i(9, 1, 11), 64)
+	var ticks: int = _finite_run(core, 600, 4096)
+	var fails: int = 0
+	if ticks < 0:
+		print("[FINITE] FAIL pit: did not settle within 600 ticks")
+		fails += 1
+	fails += _finite_audit(core, "pit")
+	# The pit's bottom layer must be FULL before anything sits above it:
+	# after settling, every pit-bottom cell (y=-3) must hold 8 units if
+	# ANY cell above y=-3 holds water inside the pit.
+	var any_above: bool = false
+	for p in core._ledger.keys():
+		if p.x >= 10 and p.x <= 12 and p.z >= 10 and p.z <= 12 and p.y > -3:
+			any_above = true
+			break
+	if any_above:
+		for x in range(10, 13):
+			for z in range(10, 13):
+				if core.units_at(Vector3i(x, -3, z)) != 8:
+					print("[FINITE] FAIL pit: bottom cell (%d,-3,%d)=%d not full under standing water" % [
+						x, z, core.units_at(Vector3i(x, -3, z))])
+					fails += 1
+	print("[FINITE] pit: ticks=%d stats=%s" % [ticks, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_evap() -> int:
+	# Scenario 3: an orphaned 1-unit cell evaporates after exactly
+	# EVAP_TTL ticks, and the books still balance.
+	var core: RefCounted = _finite_new_core(0)
+	core.place(Vector3i(3, 1, 3), 1)
+	var gone_at: int = -1
+	for t in range(core.EVAP_TTL + 10):
+		core.step(4096)
+		if core.total_units() == 0:
+			gone_at = t + 1
+			break
+	var fails: int = 0
+	if gone_at != core.EVAP_TTL:
+		print("[FINITE] FAIL evap: evaporated at tick %d, expected exactly %d" % [gone_at, core.EVAP_TTL])
+		fails += 1
+	if core.evaporated != 1:
+		print("[FINITE] FAIL evap: evaporated counter=%d, expected 1" % core.evaporated)
+		fails += 1
+	fails += _finite_audit(core, "evap")
+	print("[FINITE] evap: gone_at=%d stats=%s" % [gone_at, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_ocean() -> int:
+	# Scenario 4: finite water poured against an ocean wall at/below
+	# sea level is swallowed (absorbed/merged), sources unchanged, books
+	# balanced. Ocean = every cell with x <= 0 at y <= sea_y.
+	var core: RefCounted = _finite_new_core(0)
+	core.sea_y = 10
+	core.source_cb = func(p: Vector3i) -> bool: return p.x <= 0 and p.y <= 10
+	core.place(Vector3i(1, 1, 5), 8)    # face-adjacent to the ocean wall
+	core.place(Vector3i(4, 1, 5), 16)   # two cells, must flow over + drain in
+	var ticks: int = _finite_run(core, 600, 4096)
+	var fails: int = 0
+	if ticks < 0:
+		print("[FINITE] FAIL ocean: did not settle within 600 ticks")
+		fails += 1
+	var swallowed: int = core.absorbed + core.merged
+	if swallowed <= 0:
+		print("[FINITE] FAIL ocean: nothing was absorbed/merged into the ocean")
+		fails += 1
+	fails += _finite_audit(core, "ocean")
+	print("[FINITE] ocean: ticks=%d stats=%s" % [ticks, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_reach() -> int:
+	# Scenario 5: keep pouring water at one spot (a "hose": 8 units per
+	# tick, 600 times = 4800 units) on an open plane. The front halts at
+	# exactly SPREAD_REACH_VOXELS and the pool deepens instead of
+	# smearing forever. Why 4800: with the slope-of-1 equilibrium and
+	# the 8-unit cap, pushing a level-1 rim all the way to radius 18
+	# takes ~3700 units — a single 1000-unit column correctly stops
+	# around radius 11 (verified when this gate was first written).
+	var core: RefCounted = _finite_new_core(0)
+	for i in range(600):
+		core.place(Vector3i(0, 1, 0), 8)
+		core.step(4096)
+	var ticks: int = _finite_run(core, 6000, 4096)
+	var fails: int = 0
+	if ticks < 0:
+		print("[FINITE] FAIL reach: did not settle within 6000 ticks")
+		fails += 1
+	if core.total_units() + core.evaporated != 4800:
+		print("[FINITE] FAIL reach: units+evaporated=%d, expected 4800 (stats=%s)" % [
+			core.total_units() + core.evaporated, str(core.stats())])
+		fails += 1
+	fails += _finite_audit(core, "reach")
+	var max_man: int = 0
+	for p in core._ledger.keys():
+		max_man = maxi(max_man, absi(p.x) + absi(p.z))
+	if max_man > core.SPREAD_REACH_VOXELS:
+		print("[FINITE] FAIL reach: water at %d voxels out, max is %d" % [max_man, core.SPREAD_REACH_VOXELS])
+		fails += 1
+	if max_man < core.SPREAD_REACH_VOXELS:
+		print("[FINITE] FAIL reach: front stopped at %d voxels, expected exactly %d (4800 units is plenty)" % [
+			max_man, core.SPREAD_REACH_VOXELS])
+		fails += 1
+	print("[FINITE] reach: ticks=%d max_reach=%d stats=%s" % [ticks, max_man, str(core.stats())])
+	return mini(fails, 1)
+
+
+func _finite_determinism() -> int:
+	# Scenario 6: the collapse scenario run twice must produce a
+	# byte-identical state signature after EVERY tick. This is also the
+	# contract the W6 C++ port will be held to.
+	var sigs_a: PackedStringArray = _finite_determinism_run()
+	var sigs_b: PackedStringArray = _finite_determinism_run()
+	if sigs_a.size() != sigs_b.size():
+		print("[FINITE] FAIL determinism: run lengths differ (%d vs %d)" % [sigs_a.size(), sigs_b.size()])
+		return 1
+	for i in range(sigs_a.size()):
+		if sigs_a[i] != sigs_b[i]:
+			print("[FINITE] FAIL determinism: state diverged at tick %d" % (i + 1))
+			return 1
+	print("[FINITE] determinism: %d ticks byte-identical across two runs." % sigs_a.size())
+	return 0
+
+
+func _finite_determinism_run() -> PackedStringArray:
+	var core: RefCounted = _finite_new_core(0)
+	for x in range(5, 8):
+		for z in range(5, 8):
+			core.place(Vector3i(x, 1, z), 24)
+	var sigs: PackedStringArray = PackedStringArray()
+	for t in range(400):
+		core.step(256)   # deliberately small budget — order under
+		                 # budget pressure is part of the contract
+		sigs.append(core.state_signature())
+		if core.is_settled():
+			break
+	return sigs
 
 
 func _emissive_populate_scenario(buf: VoxelBuffer, side: Vector3i) -> void:

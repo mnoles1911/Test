@@ -218,6 +218,14 @@ enum FallBehavior {
 @export var fall_behavior: FallBehavior = FallBehavior.NEVER
 
 @export_range(0.1, 5.0, 0.05) var gravity_scale: float = 1.0
+
+@export_range(0.1, 5.0, 0.05) var density_relative_to_water: float = 2.5
+# Buoyancy (voxel-physics PR 7): how heavy this material is COMPARED TO
+# WATER. < 1.0 floats (log 0.7, leaves 0.4), > 1.0 sinks (stone 2.5+).
+# A falling cluster averages this across its constituent voxels; in
+# water its effective gravity becomes gravity * (1 - 1/density), which
+# goes NEGATIVE for floaters — they bob up to the surface. 2.5 default
+# = generic rock (sinks decisively).
 # Multiplier on cluster fall speed. Only meaningful for NEVER and
 # SOLID materials (LOOSE materials don't use rigid-body physics).
 #

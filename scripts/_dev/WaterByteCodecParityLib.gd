@@ -94,4 +94,21 @@ static func run() -> Dictionary:
 		fails += 1
 		errors.append("is_water wrong for AIR/SOURCE")
 
+	# --- 6. Height-aware point test (W5 finite-water track) ---
+	# A level-N cell holds water up to N/8 of the voxel: the boundary
+	# itself counts as wet (<=), level 0 is never wet, level 8 fills
+	# the whole voxel (incl. SOURCE_BYTE — old ocean behaviour intact).
+	for lvl in range(0, 9):
+		var b: int = WaterByteCodec.pack(lvl, false, WaterByteCodec.DIR_STILL)
+		for f in [0.0, 0.124, 0.5, 0.874, 1.0]:
+			checks += 1
+			var want: bool = lvl > 0 and f <= float(lvl) / 8.0
+			if WaterByteCodec.is_inside_water_column(b, f) != want:
+				fails += 1
+				errors.append("is_inside_water_column wrong: lvl=%d frac=%.3f" % [lvl, f])
+	checks += 1
+	if not WaterByteCodec.is_inside_water_column(WaterByteCodec.SOURCE_BYTE, 1.0):
+		fails += 1
+		errors.append("SOURCE_BYTE must fill the whole voxel")
+
 	return {"checks": checks, "fails": fails, "errors": errors}

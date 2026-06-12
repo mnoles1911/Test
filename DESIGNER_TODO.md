@@ -1107,3 +1107,46 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
 - [ ] `assets/audio/ambient/rain_light.ogg` (LIGHT_RAIN)
 - [ ] `assets/audio/ambient/rain_heavy.ogg` (HEAVY_RAIN)
 - [ ] `assets/audio/ambient/thunder_distant.ogg` (per-strike rumble, ~3 s)
+
+## River currents (W7, 2026-06-10)
+
+- Place `RiverFlowVolume` nodes (scripts/RiverFlowVolume.gd) over each
+  story-river stretch (the Aldwater first): add a Node3D, attach the
+  script, point `flow_direction` downstream, size `extent` to the
+  channel. Bootstrap stamps them at world load; swim in to feel the
+  push. Diagonal stretches = a chain of volumes alternating cardinals.
+- In-engine acceptance for the finite-water rework: pour a 3x3x3 of
+  buckets on flat ground -> wide shallow LEVEL pool within seconds,
+  `[FlowDiag-finite] conserve=OK`; scoop back -> pool shrinks. Blast a
+  sub-sea crater -> ocean refill unchanged. Wade a shallow pool -> no
+  swim mode, no underwater filter (intentional, W5).
+- Rebuild the Windows DLL (extensions/voxel_gen, scons platform=windows)
+  to restore the C++ settle scan (W2 changed its source-gate inputs).
+- Buoyancy acceptance (PR 7): fell a tree into a pond — the log
+  cluster should bob up, drift, and settle as a floating raft; mine
+  stone into the same pond — it sinks. Tune per-material
+  `density_relative_to_water` in assets/voxels/materials/*.tres to
+  taste (< 1 floats).
+- Tree-sever + buoyancy acceptance (PR 6/7) — **BLOCKED 2026-06-12: no
+  trees exist in World3D yet.** Once trees are authored (log + leaves
+  voxels), chop one at the base: expect ONE 'spawned cluster' line and
+  the whole tree tipping as one piece; fell one into a pond: the log
+  floats and rafts, stone sinks. Tune `sever_follow_max_height_m` on
+  VoxelGravityManager if any authored tree exceeds 12 m. The logic is
+  gated headless (`sever`, `gravity` selectors) — this is feel-only.
+
+## Water polish (PRs 3-5, 2026-06-10)
+
+- **Caustics (PR 3, default OFF):** flip `caustics` in the DebugOverlay
+  GRAPHICS view, then eyeball a shallow pond at noon — dancing light
+  ridges on the lakebed, fading out by ~6 m depth. Dial: the 0.6
+  strength constant in GraphicsManager._apply_caustics_global.
+- **Per-biome underwater fog (PR 4):** add a Node3D with
+  scripts/WaterBiomeZone.gd over the swamp water, size `extent` to the
+  body, tune the green-murk anchors (defaults are already swampy).
+  Submerge inside it -> green murk; outside -> scene defaults.
+- **Underwater audio (PR 5):** SFX + Ambient buses low-pass to 700 Hz
+  while submerged (live now). The bubble ambience bed needs an asset:
+  render `underwater_ambience` via tools/render_sfx.py into
+  assets/audio/sfx/water/ — until then submerge logs a one-time
+  missing-asset warning and stays silent.

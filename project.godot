@@ -59,12 +59,8 @@ EntityRegistry="*res://scripts/entities/EntityRegistry.gd"
 
 [dialogic]
 
-directories/dch_directory={
-"Henrietta": "res://addons/dialogic/characters/Henrietta.dch"
-}
-directories/dtl_directory={
-"henrietta_archive": "res://dialogue/henrietta_archive.dtl"
-}
+directories/dch_directory={}
+directories/dtl_directory={}
 layout/style_directory={
 "Test_Style": "res://addons/dialogic/styles/Test_Style.tres"
 }
@@ -301,6 +297,14 @@ baked_light_strength={
 player_world_pos={
 "type": "vec3",
 "value": Vector3(0, 0, 0)
+}
+water_caustics_strength={
+"type": "float",
+"value": 0.0
+}
+water_sea_level_world_y={
+"type": "float",
+"value": -10000.0
 }
 debug_emissive_magenta={
 "type": "float",
