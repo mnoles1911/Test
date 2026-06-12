@@ -16,11 +16,13 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 # === BIOME FRAMEWORK === (config — wiring block is in _ready) ===========
 # When biome_framework_enabled is true the generator switches from its
 # single rolling-hills recipe to the multi-biome path (plains / hills /
-# forest / desert / mountains, blended at borders). Default OFF so the
-# shipped terrain + the `gen` parity baseline + Copper Isles are untouched
-# until the designer flips it on. The five profile .tres load in a FIXED
-# slot order; the Whittaker classifier binds each KIND to its slot below.
-@export var biome_framework_enabled: bool = false
+# forest / desert / mountains, blended at borders). Default ON since
+# 2026-06-12 (designer flipped it — biomes are now the shipped World3D
+# terrain). The `gen` parity gate still runs the legacy no-profiles path
+# explicitly so its baseline is unaffected; Copper Isles uses its own
+# heightmap generator and is untouched. The five profile .tres load in a
+# FIXED slot order; the Whittaker classifier binds each KIND to its slot.
+@export var biome_framework_enabled: bool = true
 const _BIOME_DIR := "res://assets/biomes/"
 # Slot order = load order = the indices the field params bind kinds to.
 const _BIOME_FILES: Array[String] = [
