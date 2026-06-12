@@ -85,8 +85,12 @@ Trunk base at the origin, `+y` up.
 
 ## Other features
 
-- **Fit dials to reference** — heuristic auto-tune from the reference image
-  (`reference_fit.js`): detects canopy/trunk proportions → species + dials.
+- **Fit dials with Claude vision** — paste your Anthropic API key, drop a
+  reference image, and Claude (`claude-opus-4-8`) analyzes it and sets the dials
+  via strict tool use (shared `../voxel_studio_common/claude_vision.js`). The
+  call goes **directly from your browser** with your key (stored only in
+  localStorage) — fine for a local tool you run yourself; don't host with a
+  shared key.
 - **Space colonization** growth mode — organic attractor-based growth
   (`space_colonization.js`); switch via the **Growth** dropdown.
 - **Web Worker** — voxelization runs off-thread (`tree.worker.js`) so big trees

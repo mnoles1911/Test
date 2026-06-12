@@ -97,7 +97,10 @@
         <button id="loadRef">📎 Image…</button>
         <button id="clearRef">✕ Clear</button>
       </div>
-      <button id="fitRef" class="primary" style="width:100%">✨ Fit dials to reference</button>
+      <label class="inline" style="display:block;font-size:11px;margin:0 0 8px">Anthropic API key (stored locally, used in your browser)
+        <input type="password" id="apiKey" placeholder="sk-ant-..." style="width:100%;background:#11151a;color:var(--ink);border:1px solid #000;padding:5px;font-family:inherit;font-size:11px">
+      </label>
+      <button id="fitRef" class="primary" style="width:100%">✨ Fit dials with Claude vision</button>
       <p id="fitNote" class="sub" style="margin:6px 0 0"></p>
       <input type="file" id="refFile" accept="image/*" style="display:none">
     </details>
@@ -144,7 +147,7 @@ import TreeOptions from './vendor/ez-tree/options.js';
 import { voxelize, MAT, WOOD_IDS, COLLAPSE } from './tree_voxelizer.js';
 import { growSpaceColonization } from './space_colonization.js';
 import { buildGrass, buildFern, buildVine } from './plants.js';
-import { fitFromImage } from './reference_fit.js';
+import { analyzeImage } from '../voxel_studio_common/claude_vision.js';
 
 const M_PER_VOXEL = 0.1, VOX_PER_M = 10;
 const m = v => (v * M_PER_VOXEL).toFixed(1) + 'm';
@@ -604,23 +607,69 @@ document.getElementById('export').addEventListener('click', () => {
   a.download = `tree_${out.species}_seed${params.seed}.json`; a.click(); URL.revokeObjectURL(a.href);
 });
 
-// Fit dials to the current reference image (heuristic).
-document.getElementById('fitRef').addEventListener('click', () => {
-  const src = overlay.getAttribute('src');
+// API key (used in the browser; stored only in localStorage).
+const apiKeyEl = document.getElementById('apiKey');
+apiKeyEl.value = localStorage.getItem('anthropic_api_key') || '';
+apiKeyEl.addEventListener('change', () => localStorage.setItem('anthropic_api_key', apiKeyEl.value.trim()));
+
+// The tool whose input schema IS the tree parameters; strict tool use forces it.
+const TREE_TOOL = {
+  name: 'set_tree_parameters',
+  description: 'Set the procedural voxel-tree parameters that best reproduce the tree in the image.',
+  input_schema: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      species:     { type: 'string', enum: ['Oak','Pine','Ash','Aspen','Bush'], description: 'Closest species.' },
+      size:        { type: 'string', enum: ['Small','Medium','Large'], description: 'Overall size class.' },
+      type:        { type: 'string', enum: ['Deciduous','Evergreen'], description: 'Broadleaf vs conifer.' },
+      heightM:     { type: 'number', description: 'Tree height in meters, 1 to 18.' },
+      trunkRadius: { type: 'number', description: 'Trunk thickness 0.5 (slender) to 4 (stout).' },
+      gnarliness:  { type: 'number', description: 'Branch crookedness 0 (straight) to 0.5 (gnarled).' },
+      branchAngle: { type: 'number', description: 'Branch spread angle from trunk, 10 (upright) to 130 (wide).' },
+      levels:      { type: 'number', description: 'Branch recursion depth 1 to 4.' },
+      leafDensity: { type: 'number', description: 'Canopy density 0.2 (sparse) to 1 (full).' },
+      lightGap:    { type: 'number', description: 'Holes in the canopy 0 (solid) to 0.6 (airy).' },
+      leafLightMix:{ type: 'number', description: 'Share of bright/sunlit leaves 0 (dark) to 1 (light).' },
+    },
+    required: ['species','size','type','heightM','trunkRadius','gnarliness','branchAngle','levels','leafDensity','lightGap','leafLightMix'],
+  },
+};
+const TREE_PROMPT =
+  'Analyze this reference image of a tree to recreate it as a chunky voxel tree. ' +
+  'Judge its species (oak/broadleaf, pine/conifer, ash, aspen, or a low bush), size, ' +
+  'whether it is deciduous or evergreen, its height, trunk thickness, how gnarled the ' +
+  'branches are, how wide they spread, branch depth, and how dense vs airy and how ' +
+  'bright the canopy is. Call set_tree_parameters with values in the stated ranges. Be decisive.';
+
+const SIZE_N = { Small: 1, Medium: 2, Large: 3 };
+function applyTreeVision(p) {
+  // species + size -> nearest ez-tree preset; Bush -> the Bush plant type.
+  if (p.species === 'Bush') {
+    setVal('plantType', 'Bush');
+    applySpecies('Bush ' + (SIZE_N[p.size] || 1));
+    speciesSel.value = 'Bush ' + (SIZE_N[p.size] || 1);
+  } else {
+    setVal('plantType', 'Tree (ez-tree)');
+    const preset = `${p.species} ${p.size || 'Medium'}`;
+    if (TreePreset[preset]) { applySpecies(preset); speciesSel.value = preset; }
+  }
+  setVal('type', p.type);
+  setVal('heightM', p.heightM); setVal('trunkRadius', p.trunkRadius); setVal('gnarliness', p.gnarliness);
+  setVal('angle1', p.branchAngle); setVal('levels', p.levels);
+  setVal('leafDensity', p.leafDensity); setVal('lightGap', p.lightGap); setVal('leafLightMix', p.leafLightMix);
+}
+
+// Fit dials to the current reference image with Claude vision.
+document.getElementById('fitRef').addEventListener('click', async () => {
   const note = document.getElementById('fitNote');
+  const src = overlay.getAttribute('src');
   if (!src) { note.textContent = 'Load a reference image first (📎 or drag one on).'; return; }
-  note.textContent = 'analyzing…';
-  const img = new Image();
-  img.onload = () => {
-    const res = fitFromImage(img);
-    if (res.error) { note.textContent = res.error; return; }
-    if (res.species) { applySpecies(res.species); speciesSel.value = res.species; }
-    for (const id in res.overrides) setVal(id, res.overrides[id]);
-    note.textContent = `→ ${res.species} · ` + Object.entries(res.overrides).map(([k,v]) => `${k}=${v}`).join(', ');
-    scheduleRegen();
-  };
-  img.onerror = () => { note.textContent = 'Could not read the image — try dragging it onto the view.'; };
-  img.src = src;
+  note.textContent = '🤔 asking Claude…';
+  const res = await analyzeImage(src, apiKeyEl.value.trim(), TREE_TOOL, TREE_PROMPT);
+  if (res.error) { note.textContent = res.error; return; }
+  applyTreeVision(res.params);
+  note.textContent = '→ ' + Object.entries(res.params).map(([k, v]) => `${k}=${typeof v === 'number' ? (+v).toFixed(2) : v}`).join(', ');
+  scheduleRegen();
 });
 
 // Mobile: collapse the panel to maximize the canvas.
