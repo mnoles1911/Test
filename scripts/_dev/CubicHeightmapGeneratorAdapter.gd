@@ -121,6 +121,19 @@ func set_surface_detail_materials(pebble_id: int, twig_id: int) -> void:
 	cpp_impl.set("twig_material_id", twig_id)
 
 
+# TREES — wire the log + leaves CHANNEL_TYPE ids into the C++ tree scatter.
+# Same duck-typed bootstrap pattern + 0-default-disabled rationale as the
+# flora/surface-detail wirers above: until the bootstrap calls this the C++
+# tree ids are 0, so the generator (and the legacy `gen` baseline path) emits
+# no trees. Nothing in C++ hardcodes 10/11; the bootstrap reads the ids from
+# the VoxelMaterialRegistry and pushes them here.
+func set_tree_materials(log_id: int, leaves_id: int) -> void:
+	if cpp_impl == null:
+		return
+	cpp_impl.set("tree_log_material_id", log_id)
+	cpp_impl.set("tree_leaves_material_id", leaves_id)
+
+
 # --- Biome framework forwarders --------------------------------------
 #
 # The World3DBootstrap BIOME FRAMEWORK block calls these duck-typed off the

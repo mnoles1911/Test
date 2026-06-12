@@ -71,6 +71,21 @@ struct BiomeProfilePOD {
     double grass_density = 0.35;         // fraction of grass columns with a blade
     double flower_density = 0.02;        // fraction with a flower
 
+    // --- Trees ---
+    // Destructible voxel trees are emitted by the generator on a sparse
+    // lattice (see HeightmapGeneratorBase tree scatter). tree_density is the
+    // probability a lattice cell in THIS biome spawns a tree (0 = none, e.g.
+    // rocky_desert). Species size ranges are picked per-tree from a hash so a
+    // forest reads as varied heights, not a copy-pasted stand. All metres /
+    // voxel ranges; the generator converts metres → voxels with vpm.
+    double tree_density = 0.0;           // 0..1 chance per lattice cell (0 = no trees)
+    double tree_height_min_m = 8.0;      // shortest trunk (metres)
+    double tree_height_max_m = 14.0;     // tallest trunk (metres)
+    double tree_trunk_radius_min_vox = 3.0;  // thinnest trunk (voxels, ~0.3 m)
+    double tree_trunk_radius_max_vox = 5.0;  // thickest trunk (voxels, ~0.5 m)
+    double tree_canopy_radius_min_vox = 15.0; // smallest canopy (voxels, 1.5 m)
+    double tree_canopy_radius_max_vox = 25.0; // largest canopy (voxels, 2.5 m)
+
     // --- Identity ---
     // biome_name + debug_color stay GDScript-side (not needed in the hot
     // loop); the gate reads them off the .tres directly.

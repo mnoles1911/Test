@@ -49,6 +49,13 @@ void BiomeFieldCpp::set_biome_profiles(const Array &p_list) {
         p.micro_relief_chance = static_cast<double>(d.get("micro_relief_chance", p.micro_relief_chance));
         p.grass_density = static_cast<double>(d.get("grass_density", p.grass_density));
         p.flower_density = static_cast<double>(d.get("flower_density", p.flower_density));
+        p.tree_density = static_cast<double>(d.get("tree_density", p.tree_density));
+        p.tree_height_min_m = static_cast<double>(d.get("tree_height_min_m", p.tree_height_min_m));
+        p.tree_height_max_m = static_cast<double>(d.get("tree_height_max_m", p.tree_height_max_m));
+        p.tree_trunk_radius_min_vox = static_cast<double>(d.get("tree_trunk_radius_min_vox", p.tree_trunk_radius_min_vox));
+        p.tree_trunk_radius_max_vox = static_cast<double>(d.get("tree_trunk_radius_max_vox", p.tree_trunk_radius_max_vox));
+        p.tree_canopy_radius_min_vox = static_cast<double>(d.get("tree_canopy_radius_min_vox", p.tree_canopy_radius_min_vox));
+        p.tree_canopy_radius_max_vox = static_cast<double>(d.get("tree_canopy_radius_max_vox", p.tree_canopy_radius_max_vox));
         _profiles.push_back(p);
     }
 }

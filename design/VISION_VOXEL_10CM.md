@@ -101,6 +101,28 @@ The "world reads as material up close" follow-up to R4. Four small features that
 
 ---
 
+## Destructible voxel trees — v1 LIVE
+
+The "midground forest density" benchmark from ref_03 (each tree a ball of
+green leaf voxels over a brown trunk, dense enough to read as a real forest).
+Trees are **real CHANNEL_TYPE voxels** — `log` (10) trunk + `leaves` (11)
+canopy — emitted by the C++ heightmap generator as a deterministic function of
+(8 m anchor lattice cell, seed, per-biome tree params). Because they are
+ordinary solid voxels (outside the `is_passthrough` flora range), they mine,
+**fell as one cluster through the existing sever/gravity system**, and float in
+water for free — no tree-specific runtime code. Per-biome density + species
+size ranges live on `BiomeProfile` (`assets/biomes/*.tres`); forest dense,
+hills/plains sparse, desert/mountains none. Emits on the biome path only
+(default ON via `biome_framework_enabled`); the legacy path stays tree-free so
+the `gen` baseline is pinned. Gated by the headless `trees` selector. Full
+design: `design/TREES.md`.
+
+**Deferred (NOT in v1):** species variety from `tree_table`, conifer/cone
+canopies, root flare / stumps, a distant tree-impostor layer (so far stands
+don't pop in at the LOD2→3 boundary). See TREES.md follow-ups.
+
+---
+
 ## What 10cm actually changes about how the game feels
 
 At 6 voxels per meter, Roland is roughly 10–11 voxels tall. At 10/m he is roughly 17 voxels tall. That extra height means:

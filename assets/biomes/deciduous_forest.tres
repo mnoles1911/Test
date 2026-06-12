@@ -28,5 +28,14 @@ micro_relief_chance = 0.0
 grass_density = 0.18
 flower_density = 0.015
 tree_table = [{ "kind": "oak", "weight": 1.0 }, { "kind": "oak_large", "weight": 0.3 }]
+; TREES — dense oak woodland. ~0.55 chance per 8x8 m cell ≈ 1 tree / ~6x6 m
+; on average (the forest density target). Tall, broad broadleaf crowns.
+tree_density = 0.55
+tree_height_min_m = 9.0
+tree_height_max_m = 14.0
+tree_trunk_radius_min_vox = 2.0
+tree_trunk_radius_max_vox = 3.0
+tree_canopy_radius_min_vox = 18.0
+tree_canopy_radius_max_vox = 30.0
 biome_name = "deciduous_forest"
 debug_color = Color(0.20, 0.45, 0.20, 1)

@@ -754,6 +754,26 @@ func _ready() -> void:
 				FloraMaterial.PEBBLE_ID, FloraMaterial.TWIG_ID])
 		# --- D1 BLOCK END -------------------------------------------------
 
+		# --- TREES BLOCK START (destructible voxel trees) -----------------
+		# Wire the log + leaves CHANNEL_TYPE ids into the generator's tree
+		# scatter — same 0-default-disabled mechanism as flora/detail above,
+		# so a stale build (or the legacy no-biome path) simply grows no
+		# trees rather than writing garbage ids. Trees emit ONLY on the
+		# biome path (the generator needs per-biome tree_density), so this
+		# is a no-op on the pinned `gen` baseline. log/leaves ids come from
+		# the VoxelMaterialRegistry so nothing here hardcodes 10/11.
+		# Self-contained block so concurrent edits to this file stay clear.
+		if gen != null and gen.has_method("set_tree_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var log_mat := VoxelMaterialRegistry.get_by_string("log")
+			var leaves_mat := VoxelMaterialRegistry.get_by_string("leaves")
+			var log_id: int = log_mat.material_id if log_mat != null else 0
+			var leaves_id: int = leaves_mat.material_id if leaves_mat != null else 0
+			gen.call("set_tree_materials", log_id, leaves_id)
+			print("[World3D] Wired tree scatter ids to generator: log=%d leaves=%d." % [log_id, leaves_id])
+		# --- TREES BLOCK END ----------------------------------------------
+
 		# === BIOME FRAMEWORK === (wiring) ===============================
 		# Load the five biome profile .tres in slot order, push them to the
 		# generator as flattened PODs, then push the control-noise +

@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace godot;
@@ -155,6 +156,25 @@ int HeightmapGeneratorBase::get_twig_material_id() const { return _twig_material
 
 void HeightmapGeneratorBase::set_surface_detail_seed(int p_value) { _surface_detail_seed = p_value; }
 int HeightmapGeneratorBase::get_surface_detail_seed() const { return _surface_detail_seed; }
+
+// Destructible tree scatter ids + knobs.
+void HeightmapGeneratorBase::set_tree_log_material_id(int p_value) { _tree_log_material_id = p_value; }
+int HeightmapGeneratorBase::get_tree_log_material_id() const { return _tree_log_material_id; }
+
+void HeightmapGeneratorBase::set_tree_leaves_material_id(int p_value) { _tree_leaves_material_id = p_value; }
+int HeightmapGeneratorBase::get_tree_leaves_material_id() const { return _tree_leaves_material_id; }
+
+void HeightmapGeneratorBase::set_tree_seed(int p_value) { _tree_seed = p_value; }
+int HeightmapGeneratorBase::get_tree_seed() const { return _tree_seed; }
+
+void HeightmapGeneratorBase::set_tree_lattice_voxels(int p_value) { _tree_lattice_voxels = p_value; }
+int HeightmapGeneratorBase::get_tree_lattice_voxels() const { return _tree_lattice_voxels; }
+
+void HeightmapGeneratorBase::set_tree_max_lod(int p_value) { _tree_max_lod = p_value; }
+int HeightmapGeneratorBase::get_tree_max_lod() const { return _tree_max_lod; }
+
+void HeightmapGeneratorBase::set_tree_spawn_free_radius_voxels(int p_value) { _tree_spawn_free_radius_voxels = p_value; }
+int HeightmapGeneratorBase::get_tree_spawn_free_radius_voxels() const { return _tree_spawn_free_radius_voxels; }
 
 // ----- Biome framework forwarders ----------------------------------------
 //
@@ -332,6 +352,156 @@ const DiskMaterialPOD *HeightmapGeneratorBase::disk_at_column(int world_x, int w
         }
     }
     return nullptr;
+}
+
+// ----- Destructible trees: shape resolver -------------------------------
+//
+// PURE MATH per lattice cell (lattice_x, lattice_z). Mirrored line-for-line
+// by scripts/_dev/TreeReference.gd for the `trees` parity gate. Everything a
+// tree IS — whether it exists, where its trunk sits, how tall it is, how wide
+// the trunk + canopy are — is derived only from the cell coords, the tree
+// seed, and the biome's tree params. So any two blocks that scan this cell
+// build a byte-identical TreeInstance and therefore emit identical voxels on
+// their shared boundary (the gate's SEAM check). No noise, no RNG state.
+//
+// Biome selection: a tree belongs to whichever biome the SAME weighted-hash
+// surface pick chooses at the jittered trunk column (so a tree in a forest
+// border reads as the dominant biome there, exactly like the ground material
+// dithers). With NO biome profiles loaded there ARE no tree params, so
+// resolve_tree returns "no tree" — that's what keeps the legacy `gen`
+// baseline tree-free.
+
+HeightmapGeneratorBase::TreeInstance
+HeightmapGeneratorBase::resolve_tree(int lattice_x, int lattice_z) const {
+    TreeInstance t;
+    if (_tree_log_material_id == 0) {
+        return t;  // tree emission disabled (legacy path)
+    }
+    voxel_gen::BiomeFieldCpp *biome = _biome_field.is_valid() ? _biome_field.ptr() : nullptr;
+    if (biome == nullptr || !biome->has_profiles()) {
+        return t;  // no biome params → no trees (keeps legacy baseline clean)
+    }
+    const int grid = _tree_lattice_voxels < 1 ? 1 : _tree_lattice_voxels;
+    const int64_t seed = static_cast<int64_t>(_tree_seed);
+
+    // Jittered trunk position INSIDE the cell. Two hashes (salts 1 + 2) push
+    // the trunk off the lattice node so forests don't grid-align.
+    const double jx = voxel_gen::math::hash3(lattice_x, 1, lattice_z, seed);
+    const double jz = voxel_gen::math::hash3(lattice_x, 2, lattice_z, seed);
+    const int trunk_x = lattice_x * grid + static_cast<int>(jx * static_cast<double>(grid));
+    const int trunk_z = lattice_z * grid + static_cast<int>(jz * static_cast<double>(grid));
+
+    // Spawn-free disc around world origin (don't bury the player at spawn).
+    const int r0 = _tree_spawn_free_radius_voxels;
+    if (r0 > 0 &&
+            (static_cast<int64_t>(trunk_x) * trunk_x + static_cast<int64_t>(trunk_z) * trunk_z)
+                    <= static_cast<int64_t>(r0) * r0) {
+        return t;
+    }
+
+    // Biome at the trunk column → its tree params.
+    const int surf = biome->pick_surface_biome(trunk_x, trunk_z);
+    if (surf < 0 || surf >= biome->profile_count()) {
+        return t;
+    }
+    const voxel_gen::BiomeProfilePOD &bp = biome->profile_at(surf);
+    if (bp.tree_density <= 0.0) {
+        return t;  // biome grows no trees (desert / mountains)
+    }
+
+    // Existence roll (salt 0). Below tree_density → a tree lives here.
+    const double exist = voxel_gen::math::hash3(lattice_x, 0, lattice_z, seed);
+    if (exist >= bp.tree_density) {
+        return t;
+    }
+
+    // Ground at the trunk column. A trunk under (or at) sea level is dropped —
+    // no trees standing in the ocean. compute_ground_y is the SAME per-column
+    // surface the terrain uses, so the trunk sits exactly on the ground.
+    const int ground_y = compute_ground_y(trunk_x, trunk_z);
+    if (ground_y <= _sea_level_voxels) {
+        return t;
+    }
+    // Trees only grow on grassy ground (a grass TOP id). Sand/snow/stone tops
+    // grow none — mirrors the flora "grassland only" rule so a forest can't
+    // sprout on a desert dune or a snowcap that happens to fall in a grassy
+    // biome's border. GRASS_MATERIAL_ID = 3.
+    if (bp.top_material_id != GRASS_MATERIAL_ID) {
+        return t;
+    }
+
+    // Species params from independent hashes (salts 3..7) → varied stand.
+    const double h_t = voxel_gen::math::hash3(lattice_x, 3, lattice_z, seed);
+    const double tr_t = voxel_gen::math::hash3(lattice_x, 4, lattice_z, seed);
+    const double cr_t = voxel_gen::math::hash3(lattice_x, 5, lattice_z, seed);
+
+    const double vpm = biome->get_voxels_per_metre();
+    const double height_m = bp.tree_height_min_m + h_t * (bp.tree_height_max_m - bp.tree_height_min_m);
+    int height_vox = static_cast<int>(height_m * vpm);
+    if (height_vox < 1) height_vox = 1;
+
+    int trunk_radius = static_cast<int>(bp.tree_trunk_radius_min_vox
+            + tr_t * (bp.tree_trunk_radius_max_vox - bp.tree_trunk_radius_min_vox) + 0.5);
+    if (trunk_radius < 1) trunk_radius = 1;
+
+    int canopy_radius = static_cast<int>(bp.tree_canopy_radius_min_vox
+            + cr_t * (bp.tree_canopy_radius_max_vox - bp.tree_canopy_radius_min_vox) + 0.5);
+    if (canopy_radius < 1) canopy_radius = 1;
+
+    // Canopy = a big leaf ellipsoid that wraps the UPPER HALF of the tree so
+    // the silhouette reads as a broadleaf crown, not a bare pole with a puff
+    // on top. The crown's vertical half-extent is the larger of (the designer
+    // canopy_radius) and (a fraction of the trunk height) — on a tall tree the
+    // height term wins so the crown grows to cover roughly the top 55% of the
+    // trunk. The centre is placed so the crown bottom reaches down to ~45% of
+    // the tree height and the crown top sits a little above the trunk tip.
+    const int trunk_top_y = ground_y + height_vox;
+    // Crown bottom at ~45% of tree height above the ground; crown top ~8%
+    // above the trunk tip. half_height = (top - bottom) / 2, centre between.
+    const int crown_bottom = ground_y + static_cast<int>(height_vox * 0.45);
+    const int crown_top = trunk_top_y + static_cast<int>(height_vox * 0.08);
+    int canopy_half_height = (crown_top - crown_bottom) / 2;
+    // Never let the crown collapse thinner than the horizontal radius (so a
+    // short tree still gets a round-ish head, not a flat disc).
+    if (canopy_half_height < canopy_radius) canopy_half_height = canopy_radius;
+    if (canopy_half_height < 1) canopy_half_height = 1;
+    const int canopy_center_y = crown_bottom + canopy_half_height;
+
+    t.exists = true;
+    t.trunk_x = trunk_x;
+    t.trunk_z = trunk_z;
+    t.ground_y = ground_y;
+    t.height_vox = height_vox;
+    t.trunk_radius = trunk_radius;
+    t.canopy_radius = canopy_radius;
+    t.canopy_center_y = canopy_center_y;
+    t.canopy_half_height = canopy_half_height;
+    t.shape_salt = voxel_gen::math::hash3(lattice_x, 6, lattice_z, seed) > 0.5
+            ? (seed ^ 0x5151) : (seed ^ 0x2727);
+    return t;
+}
+
+// Conservative upper bound on how far (in voxels) any tree's voxels can sit
+// from its trunk column — the canopy's max horizontal radius across loaded
+// biomes. The block scan widens its lattice-anchor window by this much so a
+// canopy whose trunk is in a neighbouring block still gets stamped here.
+int HeightmapGeneratorBase::tree_max_reach_voxels() const {
+    if (_tree_log_material_id == 0) {
+        return 0;
+    }
+    voxel_gen::BiomeFieldCpp *biome = _biome_field.is_valid() ? _biome_field.ptr() : nullptr;
+    if (biome == nullptr || !biome->has_profiles()) {
+        return 0;
+    }
+    double max_canopy = 0.0;
+    for (int i = 0; i < biome->profile_count(); ++i) {
+        const voxel_gen::BiomeProfilePOD &bp = biome->profile_at(i);
+        if (bp.tree_density > 0.0 && bp.tree_canopy_radius_max_vox > max_canopy) {
+            max_canopy = bp.tree_canopy_radius_max_vox;
+        }
+    }
+    // +1 voxel safety so the erosion noise on the canopy rim is never clipped.
+    return static_cast<int>(max_canopy) + 1;
 }
 
 // ----- Block fill: shared inner loop ------------------------------------
@@ -784,6 +954,131 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             }
         }
     }
+
+    // ===== Destructible tree pass =======================================
+    // Run AFTER terrain so trees only ever overwrite AIR (never carve ground,
+    // never replace water). Pure math per lattice anchor → two adjacent
+    // blocks emit identical voxels for a shared tree (the SEAM invariant).
+    //
+    // LOD gate: emit at lod 0.._tree_max_lod so forests still read at the
+    // mid LODs (the design wants distant stands). At lod>0 each buffer voxel
+    // spans `stride` fine units; we sample the tree shape at each coarse
+    // voxel's CENTRE (its fine-world coord), exactly like the terrain band
+    // logic samples ground_y at the column's fine coord — so a coarse leaf
+    // voxel lights up when the fine-grained shape test passes at its centre.
+    const bool trees_on = (_tree_log_material_id != 0)
+            && _tree_max_lod >= 0
+            && lod <= _tree_max_lod
+            && biome != nullptr;
+    if (trees_on) {
+        const int grid = _tree_lattice_voxels < 1 ? 1 : _tree_lattice_voxels;
+        const int reach = tree_max_reach_voxels();
+        // Block XZ footprint in fine world voxels.
+        const int blk_x0 = origin_in_voxels.x;
+        const int blk_x1 = origin_in_voxels.x + (size.x - 1) * stride;
+        const int blk_z0 = origin_in_voxels.z;
+        const int blk_z1 = origin_in_voxels.z + (size.z - 1) * stride;
+        const int blk_y0 = origin_in_voxels.y;
+        const int blk_y1 = origin_in_voxels.y + (size.y - 1) * stride;
+        // Lattice cells whose trees could reach this block: widen by `reach`.
+        const int lc_x0 = static_cast<int>(std::floor(static_cast<double>(blk_x0 - reach) / static_cast<double>(grid)));
+        const int lc_x1 = static_cast<int>(std::floor(static_cast<double>(blk_x1 + reach) / static_cast<double>(grid)));
+        const int lc_z0 = static_cast<int>(std::floor(static_cast<double>(blk_z0 - reach) / static_cast<double>(grid)));
+        const int lc_z1 = static_cast<int>(std::floor(static_cast<double>(blk_z1 + reach) / static_cast<double>(grid)));
+
+        for (int lcz = lc_z0; lcz <= lc_z1; ++lcz) {
+            for (int lcx = lc_x0; lcx <= lc_x1; ++lcx) {
+                const TreeInstance tree = resolve_tree(lcx, lcz);
+                if (!tree.exists) {
+                    continue;
+                }
+                // Vertical span this tree occupies (trunk base .. canopy top).
+                const int tree_y_lo = tree.ground_y + 1;
+                const int tree_y_hi = std::max(tree.ground_y + tree.height_vox,
+                                               tree.canopy_center_y + tree.canopy_half_height);
+                if (tree_y_hi < blk_y0 || tree_y_lo > blk_y1) {
+                    continue;  // tree is entirely above/below this block
+                }
+                // Stamp into the buffer's local cells. Iterate buffer indices
+                // and map to fine world coords (= cell centre at lod>0).
+                for (int z = 0; z < size.z; ++z) {
+                    const int wz = origin_in_voxels.z + z * stride;
+                    const int ddz = wz - tree.trunk_z;
+                    for (int x = 0; x < size.x; ++x) {
+                        const int wx = origin_in_voxels.x + x * stride;
+                        const int ddx = wx - tree.trunk_x;
+                        // Cheap XZ reject: outside the larger of trunk/canopy.
+                        const int max_xz = std::max(tree.trunk_radius, tree.canopy_radius) + 1;
+                        if (ddx < -max_xz || ddx > max_xz || ddz < -max_xz || ddz > max_xz) {
+                            continue;
+                        }
+                        const bool in_trunk_xz =
+                                (ddx >= -tree.trunk_radius && ddx <= tree.trunk_radius &&
+                                 ddz >= -tree.trunk_radius && ddz <= tree.trunk_radius);
+                        const int64_t canopy_xz_sq = static_cast<int64_t>(ddx) * ddx
+                                + static_cast<int64_t>(ddz) * ddz;
+                        for (int y = 0; y < size.y; ++y) {
+                            const int wy = origin_in_voxels.y + y * stride;
+                            if (wy <= tree.ground_y) {
+                                continue;  // never overwrite ground
+                            }
+                            int put_id = 0;
+                            // Trunk: a square column from ground+1 up to the
+                            // trunk top.
+                            if (in_trunk_xz && wy >= tree_y_lo
+                                    && wy <= tree.ground_y + tree.height_vox) {
+                                put_id = _tree_log_material_id;
+                            } else if (_tree_leaves_material_id != 0) {
+                                // Canopy: an ellipsoid blob with hash-noise
+                                // edge erosion so it reads organic, not a ball.
+                                const int ddy = wy - tree.canopy_center_y;
+                                const double rx = static_cast<double>(tree.canopy_radius);
+                                const double ry = static_cast<double>(tree.canopy_half_height);
+                                const double norm =
+                                        static_cast<double>(canopy_xz_sq) / (rx * rx)
+                                        + static_cast<double>(static_cast<int64_t>(ddy) * ddy) / (ry * ry);
+                                if (norm <= 1.0) {
+                                    // Erode the outer shell: near the rim
+                                    // (norm > 0.55) a per-voxel hash punches
+                                    // holes so the silhouette is ragged. Inner
+                                    // leaves are solid so the canopy isn't
+                                    // see-through.
+                                    bool keep = true;
+                                    if (norm > 0.55) {
+                                        const double e = voxel_gen::math::hash3(
+                                                wx, wy, wz, tree.shape_salt);
+                                        // More aggressive erosion the closer to
+                                        // the rim: 0 at norm 0.55, ~0.5 at 1.0.
+                                        const double erode = (norm - 0.55) / 0.45 * 0.5;
+                                        if (e < erode) {
+                                            keep = false;
+                                        }
+                                    }
+                                    if (keep) {
+                                        put_id = _tree_leaves_material_id;
+                                    }
+                                }
+                            }
+                            if (put_id == 0) {
+                                continue;
+                            }
+                            // Only ever fill AIR — never overwrite terrain that
+                            // the column loop already wrote (ground, water,
+                            // flora). A leaf voxel may overlap another tree's
+                            // log; logs win since the trunk pass set them first
+                            // within this same anchor, but ACROSS anchors we
+                            // only write where the cell is still air.
+                            const int cur = static_cast<int>(
+                                    out_buffer.call("get_voxel", x, y, z, CHANNEL_TYPE));
+                            if (cur == 0) {
+                                out_buffer.call("set_voxel", put_id, x, y, z, CHANNEL_TYPE);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ----- ClassDB bindings --------------------------------------------------
@@ -1033,6 +1328,49 @@ void HeightmapGeneratorBase::_bind_methods() {
                          &HeightmapGeneratorBase::get_surface_detail_seed);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "surface_detail_seed"),
                  "set_surface_detail_seed", "get_surface_detail_seed");
+
+    // Destructible tree scatter ids + knobs (default 0 = disabled).
+    ClassDB::bind_method(D_METHOD("set_tree_log_material_id", "value"),
+                         &HeightmapGeneratorBase::set_tree_log_material_id);
+    ClassDB::bind_method(D_METHOD("get_tree_log_material_id"),
+                         &HeightmapGeneratorBase::get_tree_log_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "tree_log_material_id"),
+                 "set_tree_log_material_id", "get_tree_log_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_tree_leaves_material_id", "value"),
+                         &HeightmapGeneratorBase::set_tree_leaves_material_id);
+    ClassDB::bind_method(D_METHOD("get_tree_leaves_material_id"),
+                         &HeightmapGeneratorBase::get_tree_leaves_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "tree_leaves_material_id"),
+                 "set_tree_leaves_material_id", "get_tree_leaves_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_tree_seed", "value"),
+                         &HeightmapGeneratorBase::set_tree_seed);
+    ClassDB::bind_method(D_METHOD("get_tree_seed"),
+                         &HeightmapGeneratorBase::get_tree_seed);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "tree_seed"),
+                 "set_tree_seed", "get_tree_seed");
+
+    ClassDB::bind_method(D_METHOD("set_tree_lattice_voxels", "value"),
+                         &HeightmapGeneratorBase::set_tree_lattice_voxels);
+    ClassDB::bind_method(D_METHOD("get_tree_lattice_voxels"),
+                         &HeightmapGeneratorBase::get_tree_lattice_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "tree_lattice_voxels"),
+                 "set_tree_lattice_voxels", "get_tree_lattice_voxels");
+
+    ClassDB::bind_method(D_METHOD("set_tree_max_lod", "value"),
+                         &HeightmapGeneratorBase::set_tree_max_lod);
+    ClassDB::bind_method(D_METHOD("get_tree_max_lod"),
+                         &HeightmapGeneratorBase::get_tree_max_lod);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "tree_max_lod"),
+                 "set_tree_max_lod", "get_tree_max_lod");
+
+    ClassDB::bind_method(D_METHOD("set_tree_spawn_free_radius_voxels", "value"),
+                         &HeightmapGeneratorBase::set_tree_spawn_free_radius_voxels);
+    ClassDB::bind_method(D_METHOD("get_tree_spawn_free_radius_voxels"),
+                         &HeightmapGeneratorBase::get_tree_spawn_free_radius_voxels);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "tree_spawn_free_radius_voxels"),
+                 "set_tree_spawn_free_radius_voxels", "get_tree_spawn_free_radius_voxels");
 
     // Biome framework forwarders (no ADD_PROPERTY — bootstrap + gate only).
     ClassDB::bind_method(D_METHOD("set_biome_profiles", "list"),

@@ -186,8 +186,13 @@ a screenshot-framing limitation, not a terrain one.
 4. **Coastal-plains framing** of the screenshot probe (cosmetic): the
    `SHOT=biomes` anchor search could prefer the most-inland pure column per
    biome to frame low-relief biomes over land instead of ocean.
-5. **`tree_table`** is carried through BiomeProfile but nothing consumes it
-   yet — the future trees PR reads it per-biome.
+5. ~~**`tree_table`** is carried through BiomeProfile but nothing consumes it
+   yet — the future trees PR reads it per-biome.~~ **Done (sort of):**
+   destructible voxel trees now read per-biome `tree_density` + species size
+   ranges off `BiomeProfile` — see `design/TREES.md`. `tree_table` (the
+   `{kind, weight}` species list) is still unread; v1 emits one broadleaf
+   species per biome. Distant skirt + far-grass still don't render/gate on
+   trees (see TREES.md follow-up #4).
 6. **Trample / scythe** (vegetation-only call sites) still use
    `FloraMaterial.is_flora()`; per-biome grass density doesn't change that.
 

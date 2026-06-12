@@ -1364,3 +1364,23 @@ the real LOD0 voxel grass no longer ends in a bald ring.
   memory — it has no flora scatter code, so grass and flowers will be absent
   even though the generator build succeeded. Close Godot completely, then
   reopen the project. This applies to any DLL rebuild, not just flora.
+
+
+## Destructible trees — in-engine acceptance (2026-06-12)
+
+- Walk into the deciduous forest (F1 overlay shows the dominant biome;
+  forests are the moisture-rich mid-relief regions). Trees should read
+  as ~8-14 m oaks: 0.5-0.7 m boles, ragged crowns wrapping the upper
+  half, ~1 per 6x6 m in deep forest.
+- **Chop through a trunk with the axe** — the WHOLE tree (trunk +
+  crown) should detach and tip as ONE falling cluster (this exercises
+  the sever-follow system built in PR #249; it was blocked on tree
+  content until now).
+- **Fell a tree into a pond** — logs float (density 0.7), leaf voxels
+  are buoyant too (0.4). Logs raft on the surface after settling.
+- Tree density/size per biome is yours to tune in assets/biomes/*.tres
+  (Inspector tooltips; restart to apply). Desert + mountains have zero
+  trees by design.
+- Known v1 limits (logged in design/TREES.md): one species shape, no
+  stumps/regrowth, canopies pop at the LOD2->LOD3 boundary (~51 m; a
+  far-tree impostor layer like the far-grass fix is the follow-up).

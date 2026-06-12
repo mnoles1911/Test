@@ -223,6 +223,35 @@ public:
         return _biome_field.is_valid() && _biome_field->has_profiles();
     }
 
+    // --- Destructible trees -----------------------------------------------
+    // Trees are pure generator output: deterministic per-(anchor, seed, biome)
+    // so two adjacent blocks emit the SAME tree voxels along their shared
+    // boundary (no seam) and a regen / save-reload reproduces the forest
+    // exactly. The block-fill loop, after laying terrain, scans every lattice
+    // anchor whose tree could reach this block's XZ footprint and stamps the
+    // trunk (log id) + canopy (leaves id) voxels that fall inside the block.
+    //
+    // Wired by the bootstrap (default 0 = disabled, so the legacy `gen`
+    // baseline path emits no trees — pinned). log/leaves ids mirror the
+    // VoxelMaterial .tres: log=10, leaves=11.
+    void set_tree_log_material_id(int p_value);
+    int get_tree_log_material_id() const;
+
+    void set_tree_leaves_material_id(int p_value);
+    int get_tree_leaves_material_id() const;
+
+    void set_tree_seed(int p_value);
+    int get_tree_seed() const;
+
+    void set_tree_lattice_voxels(int p_value);
+    int get_tree_lattice_voxels() const;
+
+    void set_tree_max_lod(int p_value);
+    int get_tree_max_lod() const;
+
+    void set_tree_spawn_free_radius_voxels(int p_value);
+    int get_tree_spawn_free_radius_voxels() const;
+
     // --- Core API ---------------------------------------------------------
 
     // Concrete generators override this with their ground-Y math.
@@ -270,6 +299,36 @@ public:
 
 protected:
     static void _bind_methods();
+
+    // --- Tree shape (pure math; mirrored by TreeReference.gd) -------------
+    // A fully-resolved tree, derived ONLY from its lattice cell + seed +
+    // biome tree params. Two blocks that both scan this anchor compute an
+    // identical TreeInstance, so their emitted voxels agree on the boundary.
+    struct TreeInstance {
+        bool exists = false;
+        int trunk_x = 0;       // jittered trunk centre (world voxels)
+        int trunk_z = 0;
+        int ground_y = 0;      // surface voxel-Y at the trunk column
+        int height_vox = 0;    // trunk height in voxels (ground+1 .. ground+height)
+        int trunk_radius = 0;  // trunk half-width in voxels (square cross-section)
+        int canopy_radius = 0; // canopy max radius in voxels
+        int canopy_center_y = 0;   // canopy ellipsoid centre Y (world voxels)
+        int canopy_half_height = 0;// canopy ellipsoid vertical half-extent
+        int64_t shape_salt = 0;    // per-tree salt for canopy edge erosion
+    };
+
+    // Resolve the tree (if any) anchored at lattice cell (lattice_x,
+    // lattice_z). Pure function of the cell coords, the tree seed, and the
+    // biome tree params at the jittered trunk column (picked by the same
+    // weighted-hash as surface material). exists=false when the cell rolled
+    // no tree, the biome has tree_density 0, the trunk would sit under water,
+    // or the trunk falls inside the world-origin spawn-free radius.
+    TreeInstance resolve_tree(int lattice_x, int lattice_z) const;
+
+    // The widest any tree can reach from its trunk column, in voxels — used
+    // to bound the lattice-anchor scan around a block. Conservative upper
+    // bound from the largest canopy radius across loaded biomes.
+    int tree_max_reach_voxels() const;
 
     // Tier 5 helper. Mirrors GD _disk_at_column. Returns pointer to a
     // disk POD if (world_x, world_z) sits inside a disk anchor footprint
@@ -335,6 +394,20 @@ protected:
     // Different salt from _flora_seed so pebble/twig placement is
     // statistically independent of where grass/flowers landed.
     int _surface_detail_seed = 7919;
+
+    // --- Destructible trees -----------------------------------------------
+    // 0 ids = disabled (the legacy `gen` baseline path → zero trees). The
+    // lattice is the candidate-anchor grid in voxels (80 = 8 m at 10 vox/m:
+    // one candidate per 8×8 m cell, then per-biome tree_density thins it).
+    int _tree_log_material_id = 0;        // 0 disables tree emission
+    int _tree_leaves_material_id = 0;     // 0 disables the canopy
+    int _tree_seed = 4242;
+    int _tree_lattice_voxels = 80;        // 8 m candidate grid
+    int _tree_max_lod = 2;                // emit trees at lod 0..2 (forests read at distance)
+    // Keep a tree-free disc around world origin so a generated trunk never
+    // buries the player at spawn (the spawn probe drops Roland onto the
+    // ground column at/near origin). ~6 m = 60 vox at 10/m.
+    int _tree_spawn_free_radius_voxels = 60;
 
     // --- Biome framework --------------------------------------------------
     // Lazily created when set_biome_profiles / set_biome_field_params /

@@ -141,10 +141,43 @@ extends Resource
 # downstream). Sits at the bottom of the flora roll band.
 
 @export var tree_table: Array = []
-# DATA-ONLY tree spec for a future trees PR to consume. Each entry is a
-# Dictionary describing a tree type + weight (e.g. {"kind":"oak",
-# "weight":1.0}). Carried through the pipeline now so biomes can be authored
-# with their forests; nothing reads it yet.
+# DATA-ONLY tree spec, carried for a future species-variety pass. Each entry
+# is a Dictionary describing a tree type + weight (e.g. {"kind":"oak",
+# "weight":1.0}). The CURRENT trees system (see below) emits a single
+# broadleaf species per biome; tree_table is not read yet but is kept so
+# biomes can be authored with their intended forests.
+
+@export_range(0.0, 1.0, 0.001) var tree_density: float = 0.0
+# Chance that a tree-lattice cell in this biome spawns a destructible voxel
+# tree. The generator evaluates one candidate per ~8×8 m cell, so density is
+# trees-per-cell, NOT trees-per-square-metre. Guide values:
+#   deciduous_forest ~0.55 (dense woodland, ~1 tree / 6×6 m on average)
+#   rolling_hills    ~0.10 (sparse, ~1 tree / 25×25 m)
+#   flat_plains      ~0.02 (very sparse, lone trees)
+#   rocky_desert      0.0  (none)
+#   mountains         0.0  (none above the stone line; very sparse low)
+# 0 = no trees (the generator skips the whole biome).
+
+@export_range(2.0, 30.0, 0.5) var tree_height_min_m: float = 8.0
+# Shortest trunk for this biome's trees, in metres. A per-tree hash picks a
+# height between min and max so a stand reads as varied, not cloned.
+
+@export_range(2.0, 40.0, 0.5) var tree_height_max_m: float = 14.0
+# Tallest trunk for this biome's trees, in metres.
+
+@export_range(1.0, 12.0, 1.0) var tree_trunk_radius_min_vox: float = 3.0
+# Thinnest trunk half-width, in VOXELS (3 vox = 0.3 m at 10/m). The trunk is
+# a square column 2·r+1 voxels across so it reads as a real bole.
+
+@export_range(1.0, 12.0, 1.0) var tree_trunk_radius_max_vox: float = 5.0
+# Thickest trunk half-width, in voxels (5 vox = 0.5 m).
+
+@export_range(4.0, 50.0, 1.0) var tree_canopy_radius_min_vox: float = 15.0
+# Smallest canopy radius, in voxels (15 vox = 1.5 m). The canopy is an
+# eroded ellipsoid of leaf voxels sitting on the upper trunk.
+
+@export_range(4.0, 60.0, 1.0) var tree_canopy_radius_max_vox: float = 25.0
+# Largest canopy radius, in voxels (25 vox = 2.5 m).
 
 
 # =============================================================
@@ -186,4 +219,11 @@ func to_pod_dict() -> Dictionary:
 		"micro_relief_chance": micro_relief_chance,
 		"grass_density": grass_density,
 		"flower_density": flower_density,
+		"tree_density": tree_density,
+		"tree_height_min_m": tree_height_min_m,
+		"tree_height_max_m": tree_height_max_m,
+		"tree_trunk_radius_min_vox": tree_trunk_radius_min_vox,
+		"tree_trunk_radius_max_vox": tree_trunk_radius_max_vox,
+		"tree_canopy_radius_min_vox": tree_canopy_radius_min_vox,
+		"tree_canopy_radius_max_vox": tree_canopy_radius_max_vox,
 	}

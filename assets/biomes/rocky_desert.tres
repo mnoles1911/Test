@@ -33,5 +33,7 @@ micro_relief_chance = 0.04
 grass_density = 0.0
 flower_density = 0.0
 tree_table = []
+; TREES — none. Desert grows no trees (tree_density 0 → generator skips it).
+tree_density = 0.0
 biome_name = "rocky_desert"
 debug_color = Color(0.78, 0.58, 0.34, 1)

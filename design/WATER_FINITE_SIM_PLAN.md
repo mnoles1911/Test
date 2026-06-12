@@ -206,3 +206,27 @@ the world to make flow decisions.
 `SPREAD_REACH_VOXELS = 30` (~3 m) · `EVAP_TTL = 40` ticks (~10 s) ·
 `FINITE_CELL_UPDATES_PER_TICK = 256` · tick = existing 4 Hz ·
 write ceiling = existing `_MAX_FLOW_BUDGET_PER_TICK = 4096`.
+
+
+## Headless e2e gate notes (2026-06-12, biome-era stabilization)
+
+The `finite_world` gate now pours onto a **built stone test pad** (4 m
+from spawn, 3 m above sea) instead of hunting the generated world for a
+site — biome terrain put ocean on three sides of spawn, made the ocean
+floor the levelest ground around, and parked every natural site near the
+LOD0/LOD1 boundary where Zylann's clipbox churn re-stales projected
+bytes indefinitely. Two findings worth tracking:
+
+1. **VEM `box_voxels` SOLID writes ghost in the headless harness** —
+   `queue_edit_box_voxels(.., stone)` queues + drains without landing,
+   while a raw `VoxelTool.do_box` on the same region lands instantly.
+   In-game box edits (carves, value 0) work daily; a solid-value box via
+   the queue may never have been exercised. FOLLOW-UP: reproduce in
+   isolation before trusting solid box writes anywhere in gameplay.
+2. **Pool-edge byte churn (headless only):** with no real viewer, data
+   blocks migrate and restore ±1-level-stale DATA5 on pool-edge cells
+   faster than the 3-pass reconcile's one-shot window. The gate warns
+   (does not fail) on the exact ±1 signature, retries reconcile once,
+   and still fails hard on conservation drift, >±1 deviation, or source
+   corruption. In-game reconciliation is continuous; designer-accepted
+   in-engine behavior is correct.

@@ -32,5 +32,14 @@ micro_relief_chance = 0.0
 grass_density = 0.35
 flower_density = 0.02
 tree_table = []
+; TREES — sparse lone trees dotting the hills. ~0.10 per 8x8 m cell ≈
+; 1 tree / ~25x25 m. Mixed heights, slightly smaller crowns than forest.
+tree_density = 0.10
+tree_height_min_m = 8.0
+tree_height_max_m = 13.0
+tree_trunk_radius_min_vox = 2.0
+tree_trunk_radius_max_vox = 3.0
+tree_canopy_radius_min_vox = 16.0
+tree_canopy_radius_max_vox = 26.0
 biome_name = "rolling_hills"
 debug_color = Color(0.42, 0.62, 0.28, 1)
