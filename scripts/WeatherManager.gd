@@ -92,7 +92,11 @@ const STATE_PROFILES: Dictionary = {
 		# is 0.05 and length 64; we deliberately diverge per state.
 		# CLEAR: just enough density to read god rays without hazing the
 		# world, warm-tinted to mimic sunlit dust scattering.
-		"vol_fog_density": 0.035,
+		# 2026-06-12: 0.035 -> 0.015 — designer found clear-weather
+		# distance too hazy between player and horizon at 10 vox/m. Keeps a
+		# light atmospheric perspective on the far skirt (which the designer
+		# liked) without fogging the mid-distance.
+		"vol_fog_density": 0.015,
 		"vol_fog_length":  80.0,
 		"vol_fog_albedo":  Color(1.00, 0.95, 0.85, 1.0),
 	},
