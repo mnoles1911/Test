@@ -451,24 +451,66 @@ func _hash3(x: int, y: int, z: int, seed: int) -> float:
 
 # --- Mesh + material builders ---------------------------------------
 
-# Build the impostor blade mesh. It MUST look like the real LOD0 flora, so
-# it reuses the EXACT cross-quad builder from World3DBootstrap (extracted to
-# a static so there is one source of truth for blade geometry). Same height,
-# half-width, and grass tint as the real grass_blade model (id 24).
+# Build the impostor blade mesh. It MUST look like the real LOD0 grass, so
+# it matches the new ground-cover look: a SOLID 1-voxel-thick x 3-voxel-tall
+# green column (the cross-quad blade was retired 2026-06-12 per the designer
+# directive). Built directly in WORLD metres (MultiMesh transforms are world
+# metres) so the ~13 m handoff to the near LOD0 cube grass is seamless.
 func _build_impostor_blade_mesh() -> Mesh:
-	const FloraMeshBuilder := preload("res://scripts/FloraMeshBuilder.gd")
-	# These three numbers mirror the grass_blade spec in
-	# World3DBootstrap._inject_flora_models_into_library. Kept in sync by
-	# both reading the same intent: a ~25 cm blade, grass-green.
-	var height_m: float = 0.25
-	var half_width_m: float = 0.05
-	var color := Color(0.40, 0.56, 0.23)
-	# The real flora mesh is built in CUBE-LOCAL voxel units (a unit cube =
-	# one voxel). The impostor lives in WORLD space (MultiMesh transforms are
-	# world metres), so we ask the builder for a WORLD-METRE mesh: same shape,
-	# scaled to real size. The builder's world_scale flag does exactly that.
-	return FloraMeshBuilder.build_cross_quad(
-		height_m, half_width_m, color, _voxels_per_metre, true)
+	# DESIGNER LOOK (2026-06-12): mirror World3DBootstrap's GRASS_COVER_GREEN
+	# dial and the generator's 1-thick x 3-tall stack. One voxel = 1 /
+	# VOXELS_PER_METER metres, so the column is 0.1 m wide x 0.3 m tall at
+	# 10 vox/m. Keep this colour identical to the bootstrap's GRASS_COVER_GREEN
+	# so near and far grass read as one continuous field across the LOD seam.
+	var color := Color(0.24, 0.40, 0.14)   # == World3DBootstrap.GRASS_COVER_GREEN
+	var voxel_m: float = 1.0 / maxf(_voxels_per_metre, 0.0001)
+	var width_m: float = voxel_m         # 1 voxel thick (0.1 m at 10 vox/m)
+	var height_m: float = voxel_m * 3.0  # 3 voxels tall (0.3 m at 10 vox/m)
+	return _build_world_grass_column_mesh(width_m, height_m, color)
+
+
+# Build a solid box column in WORLD metres, rooted at y=0 and centred on
+# x=z=0 (so a MultiMesh world transform places it directly), `width_m` on a
+# side and `height_m` tall. Six outward quads, flat vertex tint — matches the
+# near LOD0 cube grass model so the impostor and the real grass look identical.
+func _build_world_grass_column_mesh(width_m: float, height_m: float, color: Color) -> ArrayMesh:
+	var hw: float = maxf(width_m, 0.001) * 0.5
+	var h: float = maxf(height_m, 0.001)
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3) -> void:
+		var base: int = verts.size()
+		for p in [a, b, c, d]:
+			verts.append(p)
+			normals.append(n)
+			colors.append(color)
+		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	# Eight corners of the box (centred XZ, rooted at y=0).
+	var p000 := Vector3(-hw, 0, -hw)
+	var p100 := Vector3(hw, 0, -hw)
+	var p010 := Vector3(-hw, h, -hw)
+	var p110 := Vector3(hw, h, -hw)
+	var p001 := Vector3(-hw, 0, hw)
+	var p101 := Vector3(hw, 0, hw)
+	var p011 := Vector3(-hw, h, hw)
+	var p111 := Vector3(hw, h, hw)
+	add_quad.call(p001, p101, p111, p011, Vector3(0, 0, 1))   # +Z
+	add_quad.call(p100, p000, p010, p110, Vector3(0, 0, -1))  # -Z
+	add_quad.call(p101, p100, p110, p111, Vector3(1, 0, 0))   # +X
+	add_quad.call(p000, p001, p011, p010, Vector3(-1, 0, 0))  # -X
+	add_quad.call(p011, p111, p110, p010, Vector3(0, 1, 0))   # +Y (top)
+	add_quad.call(p000, p100, p101, p001, Vector3(0, -1, 0))  # -Y (bottom)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 # Build the shared wind-sway ShaderMaterial used by every impostor chunk.
@@ -479,12 +521,17 @@ func _build_sway_material() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
 	mat.resource_name = "far_grass_sway"
-	# The impostor blade mesh is built in WORLD metres ~0.25 m tall (see
-	# _build_impostor_blade_mesh). Tell the sway shader that height so it
-	# normalises the bend weight to a clean 0..1 along the blade — matching
-	# how the real LOD0 flora is normalised (its uniform is 0.92 voxel).
-	# Same world-metre amplitude → near and far blades sway identically.
-	mat.set_shader_parameter("blade_local_height", 0.25)
+	# The impostor grass mesh is now a SOLID 0.3 m-tall box column (see
+	# _build_impostor_blade_mesh). Tell the sway shader that height so the
+	# bend weight normalises 0..1 along the column.
+	mat.set_shader_parameter("blade_local_height", 0.30)
+	# SWAY OFF on far grass (2026-06-12): the near LOD0 grass is now a solid
+	# cube whose fract(VERTEX.y) bend-weight collapses to ~0, so it doesn't
+	# sway. To keep the ~13 m handoff seamless the far column must match —
+	# a swaying far slab next to a static near cube would be a worse seam
+	# than the bald ring this layer fixes. Plumbing kept intact (shader still
+	# loaded + gated); we just zero the amplitude.
+	mat.set_shader_parameter("sway_amplitude_m", 0.0)
 	return mat
 
 

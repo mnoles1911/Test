@@ -1546,16 +1546,33 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 	# logged DESIGNER_TODO; this is deliberately art-free so R4 doesn't
 	# block on the texture pipeline.
 
-	# (flora id, half-width in metres, height in metres, low colour, high colour)
+	# DESIGNER DIAL (2026-06-12): the ONE place to tune the ground-cover
+	# grass colour. Directive: "make all procedural ground cover very simple
+	# 1-voxel-thick x 3-voxel-tall pieces of grass, colored a solid green."
+	# Grass is now a plain FULL-CUBE model (not a cross-quad blade); the C++
+	# generator stacks THREE of these cubes (ground+1..+3) per grass column,
+	# so the field reads as solid 0.1 m x 0.3 m green columns. Change this
+	# single Color to retint every blade of ground-cover grass (near LOD0
+	# AND the far-grass impostor, which reads the same constant intent).
+	const GRASS_COVER_GREEN := Color(0.24, 0.40, 0.14)
+# Darker than the old blade green ON PURPOSE: cube grass exposes flat
+# TOP faces that catch the noon sun square-on (the retired cross-quads
+# were vertical-only), and a brighter green tone-maps to near-white in
+# full light. This value reads as saturated grass at noon. THE one-place
+# designer dial for ground-cover colour.
+
+	# (flora id, half-width in metres, height in metres, colour [, shape])
 	# Heights/widths read in WORLD METRES then scale into the voxel grid via
-	# VoxelScale — a blade ~25 cm tall, a flower ~30 cm, matching the
-	# "10 cm voxel" Lay-of-the-Land look (VISION_VOXEL_10CM.md ref_01).
+	# VoxelScale. Flowers stay ~30 cm cross-quad blooms (Lay-of-the-Land look,
+	# VISION_VOXEL_10CM.md ref_01). Grass is a "cube" shape: a solid full
+	# unit-cube voxel, flat GRASS_COVER_GREEN, no atlas tile.
 	var flora_specs: Array = [
 		{
 			"id": FloraMaterial.GRASS_BLADE_ID,
 			"name": "grass_blade",
+			"shape": "cube",
 			"height_m": 0.25, "half_width_m": 0.05,
-			"color": Color(0.40, 0.56, 0.23),
+			"color": GRASS_COVER_GREEN,
 		},
 		{
 			"id": FloraMaterial.FLOWER_RED_ID,
@@ -1589,6 +1606,13 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 	# FALLBACK: if the sway shader fails to load (missing file), fall back
 	# to the original StandardMaterial3D so flora still renders (just
 	# without sway) rather than going invisible.
+	# SWAY ON CUBES (2026-06-12): grass is now a solid full-cube model whose
+	# vertices all land on integer voxel boundaries, so the sway shader's
+	# fract(VERTEX.y) bend-weight collapses to ~0 — a cube grass column stays
+	# put (which reads correctly: a chunky cube shouldn't whip like a blade).
+	# We KEEP the shared sway material hookup unchanged because the flowers
+	# (still cross-quads) DO sway off it; the cube grass just naturally
+	# contributes no displacement. No per-grass amplitude override needed.
 	var flora_mat: Material = null
 	var _sway_sh := load("res://assets/shaders/flora_sway.gdshader") as Shader
 	if _sway_sh != null:
@@ -1631,9 +1655,20 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 
 	var added_ids: Array[int] = []
 	for spec in flora_specs:
-		var mesh: ArrayMesh = _build_flora_cross_quad_mesh(
-			float(spec["height_m"]), float(spec["half_width_m"]), spec["color"])
-		var fm: Object = _make_walkthrough_blocky_model(mesh, flora_mat, spec["name"])
+		var fm: Object
+		if String(spec.get("shape", "cross")) == "cube":
+			# Ground-cover GRASS: a solid FULL unit-cube voxel, flat green.
+			# The generator stacks three of these (ground+1..+3) so the field
+			# reads as simple 1-voxel-thick x 3-voxel-tall green columns.
+			# Culling ON (opaque solid class) so the faces between two
+			# stacked grass cubes are culled — the stack draws as one clean
+			# column, not three nested boxes. Still walk-through (no collider).
+			var cube_mesh: ArrayMesh = _build_flora_cube_mesh(spec["color"])
+			fm = _make_walkthrough_cube_model(cube_mesh, flora_mat, spec["name"])
+		else:
+			var mesh: ArrayMesh = _build_flora_cross_quad_mesh(
+				float(spec["height_m"]), float(spec["half_width_m"]), spec["color"])
+			fm = _make_walkthrough_blocky_model(mesh, flora_mat, spec["name"])
 		if fm == null:
 			break
 		added_ids.append(int(lib.call("add_model", fm)))
@@ -1643,7 +1678,7 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 		FloraMaterial.FLOWER_RED_ID,
 		FloraMaterial.FLOWER_BLUE_ID,
 	]
-	print("[World3D][Flora] injected %d flora model(s) at ids %s (grass_blade, flower_red, flower_blue; cross-quad, NON-COLLIDING, vertex-colour)." % [added_ids.size(), str(added_ids)])
+	print("[World3D][Flora] injected %d flora model(s) at ids %s (grass_blade=solid-green CUBE, flower_red/flower_blue=cross-quad; NON-COLLIDING, vertex-colour)." % [added_ids.size(), str(added_ids)])
 	if added_ids != want:
 		push_error("[World3D][Flora] add_model ids %s != expected %s — FloraMaterial / generator id math will be wrong." % [str(added_ids), str(want)])
 
@@ -1738,12 +1773,12 @@ func _build_surface_detail_mesh(spec: Dictionary) -> ArrayMesh:
 	var indices := PackedInt32Array()
 
 	# Helper to push one quad (a,b,c,d CCW) with a flat normal.
-	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3) -> void:
+	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color) -> void:
 		var base: int = verts.size()
 		for p in [a, b, c, d]:
 			verts.append(p)
 			normals.append(n)
-			colors.append(color)
+			colors.append(col)
 		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
 
 	var h: float = clampf(float(spec["height_m"]) * v_per_m, 0.04, 0.6)
@@ -1807,6 +1842,99 @@ func _build_flora_cross_quad_mesh(height_m: float, half_width_m: float, color: C
 	const FloraMeshBuilder := preload("res://scripts/FloraMeshBuilder.gd")
 	return FloraMeshBuilder.build_cross_quad(
 		height_m, half_width_m, color, VoxelScale.VOXELS_PER_METER, false)
+
+
+func _build_flora_cube_mesh(color: Color) -> ArrayMesh:
+	# Build a SOLID FULL unit-cube mesh for the ground-cover grass voxel, in
+	# CUBE-LOCAL space (Zylann blocky model space — the unit cube (0,0,0)..
+	# (1,1,1), 1 unit = 1 voxel). Every vertex carries the flat grass tint in
+	# ARRAY_COLOR so the shared vertex-colour material draws it green with no
+	# atlas art. Six outward-facing quads, one flat normal each (standard
+	# shading). The generator stacks three of these per grass column so the
+	# blade reads as a simple 1-voxel-thick x 3-voxel-tall green column.
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color) -> void:
+		var base: int = verts.size()
+		for p in [a, b, c, d]:
+			verts.append(p)
+			normals.append(n)
+			colors.append(col)
+		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	# Eight corners — inset 0.03 voxel (3 mm world) from the unit-cube
+	# boundary. PROVEN BY EXPERIMENT (2026-06-12, red-top diagnostic):
+	# Zylann's blocky baker reclassifies axis-aligned quads lying on (or
+	# within a small tolerance of — 0.002 was NOT enough) the cube
+	# boundary as cullable SIDE geometry and DISCARDS their ARRAY_COLOR —
+	# the grass tops rendered white no matter what colour we baked. At
+	# 0.03 in, every face is unambiguously INTERIOR geometry (the same
+	# class the proven flower cross-quads use) and the vertex green
+	# survives. The 3 mm seam between stacked cubes is invisible past
+	# arm's length; neighbor-culling is moot for interior geometry.
+	const E := 0.03
+	var p000 := Vector3(E, 0.0, E)
+	var p100 := Vector3(1.0 - E, 0.0, E)
+	var p010 := Vector3(E, 1.0 - E, E)
+	var p110 := Vector3(1.0 - E, 1.0 - E, E)
+	var p001 := Vector3(E, 0.0, 1.0 - E)
+	var p101 := Vector3(1.0 - E, 0.0, 1.0 - E)
+	var p011 := Vector3(E, 1.0 - E, 1.0 - E)
+	var p111 := Vector3(1.0 - E, 1.0 - E, 1.0 - E)
+	add_quad.call(p001, p101, p111, p011, Vector3(0, 0, 1), color)   # +Z
+	add_quad.call(p100, p000, p010, p110, Vector3(0, 0, -1), color)  # -Z
+	add_quad.call(p101, p100, p110, p111, Vector3(1, 0, 0), color)   # +X
+	add_quad.call(p000, p001, p011, p010, Vector3(-1, 0, 0), color)  # -X
+	add_quad.call(p011, p111, p110, p010, Vector3(0, 1, 0), color)   # +Y (top)
+	add_quad.call(p000, p100, p101, p001, Vector3(0, -1, 0), color)  # -Y (bottom)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _make_walkthrough_cube_model(mesh: ArrayMesh, mat: Material, label: String) -> Object:
+	# Like _make_walkthrough_blocky_model (no collision — the player and the
+	# water sim pass straight through, so all the is_flora / is_passthrough /
+	# water / gravity / sever / trample semantics are untouched), but with
+	# face CULLING ON and an OPAQUE transparency class, so the shared faces
+	# between two stacked grass cubes are culled — a 3-tall stack draws as one
+	# clean green column instead of three nested boxes. The model still
+	# DRAWS like a solid cube; only collision is removed.
+	var fm: Object = ClassDB.instantiate("VoxelBlockyModelMesh")
+	if fm == null:
+		push_error("[World3D] could not instantiate VoxelBlockyModelMesh for %s." % label)
+		return null
+	if fm.has_method("set_mesh"):
+		fm.call("set_mesh", mesh)
+	elif "mesh" in fm:
+		fm.set("mesh", mesh)
+	if fm.has_method("set_material_override"):
+		fm.call("set_material_override", 0, mat)
+	# Opaque solid class (0) + culls_neighbors ON: the mesher culls the
+	# face shared by two adjacent grass cubes (and the ground face beneath
+	# the bottom cube, which is hidden anyway), so the stack reads as a
+	# single solid column with no z-fighting interior faces.
+	if fm.has_method("set_transparency_index"):
+		fm.call("set_transparency_index", 0)
+	if "culls_neighbors" in fm:
+		# Interior-inset mesh — nothing on the boundary to cull against.
+		fm.set("culls_neighbors", false)
+	# WALK-THROUGH: clear both collider paths so grass stays pass-through
+	# air for the player + finite-water sim, exactly like the blade model did.
+	if fm.has_method("set_collision_aabbs"):
+		fm.call("set_collision_aabbs", [])
+	if fm.has_method("set_collision_mask"):
+		fm.call("set_collision_mask", 0)
+	if fm.has_method("set_mesh_collision_enabled"):
+		fm.call("set_mesh_collision_enabled", 0, false)
+	return fm
 
 
 func _stamp_river_flow_volumes() -> void:

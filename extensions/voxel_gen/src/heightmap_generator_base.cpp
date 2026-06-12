@@ -829,18 +829,33 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             for (int y = 0; y < size.y; ++y) {
                 const int world_y = origin_in_voxels.y + y * stride;
                 if (world_y > ground_y) {
-                    // R4 flora: the single air cell ONE voxel above the
-                    // surface becomes a grass blade / flower TYPE voxel
-                    // when this column rolled flora above. Written into
-                    // CHANNEL_TYPE just like terrain — the blocky mesher
-                    // draws our injected cross-quad model for ids 24..26.
-                    // No DATA5 byte (that's water-only). Placed BEFORE the
-                    // water branch but they can't overlap: flora only rolls
-                    // when ground_y+1 > sea_level (above water), water only
-                    // fills cells <= sea_level. flora_id stays 0 at lod>0.
-                    if (flora_id != 0 && world_y == ground_y + 1) {
-                        out_buffer.call("set_voxel", flora_id, x, y, z, CHANNEL_TYPE);
-                        continue;
+                    // R4 flora: an air cell ABOVE the surface becomes a
+                    // grass blade / flower TYPE voxel when this column
+                    // rolled flora above. Written into CHANNEL_TYPE just
+                    // like terrain — the blocky mesher draws our injected
+                    // model for ids 24..28. No DATA5 byte (that's
+                    // water-only). Placed BEFORE the water branch but they
+                    // can't overlap: flora only rolls when ground_y+1 >
+                    // sea_level (above water), water only fills cells <=
+                    // sea_level. flora_id stays 0 at lod>0.
+                    //
+                    // DESIGNER LOOK (2026-06-12): ground-cover GRASS is now
+                    // a SOLID 1-voxel-thick x 3-voxel-tall green column
+                    // (simple cube model id 24) instead of a single
+                    // cross-quad blade. So grass fills the THREE air cells
+                    // ground_y+1 .. ground_y+3 with the same id, while
+                    // flowers (25/26) and surface detail (pebble 27 / twig
+                    // 28) stay their original SINGLE cell at ground_y+1.
+                    // These are all air cells in this column (world_y >
+                    // ground_y) so the stack never overwrites solid/trunk;
+                    // the later tree pass still wins where a canopy overlaps.
+                    if (flora_id != 0) {
+                        const bool is_grass = (flora_id == _grass_blade_material_id);
+                        const int flora_top_y = is_grass ? (ground_y + 3) : (ground_y + 1);
+                        if (world_y >= ground_y + 1 && world_y <= flora_top_y) {
+                            out_buffer.call("set_voxel", flora_id, x, y, z, CHANNEL_TYPE);
+                            continue;
+                        }
                     }
                     // Air above terrain. If this air voxel sits at or
                     // below sea level and the column dips below sea

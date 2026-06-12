@@ -58,8 +58,8 @@ Everything in the vision above maps to code that either already exists or is in 
 | Visual pillar | Owning system | Current state |
 |---|---|---|
 | 10cm destructible world | `VoxelScale.gd` + R0/R1/R2 scale flip + streaming/LOD retune (`collision_lod_count=3`) | **LIVE** (PR #251) — see MILESTONES.md |
-| Micro-voxel flora (per-blade grass, per-petal flowers) | R4 — real destructible voxel grass + flowers via `VoxelBlockyModelMesh` custom cross-quad meshes (ids 24–26), scattered by the C++ generator on grassland at LOD0 | **v1 LIVE** — see below |
-| Far-grass impostors + wind sway (~13–51 m band) | `scripts/FarGrassManager.gd` + `assets/shaders/flora_sway.gdshader` — GPU-instanced blades filling the LOD1/LOD2 ring; same hash as real grass for seamless handoff; `GraphicsManager.far_grass_enabled` **default ON** | **LIVE** (PR #251) |
+| Micro-voxel flora (ground-cover grass, per-petal flowers) | R4 — real destructible voxel flora (ids 24–26) scattered by the C++ generator on grassland at LOD0. **Ground-cover GRASS (id 24) is now a solid 1-voxel-thick × 3-voxel-tall green column** (full-cube model, flat `GRASS_COVER_GREEN` = `Color(0.36,0.55,0.22)`, generator stacks 3 cubes ground+1..+3 — 2026-06-12 designer simplification). Flowers (25/26) stay cross-quad `VoxelBlockyModelMesh` blooms | **v1 LIVE** — see below |
+| Far-grass impostors (~13–51 m band) | `scripts/FarGrassManager.gd` + `assets/shaders/flora_sway.gdshader` — GPU-instanced 1×3-voxel solid-green columns (matching near LOD0 grass) filling the LOD1/LOD2 ring; same hash as real grass for seamless handoff; sway amplitude 0 to match the static near cubes; `GraphicsManager.far_grass_enabled` **default ON** | **LIVE** (PR #251) |
 | 10cm micro-detail (pebbles/twigs, dug grain, grass trample, water foam) | D1–D4 micro-detail pass — pebble/twig scatter (ids 27–28), carve-time wall roughening, grass trample, flowing-water foam (default OFF) | **v1 LIVE** — see below |
 | Sky and day/night cycle | `scripts/DayNightCycle.gd` | **EXISTS** — 4-texture panorama blend, sun + moon `DirectionalLight3D` nodes |
 | Global illumination | SDFGI in the `World3D` `WorldEnvironment` node | **EXISTS, enabled** at ULTRA tier |
@@ -73,7 +73,7 @@ Everything in the vision above maps to code that either already exists or is in 
 
 ## Micro-voxel flora — v1 LIVE (PR R4)
 
-Real, destructible voxel grass and flowers — the signature "Lay of the Land" flora benchmark (ref_01). Flora are **actual voxels**, not multimesh decoration: three CHANNEL_TYPE ids — `grass_blade` (24), `flower_red` (25), `flower_blue` (26) — drawn as cross-quad custom meshes (two intersecting vertical quads), injected at runtime in `World3DBootstrap` right after the water fluid models. The C++ cubic generator scatters them deterministically on grassland surfaces at LOD0 (~35 % grass blades, ~2 % flowers split red/blue). They are **walk-through** (no collision), **destructible** (dig the ground under them and they vanish with it), and behave correctly with the world sim: water flows into and mows them down, gravity/sever ignore them (a tree never connects to ground through a blade, a falling cluster never carries one). Identity funnels through `scripts/FloraMaterial.gd` (`is_flora()`), the grass/flower analogue of `WaterMaterial.is_water_type()`. Gated by the headless `flora` selector.
+Real, destructible voxel grass and flowers — the signature "Lay of the Land" flora benchmark (ref_01). Flora are **actual voxels**, not multimesh decoration: three CHANNEL_TYPE ids — `grass_blade` (24), `flower_red` (25), `flower_blue` (26) — injected at runtime in `World3DBootstrap` right after the water fluid models. **Ground-cover grass (24) is a simple solid full-cube model in flat `GRASS_COVER_GREEN` (`Color(0.36,0.55,0.22)`, the one-place colour dial in `World3DBootstrap._inject_flora_models_into_library`); the C++ generator stacks THREE grass cubes (ground+1..+3) so each clump reads as a 1-voxel-thick × 3-voxel-tall green column** (2026-06-12 designer simplification — the old cross-quad blade was retired for grass). Flowers (25/26) stay cross-quad custom meshes (two intersecting vertical quads). The C++ cubic generator scatters them deterministically on grassland surfaces at LOD0 (~35 % grass blades, ~2 % flowers split red/blue). They are **walk-through** (no collision), **destructible** (dig the ground under them and they vanish with it), and behave correctly with the world sim: water flows into and mows them down, gravity/sever ignore them (a tree never connects to ground through a blade, a falling cluster never carries one). Identity funnels through `scripts/FloraMaterial.gd` (`is_flora()`), the grass/flower analogue of `WaterMaterial.is_water_type()`. Gated by the headless `flora` selector.
 
 **Deferred to a later flora PR (NOT in v1):**
 - **Scythe drops + XP** — harvesting flora for an inventory item and routing XP through `SkillManager`.
@@ -130,7 +130,7 @@ At 6 voxels per meter, Roland is roughly 10–11 voxels tall. At 10/m he is roug
 - A sword is several voxels wide — it reads as a weapon, not a colored stripe.
 - A doorway is a real doorway with visible frame thickness.
 - When you dig, the resulting hole has visible stepped grain — it looks carved, not erased.
-- Grass is per blade. A flower is recognizable as a flower, not a colored pixel on the ground.
+- Ground-cover grass reads as dense, simple solid-green 3-voxel-tall columns (1 voxel thick). A flower is recognizable as a flower, not a colored pixel on the ground.
 - Stone walls show individual block courses. Cobble paths read as cobble.
 
 The world stops being an abstraction of a place and starts being a place.

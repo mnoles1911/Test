@@ -38,7 +38,9 @@ extends RefCounted
 # here so the registry, the C++ generator, the bootstrap, and the sim
 # code all agree on the same three numbers.
 #
-#   24 = grass_blade   (a thin green blade — the field filler)
+#   24 = grass_blade   (ground-cover grass — a solid flat-green full-cube
+#                       voxel; the generator stacks 3 per column for a
+#                       1-thick x 3-tall green column. The field filler.)
 #   25 = flower_red    (a poppy-red bloom)
 #   26 = flower_blue   (a cornflower-blue bloom)
 const GRASS_BLADE_ID: int = 24
