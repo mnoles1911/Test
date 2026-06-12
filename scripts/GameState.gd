@@ -404,7 +404,12 @@ func _delete_voxel_deltas_files() -> void:
 	var fname := dir.get_next()
 	var deleted: int = 0
 	while fname != "":
-		if not dir.current_is_dir() and fname.begins_with(VOXEL_DELTAS_BASENAME):
+		# Match the live DB name AND the legacy pre-10 vox/m name
+		# ("voxel_deltas.sqlite*") — the old file is never read again
+		# after the 2026-06-12 rename, but New Game should still sweep
+		# it off disk rather than leave orphaned megabytes behind.
+		if not dir.current_is_dir() and (fname.begins_with(VOXEL_DELTAS_BASENAME)
+				or fname.begins_with("voxel_deltas.sqlite")):
 			var abs_path: String = ProjectSettings.globalize_path("user://" + fname)
 			var err: int = DirAccess.remove_absolute(abs_path)
 			if err == OK:
@@ -448,7 +453,10 @@ const LEGACY_SAVE_PATH: String = "user://save.json"
 # scenes/World3D.tscn — wiping this file (and Zylann's
 # auxiliary -journal / -wal / -shm files) on New Game gives
 # the player a clean baseline.
-const VOXEL_DELTAS_BASENAME: String = "voxel_deltas.sqlite"
+const VOXEL_DELTAS_BASENAME: String = "voxel_deltas_v10.sqlite"
+# Renamed from "voxel_deltas.sqlite" at the 10 vox/m pivot (2026-06-12)
+# so any stale 6 vox/m delta file on disk becomes inert instead of
+# painting wrong-scale edits into the new world.
 
 # The most-recently saved or loaded filename. Used by autosave-on-
 # quit and as the default "current save" reference.

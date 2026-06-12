@@ -2,6 +2,38 @@ extends Node3D
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Flora id authority (R4 micro-voxel vegetation). Path-preloaded, NO
+# class_name — headless-safe, same pattern as WaterMaterial. The three
+# flora voxel models (grass blade + two flowers) are injected at runtime
+# below at the ids FloraMaterial reserves (24..26), right after the 8
+# water fluid models (16..23).
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+
+# Single authority for the voxel grid scale. All scale literals in this
+# file read from here. See scripts/VoxelScale.gd for the full rationale.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
+# === BIOME FRAMEWORK === (config — wiring block is in _ready) ===========
+# When biome_framework_enabled is true the generator switches from its
+# single rolling-hills recipe to the multi-biome path (plains / hills /
+# forest / desert / mountains, blended at borders). Default ON since
+# 2026-06-12 (designer flipped it — biomes are now the shipped World3D
+# terrain). The `gen` parity gate still runs the legacy no-profiles path
+# explicitly so its baseline is unaffected; Copper Isles uses its own
+# heightmap generator and is untouched. The five profile .tres load in a
+# FIXED slot order; the Whittaker classifier binds each KIND to its slot.
+@export var biome_framework_enabled: bool = true
+const _BIOME_DIR := "res://assets/biomes/"
+# Slot order = load order = the indices the field params bind kinds to.
+const _BIOME_FILES: Array[String] = [
+	"flat_plains.tres",     # slot 0 -> plains kind
+	"rolling_hills.tres",   # slot 1 -> hills kind (the continuity anchor)
+	"deciduous_forest.tres",# slot 2 -> forest kind
+	"rocky_desert.tres",    # slot 3 -> desert kind
+	"mountains.tres",       # slot 4 -> mountains kind
+]
+# === BIOME FRAMEWORK END ===============================================
+
 # World3DBootstrap — wires up scene-level systems when the World3D
 # scene loads.
 #
@@ -36,19 +68,32 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # in Y to a realistic surface slab makes Zylann never even request
 # chunks outside that band — pure win.
 #
-# Units are VOXEL coordinates (not world metres). With the canonical 1/6
-# terrain scale, voxel Y * (1/6) = world Y metres.
+# Units are VOXEL coordinates (not world metres). At the 10 vox/m scale,
+# voxel Y × (1/10) = world Y metres.
 #
-# Mira's cubic generator: sea level ~ voxel Y 72 (= 12 m world); macro
-# noise centred around offset 60 with +/-100 swing; max ground rarely
-# above voxel Y ~180. The defaults below give:
-#   floor   voxel Y -200 = -33 m world (digging room below sea floor)
-#   ceiling voxel Y +500 =  83 m world (headroom above any peak)
-# Bump `terrain_voxel_y_min` lower if a player wants to dig deeper than
-# 27 m below sea floor; bump `terrain_voxel_y_max` higher if a new
-# generator tuning pushes peaks past 83 m world.
-@export var terrain_voxel_y_min: int = -200
-@export var terrain_voxel_y_max: int = 500
+# === Zylann bounds-snapping constraint (R2, 2026-06-12) ===
+# Zylann does NOT use these numbers verbatim. It rounds voxel_bounds out
+# to the nearest multiple of (mesh_block_size << (lod_count - 1)) so the
+# whole LOD octree tiles cleanly. With mesh_block_size = 32 and the R2
+# lod_count = 5 that quantum is 32 << 4 = 512 voxels. It SNAPS silently —
+# it does NOT error — verified headlessly: requesting -352..832 came back
+# as actual y = -512..1024 in the property dump. We therefore set the
+# defaults to the snapped values directly so the Inspector / readback and
+# the real streamed bounds agree (no surprise 17 m of extra dig depth):
+#   floor   voxel Y -512 = -51.2 m world (digging room below sea floor)
+#   ceiling voxel Y 1024 = 102.4 m world (headroom above any peak)
+#   span 1536 voxels = 3 × 512 — exactly three LOD quanta, valid as-is.
+#
+# Mira's cubic generator at 10 vox/m: sea level voxel Y 120 (= 12 m
+# world); macro noise centred around offset 100 with +/-167 swing; max
+# ground rarely above voxel Y ~300, well under the 1024 ceiling.
+#
+# If you change these, keep BOTH bounds on a 512-voxel multiple (and the
+# span a 512-voxel multiple) or Zylann will quietly snap them wider than
+# you asked. Re-derive the quantum if lod_count or mesh_block_size change:
+# it is always mesh_block_size << (lod_count - 1).
+@export var terrain_voxel_y_min: int = -512
+@export var terrain_voxel_y_max: int = 1024
 
 # Terrain shadow casting. Default OFF (2026-05-25 streaming-throughput
 # probe). Every streamed VoxelLodTerrain mesh chunk submitting to the
@@ -62,22 +107,46 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
 # Terrain-level view_distance cap (voxels). Zylann uses the MIN of every
 # VoxelViewer's view_distance AND this terrain-level cap to decide what
-# streams. The Player3D VoxelViewer is at 1100 vox; this terrain-level
-# cap is the hard limit that gates them all.
+# streams. The Player3D VoxelViewer is at 1200 vox (R2); this terrain-
+# level cap is the hard limit that gates them all.
 #
-# Back to 512 vox (~85 m) on 2026-05-26 after the Option A pivot —
-# this is Zylann's own default and the value that paired with the
-# original lod_count=4 across the project history. Sized for
-# lod_count=4's LOD pyramid: LOD0 (0-21 m), LOD1 (21-43 m),
-# LOD2 (43-85 m) all fit cleanly inside this radius; LOD3 only
-# barely streams. DistantTerrain smooth heightmesh covers everything
-# past 85 m out to the vista.
+# === R2 retune (2026-06-12, the 10 vox/m pivot) ===
+# The world re-architected from 6 to 10 voxels/metre. At the same VOXEL
+# numbers a view_distance is now physically ~40% smaller in METRES
+# (512 vox was 85 m at 6 vox/m; the same 512 is only 51 m at 10 vox/m).
+# The designer wants to KEEP the ~85 m of full-detail blocky terrain
+# that the world looked right with — so the value goes UP in voxels to
+# hold the metre distance roughly constant:
 #
-# Bump up only if a vista absolutely needs more blocky terrain at
-# the cost of streaming load. Chunk count scales with view_distance²
-# — 720 vs 512 is ~2× chunks, which was tolerable at lod_count=4
-# (the LOD pyramid thins the outer rings) but blew up at lod_count=1.
-@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 512
+#   864 voxels × (1 / 10 vox/m) = ~86 m of blocky terrain.  (was 512/85)
+#
+# Sized for the NEW lod_count=5 LOD pyramid (10 vox/m, lod_distance
+# capped at 128 vox = 12.8 m per shell):
+#   LOD0  0 – 12.8 m
+#   LOD1  12.8 – 25.6 m
+#   LOD2  25.6 – 51.2 m
+#   LOD3  51.2 – 102.4 m
+#   LOD4  102.4 – 204.8 m
+# So 86 m of view_distance lands inside the LOD3 band — the outer rings
+# thin the chunk count properly (each ring covers 4× the area at half
+# the resolution). That is exactly why lod_count went 4 → 5: at the old
+# lod_count=4 the LOD3 shell would have been the OUTERMOST ring and 86 m
+# of terrain would have streamed a thick coarse annulus with no thinner
+# ring beyond it. DistantTerrain smooth heightmesh covers everything
+# past ~86 m out to the vista.
+#
+# RETREAT DIAL (read this if the perf gate fails): if the F3 profiler
+# capture on the standard coastline-sprint route blows the budget
+# (median > 5 ms, p99 > 16 ms, or any streaming spike > 50 ms on the
+# RX 7800 XT), drop this to 640 voxels (~64 m of blocky terrain) and
+# nudge DistantTerrainManager.inner_cull_radius down to match (~75 m).
+# That trades ~22 m of the near blocky band for ~45% fewer streamed
+# chunks — chunk count scales with view_distance² (640²/864² ≈ 0.55).
+#
+# Bump ABOVE 864 only if a vista absolutely needs more blocky terrain
+# at the cost of streaming load — chunk count scales with the square
+# of this value, so each step up is expensive.
+@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 864
 
 
 # =============================================================
@@ -162,7 +231,12 @@ var _diag_gen_counter_source: Object = null
 var _diag_last_gen_count: int = 0
 
 
-const WORKING_SQLITE_PATH: String = "user://voxel_deltas.sqlite"
+const WORKING_SQLITE_PATH: String = "user://voxel_deltas_v10.sqlite"
+# Renamed from "voxel_deltas.sqlite" at the 10 vox/m pivot (2026-06-12):
+# a stale 6 vox/m delta file must never paint wrong-scale edits into
+# the new world, so the old filename is simply never read again.
+# Must stay in sync with GameState.VOXEL_DELTAS_BASENAME and the
+# database_path on World3D.tscn's VoxelStreamSQLite.
 # The working SQLite that VoxelStreamSQLite on World3D.tscn reads from
 # and writes edits back to. Must match the database_path on the .tscn's
 # VoxelStreamSQLite sub-resource.
@@ -258,6 +332,25 @@ func _ready() -> void:
 		push_error("[World3D] VoxelLodTerrain not found at path: %s" % voxel_terrain_path)
 		return
 
+	# --- Enforce scale alignment (VoxelScale contract) ---
+	# WHY: the .tscn file stores VoxelLodTerrain.transform as a raw
+	# number (0.1 at the time of writing). The editor can't read
+	# a GDScript const at edit time, so the scene file stores the
+	# literal value and THIS block enforces that it actually matches
+	# VoxelScale.VOXEL_SIZE_M at runtime. If they ever drift — e.g.
+	# someone hand-edits the .tscn, or a future Godot serializes a
+	# slightly different float — we catch it immediately instead of
+	# getting silent scale bugs everywhere.
+	var terrain_scale_x: float = (terrain as Node3D).transform.basis.get_scale().x
+	if absf(terrain_scale_x - VoxelScale.VOXEL_SIZE_M) > 1e-4:
+		push_error("[World3D] VoxelLodTerrain.scale.x=%.6f does not match VoxelScale.VOXEL_SIZE_M=%.6f — correcting." % [
+			terrain_scale_x, VoxelScale.VOXEL_SIZE_M])
+		terrain.scale = Vector3.ONE * VoxelScale.VOXEL_SIZE_M
+		var applied: float = (terrain as Node3D).transform.basis.get_scale().x
+		print("[World3D] terrain scale corrected; applied=%.6f" % applied)
+	else:
+		print("[World3D] terrain scale OK: %.6f (matches VoxelScale.VOXEL_SIZE_M)" % terrain_scale_x)
+
 	# Configure the terrain's CHANNEL_TYPE storage depth. After the v13
 	# VoxelMesherBlocky migration we store material_id directly in
 	# CHANNEL_TYPE — 8-bit is sufficient (material_id range 0-254).
@@ -287,6 +380,49 @@ func _ready() -> void:
 		terrain.set("collision_update_delay", 100)
 		var actual_delay = terrain.get("collision_update_delay")
 		print("[World3D] terrain.collision_update_delay set to 100 (actual=%s)" % actual_delay)
+	# === Terrain collision radius: LOD0 + LOD1 + LOD2 (~51.2 m) ===
+	# 2026-06-12 designer decision: extend collision out to the LOD2 ring.
+	#
+	# WHY THE CHANGE: at 10 vox/m the LOD0 ring ends at only ~12.8 m
+	# (128 voxels × 0.1 m/voxel). At the old 6 vox/m that was ~21 m —
+	# narrow, but usable. At 10 vox/m it sits well inside the spear throw
+	# range (~15–25 m), the AI patrol radius, and the player's fall arc off
+	# cliffs. Spears ghosted through hills 15 m out; AI walked through
+	# ledges while patrolling. Pushed to ~51.2 m resolves all of those.
+	#
+	# WHAT collision_lod_count = N MEANS (probed + confirmed from Zylann
+	# source docs — voxel-tools.readthedocs.io, VoxelLodTerrain API):
+	#   0 (default)  → ALL lods get collision (equivalent to lod_count).
+	#                  The old comments in this file saying "0 = LOD0-only"
+	#                  were WRONG. 0 = all lods. This was verified both by
+	#                  the Zylann docs and by an empirical sweep (probe
+	#                  2026-06-12): set(0..5) all read back cleanly; set(6)
+	#                  clamps to 5 (= lod_count), so the cap is lod_count.
+	#   N > 0        → first N LOD levels (LOD0 through LOD(N-1)) get
+	#                  collision; higher LODs are mesh-only.
+	# So collision_lod_count = 3 means LOD0 (0–12.8 m), LOD1 (12.8–25.6 m),
+	# and LOD2 (25.6–51.2 m) each get collision shapes. LOD3 and LOD4
+	# (51.2 m and beyond) are mesh-only — no physics bodies.
+	#
+	# ACCURACY CAVEAT: LOD1 and LOD2 meshes are COARSER than LOD0.
+	# At mesh_block_size=32 each LOD halves the voxel resolution, so a
+	# LOD1 block is 2-voxel chunks and a LOD2 block is 4-voxel chunks.
+	# Collision shapes match those coarser meshes, not the raw terrain.
+	# Far-away entities therefore stand on slightly approximate ground
+	# (stairs round to 2-4 voxel steps; small overhangs may be missing).
+	# Good enough for AI/spear collision; player stands in LOD0 always.
+	#
+	# PERF CAVEAT: more LOD levels with collision = more StaticBody3D shapes
+	# to build as chunks stream in/out. The 100 ms collision_update_delay
+	# (set just above) already batches these; at design-time the cost was
+	# acceptable on the RX 7800 XT baseline. If physics spikes return on a
+	# future hardware regression, the retreat is one constant: set this back
+	# to 1 (LOD0-only, 12.8 m). The spawn-probe raycasts still confirm LOD0
+	# coverage even if LOD1/2 bodies are absent.
+	if "collision_lod_count" in terrain:
+		terrain.set("collision_lod_count", 3)
+		var actual_coll_lod = terrain.get("collision_lod_count")
+		print("[World3D] terrain.collision_lod_count set to 3 (LOD0+LOD1+LOD2, ~51.2 m; actual=%s)" % actual_coll_lod)
 	# Belt-and-suspenders for the .tscn values that the editor has been
 	# stripping on save. Setting them programmatically AND in the .tscn
 	# means at least one path lands. The readback prints make it obvious
@@ -306,18 +442,42 @@ func _ready() -> void:
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
 	# NOTE: lod_distance + secondary_lod_distance are both HARD-CAPPED at
 	# 128 by Zylann — re-confirmed for the CLIPBOX streaming system on
-	# 2026-05-22 (a sweep up to 2048 all clamped to 128). The LOD0 ring is
-	# therefore fixed at ~21 m world (128 voxels x the 1/6 terrain scale);
-	# the way to keep the near band crisp is FAST streaming (a tight
-	# view_distance matched to the LOD coverage), not a bigger ring.
+	# 2026-05-22 (a sweep up to 2048 all clamped to 128). At the new
+	# 10 vox/m scale the LOD0 ring is therefore fixed at ~12.8 m world
+	# (128 voxels × the 1/10 terrain scale; it was ~21 m at the old
+	# 6 vox/m). The way to keep the near band crisp is FAST streaming
+	# (a tight view_distance matched to the LOD coverage), not a bigger
+	# ring — the ring radius cannot be raised past this cap.
 	#
-	# lod_count: 4 — the proven good-perf LOD baseline (2026-05-26
-	# session conclusion). Full pivot history one-line:
+	# lod_count: 5 — RAISED 4 → 5 in the R2 retune (2026-06-12, the
+	# 10 vox/m pivot). WHY: each LOD shell is now only 12.8 m wide (the
+	# capped lod_distance × the smaller voxel size), so it takes one MORE
+	# ring to cover the same metre distance the world looked right with.
+	# The pyramid at 10 vox/m, lod_distance=128 vox, is:
+	#   LOD0  0 – 12.8 m   (full detail + the only band with collision)
+	#   LOD1  12.8 – 25.6 m
+	#   LOD2  25.6 – 51.2 m
+	#   LOD3  51.2 – 102.4 m
+	#   LOD4  102.4 – 204.8 m
+	# The terrain view_distance of 864 vox (~86 m) lands inside LOD3, so
+	# with 5 LODs the outer rings thin properly (each ring covers 4× the
+	# area at half the resolution) and there is always a coarser ring
+	# beyond the view_distance edge — no thick coarse annulus, which is
+	# what a 4-LOD pyramid would have left at this distance. DistantTerrain
+	# smooth heightmesh covers everything past ~86 m out to the vista.
+	#
+	# Bounds note: Zylann requires the terrain's voxel_bounds Y-span be a
+	# multiple of (mesh_block_size << (lod_count - 1)). With mesh_block_size
+	# = 32 and lod_count = 5 that is 32 << 4 = 512 voxels. The Y clamp
+	# below (terrain_voxel_y_min / _max) is sized to satisfy this — see
+	# the @export comment at the top of the file.
+	#
+	# Pivot history one-line (now superseded by the R2 retune above):
 	#   lod_count=4 (good perf, cascade pops) -> 1+vd=720 (no pops,
 	#   FPS 20, z.det 5.7s spikes) -> 2+vd=720 (rescued perf, designer
 	#   disliked LOD1) -> 1+vd=480 (tighter bubble, perf still bad) ->
-	#   THIS: back to 4+vd=512 (the original known-good config) PLUS
-	#   the session's foundational fixes still in place:
+	#   4+vd=512 (the 6 vox/m known-good config) -> THIS: 5+vd=864 for
+	#   the 10 vox/m pivot. The session's foundational fixes still hold:
 	#     - VoxelViewer-direction fix (a76d3ae): chunks ahead of the
 	#       player are now correctly prioritized, regardless of body
 	#       rotation. This was the root cause of "outwalk the streamer"
@@ -332,8 +492,8 @@ func _ready() -> void:
 	#
 	# Enforced here because the editor strips .tscn LOD values on save.
 	if "lod_count" in terrain:
-		terrain.set("lod_count", 4)
-		print("[World3D] terrain.lod_count set to 4 (LOD baseline; actual=%s)" % terrain.get("lod_count"))
+		terrain.set("lod_count", 5)
+		print("[World3D] terrain.lod_count set to 5 (R2 10 vox/m pyramid; actual=%s)" % terrain.get("lod_count"))
 	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
 	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
 	# enormous volumes of buried rock. See the @export comment at the top
@@ -412,7 +572,7 @@ func _ready() -> void:
 		terrain.set("view_distance", terrain_view_distance_voxels)
 		print("[World3D] terrain.view_distance set to %d voxels (~%d m; actual=%s)" % [
 			terrain_view_distance_voxels,
-			int(terrain_view_distance_voxels / 6.0),
+			int(terrain_view_distance_voxels * VoxelScale.VOXEL_SIZE_M),
 			terrain.get("view_distance"),
 		])
 
@@ -567,6 +727,64 @@ func _ready() -> void:
 			var disks: Array[VoxelMaterial] = VoxelMaterialRegistry.get_disk_materials()
 			gen.call("set_disk_materials", disks)
 			print("[World3D] Pushed %d disk material(s) to generator." % disks.size())
+		# R4: wire the three flora CHANNEL_TYPE ids into the generator's
+		# scatter pass. Until this runs the C++ flora ids are 0 (disabled),
+		# so a fresh build grows no grass. We pass FloraMaterial's reserved
+		# ids — the same numbers the runtime model injection used above — so
+		# the scattered voxel ids match the injected models exactly.
+		if gen != null and gen.has_method("set_flora_materials"):
+			gen.call("set_flora_materials",
+				FloraMaterial.GRASS_BLADE_ID,
+				FloraMaterial.FLOWER_RED_ID,
+				FloraMaterial.FLOWER_BLUE_ID)
+			print("[World3D] Wired flora scatter ids to generator: grass=%d red=%d blue=%d." % [
+				FloraMaterial.GRASS_BLADE_ID, FloraMaterial.FLOWER_RED_ID, FloraMaterial.FLOWER_BLUE_ID])
+
+		# --- D1 BLOCK START (10cm micro-detail surface scatter) -----------
+		# Wire the two surface-detail (pebble/twig) ids into the generator's
+		# scatter pass — same 0-default-disabled mechanism as flora above, so
+		# a stale build simply grows no pebbles rather than writing garbage
+		# ids. Self-contained block (D1) so concurrent edits to this file stay
+		# clear of it.
+		if gen != null and gen.has_method("set_surface_detail_materials"):
+			gen.call("set_surface_detail_materials",
+				FloraMaterial.PEBBLE_ID,
+				FloraMaterial.TWIG_ID)
+			print("[World3D] Wired surface-detail scatter ids to generator: pebble=%d twig=%d." % [
+				FloraMaterial.PEBBLE_ID, FloraMaterial.TWIG_ID])
+		# --- D1 BLOCK END -------------------------------------------------
+
+		# --- TREES BLOCK START (destructible voxel trees) -----------------
+		# Wire the log + leaves CHANNEL_TYPE ids into the generator's tree
+		# scatter — same 0-default-disabled mechanism as flora/detail above,
+		# so a stale build (or the legacy no-biome path) simply grows no
+		# trees rather than writing garbage ids. Trees emit ONLY on the
+		# biome path (the generator needs per-biome tree_density), so this
+		# is a no-op on the pinned `gen` baseline. log/leaves ids come from
+		# the VoxelMaterialRegistry so nothing here hardcodes 10/11.
+		# Self-contained block so concurrent edits to this file stay clear.
+		if gen != null and gen.has_method("set_tree_materials") \
+				and get_node_or_null("/root/VoxelMaterialRegistry") \
+				and VoxelMaterialRegistry.is_loaded():
+			var log_mat := VoxelMaterialRegistry.get_by_string("log")
+			var leaves_mat := VoxelMaterialRegistry.get_by_string("leaves")
+			var log_id: int = log_mat.material_id if log_mat != null else 0
+			var leaves_id: int = leaves_mat.material_id if leaves_mat != null else 0
+			gen.call("set_tree_materials", log_id, leaves_id)
+			print("[World3D] Wired tree scatter ids to generator: log=%d leaves=%d." % [log_id, leaves_id])
+		# --- TREES BLOCK END ----------------------------------------------
+
+		# === BIOME FRAMEWORK === (wiring) ===============================
+		# Load the five biome profile .tres in slot order, push them to the
+		# generator as flattened PODs, then push the control-noise +
+		# classification knobs + the KIND->slot bindings. Once profiles are
+		# set the C++ generator's biome_active() flips true and it uses the
+		# blended-biome heightfield + per-biome surface/flora. Default OFF
+		# (biome_framework_enabled) so the legacy path stays the shipped one.
+		if biome_framework_enabled and gen != null \
+				and gen.has_method("set_biome_profiles"):
+			_wire_biome_framework(gen)
+		# === BIOME FRAMEWORK END =======================================
 
 	# --- Configure water surface + seed test pond ---
 	# Phase 5: the AABB-source-region model is gone. Ocean water lives
@@ -698,6 +916,31 @@ func _ready() -> void:
 		distant.name = "DistantTerrain"
 		add_child(distant)
 		distant.call("setup_from_terrain", terrain)
+		# Derive the smooth-skirt vertex palette from the REAL atlas tiles
+		# the blocky terrain renders (grass-top / stone / sand / snow), so
+		# the distant skirt and the near band share one colour source
+		# instead of two hand-guessed palettes. Fixes the pale washed-green
+		# skirt vs saturated near grass (2026-06-12).
+		_configure_distant_palette(distant)
+
+	# === FAR-GRASS PR (2026-06-12) — impostor layer wire-up, start =======
+	# Far-grass impostor layer: GPU-instanced, non-interactive grass that
+	# fills the LOD1/LOD2 bands (~13..51 m) so the REAL LOD0 voxel grass
+	# (~12.8 m ring) no longer ends in a visible "bald ring". The impostor
+	# blades sit at the SAME deterministic hash positions the C++ generator
+	# uses for real grass, so walking closer is a seamless handoff. Parented
+	# to this (unscaled) world root — like DistantTerrain, the impostor
+	# MultiMesh transforms are absolute world metres, so it must NOT live
+	# under the 1/10-scaled VoxelLodTerrain. Loaded by path (no class_name)
+	# to stay headless-safe. Default ON (see GraphicsManager.far_grass_enabled
+	# rationale); instant toggle frees/rebuilds the layer.
+	var far_grass_script := load("res://scripts/FarGrassManager.gd")
+	if far_grass_script != null:
+		var far_grass: Node3D = far_grass_script.new()
+		far_grass.name = "FarGrass"
+		add_child(far_grass)
+		far_grass.call("setup_from_terrain", terrain)
+	# === FAR-GRASS PR (2026-06-12) — impostor layer wire-up, end =========
 
 
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
@@ -756,6 +999,59 @@ const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
 const _TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
 
 
+# === BIOME FRAMEWORK === (helper) =======================================
+# Load the five biome .tres in slot order, forward them + the field params
+# + a low-frequency control noise to the generator. Slot order is fixed by
+# _BIOME_FILES; the field-param call binds each Whittaker KIND to its slot.
+# Stashes the configured field on _biome_field_ref so the DebugOverlay biome
+# readout can query the dominant biome under the player.
+var _biome_field_ref: Object = null   # the live BiomeFieldCpp (debug readout)
+
+func _wire_biome_framework(gen) -> void:
+	# 1. Load profiles in slot order. A missing file pushes an empty dict
+	#    (the C++ side defaults it) but logs loud so the slot binding is
+	#    never silently wrong.
+	var profiles: Array = []
+	for fname in _BIOME_FILES:
+		var path: String = _BIOME_DIR + fname
+		var res = load(path) if ResourceLoader.exists(path) else null
+		if res == null:
+			push_error("[World3D][Biome] missing profile %s — slot will default." % path)
+			profiles.append({})
+		else:
+			profiles.append(res)
+	gen.call("set_biome_profiles", profiles)
+
+	# 2. Control noise — a SEPARATE low-frequency FastNoiseLite for the
+	#    relief/moisture fields. frequency = 1.0 so the per-metre multipliers
+	#    BiomeField applies internally are the ONLY scaling (no double-scale).
+	var cnoise := FastNoiseLite.new()
+	cnoise.seed = 1337
+	cnoise.frequency = 1.0
+	cnoise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	cnoise.fractal_octaves = 3
+	gen.call("set_biome_control_noise", cnoise)
+
+	# 3. Field params + KIND->slot bindings (slot order = _BIOME_FILES order).
+	#    control freq ~1/600 m, warp ~1/1250 m at 140 m strength, blend
+	#    margin 0.06 (the spec's border width). plains=0 hills=1 forest=2
+	#    desert=3 mountains=4.
+	gen.call("set_biome_field_params",
+		1.0 / 600.0,    # control_frequency_per_m
+		1.0 / 1250.0,   # warp_frequency_per_m
+		140.0,          # warp_strength (metres)
+		0.06,           # blend_margin
+		VoxelScale.VOXELS_PER_METER,
+		0, 1, 2, 3, 4)  # plains, hills, forest, desert, mountains
+
+	# Cache the live field for the debug readout (adapter -> cpp_impl -> field).
+	var cpp = gen.get("cpp_impl") if "cpp_impl" in gen else gen
+	if cpp != null and cpp.has_method("get_biome_field"):
+		_biome_field_ref = cpp.call("get_biome_field")
+	print("[World3D][Biome] framework ON — %d profiles wired (plains/hills/forest/desert/mountains)." % profiles.size())
+# === BIOME FRAMEWORK END ===============================================
+
+
 # Phase I — pick the terrain material for one voxel model. Most
 # materials share `base_mat` so the blocky mesher can batch them into a
 # single surface per chunk. A material is given its own ShaderMaterial
@@ -783,6 +1079,142 @@ func _terrain_material_for(material_id: int, base_mat: ShaderMaterial,
 		variant.set_shader_parameter("emission_tint", vm.emission_color)
 		variant.set_shader_parameter("emission_strength", vm.emission_energy)
 	return variant
+
+
+# Sample the mean RGB of the blocky-terrain atlas tiles and push them
+# onto the DistantTerrain mesher as its elevation/slope palette, so the
+# smooth distant skirt is the SAME hue as the near blocky terrain (no more
+# pale washed-green seam at the ~86 m handoff — 2026-06-12 fix).
+#
+# Algebra of the pre-division: the distant_terrain.gdshader multiplies the
+# baked vertex palette by `albedo_tint` (a neutral 0.80 anti-bloom darken).
+# We want the FINAL rendered ALBEDO to equal the true tile mean, so we
+# store palette = tile_mean / 0.80 (clamped to 1.0). Then on the GPU:
+# palette * albedo_tint == (tile_mean / 0.80) * 0.80 == tile_mean. The
+# 0.80 still does its anti-bloom job; it just no longer shifts hue.
+const _DISTANT_ALBEDO_TINT: float = 0.80   # must match albedo_tint default in distant_terrain.gdshader
+
+# Render-match darken for the GRASS skirt entries. The smooth skirt renders
+# at the flat atlas tile MEAN, but the near blocky grass renders DARKER than
+# its mean — the textured atlas has dark blade-gap pixels, SSAO adds contact
+# shadow, and the LOD0 flora casts micro-shadows; the smooth skirt receives
+# none of these. Without compensation the skirt reads as a paler twin and a
+# hard tone seam appears at the handoff (designer caught it on the GPU,
+# 2026-06-12). Multiplying the grass palette down by this factor matches the
+# skirt to the PERCEIVED brightness of the near grass. Stone/sand/snow read
+# fine at their mean (rock has little inter-texel shadow), so this applies to
+# vegetation only. Tune toward 1.0 if the skirt goes too dark, toward 0.7 if
+# the seam (lighter skirt) persists.
+const _DISTANT_GRASS_RENDER_MATCH: float = 0.88
+
+# Fraction of the grass colour taken from the DIRT SIDE tile rather than the
+# green TOP. A grass voxel shows green on top, brown dirt on its sides; the
+# blocky terrain reads as a blend of both, so the smooth skirt must too or it
+# looks too light/green. ~0.45 = the side fraction a typical over-shoulder
+# camera sees across rolling hills. Raise toward 0.6 for browner distance,
+# lower toward 0.3 for greener.
+const _DISTANT_GRASS_SIDE_WEIGHT: float = 0.45
+
+func _configure_distant_palette(distant: Node) -> void:
+	if distant == null or not distant.has_method("set_palette"):
+		return
+	var atlas_img: Image = _load_atlas_image()
+	if atlas_img == null:
+		# Sampler failed — leave the mesher on its built-in defaults.
+		push_warning("[World3D] distant palette: atlas image unavailable; using mesher defaults.")
+		return
+	# Tile coords from _MATERIAL_TILES (the blocky terrain's own table):
+	#   grass(3).top=(2,0)  stone(1).top=(0,0)  sand(4).top=(4,0)  snow(13).top=(8,0)
+	# Grass colour is NOT just the green TOP tile. A grass voxel is green on
+	# top but brown DIRT on its sides (material 3: top (2,0) green, side (3,0)
+	# dirt), so the blocky terrain you actually SEE at any viewing angle is a
+	# blend of green tops and brown sides — markedly darker and browner than
+	# pure top-green. The smooth skirt has no sides, so sampling only the top
+	# made it read as a too-light pure green (designer caught this live,
+	# 2026-06-12). Blend top + side by the fraction of side faces a typical
+	# over-shoulder camera sees across rolling terrain.
+	var grass_top := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[3]["top"])
+	var grass_side := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[3]["side"])
+	var grass_mean := grass_top.lerp(grass_side, _DISTANT_GRASS_SIDE_WEIGHT)
+	# Stone/sand/snow have matching top+side tiles, so top alone is fine.
+	var stone_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[1]["top"])
+	var sand_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[4]["top"])
+	var snow_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[13]["top"])
+	# Palette mapping (commented per task spec):
+	#   c_lo  = grass-top mean          (lowland)
+	#   rock  = stone mean              (slope-driven)
+	#   beach = sand mean
+	#   c_hi  = snow mean
+	#   c_mid = lerp(grass, stone, 0.5) — a natural grass→scree mid-elevation tone
+	#   below_sea = kept dark blue-grey (reads as deep water — unchanged)
+	# Grass entries get the render-match darken (see the constant's note);
+	# rock/sand/snow stay at their mean. `mid` is half grass so it gets a
+	# half-strength darken.
+	var grass_match: Color = grass_mean * _DISTANT_GRASS_RENDER_MATCH
+	var mid_match: float = lerp(_DISTANT_GRASS_RENDER_MATCH, 1.0, 0.5)
+	var grass_lo := _tint_compensate(grass_match)
+	var stone_rock := _tint_compensate(stone_mean)
+	var sand_beach := _tint_compensate(sand_mean)
+	var snow_hi := _tint_compensate(snow_mean)
+	var mid := _tint_compensate(grass_mean.lerp(stone_mean, 0.5) * mid_match)
+	# below-sea: keep the existing deep-water colour, pre-divided too so it
+	# also renders at its intended value through the same tint.
+	var below_sea := _tint_compensate(Color(0.14, 0.18, 0.22, 1.0))
+	distant.call("set_palette", grass_lo, mid, snow_hi, stone_rock, sand_beach, below_sea)
+
+
+# Load the voxel atlas as an Image (CPU-readable pixels).
+func _load_atlas_image() -> Image:
+	var tex: Texture2D = load(_ATLAS_TEXTURE_PATH) as Texture2D
+	if tex == null:
+		return null
+	var img: Image = tex.get_image()
+	if img == null:
+		return null
+	if img.is_compressed():
+		# Decompress so get_pixel works (atlas should be uncompressed PNG,
+		# but be defensive).
+		img.decompress()
+	return img
+
+
+# Mean RGB of one 16x16 atlas tile at grid coord (tx, ty). 16 px tiles,
+# 64 cols (1024² atlas) — see _ATLAS_TILES_PER_ROW.
+const _ATLAS_TILE_PX: int = 16   # 1024 / _ATLAS_TILES_PER_ROW(64)
+
+func _atlas_tile_mean(img: Image, tile: Vector2i) -> Color:
+	var x0: int = tile.x * _ATLAS_TILE_PX
+	var y0: int = tile.y * _ATLAS_TILE_PX
+	var r: float = 0.0
+	var g: float = 0.0
+	var b: float = 0.0
+	var n: float = 0.0
+	for py in range(y0, y0 + _ATLAS_TILE_PX):
+		for px in range(x0, x0 + _ATLAS_TILE_PX):
+			if px < 0 or py < 0 or px >= img.get_width() or py >= img.get_height():
+				continue
+			var c: Color = img.get_pixel(px, py)
+			# Weight by alpha so transparent atlas padding doesn't dilute
+			# the mean toward black (tiles are opaque, but be safe).
+			var a: float = c.a
+			r += c.r * a
+			g += c.g * a
+			b += c.b * a
+			n += a
+	if n <= 0.0:
+		return Color(0.5, 0.5, 0.5, 1.0)
+	return Color(r / n, g / n, b / n, 1.0)
+
+
+# palette = tile_mean / albedo_tint, clamped — so palette * albedo_tint on
+# the GPU lands back on the true tile mean. (See _configure_distant_palette.)
+func _tint_compensate(c: Color) -> Color:
+	var inv: float = 1.0 / _DISTANT_ALBEDO_TINT
+	return Color(
+		minf(c.r * inv, 1.0),
+		minf(c.g * inv, 1.0),
+		minf(c.b * inv, 1.0),
+		1.0)
 
 
 func _inject_atlas_materials_into_library(mesher: Resource) -> void:
@@ -992,6 +1424,20 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	else:
 		push_error("[World3D][WaterFluid] library has no add_model() — cannot inject native fluid models.")
 
+	# --- Micro-voxel flora (ids 24..26): grass blade + two flowers. ---
+	# R4. Three custom-mesh blocky models injected at RUNTIME via add_model
+	# (same "bootstrap is source of truth" reason as the water fluids and
+	# the atlas materials — Zylann's .tres doesn't restore these on load).
+	# Each is a CROSS-QUAD (two intersecting vertical quads, Minecraft-flora
+	# style) with NO collision (walk-through) so the player and water pass
+	# straight through. They land at ids 24, 25, 26 — right after the 8
+	# water fluid models at 16..23 — which is exactly what FloraMaterial,
+	# the three .tres materials, and the C++ generator all expect.
+	if lib.has_method("add_model"):
+		_inject_flora_models_into_library(lib)
+	else:
+		push_error("[World3D][Flora] library has no add_model() — cannot inject flora models.")
+
 	# Disable baked tangents. Nothing in this project uses a normal map
 	# (atlas = StandardMaterial3D albedo-only nearest; water v9 shader
 	# references no TANGENT/BINORMAL). With tangents baked, the blocky
@@ -1076,6 +1522,419 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	_lod_box_overlay = LodBoxOverlayScript.new()
 	_lod_box_overlay.name = "LodBoxOverlay"
 	add_child(_lod_box_overlay)
+
+
+func _inject_flora_models_into_library(lib: Resource) -> void:
+	# Build and inject the three micro-voxel flora models (R4) at ids
+	# 24, 25, 26 — directly after the 8 water fluid models (16..23).
+	#
+	# Each flora model is a Zylann VoxelBlockyModelMesh wrapping a custom
+	# CROSS-QUAD ArrayMesh: two intersecting vertical quads forming an "X"
+	# when seen from above, each quad double-sided so the blade reads from
+	# every camera angle (Minecraft tall-grass / flower geometry). The mesh
+	# is built in code here (see _build_flora_cross_quad_mesh) rather than
+	# authored as a .tres so there's a single source of truth and no
+	# Zylann .tres-doesn't-restore surprise.
+	#
+	# Collision is intentionally EMPTY (set_collision_aabbs([]) + mesh
+	# collision off) so the player walks straight through a field of grass
+	# — flora is decoration you can run through and dig out, never a wall.
+	#
+	# The model's vertex colours carry the flora tint (grass green, poppy
+	# red, cornflower blue) so v1 needs NO atlas art — a flat unshaded
+	# vertex-colour material draws them. Proper pixel-art tiles are a
+	# logged DESIGNER_TODO; this is deliberately art-free so R4 doesn't
+	# block on the texture pipeline.
+
+	# DESIGNER DIAL (2026-06-12): the ONE place to tune the ground-cover
+	# grass colour. Directive: "make all procedural ground cover very simple
+	# 1-voxel-thick x 3-voxel-tall pieces of grass, colored a solid green."
+	# Grass is now a plain FULL-CUBE model (not a cross-quad blade); the C++
+	# generator stacks THREE of these cubes (ground+1..+3) per grass column,
+	# so the field reads as solid 0.1 m x 0.3 m green columns. Change this
+	# single Color to retint every blade of ground-cover grass (near LOD0
+	# AND the far-grass impostor, which reads the same constant intent).
+	const GRASS_COVER_GREEN := Color(0.24, 0.40, 0.14)
+# Darker than the old blade green ON PURPOSE: cube grass exposes flat
+# TOP faces that catch the noon sun square-on (the retired cross-quads
+# were vertical-only), and a brighter green tone-maps to near-white in
+# full light. This value reads as saturated grass at noon. THE one-place
+# designer dial for ground-cover colour.
+
+	# (flora id, half-width in metres, height in metres, colour [, shape])
+	# Heights/widths read in WORLD METRES then scale into the voxel grid via
+	# VoxelScale. Flowers stay ~30 cm cross-quad blooms (Lay-of-the-Land look,
+	# VISION_VOXEL_10CM.md ref_01). Grass is a "cube" shape: a solid full
+	# unit-cube voxel, flat GRASS_COVER_GREEN, no atlas tile.
+	var flora_specs: Array = [
+		{
+			"id": FloraMaterial.GRASS_BLADE_ID,
+			"name": "grass_blade",
+			"shape": "cube",
+			"height_m": 0.25, "half_width_m": 0.05,
+			"color": GRASS_COVER_GREEN,
+		},
+		{
+			"id": FloraMaterial.FLOWER_RED_ID,
+			"name": "flower_red",
+			"height_m": 0.30, "half_width_m": 0.06,
+			"color": Color(0.78, 0.15, 0.14),
+		},
+		{
+			"id": FloraMaterial.FLOWER_BLUE_ID,
+			"name": "flower_blue",
+			"height_m": 0.30, "half_width_m": 0.06,
+			"color": Color(0.31, 0.46, 0.84),
+		},
+	]
+
+	# === FAR-GRASS PR (2026-06-12) — wind-sway material, start ===========
+	# One shared wind-sway material for all three flora models (cheap — one
+	# material, three meshes). This is the SAME flora_sway.gdshader the
+	# far-grass impostor layer (FarGrassManager) uses, so the real LOD0
+	# blades and the distant impostor blades sway identically and read as
+	# one continuous field across the LOD seam.
+	#
+	# The shader reproduces what the old StandardMaterial3D did
+	# (vertex-colour albedo, double-sided via render_mode cull_disabled,
+	# matte roughness) PLUS a gentle TIME-driven sway in the vertex stage.
+	# Swaying grass is a core part of the Lay-of-the-Land look
+	# (VISION_VOXEL_10CM.md ref_01). TIME needs no [shader_globals] entry,
+	# so this adds nothing to project.godot (PATTERNS_AND_GOTCHAS: never
+	# call RenderingServer.global_shader_parameter_add).
+	#
+	# FALLBACK: if the sway shader fails to load (missing file), fall back
+	# to the original StandardMaterial3D so flora still renders (just
+	# without sway) rather than going invisible.
+	# SWAY ON CUBES (2026-06-12): grass is now a solid full-cube model whose
+	# vertices all land on integer voxel boundaries, so the sway shader's
+	# fract(VERTEX.y) bend-weight collapses to ~0 — a cube grass column stays
+	# put (which reads correctly: a chunky cube shouldn't whip like a blade).
+	# We KEEP the shared sway material hookup unchanged because the flowers
+	# (still cross-quads) DO sway off it; the cube grass just naturally
+	# contributes no displacement. No per-grass amplitude override needed.
+	var flora_mat: Material = null
+	var _sway_sh := load("res://assets/shaders/flora_sway.gdshader") as Shader
+	if _sway_sh != null:
+		var _sm := ShaderMaterial.new()
+		_sm.resource_name = "flora_runtime_sway"
+		_sm.shader = _sway_sh
+		# This material rides the blocky chunk meshes, which are built in
+		# cube-local VOXEL units (a blade tip ~0.92 voxel). Tell the sway
+		# shader that height so it normalises the bend weight correctly —
+		# without it the shader would mis-scale the bend (see flora_sway's
+		# blade_local_height note; the impostor sets its own metre height).
+		_sm.set_shader_parameter("blade_local_height", 0.92)
+		flora_mat = _sm
+	else:
+		push_warning("[World3D][Flora] flora_sway.gdshader missing — flora renders without wind sway.")
+		var _std := StandardMaterial3D.new()
+		_std.resource_name = "flora_runtime"
+		_std.vertex_color_use_as_albedo = true
+		_std.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_std.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_std.roughness = 1.0
+		_std.metallic = 0.0
+		flora_mat = _std
+	# === FAR-GRASS PR (2026-06-12) — wind-sway material, end =============
+
+	if not ClassDB.class_exists("VoxelBlockyModelMesh"):
+		push_error("[World3D][Flora] VoxelBlockyModelMesh not registered in this Zylann build — flora cannot be injected. Grass/flower ids will render as missing models.")
+		return
+
+	var pre_count: int = -1
+	if "models" in lib:
+		pre_count = (lib.get("models") as Array).size()
+	# We injected water at 16..23, so the library should hold 24 models
+	# (0..23) before flora. If it doesn't, the add_model ids below won't
+	# line up with FloraMaterial's reserved ids — fail loud, don't silently
+	# paint flora into the wrong slots.
+	if pre_count != FloraMaterial.FLORA_BASE_ID:
+		push_error("[World3D][Flora] library has %d models, expected %d before flora inject — flora ids would misalign with FloraMaterial. Check the water-fluid inject ran first." % [pre_count, FloraMaterial.FLORA_BASE_ID])
+		return
+
+	var added_ids: Array[int] = []
+	for spec in flora_specs:
+		var fm: Object
+		if String(spec.get("shape", "cross")) == "cube":
+			# Ground-cover GRASS: a solid FULL unit-cube voxel, flat green.
+			# The generator stacks three of these (ground+1..+3) so the field
+			# reads as simple 1-voxel-thick x 3-voxel-tall green columns.
+			# Culling ON (opaque solid class) so the faces between two
+			# stacked grass cubes are culled — the stack draws as one clean
+			# column, not three nested boxes. Still walk-through (no collider).
+			var cube_mesh: ArrayMesh = _build_flora_cube_mesh(spec["color"])
+			fm = _make_walkthrough_cube_model(cube_mesh, flora_mat, spec["name"])
+		else:
+			var mesh: ArrayMesh = _build_flora_cross_quad_mesh(
+				float(spec["height_m"]), float(spec["half_width_m"]), spec["color"])
+			fm = _make_walkthrough_blocky_model(mesh, flora_mat, spec["name"])
+		if fm == null:
+			break
+		added_ids.append(int(lib.call("add_model", fm)))
+
+	var want: Array[int] = [
+		FloraMaterial.GRASS_BLADE_ID,
+		FloraMaterial.FLOWER_RED_ID,
+		FloraMaterial.FLOWER_BLUE_ID,
+	]
+	print("[World3D][Flora] injected %d flora model(s) at ids %s (grass_blade=solid-green CUBE, flower_red/flower_blue=cross-quad; NON-COLLIDING, vertex-colour)." % [added_ids.size(), str(added_ids)])
+	if added_ids != want:
+		push_error("[World3D][Flora] add_model ids %s != expected %s — FloraMaterial / generator id math will be wrong." % [str(added_ids), str(want)])
+
+	# --- D1 surface detail (ids 27..28): pebble + twig --------------------
+	# Injected RIGHT AFTER the three flora models so the library now holds
+	# 0..26 and the two add_model calls below land at exactly 27, 28 — what
+	# FloraMaterial.PEBBLE_ID / TWIG_ID and the C++ generator expect. These
+	# are SMALL, LOW-PROFILE, vertex-coloured, walk-through meshes (no
+	# cross-quad — a squat lump for a pebble, a thin flat bar for a twig) so
+	# the world reads as material up close without becoming an obstacle.
+	# Reuses the same shared flora_mat (vertex-colour) since each mesh bakes
+	# its own colour into ARRAY_COLOR.
+	var detail_specs: Array = [
+		# Pebble — a squat hexagonal lump ~0.6 voxel wide, ~0.25 voxel tall,
+		# grey-brown. Sits flat on the ground.
+		{
+			"id": FloraMaterial.PEBBLE_ID, "name": "pebble", "kind": "pebble",
+			"half_width_m": 0.03, "height_m": 0.025,
+			"color": Color(0.42, 0.38, 0.33),
+		},
+		# Twig — a thin horizontal brown bar ~0.4 voxel long, very low.
+		{
+			"id": FloraMaterial.TWIG_ID, "name": "twig", "kind": "twig",
+			"half_width_m": 0.02, "height_m": 0.015, "length_m": 0.20,
+			"color": Color(0.34, 0.24, 0.14),
+		},
+	]
+	var detail_pre_count: int = -1
+	if "models" in lib:
+		detail_pre_count = (lib.get("models") as Array).size()
+	if detail_pre_count != FloraMaterial.SURFACE_DETAIL_BASE_ID:
+		push_error("[World3D][Detail] library has %d models, expected %d before surface-detail inject — pebble/twig ids would misalign with FloraMaterial." % [detail_pre_count, FloraMaterial.SURFACE_DETAIL_BASE_ID])
+		return
+	var detail_added: Array[int] = []
+	for spec in detail_specs:
+		var mesh: ArrayMesh = _build_surface_detail_mesh(spec)
+		var fm: Object = _make_walkthrough_blocky_model(mesh, flora_mat, spec["name"])
+		if fm == null:
+			break
+		detail_added.append(int(lib.call("add_model", fm)))
+	var detail_want: Array[int] = [FloraMaterial.PEBBLE_ID, FloraMaterial.TWIG_ID]
+	print("[World3D][Detail] injected %d surface-detail model(s) at ids %s (pebble, twig; low-profile, NON-COLLIDING, vertex-colour)." % [detail_added.size(), str(detail_added)])
+	if detail_added != detail_want:
+		push_error("[World3D][Detail] add_model ids %s != expected %s — FloraMaterial / generator id math will be wrong." % [str(detail_added), str(detail_want)])
+
+
+func _make_walkthrough_blocky_model(mesh: ArrayMesh, mat: Material, label: String) -> Object:
+	# Shared builder for a vertex-coloured, walk-through VoxelBlockyModelMesh
+	# (flora + D1 surface detail). Mirrors the exact collision-off + no-cull
+	# setup the flora models used, so pebbles/twigs are decoration the player
+	# and the water sim pass straight through, same as grass blades.
+	var fm: Object = ClassDB.instantiate("VoxelBlockyModelMesh")
+	if fm == null:
+		push_error("[World3D] could not instantiate VoxelBlockyModelMesh for %s." % label)
+		return null
+	if fm.has_method("set_mesh"):
+		fm.call("set_mesh", mesh)
+	elif "mesh" in fm:
+		fm.set("mesh", mesh)
+	if fm.has_method("set_material_override"):
+		fm.call("set_material_override", 0, mat)
+	# Transparent class of its own (3) — distinct from leaves (1) and water
+	# (2) — so the mesher sorts these after opaque solids and doesn't cull
+	# the face of the block underneath.
+	if fm.has_method("set_transparency_index"):
+		fm.call("set_transparency_index", 3)
+	if "culls_neighbors" in fm:
+		fm.set("culls_neighbors", false)
+	# WALK-THROUGH: clear both collider paths (box AABBs + per-surface mesh
+	# collision) so the player and the finite-water sim pass straight through.
+	if fm.has_method("set_collision_aabbs"):
+		fm.call("set_collision_aabbs", [])
+	if fm.has_method("set_collision_mask"):
+		fm.call("set_collision_mask", 0)
+	if fm.has_method("set_mesh_collision_enabled"):
+		fm.call("set_mesh_collision_enabled", 0, false)
+	return fm
+
+
+func _build_surface_detail_mesh(spec: Dictionary) -> ArrayMesh:
+	# Build a SMALL, low-profile horizontal mesh for a pebble or twig in
+	# CUBE-LOCAL space (unit cube (0,0,0)..(1,1,1), 1 unit = 1 voxel). Unlike
+	# flora these are NOT cross-quads — they're squat solids sitting on the
+	# cube floor (y=0) so they read as something lying on the ground, never
+	# as a standing blade. Double-sided emission is unnecessary (they have
+	# real top/side faces); the shared material is CULL_DISABLED anyway.
+	var v_per_m: float = VoxelScale.VOXELS_PER_METER
+	var color: Color = spec["color"]
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+
+	# Helper to push one quad (a,b,c,d CCW) with a flat normal.
+	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color) -> void:
+		var base: int = verts.size()
+		for p in [a, b, c, d]:
+			verts.append(p)
+			normals.append(n)
+			colors.append(col)
+		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+
+	var h: float = clampf(float(spec["height_m"]) * v_per_m, 0.04, 0.6)
+	if String(spec["kind"]) == "twig":
+		# A thin horizontal box: long in Z, narrow in X, very low in Y.
+		var half_len: float = clampf(float(spec["length_m"]) * v_per_m * 0.5, 0.05, 0.48)
+		var half_w: float = clampf(float(spec["half_width_m"]) * v_per_m, 0.02, 0.2)
+		var cx: float = 0.5
+		var cz: float = 0.5
+		var x0: float = cx - half_w
+		var x1: float = cx + half_w
+		var z0: float = cz - half_len
+		var z1: float = cz + half_len
+		_emit_box(add_quad, x0, x1, 0.0, h, z0, z1)
+	else:
+		# Pebble: a squat box (cheaper than a faux-dome, reads fine at 10cm).
+		var half_w2: float = clampf(float(spec["half_width_m"]) * v_per_m, 0.05, 0.4)
+		var cx2: float = 0.5
+		var cz2: float = 0.5
+		_emit_box(add_quad,
+			cx2 - half_w2, cx2 + half_w2, 0.0, h, cz2 - half_w2, cz2 + half_w2)
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _emit_box(add_quad: Callable, x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> void:
+	# Append the 6 faces of an axis-aligned box to a quad-accumulator
+	# Callable (signature: a,b,c,d corners CCW + outward normal). Used by
+	# the D1 pebble/twig low-profile solids.
+	# Top (+Y) and bottom (-Y).
+	add_quad.call(Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x0, y1, z1), Vector3(0, 1, 0))
+	add_quad.call(Vector3(x0, y0, z1), Vector3(x1, y0, z1), Vector3(x1, y0, z0), Vector3(x0, y0, z0), Vector3(0, -1, 0))
+	# +Z and -Z.
+	add_quad.call(Vector3(x0, y0, z1), Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y0, z1), Vector3(0, 0, 1))
+	add_quad.call(Vector3(x1, y0, z0), Vector3(x1, y1, z0), Vector3(x0, y1, z0), Vector3(x0, y0, z0), Vector3(0, 0, -1))
+	# +X and -X.
+	add_quad.call(Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0), Vector3(x1, y0, z0), Vector3(1, 0, 0))
+	add_quad.call(Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x0, y1, z1), Vector3(x0, y0, z1), Vector3(-1, 0, 0))
+
+
+func _build_flora_cross_quad_mesh(height_m: float, half_width_m: float, color: Color) -> ArrayMesh:
+	# Build the two-intersecting-quad "X" mesh for one flora voxel in
+	# CUBE-LOCAL space (Zylann blocky model space — a unit cube (0,0,0)..
+	# (1,1,1) where 1 unit = 1 voxel).
+	#
+	# The geometry now lives in scripts/FloraMeshBuilder.gd so the far-grass
+	# IMPOSTOR layer (FarGrassManager) builds the SAME blade shape — one
+	# source of truth means the near (real voxel) blades and the far
+	# (GPU-instanced) blades are guaranteed to look identical across the LOD
+	# seam (far-grass PR, 2026-06-12). world_space=false keeps the legacy
+	# cube-local behaviour (metres -> voxel units, clamped + centred in the
+	# unit cube) byte-for-byte identical to the old inline builder.
+	const FloraMeshBuilder := preload("res://scripts/FloraMeshBuilder.gd")
+	return FloraMeshBuilder.build_cross_quad(
+		height_m, half_width_m, color, VoxelScale.VOXELS_PER_METER, false)
+
+
+func _build_flora_cube_mesh(color: Color) -> ArrayMesh:
+	# Build a SOLID FULL unit-cube mesh for the ground-cover grass voxel, in
+	# CUBE-LOCAL space (Zylann blocky model space — the unit cube (0,0,0)..
+	# (1,1,1), 1 unit = 1 voxel). Every vertex carries the flat grass tint in
+	# ARRAY_COLOR so the shared vertex-colour material draws it green with no
+	# atlas art. Six outward-facing quads, one flat normal each (standard
+	# shading). The generator stacks three of these per grass column so the
+	# blade reads as a simple 1-voxel-thick x 3-voxel-tall green column.
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color) -> void:
+		var base: int = verts.size()
+		for p in [a, b, c, d]:
+			verts.append(p)
+			normals.append(n)
+			colors.append(col)
+		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	# Eight corners — inset 0.03 voxel (3 mm world) from the unit-cube
+	# boundary. PROVEN BY EXPERIMENT (2026-06-12, red-top diagnostic):
+	# Zylann's blocky baker reclassifies axis-aligned quads lying on (or
+	# within a small tolerance of — 0.002 was NOT enough) the cube
+	# boundary as cullable SIDE geometry and DISCARDS their ARRAY_COLOR —
+	# the grass tops rendered white no matter what colour we baked. At
+	# 0.03 in, every face is unambiguously INTERIOR geometry (the same
+	# class the proven flower cross-quads use) and the vertex green
+	# survives. The 3 mm seam between stacked cubes is invisible past
+	# arm's length; neighbor-culling is moot for interior geometry.
+	const E := 0.03
+	var p000 := Vector3(E, 0.0, E)
+	var p100 := Vector3(1.0 - E, 0.0, E)
+	var p010 := Vector3(E, 1.0 - E, E)
+	var p110 := Vector3(1.0 - E, 1.0 - E, E)
+	var p001 := Vector3(E, 0.0, 1.0 - E)
+	var p101 := Vector3(1.0 - E, 0.0, 1.0 - E)
+	var p011 := Vector3(E, 1.0 - E, 1.0 - E)
+	var p111 := Vector3(1.0 - E, 1.0 - E, 1.0 - E)
+	add_quad.call(p001, p101, p111, p011, Vector3(0, 0, 1), color)   # +Z
+	add_quad.call(p100, p000, p010, p110, Vector3(0, 0, -1), color)  # -Z
+	add_quad.call(p101, p100, p110, p111, Vector3(1, 0, 0), color)   # +X
+	add_quad.call(p000, p001, p011, p010, Vector3(-1, 0, 0), color)  # -X
+	add_quad.call(p011, p111, p110, p010, Vector3(0, 1, 0), color)   # +Y (top)
+	add_quad.call(p000, p100, p101, p001, Vector3(0, -1, 0), color)  # -Y (bottom)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _make_walkthrough_cube_model(mesh: ArrayMesh, mat: Material, label: String) -> Object:
+	# Like _make_walkthrough_blocky_model (no collision — the player and the
+	# water sim pass straight through, so all the is_flora / is_passthrough /
+	# water / gravity / sever / trample semantics are untouched), but with
+	# face CULLING ON and an OPAQUE transparency class, so the shared faces
+	# between two stacked grass cubes are culled — a 3-tall stack draws as one
+	# clean green column instead of three nested boxes. The model still
+	# DRAWS like a solid cube; only collision is removed.
+	var fm: Object = ClassDB.instantiate("VoxelBlockyModelMesh")
+	if fm == null:
+		push_error("[World3D] could not instantiate VoxelBlockyModelMesh for %s." % label)
+		return null
+	if fm.has_method("set_mesh"):
+		fm.call("set_mesh", mesh)
+	elif "mesh" in fm:
+		fm.set("mesh", mesh)
+	if fm.has_method("set_material_override"):
+		fm.call("set_material_override", 0, mat)
+	# Opaque solid class (0) + culls_neighbors ON: the mesher culls the
+	# face shared by two adjacent grass cubes (and the ground face beneath
+	# the bottom cube, which is hidden anyway), so the stack reads as a
+	# single solid column with no z-fighting interior faces.
+	if fm.has_method("set_transparency_index"):
+		fm.call("set_transparency_index", 0)
+	if "culls_neighbors" in fm:
+		# Interior-inset mesh — nothing on the boundary to cull against.
+		fm.set("culls_neighbors", false)
+	# WALK-THROUGH: clear both collider paths so grass stays pass-through
+	# air for the player + finite-water sim, exactly like the blade model did.
+	if fm.has_method("set_collision_aabbs"):
+		fm.call("set_collision_aabbs", [])
+	if fm.has_method("set_collision_mask"):
+		fm.call("set_collision_mask", 0)
+	if fm.has_method("set_mesh_collision_enabled"):
+		fm.call("set_mesh_collision_enabled", 0, false)
+	return fm
 
 
 func _stamp_river_flow_volumes() -> void:
@@ -1503,7 +2362,7 @@ func _snap_campfire_to_ground() -> void:
 		return
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+		terrain_scale = VoxelScale.VOXEL_SIZE_M  # fall-through: assume canonical scale
 	var voxels_per_m: float = 1.0 / terrain_scale
 	var generator = terrain.get("generator") if "generator" in terrain else null
 	if generator == null:
@@ -1566,7 +2425,7 @@ func _pre_snap_player_to_generator_ground() -> void:
 
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through safety: assume 6 vox/m
+		terrain_scale = VoxelScale.VOXEL_SIZE_M  # fall-through safety: assume canonical scale
 	var voxels_per_m: float = 1.0 / terrain_scale
 
 	var generator = terrain.get("generator") if "generator" in terrain else null
@@ -1852,12 +2711,12 @@ func _mark_world_ready_when_settled() -> void:
 	# "is the local area visually presentable" and the queue gate
 	# handles "is the streamer globally finished."
 	#
-	# Why raycasts ≡ LOD0: in this terrain config
-	# (`collision_lod_count = 0`), only LOD0 chunks have collision
-	# bodies. A raycast hit is therefore a direct confirmation that
-	# the chunk at that location is meshed at full LOD0 resolution.
-	# Higher-LOD chunks (LOD1+) are visible but uncollidable, and
-	# the raycast passes through them.
+	# Why raycasts confirm LOD0: collision_lod_count = 3 gives LOD0,
+	# LOD1, and LOD2 collision bodies. Spawn probes are fired within
+	# ~15 m of the player (inside the LOD0 ring), so a hit is a
+	# direct confirmation that the highest-detail LOD0 block is
+	# meshed and physics-ready at that column. LOD1/2 collision
+	# elsewhere does not interfere — the probe radii are local.
 	#
 	# REQUIRED_GOOD_SAMPLES of 3 × POLL_INTERVAL 0.4 s = 1.2 s of
 	# sustained "both gates pass" before signaling. Three samples
@@ -2056,7 +2915,7 @@ func _seed_test_pond() -> void:
 	#
 	# RELOCATED + slope-robust 2026-05-17 (backlog #2). The legacy
 	# footprint was world (-23,-1.5,-1)..(-13,1.5,9) — fixed at world
-	# Y≈0, ~70 voxels BELOW sea level (72), buried in rock: unreachable,
+	# Y≈0, well BELOW sea level (vox 120 at 10 vox/m), buried in rock: unreachable,
 	# never testable. v1 of the relocation anchored the whole footprint
 	# to ONE ground sample at the centre — but the terrain near spawn is
 	# steep (ground vox 172 @ spawn(0,0), 155 @ campfire(-3,0), 128 @
@@ -2082,7 +2941,7 @@ func _seed_test_pond() -> void:
 		return
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+		terrain_scale = VoxelScale.VOXEL_SIZE_M  # fall-through: assume canonical scale
 	var voxels_per_m: float = 1.0 / terrain_scale
 
 	# Pond footprint in WORLD metres, then → voxels. Centred at world
@@ -2123,9 +2982,14 @@ func _seed_test_pond() -> void:
 				g_min = min(g_min, g)
 				g_max = max(g_max, g)
 	else:
-		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 72).")
-		g_min = 72
-		g_max = 72
+		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 120).")
+		# 120 = the generator's sea_level_voxels at 10 vox/m (12 m world).
+		# Was hardcoded 72 (the 6 vox/m sea level) — caught by the R1
+		# review pass; this fallback only fires when the generator lacks
+		# get_ground_voxel_y_at, but a wrong anchor buried the pond 4.8 m
+		# under the surface when it did.
+		g_min = 120
+		g_max = 120
 
 	# Water surface one voxel above the LOWEST ground in the footprint
 	# (≈flush on the downhill approach). Inclusive-min / exclusive-max

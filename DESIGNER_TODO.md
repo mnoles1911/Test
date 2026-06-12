@@ -246,6 +246,8 @@ Scene building and node configuration that has to be done in the editor.
   `albedo_tint=(0.70, 0.85, 0.55)`. The streaming pipeline went from "outrun
   LOD0 in 10 s" to "designer confirmed cannot out run the streaming." The
   bright-skirt-ghosting-through-hills bug fixed by the new shader tint.
+  *(PR #251 R2 subsequently updated these to `lod_count=5`, `view_distance=864 vox`,
+  `inner_cull_radius=100 m` for the 10 vox/m scale — see R2 acceptance above.)*
   Outstanding: LOD1+ water-surface line artefact (separate water-shader work,
   not a DistantTerrain issue — see CLAUDE.md 2026-05-26 milestone).
 
@@ -277,6 +279,18 @@ Assets that require external tools (MagicaVoxel, Aseprite, Blender, etc.)
   First animation: idle (weight shift). Second: walk cycle. Third: run.
   These three clips unblock all scene movement and camera testing.
   Reference: `design/ART_PIPELINE.md` → Tool 3
+
+- [ ] **Drop the five 10cm-vision reference screenshots into `design/inspiration/`**
+  These were shared in the 2026-06-12 chat session. The agent cannot write chat images
+  to disk — you need to save them manually. Exact filenames (case-sensitive):
+  - `ref_01_grass_blades.png` — Lay of the Land riverbank: dense per-blade grass, voxel flowers, freshly dug dirt patch, teal water behind.
+  - `ref_02_waterfall_dig.png` — Lay of the Land player-dug shaft: teal waterfall pouring in, orange-sand walls, grey stone at the bottom.
+  - `ref_03_medieval_tower_vista.png` — Shader-grade render: round stone tower, broadleaf forest, cobble bridge, volcanic mountain background.
+  - `ref_04_vista_volcano.png` — High aerial view: volcano, forests, farmland, beaches, ocean, voxel-style clouds.
+  - `ref_05_golden_hour_godrays.png` — Golden hour: stone church tower, visible god rays, red-flowered riverbank, glowing lantern post.
+  Once they're in place, `design/VISION_VOXEL_10CM.md` has full written descriptions
+  alongside each image so the doc stands alone even if the images can't be displayed.
+  Reference: `design/inspiration/README.md`, `design/VISION_VOXEL_10CM.md`.
 
 ---
 
@@ -1150,3 +1164,223 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
   render `underwater_ambience` via tools/render_sfx.py into
   assets/audio/sfx/water/ — until then submerge logs a one-time
   missing-asset warning and stays silent.
+
+## 10cm voxel re-architecture — R1 acceptance (2026-06-12)
+
+- **Scale feel check (World3D):** stand Roland against a cliff — he
+  should read ~17 voxels tall (1.7 m at 10 cm/voxel). A single-voxel
+  dig hole reads as a 10 cm pock, not a 17 cm bite. The ocean sits at
+  the same world height as before (12 m); familiar coastline and peak
+  shapes are preserved (amplitudes were rescaled to the same metres).
+- **Pickaxe default now carves 5x5x5** (same ~0.5 m physical bite as
+  the old 3x3x3 at the coarser grid). Scroll wheel still cycles down
+  to 1 for true 10 cm precision digging — try both; if you'd rather
+  the finer default, say so and we flip one constant.
+- **Pour a bucket into a 1 m pit** — collapse/leveling should look
+  unchanged (reach is still 3 m; it's 30 voxels now under the hood).
+- **F7 in CopperIslesTest** now cycles 10 -> 6 -> 8 vox/m (10 is the
+  canonical entry). Any pre-2026-06-12 baked Copper Isles SQLite is
+  invalid — delete + re-bake via BakeWorld when you next need it
+  (see design/COPPER_ISLES_BAKE_NOTES.md).
+- **Expect slower streaming this build** — perf retune is the next
+  phase (R2); judge feel, not framerate, until it lands.
+
+## 10cm voxel re-architecture — R2 acceptance (streaming/LOD retune, 2026-06-12)
+
+R2 retuned streaming + LOD for the 10 vox/m scale: blocky terrain band
+~86 m (view_distance 864 vox, lod_count 4 -> 5), DistantTerrain inner
+cull 130 -> 100 m, water/edit/gravity per-frame budgets scaled for the
+~4.63x denser voxel grid. The following are FEEL + PROFILER checks the
+designer runs in the editor (the headless harness only covers data/logic):
+
+- **Profiler budget capture (the gate):** in `scripts/Profiler.gd` set
+  `capture_on_startup = true`, F6 World3D, then run the **standard
+  route — sprint the coastline for 60 s** (the same route used for the
+  2026-05-13 baseline). On the RX 7800 XT the capture must show **median
+  frame < 5 ms**, **p99 < 16 ms**, and **no streaming spike > 50 ms**.
+  Flip `capture_on_startup` back to false afterward. Drop the capture
+  JSON into `design/captures/` and analyse it with
+  `tools/_analyze_capture.py` (the p50/p99/spike recipe is also in
+  `design/PROFILER_AND_DIAGNOSTICS.md`).
+- **If the budget FAILS — the 640-voxel retreat dial:** set
+  `World3DBootstrap.terrain_view_distance_voxels` from 864 to **640**
+  (~64 m blocky band, ~45% fewer streamed chunks) AND nudge
+  `DistantTerrainManager.inner_cull_radius` from 100 to ~75 m so the
+  overlap band stays gap-free. Re-capture; report which value held.
+- **F12 clipbox overlay — confirm you don't out-walk the loader:** tick
+  "Diag Enabled" on the World3DBootstrap node, press F12, sprint a long
+  straight line. The player must stay inside the streamed clipbox — no
+  trailing edge of unloaded terrain catching up to Roland. If it lags,
+  that's the retreat-dial signal too.
+- **F11 LOD-band shader — eyeball ring placement:** press F11 and walk;
+  confirm the green LOD0 disc stays centred on the player and the
+  coloured bands step outward at roughly the expected radii (LOD0 ~12.8 m,
+  doubling each ring). Mis-centred bands = a viewer-offset regression.
+- **Terrain collision extends to ~51.2 m (LOD0+1+2, `collision_lod_count=3`):** projectiles /
+  AI beyond ~51.2 m have no terrain collision. Beyond ~12.8 m the shapes are
+  coarser (LOD1 = 2-voxel, LOD2 = 4-voxel), but the ground is there for
+  physics purposes. Nothing beyond ~51.2 m: the raycast-vs-generator fallback
+  for long-lived projectiles is a separate logged follow-up — don't build it
+  as part of unrelated work. (`design/3D_VOXEL_MIGRATION.md` "10 vox/m collision reality").
+
+---
+
+## Section 11 — Micro-voxel flora (PR R4) acceptance + art
+
+The R4 code is in and the headless `flora` gate is green, but flora is a
+LOOK feature — it needs your eyes in the editor. Run `World3D.tscn` and
+walk the grassland.
+
+### In-engine acceptance (run `World3D.tscn`)
+
+- [ ] **Walk grassland → dense blades.** Stand on plain grass above the
+  waterline. You should see a thick lawn of individual green grass blades
+  (~35% of surface columns) with the occasional red and blue flower
+  (~2%). Beaches/sand, snowcaps, cliffs and near-water disks stay BARE —
+  flora is grassland-only.
+- [ ] **Dig under grass → blades vanish with the ground.** Mine the dirt/
+  grass voxel directly under a blade. The blade must disappear with it
+  (it's a real voxel sitting on top — no floating grass left behind).
+- [ ] **Pour water uphill of flowers → mowed down as it flows.** Place /
+  flow water so the front advances through a patch of flowers. The water
+  must flow straight INTO the flora cells (no damming on a blade) and the
+  flora must be replaced by water — no grass surviving underwater.
+- [ ] **Fell a tree through grass → no blades ride the cluster.** Chop a
+  tree standing in a grass field. The falling trunk/crown cluster must
+  carry ONLY wood/leaves — no grass blades stuck to it — and the tree
+  must not refuse to fall because a blade "connected" it to the ground.
+- [ ] **F3 median still within R2 budget.** Capture the F3 profiler on the
+  standard coastline-sprint route. Median must stay under 5 ms, p99 under
+  16 ms on the RX 7800 XT. Flora is LOD0-only, but it adds cross-quad
+  meshes to near chunks — if the budget regresses, note it (the flora
+  density is a single constant in `cubic_heightmap_generator` / the
+  generator's flora roll thresholds and can be dialled down).
+
+### Art task (NOT code-blocking — v1 ships on flat colours)
+
+- [ ] **Author pixel-art flora atlas tiles.** v1 draws grass blades and
+  flowers as flat vertex-colour cross-quads (grass green, poppy red,
+  cornflower blue) — no texture. For the real Lay-of-the-Land look,
+  author 16 px pixel-art tiles for `grass_blade`, `flower_red`,
+  `flower_blue` (see `assets/CLAUDE.md`: pixel-art only, 16 px tiles,
+  `tools/build_texture_atlas.py`), add them to the atlas, and switch the
+  runtime flora material in `World3DBootstrap._inject_flora_models_into_library`
+  from the flat vertex-colour `StandardMaterial3D` to an atlas-sampling
+  material with per-tile UVs on the cross-quad mesh.
+
+---
+
+## Section 12 — PR #251 acceptance (10cm re-architecture follow-ups)
+
+The R0–R4 commits are in and the headless gates are green.  These are the
+remaining **feel + visual** checks that need your eyes in the editor.
+
+### Far-grass impostors + wind sway acceptance
+
+`FarGrassManager.gd` fills the ~13–51 m band with GPU-instanced grass blades so
+the real LOD0 voxel grass no longer ends in a bald ring.
+
+- [ ] **Walk the grassland and look at the LOD1 band (~12–50 m out).** You
+  should see continuous grass coverage — no visible ring of bare terrain
+  between the crisp LOD0 blades and the DistantTerrain smooth mesh beyond.
+  If a seam is visible, note the camera distance; the inner cull radius on
+  `FarGrassManager` may need nudging.
+- [ ] **Move slowly and watch the near edge (~12 m).** As blades enter LOD0
+  range the impostor disappears and a real destructible blade should appear
+  in nearly the same spot (same hash). No popping, no sudden bare patch.
+- [ ] **Check sway direction.** Grass blades should sway gently in the
+  breeze — the tip bends more than the base. If blades snap metres sideways
+  or vibrate, something is re-introducing raw `VERTEX.y` into the sway
+  shader; see `design/PATTERNS_AND_GOTCHAS.md` → "Flora sway shader" gotcha.
+- [ ] **Toggle `GraphicsManager.far_grass_enabled` OFF via F1 → GRAPHICS.**
+  Confirm the impostor layer disappears and only the crisp LOD0 blades
+  remain within ~12 m. Re-enable and confirm seamless restoration. This is
+  the designer on/off valve — it defaults ON.
+
+### Mining rework acceptance (S/M/F presets, destroy preview)
+
+- [ ] **Scroll wheel while pickaxe equipped.** Confirm the carve size cycles
+  Small (1³) → Medium (3³) → Full (5³) → Small, with a HUD readout naming
+  the preset. The old default was a flat 3³; the new default (Full) is 5³.
+  If you prefer a different default size, say so and we flip one constant.
+- [ ] **Swing time scales with carve volume.** A Full (5³ = 125 voxels)
+  swing should take noticeably longer than a Small (1³ = 1 voxel) swing.
+  This is the physical-volume anchor — a 10cm carve and a 50cm carve no
+  longer cost the same swing time.
+- [ ] **Destroy preview highlights.** While aiming at the terrain with the
+  pickaxe equipped, the voxel faces you are about to remove should be
+  highlighted (outline or tint). Confirm the highlight covers exactly the
+  exposed faces of the upcoming carve box — not the buried rear faces.
+
+### Micro-detail pass acceptance (pebbles / twigs / trample / foam)
+
+- [ ] **Pebbles and twigs on the ground.** Walk slowly across dirt, grass,
+  and stone. You should see occasional small low-profile pebbles (grey) and
+  twigs (brown) sitting on the surface. They are walk-through (no collision)
+  and destructible (pickaxe removes them). Beaches/sand also get pebbles.
+  Density: ~1.5% pebbles, ~1% twigs on eligible surfaces.
+- [ ] **Dug-wall grain.** Mine a 5³ hole. The walls should look slightly
+  chewed — ~22% of the soft (dirt/grass/sand) voxels in the one-voxel shell
+  around the cut are removed deterministically, giving a rough edge.  Stone
+  walls stay crisp (precision mining is unaffected).
+- [ ] **Grass trample.** Walk across a dense grass patch while moving. The
+  blades at your feet should vanish as you pass over them (v1 just removes
+  them — no "flattened" model yet, that's deferred). Throttled to ~0.5 s
+  between removals, host-side only.
+- [ ] **Water foam (default OFF — requires a GPU toggle).** Flip
+  `GraphicsManager.water_foam_enabled` ON via F1 → GRAPHICS. Pour some
+  water or find a flowing river. Foam particles should appear at MOVING
+  cells near the player. Confirm: one pooled particle system repositions
+  across flow sites (not hundreds of nodes). Turn it back OFF if
+  performance drops; report the framerate delta.
+
+### Distant skirt color fix acceptance
+
+- [ ] **No pale seam at the blocky ↔ smooth terrain boundary.** Stand on
+  high ground and look at the ~86 m edge where crisp voxel terrain blends
+  into the `DistantTerrainManager` smooth mesh. The smooth mesh's grass
+  should blend the same green top + brown dirt side as the blocky terrain,
+  and steep faces should shade toward rock. The AO darken should match the
+  natural shadow depth of the near terrain.  If you see a bright or oddly
+  tinted band, note the camera angle and capture a screenshot.
+- [ ] **Slope gradient reads correctly.** On steep cliff faces in the
+  distant mesh (not the near voxels), the color should shift toward a grey
+  rock tone. Flat tops stay green. Confirm no flat-top cliffs are reading
+  as bare rock when they should be grass.
+
+### Fog tune
+
+- [ ] **Clear-weather haze.** In clear weather at midday, the view distance
+  should have less distance haze than before (fog was reduced in this pass).
+  If the horizon still feels too milky, it can be dialled further; if it
+  now looks too sharp (no atmospheric depth), it can be nudged back up.
+  Report your verdict.
+
+### C++ DLL restart reminder
+
+- [ ] **Fully restart Godot after any C++ DLL rebuild or real flora won't
+  appear.** If you rebuild `extensions/voxel_gen/` (SCons) and then just
+  hot-reload the project without closing Godot, the old DLL stays loaded in
+  memory — it has no flora scatter code, so grass and flowers will be absent
+  even though the generator build succeeded. Close Godot completely, then
+  reopen the project. This applies to any DLL rebuild, not just flora.
+
+
+## Destructible trees — in-engine acceptance (2026-06-12)
+
+- Walk into the deciduous forest (F1 overlay shows the dominant biome;
+  forests are the moisture-rich mid-relief regions). Trees should read
+  as ~8-14 m oaks: 0.5-0.7 m boles, ragged crowns wrapping the upper
+  half, ~1 per 6x6 m in deep forest.
+- **Chop through a trunk with the axe** — the WHOLE tree (trunk +
+  crown) should detach and tip as ONE falling cluster (this exercises
+  the sever-follow system built in PR #249; it was blocked on tree
+  content until now).
+- **Fell a tree into a pond** — logs float (density 0.7), leaf voxels
+  are buoyant too (0.4). Logs raft on the surface after settling.
+- Tree density/size per biome is yours to tune in assets/biomes/*.tres
+  (Inspector tooltips; restart to apply). Desert + mountains have zero
+  trees by design.
+- Known v1 limits (logged in design/TREES.md): one species shape, no
+  stumps/regrowth, canopies pop at the LOD2->LOD3 boundary (~51 m; a
+  far-tree impostor layer like the far-grass fix is the follow-up).

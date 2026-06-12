@@ -145,6 +145,16 @@ time vs visiting every tile uniformly.
 
 ## Voxel-resolution constants — change all together or none
 
+> **2026-06-12: the project default IS now 10 vox/m** (R1 of the
+> Lay-of-the-Land re-architecture; authority `scripts/VoxelScale.gd`).
+> The "At 10 vox/m" column below is the live configuration — note the
+> table's absolute sea-level rows predate the 2026-05-10 bump to 1440
+> (now 2400 at 10 vox/m); trust the .tres + bootstrap constants over
+> the table for absolute values, and the table for the ratios.
+> **Any baked Copper Isles SQLite from before this date is INVALID**
+> (chunk coords moved) — delete and re-bake via WorldBakeController,
+> which now reads its scale from VoxelScale.
+
 If you ever want to bump the world from 6 vox/m to 8 or 10 (finer detail per
 metre, larger SQLite cache, longer bake), every constant in this table has to
 move proportionally. Updating only some of them produces inconsistent state:

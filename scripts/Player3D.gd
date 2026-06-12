@@ -50,12 +50,14 @@ const BASE_DECEL: float        = 12.0   # m/s² rate to ramp DOWN to zero
 
 const STEP_HEIGHT: float = 0.30
 # Auto-step / climb height in metres. Roland walks over terrain
-# obstacles up to this tall WITHOUT pressing jump. At 6 vox/m
-# (16.7 cm per voxel), 0.30 m clears a single 1-voxel ledge with
-# ~13 cm of margin to handle the rounded capsule bottom catching
-# on cube corners. A 2-voxel ledge (33 cm) exceeds STEP_HEIGHT and
-# still requires jumping — that's intentional, otherwise the
-# terrain would feel mushy and walls would be meaningless.
+# obstacles up to this tall WITHOUT pressing jump. At 10 vox/m
+# (10 cm per voxel), 0.30 m clears ledges up to THREE voxels tall —
+# the finer grid means natural terrain steps are smaller, so this
+# feels like smooth walking. A 4-voxel ledge (40 cm) exceeds
+# STEP_HEIGHT and still requires jumping — that's intentional,
+# otherwise walls would be meaningless. (Pre-2026-06-12 at 6 vox/m
+# this cleared one 16.7 cm voxel; the metre value is unchanged but
+# the FEEL is now finer-grained — designer judges in-engine.)
 #
 # How it works (see _try_step_up below): after each move_and_slide
 # call where the player hit a wall while walking, we try lifting
@@ -279,6 +281,30 @@ var _float_submerged: bool = false
 var _swim_bob_t: float = 0.0
 # Phase accumulator (seconds) for the Minecraft-style surface bob.
 # Advances while in water, resets on exit so each swim starts fresh.
+
+# --- D3: grass trample (10cm micro-detail pass) ----------------------
+# WHAT (plain English): walking through a patch of real grass blades
+# flattens them. v1 is the simplest believable version — a grass-blade
+# voxel at foot level VANISHES (it's removed through VoxelEditManager, so
+# the dig path, MP and NoEditZone are all handled). A "flattened" leaning
+# variant model is deferred. Hard-throttled: one short check at most every
+# TRAMPLE_INTERVAL_S, and only while actually moving on the ground. Host
+# authority only — driven by the same _can_take_input() gate water/jump use
+# (in OFFLINE that's always true; in MP only the owning peer trims grass,
+# and the resulting air-write replicates to everyone).
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
+const TRAMPLE_ENABLED: bool = true
+# Master switch for D3 grass trample. Const-gated for easy disable.
+
+const TRAMPLE_INTERVAL_S: float = 0.5
+# Minimum seconds between trample checks. Hard throttle so we never scan
+# voxels every frame — one cheap probe twice a second while walking.
+
+var _trample_timer: float = 0.0
+# Counts UP each physics frame; a trample check fires when it crosses
+# TRAMPLE_INTERVAL_S, then resets. Only advances while moving on ground.
 
 # --- Water audio edge-tracking ---
 # Previous-frame water flags, so _update_water_audio() can fire one-shot
@@ -1094,6 +1120,70 @@ func _physics_process_inner(delta: float) -> void:
 			# at slow walking speeds where intended_h is tiny.
 			var probe_dir: Vector3 = intended_h.normalized()
 			_try_step_up(probe_dir * 0.4)
+
+	# D3: grass trample. Throttled hard inside; only ticks while moving on
+	# the ground and out of water. Runs last so position is final.
+	_tick_grass_trample(delta, is_moving and is_on_floor() and not _in_water)
+
+
+func _tick_grass_trample(delta: float, moving_on_ground: bool) -> void:
+	# Flatten (remove) a grass blade under the player's feet at most once
+	# per TRAMPLE_INTERVAL_S while walking. See the TRAMPLE_* consts above
+	# for the full rationale (host authority, MP via the edit queue).
+	if not TRAMPLE_ENABLED:
+		return
+	if not moving_on_ground:
+		# Not walking on ground: reset so the next step starts a fresh
+		# interval rather than firing instantly on the first frame moving.
+		_trample_timer = 0.0
+		return
+	# Host authority: only the owning peer trims grass. The air-write then
+	# replicates to every other peer through VoxelEditManager's broadcast,
+	# so replicas never double-trim. _can_take_input() is the same gate
+	# water currents / jump use; true in OFFLINE.
+	if not _can_take_input():
+		return
+	_trample_timer += delta
+	if _trample_timer < TRAMPLE_INTERVAL_S:
+		return
+	_trample_timer = 0.0
+
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+
+	# Check the 1-2 voxels at FOOT level. The body pivot sits at the feet;
+	# grass blades the generator scatters live ONE voxel above the ground
+	# surface, so probe right at the pivot and just above it.
+	const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+	var foot_world: Vector3 = global_position
+	var foot_voxel: Vector3i = Vector3i(
+		floori(foot_world.x * VOXELS_PER_METER),
+		floori(foot_world.y * VOXELS_PER_METER),
+		floori(foot_world.z * VOXELS_PER_METER),
+	)
+	# Two candidate cells: the pivot cell and the one above it (covers the
+	# small gap between where the capsule bottom sits and the blade cell).
+	for dy in [0, 1]:
+		var vp: Vector3i = foot_voxel + Vector3i(0, dy, 0)
+		var t: int = tool.get_voxel(vp)
+		# v1: only the grass blade (24) is trampled. Flowers (25/26) and
+		# surface detail (pebbles/twigs) are left alone — you flatten grass,
+		# you don't crush flowers underfoot in v1 (deferred). Use the flora
+		# helper, never a raw id compare.
+		if (t & 0xFF) == FloraMaterial.GRASS_BLADE_ID:
+			# World-space centre of the blade cell. queue_set_voxel floors
+			# back to this same cell. One removal per interval — simplest
+			# believable v1 (the blade vanishes underfoot).
+			var centre: Vector3 = (Vector3(vp) + Vector3(0.5, 0.5, 0.5)) / VOXELS_PER_METER
+			VoxelEditManager.queue_set_voxel(centre, 0)
+			return   # one blade per interval — keep it cheap
 
 
 func _try_step_up(probe_motion: Vector3) -> void:

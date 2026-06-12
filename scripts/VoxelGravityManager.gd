@@ -1,4 +1,10 @@
 extends Node
+
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file so there is only one place to change the
+# scale. See scripts/VoxelScale.gd for the full design rationale.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # VoxelGravityManager — voxels obey gravity.
 #
 # How this works in plain English:
@@ -51,8 +57,12 @@ extends Node
 
 @export var max_analysis_side_m: float = 8.0
 # Hard cap on the bubble's side length. Even very large blasts won't
-# scan more than this. 8 m at 6 vox/m = 48 voxels per side, ~110k
-# bubble volume.
+# scan more than this. The side is in METRES so it does NOT change at
+# the 10 vox/m pivot — but the VOXEL volume inside it did: 8 m at
+# 10 vox/m = 80 voxels per side = ~512k bubble voxels (was 48/side,
+# ~110k at 6 vox/m — a 4.63× read cost). The bulk-read path
+# (use_bulk_read, one C++ copy) absorbs this; it was profiled in the
+# R2 retune and stays a single bounded read, not a per-frame budget.
 
 @export var use_bulk_read: bool = true
 # Use Zylann's VoxelTool.copy() to read the bubble in one C++ call
@@ -65,10 +75,13 @@ extends Node
 # build doesn't expose `copy` on VoxelTool — older / minimal builds
 # may not. Set to false to force the legacy path for A/B comparison.
 
-@export var max_cluster_voxels: int = 4096
-# Skip clusters larger than this (treat as anchored). One Zylann chunk
-# is 16^3 = 4096 voxels — keeping clusters within one chunk's worth
-# means re-deposit fits comfortably in a single per-frame budget.
+@export var max_cluster_voxels: int = 16384
+# Skip clusters larger than this (treat as anchored). Raised 4096 →
+# 16384 at the 10 vox/m pivot: the same physical tree now holds ~4.6×
+# the voxels (a trunk+crown that was ~3000 voxels at 6 vox/m is
+# ~14000 at 10), and without the bump trees silently stop falling
+# (the over-cap rejection treats them as anchored). Re-deposit still
+# fits the per-frame budget — profiled in the R2 retune.
 
 @export var sever_follow_max_height_m: float = 12.0
 # Tree-sever follow-up (voxel-physics PR 6): when a severed cluster
@@ -132,8 +145,12 @@ extends Node
 # CONSTANTS
 # =============================================================
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
-const VOXELS_PER_METER: float = 6.0
+const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+# Mirrors VoxelScale.VOXEL_SIZE_M (edge length of one voxel in metres).
+# Local name kept so call sites inside this file stay unchanged.
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER (number of voxels per world metre).
+# Single source of truth is VoxelScale.gd.
 
 const FALLING_CLUSTER_SCENE_PATH: String = "res://scenes/voxel/FallingVoxelCluster.tscn"
 
@@ -172,6 +189,13 @@ var _cpp: Resource = null
 # headless-safe.
 const _GravityRef := preload("res://scripts/_dev/GravityReference.gd")
 const _SeverFollowLib := preload("res://scripts/_dev/SeverFollowLib.gd")
+# Flora-identity (R4) + surface detail (D1) — used to skip grass/flowers
+# (24..26) AND pebbles/twigs (27..28) when building the `solids` set in the
+# GD fallback path, so they're treated as pass-through air (never anchor a
+# structure, never join a falling cluster). is_passthrough() covers both
+# ranges. The C++ fast path skips the same ids in voxel_gravity_cpp.cpp;
+# this keeps the fallback in lock-step. Path preload, headless-safe.
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
 
 
 # =============================================================
@@ -406,6 +430,8 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 					var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
 					if (packed & 0xFF) == 0:
 						continue
+					if FloraMaterial.is_passthrough(packed):
+						continue   # R4+D1: flora/pebbles/twigs are pass-through air
 					solids[Vector3i(x, y, z)] = packed
 	else:
 		for x in range(side):
@@ -415,6 +441,8 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 					var packed: int = tool.get_voxel(v_world_grid)
 					if (packed & 0xFF) == 0:
 						continue
+					if FloraMaterial.is_passthrough(packed):
+						continue   # R4+D1: flora/pebbles/twigs are pass-through air
 					solids[Vector3i(x, y, z)] = packed
 	if perf_log_enabled:
 		t_after_read = Time.get_ticks_usec()
@@ -1133,7 +1161,9 @@ func _run_cpp_partition(
 		for c in cluster_counts:
 			# Rebuild bubble-local Dictionary[Vector3i, packed] for
 			# _handle_cluster. Cluster sizes are capped at
-			# max_cluster_voxels (4096) — rebuild cost is bounded.
+			# max_cluster_voxels (16384 since R1 — was 4096 at 6 vox/m;
+			# raised 4× so same-physical-size trees still fall at 10 vox/m)
+			# — rebuild cost is bounded.
 			var cluster_voxel_dict: Dictionary = {}
 			for _i in range(c):
 				cluster_voxel_dict[Vector3i(

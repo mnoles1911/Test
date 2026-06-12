@@ -1,5 +1,9 @@
 class_name VoxelClusterBuilder
 extends RefCounted
+
+# Single authority for the voxel grid scale — the constant below mirrors
+# the value from VoxelScale. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
 # VoxelClusterBuilder — pure-function utilities for turning a falling-voxel
 # cluster (a Dictionary of voxel-grid positions → packed RGBA colors) into
 # the data a FallingVoxelCluster RigidBody3D needs:
@@ -28,10 +32,10 @@ extends RefCounted
 # Reference: design/3D_VOXEL_MIGRATION.md → "Voxel Gravity"
 
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
-# Edge length of one voxel in meters. Matches VOXELS_PER_METER = 6 from
-# VoxelEditManager. Hardcoded here to keep this file dependency-free
-# (no autoload calls inside a static utility).
+const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+# Edge length of one voxel in metres. Mirrors VoxelScale.VOXEL_SIZE_M.
+# Local name kept so math expressions in this file stay readable.
+# Source of truth: VoxelScale.gd.
 
 
 # ---------------------------------------------------------------

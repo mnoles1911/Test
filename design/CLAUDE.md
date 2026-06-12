@@ -15,6 +15,8 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 - `MINING_TIME_SCALING.md` — per-material mining time + tool tier scaling.
 
 ### World systems
+- **`BIOME_FRAMEWORK.md`** — biome terrain generation (2026-06-12): per-column `BiomeFieldCpp` relief/moisture classifier + soft-weight blend + per-biome heightfield/surface/flora. Profiles are designer-editable `assets/biomes/*.tres` (`BiomeProfile.gd`); five launch biomes (flat_plains, rolling_hills, deciduous_forest, rocky_desert, mountains). Gated behind `World3DBootstrap.biome_framework_enabled` (**default ON since 2026-06-12** — designer flip; legacy single-recipe path retained for the pinned `gen`/`distant` baselines and Copper Isles). Parity: `biome` selector (GD `BiomeReference.gd` vs C++).
+- **`TREES.md`** — destructible voxel trees (2026-06-12): generator-emitted `log`/`leaves` voxels on an 8 m anchor lattice, per-biome density + species ranges via `BiomeProfile`. "Trees are just voxels" — they fell as one cluster through the existing sever/gravity system. Biome-path-only (legacy = zero trees, `gen` baseline pinned). Parity: `trees` selector (GD `TreeReference.gd` vs C++).
 - `WEATHER_AND_ENVIRONMENT.md`, `WEATHER_REWORK_2026-05.md` (current rework status).
 - `SWIMMING_AND_WATER.md`, `WATER_STAGE6_PLAN.md` (native-fluid pivot record), `WATER_SHADER_V3_PLAN.md`, **`WATER_FINITE_SIM_PLAN.md`** (current water sim — finite volume-conserving model, 2026-06-10), `WATER_LEVELING_PLAN.md` (rejected/superseded).
 - `DAY_NIGHT_CYCLE.md` (if present), `LIGHTING.md`.
@@ -33,7 +35,8 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 
 ### Art + pipeline
 - `ART_DIRECTION.md`, `ART_PIPELINE.md`, `ASSET_PIPELINE_AI.md`.
-- `3D_VOXEL_MIGRATION.md` — voxel scale (6/m), atlas, NoEditZones, edit deltas.
+- `3D_VOXEL_MIGRATION.md` — voxel scale (10/m since 2026-06-12), atlas, NoEditZones, edit deltas.
+- **`VISION_VOXEL_10CM.md`** — APPROVED art-direction vision for the 10cm re-architecture (R0–R4 PR track): reference shot descriptions, graphics-pillar-to-system map, hard perf constraints. Reference images live in `inspiration/` (drop the five PNGs there yourself — see `inspiration/README.md`).
 - `GRAPHICS_PASS_2026-05-19.md` — graphics phase record + roadmap.
 - `COPPER_ISLES_DEMO_HEIGHTMAP.md`, `COPPER_ISLES_BAKE_NOTES.md`.
 

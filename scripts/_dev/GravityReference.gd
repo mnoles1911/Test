@@ -30,6 +30,27 @@ const NEIGHBOURS_6: Array = [
 	Vector3i(0, 0, 1), Vector3i(0, 0, -1),
 ]
 
+# R4 flora + D1 surface-detail pass-through range (mirrors
+# scripts/FloraMaterial.gd PASSTHROUGH range: 24..28 = grass/flowers 24..26
+# PLUS pebbles/twigs 27..28). All of these are treated as PASS-THROUGH AIR
+# in the gravity analysis: a grass blade, flower, pebble or twig must never
+# anchor a structure (so a tree can't "connect" to the ground through one)
+# and must never be carried in a falling cluster. The C++ port
+# (voxel_gravity_cpp.cpp) hardcodes the identical range, so the read pass
+# that builds `solids` skips them on both sides. Kept as a literal range
+# (not a FloraMaterial preload) so the cross-language contract is a plain
+# constant both sides agree on by value, exactly like the FALL_* enum mirror
+# above.
+const PASSTHROUGH_BASE_ID: int = 24
+const PASSTHROUGH_COUNT: int = 5   # 24..28
+
+
+static func _is_flora_type(type_id: int) -> bool:
+	# Name kept for back-compat; covers the full pass-through decoration
+	# range (flora + surface detail) by value, matching the C++ side.
+	var t: int = type_id & 0xFF
+	return t >= PASSTHROUGH_BASE_ID and t < PASSTHROUGH_BASE_ID + PASSTHROUGH_COUNT
+
 
 # Returns a Dictionary with the same key set as VoxelGravityCpp.analyze_bubble:
 #   loose: PackedInt32Array stream [from_x, from_y, from_z, to_x, to_y, to_z, packed, ...]
@@ -55,6 +76,9 @@ static func analyze_bubble(buf, side: int, fall_table: Dictionary, noeditzone_ma
 				var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
 				if (packed & 0xFF) == 0:
 					continue
+				if _is_flora_type(packed):
+					continue   # R4: flora is pass-through air for gravity —
+					           # never anchors, never joins a cluster
 				solids[Vector3i(x, y, z)] = packed
 
 	# --- Anchor identification: bottom-face seed + NoEditZone mask.

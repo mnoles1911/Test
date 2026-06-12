@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="BiomeProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/BiomeProfile.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+; MOUNTAINS — dramatic ridged peaks. Archetype: sharp stone crests with snow
+; caps. ridge_mix 0.9 turns the macro into |noise| ridges (knife-edge spines
+; + deep valleys). amp 55 m: sea level 12 m + 55 m peaks ≈ 67 m world, under
+; the ~80 m peak ceiling (terrain Y bound 1024 vox = 102 m). Stone top so
+; bare rock by default; the generator's existing HEIGHT-BASED snow tier
+; (snow_material_id 13, snow_line) caps the peaks white — biomes don't
+; re-implement snow. Near-zero flora; mid micro_relief for scree.
+base_amplitude_m = 55.0
+base_frequency_per_m = 0.004
+ridge_mix = 0.9
+flatness = 0.0
+terrace_band_m = 0.0
+terrace_sharpness = 0.5
+mid_amplitude_m = 4.0
+detail_amplitude_m = 0.6
+detail_slope_only = false
+top_material_id = 1
+slope_material_id = 1
+slope_threshold = 1.0
+patch_material_id = 0
+patch_frequency_per_m = 0.08
+patch_threshold = 0.0
+micro_relief_chance = 0.02
+grass_density = 0.0
+flower_density = 0.0
+tree_table = []
+; TREES — none. Mountains have a stone top (top_material_id 1), so even if
+; tree_density were raised the "grassland only" rule would reject them; kept
+; explicitly 0 so the generator skips the biome outright.
+tree_density = 0.0
+biome_name = "mountains"
+debug_color = Color(0.55, 0.55, 0.60, 1)

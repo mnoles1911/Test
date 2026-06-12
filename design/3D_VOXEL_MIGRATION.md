@@ -13,9 +13,11 @@ If a design doc still says "see `design/3D_VOXEL_MIGRATION.md` for canonical ter
 
 ## Pivot summary (one-paragraph)
 
-Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `CharacterBody3D` + `SpringArm3D` over-shoulder + `VoxelLodTerrain` (Zylann's Voxel Tools, GDExtension edition) at 6 voxels/m, with destructible terrain by default (edits stored as deltas in `VoxelStreamSQLite`), `NoEditZone` Area3Ds protecting settlements/landmarks, MagicaVoxel-authored props (`.glb`), low-poly Blender characters (200–500 tris), and a real-time 1-vs-many action combat system. Dialogic 2 + GameState + TransitionManager survived the pivot unchanged.
+Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `CharacterBody3D` + `SpringArm3D` over-shoulder + `VoxelLodTerrain` (Zylann's Voxel Tools, GDExtension edition) at 10 voxels/m, with destructible terrain by default (edits stored as deltas in `VoxelStreamSQLite`), `NoEditZone` Area3Ds protecting settlements/landmarks, MagicaVoxel-authored props (`.glb`), low-poly Blender characters (200–500 tris), and a real-time 1-vs-many action combat system. Dialogic 2 + GameState + TransitionManager survived the pivot unchanged.
 
-Voxel scale is locked at **6 voxels/m** (~16.7 cm/block). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125.
+Voxel scale is **10 voxels/m** (10 cm/block) since 2026-06-12 — the Lay-of-the-Land re-architecture (`VISION_VOXEL_10CM.md`; was 6 voxels/m from the original pivot until then; the authority is `scripts/VoxelScale.gd`). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125.
+
+> **10 vox/m collision reality:** Zylann caps `lod_distance` at 128 voxels per LOD shell (12.8 m/shell at 10 vox/m; was 21.3 m at 6 vox/m). **Terrain collision extends to ~51.2 m** via `collision_lod_count = 3` (LOD0+LOD1+LOD2; set in `World3DBootstrap.gd`, 2026-06-12 designer decision). Beyond LOD0 the collision shapes are coarser (LOD1 = 2-voxel blocks, LOD2 = 4-voxel blocks). Nothing beyond ~51.2 m: projectiles/AI past that ring still have no terrain collision; long-lived projectile raycast-vs-generator fallback is a logged follow-up, not yet built.
 
 ## Destructible terrain — short version
 
@@ -23,7 +25,7 @@ Voxel scale is locked at **6 voxels/m** (~16.7 cm/block). Playable Mira is 12 km
 - **Generator:** `CubicHeightmapGeneratorCpp` (C++ GDExtension) via `CubicHeightmapGeneratorAdapter.gd`.
 - **Stream:** `VoxelStreamSQLite` — per-save-slot delta DB.
 - **Edit routing:** every voxel write goes through `VoxelEditManager.queue_*` (NoEditZone gate + async queue + EditedChunkRegistry + LOD-bake invalidation + `edit_applied` signal + MP-3 RPC routing). **Never call raw `VoxelTool` directly.**
-- **Water:** `WaterFlowManager` (host-only 4 Hz sim) + `WaterChunkMesher` (C++ since PR #214, transparent surface meshes) reading `CHANNEL_DATA5` water bytes via `WaterByteCodec`.
+- **Water:** `WaterFlowManager` (host-only sim) + Zylann-native `VoxelBlockyModelFluid` meshes (ids 16–23) reading `CHANNEL_DATA5` water bytes via `WaterByteCodec`. (`WaterChunkMesher.gd` was deleted 2026-05-16 in the native-fluid pivot.)
 
 Full details in `CLAUDE.md` → "Voxel + world systems" and `design/TECH_STACK.md` → "Voxel Terrain".
 

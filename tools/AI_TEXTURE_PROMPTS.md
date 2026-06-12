@@ -163,9 +163,9 @@ redo with a pixel-art-specific tool).
 > cast shadows, no specular highlights.
 >
 > Tiling requirement: Every texture must tile seamlessly with no
-> visible seams at any edge. This game runs at 6 voxels per meter
-> (each voxel face is about 16.7 cm), so a single 10-meter stone
-> wall repeats the tile 60+ times. Any dominant feature (a single
+> visible seams at any edge. This game runs at 10 voxels per meter
+> (each voxel face is 10 cm), so a single 10-meter stone
+> wall repeats the tile 100+ times. Any dominant feature (a single
 > bright pixel, a long crack, an off-color pixel) becomes a visible
 > repeating grid the player cannot unsee. Detail must be balanced
 > and distributed uniformly: no single pixel dramatically brighter,

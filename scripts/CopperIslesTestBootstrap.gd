@@ -645,8 +645,10 @@ func _terrain_scale(terrain: Node3D) -> float:
 # author's visual placement intuition. Bake at user//baked_baseline
 # emitted CHANNEL_DATA5 water bytes up to this voxel-Y, so the
 # chunked water mesher will find a surface at Y=240 to render.
-const GEN_SEA_LEVEL_VOXELS: float = 1440.0
-const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
+const GEN_SEA_LEVEL_VOXELS: float = 2400.0
+const GEN_PEAK_ABOVE_SEA_VOXELS: float = 25000.0
+# Rescaled ×5/3 at the 10 vox/m pivot (2026-06-12): same world metres
+# as the old 1440 / 15000 at 6 vox/m (sea 240 m, peak +2500 m).
 
 # Horizon plane override DISABLED 2026-05-08 — now that the
 # generator's sea level is at voxel-Y 1200 (= world Y 200 m), the
@@ -893,10 +895,10 @@ func _mark_world_ready_when_settled() -> void:
 	# MAX_EXTRA_WAIT elapses (whichever comes first).
 	#
 	# Gate 1 — DENSE LOD0 SPATIAL PROBE: 6 radii × 16 directions = 96
-	# raycasts straight down from 200 m above each probe XZ. Because
-	# the terrain runs with collision_lod_count = 0, only LOD0 chunks
-	# have collision shapes — a hit means "this column has a meshed
-	# LOD0 block." All 96 must hit.
+	# raycasts straight down from 200 m above each probe XZ. The
+	# probe radii stay inside the LOD0 ring (~12.8 m), so a hit
+	# confirms "this column has a meshed LOD0 block at full detail"
+	# regardless of whether LOD1/2 collision is also live. All 96 must hit.
 	#
 	# Gate 2 — STREAMING QUEUE NEAR-IDLE: Zylann's get_statistics()
 	# reports `blocked_lods`, the global LOD-pipeline queue depth.

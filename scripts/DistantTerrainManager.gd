@@ -1,4 +1,10 @@
 extends Node3D
+
+# Single authority for the voxel grid scale — the export default below
+# mirrors the value from VoxelScale. configure() overrides it with the
+# live terrain's scale anyway. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # DistantTerrainManager — streams the smooth distant-terrain heightmesh.
 #
 # NOTE: deliberately NO `class_name`. World3DBootstrap / CopperIslesTest-
@@ -10,8 +16,9 @@ extends Node3D
 #
 # What this is for in plain English:
 #
-#   The blocky Zylann voxel terrain only reaches a few hundred metres
-#   around the player (the editable "near band"). Everything past that is
+#   The blocky Zylann voxel terrain only reaches ~86 m around the player
+#   (the editable "near band"; R2 / 10 vox/m — was a few hundred metres at
+#   the old 6 vox/m scale). Everything past that is
 #   drawn by this manager: a ring of smooth heightmesh chunks, built in
 #   C++ by DistantTerrainMesher from the world generator's height
 #   function, that follows the player. It replaces the old baked, static
@@ -46,10 +53,20 @@ const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 ## Half-extent, in chunks, of each LOD ring's square block around the player.
 @export var ring_half_extent: int = 2
 ## No distant chunk renders fully inside this radius — the blocky band.
-## ~130 m sits a touch inside the ~183 m blocky band (VoxelViewer
-## view_distance 1100) so the smooth mesh overlaps the band edge with no
-## gap, and well outside any range the player can dig (no dig-through).
-@export var inner_cull_radius: float = 130.0
+##
+## R2 retune (2026-06-12, 10 vox/m pivot): the blocky terrain band is now
+## ~86 m (World3DBootstrap terrain_view_distance_voxels = 864 vox at
+## 10 vox/m), NOT the old ~183 m. This radius was 130 m — which at the new
+## scale would sit ~44 m OUTSIDE the blocky band, leaving a "doughnut" of
+## bare nothing between where the blocky terrain ends (~86 m) and where the
+## smooth mesh is allowed to start (130 m). Pulled in to 100 m: it now sits
+## ~14 m INSIDE the ~86 m blocky band edge, giving a modest overlap band
+## (the blocky terrain wins the depth test there — the smooth mesh is baked
+## ~1.5 m low) and NO gap. Still far outside any range the player can dig
+## (the LOD0 collision/dig ring is only 12.8 m), so no dig-through.
+## If the 640-voxel retreat dial is pulled in World3DBootstrap (blocky band
+## shrinks to ~64 m), drop this to ~75 m to keep the same ~10 m overlap.
+@export var inner_cull_radius: float = 100.0
 ## Hard safety cap on live chunk count (a gap-causing valve; sized never to hit).
 @export var max_live_chunks: int = 220
 ## Chunk meshes built per frame (budgeted so a boundary crossing never hitches).
@@ -58,8 +75,10 @@ const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 @export var apron_base_depth: float = 8.0
 ## LOD-swap dither cross-fade duration, in seconds.
 @export var fade_seconds: float = 0.35
-## World voxels per metre (canonical 6.0) — overridden by configure().
-@export var voxels_per_metre: float = 6.0
+## World voxels per metre — default from VoxelScale, always overridden
+## by configure() which reads the live terrain's transform.scale.
+## Source of truth at runtime is what configure() sets, not this default.
+@export var voxels_per_metre: float = VoxelScale.VOXELS_PER_METER
 
 # --- Runtime state ---------------------------------------------------
 var _active: bool = false
@@ -94,8 +113,9 @@ func setup_from_terrain(terrain: Node) -> void:
 	# real HeightmapGeneratorBase, not the GDScript VoxelGeneratorScript
 	# adapter that forwards to it.
 	var cpp = gen.get("cpp_impl") if "cpp_impl" in gen else gen
-	# voxels-per-metre from the terrain's own scale (canonical 1/6 -> 6).
-	var vpm := 6.0
+	# voxels-per-metre from the terrain's own scale.
+	# Default from VoxelScale; overridden below if the terrain has a valid scale.
+	var vpm := VoxelScale.VOXELS_PER_METER
 	if terrain is Node3D:
 		var sx: float = (terrain as Node3D).transform.basis.get_scale().x
 		if sx > 0.0:
@@ -125,6 +145,31 @@ func configure(generator: Object, vpm: float) -> void:
 	_active = true
 	print("[DistantTerrain] active — %d LOD rings, base quad %.0f m, %d quads/chunk, inner cull %.0f m." % [
 		lod_count, base_quad_size, quads_per_chunk, inner_cull_radius])
+
+
+# Push the elevation/slope palette onto the C++ mesher. Called by
+# World3DBootstrap right after setup_from_terrain with colours sampled
+# from the REAL blocky-terrain atlas tiles, so the smooth distant skirt
+# and the near blocky band share one source of truth instead of two
+# hand-guessed palettes. See World3DBootstrap.configure_distant_palette.
+#
+# IMPORTANT: each colour passed in is the true atlas tile mean ALREADY
+# DIVIDED by the shader's albedo_tint (0.80) — the bootstrap does that
+# pre-division so that final rendered ALBEDO (palette * albedo_tint) ==
+# the real tile mean. This manager just forwards the values verbatim.
+func set_palette(lowland: Color, mid: Color, high: Color,
+		rock: Color, beach: Color, below_sea: Color) -> void:
+	if _mesher == null:
+		push_warning("[DistantTerrain] set_palette called before mesher exists — ignored.")
+		return
+	_mesher.set("lowland_color", lowland)
+	_mesher.set("mid_color", mid)
+	_mesher.set("high_color", high)
+	_mesher.set("rock_color", rock)
+	_mesher.set("beach_color", beach)
+	_mesher.set("below_sea_color", below_sea)
+	print("[DistantTerrain] palette set from atlas: lowland=%s rock=%s beach=%s high=%s" % [
+		lowland, rock, beach, high])
 
 
 func _process(delta: float) -> void:

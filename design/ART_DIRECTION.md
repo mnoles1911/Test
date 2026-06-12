@@ -82,9 +82,9 @@ Pale blue-white, #C8E0F0. Absorbs light and returns it slightly warmer. Its pres
 ## Resolution and Asset Scale
 
 - **Viewport resolution**: 1920×1080 native (no pixel resolution target — 3D renders at display resolution)
-- **Voxel block size**: 6 voxels per meter (locked 2026-05-03; NOT 1-metre Minecraft cubes — each block is ~16.7 cm; chunky enough to read as cubic but fine enough for stone texture, cobblestone, timber planks)
+- **Voxel block size**: 10 voxels per meter (re-architected 2026-06-12; originally 6 vox/m 2026-05-03; NOT 1-metre Minecraft cubes — each block is 10 cm; chunky enough to read as cubic but fine enough for stone texture, cobblestone, timber planks)
 - **Character models — named characters**: 500–1500 triangles (low-to-mid poly Blender export). This is the look of Yaromir and the Lirien-Thal Aelorin in the concept art sheets — readable silhouette, no per-pixel texture detail, but enough geometry for armor shape and cloth drape.
-- **Character models — background NPCs**: voxel-block humanoids built in MagicaVoxel at ~6×11 voxels tall (matches the 1.8 m player at 6 vox/m). These are the crowd figures visible in the market and courtyard concept sheets. Fast to produce, visually consistent with the world.
+- **Character models — background NPCs**: voxel-block humanoids built in MagicaVoxel at ~6×18 voxels tall (matches the 1.8 m player at 10 vox/m). These are the crowd figures visible in the market and courtyard concept sheets. Fast to produce, visually consistent with the world.
 - **Portrait art (dialogue)**: 256×320 pixels — painted at this resolution for the 1080p viewport
 - **MagicaVoxel canvas**: per asset; buildings typically 32–96 voxels wide (larger for keeps and landmark structures)
 

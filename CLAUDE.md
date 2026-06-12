@@ -8,6 +8,16 @@ Top-level navigator. **Each subdirectory has its own `CLAUDE.md` with detail for
 
 I am a writer + game designer, not a programmer. Explain code in plain English, comment heavily, prefer simple readable solutions.
 
+## How this team works
+
+**Fable** is the head game designer and coder. Fable owns the most complex, load-bearing work directly — architecture decisions, scale flips, water/gravity/parity invariants, shader fixes, sequencing, and all merge/commit decisions. Fable never commits subagent diffs blindly: every diff gets a review pass and the headless gate sweep before it lands.
+
+Fable orchestrates subagents by relative task complexity to stay efficient:
+- **Opus subagents** — meaty, self-contained chunks needing deep reasoning: new system builds, generator/LOD retunes, large framework restructures, complex cross-file refactors.
+- **Sonnet subagents** — mechanical, well-specified multi-file work: constant de-duplication, documentation passes, headless gate sweeps, baseline re-bakes, straightforward pattern application across many files.
+
+Subagents never commit or push. Each planned PR or task names its executor tier in its brief. When a subagent finishes, Fable reads the diff, runs the relevant headless selectors, then commits and pushes.
+
 ## Navigate
 
 | Going to work on... | Read |
@@ -27,10 +37,15 @@ I am a writer + game designer, not a programmer. Explain code in plain English, 
 
 Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
 
-- **Open PRs:** none in the combat / gameplay track — the whole combat slice shipped 2026-05-30. (Old multiplayer-stack drafts #182–#199 still exist but are dormant; ignore unless resuming MP.)
-- **Default-OFF features (do not flip without designer direction):**
+- **Open PRs / in-flight work:**
+  - **PR #251 (10cm re-architecture — "Lay of the Land")** — world re-architected from 6 to **10 voxels/meter** (10cm voxels). Covers: `VoxelScale.gd` single source of truth; terrain scale flip; streaming/LOD retune (view_distance 864 vox, lod_count 5, collision to ~51.2m via `collision_lod_count=3`); mining rework (physical-volume anchor, S/M/F scroll-wheel presets, destroy preview); micro-voxel flora R4 (real destructible grass + flowers, ids 24–26, `FloraMaterial.gd`, `FloraMeshBuilder.gd`); far-grass impostors + wind sway (`FarGrassManager.gd`, `flora_sway.gdshader`); micro-detail D1–D4 (pebbles/twigs ids 27–28, dug-wall grain, grass trample, water foam `WaterFoamManager.gd`); distant skirt atlas-sampled color fix (no more pale seam); fog tune. See `design/VISION_VOXEL_10CM.md` + `MILESTONES.md`.
+  - (Old multiplayer-stack drafts #182–#199 still exist but are dormant; ignore unless resuming MP.)
+- **Default-OFF visual features (do not flip without designer direction):**
   - `GraphicsManager.rain_visuals_enabled = false` — rain shader + splash particles + wet-surface mod (PR #245, merged but gated).
   - `GraphicsManager.light_shafts_enabled = false` — per-state vol-fog god rays (PR #245, merged but gated).
+  - `GraphicsManager.water_foam_enabled = false` — flowing-water foam particles on MOVING cells (PR #251, default OFF per new-visual-layer rule).
+- **Default-ON visual features (exceptions to the default-OFF rule):**
+  - `GraphicsManager.far_grass_enabled = true` — GPU-instanced far-grass impostor layer (~13–51 m). Defaults ON because it fixes a seam in the shipped default-ON voxel grass; designer-approved exception.
 - **Recently merged:**
   - **PR #239 (Directional Melee v1, 2026-05-30)** — sword + shield, four-direction mouse-flick attacks (**flick TOWARD where the blow comes from** — UP=overhead, DOWN=thrust, LEFT/RIGHT=that-side sweep), charged 2× + feint, RMB tap=parry / hold=directional block + `auto_block` toggle, `ParryChainTracker`, `EnemyAttackPool` telegraphs, `HUDDirectionArrows` + `HUDCombatRadar`. **Lock-on was prototyped then removed — combat is pure free-aim.**
   - **PR #247 (Combat Phase 5 + entity streamer, 2026-05-30)** — charged-spear gibs + 0.15 s time-slow + camera kick + Phase 3 charge; `EntityRegistry`/`EntityStreamer` (folds in the closed #246). Gibs + melee coexist on `Goblin`/`Enemy3D`. CombatTest debug-kill is **F10** (F8 is the editor Stop shortcut).

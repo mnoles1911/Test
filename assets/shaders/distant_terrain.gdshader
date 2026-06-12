@@ -25,19 +25,30 @@ uniform float fade_factor : hint_range(0.0, 1.0) = 1.0;
 // Matte terrain — matches terrain_voxel.gdshader.
 uniform float surface_roughness : hint_range(0.0, 1.0) = 0.85;
 
-// Per-channel darkening factor on the C++ vertex-baked palette. The
-// raw palette renders too bright in two failure modes (2026-05-26):
-//   (a) MSAA + bloom at hill-silhouette pixels makes the bright skirt
+// NEUTRAL brightness / anti-bloom dial on the C++ vertex-baked palette.
+// History (2026-05-26): the raw palette rendered too bright in two
+// failure modes —
+//   (a) MSAA + bloom at hill-silhouette pixels made the bright skirt
 //       ghost through occluding hills.
-//   (b) at LOD1+, partial-fill water voxels expose the skirt below as
+//   (b) at LOD1+, partial-fill water voxels exposed the skirt below as
 //       a grey-tile grid on the water surface near shore.
-// Multiplied against the baked palette to (a) kill the hill-silhouette
-// MSAA/bloom ghosting from the old too-bright skirt, (b) bias the
-// palette slightly green so the distant terrain visually matches the
-// near grass-top + dirt-side atlas colour at the blocky→smooth handoff.
-// Tunable live in the Inspector — bump up if the heightmesh disappears
-// into shadow, bump down if hill-silhouette bleed returns.
-uniform vec3 albedo_tint : source_color = vec3(0.70, 0.85, 0.55);
+// so this uniform was multiplied against the palette to darken it. It
+// USED to also carry a green HUE bias (0.70, 0.85, 0.55) to fudge the
+// hand-guessed palette toward the grass-top atlas colour — that was a
+// colour-CORRECTOR, and it was the second compounding guess that left the
+// skirt looking pale/washed (2026-06-12 distant-skirt colour fix).
+//
+// It is now PURELY a uniform darken (a single grey value per channel): the
+// palette itself is sampled from the real atlas tiles (see
+// DistantTerrainMesher / World3DBootstrap.configure_distant_palette), and
+// the bootstrap PRE-DIVIDES each palette colour by this same 0.80 so the
+// final rendered ALBEDO == the true atlas tile mean (colour * 0.80 / 0.80).
+// The 0.80 still does its anti-bloom job (the on-disk palette is the tile
+// mean / 0.80, slightly brighter, and this brings it back to the mean) but
+// it no longer shifts hue. Keep it GREY: bump all three channels together
+// if the heightmesh disappears into shadow, bump down if hill-silhouette
+// bloom bleed returns. Do NOT re-introduce a per-channel hue here.
+uniform vec3 albedo_tint : source_color = vec3(0.80, 0.80, 0.80);
 
 // Ordered 4x4 Bayer matrix — a stable, shimmer-free dither pattern.
 const float BAYER_4X4[16] = float[16](

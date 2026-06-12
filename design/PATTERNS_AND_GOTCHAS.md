@@ -47,6 +47,16 @@ var mat := VoxelMaterialRegistry.get_by_id(mat_id)
 
 Never decode alpha by hand (`packed & 0xFF`).
 
+### Voxel scale comes from `scripts/VoxelScale.gd` — never hardcode
+
+```gdscript
+const VoxelScale := preload("res://scripts/VoxelScale.gd")  # NO class_name (headless-safe)
+VoxelScale.VOXELS_PER_METER   # 10.0 — voxels that fit in one world metre (was 6.0 pre-2026-06-12)
+VoxelScale.VOXEL_SIZE_M       # 1.0 / VOXELS_PER_METER — VoxelLodTerrain transform scale
+```
+
+**Never write** the scale as a literal (`10.0`, `0.1`, the old `6.0` / `0.166667`) anywhere near voxel math. The VoxelLodTerrain in `World3D.tscn` must have `transform.scale = Vector3.ONE * VoxelScale.VOXEL_SIZE_M` — `World3DBootstrap` asserts this at boot and corrects + logs it via `push_error` if the .tscn value drifts. Local constants that mirror VoxelScale are fine (keep the local name, update the value to read from VoxelScale). Pattern: `const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER`. The `scale` headless selector verifies the contract every run.
+
 ### Water is native Zylann fluid
 
 ```gdscript
@@ -56,6 +66,17 @@ WaterMaterial.render_id_for_level(level, dir)   # sim level → CHANNEL_TYPE id
 ```
 
 8 fluid models, levels 1..8 → ids 16..23 (full=23). Injected at runtime in `World3DBootstrap.add_model()` — `.tres` doesn't restore on load; **bootstrap is source of truth**. Legacy id 5 retained for pre-pivot saves. `WaterByteCodec`/`DATA5` is sim truth; `CHANNEL_TYPE` is render projection. Player queries: `WaterFlowManager.is_position_in_water / get_water_level_at`.
+
+### Micro-voxel flora + surface detail — `FloraMaterial`, never a raw `== 24`
+
+```gdscript
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")  # NO class_name (headless-safe)
+FloraMaterial.is_flora(t)           # VEGETATION: grass_blade=24, flower_red=25, flower_blue=26
+FloraMaterial.is_surface_detail(t)  # SURFACE DETAIL: pebble=27, twig=28 (D1)
+FloraMaterial.is_passthrough(t)     # EITHER (24..28) — use this at physics/sim exclusion sites
+```
+
+R4 grass + flowers are REAL destructible CHANNEL_TYPE voxels (ids 24..26): ground-cover grass (24) is a **solid full-cube** model (flat `GRASS_COVER_GREEN`; the C++ generator stacks 3 cubes ground+1..+3 → a 1×3-voxel green column — 2026-06-12 designer simplification), flowers (25/26) are cross-quad `VoxelBlockyModelMesh`; the D1 micro-detail pass adds pebbles + twigs (low-profile walk-through models, ids 27..28). All five are injected at runtime in `World3DBootstrap` right after the water fluids — **bootstrap is source of truth** (`.tres` doesn't restore the models). They are **pass-through air for the physics/sim**: every place that already skips water (gravity flood-fill in `VoxelGravityManager` + `GravityReference` + `voxel_gravity_cpp.cpp`, the sever BFS in `SeverFollowLib`, the finite-water solid callback `WaterFlowManager._finite_is_solid`) must skip decoration via **`is_passthrough()`** — NOT `is_flora()` (which is the vegetation-only subset, for call sites like trample that genuinely mean grass). Never raw-compare a decoration id — the id sets grow in `FloraMaterial.gd` only. The C++ gravity/sever ports + `GravityReference.gd` hardcode the **identical contiguous 24..28 range** by value so parity holds (the `gravity` + `sever` + `flora` selectors enforce it; keep flora 24..26 and surface detail 27..28 contiguous so the one pass-through range covers both). Generator scatter ids are plumbed through settable properties (`grass_blade_material_id` / `pebble_material_id` etc., default 0 = disabled, different seeds) and wired at startup by the bootstrap — all decoration is LOD0-only.
 
 ### `VoxelBuffer CHANNEL_COLOR` must be 32-bit before chunks stream
 
@@ -114,6 +135,25 @@ func _process(delta: float) -> void:
 
 Categories: `WORLD WATER WEATHER PHYS OTHER`.
 
+### Terrain collision extends to ~51.2 m (10 vox/m, LOD0+LOD1+LOD2)
+
+`collision_lod_count = 3` gives collision on the first three LOD rings (2026-06-12 designer decision):
+
+| LOD | Range | Collision | Mesh resolution |
+|---|---|---|---|
+| LOD0 | 0 – 12.8 m | yes | full detail (1-voxel blocks) |
+| LOD1 | 12.8 – 25.6 m | yes | coarser (2-voxel blocks) |
+| LOD2 | 25.6 – 51.2 m | yes | coarser (4-voxel blocks) |
+| LOD3+ | 51.2 m+ | **no** | mesh-only |
+
+**Zylann semantics (probed + docs-confirmed 2026-06-12):** `collision_lod_count = 0` means *all* LODs get collision (NOT "LOD0-only" — the old comments were wrong). `collision_lod_count = N` (N > 0) = first N LOD levels. Value 3 = LOD0, LOD1, LOD2.
+
+**Accuracy caveat:** beyond ~12.8 m collision shapes are built from coarser LOD meshes — far entities stand on approximate ground (stairs round to 2–4 voxel steps; small overhangs may be invisible to physics). Acceptable for AI/spear/falling-cluster collision; the player always stands in LOD0.
+
+**Perf caveat:** more LODs = more StaticBody3D shapes to build while streaming. `collision_update_delay = 100 ms` batches the builds. If physics spikes return, the retreat is `collision_lod_count = 1` (LOD0-only, 12.8 m). Set in `World3DBootstrap.gd`.
+
+**Nothing beyond ~51.2 m:** projectiles/AI past that ring still have no terrain collision. A `VoxelViewer` or raycast-vs-generator fallback for long-lived projectiles is a **logged follow-up — do NOT build it** as part of unrelated work.
+
 ### Other essentials
 
 - `VoxelLodTerrain.material` overrides every per-cube `material_override_0` — leave null for textured cubes.
@@ -130,6 +170,7 @@ Categories: `WORLD WATER WEATHER PHYS OTHER`.
 - **No `class_name` on Resources path-preloaded by autoloads** (`WaterMaterial.gd`, `ShaderProfile.gd`, `EntityRecord.gd`) — headless harness doesn't rescan globals; autoload fails with "script does not inherit from Node" otherwise.
 - **GDSL: no `return` inside `fragment()`** — restructure as if/else.
 - **GDSL function-scope arrays:** use constructor `vec3[6](...)` or open-code, not C-style `vec3 arr[6] = {...}`.
+- **Flora sway shader — use `fract(VERTEX.y)` for blade-local height, NOT `VERTEX.y`:** Zylann bakes blocky flora models into chunk meshes at each voxel's world altitude, so `VERTEX.y` in the sway shader is the voxel's absolute world Y (which may be large), not the blade's local height. Using raw `VERTEX.y` as the sway bend weight flings blades metres sideways. Correct: `float blade_t = fract(VERTEX.y)` gives a 0..1 value local to each voxel's 1-unit block (0 = base, ~1 = tip). This applies to both the real LOD0 flora quads AND the far-grass `MultiMesh` impostors that share `assets/shaders/flora_sway.gdshader`. (Fixed in PR #251 — do NOT revert to absolute `VERTEX.y`.).
 - **`func` is a module-scope boundary** — when inserting helper functions mid-file via Edit, place AFTER the parent function's last line (not between its branches), or following code becomes orphaned inside the new function's body.
 
 ### `RenderingServer` global shader parameters — editor-only setters
@@ -279,7 +320,7 @@ Parity harness FIRST (`@tool` EditorScript in `scripts/_dev/`, bit-exact), POD s
 
 `tools/headless/run.ps1 <selector>` runs Godot's `_console.exe` (plain win64 exe = GUI-subsystem, won't pipe stdout) with `tools/headless/runner.gd` as a SceneTree script. Selectors:
 
-`gate0 codec wmat shader phase7 spike phase2 gen distant gravity emissive baked_light water_flow entity`
+`gate0 codec wmat shader phase7 spike phase2 gen distant gravity emissive baked_light water_flow finite finite_world sever entity scale flora mining`
 
 Exit 0 = pass. **Scope: data/logic/parity only** — dummy renderer, no GPU. Visuals need designer in editor.
 

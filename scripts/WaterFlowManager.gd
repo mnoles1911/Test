@@ -4,6 +4,15 @@ extends Node
 # WaterMaterial.gd for why it has no class_name).
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Flora-identity (R4) — path preload, headless-safe, same as WaterMaterial.
+# Used so the finite-water solid callback treats grass/flowers as
+# non-solid (water flows into and overwrites flora cells).
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # The finite, volume-conserving water sim (W4 — the ledger-authority
 # core; design/WATER_FINITE_SIM_PLAN.md). Path preload, no class_name.
 const FiniteWaterCore := preload("res://scripts/FiniteWaterCore.gd")
@@ -89,7 +98,9 @@ const _TICK_MASK: int = 0x1FE0  # bits 5–12, shifted up
 # Chunk dimensions — must match VoxelEditManager.CHUNK_SIZE_VOXELS and
 # VoxelEditManager.VOXELS_PER_METER. Replicated here so this file
 # doesn't need to call into private helpers on another autoload.
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER — local name kept so call sites
+# inside this file stay unchanged. Single source of truth: VoxelScale.gd.
 const CHUNK_SIZE_VOXELS: int = 16
 const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER  # ≈ 2.667 m
 
@@ -124,15 +135,14 @@ var _horizon_plane_y: float = 10.0
 # mesher reads it on every frame's follow-player update and the manager
 # is the natural single owner of "what is the configured water level."
 
-var _sea_level_voxel_y: int = 72
+var _sea_level_voxel_y: int = 120
 # Voxel-grid Y where the generator writes water source bytes into
 # CHANNEL_DATA5. WaterChunkMesher needs this to know which chunk-Y
-# row to scan for water surfaces. Default 72 = Mira's
-# CubicHeightmapGenerator.SEA_LEVEL_VOXELS — no behaviour change for
-# World3D. Copper Isles overrides via set_sea_level_voxel_y(720) at
-# bootstrap so the mesher scans the correct chunk-Y row (45) instead
-# of the wrong-by-default chunk-Y row (4) where there are no water
-# bytes for that scene.
+# row to scan for water surfaces. Default 120 = the generator's
+# sea_level_voxels (12 m world at 10 vox/m; was 72 at the old
+# 6 vox/m scale). Copper Isles overrides via set_sea_level_voxel_y
+# (GEN_SEA_LEVEL_VOXELS) at bootstrap so the mesher scans that
+# scene's correct chunk-Y row instead of the wrong-by-default one.
 
 var _dirty_chunks: Dictionary = {}
 # Vector3i (chunk coord) → true. Chunks that need their flow
@@ -144,6 +154,18 @@ var _player_pos: Vector3 = Vector3.ZERO
 # Cached most-recent player position, set by Player3D each physics
 # frame via set_player_position(). Used to bound dirty-chunk scans
 # to the active radius.
+
+# --- D4: flowing-water foam (visual layer, default OFF) --------------
+# A single pooled-particle WaterFoamManager child that we reposition across
+# the active MOVING flow sites each finite tick. Created lazily in _ready
+# ONLY in a real windowed game (never headless), and only ever DRIVEN when
+# GraphicsManager.water_foam_enabled is true — so foam is zero-cost off and
+# never touches the headless hot path. See scripts/graphics/WaterFoamManager.gd.
+const WaterFoamManagerScript := preload("res://scripts/graphics/WaterFoamManager.gd")
+var _foam_mgr: Node3D = null
+# Max flow sites we bother harvesting per tick (matches the foam manager's
+# own MAX_FOAM_SITES — no point collecting more than it can visit).
+const FOAM_MAX_SITES: int = 8
 
 var _player_chunk: Vector3i = Vector3i(2147483647, 2147483647, 2147483647)
 # Last seen player chunk coord. Used to detect chunk transitions and
@@ -195,13 +217,23 @@ const WATER_FILL_CELLS_PER_TICK: int = 12
 # leave a cave half-full or holey.
 
 
-const FINITE_CELL_UPDATES_PER_TICK: int = 256
+const FINITE_CELL_UPDATES_PER_TICK: int = 640
 # THE FINITE-SIM DIAL — max ledger cells stepped per 4 Hz tick. Same
 # philosophy as WATER_FILL_CELLS_PER_TICK: spilled cells stay active
 # and are processed next tick (lowest first), so a low value just slows
 # the collapse, it can never lose water. Clamped under the
-# _MAX_FLOW_BUDGET_PER_TICK write ceiling by construction (each stepped
-# cell queues at most a handful of writes).
+# _MAX_FLOW_BUDGET_PER_TICK write ceiling (4096) by construction (each
+# stepped cell queues at most a handful of writes), so 640 is well inside.
+#
+# R2 retune (2026-06-12, 10 vox/m pivot): raised 256 → 640. A water
+# surface of the same PHYSICAL area is now made of ~2.8× as many voxel
+# cells (cell count over a 2D surface scales with (10/6)² ≈ 2.78), so the
+# same-sized pond/lake presents ~2.8× the ledger cells to step. At the old
+# 256 the visible collapse of a same-size body would feel ~2.8× slower
+# than it did pre-pivot; 256 × 2.78 ≈ 712, rounded down to 640 to keep
+# headroom under the per-tick write ceiling. Correctness is unchanged at
+# any value (cells just carry to the next tick) — this only restores the
+# pre-pivot FEEL of how fast water settles over a given physical area.
 
 var _finite: RefCounted = FiniteWaterCore.new()
 # The finite-water ledger sim. ITS DICTIONARY IS THE AUTHORITY for all
@@ -352,6 +384,15 @@ func _ready() -> void:
 			print("[WaterFlowManager] WaterFlowCpp registered but instantiate failed; using GD fallback.")
 	else:
 		print("[WaterFlowManager] WaterFlowCpp not registered; using GD fallback.")
+
+	# D4 foam: build the pooled-particle manager, but ONLY in a real
+	# windowed game — never under --headless (no GPU, and the harness must
+	# stay particle-free). The manager itself does no work until we feed it
+	# sites, and we only feed it when the GraphicsManager toggle is on.
+	if DisplayServer.get_name() != "headless":
+		_foam_mgr = WaterFoamManagerScript.new()
+		_foam_mgr.name = "WaterFoamManager"
+		add_child(_foam_mgr)
 
 	# Water Voxel V2 (2026-05-16): WaterChunkMesher + the horizon plane
 	# are DELETED. Water is now a normal transparent TYPE block (id 5)
@@ -1363,6 +1404,15 @@ func _finite_is_solid(p: Vector3i) -> bool:
 	var t: int = _finite_tool.get_voxel(p)
 	if t == 0:
 		return false
+	# R4 + D1: micro-voxel flora (grass blades / flowers, 24..26) AND
+	# surface detail (pebbles / twigs, 27..28) are NON-SOLID to water —
+	# water must flow straight into a decoration cell and mow it down, not
+	# treat a blade of grass (or a pebble) as a dam. The TYPE byte is
+	# overwritten by water's own TYPE re-projection when the cell fills, so
+	# the decoration doesn't survive under water. Same treatment as water
+	# ids. is_passthrough() covers both 24..26 and 27..28 in one branch.
+	if FloraMaterial.is_passthrough(t):
+		return false
 	return not WaterMaterial.is_water_type(t)
 
 
@@ -1400,12 +1450,33 @@ func _step_finite(tool: VoxelTool) -> void:
 	var ch: PackedInt32Array = res["changes"]
 	@warning_ignore("integer_division")
 	var n: int = ch.size() / 4
+	# D4 foam: only collect MOVING flow sites when the designer toggle is on
+	# AND the foam manager exists (windowed game). Checked ONCE here so the
+	# common path (foam off / headless) pays a single bool test, not per-cell.
+	var _foam_on: bool = false
+	var _foam_sites: Array = []
+	if _foam_mgr != null:
+		var _gm: Node = get_node_or_null("/root/GraphicsManager")
+		if _gm != null and _gm.has_method("is_effect_enabled"):
+			_foam_on = _gm.is_effect_enabled("water_foam")
 	for i in range(n):
 		var pos: Vector3i = Vector3i(ch[i * 4], ch[i * 4 + 1], ch[i * 4 + 2])
 		var byte: int = ch[i * 4 + 3]
 		VoxelEditManager.queue_set_water_voxel(pos, byte)
 		# Fresh change: needs the full reconcile schedule from scratch.
 		_unprojected[pos] = Vector2i(RECONCILE_PASSES, _finite_tick_no + 1)
+		# D4: a changed cell whose new byte has non-STILL DIR bits is a
+		# MOVING flow site → a foam candidate. Cap the harvest at
+		# FOAM_MAX_SITES (the manager can't visit more than that anyway).
+		if _foam_on and _foam_sites.size() < FOAM_MAX_SITES \
+				and WaterByteCodec.is_water(byte):
+			var dir_code: int = WaterByteCodec.dir_of(byte)
+			if dir_code != WaterByteCodec.DIR_STILL and dir_code != WaterByteCodec.DIR_RSVD:
+				var lvl: int = WaterByteCodec.level_of(byte)
+				_foam_sites.append({
+					"pos": _voxel_center_world(pos),
+					"flow": float(lvl) / float(MAX_LEVEL),
+				})
 
 	# Verified projection (see _unprojected docs above): read each due
 	# cell's WORLD byte; match -> one pass done, re-check later;
@@ -1436,6 +1507,12 @@ func _step_finite(tool: VoxelTool) -> void:
 		for pos in done:
 			_unprojected.erase(pos)
 	_finite_tool = null
+
+	# D4: push the harvested MOVING flow sites to the pooled foam emitter.
+	# When foam is off (or no cells moved) _foam_sites is empty and the
+	# manager simply stops emitting. Only runs in a windowed game.
+	if _foam_on and _foam_mgr != null and _foam_mgr.has_method("update_foam_sites"):
+		_foam_mgr.update_foam_sites(_foam_sites)
 
 
 func _finite_wake_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:
@@ -1500,10 +1577,13 @@ func _chunk_in_active_radius(chunk: Vector3i) -> bool:
 
 
 func _voxel_center_world(voxel_pos: Vector3i) -> Vector3:
+	# Convert voxel-grid integer coords to world-space metres by
+	# multiplying by VOXEL_SIZE_M (from VoxelScale) and adding half a
+	# voxel so the result is the centre of the cell, not its corner.
 	return Vector3(
-		(float(voxel_pos.x) + 0.5) / 6.0,
-		(float(voxel_pos.y) + 0.5) / 6.0,
-		(float(voxel_pos.z) + 0.5) / 6.0,
+		(float(voxel_pos.x) + 0.5) * VoxelScale.VOXEL_SIZE_M,
+		(float(voxel_pos.y) + 0.5) * VoxelScale.VOXEL_SIZE_M,
+		(float(voxel_pos.z) + 0.5) * VoxelScale.VOXEL_SIZE_M,
 	)
 
 
@@ -1565,11 +1645,11 @@ func _world_to_voxel(world_pos: Vector3) -> Vector3i:
 	# back to a local computation.
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		return VoxelEditManager.world_to_voxel(world_pos)
-	# Fallback: use the locked 6 vox/m scale.
+	# Fallback: use the canonical scale from VoxelScale.
 	return Vector3i(
-		floori(world_pos.x * 6.0),
-		floori(world_pos.y * 6.0),
-		floori(world_pos.z * 6.0),
+		floori(world_pos.x * VoxelScale.VOXELS_PER_METER),
+		floori(world_pos.y * VoxelScale.VOXELS_PER_METER),
+		floori(world_pos.z * VoxelScale.VOXELS_PER_METER),
 	)
 
 

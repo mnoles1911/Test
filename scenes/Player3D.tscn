@@ -11,7 +11,7 @@
 ;           └── Camera3D (the actual camera, looks back down the arm)
 ;
 ; Roland is 1.8 m tall — at the locked 6 vox/m terrain scale that's
-; ~11 voxels of height. Capsule centre sits at Y=0.9 (half-height).
+; ~18 voxels of height. Capsule centre sits at Y=0.9 (half-height).
 ; When the Blender model lands, replace the MeshInstance3D with
 ; the imported .glb scene.
 
@@ -29,7 +29,7 @@ height = 1.8
 
 [sub_resource type="BoxMesh" id="BoxMesh_1"]
 ; Realistic adult silhouette: 0.4 m wide × 1.8 m tall × 0.25 m deep.
-; At 6 vox/m (16.7 cm cubes), Roland covers ~11 voxels of height and
+; At 10 vox/m (10 cm cubes), Roland covers ~18 voxels of height and
 ; ~2.4 voxels of shoulder width — proportions read as a person rather
 ; than a column of cubes.
 size = Vector3(0.4, 1.8, 0.25)
@@ -236,9 +236,20 @@ current = true
 ;     streaming cost; a small coarse annulus past 1024 voxels is
 ;     tolerable, the 1024-2700 one was not.
 ;
+;   1200 voxels (~120 m): R2 retune (2026-06-12, 10 vox/m pivot).
+;     Zylann streams the MIN of this viewer's view_distance AND the
+;     terrain-level cap (World3DBootstrap.terrain_view_distance_voxels,
+;     now 864 vox). This viewer MUST stay ABOVE that terrain cap or it
+;     would become the gate and silently shrink the blocky band below
+;     the intended ~86 m. 1200 keeps a ~336-voxel (~34 m) margin so the
+;     terrain cap is always the one in control. (At 10 vox/m, 1200 vox
+;     is ~120 m — much shorter in metres than the old 1100 vox/~183 m
+;     reading, which assumed the 6 vox/m scale.) Raise the TERRAIN cap,
+;     not this, to grow the blocky band — this only has to stay above it.
+;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
 ; more visible distance (at the cost of streaming load).
-view_distance = 1100
+view_distance = 1200
 
 [node name="EditToolHandler" type="Node3D" parent="."]
 ; Handles "swing tool, edit voxel" input. Reads the equipped weapon

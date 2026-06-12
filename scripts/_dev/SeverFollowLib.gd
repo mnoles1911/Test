@@ -28,6 +28,7 @@ class_name _SeverFollowLibDoNotUse
 #   over budget  — caller's max_voxels exhausted.
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
 
 const _FACES_6: Array = [
 	Vector3i(0, -1, 0), Vector3i(0, 1, 0),
@@ -68,6 +69,13 @@ static func continue_bfs(
 			continue   # air — nothing to carry
 		if WaterMaterial.is_water_type(t & 0xFF):
 			continue   # water never rides a falling cluster
+		if FloraMaterial.is_passthrough(t & 0xFF):
+			continue   # R4 + D1: grass/flowers (24..26) AND pebbles/twigs
+			           # (27..28) never ride a falling cluster, and must not
+			           # connect a trunk to anything above through a blade or
+			           # a pebble — treat them exactly like water here
+			           # (pass-through air for the sever BFS). is_passthrough
+			           # covers both decoration ranges in one branch.
 		# Solid. Edge checks BEFORE accepting — an edge hit poisons the
 		# whole extension (conservative abort), so flag and keep going
 		# only long enough for the caller to see the flag.

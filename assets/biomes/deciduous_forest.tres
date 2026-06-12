@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="BiomeProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/BiomeProfile.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+; DECIDUOUS FOREST — gently undulating woodland floor. Archetype: shaded oak
+; wood, more relief than plains (8 m) but smoother than hills, flatness 0.4
+; for occasional clearings. Dirt leaf-litter patches scatter across the grass
+; (patch_material_id 2 = dirt). Sparse grass + flowers (shade suppresses
+; ground cover). Dense oak tree_table carried for the future trees PR.
+base_amplitude_m = 8.0
+base_frequency_per_m = 0.0022
+ridge_mix = 0.0
+flatness = 0.4
+terrace_band_m = 0.0
+terrace_sharpness = 0.5
+mid_amplitude_m = 1.4
+detail_amplitude_m = 0.3
+detail_slope_only = false
+top_material_id = 3
+slope_material_id = 1
+slope_threshold = 1.6
+patch_material_id = 2
+patch_frequency_per_m = 0.10
+patch_threshold = 0.22
+micro_relief_chance = 0.0
+grass_density = 0.18
+flower_density = 0.015
+tree_table = [{ "kind": "oak", "weight": 1.0 }, { "kind": "oak_large", "weight": 0.3 }]
+; TREES — dense oak woodland. ~0.55 chance per 8x8 m cell ≈ 1 tree / ~6x6 m
+; on average (the forest density target). Tall, broad broadleaf crowns.
+tree_density = 0.55
+tree_height_min_m = 9.0
+tree_height_max_m = 14.0
+tree_trunk_radius_min_vox = 2.0
+tree_trunk_radius_max_vox = 3.0
+tree_canopy_radius_min_vox = 18.0
+tree_canopy_radius_max_vox = 30.0
+biome_name = "deciduous_forest"
+debug_color = Color(0.20, 0.45, 0.20, 1)

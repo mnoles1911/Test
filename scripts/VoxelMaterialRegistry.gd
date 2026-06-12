@@ -1,4 +1,12 @@
 extends Node
+
+# Flora id authority. Path-preloaded (NO class_name — headless-safe), the
+# same way WaterMaterial is referenced everywhere. The registry exposes a
+# thin is_flora() wrapper below so engine-side code that already has the
+# autoload handy can ask "is this voxel grass/flower?" without its own
+# preload — but the real list of ids lives in one place: FloraMaterial.gd.
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+
 # VoxelMaterialRegistry — the central catalogue of every voxel material
 # in the game.
 #
@@ -214,6 +222,16 @@ func is_air(type_value: int) -> bool:
 	# the encoding stays an implementation detail of the registry,
 	# not knowledge spread across the codebase.
 	return (type_value & 0xFF) == 0
+
+
+func is_flora(type_value: int) -> bool:
+	# True if this voxel is micro-voxel flora (grass blade / flower).
+	# Thin wrapper over FloraMaterial.is_flora — exactly analogous to how
+	# water type checks funnel through WaterMaterial.is_water_type(). Use
+	# this (never a raw `== 24` compare) so the flora id set can grow in
+	# ONE place. Pure helpers that can't reach the autoload (FiniteWaterCore,
+	# SeverFollowLib, GravityReference) preload FloraMaterial directly.
+	return FloraMaterial.is_flora(type_value & 0xFF)
 
 
 # Legacy aliases — pre-migration call sites may still reference these

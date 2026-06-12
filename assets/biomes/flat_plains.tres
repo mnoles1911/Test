@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="BiomeProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/BiomeProfile.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+; FLAT PLAINS — broad, near-flat grassland. Archetype: a wide open field
+; you can see across. base_amplitude tiny (2 m) + flatness 0.85 squashes the
+; mid-band to a plateau so the floor reads dead-flat with the odd gentle
+; swell. detail_slope_only keeps the floor clean (no stippled noise). Gravel
+; patches break up the green; dense grass + flowers fill it.
+base_amplitude_m = 2.0
+base_frequency_per_m = 0.0025
+ridge_mix = 0.0
+flatness = 0.85
+terrace_band_m = 0.0
+terrace_sharpness = 0.5
+mid_amplitude_m = 0.6
+detail_amplitude_m = 0.2
+detail_slope_only = true
+top_material_id = 3
+slope_material_id = 1
+slope_threshold = 1.4
+patch_material_id = 7
+patch_frequency_per_m = 0.06
+patch_threshold = 0.10
+micro_relief_chance = 0.0
+grass_density = 0.70
+flower_density = 0.05
+tree_table = []
+; TREES — very sparse, the occasional lone tree on the open field. ~0.02 per
+; 8x8 m cell. Smaller crowns so they don't dominate the open vista.
+tree_density = 0.02
+tree_height_min_m = 8.0
+tree_height_max_m = 12.0
+tree_trunk_radius_min_vox = 2.0
+tree_trunk_radius_max_vox = 3.0
+tree_canopy_radius_min_vox = 16.0
+tree_canopy_radius_max_vox = 24.0
+biome_name = "flat_plains"
+debug_color = Color(0.62, 0.78, 0.36, 1)

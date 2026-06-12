@@ -28,7 +28,10 @@
 //     worker-thread safe themselves (e.g. Copper Isles' _ensure_image
 //     mutex on its lazy EXR cache — see LESSONS_LEARNED.md 2026-05-12).
 
+#include "biome_field.h"
+
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
@@ -153,6 +156,102 @@ public:
     void set_cliff_ore_seed(int p_value);
     int get_cliff_ore_seed() const;
 
+    // --- R4 micro-voxel flora scatter -------------------------------------
+    // The three flora CHANNEL_TYPE ids (grass blade + two flowers). All
+    // default 0 = "disabled": the generator writes NO flora until the
+    // GDScript bootstrap wires the real ids (24/25/26) at startup, exactly
+    // like bedrock_material_id / snow_material_id are 0-gated. Mirrors
+    // scripts/FloraMaterial.gd: grass=24, flower_red=25, flower_blue=26.
+    void set_grass_blade_material_id(int p_value);
+    int get_grass_blade_material_id() const;
+
+    void set_flower_red_material_id(int p_value);
+    int get_flower_red_material_id() const;
+
+    void set_flower_blue_material_id(int p_value);
+    int get_flower_blue_material_id() const;
+
+    void set_flora_seed(int p_value);
+    int get_flora_seed() const;
+
+    // --- D1 surface-detail scatter (pebbles + twigs) ----------------------
+    // The two surface-detail CHANNEL_TYPE ids. Default 0 = disabled, same
+    // 0-gate as flora — the generator writes NO pebbles/twigs until the
+    // GDScript bootstrap wires the real ids (27/28) at startup. Mirrors
+    // scripts/FloraMaterial.gd: pebble=27, twig=28. Scattered with a
+    // DIFFERENT salt than flora so the two patterns don't correlate.
+    void set_pebble_material_id(int p_value);
+    int get_pebble_material_id() const;
+
+    void set_twig_material_id(int p_value);
+    int get_twig_material_id() const;
+
+    void set_surface_detail_seed(int p_value);
+    int get_surface_detail_seed() const;
+
+    // --- Biome framework --------------------------------------------------
+    // When biome profiles are loaded the generator switches to the
+    // biome-aware path: compute_ground_y blends per-biome heightfield
+    // params, and the block-fill loop reads per-biome surface materials +
+    // flora densities. With NO profiles set the generator keeps its legacy
+    // single-recipe behaviour byte-for-byte (so the `gen` parity baseline
+    // and the Copper Isles generator are untouched).
+    //
+    // set_biome_profiles forwards Array[Dictionary] to the owned
+    // BiomeFieldCpp. set_biome_field_params forwards the control-noise +
+    // classification knobs + the five KIND→slot bindings. The bootstrap
+    // calls both on the main thread before streaming.
+    void set_biome_profiles(const godot::Array &p_list);
+    void set_biome_field_params(double control_frequency_per_m,
+                                double warp_frequency_per_m,
+                                double warp_strength,
+                                double blend_margin,
+                                double voxels_per_metre,
+                                int plains_index, int hills_index,
+                                int forest_index, int desert_index,
+                                int mountains_index);
+    void set_biome_control_noise(const godot::Ref<godot::FastNoiseLite> &p_noise);
+    int get_biome_profile_count() const;
+
+    // The owned field, exposed so the headless gate can pull the SAME
+    // configured instance the generator uses (the `biome` selector reads
+    // it off the live World3D generator, like `gen`/`distant` do).
+    godot::Ref<voxel_gen::BiomeFieldCpp> get_biome_field() const { return _biome_field; }
+
+    // True once profiles are loaded — gates the biome-vs-legacy branch.
+    bool biome_active() const {
+        return _biome_field.is_valid() && _biome_field->has_profiles();
+    }
+
+    // --- Destructible trees -----------------------------------------------
+    // Trees are pure generator output: deterministic per-(anchor, seed, biome)
+    // so two adjacent blocks emit the SAME tree voxels along their shared
+    // boundary (no seam) and a regen / save-reload reproduces the forest
+    // exactly. The block-fill loop, after laying terrain, scans every lattice
+    // anchor whose tree could reach this block's XZ footprint and stamps the
+    // trunk (log id) + canopy (leaves id) voxels that fall inside the block.
+    //
+    // Wired by the bootstrap (default 0 = disabled, so the legacy `gen`
+    // baseline path emits no trees — pinned). log/leaves ids mirror the
+    // VoxelMaterial .tres: log=10, leaves=11.
+    void set_tree_log_material_id(int p_value);
+    int get_tree_log_material_id() const;
+
+    void set_tree_leaves_material_id(int p_value);
+    int get_tree_leaves_material_id() const;
+
+    void set_tree_seed(int p_value);
+    int get_tree_seed() const;
+
+    void set_tree_lattice_voxels(int p_value);
+    int get_tree_lattice_voxels() const;
+
+    void set_tree_max_lod(int p_value);
+    int get_tree_max_lod() const;
+
+    void set_tree_spawn_free_radius_voxels(int p_value);
+    int get_tree_spawn_free_radius_voxels() const;
+
     // --- Core API ---------------------------------------------------------
 
     // Concrete generators override this with their ground-Y math.
@@ -201,6 +300,36 @@ public:
 protected:
     static void _bind_methods();
 
+    // --- Tree shape (pure math; mirrored by TreeReference.gd) -------------
+    // A fully-resolved tree, derived ONLY from its lattice cell + seed +
+    // biome tree params. Two blocks that both scan this anchor compute an
+    // identical TreeInstance, so their emitted voxels agree on the boundary.
+    struct TreeInstance {
+        bool exists = false;
+        int trunk_x = 0;       // jittered trunk centre (world voxels)
+        int trunk_z = 0;
+        int ground_y = 0;      // surface voxel-Y at the trunk column
+        int height_vox = 0;    // trunk height in voxels (ground+1 .. ground+height)
+        int trunk_radius = 0;  // trunk half-width in voxels (square cross-section)
+        int canopy_radius = 0; // canopy max radius in voxels
+        int canopy_center_y = 0;   // canopy ellipsoid centre Y (world voxels)
+        int canopy_half_height = 0;// canopy ellipsoid vertical half-extent
+        int64_t shape_salt = 0;    // per-tree salt for canopy edge erosion
+    };
+
+    // Resolve the tree (if any) anchored at lattice cell (lattice_x,
+    // lattice_z). Pure function of the cell coords, the tree seed, and the
+    // biome tree params at the jittered trunk column (picked by the same
+    // weighted-hash as surface material). exists=false when the cell rolled
+    // no tree, the biome has tree_density 0, the trunk would sit under water,
+    // or the trunk falls inside the world-origin spawn-free radius.
+    TreeInstance resolve_tree(int lattice_x, int lattice_z) const;
+
+    // The widest any tree can reach from its trunk column, in voxels — used
+    // to bound the lattice-anchor scan around a block. Conservative upper
+    // bound from the largest canopy radius across loaded biomes.
+    int tree_max_reach_voxels() const;
+
     // Tier 5 helper. Mirrors GD _disk_at_column. Returns pointer to a
     // disk POD if (world_x, world_z) sits inside a disk anchor footprint
     // at this elevation, or nullptr otherwise. The pointer is valid for
@@ -220,9 +349,12 @@ protected:
     int _marble_jitter_max_lod = 1;
 
     // --- Bedrock / world floor / sea ---------------------------------------
+    // Voxel-unit values rescaled 2026-06-12 for the 10 vox/m pivot so
+    // the WORLD-metre meaning is preserved: floor -300vox(-50m at 6/m)
+    // -> -500vox(-50m at 10/m); sea 72vox(12m) -> 120vox(12m).
     int _bedrock_material_id = 0;     // 0 disables the bedrock row
-    int _world_floor_voxel_y = -300;
-    int _sea_level_voxels = 72;
+    int _world_floor_voxel_y = -500;
+    int _sea_level_voxels = 120;
 
     // --- Tier 2: snow line -------------------------------------------------
     int _snow_material_id = 0;        // 0 disables the snow tier
@@ -233,8 +365,10 @@ protected:
     int _snow_line_max_lod = 2;
 
     // --- Tier 1: cliff slope ----------------------------------------------
-    int _cliff_slope_sample_distance_voxels = 6;
-    int _cliff_slope_threshold_voxels = 10;
+    // Also voxel units meaning metres: sample 6vox(1m at 6/m) ->
+    // 10vox(1m at 10/m); threshold 10vox(1.67m) -> 17vox(1.7m).
+    int _cliff_slope_sample_distance_voxels = 10;
+    int _cliff_slope_threshold_voxels = 17;
     int _cliff_rule_max_lod = 2;
 
     // --- POD snapshots (set on main thread; read on worker threads) -------
@@ -247,6 +381,43 @@ protected:
     int _disk_anchor_grid_voxels = 24;
     double _cliff_ore_outcrop_chance = 0.03;
     int _cliff_ore_seed = 5;
+
+    // --- R4 flora scatter (0 = disabled until the bootstrap wires ids) ----
+    int _grass_blade_material_id = 0;
+    int _flower_red_material_id = 0;
+    int _flower_blue_material_id = 0;
+    int _flora_seed = 1337;
+
+    // --- D1 surface-detail scatter (0 = disabled until bootstrap wires) ---
+    int _pebble_material_id = 0;
+    int _twig_material_id = 0;
+    // Different salt from _flora_seed so pebble/twig placement is
+    // statistically independent of where grass/flowers landed.
+    int _surface_detail_seed = 7919;
+
+    // --- Destructible trees -----------------------------------------------
+    // 0 ids = disabled (the legacy `gen` baseline path → zero trees). The
+    // lattice is the candidate-anchor grid in voxels (80 = 8 m at 10 vox/m:
+    // one candidate per 8×8 m cell, then per-biome tree_density thins it).
+    int _tree_log_material_id = 0;        // 0 disables tree emission
+    int _tree_leaves_material_id = 0;     // 0 disables the canopy
+    int _tree_seed = 4242;
+    int _tree_lattice_voxels = 80;        // 8 m candidate grid
+    int _tree_max_lod = 2;                // emit trees at lod 0..2 (forests read at distance)
+    // Keep a tree-free disc around world origin so a generated trunk never
+    // buries the player at spawn (the spawn probe drops Roland onto the
+    // ground column at/near origin). ~6 m = 60 vox at 10/m.
+    int _tree_spawn_free_radius_voxels = 60;
+
+    // --- Biome framework --------------------------------------------------
+    // Lazily created when set_biome_profiles / set_biome_field_params /
+    // set_biome_control_noise first run (the bootstrap wires all three).
+    // Null until then → biome_active() false → legacy path.
+    godot::Ref<voxel_gen::BiomeFieldCpp> _biome_field;
+    // Map the biome top/slope material id to the band layout. The biome
+    // block-loop reuses the generator's grass/dirt/stone band thicknesses
+    // but swaps the TOP + SLOPE ids per the picked biome's surface params.
+    void _ensure_biome_field();
 
 private:
     mutable std::atomic<int> _generated_block_count{0};

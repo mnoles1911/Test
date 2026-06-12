@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="BiomeProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/BiomeProfile.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+; ROCKY DESERT — layered-rock mesas + canyons. Archetype: banded sandstone
+; buttes. amp 4 m floor with terrace_band_m 2.5 + sharpness 0.8 carves the
+; mesa strata (the look that has to READ in the screenshots). ridge_mix 0.35
+; gives the macro a hint of crest. Low slope_threshold + stone slope material
+; so canyon WALLS read as rock even though the flat top is sand. high
+; micro_relief strews pebbles on the floor. Sparse flora (near zero).
+;
+; ATLAS NOTE: there's no dedicated red-rock/sand tile yet — v1 reuses sand
+; (4) for the top + stone (1) for walls. A red-sandstone atlas tile is a
+; logged follow-up in design/BIOME_FRAMEWORK.md.
+base_amplitude_m = 7.0
+base_frequency_per_m = 0.004
+ridge_mix = 0.35
+flatness = 0.2
+terrace_band_m = 2.5
+terrace_sharpness = 0.85
+mid_amplitude_m = 0.8
+detail_amplitude_m = 0.2
+detail_slope_only = false
+top_material_id = 4
+slope_material_id = 1
+slope_threshold = 0.8
+patch_material_id = 1
+patch_frequency_per_m = 0.05
+patch_threshold = 0.08
+micro_relief_chance = 0.04
+grass_density = 0.0
+flower_density = 0.0
+tree_table = []
+; TREES — none. Desert grows no trees (tree_density 0 → generator skips it).
+tree_density = 0.0
+biome_name = "rocky_desert"
+debug_color = Color(0.78, 0.58, 0.34, 1)

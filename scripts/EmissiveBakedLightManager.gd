@@ -1,5 +1,9 @@
 extends Node
 
+# Single authority for the voxel grid scale — all scale constants below
+# mirror values from this file. See scripts/VoxelScale.gd.
+const VoxelScale := preload("res://scripts/VoxelScale.gd")
+
 # EmissiveBakedLightManager — Phase J done properly.
 #
 # What this does in plain English:
@@ -44,12 +48,14 @@ extends Node
 # memory/project_vgm_elm_cpp_port.md (the cosmetic issue this fixes).
 
 # --- Volume sizing ---------------------------------------------------
-# N=32 cells × K=4 voxels each = 128-voxel cube (~21.3 m at 6 vox/m).
-# Texture: 32^3 * 4 bytes = 128 KB. Buffer to copy: 128^3 = 2 MB.
-# Sweet spot — small enough that the per-bake cost stays under one
-# frame at 5 Hz on the bench machine.
+# N=32 cells × K=7 voxels each = 224-voxel cube (~22.4 m at 10 vox/m).
+# K was 4 at the old 6 vox/m scale (~21.3 m world span); bumped to 7
+# at the 10 vox/m pivot so the lit volume keeps roughly the same WORLD
+# size instead of collapsing to 12.8 m. Texture cost is unchanged
+# (cells_per_axis sizes the texture): 32^3 * 4 bytes = 128 KB. The
+# copy buffer grows to 224^3 ≈ 11 MB — re-profile in the R2 retune.
 @export var cells_per_axis: int = 32
-@export var cell_size_voxels: int = 4
+@export var cell_size_voxels: int = 7
 
 # BFS reach in cells. Designer 2026-05-27 second-round test: 4 steps
 # at falloff 0.5 was STILL too bright + penetrated too many blocks.
@@ -81,8 +87,11 @@ extends Node
 @export var verbose: bool = false
 
 # --- Constants -------------------------------------------------------
-const VOXEL_SIZE_M: float = 1.0 / 6.0    # match VoxelGravityManager
-const VOXELS_PER_METER: float = 6.0
+const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+# Mirrors VoxelScale.VOXEL_SIZE_M (edge length of one voxel in metres).
+# Local name kept so call sites inside this file stay unchanged.
+const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
+# Mirrors VoxelScale.VOXELS_PER_METER. Single source of truth: VoxelScale.gd.
 
 const _GLOBAL_TEX: String = "baked_light_tex"
 const _GLOBAL_ORIGIN: String = "baked_light_origin_world"
