@@ -895,10 +895,10 @@ func _mark_world_ready_when_settled() -> void:
 	# MAX_EXTRA_WAIT elapses (whichever comes first).
 	#
 	# Gate 1 — DENSE LOD0 SPATIAL PROBE: 6 radii × 16 directions = 96
-	# raycasts straight down from 200 m above each probe XZ. Because
-	# the terrain runs with collision_lod_count = 0, only LOD0 chunks
-	# have collision shapes — a hit means "this column has a meshed
-	# LOD0 block." All 96 must hit.
+	# raycasts straight down from 200 m above each probe XZ. The
+	# probe radii stay inside the LOD0 ring (~12.8 m), so a hit
+	# confirms "this column has a meshed LOD0 block at full detail"
+	# regardless of whether LOD1/2 collision is also live. All 96 must hit.
 	#
 	# Gate 2 — STREAMING QUEUE NEAR-IDLE: Zylann's get_statistics()
 	# reports `blocked_lods`, the global LOD-pipeline queue depth.

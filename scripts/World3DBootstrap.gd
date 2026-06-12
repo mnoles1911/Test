@@ -359,6 +359,49 @@ func _ready() -> void:
 		terrain.set("collision_update_delay", 100)
 		var actual_delay = terrain.get("collision_update_delay")
 		print("[World3D] terrain.collision_update_delay set to 100 (actual=%s)" % actual_delay)
+	# === Terrain collision radius: LOD0 + LOD1 + LOD2 (~51.2 m) ===
+	# 2026-06-12 designer decision: extend collision out to the LOD2 ring.
+	#
+	# WHY THE CHANGE: at 10 vox/m the LOD0 ring ends at only ~12.8 m
+	# (128 voxels × 0.1 m/voxel). At the old 6 vox/m that was ~21 m —
+	# narrow, but usable. At 10 vox/m it sits well inside the spear throw
+	# range (~15–25 m), the AI patrol radius, and the player's fall arc off
+	# cliffs. Spears ghosted through hills 15 m out; AI walked through
+	# ledges while patrolling. Pushed to ~51.2 m resolves all of those.
+	#
+	# WHAT collision_lod_count = N MEANS (probed + confirmed from Zylann
+	# source docs — voxel-tools.readthedocs.io, VoxelLodTerrain API):
+	#   0 (default)  → ALL lods get collision (equivalent to lod_count).
+	#                  The old comments in this file saying "0 = LOD0-only"
+	#                  were WRONG. 0 = all lods. This was verified both by
+	#                  the Zylann docs and by an empirical sweep (probe
+	#                  2026-06-12): set(0..5) all read back cleanly; set(6)
+	#                  clamps to 5 (= lod_count), so the cap is lod_count.
+	#   N > 0        → first N LOD levels (LOD0 through LOD(N-1)) get
+	#                  collision; higher LODs are mesh-only.
+	# So collision_lod_count = 3 means LOD0 (0–12.8 m), LOD1 (12.8–25.6 m),
+	# and LOD2 (25.6–51.2 m) each get collision shapes. LOD3 and LOD4
+	# (51.2 m and beyond) are mesh-only — no physics bodies.
+	#
+	# ACCURACY CAVEAT: LOD1 and LOD2 meshes are COARSER than LOD0.
+	# At mesh_block_size=32 each LOD halves the voxel resolution, so a
+	# LOD1 block is 2-voxel chunks and a LOD2 block is 4-voxel chunks.
+	# Collision shapes match those coarser meshes, not the raw terrain.
+	# Far-away entities therefore stand on slightly approximate ground
+	# (stairs round to 2-4 voxel steps; small overhangs may be missing).
+	# Good enough for AI/spear collision; player stands in LOD0 always.
+	#
+	# PERF CAVEAT: more LOD levels with collision = more StaticBody3D shapes
+	# to build as chunks stream in/out. The 100 ms collision_update_delay
+	# (set just above) already batches these; at design-time the cost was
+	# acceptable on the RX 7800 XT baseline. If physics spikes return on a
+	# future hardware regression, the retreat is one constant: set this back
+	# to 1 (LOD0-only, 12.8 m). The spawn-probe raycasts still confirm LOD0
+	# coverage even if LOD1/2 bodies are absent.
+	if "collision_lod_count" in terrain:
+		terrain.set("collision_lod_count", 3)
+		var actual_coll_lod = terrain.get("collision_lod_count")
+		print("[World3D] terrain.collision_lod_count set to 3 (LOD0+LOD1+LOD2, ~51.2 m; actual=%s)" % actual_coll_lod)
 	# Belt-and-suspenders for the .tscn values that the editor has been
 	# stripping on save. Setting them programmatically AND in the .tscn
 	# means at least one path lands. The readback prints make it obvious
@@ -2155,12 +2198,12 @@ func _mark_world_ready_when_settled() -> void:
 	# "is the local area visually presentable" and the queue gate
 	# handles "is the streamer globally finished."
 	#
-	# Why raycasts ≡ LOD0: in this terrain config
-	# (`collision_lod_count = 0`), only LOD0 chunks have collision
-	# bodies. A raycast hit is therefore a direct confirmation that
-	# the chunk at that location is meshed at full LOD0 resolution.
-	# Higher-LOD chunks (LOD1+) are visible but uncollidable, and
-	# the raycast passes through them.
+	# Why raycasts confirm LOD0: collision_lod_count = 3 gives LOD0,
+	# LOD1, and LOD2 collision bodies. Spawn probes are fired within
+	# ~15 m of the player (inside the LOD0 ring), so a hit is a
+	# direct confirmation that the highest-detail LOD0 block is
+	# meshed and physics-ready at that column. LOD1/2 collision
+	# elsewhere does not interfere — the probe radii are local.
 	#
 	# REQUIRED_GOOD_SAMPLES of 3 × POLL_INTERVAL 0.4 s = 1.2 s of
 	# sustained "both gates pass" before signaling. Three samples

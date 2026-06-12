@@ -17,7 +17,7 @@ Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `Chara
 
 Voxel scale is **10 voxels/m** (10 cm/block) since 2026-06-12 — the Lay-of-the-Land re-architecture (`VISION_VOXEL_10CM.md`; was 6 voxels/m from the original pivot until then; the authority is `scripts/VoxelScale.gd`). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125.
 
-> **10 vox/m hard constraint:** Zylann caps `lod_distance` at 128 voxels, so the sharpest-LOD ring — and terrain **collision**, which is LOD0-only — ends at **12.8 m** from the player (was 21.3 m at 6 vox/m). Projectiles/entities beyond that ring have no terrain collision; long-lived projectiles need a `VoxelViewer` or raycast-vs-generator fallback (logged follow-up, not yet built).
+> **10 vox/m collision reality:** Zylann caps `lod_distance` at 128 voxels per LOD shell (12.8 m/shell at 10 vox/m; was 21.3 m at 6 vox/m). **Terrain collision extends to ~51.2 m** via `collision_lod_count = 3` (LOD0+LOD1+LOD2; set in `World3DBootstrap.gd`, 2026-06-12 designer decision). Beyond LOD0 the collision shapes are coarser (LOD1 = 2-voxel blocks, LOD2 = 4-voxel blocks). Nothing beyond ~51.2 m: projectiles/AI past that ring still have no terrain collision; long-lived projectile raycast-vs-generator fallback is a logged follow-up, not yet built.
 
 ## Destructible terrain — short version
 

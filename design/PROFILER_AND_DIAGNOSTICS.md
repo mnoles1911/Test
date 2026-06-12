@@ -511,11 +511,15 @@ is to shrink the streaming radius so Zylann has less work per scan.
   Trades a CPU spike pattern for a different CPU spike pattern AND
   loses geometric detail.
 
-**`terrain.collision_lod_count` is already `0`** (LOD0-only collision)
-in `World3DBootstrap.gd:868` and `CopperIslesTestBootstrap.gd:857`.
-Cannot be tightened further. The Player3D physics-tick spike during
-chunk streaming is the unavoidable cost of integrating new LOD0
-collision shapes — fundamental to a streaming voxel game.
+**`terrain.collision_lod_count` is now `3`** (LOD0+LOD1+LOD2 collision,
+~51.2 m) in `World3DBootstrap.gd`, set at _ready (2026-06-12 designer
+decision). Note: Zylann semantics are `0 = all LODs` (not LOD0-only;
+old comments were wrong) and `N > 0 = first N LODs`. The retreat dial
+for physics spikes is `collision_lod_count = 1` (LOD0-only, 12.8 m).
+The Player3D physics-tick spike during chunk streaming is the
+unavoidable cost of integrating new collision shapes — fundamental to
+a streaming voxel game. With LOD1/2 added, that cost is slightly higher
+per shell but batched by the 100 ms collision_update_delay.
 
 **Acceptable directions when chunk-streaming hurts:**
 
@@ -596,9 +600,10 @@ move_and_slide because the physics step has to integrate them all.
 
 **Real fix would be on the chunk-streaming side**: stagger collision-
 shape add operations across frames, OR reduce `terrain.collision_lod_count`
-(currently 0 = all LODs get collision), OR defer collision generation
-for distant LODs. Not a Player3D bug — out of scope until the chunk-
-streaming path is touched anyway.
+(currently 3 = LOD0+LOD1+LOD2 get collision; retreat to 1 = LOD0-only if
+spikes return), OR defer collision generation for distant LODs.
+Not a Player3D bug — out of scope until the chunk-streaming path is
+touched anyway.
 
 ### Item A — WaterChunkMesher time-budget throttle
 

@@ -133,9 +133,24 @@ func _process(delta: float) -> void:
 
 Categories: `WORLD WATER WEATHER PHYS OTHER`.
 
-### Terrain collision ends 12.8 m out (10 vox/m, R2)
+### Terrain collision extends to ~51.2 m (10 vox/m, LOD0+LOD1+LOD2)
 
-Zylann caps `lod_distance` at 128 voxels and terrain collision is LOD0-only (`collision_lod_count = 0`), so **terrain collision exists only within ~12.8 m of the player** (128 vox × the 1/10 terrain scale; was ~21.3 m at the old 6 vox/m). Projectiles, thrown spears, and AI agents that travel beyond that ring have **no terrain to collide with** — they pass through hills and floors out there. Mitigation (a `VoxelViewer` or raycast-vs-generator fallback for long-lived projectiles) is a **logged follow-up — do NOT build it** as part of unrelated work. See `design/3D_VOXEL_MIGRATION.md` "10 vox/m hard constraint".
+`collision_lod_count = 3` gives collision on the first three LOD rings (2026-06-12 designer decision):
+
+| LOD | Range | Collision | Mesh resolution |
+|---|---|---|---|
+| LOD0 | 0 – 12.8 m | yes | full detail (1-voxel blocks) |
+| LOD1 | 12.8 – 25.6 m | yes | coarser (2-voxel blocks) |
+| LOD2 | 25.6 – 51.2 m | yes | coarser (4-voxel blocks) |
+| LOD3+ | 51.2 m+ | **no** | mesh-only |
+
+**Zylann semantics (probed + docs-confirmed 2026-06-12):** `collision_lod_count = 0` means *all* LODs get collision (NOT "LOD0-only" — the old comments were wrong). `collision_lod_count = N` (N > 0) = first N LOD levels. Value 3 = LOD0, LOD1, LOD2.
+
+**Accuracy caveat:** beyond ~12.8 m collision shapes are built from coarser LOD meshes — far entities stand on approximate ground (stairs round to 2–4 voxel steps; small overhangs may be invisible to physics). Acceptable for AI/spear/falling-cluster collision; the player always stands in LOD0.
+
+**Perf caveat:** more LODs = more StaticBody3D shapes to build while streaming. `collision_update_delay = 100 ms` batches the builds. If physics spikes return, the retreat is `collision_lod_count = 1` (LOD0-only, 12.8 m). Set in `World3DBootstrap.gd`.
+
+**Nothing beyond ~51.2 m:** projectiles/AI past that ring still have no terrain collision. A `VoxelViewer` or raycast-vs-generator fallback for long-lived projectiles is a **logged follow-up — do NOT build it** as part of unrelated work.
 
 ### Other essentials
 
