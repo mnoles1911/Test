@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voxel Tree Studio</title>
+<!--
+  ===========================================================================
+  VOXEL TREE STUDIO  (tools/voxel_tree_studio/index.html)
+  ===========================================================================
+
+  WHAT THIS IS (plain English, for the designer)
+  ----------------------------------------------
+  A little in-browser sandbox for designing the *shape* of voxel trees for
+  Mira-Thal. You drag sliders, the tree rebuilds instantly, and you spin it
+  around to judge the silhouette. When you find one you like you hit Export
+  and it saves a small file describing the tree as a pile of voxels.
+
+  WHY THREE.JS AND NOT GODOT
+  --------------------------
+  Iterating shape here is *fast* — no editor reload, no recompile. Godot is
+  where final look (lighting, real atlas textures) gets approved. So treat
+  this studio as a "shape & silhouette picker," not a final-look preview.
+
+  HOW IT MAPS TO THE GAME
+  -----------------------
+  Trees in our game are not props — they are voxels baked into the Zylann
+  terrain, made of two materials that already exist in the game:
+      material 10 = log     (the trunk + branches)
+      material 11 = leaves  (the canopy)
+  (See tools/build_blocky_library.gd — those exact ids.)
+
+  The Export button writes a JSON file shaped like:
+      { "size":[w,h,d], "voxels":[ {"x":..,"y":..,"z":..,"m":10|11}, ... ] }
+  A future small Godot importer reads that file and stamps the voxels into
+  the world (or into a VoxelBlockyModel). JSON now; we can add .vox export
+  later if MagicaVoxel round-tripping becomes useful.
+
+  HONEST CAVEATS
+  --------------
+  * Colors here are stand-ins, not your real pixel-art atlas tiles. Judge
+    SHAPE here; judge COLOR/LIGHT in the Godot editor.
+  * Everything is opaque cubes — that matches how leaf voxels actually
+    render in-engine (alpha-scissor cutout, one cube per leaf cell).
+  * Needs internet on first load (pulls Three.js from a CDN).
+  ===========================================================================
+-->
+<style>
+  :root { --panel: #1b1f24; --ink: #e7e3d8; --accent: #8fbf6f; --log: #6b4a2b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  #app { display: flex; height: 100%; background: #0e1013; color: var(--ink); }
+  #view { flex: 1; position: relative; }
+  #panel {
+    width: 320px; background: var(--panel); padding: 16px 18px; overflow-y: auto;
+    border-right: 1px solid #000; box-shadow: 2px 0 12px #0008;
+  }
+  h1 { font-size: 15px; margin: 0 0 2px; color: var(--accent); letter-spacing: .5px; }
+  .sub { font-size: 11px; opacity: .55; margin: 0 0 14px; line-height: 1.4; }
+  .group { border-top: 1px solid #ffffff14; padding: 12px 0 4px; }
+  .group h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: .6; margin: 0 0 10px; }
+  label { display: block; font-size: 11px; margin: 0 0 12px; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .val { color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select { width: 100%; background: #11151a; color: var(--ink); border: 1px solid #000; padding: 5px; font-family: inherit; font-size: 11px; }
+  .btns { display: flex; gap: 8px; margin-top: 6px; }
+  button {
+    flex: 1; background: #2a3138; color: var(--ink); border: 1px solid #000; padding: 9px 6px;
+    font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 4px;
+  }
+  button:hover { background: #353d46; }
+  button.primary { background: var(--accent); color: #14210a; font-weight: bold; }
+  #stats { font-size: 11px; opacity: .7; margin-top: 14px; line-height: 1.6; }
+  #stats b { color: var(--accent); }
+  .hint { position: absolute; bottom: 10px; left: 12px; font-size: 11px; opacity: .4; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <h1>🌳 Voxel Tree Studio</h1>
+    <p class="sub">Tune shape, pick a silhouette, Export. Maps to log (10) + leaves (11) voxels for Zylann terrain.</p>
+
+    <div class="group">
+      <h2>Seed</h2>
+      <label>
+        <div class="row"><span>Seed</span><span class="val" id="seed-v">1</span></div>
+        <input type="range" id="seed" min="1" max="9999" value="1" step="1">
+      </label>
+    </div>
+
+    <div class="group">
+      <h2>Trunk</h2>
+      <label>
+        <div class="row"><span>Height</span><span class="val" id="trunkH-v"></span></div>
+        <input type="range" id="trunkH" min="4" max="40" value="14" step="1">
+      </label>
+      <label>
+        <div class="row"><span>Thickness</span><span class="val" id="trunkR-v"></span></div>
+        <input type="range" id="trunkR" min="1" max="5" value="1" step="1">
+      </label>
+      <label>
+        <div class="row"><span>Lean / wander</span><span class="val" id="lean-v"></span></div>
+        <input type="range" id="lean" min="0" max="100" value="15" step="1">
+      </label>
+    </div>
+
+    <div class="group">
+      <h2>Branches</h2>
+      <label>
+        <div class="row"><span>Count</span><span class="val" id="branches-v"></span></div>
+        <input type="range" id="branches" min="0" max="10" value="3" step="1">
+      </label>
+      <label>
+        <div class="row"><span>Length</span><span class="val" id="branchLen-v"></span></div>
+        <input type="range" id="branchLen" min="2" max="14" value="5" step="1">
+      </label>
+    </div>
+
+    <div class="group">
+      <h2>Canopy</h2>
+      <label>Shape
+        <select id="canopyShape">
+          <option value="sphere">Sphere (oak / broadleaf)</option>
+          <option value="ellipsoid">Tall ellipsoid (poplar)</option>
+          <option value="cone">Cone (pine / evergreen)</option>
+          <option value="blob">Lumpy blob (wild)</option>
+        </select>
+      </label>
+      <label>
+        <div class="row"><span>Radius</span><span class="val" id="canopyR-v"></span></div>
+        <input type="range" id="canopyR" min="2" max="16" value="7" step="1">
+      </label>
+      <label>
+        <div class="row"><span>Vertical stretch</span><span class="val" id="canopyStretch-v"></span></div>
+        <input type="range" id="canopyStretch" min="40" max="220" value="100" step="5">
+      </label>
+      <label>
+        <div class="row"><span>Density</span><span class="val" id="density-v"></span></div>
+        <input type="range" id="density" min="20" max="100" value="78" step="1">
+      </label>
+      <label>
+        <div class="row"><span>Roughness</span><span class="val" id="rough-v"></span></div>
+        <input type="range" id="rough" min="0" max="100" value="35" step="1">
+      </label>
+    </div>
+
+    <div class="group">
+      <div class="btns">
+        <button id="randomize">🎲 Randomize</button>
+        <button id="export" class="primary">⬇ Export JSON</button>
+      </div>
+    </div>
+
+    <div id="stats"></div>
+  </div>
+
+  <div id="view">
+    <div class="hint">drag = orbit · scroll = zoom · right-drag = pan</div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------------------------------------------------------------------------
+// Material ids — MUST match the game (tools/build_blocky_library.gd).
+// ---------------------------------------------------------------------------
+const MAT_LOG = 10;
+const MAT_LEAVES = 11;
+
+// Stand-in colors (NOT the real atlas — judge shape here, color in Godot).
+const COLOR_LOG = new THREE.Color('#6b4a2b');
+const COLOR_LEAVES = new THREE.Color('#5d8a3a');
+
+// ---------------------------------------------------------------------------
+// Tiny seeded RNG (mulberry32) so a given seed always rebuilds the same tree.
+// Reproducibility matters: a "seed" you like is a tree you can get back.
+// ---------------------------------------------------------------------------
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// THE GENERATOR
+// ---------------------------------------------------------------------------
+// Returns a Map keyed "x,y,z" -> material id. Pure data, no rendering.
+// This is the part a Godot importer will eventually mirror in GDScript.
+// ---------------------------------------------------------------------------
+function generateTree(p) {
+  const rng = makeRng(p.seed);
+  const voxels = new Map();
+  const key = (x, y, z) => `${x},${y},${z}`;
+  const set = (x, y, z, m) => {
+    const k = key(Math.round(x), Math.round(y), Math.round(z));
+    // Log wins over leaves if they ever overlap — trunk stays solid.
+    if (m === MAT_LOG || !voxels.has(k)) voxels.set(k, m);
+  };
+
+  // --- Trunk: walk upward, wandering a little for a natural lean ---------
+  const lean = p.lean / 100;       // 0..1
+  let cx = 0, cz = 0;
+  const trunkTop = [];             // remember trunk cells for branch origins
+  for (let y = 0; y <= p.trunkH; y++) {
+    // wander the trunk center slowly
+    cx += (rng() - 0.5) * lean * 0.9;
+    cz += (rng() - 0.5) * lean * 0.9;
+    // fill a disc of radius trunkR at this height
+    const r = p.trunkR;
+    for (let dx = -r; dx <= r; dx++)
+      for (let dz = -r; dz <= r; dz++)
+        if (dx * dx + dz * dz <= r * r) set(cx + dx, y, cz + dz, MAT_LOG);
+    trunkTop.push([cx, y, cz]);
+  }
+  const apex = trunkTop[trunkTop.length - 1];
+
+  // --- Branches: shoot a few logs diagonally out of the upper trunk ------
+  for (let b = 0; b < p.branches; b++) {
+    const start = trunkTop[Math.floor((0.5 + rng() * 0.5) * (trunkTop.length - 1))];
+    const ang = rng() * Math.PI * 2;
+    const up = 0.4 + rng() * 0.6;
+    const dir = [Math.cos(ang), up, Math.sin(ang)];
+    let [bx, by, bz] = start;
+    for (let s = 0; s < p.branchLen; s++) {
+      bx += dir[0]; by += dir[1]; bz += dir[2];
+      set(bx, by, bz, MAT_LOG);
+    }
+  }
+
+  // --- Canopy: fill a shape with leaves, centered above the apex ---------
+  const R = p.canopyR;
+  const stretch = p.canopyStretch / 100;             // vertical scale
+  const cy = apex[1] + R * 0.4;                        // canopy center height
+  const ccx = apex[0], ccz = apex[2];
+  const density = p.density / 100;
+  const rough = p.rough / 100;
+  const Rh = Math.max(1, R * stretch);                // half-height of canopy
+
+  for (let y = -Math.ceil(Rh); y <= Math.ceil(Rh); y++) {
+    for (let x = -R; x <= R; x++) {
+      for (let z = -R; z <= R; z++) {
+        // normalized distance from center (1.0 = on the surface)
+        const ny = y / Rh, nx = x / R, nz = z / R;
+        let d;
+        if (p.canopyShape === 'cone') {
+          // radius shrinks toward the top -> pine silhouette
+          const t = (y + Rh) / (2 * Rh);              // 0 bottom .. 1 top
+          const allowed = (1 - t);
+          const rad = Math.sqrt(nx * nx + nz * nz);
+          d = rad / Math.max(0.0001, allowed);
+        } else {
+          // sphere / ellipsoid / blob are all distance-from-center spheres,
+          // just with different vertical stretch + roughness applied below
+          d = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        }
+        // roughness: nibble the surface so it isn't a perfect ball
+        const wobble = (rng() - 0.5) * rough * 0.8;
+        if (d + wobble > 1.0) continue;
+        // density: punch holes so light reads through the canopy
+        if (rng() > density) continue;
+        set(ccx + x, cy + y, ccz + z, MAT_LEAVES);
+      }
+    }
+  }
+
+  return voxels;
+}
+
+// ---------------------------------------------------------------------------
+// RENDERING — turn the voxel Map into one InstancedMesh of unit cubes.
+// Flat-ish (Lambert) shading deliberately mimics the non-PBR voxel look.
+// ---------------------------------------------------------------------------
+const view = document.getElementById('view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0e1013');
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+camera.position.set(28, 26, 34);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 8, 0);
+
+scene.add(new THREE.HemisphereLight('#cfe3ff', '#2a2418', 0.9));
+const sun = new THREE.DirectionalLight('#fff4d6', 1.2);
+sun.position.set(20, 40, 15);
+scene.add(sun);
+
+// ground grid for scale
+const grid = new THREE.GridHelper(80, 80, 0x335533, 0x223322);
+scene.add(grid);
+
+const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+const cubeMat = new THREE.MeshLambertMaterial({ vertexColors: false });
+let mesh = null;
+let currentVoxels = null;
+
+function rebuildMesh(voxels) {
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.dispose?.(); }
+  const count = voxels.size;
+  mesh = new THREE.InstancedMesh(cubeGeo, cubeMat, count);
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+
+  const dummy = new THREE.Object3D();
+  const c = new THREE.Color();
+  let i = 0;
+  for (const [k, m] of voxels) {
+    const [x, y, z] = k.split(',').map(Number);
+    dummy.position.set(x, y, z);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+    // tiny per-voxel brightness jitter so faces read apart
+    const base = (m === MAT_LOG) ? COLOR_LOG : COLOR_LEAVES;
+    const j = 0.88 + ((Math.sin((x * 12.9 + y * 78.2 + z * 37.7)) * 43758.5) % 1 + 1) % 1 * 0.24;
+    c.copy(base).multiplyScalar(j);
+    mesh.setColorAt(i, c);
+    i++;
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  cubeMat.vertexColors = true;
+  scene.add(mesh);
+}
+
+// ---------------------------------------------------------------------------
+// PARAMS + UI WIRING
+// ---------------------------------------------------------------------------
+const ids = ['seed','trunkH','trunkR','lean','branches','branchLen',
+             'canopyR','canopyStretch','density','rough'];
+const el = {};
+ids.forEach(id => el[id] = document.getElementById(id));
+el.canopyShape = document.getElementById('canopyShape');
+
+function readParams() {
+  return {
+    seed:        +el.seed.value,
+    trunkH:      +el.trunkH.value,
+    trunkR:      +el.trunkR.value - 1,        // slider 1..5 -> radius 0..4
+    lean:        +el.lean.value,
+    branches:    +el.branches.value,
+    branchLen:   +el.branchLen.value,
+    canopyShape: el.canopyShape.value,
+    canopyR:     +el.canopyR.value,
+    canopyStretch: +el.canopyStretch.value,
+    density:     +el.density.value,
+    rough:       +el.rough.value,
+  };
+}
+
+function syncLabels() {
+  document.getElementById('seed-v').textContent = el.seed.value;
+  document.getElementById('trunkH-v').textContent = el.trunkH.value;
+  document.getElementById('trunkR-v').textContent = el.trunkR.value;
+  document.getElementById('lean-v').textContent = el.lean.value + '%';
+  document.getElementById('branches-v').textContent = el.branches.value;
+  document.getElementById('branchLen-v').textContent = el.branchLen.value;
+  document.getElementById('canopyR-v').textContent = el.canopyR.value;
+  document.getElementById('canopyStretch-v').textContent = el.canopyStretch.value + '%';
+  document.getElementById('density-v').textContent = el.density.value + '%';
+  document.getElementById('rough-v').textContent = el.rough.value + '%';
+}
+
+function regenerate() {
+  syncLabels();
+  const p = readParams();
+  currentVoxels = generateTree(p);
+  rebuildMesh(currentVoxels);
+  // stats
+  let logN = 0, leafN = 0;
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9,minZ=1e9,maxZ=-1e9;
+  for (const [k, m] of currentVoxels) {
+    const [x,y,z] = k.split(',').map(Number);
+    if (m === MAT_LOG) logN++; else leafN++;
+    minX=Math.min(minX,x);maxX=Math.max(maxX,x);
+    minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+    minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);
+  }
+  document.getElementById('stats').innerHTML =
+    `<b>${currentVoxels.size}</b> voxels &nbsp; (log <b>${logN}</b> · leaves <b>${leafN}</b>)<br>` +
+    `bounds <b>${maxX-minX+1} × ${maxY-minY+1} × ${maxZ-minZ+1}</b>`;
+}
+
+[...ids.map(i => el[i]), el.canopyShape].forEach(node =>
+  node.addEventListener('input', regenerate));
+
+document.getElementById('randomize').addEventListener('click', () => {
+  el.seed.value = 1 + Math.floor(Math.random() * 9999);
+  regenerate();
+});
+
+// ---------------------------------------------------------------------------
+// EXPORT — the bridge to Godot. Normalizes coords so the trunk base sits at
+// (0,0,0) with y up, then writes {size, params, voxels:[{x,y,z,m}]}.
+// ---------------------------------------------------------------------------
+document.getElementById('export').addEventListener('click', () => {
+  if (!currentVoxels) return;
+  let minX=1e9,minY=1e9,minZ=1e9,maxX=-1e9,maxY=-1e9,maxZ=-1e9;
+  for (const k of currentVoxels.keys()) {
+    const [x,y,z] = k.split(',').map(Number);
+    minX=Math.min(minX,x);minY=Math.min(minY,y);minZ=Math.min(minZ,z);
+    maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);maxZ=Math.max(maxZ,z);
+  }
+  const voxels = [];
+  for (const [k, m] of currentVoxels) {
+    const [x,y,z] = k.split(',').map(Number);
+    voxels.push({ x: x-minX, y: y-minY, z: z-minZ, m });
+  }
+  const out = {
+    format: 'mira-thal-voxel-tree',
+    version: 1,
+    note: 'm=10 log, m=11 leaves (VoxelMaterialRegistry ids). Trunk base at origin, +y up.',
+    params: readParams(),
+    size: [maxX-minX+1, maxY-minY+1, maxZ-minZ+1],
+    voxels,
+  };
+  const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `tree_seed${readParams().seed}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+// ---------------------------------------------------------------------------
+// RESIZE + RENDER LOOP
+// ---------------------------------------------------------------------------
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+function loop() {
+  requestAnimationFrame(loop);
+  controls.update();
+  renderer.render(scene, camera);
+}
+regenerate();
+loop();
+</script>
+</body>
+</html>

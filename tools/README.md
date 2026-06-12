@@ -8,6 +8,7 @@ Small Python scripts that implement the TTS pipeline described in
 | `strip_draft.py` | Turns a dialogue draft (`.md`) into a TTS-ready script (`.txt`). Deterministic. | TTS_PIPELINE §4 |
 | `render_bulk.py` | Renders TTS scripts to audio via ElevenLabs. Idempotent, hash-aware, cost-capped. | TTS_PIPELINE §6 |
 | `render_sfx.py` | Renders the SFX prompt tables to ElevenLabs Sound Effects candidates for manual review. Idempotent, hash-aware, cost-capped. | SFX_PROMPTS.md |
+| `voxel_tree_studio/` | In-browser Three.js sandbox for designing voxel-tree **shapes** (log/leaf voxels). Sliders → live preview → Export JSON for a future Godot importer. | `voxel_tree_studio/README.md` |
 
 ---
 
