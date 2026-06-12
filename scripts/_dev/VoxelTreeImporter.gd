@@ -54,8 +54,11 @@ static func validate(path: String) -> Dictionary:
 		push_error("[VoxelTreeImporter] not a JSON object: %s" % path)
 		return {}
 	var tree: Dictionary = parsed
-	if tree.get("format", "") != "mira-thal-voxel-tree":
-		push_error("[VoxelTreeImporter] unexpected format: %s" % str(tree.get("format")))
+	var fmt: String = str(tree.get("format", ""))
+	# Accept any mira-thal voxel asset (trees, rocks, ...) — the import path is
+	# identical: a list of {x,y,z,m} voxels written through VoxelEditManager.
+	if fmt != "mira-thal-voxel-tree" and fmt != "mira-thal-voxel-rock":
+		push_error("[VoxelTreeImporter] unexpected format: %s" % fmt)
 		return {}
 	if not (tree.get("voxels") is Array) or (tree["voxels"] as Array).is_empty():
 		push_error("[VoxelTreeImporter] no voxels in file")

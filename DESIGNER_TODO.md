@@ -803,11 +803,12 @@ Open questions that need an answer before their dependent systems can be built.
   movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
   Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
 
-- [ ] **Vegetation/tree voxel materials (ids 24–31) — bake the library + replace placeholder art**
-  The Voxel Tree Studio (`tools/voxel_tree_studio/`) emits a rich palette
-  (24 bark, 25 heartwood, 26 deadwood, 27 leaf_dark, 28 leaf_light, 29 grass,
-  30 grass_dry, 31 fern — chosen to avoid the native fluid models at 16–23).
-  These are **already wired in code with PLACEHOLDER tiles**:
+- [ ] **Vegetation/tree/rock voxel materials (ids 24–32) — bake the library + replace placeholder art**
+  The voxel studios emit a rich palette (24 bark, 25 heartwood, 26 deadwood,
+  27 leaf_dark, 28 leaf_light, 29 grass, 30 grass_dry, 31 fern, **32 moss** —
+  chosen to avoid the native fluid models at 16–23). Rocks otherwise reuse the
+  existing stone materials (1/7/9/12/14/15), so **only moss (32) is new** for
+  the rock studio. These are **already wired in code with PLACEHOLDER tiles**:
   - `.tres` resources in `assets/voxels/materials/` (bark/heartwood/deadwood/
     leaf_dark/leaf_light/grass_blade/grass_dry/fern_frond).
   - placeholder 16px source PNGs in `assets/voxels/texture_packs/default/source/`.

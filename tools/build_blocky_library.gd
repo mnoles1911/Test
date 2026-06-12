@@ -76,6 +76,7 @@ const MATERIAL_TILES: Dictionary = {
 	29: {"top": Vector2i(10, 1), "side": Vector2i(10, 1), "bottom": Vector2i(10, 1)},  # grass_blade
 	30: {"top": Vector2i(11, 1), "side": Vector2i(11, 1), "bottom": Vector2i(11, 1)},  # grass_dry
 	31: {"top": Vector2i(12, 1), "side": Vector2i(12, 1), "bottom": Vector2i(12, 1)},  # fern_frond
+	32: {"top": Vector2i(13, 1), "side": Vector2i(13, 1), "bottom": Vector2i(13, 1)},  # moss (rock cover)
 }
 
 # Material IDs that should NOT cull adjacent block faces. Leaves are

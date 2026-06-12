@@ -111,6 +111,7 @@ ATLAS_LAYOUT = {
     "grass_blade_all": (10, 1),
     "grass_dry_all":   (11, 1),
     "fern_frond_all":  (12, 1),
+    "moss_all":        (13, 1),   # rock cover (id 32) — placeholder
 }
 
 
@@ -148,6 +149,7 @@ MATERIAL_FACES = {
     29: {"all": "grass_blade_all"},
     30: {"all": "grass_dry_all"},
     31: {"all": "fern_frond_all"},
+    32: {"all": "moss_all"},
 }
 
 

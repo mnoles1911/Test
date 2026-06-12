@@ -9,6 +9,8 @@ Small Python scripts that implement the TTS pipeline described in
 | `render_bulk.py` | Renders TTS scripts to audio via ElevenLabs. Idempotent, hash-aware, cost-capped. | TTS_PIPELINE §6 |
 | `render_sfx.py` | Renders the SFX prompt tables to ElevenLabs Sound Effects candidates for manual review. Idempotent, hash-aware, cost-capped. | SFX_PROMPTS.md |
 | `voxel_tree_studio/` | Fork of ez-tree (MIT) that renders realistic trees as **cubic voxels** + exports game-ready JSON. Species presets, full dials, locks/randomizers, reference overlay, 6-connected (choppable) output. | `voxel_tree_studio/README.md` |
+| `voxel_rock_studio/` | SDF voxel **rock** generator (boulders/slabs/cliffs/spires/pebbles/piles). Uses existing stone materials + moss. Reference overlay + **Claude vision** dial-fit (browser API call). Shares `voxel_studio_common/`. | `voxel_rock_studio/README.md` |
+| `voxel_studio_common/` | Shared voxel-studio math: `noise.js` (simplex/Worley/FBM), `voxel_core.js` (packing, 6-connected connectivity, map→typed-array normalize). | — |
 
 ---
 
