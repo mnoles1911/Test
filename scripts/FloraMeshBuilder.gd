@@ -59,7 +59,14 @@ static func build_cross_quad(
 		# Cube-local (voxel-unit) mesh, matching the legacy bootstrap builder:
 		# convert metres -> voxel units and clamp to the unit cube, centred.
 		var v_per_m: float = voxels_per_metre
-		h = clampf(height_m * v_per_m, 0.1, 1.0)
+		# Tip clamped to 0.92 (NOT 1.0): the flora_sway shader reads
+		# fract(VERTEX.y) as the blade-local height after Zylann bakes this
+		# model into the chunk mesh. A tip landing exactly on the next
+		# integer voxel boundary (y = N+1.0) would fract to ~0 and lose its
+		# sway. Keeping it just under one voxel guarantees fract stays a
+		# clean 0..0.92 from base to tip. (Matches the shader's
+		# blade_local_height = 0.92 default.)
+		h = clampf(height_m * v_per_m, 0.1, 0.92)
 		hw = clampf(half_width_m * v_per_m, 0.05, 0.5)
 		cx = 0.5
 		cz = 0.5

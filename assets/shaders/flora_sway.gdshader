@@ -36,10 +36,12 @@ shader_type spatial;
 
 render_mode cull_disabled, diffuse_lambert, specular_disabled;
 
-// Peak horizontal sway of the blade TOP, in world metres. The base never
+// Peak horizontal sway of the blade TOP, in WORLD metres. The base never
 // moves (it's rooted in the ground); the sway scales up toward the tip so
-// the blade bends rather than slides.
-uniform float sway_amplitude_m : hint_range(0.0, 0.5) = 0.06;
+// the blade bends rather than slides. Honoured in world metres for BOTH
+// layers regardless of their model-space units (see the MODEL_MATRIX
+// scale recovery in vertex()).
+uniform float sway_amplitude_m : hint_range(0.0, 0.5) = 0.035;
 // Sway speed (radians/second of the primary sine). Lower = lazier breeze.
 uniform float sway_speed : hint_range(0.0, 8.0) = 1.6;
 // How quickly the sway phase changes across the ground (1/metre). Larger
@@ -48,38 +50,51 @@ uniform float sway_spatial_freq : hint_range(0.0, 2.0) = 0.35;
 // Roughness for the lit path (flora reads matte). Metallic is always 0.
 uniform float flora_roughness : hint_range(0.0, 1.0) = 1.0;
 
-// The fraction of blade height used as the "sway weight" reference. The
-// blade's own local height (model-space Y, 0 at root) drives the weight;
-// we read it from the vertex before the model transform. Cross-quad flora
-// is built rooted at y=0 with the tip at the top, so VERTEX.y in model
-// space is a clean 0..h height — perfect as the bend weight.
+// The blade's full local height, in the SAME model-space units the mesh
+// is built in, used to normalise the bend weight to a clean 0..1 along
+// the blade. Set per layer at injection:
+//   * real LOD0 flora (Zylann cube-local voxel units): 0.92 (the
+//     FloraMeshBuilder tip clamp — just under one voxel).
+//   * far-grass impostor (world metres): the blade height_m (~0.25).
+uniform float blade_local_height : hint_range(0.01, 4.0) = 0.92;
 
 void vertex() {
-	// Blade-local height as the bend weight: 0 at the rooted base, growing
-	// toward the tip. squaring biases the bend to the top third so the
-	// base stays planted (a real blade hinges near the ground).
-	float local_h = max(VERTEX.y, 0.0);
-	float weight = local_h * local_h;
+	// --- Blade-local height (the gotcha this whole rewrite fixes) -------
+	// VERTEX.y is NOT a clean 0..1 here. Zylann BAKES each blocky flora
+	// model into the chunk mesh at the voxel's position, so a blade sitting
+	// at chunk-local voxel y=27 has VERTEX.y ~= 27..28. The old code used
+	// weight = VERTEX.y^2, which at that altitude is ~750 — it flung blade
+	// tips ~6 m sideways (the "close grass flying everywhere" bug,
+	// 2026-06-12). fract() recovers the blade-local height: blades are
+	// rooted on integer voxel boundaries, so fract(VERTEX.y) is 0 at the
+	// base and rises to the tip. For the world-space impostor (VERTEX.y =
+	// 0..~0.25, well under 1) fract() is a no-op. Normalising by
+	// blade_local_height gives a clean 0..1 the bend weight squares.
+	float t_h = clamp(fract(VERTEX.y) / max(blade_local_height, 0.001), 0.0, 1.0);
+	float weight = t_h * t_h;  // squared: base planted, bend biased to the tip
 
-	// World-XZ of this blade's origin, used as the spatial phase so the
-	// whole field doesn't move in lockstep. MODEL_MATRIX[3].xyz is the
-	// instance/world origin — works for BOTH a normal MeshInstance and a
-	// MultiMesh instance (each instance carries its own MODEL_MATRIX).
+	// World-XZ of this blade's origin → spatial phase so the field ripples
+	// instead of moving as one slab. MODEL_MATRIX[3].xyz is the instance/
+	// chunk origin (works for MeshInstance and MultiMesh alike).
 	vec3 origin = MODEL_MATRIX[3].xyz;
 	float phase = (origin.x + origin.z) * sway_spatial_freq;
 
-	// Two summed sines on slightly different rates read as a natural,
-	// non-repeating breeze rather than a metronome. The second axis (Z)
-	// uses a phase-shifted copy so the blade traces a gentle ellipse, not
-	// a flat back-and-forth.
-	float t = TIME * sway_speed;
-	float swing_x = sin(t + phase) + 0.4 * sin(t * 2.3 + phase * 1.7);
-	float swing_z = cos(t * 0.85 + phase * 1.3);
+	// Two summed sines read as a natural, non-repeating breeze; the Z axis
+	// is phase-shifted so the tip traces a gentle ellipse, not a flat
+	// back-and-forth.
+	float tm = TIME * sway_speed;
+	float swing_x = sin(tm + phase) + 0.4 * sin(tm * 2.3 + phase * 1.7);
+	float swing_z = cos(tm * 0.85 + phase * 1.3);
 
-	// Apply in MODEL space (before MODELVIEW) so the bend is in world XZ
-	// regardless of camera. weight ties it to height; amplitude caps it.
-	VERTEX.x += swing_x * weight * sway_amplitude_m;
-	VERTEX.z += swing_z * weight * sway_amplitude_m * 0.6;
+	// Convert the WORLD-metre amplitude into THIS mesh's model space so the
+	// two layers (voxel-unit blocky flora at terrain scale 0.1, metre-space
+	// impostor at scale 1.0) sway by the same world distance. The length of
+	// a MODEL_MATRIX basis column is the model->world scale of that axis.
+	float m2w = max(length(MODEL_MATRIX[0].xyz), 0.0001);
+	float amp_model = sway_amplitude_m / m2w;
+
+	VERTEX.x += swing_x * weight * amp_model;
+	VERTEX.z += swing_z * weight * amp_model * 0.6;
 }
 
 void fragment() {

@@ -479,6 +479,12 @@ func _build_sway_material() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
 	mat.resource_name = "far_grass_sway"
+	# The impostor blade mesh is built in WORLD metres ~0.25 m tall (see
+	# _build_impostor_blade_mesh). Tell the sway shader that height so it
+	# normalises the bend weight to a clean 0..1 along the blade — matching
+	# how the real LOD0 flora is normalised (its uniform is 0.92 voxel).
+	# Same world-metre amplitude → near and far blades sway identically.
+	mat.set_shader_parameter("blade_local_height", 0.25)
 	return mat
 
 

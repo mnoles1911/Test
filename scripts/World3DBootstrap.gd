@@ -1452,6 +1452,12 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 		var _sm := ShaderMaterial.new()
 		_sm.resource_name = "flora_runtime_sway"
 		_sm.shader = _sway_sh
+		# This material rides the blocky chunk meshes, which are built in
+		# cube-local VOXEL units (a blade tip ~0.92 voxel). Tell the sway
+		# shader that height so it normalises the bend weight correctly —
+		# without it the shader would mis-scale the bend (see flora_sway's
+		# blade_local_height note; the impostor sets its own metre height).
+		_sm.set_shader_parameter("blade_local_height", 0.92)
 		flora_mat = _sm
 	else:
 		push_warning("[World3D][Flora] flora_sway.gdshader missing — flora renders without wind sway.")
