@@ -12,6 +12,26 @@ silhouette → **Export** a winner as JSON.
 3. When you like one, hit **⬇ Export JSON**. It downloads
    `tree_seed<N>.json`.
 
+## Reference-image → design loop
+
+The main workflow: design a tree to match a reference picture.
+
+1. **Send Claude a reference image** of a voxel tree (in chat).
+2. Claude saves it under `references/` and adds a **preset** to `presets.js` —
+   its read of the trunk/canopy translated into slider values, plus the image
+   path and notes.
+3. In the studio, pick that preset from the **Design preset** dropdown. It
+   loads the tree **and** ghosts the reference over the 3D render. Use the
+   **Overlay opacity** slider to fade the reference in/out and judge the match.
+4. Tell Claude what's off ("canopy too round", "trunk too tall") — Claude
+   adjusts the numbers in `presets.js`, you reload and re-compare.
+
+You can also **drag any image onto the view** (or use *Load image…*) to set a
+reference on the fly without a preset.
+
+- `presets.js` — saved designs (reference-backed param sets). Editable by hand.
+- `references/` — the reference images themselves.
+
 ## What you're looking at (and what you're NOT)
 
 - **Judge here:** overall shape, height, canopy density, silhouette.

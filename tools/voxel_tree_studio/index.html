@@ -74,6 +74,25 @@
   #stats { font-size: 11px; opacity: .7; margin-top: 14px; line-height: 1.6; }
   #stats b { color: var(--accent); }
   .hint { position: absolute; bottom: 10px; left: 12px; font-size: 11px; opacity: .4; }
+
+  /* Reference image overlay, ghosted over the 3D render for silhouette matching */
+  #ref-overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; pointer-events: none; opacity: 0; z-index: 5;
+    image-rendering: pixelated;
+  }
+  /* Drag-drop landing zone hint */
+  #view.dragging::after {
+    content: "Drop reference image"; position: absolute; inset: 12px; z-index: 10;
+    border: 2px dashed var(--accent); border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; color: var(--accent);
+    font-size: 18px; background: #8fbf6f18;
+  }
+  #ref-thumb {
+    width: 100%; border: 1px solid #000; border-radius: 4px; margin-bottom: 8px;
+    image-rendering: pixelated; display: none; background: #000;
+  }
+  #ref-name { font-size: 10px; opacity: .55; margin: 0 0 8px; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -81,6 +100,26 @@
   <div id="panel">
     <h1>🌳 Voxel Tree Studio</h1>
     <p class="sub">Tune shape, pick a silhouette, Export. Maps to log (10) + leaves (11) voxels for Zylann terrain.</p>
+
+    <div class="group">
+      <h2>Reference &amp; Presets</h2>
+      <label>Design preset
+        <select id="preset">
+          <option value="">— none —</option>
+        </select>
+      </label>
+      <img id="ref-thumb" alt="reference">
+      <p id="ref-name"></p>
+      <label>
+        <div class="row"><span>Overlay opacity</span><span class="val" id="refOpacity-v">0%</span></div>
+        <input type="range" id="refOpacity" min="0" max="100" value="0" step="1">
+      </label>
+      <div class="btns">
+        <button id="loadRef">📎 Load image…</button>
+        <button id="clearRef">✕ Clear</button>
+      </div>
+      <input type="file" id="refFile" accept="image/*" style="display:none">
+    </div>
 
     <div class="group">
       <h2>Seed</h2>
@@ -157,9 +196,15 @@
   </div>
 
   <div id="view">
-    <div class="hint">drag = orbit · scroll = zoom · right-drag = pan</div>
+    <img id="ref-overlay" alt="">
+    <div class="hint">drag = orbit · scroll = zoom · right-drag = pan · drop an image = reference</div>
   </div>
 </div>
+
+<!-- Design presets live in their own file so they can be edited without
+     touching this page, and so it works from file:// (no fetch/CORS). When
+     Claude reads a reference image, it adds an entry here. -->
+<script src="presets.js"></script>
 
 <script type="importmap">
 {
@@ -407,6 +452,86 @@ function regenerate() {
 document.getElementById('randomize').addEventListener('click', () => {
   el.seed.value = 1 + Math.floor(Math.random() * 9999);
   regenerate();
+});
+
+// ---------------------------------------------------------------------------
+// REFERENCE IMAGE + PRESETS
+// ---------------------------------------------------------------------------
+// The "reference-image -> design" loop:
+//   1. You send Claude a picture of a voxel tree.
+//   2. Claude reads it, estimates the slider values, and adds an entry to
+//      presets.js (params + the image path under references/).
+//   3. You pick it from the dropdown: it loads the tree AND ghosts the
+//      reference over the render so you can judge the match. Refine, repeat.
+// You can also drop any image straight onto the view to use as a reference.
+const overlay   = document.getElementById('ref-overlay');
+const refThumb  = document.getElementById('ref-thumb');
+const refName   = document.getElementById('ref-name');
+const refOpacity= document.getElementById('refOpacity');
+const presetSel = document.getElementById('preset');
+
+function setReference(src, name) {
+  if (src) {
+    overlay.src = src; refThumb.src = src;
+    refThumb.style.display = 'block';
+    refName.textContent = name || '';
+    if (+refOpacity.value === 0) { refOpacity.value = 45; } // reveal it
+  } else {
+    overlay.removeAttribute('src'); refThumb.removeAttribute('src');
+    refThumb.style.display = 'none'; refName.textContent = '';
+    refOpacity.value = 0;
+  }
+  applyOpacity();
+}
+function applyOpacity() {
+  overlay.style.opacity = (+refOpacity.value / 100).toString();
+  document.getElementById('refOpacity-v').textContent = refOpacity.value + '%';
+}
+refOpacity.addEventListener('input', applyOpacity);
+
+// Populate the dropdown from presets.js (window.PRESETS).
+const PRESETS = window.PRESETS || {};
+for (const [key, p] of Object.entries(PRESETS)) {
+  const opt = document.createElement('option');
+  opt.value = key; opt.textContent = p.label || key;
+  presetSel.appendChild(opt);
+}
+function applyPreset(key) {
+  const p = PRESETS[key];
+  if (!p) { setReference(null); return; }
+  // controls mirror the slider element ids one-to-one
+  for (const [id, v] of Object.entries(p.controls || {})) {
+    if (el[id] !== undefined) el[id].value = v;
+  }
+  setReference(p.reference || null, p.label || key);
+  regenerate();
+}
+presetSel.addEventListener('change', () => applyPreset(presetSel.value));
+
+// Manual image load (file picker)
+const refFile = document.getElementById('refFile');
+document.getElementById('loadRef').addEventListener('click', () => refFile.click());
+refFile.addEventListener('change', () => {
+  const f = refFile.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = e => setReference(e.target.result, f.name);
+  r.readAsDataURL(f);
+});
+document.getElementById('clearRef').addEventListener('click', () => {
+  presetSel.value = ''; setReference(null);
+});
+
+// Drag-and-drop an image onto the 3D view
+view.addEventListener('dragover', e => { e.preventDefault(); view.classList.add('dragging'); });
+view.addEventListener('dragleave', () => view.classList.remove('dragging'));
+view.addEventListener('drop', e => {
+  e.preventDefault(); view.classList.remove('dragging');
+  const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/'));
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => setReference(ev.target.result, f.name);
+  r.readAsDataURL(f);
 });
 
 // ---------------------------------------------------------------------------
