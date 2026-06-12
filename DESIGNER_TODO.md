@@ -1127,10 +1127,13 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
   stone into the same pond — it sinks. Tune per-material
   `density_relative_to_water` in assets/voxels/materials/*.tres to
   taste (< 1 floats).
-- Tree-sever acceptance (PR 6): chop a tall tree at the base — ONE
-  'spawned cluster' line in Output and the whole tree tips as one
-  piece (previously fell in slices). Tune `sever_follow_max_height_m`
-  on VoxelGravityManager if any authored tree exceeds 12 m.
+- Tree-sever + buoyancy acceptance (PR 6/7) — **BLOCKED 2026-06-12: no
+  trees exist in World3D yet.** Once trees are authored (log + leaves
+  voxels), chop one at the base: expect ONE 'spawned cluster' line and
+  the whole tree tipping as one piece; fell one into a pond: the log
+  floats and rafts, stone sinks. Tune `sever_follow_max_height_m` on
+  VoxelGravityManager if any authored tree exceeds 12 m. The logic is
+  gated headless (`sever`, `gravity` selectors) — this is feel-only.
 
 ## Water polish (PRs 3-5, 2026-06-10)
 
