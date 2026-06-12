@@ -999,7 +999,15 @@ const _DISTANT_ALBEDO_TINT: float = 0.80   # must match albedo_tint default in d
 # fine at their mean (rock has little inter-texel shadow), so this applies to
 # vegetation only. Tune toward 1.0 if the skirt goes too dark, toward 0.7 if
 # the seam (lighter skirt) persists.
-const _DISTANT_GRASS_RENDER_MATCH: float = 0.82
+const _DISTANT_GRASS_RENDER_MATCH: float = 0.88
+
+# Fraction of the grass colour taken from the DIRT SIDE tile rather than the
+# green TOP. A grass voxel shows green on top, brown dirt on its sides; the
+# blocky terrain reads as a blend of both, so the smooth skirt must too or it
+# looks too light/green. ~0.45 = the side fraction a typical over-shoulder
+# camera sees across rolling hills. Raise toward 0.6 for browner distance,
+# lower toward 0.3 for greener.
+const _DISTANT_GRASS_SIDE_WEIGHT: float = 0.45
 
 func _configure_distant_palette(distant: Node) -> void:
 	if distant == null or not distant.has_method("set_palette"):
@@ -1011,7 +1019,18 @@ func _configure_distant_palette(distant: Node) -> void:
 		return
 	# Tile coords from _MATERIAL_TILES (the blocky terrain's own table):
 	#   grass(3).top=(2,0)  stone(1).top=(0,0)  sand(4).top=(4,0)  snow(13).top=(8,0)
-	var grass_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[3]["top"])
+	# Grass colour is NOT just the green TOP tile. A grass voxel is green on
+	# top but brown DIRT on its sides (material 3: top (2,0) green, side (3,0)
+	# dirt), so the blocky terrain you actually SEE at any viewing angle is a
+	# blend of green tops and brown sides — markedly darker and browner than
+	# pure top-green. The smooth skirt has no sides, so sampling only the top
+	# made it read as a too-light pure green (designer caught this live,
+	# 2026-06-12). Blend top + side by the fraction of side faces a typical
+	# over-shoulder camera sees across rolling terrain.
+	var grass_top := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[3]["top"])
+	var grass_side := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[3]["side"])
+	var grass_mean := grass_top.lerp(grass_side, _DISTANT_GRASS_SIDE_WEIGHT)
+	# Stone/sand/snow have matching top+side tiles, so top alone is fine.
 	var stone_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[1]["top"])
 	var sand_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[4]["top"])
 	var snow_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[13]["top"])
