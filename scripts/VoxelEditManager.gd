@@ -127,17 +127,25 @@ const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) * VoxelScale.VOXEL
 # Configuration (tunable in the Inspector once registered)
 # ============================================================
 
-@export var voxels_per_frame: int = 200000
-# Soft per-frame budget for the voxel edit queue. With one 2m
-# explosive sphere at 6 vox/m costing ~7300 voxels, this lets
-# ~10 sphere edits drain in a single physics frame, so rapid
-# explosive throws don't bottleneck on the queue.
+@export var voxels_per_frame: int = 926000
+# Soft per-frame budget for the voxel edit queue, counted in VOXELS.
 #
-# (The earlier 256 was way too low — it forced one sphere per
-# frame, which combined with rapid throws and Zylann's mesh
-# rebuild timing produced the "spam-thrown explosives don't
-# carve" bug. With this much higher budget, queued edits drain
-# the same physics frame they're submitted.)
+# R2 retune (2026-06-12, 10 vox/m pivot): raised 200000 → 926000 (×4.63).
+# This is a genuine count of voxels-started-per-frame, NOT a time budget,
+# so it must scale with how many voxels a same-PHYSICAL-SIZE carve now
+# writes. At 10 vox/m a cube of given metre size holds (10/6)³ ≈ 4.63× the
+# voxels it did at 6 vox/m (a 2 m explosive sphere that was ~7300 voxels
+# is now ~34000). Without the bump the same handful of explosive throws
+# would suddenly take ~4.6× as many frames to drain — the old "spam-thrown
+# explosives don't carve" bug, back again. 200000 × 4.63 ≈ 926000 keeps
+# the SAME ~10-spheres-per-frame drain feel as before the pivot. The
+# matching cost-side fix is in _estimate_voxel_cost (the per-m³ multiplier
+# also went 216 → 1000), so budget and cost stay in the same units.
+#
+# (The original 256 was way too low — it forced one sphere per frame,
+# which combined with rapid throws and Zylann's mesh rebuild timing
+# produced the carve bug above. With this much higher budget, queued
+# edits drain the same physics frame they're submitted.)
 #
 # A single command can still exceed the budget in one go — the
 # budget gates how many commands we *start* per frame, not how
@@ -1164,9 +1172,13 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 	# small over-estimate just means we're conservative about stutter,
 	# which is the safer direction.
 	#
-	# The 216 multiplier is voxels-per-cubic-meter at our scale:
-	# 6 vox/m on each axis = 6^3 = 216 voxels per m^3.
-	const VOXELS_PER_CUBIC_METER: float = 216.0
+	# The multiplier is voxels-per-cubic-meter at our scale: the linear
+	# scale cubed (10^3 = 1000 at 10 vox/m; was 216 = 6^3). Derived from
+	# VoxelScale so it can never drift from the grid again. Kept in
+	# lockstep with the voxels_per_frame budget above, which was scaled
+	# by the same 4.63× at the R2 retune (2026-06-12).
+	const VOXELS_PER_CUBIC_METER: float = VoxelScale.VOXELS_PER_METER \
+			* VoxelScale.VOXELS_PER_METER * VoxelScale.VOXELS_PER_METER
 	match cmd["type"]:
 		"sphere":
 			# Sphere volume = 4/3 * pi * r^3.

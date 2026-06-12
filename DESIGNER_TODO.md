@@ -1182,3 +1182,39 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
   (see design/COPPER_ISLES_BAKE_NOTES.md).
 - **Expect slower streaming this build** — perf retune is the next
   phase (R2); judge feel, not framerate, until it lands.
+
+## 10cm voxel re-architecture — R2 acceptance (streaming/LOD retune, 2026-06-12)
+
+R2 retuned streaming + LOD for the 10 vox/m scale: blocky terrain band
+~86 m (view_distance 864 vox, lod_count 4 -> 5), DistantTerrain inner
+cull 130 -> 100 m, water/edit/gravity per-frame budgets scaled for the
+~4.63x denser voxel grid. The following are FEEL + PROFILER checks the
+designer runs in the editor (the headless harness only covers data/logic):
+
+- **Profiler budget capture (the gate):** in `scripts/Profiler.gd` set
+  `capture_on_startup = true`, F6 World3D, then run the **standard
+  route — sprint the coastline for 60 s** (the same route used for the
+  2026-05-13 baseline). On the RX 7800 XT the capture must show **median
+  frame < 5 ms**, **p99 < 16 ms**, and **no streaming spike > 50 ms**.
+  Flip `capture_on_startup` back to false afterward. Drop the capture
+  JSON into `design/captures/` and analyse it with
+  `tools/_analyze_capture.py` (the p50/p99/spike recipe is also in
+  `design/PROFILER_AND_DIAGNOSTICS.md`).
+- **If the budget FAILS — the 640-voxel retreat dial:** set
+  `World3DBootstrap.terrain_view_distance_voxels` from 864 to **640**
+  (~64 m blocky band, ~45% fewer streamed chunks) AND nudge
+  `DistantTerrainManager.inner_cull_radius` from 100 to ~75 m so the
+  overlap band stays gap-free. Re-capture; report which value held.
+- **F12 clipbox overlay — confirm you don't out-walk the loader:** tick
+  "Diag Enabled" on the World3DBootstrap node, press F12, sprint a long
+  straight line. The player must stay inside the streamed clipbox — no
+  trailing edge of unloaded terrain catching up to Roland. If it lags,
+  that's the retreat-dial signal too.
+- **F11 LOD-band shader — eyeball ring placement:** press F11 and walk;
+  confirm the green LOD0 disc stays centred on the player and the
+  coloured bands step outward at roughly the expected radii (LOD0 ~12.8 m,
+  doubling each ring). Mis-centred bands = a viewer-offset regression.
+- **Terrain collision ends at 12.8 m (known, not a bug):** projectiles /
+  AI beyond ~12.8 m have no terrain collision at this scale. Don't file
+  it — the fallback is a separate logged follow-up
+  (`design/3D_VOXEL_MIGRATION.md` "10 vox/m hard constraint").

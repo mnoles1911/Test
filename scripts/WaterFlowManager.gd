@@ -200,13 +200,23 @@ const WATER_FILL_CELLS_PER_TICK: int = 12
 # leave a cave half-full or holey.
 
 
-const FINITE_CELL_UPDATES_PER_TICK: int = 256
+const FINITE_CELL_UPDATES_PER_TICK: int = 640
 # THE FINITE-SIM DIAL — max ledger cells stepped per 4 Hz tick. Same
 # philosophy as WATER_FILL_CELLS_PER_TICK: spilled cells stay active
 # and are processed next tick (lowest first), so a low value just slows
 # the collapse, it can never lose water. Clamped under the
-# _MAX_FLOW_BUDGET_PER_TICK write ceiling by construction (each stepped
-# cell queues at most a handful of writes).
+# _MAX_FLOW_BUDGET_PER_TICK write ceiling (4096) by construction (each
+# stepped cell queues at most a handful of writes), so 640 is well inside.
+#
+# R2 retune (2026-06-12, 10 vox/m pivot): raised 256 → 640. A water
+# surface of the same PHYSICAL area is now made of ~2.8× as many voxel
+# cells (cell count over a 2D surface scales with (10/6)² ≈ 2.78), so the
+# same-sized pond/lake presents ~2.8× the ledger cells to step. At the old
+# 256 the visible collapse of a same-size body would feel ~2.8× slower
+# than it did pre-pivot; 256 × 2.78 ≈ 712, rounded down to 640 to keep
+# headroom under the per-tick write ceiling. Correctness is unchanged at
+# any value (cells just carry to the next tick) — this only restores the
+# pre-pivot FEEL of how fast water settles over a given physical area.
 
 var _finite: RefCounted = FiniteWaterCore.new()
 # The finite-water ledger sim. ITS DICTIONARY IS THE AUTHORITY for all

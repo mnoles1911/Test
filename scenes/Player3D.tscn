@@ -236,9 +236,20 @@ current = true
 ;     streaming cost; a small coarse annulus past 1024 voxels is
 ;     tolerable, the 1024-2700 one was not.
 ;
+;   1200 voxels (~120 m): R2 retune (2026-06-12, 10 vox/m pivot).
+;     Zylann streams the MIN of this viewer's view_distance AND the
+;     terrain-level cap (World3DBootstrap.terrain_view_distance_voxels,
+;     now 864 vox). This viewer MUST stay ABOVE that terrain cap or it
+;     would become the gate and silently shrink the blocky band below
+;     the intended ~86 m. 1200 keeps a ~336-voxel (~34 m) margin so the
+;     terrain cap is always the one in control. (At 10 vox/m, 1200 vox
+;     is ~120 m — much shorter in metres than the old 1100 vox/~183 m
+;     reading, which assumed the 6 vox/m scale.) Raise the TERRAIN cap,
+;     not this, to grow the blocky band — this only has to stay above it.
+;
 ; Raise in the F1 DebugOverlay "View Distance" sub-view if you want
 ; more visible distance (at the cost of streaming load).
-view_distance = 1100
+view_distance = 1200
 
 [node name="EditToolHandler" type="Node3D" parent="."]
 ; Handles "swing tool, edit voxel" input. Reads the equipped weapon

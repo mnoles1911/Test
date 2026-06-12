@@ -16,8 +16,9 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 #
 # What this is for in plain English:
 #
-#   The blocky Zylann voxel terrain only reaches a few hundred metres
-#   around the player (the editable "near band"). Everything past that is
+#   The blocky Zylann voxel terrain only reaches ~86 m around the player
+#   (the editable "near band"; R2 / 10 vox/m — was a few hundred metres at
+#   the old 6 vox/m scale). Everything past that is
 #   drawn by this manager: a ring of smooth heightmesh chunks, built in
 #   C++ by DistantTerrainMesher from the world generator's height
 #   function, that follows the player. It replaces the old baked, static
@@ -52,10 +53,20 @@ const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 ## Half-extent, in chunks, of each LOD ring's square block around the player.
 @export var ring_half_extent: int = 2
 ## No distant chunk renders fully inside this radius — the blocky band.
-## ~130 m sits a touch inside the ~183 m blocky band (VoxelViewer
-## view_distance 1100) so the smooth mesh overlaps the band edge with no
-## gap, and well outside any range the player can dig (no dig-through).
-@export var inner_cull_radius: float = 130.0
+##
+## R2 retune (2026-06-12, 10 vox/m pivot): the blocky terrain band is now
+## ~86 m (World3DBootstrap terrain_view_distance_voxels = 864 vox at
+## 10 vox/m), NOT the old ~183 m. This radius was 130 m — which at the new
+## scale would sit ~44 m OUTSIDE the blocky band, leaving a "doughnut" of
+## bare nothing between where the blocky terrain ends (~86 m) and where the
+## smooth mesh is allowed to start (130 m). Pulled in to 100 m: it now sits
+## ~14 m INSIDE the ~86 m blocky band edge, giving a modest overlap band
+## (the blocky terrain wins the depth test there — the smooth mesh is baked
+## ~1.5 m low) and NO gap. Still far outside any range the player can dig
+## (the LOD0 collision/dig ring is only 12.8 m), so no dig-through.
+## If the 640-voxel retreat dial is pulled in World3DBootstrap (blocky band
+## shrinks to ~64 m), drop this to ~75 m to keep the same ~10 m overlap.
+@export var inner_cull_radius: float = 100.0
 ## Hard safety cap on live chunk count (a gap-causing valve; sized never to hit).
 @export var max_live_chunks: int = 220
 ## Chunk meshes built per frame (budgeted so a boundary crossing never hitches).

@@ -124,6 +124,10 @@ func _process(delta: float) -> void:
 
 Categories: `WORLD WATER WEATHER PHYS OTHER`.
 
+### Terrain collision ends 12.8 m out (10 vox/m, R2)
+
+Zylann caps `lod_distance` at 128 voxels and terrain collision is LOD0-only (`collision_lod_count = 0`), so **terrain collision exists only within ~12.8 m of the player** (128 vox × the 1/10 terrain scale; was ~21.3 m at the old 6 vox/m). Projectiles, thrown spears, and AI agents that travel beyond that ring have **no terrain to collide with** — they pass through hills and floors out there. Mitigation (a `VoxelViewer` or raycast-vs-generator fallback for long-lived projectiles) is a **logged follow-up — do NOT build it** as part of unrelated work. See `design/3D_VOXEL_MIGRATION.md` "10 vox/m hard constraint".
+
 ### Other essentials
 
 - `VoxelLodTerrain.material` overrides every per-cube `material_override_0` — leave null for textured cubes.

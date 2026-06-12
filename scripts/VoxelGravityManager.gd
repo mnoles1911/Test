@@ -57,8 +57,12 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 
 @export var max_analysis_side_m: float = 8.0
 # Hard cap on the bubble's side length. Even very large blasts won't
-# scan more than this. 8 m at 6 vox/m = 48 voxels per side, ~110k
-# bubble volume.
+# scan more than this. The side is in METRES so it does NOT change at
+# the 10 vox/m pivot — but the VOXEL volume inside it did: 8 m at
+# 10 vox/m = 80 voxels per side = ~512k bubble voxels (was 48/side,
+# ~110k at 6 vox/m — a 4.63× read cost). The bulk-read path
+# (use_bulk_read, one C++ copy) absorbs this; it was profiled in the
+# R2 retune and stays a single bounded read, not a per-frame budget.
 
 @export var use_bulk_read: bool = true
 # Use Zylann's VoxelTool.copy() to read the bubble in one C++ call
@@ -1146,7 +1150,9 @@ func _run_cpp_partition(
 		for c in cluster_counts:
 			# Rebuild bubble-local Dictionary[Vector3i, packed] for
 			# _handle_cluster. Cluster sizes are capped at
-			# max_cluster_voxels (4096) — rebuild cost is bounded.
+			# max_cluster_voxels (16384 since R1 — was 4096 at 6 vox/m;
+			# raised 4× so same-physical-size trees still fall at 10 vox/m)
+			# — rebuild cost is bounded.
 			var cluster_voxel_dict: Dictionary = {}
 			for _i in range(c):
 				cluster_voxel_dict[Vector3i(

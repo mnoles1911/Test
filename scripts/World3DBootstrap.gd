@@ -40,21 +40,32 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 # in Y to a realistic surface slab makes Zylann never even request
 # chunks outside that band — pure win.
 #
-# Units are VOXEL coordinates (not world metres). With the canonical 1/6
-# terrain scale, voxel Y * (1/6) = world Y metres.
+# Units are VOXEL coordinates (not world metres). At the 10 vox/m scale,
+# voxel Y × (1/10) = world Y metres.
+#
+# === Zylann bounds-snapping constraint (R2, 2026-06-12) ===
+# Zylann does NOT use these numbers verbatim. It rounds voxel_bounds out
+# to the nearest multiple of (mesh_block_size << (lod_count - 1)) so the
+# whole LOD octree tiles cleanly. With mesh_block_size = 32 and the R2
+# lod_count = 5 that quantum is 32 << 4 = 512 voxels. It SNAPS silently —
+# it does NOT error — verified headlessly: requesting -352..832 came back
+# as actual y = -512..1024 in the property dump. We therefore set the
+# defaults to the snapped values directly so the Inspector / readback and
+# the real streamed bounds agree (no surprise 17 m of extra dig depth):
+#   floor   voxel Y -512 = -51.2 m world (digging room below sea floor)
+#   ceiling voxel Y 1024 = 102.4 m world (headroom above any peak)
+#   span 1536 voxels = 3 × 512 — exactly three LOD quanta, valid as-is.
 #
 # Mira's cubic generator at 10 vox/m: sea level voxel Y 120 (= 12 m
 # world); macro noise centred around offset 100 with +/-167 swing; max
-# ground rarely above voxel Y ~300. The defaults below give:
-#   floor   voxel Y -352 = -35 m world (digging room below sea floor)
-#   ceiling voxel Y +832 =  83 m world (headroom above any peak)
-# Both are multiples of mesh_block_size=32 so the clamp lands on block
-# boundaries. (Old 6 vox/m values were -200..+500.)
-# Bump `terrain_voxel_y_min` lower if a player wants to dig deeper
-# below the sea floor; bump `terrain_voxel_y_max` higher if a new
-# generator tuning pushes peaks past 83 m world.
-@export var terrain_voxel_y_min: int = -352
-@export var terrain_voxel_y_max: int = 832
+# ground rarely above voxel Y ~300, well under the 1024 ceiling.
+#
+# If you change these, keep BOTH bounds on a 512-voxel multiple (and the
+# span a 512-voxel multiple) or Zylann will quietly snap them wider than
+# you asked. Re-derive the quantum if lod_count or mesh_block_size change:
+# it is always mesh_block_size << (lod_count - 1).
+@export var terrain_voxel_y_min: int = -512
+@export var terrain_voxel_y_max: int = 1024
 
 # Terrain shadow casting. Default OFF (2026-05-25 streaming-throughput
 # probe). Every streamed VoxelLodTerrain mesh chunk submitting to the
@@ -68,22 +79,46 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 
 # Terrain-level view_distance cap (voxels). Zylann uses the MIN of every
 # VoxelViewer's view_distance AND this terrain-level cap to decide what
-# streams. The Player3D VoxelViewer is at 1100 vox; this terrain-level
-# cap is the hard limit that gates them all.
+# streams. The Player3D VoxelViewer is at 1200 vox (R2); this terrain-
+# level cap is the hard limit that gates them all.
 #
-# Back to 512 vox (~85 m) on 2026-05-26 after the Option A pivot —
-# this is Zylann's own default and the value that paired with the
-# original lod_count=4 across the project history. Sized for
-# lod_count=4's LOD pyramid: LOD0 (0-21 m), LOD1 (21-43 m),
-# LOD2 (43-85 m) all fit cleanly inside this radius; LOD3 only
-# barely streams. DistantTerrain smooth heightmesh covers everything
-# past 85 m out to the vista.
+# === R2 retune (2026-06-12, the 10 vox/m pivot) ===
+# The world re-architected from 6 to 10 voxels/metre. At the same VOXEL
+# numbers a view_distance is now physically ~40% smaller in METRES
+# (512 vox was 85 m at 6 vox/m; the same 512 is only 51 m at 10 vox/m).
+# The designer wants to KEEP the ~85 m of full-detail blocky terrain
+# that the world looked right with — so the value goes UP in voxels to
+# hold the metre distance roughly constant:
 #
-# Bump up only if a vista absolutely needs more blocky terrain at
-# the cost of streaming load. Chunk count scales with view_distance²
-# — 720 vs 512 is ~2× chunks, which was tolerable at lod_count=4
-# (the LOD pyramid thins the outer rings) but blew up at lod_count=1.
-@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 512
+#   864 voxels × (1 / 10 vox/m) = ~86 m of blocky terrain.  (was 512/85)
+#
+# Sized for the NEW lod_count=5 LOD pyramid (10 vox/m, lod_distance
+# capped at 128 vox = 12.8 m per shell):
+#   LOD0  0 – 12.8 m
+#   LOD1  12.8 – 25.6 m
+#   LOD2  25.6 – 51.2 m
+#   LOD3  51.2 – 102.4 m
+#   LOD4  102.4 – 204.8 m
+# So 86 m of view_distance lands inside the LOD3 band — the outer rings
+# thin the chunk count properly (each ring covers 4× the area at half
+# the resolution). That is exactly why lod_count went 4 → 5: at the old
+# lod_count=4 the LOD3 shell would have been the OUTERMOST ring and 86 m
+# of terrain would have streamed a thick coarse annulus with no thinner
+# ring beyond it. DistantTerrain smooth heightmesh covers everything
+# past ~86 m out to the vista.
+#
+# RETREAT DIAL (read this if the perf gate fails): if the F3 profiler
+# capture on the standard coastline-sprint route blows the budget
+# (median > 5 ms, p99 > 16 ms, or any streaming spike > 50 ms on the
+# RX 7800 XT), drop this to 640 voxels (~64 m of blocky terrain) and
+# nudge DistantTerrainManager.inner_cull_radius down to match (~75 m).
+# That trades ~22 m of the near blocky band for ~45% fewer streamed
+# chunks — chunk count scales with view_distance² (640²/864² ≈ 0.55).
+#
+# Bump ABOVE 864 only if a vista absolutely needs more blocky terrain
+# at the cost of streaming load — chunk count scales with the square
+# of this value, so each step up is expensive.
+@export_range(96, 2400, 16) var terrain_view_distance_voxels: int = 864
 
 
 # =============================================================
@@ -336,18 +371,42 @@ func _ready() -> void:
 		print("[World3D] terrain.lod_distance set to 128.0 (actual=%s)" % terrain.get("lod_distance"))
 	# NOTE: lod_distance + secondary_lod_distance are both HARD-CAPPED at
 	# 128 by Zylann — re-confirmed for the CLIPBOX streaming system on
-	# 2026-05-22 (a sweep up to 2048 all clamped to 128). The LOD0 ring is
-	# therefore fixed at ~21 m world (128 voxels x the 1/6 terrain scale);
-	# the way to keep the near band crisp is FAST streaming (a tight
-	# view_distance matched to the LOD coverage), not a bigger ring.
+	# 2026-05-22 (a sweep up to 2048 all clamped to 128). At the new
+	# 10 vox/m scale the LOD0 ring is therefore fixed at ~12.8 m world
+	# (128 voxels × the 1/10 terrain scale; it was ~21 m at the old
+	# 6 vox/m). The way to keep the near band crisp is FAST streaming
+	# (a tight view_distance matched to the LOD coverage), not a bigger
+	# ring — the ring radius cannot be raised past this cap.
 	#
-	# lod_count: 4 — the proven good-perf LOD baseline (2026-05-26
-	# session conclusion). Full pivot history one-line:
+	# lod_count: 5 — RAISED 4 → 5 in the R2 retune (2026-06-12, the
+	# 10 vox/m pivot). WHY: each LOD shell is now only 12.8 m wide (the
+	# capped lod_distance × the smaller voxel size), so it takes one MORE
+	# ring to cover the same metre distance the world looked right with.
+	# The pyramid at 10 vox/m, lod_distance=128 vox, is:
+	#   LOD0  0 – 12.8 m   (full detail + the only band with collision)
+	#   LOD1  12.8 – 25.6 m
+	#   LOD2  25.6 – 51.2 m
+	#   LOD3  51.2 – 102.4 m
+	#   LOD4  102.4 – 204.8 m
+	# The terrain view_distance of 864 vox (~86 m) lands inside LOD3, so
+	# with 5 LODs the outer rings thin properly (each ring covers 4× the
+	# area at half the resolution) and there is always a coarser ring
+	# beyond the view_distance edge — no thick coarse annulus, which is
+	# what a 4-LOD pyramid would have left at this distance. DistantTerrain
+	# smooth heightmesh covers everything past ~86 m out to the vista.
+	#
+	# Bounds note: Zylann requires the terrain's voxel_bounds Y-span be a
+	# multiple of (mesh_block_size << (lod_count - 1)). With mesh_block_size
+	# = 32 and lod_count = 5 that is 32 << 4 = 512 voxels. The Y clamp
+	# below (terrain_voxel_y_min / _max) is sized to satisfy this — see
+	# the @export comment at the top of the file.
+	#
+	# Pivot history one-line (now superseded by the R2 retune above):
 	#   lod_count=4 (good perf, cascade pops) -> 1+vd=720 (no pops,
 	#   FPS 20, z.det 5.7s spikes) -> 2+vd=720 (rescued perf, designer
 	#   disliked LOD1) -> 1+vd=480 (tighter bubble, perf still bad) ->
-	#   THIS: back to 4+vd=512 (the original known-good config) PLUS
-	#   the session's foundational fixes still in place:
+	#   4+vd=512 (the 6 vox/m known-good config) -> THIS: 5+vd=864 for
+	#   the 10 vox/m pivot. The session's foundational fixes still hold:
 	#     - VoxelViewer-direction fix (a76d3ae): chunks ahead of the
 	#       player are now correctly prioritized, regardless of body
 	#       rotation. This was the root cause of "outwalk the streamer"
@@ -362,8 +421,8 @@ func _ready() -> void:
 	#
 	# Enforced here because the editor strips .tscn LOD values on save.
 	if "lod_count" in terrain:
-		terrain.set("lod_count", 4)
-		print("[World3D] terrain.lod_count set to 4 (LOD baseline; actual=%s)" % terrain.get("lod_count"))
+		terrain.set("lod_count", 5)
+		print("[World3D] terrain.lod_count set to 5 (R2 10 vox/m pyramid; actual=%s)" % terrain.get("lod_count"))
 	# voxel_bounds Y-clamp: restrict the terrain to a realistic surface
 	# slab so Zylann doesn't stream / generate / EmissiveLightManager-scan
 	# enormous volumes of buried rock. See the @export comment at the top
