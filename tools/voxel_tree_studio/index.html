@@ -58,6 +58,8 @@
   .hint { position:absolute; bottom:10px; left:12px; font-size:11px; opacity:.4; }
   #panelToggle { position:absolute; top:10px; right:10px; z-index:11; display:none; width:auto; flex:none;
     background:#2a3138cc; border:1px solid #000; border-radius:6px; padding:8px 12px; font-size:16px; color:var(--ink); cursor:pointer; }
+  #humanToggle { position:absolute; top:10px; left:10px; z-index:11; width:auto; flex:none; background:#2a3138cc; border:1px solid #000; border-radius:6px; padding:8px 12px; font-size:13px; color:var(--ink); cursor:pointer; }
+  #humanToggle.on { background:var(--accent); color:#14210a; }
 
   /* Mobile / narrow: stack the panel above the canvas; toggle to hide it. */
   @media (max-width: 760px) {
@@ -125,6 +127,7 @@
 
   <div id="view">
     <img id="ref-overlay" alt="">
+    <button id="humanToggle" title="Toggle 1.8 m human for scale">🧍 Scale</button>
     <button id="panelToggle" title="Show/hide panel">☰</button>
     <div class="hint">drag = orbit · pinch = zoom · drop image = reference</div>
   </div>
@@ -382,7 +385,10 @@ function updateHuman(sizeVox) {
   if (on) { placeFigureBeside(human, sizeVox); if (!humanShown) { scene.add(human); humanShown = true; } }
   else if (humanShown) { scene.remove(human); humanShown = false; }
 }
-document.getElementById('showHuman').addEventListener('change', () => { if (lastExport) updateHuman(lastExport.stats.sizeVox); });
+const showHumanEl = document.getElementById('showHuman'), humanToggle = document.getElementById('humanToggle');
+function syncHuman() { humanToggle.classList.toggle('on', showHumanEl.checked); if (lastExport) updateHuman(lastExport.stats.sizeVox); }
+showHumanEl.addEventListener('change', syncHuman);
+humanToggle.addEventListener('click', () => { showHumanEl.checked = !showHumanEl.checked; syncHuman(); });
 
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
 // Per-voxel color comes from InstancedMesh.instanceColor (setColorAt). Do NOT
