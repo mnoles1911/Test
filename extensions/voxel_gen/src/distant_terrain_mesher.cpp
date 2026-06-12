@@ -1,6 +1,7 @@
 #include "distant_terrain_mesher.h"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/property_info.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
@@ -23,8 +24,18 @@ namespace {
 // here, because the streaming system meshes each LOD ring at a different
 // spacing. The parity harness passes 12.0 to match SkirtBaker.QUAD_SIZE_M.
 const double Y_OFFSET_DOWN_M = 1.5;
-const double SLOPE_TO_ROCK_THRESHOLD = 0.35;
-const double SLOPE_TO_ROCK_BLEND_RANGE = 0.30;
+// Slope-to-rock thresholds, in DIMENSIONLESS rise-over-run (Δheight in
+// metres per metre of horizontal travel — see compute_slope_at). A flat
+// plain is 0; a 45° hillside is 1.0; a vertical cliff is huge.
+//   * grassy hills stay grass up to ~0.7 rise/run (a steep but walkable
+//     slope, ~35°), so a normal rolling landscape paints grass, NOT rock.
+//   * past ~0.7 we blend toward rock over a 0.6-wide band, so only genuine
+//     cliff faces (>= ~1.3 rise/run, steeper than 50°) read as bare rock.
+// (Replaces the old 0.35 / 0.30 pair, which was tuned for an INTEGER
+//  voxel-step slope and — at 10 vox/m — painted essentially the whole
+//  skirt rock-grey because any >=1-voxel neighbour step tripped it.)
+const double SLOPE_TO_ROCK_THRESHOLD = 0.70;
+const double SLOPE_TO_ROCK_BLEND_RANGE = 0.60;
 const double SNOW_LINE_LATITUDE_OFFSET_M = 200.0;
 const double CLIFF_THRESHOLD_M = 20.0;
 
@@ -33,25 +44,34 @@ inline double clamp_d(double v, double lo, double hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-// Mirrors SkirtBaker._compute_slope_at — the max absolute neighbour
-// height difference (in voxels) across the 4 cardinal ±1-voxel samples.
-double compute_slope_at(const HeightmapGeneratorBase *gen, int voxel_x, int voxel_z) {
-    const int h = gen->compute_ground_y(voxel_x, voxel_z);
-    const int hx_p = gen->compute_ground_y(voxel_x + 1, voxel_z);
-    const int hx_m = gen->compute_ground_y(voxel_x - 1, voxel_z);
-    const int hz_p = gen->compute_ground_y(voxel_x, voxel_z + 1);
-    const int hz_m = gen->compute_ground_y(voxel_x, voxel_z - 1);
-    int max_diff = 0;
-    const int diffs[4] = {
-        std::abs(hx_p - h), std::abs(hx_m - h),
-        std::abs(hz_p - h), std::abs(hz_m - h)
-    };
-    for (int d : diffs) {
-        if (d > max_diff) {
-            max_diff = d;
-        }
-    }
-    return static_cast<double>(max_diff);
+// Continuous, scale-free terrain slope as rise-over-run (dimensionless).
+//
+// Old behaviour (the bug): sampled compute_ground_y at ±1 VOXEL and
+// returned the max INTEGER height difference. At 10 vox/m the vertical
+// quantisation is fine enough that almost every column differs from its
+// 1-voxel neighbour by >= 1 voxel, so the integer result was >= 1 almost
+// everywhere and the 0.35 threshold tripped — the whole skirt went rock.
+//
+// New behaviour: sample at ±K voxels where K = round(vpm) — i.e. a fixed
+// 1-METRE horizontal step regardless of voxel scale. Height differences
+// are converted from voxels to metres (÷vpm) and divided by the 2 m run
+// between the +K and -K samples. The result is Δ-metres / Δ-metres =
+// dimensionless rise-over-run, so the same threshold means the same
+// real-world steepness at any voxel scale.
+double compute_slope_at(const HeightmapGeneratorBase *gen, int voxel_x, int voxel_z, double vpm) {
+    const int k = std::max(1, static_cast<int>(std::lround(vpm)));  // ~1 m step in voxels
+    const int hx_p = gen->compute_ground_y(voxel_x + k, voxel_z);
+    const int hx_m = gen->compute_ground_y(voxel_x - k, voxel_z);
+    const int hz_p = gen->compute_ground_y(voxel_x, voxel_z + k);
+    const int hz_m = gen->compute_ground_y(voxel_x, voxel_z - k);
+    // Δheight in VOXELS across the full 2K span on each axis.
+    const int dx_voxels = std::abs(hx_p - hx_m);
+    const int dz_voxels = std::abs(hz_p - hz_m);
+    const int max_diff_voxels = std::max(dx_voxels, dz_voxels);
+    // run = 2K voxels = (2K / vpm) metres; rise = max_diff_voxels / vpm
+    // metres; rise/run = max_diff_voxels / (2K). vpm cancels — pure ratio.
+    const double run_voxels = 2.0 * static_cast<double>(k);
+    return static_cast<double>(max_diff_voxels) / run_voxels;
 }
 
 }  // namespace
@@ -131,11 +151,14 @@ Dictionary DistantTerrainMesher::build_chunk(
             const double jitter_fine = (static_cast<double>(hash_hi) / 65535.0 - 0.5) * 0.06;
             const double jitter = jitter_coarse + jitter_fine;
 
+            // Elevation palette — entries come from the settable members
+            // (the bootstrap fills them from the REAL atlas tile means), so
+            // the smooth skirt and the blocky near-band agree on hue.
             Color c_elev(0.0f, 0.0f, 0.0f, 1.0f);
             if (ground_voxels <= sea_level_voxels) {
-                c_elev = Color(0.14f, 0.18f, 0.22f, 1.0f);
+                c_elev = _below_sea_color;
             } else if (ground_voxels <= beach_y) {
-                c_elev = Color(0.78f, 0.72f, 0.58f, 1.0f);
+                c_elev = _beach_color;
             } else {
                 const int elev_above_beach = ground_voxels - beach_y;
                 const double latitude_factor = clamp_d(world_z / 2500.0, -1.0, 1.0);
@@ -144,18 +167,15 @@ Dictionary DistantTerrainMesher::build_chunk(
                 const double t1 = clamp_d(
                     static_cast<double>(elev_above_beach + snow_line_offset_voxels) / 4500.0,
                     0.0, 1.0);
-                const Color c_lo(0.26f, 0.36f, 0.20f, 1.0f);
-                const Color c_mid(0.62f, 0.60f, 0.56f, 1.0f);
-                const Color c_hi(0.93f, 0.94f, 0.95f, 1.0f);
                 if (t1 < 0.5) {
-                    c_elev = c_lo.lerp(c_mid, static_cast<float>(t1 * 2.0));
+                    c_elev = _lowland_color.lerp(_mid_color, static_cast<float>(t1 * 2.0));
                 } else {
-                    c_elev = c_mid.lerp(c_hi, static_cast<float>((t1 - 0.5) * 2.0));
+                    c_elev = _mid_color.lerp(_high_color, static_cast<float>((t1 - 0.5) * 2.0));
                 }
             }
 
-            const double slope = compute_slope_at(gen, voxel_x, voxel_z);
-            const Color rock_color(0.60f, 0.58f, 0.54f, 1.0f);
+            const double slope = compute_slope_at(gen, voxel_x, voxel_z, vpm);
+            const Color rock_color = _rock_color;
             const double slope_t = clamp_d(
                 (slope - SLOPE_TO_ROCK_THRESHOLD) / SLOPE_TO_ROCK_BLEND_RANGE,
                 0.0, 1.0);
@@ -381,9 +401,43 @@ Dictionary DistantTerrainMesher::build_chunk(
     return out;
 }
 
+// --- Palette accessors ----------------------------------------------------
+void DistantTerrainMesher::set_lowland_color(Color p_c) { _lowland_color = p_c; }
+Color DistantTerrainMesher::get_lowland_color() const { return _lowland_color; }
+void DistantTerrainMesher::set_mid_color(Color p_c) { _mid_color = p_c; }
+Color DistantTerrainMesher::get_mid_color() const { return _mid_color; }
+void DistantTerrainMesher::set_high_color(Color p_c) { _high_color = p_c; }
+Color DistantTerrainMesher::get_high_color() const { return _high_color; }
+void DistantTerrainMesher::set_rock_color(Color p_c) { _rock_color = p_c; }
+Color DistantTerrainMesher::get_rock_color() const { return _rock_color; }
+void DistantTerrainMesher::set_beach_color(Color p_c) { _beach_color = p_c; }
+Color DistantTerrainMesher::get_beach_color() const { return _beach_color; }
+void DistantTerrainMesher::set_below_sea_color(Color p_c) { _below_sea_color = p_c; }
+Color DistantTerrainMesher::get_below_sea_color() const { return _below_sea_color; }
+
 void DistantTerrainMesher::_bind_methods() {
     ClassDB::bind_method(
         D_METHOD("build_chunk", "generator", "min_xz", "max_xz",
                  "quad_size_m", "voxels_per_metre", "apron_depth"),
         &DistantTerrainMesher::build_chunk);
+
+    ClassDB::bind_method(D_METHOD("set_lowland_color", "c"), &DistantTerrainMesher::set_lowland_color);
+    ClassDB::bind_method(D_METHOD("get_lowland_color"), &DistantTerrainMesher::get_lowland_color);
+    ClassDB::bind_method(D_METHOD("set_mid_color", "c"), &DistantTerrainMesher::set_mid_color);
+    ClassDB::bind_method(D_METHOD("get_mid_color"), &DistantTerrainMesher::get_mid_color);
+    ClassDB::bind_method(D_METHOD("set_high_color", "c"), &DistantTerrainMesher::set_high_color);
+    ClassDB::bind_method(D_METHOD("get_high_color"), &DistantTerrainMesher::get_high_color);
+    ClassDB::bind_method(D_METHOD("set_rock_color", "c"), &DistantTerrainMesher::set_rock_color);
+    ClassDB::bind_method(D_METHOD("get_rock_color"), &DistantTerrainMesher::get_rock_color);
+    ClassDB::bind_method(D_METHOD("set_beach_color", "c"), &DistantTerrainMesher::set_beach_color);
+    ClassDB::bind_method(D_METHOD("get_beach_color"), &DistantTerrainMesher::get_beach_color);
+    ClassDB::bind_method(D_METHOD("set_below_sea_color", "c"), &DistantTerrainMesher::set_below_sea_color);
+    ClassDB::bind_method(D_METHOD("get_below_sea_color"), &DistantTerrainMesher::get_below_sea_color);
+
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "lowland_color"), "set_lowland_color", "get_lowland_color");
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "mid_color"), "set_mid_color", "get_mid_color");
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "high_color"), "set_high_color", "get_high_color");
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "rock_color"), "set_rock_color", "get_rock_color");
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "beach_color"), "set_beach_color", "get_beach_color");
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "below_sea_color"), "set_below_sea_color", "get_below_sea_color");
 }

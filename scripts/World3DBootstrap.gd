@@ -863,6 +863,12 @@ func _ready() -> void:
 		distant.name = "DistantTerrain"
 		add_child(distant)
 		distant.call("setup_from_terrain", terrain)
+		# Derive the smooth-skirt vertex palette from the REAL atlas tiles
+		# the blocky terrain renders (grass-top / stone / sand / snow), so
+		# the distant skirt and the near band share one colour source
+		# instead of two hand-guessed palettes. Fixes the pale washed-green
+		# skirt vs saturated near grass (2026-06-12).
+		_configure_distant_palette(distant)
 
 	# === FAR-GRASS PR (2026-06-12) — impostor layer wire-up, start =======
 	# Far-grass impostor layer: GPU-instanced, non-interactive grass that
@@ -967,6 +973,105 @@ func _terrain_material_for(material_id: int, base_mat: ShaderMaterial,
 		variant.set_shader_parameter("emission_tint", vm.emission_color)
 		variant.set_shader_parameter("emission_strength", vm.emission_energy)
 	return variant
+
+
+# Sample the mean RGB of the blocky-terrain atlas tiles and push them
+# onto the DistantTerrain mesher as its elevation/slope palette, so the
+# smooth distant skirt is the SAME hue as the near blocky terrain (no more
+# pale washed-green seam at the ~86 m handoff — 2026-06-12 fix).
+#
+# Algebra of the pre-division: the distant_terrain.gdshader multiplies the
+# baked vertex palette by `albedo_tint` (a neutral 0.80 anti-bloom darken).
+# We want the FINAL rendered ALBEDO to equal the true tile mean, so we
+# store palette = tile_mean / 0.80 (clamped to 1.0). Then on the GPU:
+# palette * albedo_tint == (tile_mean / 0.80) * 0.80 == tile_mean. The
+# 0.80 still does its anti-bloom job; it just no longer shifts hue.
+const _DISTANT_ALBEDO_TINT: float = 0.80   # must match albedo_tint default in distant_terrain.gdshader
+
+func _configure_distant_palette(distant: Node) -> void:
+	if distant == null or not distant.has_method("set_palette"):
+		return
+	var atlas_img: Image = _load_atlas_image()
+	if atlas_img == null:
+		# Sampler failed — leave the mesher on its built-in defaults.
+		push_warning("[World3D] distant palette: atlas image unavailable; using mesher defaults.")
+		return
+	# Tile coords from _MATERIAL_TILES (the blocky terrain's own table):
+	#   grass(3).top=(2,0)  stone(1).top=(0,0)  sand(4).top=(4,0)  snow(13).top=(8,0)
+	var grass_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[3]["top"])
+	var stone_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[1]["top"])
+	var sand_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[4]["top"])
+	var snow_mean := _atlas_tile_mean(atlas_img, _MATERIAL_TILES[13]["top"])
+	# Palette mapping (commented per task spec):
+	#   c_lo  = grass-top mean          (lowland)
+	#   rock  = stone mean              (slope-driven)
+	#   beach = sand mean
+	#   c_hi  = snow mean
+	#   c_mid = lerp(grass, stone, 0.5) — a natural grass→scree mid-elevation tone
+	#   below_sea = kept dark blue-grey (reads as deep water — unchanged)
+	var grass_lo := _tint_compensate(grass_mean)
+	var stone_rock := _tint_compensate(stone_mean)
+	var sand_beach := _tint_compensate(sand_mean)
+	var snow_hi := _tint_compensate(snow_mean)
+	var mid := _tint_compensate(grass_mean.lerp(stone_mean, 0.5))
+	# below-sea: keep the existing deep-water colour, pre-divided too so it
+	# also renders at its intended value through the same tint.
+	var below_sea := _tint_compensate(Color(0.14, 0.18, 0.22, 1.0))
+	distant.call("set_palette", grass_lo, mid, snow_hi, stone_rock, sand_beach, below_sea)
+
+
+# Load the voxel atlas as an Image (CPU-readable pixels).
+func _load_atlas_image() -> Image:
+	var tex: Texture2D = load(_ATLAS_TEXTURE_PATH) as Texture2D
+	if tex == null:
+		return null
+	var img: Image = tex.get_image()
+	if img == null:
+		return null
+	if img.is_compressed():
+		# Decompress so get_pixel works (atlas should be uncompressed PNG,
+		# but be defensive).
+		img.decompress()
+	return img
+
+
+# Mean RGB of one 16x16 atlas tile at grid coord (tx, ty). 16 px tiles,
+# 64 cols (1024² atlas) — see _ATLAS_TILES_PER_ROW.
+const _ATLAS_TILE_PX: int = 16   # 1024 / _ATLAS_TILES_PER_ROW(64)
+
+func _atlas_tile_mean(img: Image, tile: Vector2i) -> Color:
+	var x0: int = tile.x * _ATLAS_TILE_PX
+	var y0: int = tile.y * _ATLAS_TILE_PX
+	var r: float = 0.0
+	var g: float = 0.0
+	var b: float = 0.0
+	var n: float = 0.0
+	for py in range(y0, y0 + _ATLAS_TILE_PX):
+		for px in range(x0, x0 + _ATLAS_TILE_PX):
+			if px < 0 or py < 0 or px >= img.get_width() or py >= img.get_height():
+				continue
+			var c: Color = img.get_pixel(px, py)
+			# Weight by alpha so transparent atlas padding doesn't dilute
+			# the mean toward black (tiles are opaque, but be safe).
+			var a: float = c.a
+			r += c.r * a
+			g += c.g * a
+			b += c.b * a
+			n += a
+	if n <= 0.0:
+		return Color(0.5, 0.5, 0.5, 1.0)
+	return Color(r / n, g / n, b / n, 1.0)
+
+
+# palette = tile_mean / albedo_tint, clamped — so palette * albedo_tint on
+# the GPU lands back on the true tile mean. (See _configure_distant_palette.)
+func _tint_compensate(c: Color) -> Color:
+	var inv: float = 1.0 / _DISTANT_ALBEDO_TINT
+	return Color(
+		minf(c.r * inv, 1.0),
+		minf(c.g * inv, 1.0),
+		minf(c.b * inv, 1.0),
+		1.0)
 
 
 func _inject_atlas_materials_into_library(mesher: Resource) -> void:

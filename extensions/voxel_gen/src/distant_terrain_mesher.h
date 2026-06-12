@@ -27,6 +27,7 @@
 
 #include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
@@ -40,7 +41,7 @@ public:
     // Build one heightmesh chunk covering the world-XZ rect
     // [p_min_xz, p_max_xz] at p_quad_size_m metre spacing.
     // p_voxels_per_metre converts world metres -> generator voxel coords
-    // (canonical 6.0). p_apron_depth is the depth in metres of the
+    // (canonical 10.0). p_apron_depth is the depth in metres of the
     // vertical perimeter skirt apron (the manager derives it from the LOD
     // ring); <= 0 disables the apron. Returns
     // { vertices, normals, colors, indices } (PackedVector3Array /
@@ -53,6 +54,37 @@ public:
                                   double p_voxels_per_metre,
                                   double p_apron_depth) const;
 
+    // --- Vertex-colour palette --------------------------------------------
+    // The elevation/slope palette used by build_chunk. Defaults below are
+    // the historical hand-guessed values (so the mesher still produces a
+    // sane image if nobody configures it), but the World3D bootstrap
+    // OVERRIDES every entry at boot with the REAL mean colour of the
+    // matching blocky-terrain atlas tile (grass-top, stone, sand, snow) so
+    // the smooth skirt and the blocky near-band share one source of truth.
+    // See DistantTerrainManager.configure_palette + World3DBootstrap.
+    void set_lowland_color(godot::Color p_c);   // c_lo  — grass-top tile mean
+    godot::Color get_lowland_color() const;
+    void set_mid_color(godot::Color p_c);       // c_mid — mid-elevation blend
+    godot::Color get_mid_color() const;
+    void set_high_color(godot::Color p_c);      // c_hi  — snow tile mean
+    godot::Color get_high_color() const;
+    void set_rock_color(godot::Color p_c);      // slope-driven rock — stone mean
+    godot::Color get_rock_color() const;
+    void set_beach_color(godot::Color p_c);     // beach/sand tile mean
+    godot::Color get_beach_color() const;
+    void set_below_sea_color(godot::Color p_c); // deep-water dark blue-grey
+    godot::Color get_below_sea_color() const;
+
 protected:
     static void _bind_methods();
+
+private:
+    // Historical hand-guessed defaults — overridden at boot by the atlas
+    // sampler. Kept only as a no-config fallback.
+    godot::Color _lowland_color = godot::Color(0.26f, 0.36f, 0.20f, 1.0f);
+    godot::Color _mid_color = godot::Color(0.62f, 0.60f, 0.56f, 1.0f);
+    godot::Color _high_color = godot::Color(0.93f, 0.94f, 0.95f, 1.0f);
+    godot::Color _rock_color = godot::Color(0.60f, 0.58f, 0.54f, 1.0f);
+    godot::Color _beach_color = godot::Color(0.78f, 0.72f, 0.58f, 1.0f);
+    godot::Color _below_sea_color = godot::Color(0.14f, 0.18f, 0.22f, 1.0f);
 };

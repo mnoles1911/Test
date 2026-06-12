@@ -147,6 +147,31 @@ func configure(generator: Object, vpm: float) -> void:
 		lod_count, base_quad_size, quads_per_chunk, inner_cull_radius])
 
 
+# Push the elevation/slope palette onto the C++ mesher. Called by
+# World3DBootstrap right after setup_from_terrain with colours sampled
+# from the REAL blocky-terrain atlas tiles, so the smooth distant skirt
+# and the near blocky band share one source of truth instead of two
+# hand-guessed palettes. See World3DBootstrap.configure_distant_palette.
+#
+# IMPORTANT: each colour passed in is the true atlas tile mean ALREADY
+# DIVIDED by the shader's albedo_tint (0.80) — the bootstrap does that
+# pre-division so that final rendered ALBEDO (palette * albedo_tint) ==
+# the real tile mean. This manager just forwards the values verbatim.
+func set_palette(lowland: Color, mid: Color, high: Color,
+		rock: Color, beach: Color, below_sea: Color) -> void:
+	if _mesher == null:
+		push_warning("[DistantTerrain] set_palette called before mesher exists — ignored.")
+		return
+	_mesher.set("lowland_color", lowland)
+	_mesher.set("mid_color", mid)
+	_mesher.set("high_color", high)
+	_mesher.set("rock_color", rock)
+	_mesher.set("beach_color", beach)
+	_mesher.set("below_sea_color", below_sea)
+	print("[DistantTerrain] palette set from atlas: lowland=%s rock=%s beach=%s high=%s" % [
+		lowland, rock, beach, high])
+
+
 func _process(delta: float) -> void:
 	# Wrapper instrumentation (added 2026-05-25). The capture of 71343 ms
 	# / 14614 frames showed 100+ ms main-thread spike CLUSTERS during
