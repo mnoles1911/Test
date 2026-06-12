@@ -104,6 +104,9 @@ const _SWAY_SHADER_PATH: String = "res://assets/shaders/flora_sway.gdshader"
 ## band [0.02 .. 0.37) total ~35%; we fold flowers in too (roll < 0.37
 ## covers both the flower sub-band and the grass sub-band) so the far field
 ## density reads like the real scatter. See _column_has_grass.
+## RETIRED 2026-06-12 (sparse-clump rework): the uniform threshold is no
+## longer the decision — _column_has_grass mirrors the C++ clump model.
+## Kept only so saved scenes with the old export don't error on load.
 @export var grass_roll_threshold: float = 0.37
 
 # --- Runtime state ---------------------------------------------------
@@ -425,7 +428,16 @@ func _blade_transform(wx: float, wy: float, wz: float, vx: int, vz: int) -> Tran
 # speck anyway, and using the same single roll guarantees the density and
 # POSITIONS match the real scatter exactly (the continuity magic).
 func _column_has_grass(vx: int, vz: int) -> bool:
-	return _hash3(vx, 0, vz, _flora_seed) < grass_roll_threshold
+	# Sparse-clump distribution — EXACT mirror of the C++ scatter
+	# (heightmap_generator_base.cpp, 2026-06-12 designer directive):
+	# a 16-voxel (1.6 m) clump cell exists ~18% of the time; inside it
+	# grass is dense (0.35 x 1.3), outside only rare strays (x0.043).
+	# vx >> 4 = floor-div 16 incl. negatives — matches the C++ shift.
+	# (Impostors use the LEGACY 0.35/0.02 constants — the far band
+	# reads density, not biome nuance; the flora gate checks agreement.)
+	var in_clump: bool = _hash3(vx >> 4, 5, vz >> 4, _flora_seed + 7) < 0.18
+	var cut: float = (0.02 + minf(1.0, 0.35 * 1.3)) if in_clump else (0.02 + 0.35 * 0.043)
+	return _hash3(vx, 0, vz, _flora_seed) < cut
 
 
 # Surface voxel Y for a column via the generator's pure height function.

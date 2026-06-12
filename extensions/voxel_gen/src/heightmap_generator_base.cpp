@@ -754,8 +754,24 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             // the roll, grass band above it: [0,flower) flower,
             // [flower, flower+grass) grass. Legacy keeps 0.02 / 0.35.
             const double flower_cut = col_biome ? biome_flower_density : 0.02;
-            const double grass_cut = col_biome ? (biome_flower_density + biome_grass_density)
-                                               : 0.37;
+            // Sparse-clump grass (2026-06-12 designer directive): not a
+            // uniform carpet — grass grows in OCCASIONAL CLUMPS. A coarse
+            // 16-voxel (1.6 m) lattice cell hosts a clump ~18% of the
+            // time; inside a clump, columns sprout densely (biome grass
+            // density x1.3); outside, only rare strays (x0.043). Net
+            // coverage ~9% at the legacy 0.35 density (was a 35% carpet).
+            // The far-grass impostors mirror this function EXACTLY in
+            // FarGrassManager._column_has_grass — change BOTH SIDES or
+            // the 12.8 m handoff seam returns (flora gate enforces it).
+            const double grass_density = col_biome ? biome_grass_density : 0.35;
+            // >> 4 = floor-div 16, negatives included (arithmetic shift,
+            // two's complement) — bit-identical to GDScript's >> operator.
+            const bool grass_clump = voxel_gen::math::hash3(
+                    world_x >> 4, 5, world_z >> 4,
+                    static_cast<int64_t>(_flora_seed) + 7) < 0.18;
+            const double grass_cut = flower_cut + (grass_clump
+                    ? std::min(1.0, grass_density * 1.3)
+                    : grass_density * 0.043);
             if (flora_enabled
                     && col_is_grassland
                     && disk_match == nullptr      // not on a clay/gravel disk surface
@@ -764,8 +780,8 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                 //   [0 .. flower_cut)        -> a flower (red/blue split)
                 //   [flower_cut .. grass_cut)-> a grass blade
                 //   [grass_cut .. 1.0)       -> bare ground
-                // Legacy: ~2% flowers, ~35% grass — the design's locked
-                // densities. Biome: the picked biome's flower/grass density.
+                // grass_cut is CLUMP-dependent (see above): dense inside
+                // the occasional clump cell, near-zero strays elsewhere.
                 const double roll = voxel_gen::math::hash3(
                         world_x, 0, world_z, static_cast<int64_t>(_flora_seed));
                 if (roll < flower_cut) {

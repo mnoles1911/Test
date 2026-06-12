@@ -2048,24 +2048,38 @@ func _flora_far_grass() -> int:
 			fails += 1
 			push_error("[FLORA] far_grass: hash mismatch at %s — manager=%.9f vs VoxelGenerationMath=%.9f" % [str(c), hm, hg])
 
-	# 2. Threshold + grass-decision agreement: for every coord, the manager's
-	# _column_has_grass must equal (generator grass roll < 0.37). We assert
-	# the manager threshold is the locked 0.37 and that its decision tracks
-	# the same roll the generator uses.
+	# 2. SPARSE-CLUMP decision agreement (2026-06-12 rework): for every
+	# coord, the manager's _column_has_grass must equal the generator's
+	# clump formula — clump cell (>>4 lattice, y-salt 5, seed+7) < 0.18
+	# picks dense (0.02 + min(1, 0.35*1.3)) vs stray (0.02 + 0.35*0.043)
+	# cutoffs on the per-column roll. If either side's constants drift,
+	# the 12.8 m handoff seam returns.
 	mgr._flora_seed = seed
-	if not is_equal_approx(mgr.grass_roll_threshold, 0.37):
-		fails += 1
-		push_error("[FLORA] far_grass: grass_roll_threshold=%.4f != generator grass sub-band cutoff 0.37" % mgr.grass_roll_threshold)
 	for c in coords:
-		var want: bool = VGM.hash3(c.x, 0, c.y, seed) < 0.37
+		var in_clump: bool = VGM.hash3(c.x >> 4, 5, c.y >> 4, seed + 7) < 0.18
+		var cut: float = (0.02 + minf(1.0, 0.35 * 1.3)) if in_clump else (0.02 + 0.35 * 0.043)
+		var want: bool = VGM.hash3(c.x, 0, c.y, seed) < cut
 		var got: bool = mgr._column_has_grass(c.x, c.y)
 		if want != got:
 			fails += 1
-			push_error("[FLORA] far_grass: grass decision mismatch at %s — manager=%s vs generator-roll<0.37=%s" % [str(c), str(got), str(want)])
+			push_error("[FLORA] far_grass: clump-grass decision mismatch at %s — manager=%s vs generator formula=%s (in_clump=%s)" % [str(c), str(got), str(want), str(in_clump)])
+	# Coverage sanity: over a big sample the clump model must land FAR
+	# below the old 35% carpet (sparse, occasional clumps).
+	var hits: int = 0
+	var total: int = 0
+	for sx in range(-200, 200, 3):
+		for sz in range(-200, 200, 3):
+			total += 1
+			if mgr._column_has_grass(sx, sz):
+				hits += 1
+	var coverage: float = float(hits) / float(total)
+	if coverage > 0.16 or coverage < 0.03:
+		fails += 1
+		push_error("[FLORA] far_grass: clump coverage %.3f outside sparse band [0.03, 0.16]" % coverage)
 
 	mgr.free()
 	if fails == 0:
-		print("[FLORA] far_grass: PASS — impostor hash bit-identical to generator hash; grass decision + 0.37 threshold match (walk-in continuity holds).")
+		print("[FLORA] far_grass: PASS — impostor hash bit-identical; sparse-clump decision agrees with the generator formula; coverage in the sparse band (walk-in continuity holds).")
 	return mini(fails, 1)
 
 
