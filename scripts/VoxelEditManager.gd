@@ -99,8 +99,9 @@ const WORLD_GENERATOR_VERSION: int = 16
 # World floor (bedrock layer)
 # ============================================================
 
-const WORLD_FLOOR_VOXEL_Y: int = -300
-# Y coordinate (in voxel units, 6 vox/m) of the bedrock layer. Edits
+const WORLD_FLOOR_VOXEL_Y: int = -500
+# Y coordinate (in voxel units, 10 vox/m → -50 m world) of the bedrock
+# layer. Edits
 # whose AABB extends to or below this Y are rejected — bedrock is
 # unbreakable. Mirror of the same constant in
 # `CubicHeightmapGenerator.WORLD_FLOOR_VOXEL_Y`. Keep them in sync.
@@ -727,8 +728,8 @@ func _apply_edit(cmd: Dictionary) -> void:
 	tool.value = cmd.get("value", 0)
 
 	# CRITICAL — VoxelTool.do_sphere / do_box take voxel-grid coords,
-	# NOT world-space. The terrain has transform.scale = 0.166667
-	# (6 vox per metre), so a world position must be divided by that
+	# NOT world-space. The terrain has transform.scale = 0.1
+	# (10 vox per metre), so a world position must be divided by that
 	# scale before being passed to the tool. terrain.to_local() applies
 	# the inverse transform (which for our scale-only setup is *=6).
 	#
@@ -1119,9 +1120,9 @@ func _mark_chunk(chunk_coords: Vector3i) -> void:
 # ============================================================
 
 # Voxel scale: 6 voxels per meter — locked in 2026-05-03 as the
-# project-wide default. Each voxel block is ~16.67 cm (1/6 m) on a
+# project-wide default. Each voxel block is 10 cm (1/10 m) on a
 # side. The VoxelLodTerrain in World3D.tscn has transform.scale =
-# 0.166667 to match.
+# 0.1 to match.
 const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER
 # Mirrors VoxelScale.VOXELS_PER_METER — keeping the local name so
 # every call site inside this file stays unchanged (e.g. world_pos *

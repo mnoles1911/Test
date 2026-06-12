@@ -130,15 +130,14 @@ var _horizon_plane_y: float = 10.0
 # mesher reads it on every frame's follow-player update and the manager
 # is the natural single owner of "what is the configured water level."
 
-var _sea_level_voxel_y: int = 72
+var _sea_level_voxel_y: int = 120
 # Voxel-grid Y where the generator writes water source bytes into
 # CHANNEL_DATA5. WaterChunkMesher needs this to know which chunk-Y
-# row to scan for water surfaces. Default 72 = Mira's
-# CubicHeightmapGenerator.SEA_LEVEL_VOXELS — no behaviour change for
-# World3D. Copper Isles overrides via set_sea_level_voxel_y(720) at
-# bootstrap so the mesher scans the correct chunk-Y row (45) instead
-# of the wrong-by-default chunk-Y row (4) where there are no water
-# bytes for that scene.
+# row to scan for water surfaces. Default 120 = the generator's
+# sea_level_voxels (12 m world at 10 vox/m; was 72 at the old
+# 6 vox/m scale). Copper Isles overrides via set_sea_level_voxel_y
+# (GEN_SEA_LEVEL_VOXELS) at bootstrap so the mesher scans that
+# scene's correct chunk-Y row instead of the wrong-by-default one.
 
 var _dirty_chunks: Dictionary = {}
 # Vector3i (chunk coord) → true. Chunks that need their flow

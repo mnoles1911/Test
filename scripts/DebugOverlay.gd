@@ -194,17 +194,17 @@ var _frame_times_idx: int = 0
 # terrain_scale = 1 / vox_per_metre — keeping both pre-computed avoids
 # float-division noise in the comparison and read-back path.
 #
-# NOTE: index 0 (6 vox/m) is the current live scale and must match
-# VoxelScale.VOXELS_PER_METER in scripts/VoxelScale.gd. If VoxelScale
-# is updated for the 10-vox/m rearchitecture, flip entry 0 here too.
+# NOTE: index 0 (10 vox/m) is the current live scale and must match
+# VoxelScale.VOXELS_PER_METER in scripts/VoxelScale.gd (flipped to 10
+# at the 2026-06-12 rearchitecture).
 # Entries 1 and 2 are deliberate exploration values — do NOT remove them.
 const F7_CYCLE: Array = [
+	{"vox_per_m": 10, "scale": 1.0 / 10.0},
 	{"vox_per_m": 6, "scale": 1.0 / 6.0},
 	{"vox_per_m": 8, "scale": 1.0 / 8.0},
-	{"vox_per_m": 10, "scale": 1.0 / 10.0},
 ]
 # Index of the entry F7 will apply on its NEXT press. Advances after
-# every press so the cycle reads 6 → 8 → 10 → 6 → ... regardless of
+# every press so the cycle reads 10 → 6 → 8 → 10 → ... regardless of
 # whether F5 / F6 / F8 / F9 also fired in between.
 var _f7_next_index: int = 0
 

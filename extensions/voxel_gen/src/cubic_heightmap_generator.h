@@ -59,11 +59,15 @@ protected:
 
 private:
     godot::Ref<godot::FastNoiseLite> _noise;
-    double _height_range_voxels = 900.0;
-    int _height_offset_voxels = 60;
+    // Amplitudes are in VOXELS. Rescaled 2026-06-12 for the 10 vox/m
+    // pivot (x5/3 from the 6 vox/m values 900/60/10/2) so the terrain
+    // keeps the same WORLD-metre shape. Frequency multipliers are
+    // ratios relative to the macro noise — scale-independent.
+    double _height_range_voxels = 1500.0;
+    int _height_offset_voxels = 100;
     bool _quantize_to_meters = false;
-    int _mid_amplitude_voxels = 10;
+    int _mid_amplitude_voxels = 17;
     double _mid_frequency_multiplier = 3.0;
-    int _detail_amplitude_voxels = 2;
+    int _detail_amplitude_voxels = 3;
     double _detail_frequency_multiplier = 12.0;
 };

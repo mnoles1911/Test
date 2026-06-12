@@ -645,8 +645,10 @@ func _terrain_scale(terrain: Node3D) -> float:
 # author's visual placement intuition. Bake at user//baked_baseline
 # emitted CHANNEL_DATA5 water bytes up to this voxel-Y, so the
 # chunked water mesher will find a surface at Y=240 to render.
-const GEN_SEA_LEVEL_VOXELS: float = 1440.0
-const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
+const GEN_SEA_LEVEL_VOXELS: float = 2400.0
+const GEN_PEAK_ABOVE_SEA_VOXELS: float = 25000.0
+# Rescaled ×5/3 at the 10 vox/m pivot (2026-06-12): same world metres
+# as the old 1440 / 15000 at 6 vox/m (sea 240 m, peak +2500 m).
 
 # Horizon plane override DISABLED 2026-05-08 — now that the
 # generator's sea level is at voxel-Y 1200 (= world Y 200 m), the

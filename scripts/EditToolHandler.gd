@@ -51,7 +51,10 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 # soft materials (sand, dirt) would spam multiple voxels per
 # frame the moment mining_time hit zero.
 
-@export var swing_carve_voxels_per_side: int = 3
+@export var swing_carve_voxels_per_side: int = 5
+# 5 since the 10 vox/m pivot (was 3 at 6 vox/m) — keeps a full swing
+# removing roughly the same PHYSICAL chunk of world (~0.5 m cube).
+# Scroll wheel still cycles down to 1 for fine 10 cm-grain digging.
 # Default carve volume on world load. Manual tools (pickaxe / shovel /
 # axe) carve a CUBE this many voxels on a side per swing â€” runtime
 # value lives in `carve_volume_size` (which the player adjusts via

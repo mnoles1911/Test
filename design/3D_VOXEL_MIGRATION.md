@@ -13,9 +13,11 @@ If a design doc still says "see `design/3D_VOXEL_MIGRATION.md` for canonical ter
 
 ## Pivot summary (one-paragraph)
 
-Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `CharacterBody3D` + `SpringArm3D` over-shoulder + `VoxelLodTerrain` (Zylann's Voxel Tools, GDExtension edition) at 6 voxels/m, with destructible terrain by default (edits stored as deltas in `VoxelStreamSQLite`), `NoEditZone` Area3Ds protecting settlements/landmarks, MagicaVoxel-authored props (`.glb`), low-poly Blender characters (200–500 tris), and a real-time 1-vs-many action combat system. Dialogic 2 + GameState + TransitionManager survived the pivot unchanged.
+Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `CharacterBody3D` + `SpringArm3D` over-shoulder + `VoxelLodTerrain` (Zylann's Voxel Tools, GDExtension edition) at 10 voxels/m, with destructible terrain by default (edits stored as deltas in `VoxelStreamSQLite`), `NoEditZone` Area3Ds protecting settlements/landmarks, MagicaVoxel-authored props (`.glb`), low-poly Blender characters (200–500 tris), and a real-time 1-vs-many action combat system. Dialogic 2 + GameState + TransitionManager survived the pivot unchanged.
 
-Voxel scale is locked at **6 voxels/m** (~16.7 cm/block). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125.
+Voxel scale is **10 voxels/m** (10 cm/block) since 2026-06-12 — the Lay-of-the-Land re-architecture (`VISION_VOXEL_10CM.md`; was 6 voxels/m from the original pivot until then; the authority is `scripts/VoxelScale.gd`). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125.
+
+> **10 vox/m hard constraint:** Zylann caps `lod_distance` at 128 voxels, so the sharpest-LOD ring — and terrain **collision**, which is LOD0-only — ends at **12.8 m** from the player (was 21.3 m at 6 vox/m). Projectiles/entities beyond that ring have no terrain collision; long-lived projectiles need a `VoxelViewer` or raycast-vs-generator fallback (logged follow-up, not yet built).
 
 ## Destructible terrain — short version
 

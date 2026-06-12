@@ -37,13 +37,13 @@ extends RefCounted
 
 
 # How many voxels (grid cells) span one metre in world space.
-# Canonical project value since 2026-05-03. A later PR will change
-# this to 10 for the 10cm-voxel rearchitecture; when that happens,
-# only this constant needs to change (all consumers read from here).
-const VOXELS_PER_METER: float = 6.0
+# 10 since 2026-06-12 (the 10cm-voxel rearchitecture, R1 of the
+# Lay-of-the-Land track — see design/VISION_VOXEL_10CM.md). The
+# project ran at 6 vox/m from 2026-05-03 until then.
+const VOXELS_PER_METER: float = 10.0
 
 # Edge length of one voxel in world-space metres.
-# 1.0 / VOXELS_PER_METER = 1.0 / 6.0 ≈ 0.16667 m ≈ 16.7 cm.
+# 1.0 / VOXELS_PER_METER = 1.0 / 10.0 = 0.1 m = 10 cm exactly.
 # This is the value that goes in VoxelLodTerrain.transform.scale
 # (all three axes equal — uniform scale).
 const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER

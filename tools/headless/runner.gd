@@ -348,10 +348,12 @@ func _finite_world_tick() -> void:
 	# Find the ground column near the spawn (player spawns at XZ 0,0).
 	# Probe a spot a couple of metres out so we don\'t pour on the player.
 	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	var px: int = 18   # voxel coords (3 m out at 6 vox/m)
-	var pz: int = 18
+	var px: int = 30   # voxel coords (3 m out at 10 vox/m)
+	var pz: int = 30
 	var ground_y: int = -1
-	for y in range(400, 72, -1):
+	# Scan from above any possible peak (offset 100 + macro 167 + mid/
+	# detail ≈ 290 max) down to the sea level voxel (120).
+	for y in range(500, 120, -1):
 		if tool.get_voxel(Vector3i(px, y, pz)) != 0:
 			ground_y = y
 			break
@@ -759,7 +761,13 @@ const _DISTANT_BASELINE := "res://tools/headless/distant_parity_baseline.json"
 const _DISTANT_MIN := Vector2(-192.0, -192.0)
 const _DISTANT_MAX := Vector2(192.0, 192.0)
 const _DISTANT_QUAD_M := 12.0   # the fixed parity-region quad size
-const _DISTANT_VPM := 6.0       # canonical 6 voxels / metre
+const _DISTANT_VPM: float = preload("res://scripts/VoxelScale.gd").VOXELS_PER_METER
+# The mesher's vpm input follows the canonical scale (was hardcoded
+# 6.0 pre-R1). Changing the scale OR the generator's terrain shape
+# legitimately invalidates the committed baseline — delete the JSON
+# and re-run; the gate re-bakes it (RESULT=BASELINE) exactly like the
+# `gen` gate, and the new file gets committed with the change that
+# invalidated it.
 const _DISTANT_APRON_TEST_DEPTH := 64.0  # Phase 2 apron-additive check
 
 
@@ -779,16 +787,21 @@ func _distant_report() -> int:
 	if not ClassDB.class_exists("DistantTerrainMesher"):
 		print("[DISTANT] RESULT=FAIL reason=DistantTerrainMesher_not_registered — build extensions/voxel_gen.")
 		return 1
-	if not FileAccess.file_exists(_DISTANT_BASELINE):
-		print("[DISTANT] RESULT=FAIL reason=baseline_missing %s (committed file)" % _DISTANT_BASELINE)
-		return 1
-
 	# Apron-off grid — must stay byte-identical to the committed baseline.
 	var arrays := _distant_cpp_arrays(cpp, 0.0)
 	if arrays.is_empty():
 		print("[DISTANT] RESULT=FAIL reason=cpp_build_failed (apron-off)")
 		return 1
 	var summary := _distant_summarise(arrays)
+
+	if not FileAccess.file_exists(_DISTANT_BASELINE):
+		# Baseline intentionally deleted (scale flip / generator retune):
+		# re-bake it from the current output, exactly like the gen gate.
+		var wf := FileAccess.open(_DISTANT_BASELINE, FileAccess.WRITE)
+		wf.store_string(JSON.stringify(summary, "\t"))
+		wf.close()
+		print("[DISTANT] RESULT=BASELINE — wrote %s. Re-run to verify, and COMMIT the new JSON with the change that invalidated the old one." % _DISTANT_BASELINE)
+		return 0
 	print("[DISTANT] cpp apron-off: verts=%d tris=%d vhash=%d nhash=%d chash=%d ihash=%d" % [
 		int(summary["vertex_count"]), int(summary["tri_count"]),
 		int(summary["vertex_hash"]), int(summary["normal_hash"]),
@@ -1817,21 +1830,32 @@ func _finite_reach() -> int:
 	# tick, 600 times = 4800 units) on an open plane. The front halts at
 	# exactly SPREAD_REACH_VOXELS and the pool deepens instead of
 	# smearing forever. Why 4800: with the slope-of-1 equilibrium and
-	# the 8-unit cap, pushing a level-1 rim all the way to radius 18
-	# takes ~3700 units — a single 1000-unit column correctly stops
-	# around radius 11 (verified when this gate was first written).
+	# the 8-unit cap, pushing a level-1 rim all the way out to the
+	# reach radius takes units that grow roughly with radius CUBED —
+	# at the old radius-18 (6 vox/m) ~3700 units sufficed; at the
+	# 10 vox/m radius-30 it takes ~19000, so we pour 3000 × 8 = 24000.
+	# (A single 1000-unit column correctly stops around radius 11 —
+	# verified when this gate was first written.)
 	var core: RefCounted = _finite_new_core(0)
-	for i in range(600):
-		core.place(Vector3i(0, 1, 0), 8)
+	# Track what place() ACTUALLY fit (the hose column can congest
+	# against the test box's bounds mid-pour and place() correctly
+	# reports the shortfall) — conservation is asserted against that,
+	# not against the requested total.
+	var poured: int = 0
+	for i in range(3000):
+		poured += core.place(Vector3i(0, 1, 0), 8)
 		core.step(4096)
-	var ticks: int = _finite_run(core, 6000, 4096)
+	var ticks: int = _finite_run(core, 12000, 4096)
 	var fails: int = 0
 	if ticks < 0:
-		print("[FINITE] FAIL reach: did not settle within 6000 ticks")
+		print("[FINITE] FAIL reach: did not settle within 12000 ticks")
 		fails += 1
-	if core.total_units() + core.evaporated != 4800:
-		print("[FINITE] FAIL reach: units+evaporated=%d, expected 4800 (stats=%s)" % [
-			core.total_units() + core.evaporated, str(core.stats())])
+	if poured < 19000:
+		print("[FINITE] FAIL reach: only %d units landed — not enough to push the rim to radius 30 (need ~19000)" % poured)
+		fails += 1
+	if core.total_units() + core.evaporated != poured:
+		print("[FINITE] FAIL reach: units+evaporated=%d, expected %d poured (stats=%s)" % [
+			core.total_units() + core.evaporated, poured, str(core.stats())])
 		fails += 1
 	fails += _finite_audit(core, "reach")
 	var max_man: int = 0
@@ -2201,9 +2225,61 @@ func _scale() -> int:
 		else:
 			print("[SCALE] World3D.tscn VoxelLodTerrain scale=%.8f matches VOXEL_SIZE_M OK" % scale_raw)
 
+	# ── 4. World-metre invariants (added at the 10 vox/m flip, R1) ───
+	# These catch the *other* class of scale bug: a voxel-unit constant
+	# whose value secretly means METRES that didn't get rescaled with
+	# the grid. Each check converts the voxel value back to metres via
+	# VoxelScale and asserts the physical meaning the designer locked.
+
+	# 4a. Water spread reach == 3 m (designer-locked, WATER_FINITE_SIM_PLAN).
+	checks += 1
+	var fwc = load("res://scripts/FiniteWaterCore.gd")
+	var reach_m: float = float(fwc.get_script_constant_map().get("SPREAD_REACH_VOXELS", 0)) * VS.VOXEL_SIZE_M
+	if reach_m < 2.9 or reach_m > 3.1:
+		fails += 1
+		push_error("[SCALE] FiniteWaterCore.SPREAD_REACH_VOXELS = %.2f m world, expected 3 m" % reach_m)
+	else:
+		print("[SCALE] water spread reach = %.2f m world OK" % reach_m)
+
+	# 4b. WaterDiag surface scan == ±8 m.
+	checks += 1
+	var wdiag = load("res://scripts/WaterDiag.gd")
+	var scan_m: float = float(wdiag.get_script_constant_map().get("SURFACE_SCAN_VOXELS", 0)) * VS.VOXEL_SIZE_M
+	if scan_m < 7.5 or scan_m > 8.5:
+		fails += 1
+		push_error("[SCALE] WaterDiag.SURFACE_SCAN_VOXELS = %.2f m world, expected 8 m" % scan_m)
+	else:
+		print("[SCALE] water surface scan = %.2f m world OK" % scan_m)
+
+	# 4c. Bedrock floor == -50 m world.
+	checks += 1
+	var vem = load("res://scripts/VoxelEditManager.gd")
+	var floor_m: float = float(vem.get_script_constant_map().get("WORLD_FLOOR_VOXEL_Y", 0)) * VS.VOXEL_SIZE_M
+	if floor_m < -51.0 or floor_m > -49.0:
+		fails += 1
+		push_error("[SCALE] VoxelEditManager.WORLD_FLOOR_VOXEL_Y = %.2f m world, expected -50 m" % floor_m)
+	else:
+		print("[SCALE] bedrock floor = %.2f m world OK" % floor_m)
+
+	# 4d. Generator default sea level == 12 m world (the C++ extension's
+	# compiled-in default must move with the grid — a stale DLL built
+	# before a scale flip fails here loudly instead of flooding the
+	# world at the wrong height). Skipped if the extension isn't loaded.
+	if ClassDB.class_exists("CubicHeightmapGeneratorCpp"):
+		checks += 1
+		var gen_probe = ClassDB.instantiate("CubicHeightmapGeneratorCpp")
+		var sea_m: float = float(gen_probe.get("sea_level_voxels")) * VS.VOXEL_SIZE_M
+		if absf(sea_m - 12.0) > 0.05:
+			fails += 1
+			push_error("[SCALE] generator default sea level = %.2f m world, expected 12 m — stale DLL or missed rescale?" % sea_m)
+		else:
+			print("[SCALE] generator default sea level = %.2f m world OK" % sea_m)
+	else:
+		print("[SCALE] CubicHeightmapGeneratorCpp not registered — skipping sea-level check (extension not loaded)")
+
 	# ── Result ────────────────────────────────────────────────────────
 	if fails == 0:
-		print("[SCALE] RESULT=PASS — %d checks: VoxelScale internal OK, all script constants match, .tscn scale matches." % checks)
+		print("[SCALE] RESULT=PASS — %d checks: VoxelScale internal OK, all script constants match, .tscn scale matches, world-metre invariants hold." % checks)
 		return 0
 	print("[SCALE] RESULT=FAIL — %d/%d checks failed (see push_error lines above)." % [fails, checks])
 	return 1

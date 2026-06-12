@@ -71,10 +71,13 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 # build doesn't expose `copy` on VoxelTool — older / minimal builds
 # may not. Set to false to force the legacy path for A/B comparison.
 
-@export var max_cluster_voxels: int = 4096
-# Skip clusters larger than this (treat as anchored). One Zylann chunk
-# is 16^3 = 4096 voxels — keeping clusters within one chunk's worth
-# means re-deposit fits comfortably in a single per-frame budget.
+@export var max_cluster_voxels: int = 16384
+# Skip clusters larger than this (treat as anchored). Raised 4096 →
+# 16384 at the 10 vox/m pivot: the same physical tree now holds ~4.6×
+# the voxels (a trunk+crown that was ~3000 voxels at 6 vox/m is
+# ~14000 at 10), and without the bump trees silently stop falling
+# (the over-cap rejection treats them as anchored). Re-deposit still
+# fits the per-frame budget — profiled in the R2 retune.
 
 @export var sever_follow_max_height_m: float = 12.0
 # Tree-sever follow-up (voxel-physics PR 6): when a severed cluster

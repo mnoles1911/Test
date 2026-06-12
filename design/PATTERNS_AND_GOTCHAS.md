@@ -51,11 +51,11 @@ Never decode alpha by hand (`packed & 0xFF`).
 
 ```gdscript
 const VoxelScale := preload("res://scripts/VoxelScale.gd")  # NO class_name (headless-safe)
-VoxelScale.VOXELS_PER_METER   # 6.0  — voxels that fit in one world metre
+VoxelScale.VOXELS_PER_METER   # 10.0 — voxels that fit in one world metre (was 6.0 pre-2026-06-12)
 VoxelScale.VOXEL_SIZE_M       # 1.0 / VOXELS_PER_METER — VoxelLodTerrain transform scale
 ```
 
-**Never write** `6.0`, `0.166667`, or `1.0 / 6.0` anywhere near voxel math. The VoxelLodTerrain in `World3D.tscn` must have `transform.scale = Vector3.ONE * VoxelScale.VOXEL_SIZE_M` — `World3DBootstrap` asserts this at boot and corrects + logs it via `push_error` if the .tscn value drifts. Local constants that mirror VoxelScale are fine (keep the local name, update the value to read from VoxelScale). Pattern: `const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER`. The `scale` headless selector verifies the contract every run.
+**Never write** the scale as a literal (`10.0`, `0.1`, the old `6.0` / `0.166667`) anywhere near voxel math. The VoxelLodTerrain in `World3D.tscn` must have `transform.scale = Vector3.ONE * VoxelScale.VOXEL_SIZE_M` — `World3DBootstrap` asserts this at boot and corrects + logs it via `push_error` if the .tscn value drifts. Local constants that mirror VoxelScale are fine (keep the local name, update the value to read from VoxelScale). Pattern: `const VOXELS_PER_METER: float = VoxelScale.VOXELS_PER_METER`. The `scale` headless selector verifies the contract every run.
 
 ### Water is native Zylann fluid
 

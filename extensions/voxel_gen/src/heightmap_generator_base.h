@@ -220,9 +220,12 @@ protected:
     int _marble_jitter_max_lod = 1;
 
     // --- Bedrock / world floor / sea ---------------------------------------
+    // Voxel-unit values rescaled 2026-06-12 for the 10 vox/m pivot so
+    // the WORLD-metre meaning is preserved: floor -300vox(-50m at 6/m)
+    // -> -500vox(-50m at 10/m); sea 72vox(12m) -> 120vox(12m).
     int _bedrock_material_id = 0;     // 0 disables the bedrock row
-    int _world_floor_voxel_y = -300;
-    int _sea_level_voxels = 72;
+    int _world_floor_voxel_y = -500;
+    int _sea_level_voxels = 120;
 
     // --- Tier 2: snow line -------------------------------------------------
     int _snow_material_id = 0;        // 0 disables the snow tier
@@ -233,8 +236,10 @@ protected:
     int _snow_line_max_lod = 2;
 
     // --- Tier 1: cliff slope ----------------------------------------------
-    int _cliff_slope_sample_distance_voxels = 6;
-    int _cliff_slope_threshold_voxels = 10;
+    // Also voxel units meaning metres: sample 6vox(1m at 6/m) ->
+    // 10vox(1m at 10/m); threshold 10vox(1.67m) -> 17vox(1.7m).
+    int _cliff_slope_sample_distance_voxels = 10;
+    int _cliff_slope_threshold_voxels = 17;
     int _cliff_rule_max_lod = 2;
 
     // --- POD snapshots (set on main thread; read on worker threads) -------

@@ -1162,3 +1162,23 @@ Six-state machine + fog/wind/particles/lightning + location profiles + WeatherZo
   render `underwater_ambience` via tools/render_sfx.py into
   assets/audio/sfx/water/ — until then submerge logs a one-time
   missing-asset warning and stays silent.
+
+## 10cm voxel re-architecture — R1 acceptance (2026-06-12)
+
+- **Scale feel check (World3D):** stand Roland against a cliff — he
+  should read ~17 voxels tall (1.7 m at 10 cm/voxel). A single-voxel
+  dig hole reads as a 10 cm pock, not a 17 cm bite. The ocean sits at
+  the same world height as before (12 m); familiar coastline and peak
+  shapes are preserved (amplitudes were rescaled to the same metres).
+- **Pickaxe default now carves 5x5x5** (same ~0.5 m physical bite as
+  the old 3x3x3 at the coarser grid). Scroll wheel still cycles down
+  to 1 for true 10 cm precision digging — try both; if you'd rather
+  the finer default, say so and we flip one constant.
+- **Pour a bucket into a 1 m pit** — collapse/leveling should look
+  unchanged (reach is still 3 m; it's 30 voxels now under the hood).
+- **F7 in CopperIslesTest** now cycles 10 -> 6 -> 8 vox/m (10 is the
+  canonical entry). Any pre-2026-06-12 baked Copper Isles SQLite is
+  invalid — delete + re-bake via BakeWorld when you next need it
+  (see design/COPPER_ISLES_BAKE_NOTES.md).
+- **Expect slower streaming this build** — perf retune is the next
+  phase (R2); judge feel, not framerate, until it lands.

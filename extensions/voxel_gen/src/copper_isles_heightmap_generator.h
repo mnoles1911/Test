@@ -97,10 +97,14 @@ private:
 
     // --- Heightmap config ---
     godot::String _heightmap_path = "res://assets/heightmaps/copper_isles_heightmap.exr";
-    int _extent_x_voxels = 30000;
-    int _extent_z_voxels = 30000;
-    int _origin_x_voxels = -15000;
-    int _origin_z_voxels = -15000;
-    int _elevation_above_at_white_voxels = 15000;
+    // Voxel-unit extents rescaled x5/3 at the 10 vox/m pivot
+    // (2026-06-12) so the island keeps the same WORLD-metre footprint
+    // (5 km x 5 km; was 30000/-15000/15000 at 6 vox/m). Per the
+    // change-all-together-or-none table in COPPER_ISLES_BAKE_NOTES.md.
+    int _extent_x_voxels = 50000;
+    int _extent_z_voxels = 50000;
+    int _origin_x_voxels = -25000;
+    int _origin_z_voxels = -25000;
+    int _elevation_above_at_white_voxels = 25000;
     bool _bilinear_sampling = true;
 };

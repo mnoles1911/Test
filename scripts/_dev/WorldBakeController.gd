@@ -134,7 +134,7 @@ const STOP_SHALLOW: float    = 5.0     # sea + 5      single stop, covers sea−
 # rather than LAND. Mirrors generator.beach_y_threshold semantics —
 # kept generous so the walker uses the sea-level-anchored stops where
 # the visual sand band actually exists.
-const COAST_BAND_VOXELS_ABOVE_SEA: int = 12   # = 2 m world
+const COAST_BAND_VOXELS_ABOVE_SEA: int = 20   # = 2 m world at 10 vox/m
 
 # Legacy multi-vertical knobs — retained for backward-compat with
 # code paths that may still reference them. The new classifier-driven

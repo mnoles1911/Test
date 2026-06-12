@@ -43,16 +43,18 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 # Units are VOXEL coordinates (not world metres). With the canonical 1/6
 # terrain scale, voxel Y * (1/6) = world Y metres.
 #
-# Mira's cubic generator: sea level ~ voxel Y 72 (= 12 m world); macro
-# noise centred around offset 60 with +/-100 swing; max ground rarely
-# above voxel Y ~180. The defaults below give:
-#   floor   voxel Y -200 = -33 m world (digging room below sea floor)
-#   ceiling voxel Y +500 =  83 m world (headroom above any peak)
-# Bump `terrain_voxel_y_min` lower if a player wants to dig deeper than
-# 27 m below sea floor; bump `terrain_voxel_y_max` higher if a new
+# Mira's cubic generator at 10 vox/m: sea level voxel Y 120 (= 12 m
+# world); macro noise centred around offset 100 with +/-167 swing; max
+# ground rarely above voxel Y ~300. The defaults below give:
+#   floor   voxel Y -352 = -35 m world (digging room below sea floor)
+#   ceiling voxel Y +832 =  83 m world (headroom above any peak)
+# Both are multiples of mesh_block_size=32 so the clamp lands on block
+# boundaries. (Old 6 vox/m values were -200..+500.)
+# Bump `terrain_voxel_y_min` lower if a player wants to dig deeper
+# below the sea floor; bump `terrain_voxel_y_max` higher if a new
 # generator tuning pushes peaks past 83 m world.
-@export var terrain_voxel_y_min: int = -200
-@export var terrain_voxel_y_max: int = 500
+@export var terrain_voxel_y_min: int = -352
+@export var terrain_voxel_y_max: int = 832
 
 # Terrain shadow casting. Default OFF (2026-05-25 streaming-throughput
 # probe). Every streamed VoxelLodTerrain mesh chunk submitting to the
@@ -166,7 +168,12 @@ var _diag_gen_counter_source: Object = null
 var _diag_last_gen_count: int = 0
 
 
-const WORKING_SQLITE_PATH: String = "user://voxel_deltas.sqlite"
+const WORKING_SQLITE_PATH: String = "user://voxel_deltas_v10.sqlite"
+# Renamed from "voxel_deltas.sqlite" at the 10 vox/m pivot (2026-06-12):
+# a stale 6 vox/m delta file must never paint wrong-scale edits into
+# the new world, so the old filename is simply never read again.
+# Must stay in sync with GameState.VOXEL_DELTAS_BASENAME and the
+# database_path on World3D.tscn's VoxelStreamSQLite.
 # The working SQLite that VoxelStreamSQLite on World3D.tscn reads from
 # and writes edits back to. Must match the database_path on the .tscn's
 # VoxelStreamSQLite sub-resource.
@@ -264,7 +271,7 @@ func _ready() -> void:
 
 	# --- Enforce scale alignment (VoxelScale contract) ---
 	# WHY: the .tscn file stores VoxelLodTerrain.transform as a raw
-	# number (0.166667 at the time of writing). The editor can't read
+	# number (0.1 at the time of writing). The editor can't read
 	# a GDScript const at edit time, so the scene file stores the
 	# literal value and THIS block enforces that it actually matches
 	# VoxelScale.VOXEL_SIZE_M at runtime. If they ever drift — e.g.
