@@ -107,6 +107,10 @@ ATLAS_LAYOUT = {
     "deadwood_all":    (7, 1),
     "leaf_dark_all":   (8, 1),
     "leaf_light_all":  (9, 1),
+    # Vegetation (ground cover, ferns) — ids 29-31. Placeholders; replace.
+    "grass_blade_all": (10, 1),
+    "grass_dry_all":   (11, 1),
+    "fern_frond_all":  (12, 1),
 }
 
 
@@ -141,6 +145,9 @@ MATERIAL_FACES = {
     26: {"all": "deadwood_all"},
     27: {"all": "leaf_dark_all"},
     28: {"all": "leaf_light_all"},
+    29: {"all": "grass_blade_all"},
+    30: {"all": "grass_dry_all"},
+    31: {"all": "fern_frond_all"},
 }
 
 

@@ -72,19 +72,23 @@ const MATERIAL_TILES: Dictionary = {
 	26: {"top": Vector2i(7, 1),  "side": Vector2i(7, 1),  "bottom": Vector2i(7, 1)},   # deadwood
 	27: {"top": Vector2i(8, 1),  "side": Vector2i(8, 1),  "bottom": Vector2i(8, 1)},   # leaf_dark
 	28: {"top": Vector2i(9, 1),  "side": Vector2i(9, 1),  "bottom": Vector2i(9, 1)},   # leaf_light
+	# Vegetation (ids 29-31) — grass blades + fern fronds. Placeholder tiles.
+	29: {"top": Vector2i(10, 1), "side": Vector2i(10, 1), "bottom": Vector2i(10, 1)},  # grass_blade
+	30: {"top": Vector2i(11, 1), "side": Vector2i(11, 1), "bottom": Vector2i(11, 1)},  # grass_dry
+	31: {"top": Vector2i(12, 1), "side": Vector2i(12, 1), "bottom": Vector2i(12, 1)},  # fern_frond
 }
 
 # Material IDs that should NOT cull adjacent block faces. Leaves are
 # the canonical example -- the canopy needs to look dense from outside,
 # so each leaf voxel keeps its faces visible even when surrounded by
 # other leaves.
-const NON_CULLING_MATERIALS: Array[int] = [11, 27, 28]   # leaves + tree leaf shades
+const NON_CULLING_MATERIALS: Array[int] = [11, 27, 28, 29, 30, 31]   # leaves + tree leaf shades + grass/fern
 
 # Material IDs that should render as transparent. Different
 # transparency_index values mean Zylann groups faces into separate
 # render passes for correct alpha sorting. 1 = leaves' alpha-cutout
 # group.
-const TRANSPARENT_MATERIALS: Array[int] = [11, 27, 28]   # leaves + tree leaf shades
+const TRANSPARENT_MATERIALS: Array[int] = [11, 27, 28, 29, 30, 31]   # leaves + tree leaf shades + grass/fern
 
 
 # =============================================================

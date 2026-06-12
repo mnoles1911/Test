@@ -1,7 +1,8 @@
 {
   "name": "Default",
-  "description": "Default texture pack — 16x16 pixel-art tiles for the Game One material library. Source images generated at 512px and nearest-neighbour-downscaled into a 16px-per-tile atlas.",
+  "description": "Default texture pack — 16x16 pixel-art tiles for the Game One material library. World scale: 10 cm per voxel (10 vox/m), so each tile is the surface of a 10 cm voxel face. Includes terrain + vegetation/tree materials (ids 24-31, currently placeholders). Source images nearest-neighbour-downscaled into a 16px-per-tile atlas.",
   "tile_size": 16,
   "atlas_size": 1024,
-  "version": "2.0.0"
+  "voxel_size_m": 0.1,
+  "version": "2.1.0"
 }

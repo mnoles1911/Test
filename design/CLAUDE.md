@@ -33,7 +33,7 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 
 ### Art + pipeline
 - `ART_DIRECTION.md`, `ART_PIPELINE.md`, `ASSET_PIPELINE_AI.md`.
-- `3D_VOXEL_MIGRATION.md` — voxel scale (6/m), atlas, NoEditZones, edit deltas.
+- `3D_VOXEL_MIGRATION.md` — voxel scale (**10/m, 10 cm — updated 2026-06-12 from 6/m**), atlas, NoEditZones, edit deltas.
 - `GRAPHICS_PASS_2026-05-19.md` — graphics phase record + roadmap.
 - `COPPER_ISLES_DEMO_HEIGHTMAP.md`, `COPPER_ISLES_BAKE_NOTES.md`.
 

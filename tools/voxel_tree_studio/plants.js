@@ -8,7 +8,7 @@
 // scales the whole thing to a target height. Everything is rooted so the voxels
 // stay 6-connected (one body) where that makes sense.
 //
-// Material ids reused from the tree palette: 24 bark, 27 leaf_dark, 28 leaf_light.
+// Material ids: 24 bark (vine stems), 29 grass, 30 grass_dry, 31 fern_frond.
 
 function makeRng(seed) {
   let a = seed >>> 0;
@@ -23,7 +23,7 @@ const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1
 export function buildGrass(p, { scatter = false } = {}) {
   const rng = makeRng((p.seed | 0) || 1);
   const skeleton = [];
-  const green = [27, 28];
+  const green = [29, 30];  // grass + dry-grass shades
   const clumps = scatter ? Math.max(1, p.gcClumps | 0) : 1;
   const patchR = scatter ? p.gcPatchRadius : 0;
 
@@ -45,7 +45,7 @@ export function buildGrass(p, { scatter = false } = {}) {
     }
   }
   const out = { skeleton, leafAnchors: [] };
-  if (scatter && clumps > 1) out.groundDisc = { radius: patchR, mat: 27 };
+  if (scatter && clumps > 1) out.groundDisc = { radius: patchR, mat: 29 };
   return out;
 }
 
@@ -68,7 +68,7 @@ export function buildFern(p) {
       pos = [pos[0]+d[0]*step, pos[1]+d[1]*step, pos[2]+d[2]*step];
       d = norm([d[0] + ox*p.fernArch*0.06, d[1] - p.fernArch*0.13, d[2] + oz*p.fernArch*0.06]); // arch up then droop
     }
-    skeleton.push({ level: 2, points: pts, radii, mat: 27 }); // rachis dark green
+    skeleton.push({ level: 2, points: pts, radii, mat: 31 }); // rachis = fern frond
     const pairs = p.fernLeaflets | 0;
     for (let i = 1; i <= pairs; i++) {
       const t = i / (pairs + 1), idx = Math.min(segs, Math.floor(t * segs));
@@ -78,7 +78,7 @@ export function buildFern(p) {
         const tip = [rp.pos[0] + perp[0]*sgn*len + rp.dir[0]*0.3,
                      rp.pos[1] + 0.2,
                      rp.pos[2] + perp[2]*sgn*len + rp.dir[2]*0.3];
-        skeleton.push({ level: 3, points: [rp.pos, tip], radii: [0.1, 0.04], mat: 28 }); // leaflet light green
+        skeleton.push({ level: 3, points: [rp.pos, tip], radii: [0.1, 0.04], mat: 31 }); // leaflet = fern frond
       }
     }
   }

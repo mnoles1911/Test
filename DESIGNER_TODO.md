@@ -803,17 +803,18 @@ Open questions that need an answer before their dependent systems can be built.
   movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
   Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
 
-- [ ] **Tree voxel materials (ids 24–28) — bake the library + replace placeholder art**
-  The Voxel Tree Studio (`tools/voxel_tree_studio/`) emits a rich wood/leaf
-  palette (24 bark, 25 heartwood, 26 deadwood, 27 leaf_dark, 28 leaf_light —
-  chosen to avoid the native fluid models at 16–23). These are **already wired
-  in code with PLACEHOLDER tiles**:
+- [ ] **Vegetation/tree voxel materials (ids 24–31) — bake the library + replace placeholder art**
+  The Voxel Tree Studio (`tools/voxel_tree_studio/`) emits a rich palette
+  (24 bark, 25 heartwood, 26 deadwood, 27 leaf_dark, 28 leaf_light, 29 grass,
+  30 grass_dry, 31 fern — chosen to avoid the native fluid models at 16–23).
+  These are **already wired in code with PLACEHOLDER tiles**:
   - `.tres` resources in `assets/voxels/materials/` (bark/heartwood/deadwood/
-    leaf_dark/leaf_light).
+    leaf_dark/leaf_light/grass_blade/grass_dry/fern_frond).
   - placeholder 16px source PNGs in `assets/voxels/texture_packs/default/source/`.
-  - atlas rows in `tools/build_texture_atlas.py` (5,1)…(9,1).
-  - `MATERIAL_TILES` + leaf ids in `NON_CULLING_MATERIALS`/`TRANSPARENT_MATERIALS`
-    in `tools/build_blocky_library.gd`.
+  - atlas rows in `tools/build_texture_atlas.py` (5,1)…(12,1).
+  - `MATERIAL_TILES` + leaf/grass/fern ids in
+    `NON_CULLING_MATERIALS`/`TRANSPARENT_MATERIALS` in
+    `tools/build_blocky_library.gd`.
 
   To activate: **(1)** run `python tools/build_texture_atlas.py default`, **(2)**
   run `tools/build_blocky_library.gd` from the Godot editor (Ctrl+Shift+X),

@@ -22,13 +22,17 @@ export const MAT = {
   DEADWOOD: 26,
   LEAF_DARK: 27,
   LEAF_LIGHT: 28,
+  GRASS: 29,
+  GRASS_DRY: 30,
+  FERN: 31,
 };
 export const WOOD_IDS = [MAT.BARK, MAT.HEARTWOOD, MAT.DEADWOOD];
-export const LEAF_IDS = [MAT.LEAF_DARK, MAT.LEAF_LIGHT];
-// Collapse map for the deployable export (wood→10 log, leaves→11 leaves).
+export const LEAF_IDS = [MAT.LEAF_DARK, MAT.LEAF_LIGHT, MAT.GRASS, MAT.GRASS_DRY, MAT.FERN];
+// Collapse map for the deployable export (wood→10 log, foliage→11 leaves).
 export const COLLAPSE = {
   [MAT.BARK]: 10, [MAT.HEARTWOOD]: 10, [MAT.DEADWOOD]: 10,
   [MAT.LEAF_DARK]: 11, [MAT.LEAF_LIGHT]: 11,
+  [MAT.GRASS]: 11, [MAT.GRASS_DRY]: 11, [MAT.FERN]: 11,
 };
 
 // Integer cell packing. Coordinates are kept within ±OFFSET voxels (a 200 m

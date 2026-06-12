@@ -163,9 +163,9 @@ redo with a pixel-art-specific tool).
 > cast shadows, no specular highlights.
 >
 > Tiling requirement: Every texture must tile seamlessly with no
-> visible seams at any edge. This game runs at 6 voxels per meter
-> (each voxel face is about 16.7 cm), so a single 10-meter stone
-> wall repeats the tile 60+ times. Any dominant feature (a single
+> visible seams at any edge. This game runs at 10 voxels per meter
+> (each voxel face is 10 cm), so a single 10-meter stone
+> wall repeats the tile 100 times. Any dominant feature (a single
 > bright pixel, a long crack, an off-color pixel) becomes a visible
 > repeating grid the player cannot unsee. Detail must be balanced
 > and distributed uniformly: no single pixel dramatically brighter,
@@ -443,6 +443,43 @@ underground.)*
 > crystalline specks at uniform density, all of similar weight.
 > Flat top-down view, matte even lighting throughout. Tiles
 > seamlessly with no edge seams.
+
+---
+
+## Vegetation & tree materials (ids 24–31)
+
+These drive the assets exported from **`tools/voxel_tree_studio/`** (trees,
+bushes, ferns, grass, ground cover, vines). They currently ship with
+**procedurally-generated PLACEHOLDER tiles** (flat browns/greens) so the
+pipeline works end-to-end — replace each with real pixel art. Filenames go in
+`source/` exactly as named. The leaf/grass/fern tiles are **alpha-cutout**
+(non-culling, transparent in `build_blocky_library.gd`): paint the foliage shape
+on a transparent/white background so gaps read as see-through canopy.
+
+| id | filename | what |
+|----|----------|------|
+| 24 | `bark_all.png` | tree trunk bark — vertical furrowed grain, mid-brown |
+| 25 | `heartwood_all.png` | inner cut wood — lighter warm brown, faint rings |
+| 26 | `deadwood_all.png` | dead/charred branch — desaturated grey-brown |
+| 27 | `leaf_dark_all.png` | dense canopy leaves, deep forest green (alpha gaps) |
+| 28 | `leaf_light_all.png` | sunlit canopy leaves, brighter green (alpha gaps) |
+| 29 | `grass_blade_all.png` | upright grass blades, fresh green (alpha gaps) |
+| 30 | `grass_dry_all.png` | dry/straw grass blades, pale yellow-green (alpha gaps) |
+| 31 | `fern_frond_all.png` | fern frond — cool blue-green pinnate fronds (alpha gaps) |
+
+Example prompt (adapt the colour/shape per row):
+
+> A 16x16 pixel art tile of upright fresh-green grass blades on a transparent
+> background, rendered at 1024x1024 as a 64x upscale with hard square pixels.
+> Thin vertical blades of slightly varied green, a few paler tips, clear gaps of
+> transparency between blades so it reads as sparse vegetation when alpha-cut.
+> Tight 4–5 tone green palette, pure matte albedo, flat top-down view, no baked
+> lighting or shadows. Tiles seamlessly left-to-right.
+
+> A 16x16 pixel art tile of vertically furrowed tree bark, mid-brown, rendered
+> at 1024x1024 as a 64x upscale with hard square pixels. Even vertical grain of
+> 4–5 brown tones, subtle knots, no single dominant feature. Pure matte albedo,
+> flat lighting, tiles seamlessly on all edges (10 cm of bark per voxel face).
 
 ---
 
