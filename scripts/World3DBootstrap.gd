@@ -13,6 +13,25 @@ const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
 # file read from here. See scripts/VoxelScale.gd for the full rationale.
 const VoxelScale := preload("res://scripts/VoxelScale.gd")
 
+# === BIOME FRAMEWORK === (config — wiring block is in _ready) ===========
+# When biome_framework_enabled is true the generator switches from its
+# single rolling-hills recipe to the multi-biome path (plains / hills /
+# forest / desert / mountains, blended at borders). Default OFF so the
+# shipped terrain + the `gen` parity baseline + Copper Isles are untouched
+# until the designer flips it on. The five profile .tres load in a FIXED
+# slot order; the Whittaker classifier binds each KIND to its slot below.
+@export var biome_framework_enabled: bool = false
+const _BIOME_DIR := "res://assets/biomes/"
+# Slot order = load order = the indices the field params bind kinds to.
+const _BIOME_FILES: Array[String] = [
+	"flat_plains.tres",     # slot 0 -> plains kind
+	"rolling_hills.tres",   # slot 1 -> hills kind (the continuity anchor)
+	"deciduous_forest.tres",# slot 2 -> forest kind
+	"rocky_desert.tres",    # slot 3 -> desert kind
+	"mountains.tres",       # slot 4 -> mountains kind
+]
+# === BIOME FRAMEWORK END ===============================================
+
 # World3DBootstrap — wires up scene-level systems when the World3D
 # scene loads.
 #
@@ -733,6 +752,18 @@ func _ready() -> void:
 				FloraMaterial.PEBBLE_ID, FloraMaterial.TWIG_ID])
 		# --- D1 BLOCK END -------------------------------------------------
 
+		# === BIOME FRAMEWORK === (wiring) ===============================
+		# Load the five biome profile .tres in slot order, push them to the
+		# generator as flattened PODs, then push the control-noise +
+		# classification knobs + the KIND->slot bindings. Once profiles are
+		# set the C++ generator's biome_active() flips true and it uses the
+		# blended-biome heightfield + per-biome surface/flora. Default OFF
+		# (biome_framework_enabled) so the legacy path stays the shipped one.
+		if biome_framework_enabled and gen != null \
+				and gen.has_method("set_biome_profiles"):
+			_wire_biome_framework(gen)
+		# === BIOME FRAMEWORK END =======================================
+
 	# --- Configure water surface + seed test pond ---
 	# Phase 5: the AABB-source-region model is gone. Ocean water lives
 	# in CHANNEL_DATA, written at gen time by CubicHeightmapGenerator
@@ -944,6 +975,59 @@ const _MATERIAL_TILES: Dictionary = {
 
 const _NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
 const _TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
+
+
+# === BIOME FRAMEWORK === (helper) =======================================
+# Load the five biome .tres in slot order, forward them + the field params
+# + a low-frequency control noise to the generator. Slot order is fixed by
+# _BIOME_FILES; the field-param call binds each Whittaker KIND to its slot.
+# Stashes the configured field on _biome_field_ref so the DebugOverlay biome
+# readout can query the dominant biome under the player.
+var _biome_field_ref: Object = null   # the live BiomeFieldCpp (debug readout)
+
+func _wire_biome_framework(gen) -> void:
+	# 1. Load profiles in slot order. A missing file pushes an empty dict
+	#    (the C++ side defaults it) but logs loud so the slot binding is
+	#    never silently wrong.
+	var profiles: Array = []
+	for fname in _BIOME_FILES:
+		var path: String = _BIOME_DIR + fname
+		var res = load(path) if ResourceLoader.exists(path) else null
+		if res == null:
+			push_error("[World3D][Biome] missing profile %s — slot will default." % path)
+			profiles.append({})
+		else:
+			profiles.append(res)
+	gen.call("set_biome_profiles", profiles)
+
+	# 2. Control noise — a SEPARATE low-frequency FastNoiseLite for the
+	#    relief/moisture fields. frequency = 1.0 so the per-metre multipliers
+	#    BiomeField applies internally are the ONLY scaling (no double-scale).
+	var cnoise := FastNoiseLite.new()
+	cnoise.seed = 1337
+	cnoise.frequency = 1.0
+	cnoise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	cnoise.fractal_octaves = 3
+	gen.call("set_biome_control_noise", cnoise)
+
+	# 3. Field params + KIND->slot bindings (slot order = _BIOME_FILES order).
+	#    control freq ~1/600 m, warp ~1/1250 m at 140 m strength, blend
+	#    margin 0.06 (the spec's border width). plains=0 hills=1 forest=2
+	#    desert=3 mountains=4.
+	gen.call("set_biome_field_params",
+		1.0 / 600.0,    # control_frequency_per_m
+		1.0 / 1250.0,   # warp_frequency_per_m
+		140.0,          # warp_strength (metres)
+		0.06,           # blend_margin
+		VoxelScale.VOXELS_PER_METER,
+		0, 1, 2, 3, 4)  # plains, hills, forest, desert, mountains
+
+	# Cache the live field for the debug readout (adapter -> cpp_impl -> field).
+	var cpp = gen.get("cpp_impl") if "cpp_impl" in gen else gen
+	if cpp != null and cpp.has_method("get_biome_field"):
+		_biome_field_ref = cpp.call("get_biome_field")
+	print("[World3D][Biome] framework ON — %d profiles wired (plains/hills/forest/desert/mountains)." % profiles.size())
+# === BIOME FRAMEWORK END ===============================================
 
 
 # Phase I — pick the terrain material for one voxel model. Most

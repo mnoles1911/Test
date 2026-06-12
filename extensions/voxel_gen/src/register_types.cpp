@@ -23,6 +23,7 @@
 //  surface mesher and no horizon plane.)
 
 #include "register_types.h"
+#include "biome_field.h"
 #include "copper_isles_heightmap_generator.h"
 #include "cubic_heightmap_generator.h"
 #include "distant_terrain_mesher.h"
@@ -45,6 +46,12 @@ void initialize_voxel_gen_module(ModuleInitializationLevel p_level) {
         return;
     }
     ClassDB::register_class<ParityProbe>();
+    // BiomeFieldCpp — the per-column biome classifier + parameter blender.
+    // Standalone Resource (no inheritance vs the generator chain); the
+    // headless `biome` gate instantiates it directly and the generator
+    // owns one. Register before the generators so a generator that holds a
+    // Ref<BiomeFieldCpp> resolves the type.
+    ClassDB::register_class<voxel_gen::BiomeFieldCpp>();
     // The base class must register BEFORE its subclasses so godot-cpp
     // can resolve the inheritance chain. Abstract so the editor doesn't
     // let users instantiate it directly (compute_ground_y is pure

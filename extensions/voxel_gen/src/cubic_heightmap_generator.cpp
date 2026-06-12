@@ -67,6 +67,15 @@ double CubicHeightmapGeneratorCpp::get_detail_frequency_multiplier() const { ret
 //     promotion in late accumulation produces a 1-ULP delta that can flip
 //     an int truncation 0.01 % of the time.
 int CubicHeightmapGeneratorCpp::compute_ground_y(int world_x, int world_z) const {
+    // Biome path: when biome profiles are loaded, the heightfield comes
+    // entirely from the blended per-biome params. The BiomeField returns
+    // elevation in voxels RELATIVE to sea level; add the sea-level voxel
+    // so columns sit around the waterline (sea_level_voxels = 120 at 10
+    // vox/m = 12 m). The legacy three-layer noise below is bypassed so the
+    // `gen` parity baseline (captured on the no-profiles path) is untouched.
+    if (biome_active()) {
+        return _biome_field->compute_ground_y(world_x, world_z) + _sea_level_voxels;
+    }
     if (_noise.is_null()) {
         return _height_offset_voxels;
     }

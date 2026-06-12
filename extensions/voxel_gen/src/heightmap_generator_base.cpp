@@ -2,9 +2,12 @@
 
 #include "voxel_gen_math.h"
 
+#include <godot_cpp/classes/fast_noise_lite.hpp>
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <cmath>
@@ -152,6 +155,47 @@ int HeightmapGeneratorBase::get_twig_material_id() const { return _twig_material
 
 void HeightmapGeneratorBase::set_surface_detail_seed(int p_value) { _surface_detail_seed = p_value; }
 int HeightmapGeneratorBase::get_surface_detail_seed() const { return _surface_detail_seed; }
+
+// ----- Biome framework forwarders ----------------------------------------
+//
+// The base owns one BiomeFieldCpp; these forward the bootstrap's three
+// setup calls into it. Created lazily so a generator that never gets biome
+// data (Copper Isles) carries no field and stays on the legacy path.
+
+void HeightmapGeneratorBase::_ensure_biome_field() {
+    if (_biome_field.is_null()) {
+        _biome_field.instantiate();
+    }
+}
+
+void HeightmapGeneratorBase::set_biome_profiles(const Array &p_list) {
+    _ensure_biome_field();
+    _biome_field->set_biome_profiles(p_list);
+}
+
+void HeightmapGeneratorBase::set_biome_field_params(double control_frequency_per_m,
+                                                    double warp_frequency_per_m,
+                                                    double warp_strength,
+                                                    double blend_margin,
+                                                    double voxels_per_metre,
+                                                    int plains_index, int hills_index,
+                                                    int forest_index, int desert_index,
+                                                    int mountains_index) {
+    _ensure_biome_field();
+    _biome_field->set_biome_field_params(control_frequency_per_m, warp_frequency_per_m,
+                                         warp_strength, blend_margin, voxels_per_metre,
+                                         plains_index, hills_index, forest_index,
+                                         desert_index, mountains_index);
+}
+
+void HeightmapGeneratorBase::set_biome_control_noise(const Ref<FastNoiseLite> &p_noise) {
+    _ensure_biome_field();
+    _biome_field->set_control_noise(p_noise);
+}
+
+int HeightmapGeneratorBase::get_biome_profile_count() const {
+    return _biome_field.is_valid() ? _biome_field->get_biome_profile_count() : 0;
+}
 
 // ----- POD snapshot setters ---------------------------------------------
 //
@@ -372,17 +416,77 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             && lod <= _disk_rule_max_lod
             && !_disk_materials.empty();
 
+    // Biome path gate. When profiles are loaded, per-column surface
+    // material + flora density come from the weighted-hash-picked biome
+    // instead of the global grass/sand/flora constants. Resolved once per
+    // column below. The biome field pointer is cached locally so the inner
+    // loop never re-fetches the Ref.
+    const bool biome_on = biome_active();
+    voxel_gen::BiomeFieldCpp *biome = biome_on ? _biome_field.ptr() : nullptr;
+
     for (int z = 0; z < size.z; ++z) {
         for (int x = 0; x < size.x; ++x) {
             const int world_x = origin_in_voxels.x + x * stride;
             const int world_z = origin_in_voxels.z + z * stride;
             const int ground_y = compute_ground_y(world_x, world_z);
 
+            // --- Biome surface resolution (once per column) ---
+            // Pick the biome whose SURFACE rules drive this column (weighted
+            // hash over the ≤3 contributors so borders dither). Its top +
+            // slope material ids and grass/flower densities replace the
+            // global constants below. cliff_mat defaults to plain stone (the
+            // legacy cliff material) so the legacy path is unchanged.
+            int biome_top_id = GRASS_MATERIAL_ID;
+            int biome_cliff_id = STONE_MATERIAL_ID;
+            int biome_patch_id = 0;
+            double biome_patch_freq = 0.0;
+            double biome_patch_thresh = 0.0;
+            double biome_grass_density = 0.35;
+            double biome_flower_density = 0.02;
+            double biome_micro_relief = 0.0;
+            bool col_biome = false;
+            if (biome != nullptr) {
+                const int surf = biome->pick_surface_biome(world_x, world_z);
+                if (surf >= 0 && surf < biome->profile_count()) {
+                    const voxel_gen::BiomeProfilePOD &bp = biome->profile_at(surf);
+                    biome_top_id = bp.top_material_id;
+                    biome_cliff_id = bp.slope_material_id;
+                    biome_patch_id = bp.patch_material_id;
+                    biome_patch_freq = bp.patch_frequency_per_m;
+                    biome_patch_thresh = bp.patch_threshold;
+                    biome_grass_density = bp.grass_density;
+                    biome_flower_density = bp.flower_density;
+                    biome_micro_relief = bp.micro_relief_chance;
+                    col_biome = true;
+                }
+            }
+
             // Top-band selection: grass by default, sand if column dips
-            // at or below the beach line.
-            int top_id = GRASS_MATERIAL_ID;
+            // at or below the beach line. Under biomes the biome's top
+            // material wins (beaches still go sand below the beach line so
+            // coastlines stay readable across every biome).
+            int top_id = col_biome ? biome_top_id : GRASS_MATERIAL_ID;
             if (ground_y <= beach_y) {
                 top_id = SAND_MATERIAL_ID;
+            }
+
+            // Biome patch scatter (e.g. gravel in plains, dirt litter in
+            // forest): a low-freq hash patch overrides the top material.
+            // Disabled (patch_threshold==0) on every legacy column.
+            if (col_biome && biome_patch_id != 0 && biome_patch_thresh > 0.0
+                    && ground_y > beach_y) {
+                const double vpm = biome->get_voxels_per_metre();
+                const double pf = biome_patch_freq;
+                // Hash on metre-quantized coords so patches read as blobs,
+                // not per-voxel speckle. patch_frequency_per_m sets blob size.
+                const int64_t qx = static_cast<int64_t>(std::floor(
+                        (static_cast<double>(world_x) / vpm) * pf));
+                const int64_t qz = static_cast<int64_t>(std::floor(
+                        (static_cast<double>(world_z) / vpm) * pf));
+                const double ph = voxel_gen::math::hash3(qx, 5, qz, 0x9A7C);
+                if (ph < biome_patch_thresh) {
+                    top_id = biome_patch_id;
+                }
             }
 
             // Tier 1 cliff slope. When a column has a steep drop to any
@@ -391,7 +495,11 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             const bool col_is_cliff = run_cliff_rule
                     && column_is_cliff(world_x, world_z, ground_y);
             if (col_is_cliff) {
-                top_id = STONE_MATERIAL_ID;
+                // Biome columns use the biome's slope material (e.g. desert
+                // canyon walls read as stone); legacy columns stay plain
+                // stone. biome_cliff_id defaults to STONE so this is a
+                // no-op on the legacy path.
+                top_id = col_biome ? biome_cliff_id : STONE_MATERIAL_ID;
                 col_dirt_band_end = grass_thick;
                 // Tier 6 cliff ore outcrops. Dice + uniform pick from the
                 // ore list, gated by the picked ore's altitude band.
@@ -466,18 +574,31 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             // flora_id 0 means "nothing here this column".
             int flora_id = 0;
             const bool flora_enabled = (lod == 0) && (_grass_blade_material_id != 0);
+            // Flora grows on grass-topped columns only — identical rule for
+            // legacy and biome paths (a grass TOP id). Desert/sand/snow
+            // biomes set a non-grass top material, so they naturally grow
+            // nothing; grassy biomes (plains/hills/forest) keep grass tops
+            // and the per-biome density below governs how dense.
+            const bool col_is_grassland = (top_id == GRASS_MATERIAL_ID);
+            // Per-biome density thresholds. flower band sits at the bottom of
+            // the roll, grass band above it: [0,flower) flower,
+            // [flower, flower+grass) grass. Legacy keeps 0.02 / 0.35.
+            const double flower_cut = col_biome ? biome_flower_density : 0.02;
+            const double grass_cut = col_biome ? (biome_flower_density + biome_grass_density)
+                                               : 0.37;
             if (flora_enabled
-                    && top_id == GRASS_MATERIAL_ID
+                    && col_is_grassland
                     && disk_match == nullptr      // not on a clay/gravel disk surface
                     && (ground_y + 1) > sea_level_v) {
                 // One hash roll in [0,1) picks the outcome. Layout:
-                //   [0.00 .. 0.02)  -> a flower (red/blue split by a 2nd roll)
-                //   [0.02 .. 0.37)  -> a grass blade   (~35% of grassland)
-                //   [0.37 .. 1.00)  -> bare ground
-                // ~2% flowers, ~35% grass — the design's locked densities.
+                //   [0 .. flower_cut)        -> a flower (red/blue split)
+                //   [flower_cut .. grass_cut)-> a grass blade
+                //   [grass_cut .. 1.0)       -> bare ground
+                // Legacy: ~2% flowers, ~35% grass — the design's locked
+                // densities. Biome: the picked biome's flower/grass density.
                 const double roll = voxel_gen::math::hash3(
                         world_x, 0, world_z, static_cast<int64_t>(_flora_seed));
-                if (roll < 0.02) {
+                if (roll < flower_cut) {
                     // Split flowers ~50/50 red/blue via an independent roll.
                     const double which = voxel_gen::math::hash3(
                             world_x, 1, world_z, static_cast<int64_t>(_flora_seed) + 1);
@@ -490,7 +611,7 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                     } else {
                         flora_id = _grass_blade_material_id;  // no flower ids wired — fall back to grass
                     }
-                } else if (roll < 0.37) {
+                } else if (roll < grass_cut) {
                     flora_id = _grass_blade_material_id;
                 }
             }
@@ -515,14 +636,22 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                 const bool ground_takes_pebble =
                         (top_id == STONE_MATERIAL_ID || top_id == SAND_MATERIAL_ID || ground_is_soft);
                 // One hash roll in [0,1). Layout (independent of flora's):
-                //   [0.000 .. 0.015)  -> pebble (~1.5% on pebble-eligible)
-                //   [0.015 .. 0.025)  -> twig   (~1.0% on dirt/grass only)
-                //   [0.025 .. 1.000)  -> bare
+                //   [0 .. pebble_cut)            -> pebble
+                //   [pebble_cut .. pebble+twig)  -> twig (dirt/grass only)
+                //   [.. 1.0)                     -> bare
+                // Legacy: 1.5% pebble / 1.0% twig. Biome: the rocky_desert
+                // micro_relief_chance dials pebble density up (strewn
+                // pebbles on canyon floors); biome_micro_relief 0 keeps the
+                // legacy 1.5% baseline so grassy biomes are unaffected.
+                const double pebble_cut = col_biome && biome_micro_relief > 0.0
+                        ? biome_micro_relief
+                        : 0.015;
+                const double twig_cut = pebble_cut + 0.010;
                 const double droll = voxel_gen::math::hash3(
                         world_x, 0, world_z, static_cast<int64_t>(_surface_detail_seed));
-                if (droll < 0.015 && ground_takes_pebble && _pebble_material_id != 0) {
+                if (droll < pebble_cut && ground_takes_pebble && _pebble_material_id != 0) {
                     flora_id = _pebble_material_id;
-                } else if (droll < 0.025 && ground_is_soft && _twig_material_id != 0) {
+                } else if (droll < twig_cut && ground_is_soft && _twig_material_id != 0) {
                     flora_id = _twig_material_id;
                 }
             }
@@ -904,6 +1033,22 @@ void HeightmapGeneratorBase::_bind_methods() {
                          &HeightmapGeneratorBase::get_surface_detail_seed);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "surface_detail_seed"),
                  "set_surface_detail_seed", "get_surface_detail_seed");
+
+    // Biome framework forwarders (no ADD_PROPERTY — bootstrap + gate only).
+    ClassDB::bind_method(D_METHOD("set_biome_profiles", "list"),
+                         &HeightmapGeneratorBase::set_biome_profiles);
+    ClassDB::bind_method(D_METHOD("set_biome_field_params",
+                                  "control_frequency_per_m", "warp_frequency_per_m",
+                                  "warp_strength", "blend_margin", "voxels_per_metre",
+                                  "plains_index", "hills_index", "forest_index",
+                                  "desert_index", "mountains_index"),
+                         &HeightmapGeneratorBase::set_biome_field_params);
+    ClassDB::bind_method(D_METHOD("set_biome_control_noise", "noise"),
+                         &HeightmapGeneratorBase::set_biome_control_noise);
+    ClassDB::bind_method(D_METHOD("get_biome_profile_count"),
+                         &HeightmapGeneratorBase::get_biome_profile_count);
+    ClassDB::bind_method(D_METHOD("get_biome_field"),
+                         &HeightmapGeneratorBase::get_biome_field);
 
     // Core API — compute_ground_y is virtual; ClassDB dispatches to the
     // concrete child override at runtime. get_ground_voxel_y_at is the

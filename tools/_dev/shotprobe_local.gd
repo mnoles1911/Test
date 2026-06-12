@@ -27,6 +27,11 @@ func _initialize() -> void:
 	if _set == "":
 		_set = "skirt"
 	_world = (load("res://scenes/World3D.tscn") as PackedScene).instantiate()
+	# === BIOME FRAMEWORK === for SHOT=biomes, flip the world into biome
+	# mode BEFORE _ready runs so the generator streams the multi-biome
+	# terrain. The default-OFF flag stays off for every other SHOT set.
+	if _set == "biomes" and "biome_framework_enabled" in _world:
+		_world.set("biome_framework_enabled", true)
 	root.add_child(_world)
 	_sub = SubViewport.new()
 	_sub.size = Vector2i(1280, 720)
@@ -45,7 +50,19 @@ func _initialize() -> void:
 # Re-settle after each camera move so SDFGI reconverges for the new view.
 const RESETTLE_FRAMES: int = 400
 
+# === BIOME FRAMEWORK === capture state. For SHOT=biomes we search the live
+# biome field outward from origin for the first column whose DOMINANT biome
+# weight >= 0.9 (a "pure" example of each biome), then capture an eye-level
+# and a 30 m-high vantage there. 5 biomes x 2 shots = 10 PNGs.
+const _BIOME_NAMES := ["plains", "hills", "forest", "desert", "mountains"]
+var _biome_anchors := {}        # slot -> Vector3 (world metres, ground)
+var _biome_shot_list: Array = [] # [ [name, world_pos, is_high], ... ]
+var _biome_idx: int = -1         # index into _biome_shot_list (-1 = not started)
+var _biome_settle: int = 0
+
 func _process(_d: float) -> bool:
+	if _set == "biomes":
+		return _process_biomes()
 	_frames += 1
 	# Phase 0: boot, set noon, aim shot 0, then long initial settle.
 	if _phase == 0:
@@ -142,3 +159,129 @@ func _snap(name: String) -> void:
 		return
 	img.save_png(OUT_DIR + name + ".png")
 	print("[SHOT] saved %s" % ProjectSettings.globalize_path(OUT_DIR + name + ".png"))
+
+
+# === BIOME FRAMEWORK === capture driver. ----------------------------------
+# Phase A (_biome_idx == -1): long initial settle for streaming, then locate
+# the five biome anchors + build the shot list. Phase B: for each shot move
+# the camera, re-settle for SDFGI, capture.
+func _process_biomes() -> bool:
+	_frames += 1
+	if _biome_idx == -1:
+		if _frames == 30:
+			var wc := root.get_node_or_null("/root/WorldClock")
+			if wc != null and wc.has_method("set_time"):
+				wc.set_time(12, 0)
+		if _frames < SETTLE_FRAMES:
+			return false
+		# Settled — find anchors + build the shot list, then start phase B.
+		_biome_find_anchors()
+		if _biome_shot_list.is_empty():
+			print("[SHOT] biomes — no anchors found (biome field inactive?). DONE")
+			return true
+		_biome_idx = 0
+		_biome_aim(0)
+		_biome_settle = 0
+		return false
+	# Phase B — re-settle then capture the current shot.
+	_biome_settle += 1
+	if _biome_settle < RESETTLE_FRAMES:
+		return false
+	var shot: Array = _biome_shot_list[_biome_idx]
+	_snap("biome_%s_%s" % [shot[0], "high" if shot[2] else "eye"])
+	_biome_idx += 1
+	if _biome_idx >= _biome_shot_list.size():
+		print("[SHOT] biomes DONE — %d captures." % _biome_shot_list.size())
+		return true
+	_biome_aim(_biome_idx)
+	_biome_settle = 0
+	return false
+
+
+# Resolve the BiomeFieldCpp the bootstrap cached, search outward from origin
+# for one pure (dominant weight >= 0.9) column per biome slot, store the
+# ground world position. Builds _biome_shot_list = eye + high per found biome.
+func _biome_find_anchors() -> void:
+	const VoxelScale := preload("res://scripts/VoxelScale.gd")
+	var field = _world.get("_biome_field_ref") if ("_biome_field_ref" in _world) else null
+	if field == null or not field.has_method("dominant_biome"):
+		print("[SHOT] biomes — bootstrap has no _biome_field_ref; is biome_framework_enabled?")
+		return
+	var terrain = _world.find_child("VoxelLodTerrain", true, false)
+	var tool = terrain.get_voxel_tool() if terrain != null else null
+	if tool != null:
+		tool.channel = VoxelBuffer.CHANNEL_TYPE
+	# Spiral-ish outward scan in voxel coords. Step 64 vox (~6.4 m) over a
+	# wide radius so we cross every biome (biome cells are ~600 m wide).
+	var vpm: float = VoxelScale.VOXELS_PER_METER
+	var step: int = 64
+	var max_r: int = 60000   # voxels (~6 km)
+	var r: int = 0
+	while r < max_r and _biome_anchors.size() < 5:
+		# Walk a square ring at radius r.
+		var coords: Array = []
+		var x := -r
+		while x <= r:
+			coords.append(Vector2i(x, -r))
+			coords.append(Vector2i(x, r))
+			x += step
+		var z := -r + step
+		while z < r:
+			coords.append(Vector2i(-r, z))
+			coords.append(Vector2i(r, z))
+			z += step
+		if r == 0:
+			coords = [Vector2i(0, 0)]
+		for c in coords:
+			var dom: int = field.dominant_biome(c.x, c.y)
+			if dom < 0 or _biome_anchors.has(dom):
+				continue
+			var w: Dictionary = field.resolve_biome_weights(c.x, c.y)
+			var wts: PackedFloat64Array = w["weights"]
+			if wts.size() == 0 or wts[0] < 0.9:
+				continue
+			# Pure column — find the ground world Y here.
+			var gy := _biome_ground_y(tool, c.x, c.y)
+			if gy < 0:
+				continue
+			# Require DRY land (ground above the 120-vox sea level) so the
+			# shot isn't underwater. Low-amplitude biomes (plains/desert) sit
+			# just above the waterline, so the margin is small (4 vox).
+			if gy < 124:   # 124 vox = 12.4 m world; sea is 12 m
+				continue
+			_biome_anchors[dom] = Vector3(c.x, gy + 1, c.y) * VoxelScale.VOXEL_SIZE_M
+		r += step
+	# Build the shot list in slot order.
+	for slot in range(5):
+		if _biome_anchors.has(slot):
+			var base: Vector3 = _biome_anchors[slot]
+			_biome_shot_list.append([_BIOME_NAMES[slot], base, false])  # eye
+			_biome_shot_list.append([_BIOME_NAMES[slot], base, true])   # high
+			print("[SHOT] biome anchor %s at %s" % [_BIOME_NAMES[slot], str(base)])
+		else:
+			print("[SHOT] biome %s — no pure (>=0.9) column found within scan radius." % _BIOME_NAMES[slot])
+
+
+func _biome_ground_y(tool, vx: int, vz: int) -> int:
+	if tool == null:
+		return -1
+	for y in range(900, 100, -1):
+		if tool.get_voxel(Vector3i(vx, y, vz)) != 0:
+			return y
+	return -1
+
+
+func _biome_aim(i: int) -> void:
+	var shot: Array = _biome_shot_list[i]
+	var b: Vector3 = shot[1]
+	var is_high: bool = shot[2]
+	if is_high:
+		# 30 m-high vantage angled DOWN over the biome (more ground, less
+		# sky/ocean) so flat biomes still show their floor from above.
+		_cam.position = b + Vector3(0, 30, 0)
+		_cam.look_at(b + Vector3(35, -14, 35))
+	else:
+		# Eye level (1.7 m) looking slightly DOWN across the near ground so
+		# the foreground terrain fills the frame instead of the horizon.
+		_cam.position = b + Vector3(0, 1.7, 0)
+		_cam.look_at(b + Vector3(16, 0.2, 11))

@@ -121,6 +121,50 @@ func set_surface_detail_materials(pebble_id: int, twig_id: int) -> void:
 	cpp_impl.set("twig_material_id", twig_id)
 
 
+# --- Biome framework forwarders --------------------------------------
+#
+# The World3DBootstrap BIOME FRAMEWORK block calls these duck-typed off the
+# terrain's generator (same pattern as set_ore_materials). The adapter
+# flattens Array[BiomeProfile] into Array[Dictionary] PODs (worker-thread-
+# safe plain data the C++ side parses without reaching into BiomeProfile.gd)
+# and forwards to the C++ resource. With NO profiles ever pushed the C++
+# generator stays on its legacy single-recipe path (biome_active() false).
+
+func set_biome_profiles(list: Array) -> void:
+	if cpp_impl == null:
+		return
+	var translated: Array = []
+	translated.resize(list.size())
+	for i in list.size():
+		var p = list[i]
+		# Accept either a BiomeProfile resource (has to_pod_dict) or an
+		# already-flattened Dictionary (lets the gate push raw PODs).
+		if p != null and p.has_method("to_pod_dict"):
+			translated[i] = p.to_pod_dict()
+		elif p is Dictionary:
+			translated[i] = p
+		else:
+			translated[i] = {}
+	cpp_impl.call("set_biome_profiles", translated)
+
+
+func set_biome_field_params(control_frequency_per_m: float, warp_frequency_per_m: float,
+		warp_strength: float, blend_margin: float, voxels_per_metre: float,
+		plains_index: int, hills_index: int, forest_index: int,
+		desert_index: int, mountains_index: int) -> void:
+	if cpp_impl == null:
+		return
+	cpp_impl.call("set_biome_field_params", control_frequency_per_m, warp_frequency_per_m,
+		warp_strength, blend_margin, voxels_per_metre,
+		plains_index, hills_index, forest_index, desert_index, mountains_index)
+
+
+func set_biome_control_noise(noise: FastNoiseLite) -> void:
+	if cpp_impl == null:
+		return
+	cpp_impl.call("set_biome_control_noise", noise)
+
+
 # The bake controller (scripts/_dev/WorldBakeController.gd) calls this
 # duck-typed off the terrain's generator during tile classification.
 # CopperIslesHeightmapGenerator defines it; the GDScript Cubic generator

@@ -1345,6 +1345,38 @@ func _update_coords_label() -> void:
 		return
 	var p: Vector3 = player.global_position
 	_coords_label.text = "X %.1f   Y %.1f   Z %.1f" % [p.x, p.y, p.z]
+	# === BIOME FRAMEWORK === one-line readout: when the biome framework is
+	# active on the world generator, append the dominant biome under the
+	# player. Cheap (one resolve_biome_weights call) + fully guarded so it
+	# no-ops everywhere the framework is off / not a biome world.
+	var bname := _biome_name_under(p)
+	if bname != "":
+		_coords_label.text += "   [%s]" % bname
+
+
+# Returns the dominant biome name under a world position, or "" if the
+# biome framework isn't active. Drills the World3D bootstrap's cached
+# BiomeFieldCpp (only present when biome_framework_enabled). Guarded so it
+# silently no-ops on non-biome worlds + dev scenes.
+func _biome_name_under(world_pos: Vector3) -> String:
+	# World3D root is the current scene; it holds World3DBootstrap, which
+	# caches the live BiomeFieldCpp on _biome_field_ref (only set when
+	# biome_framework_enabled). Reach it through current_scene + guard the
+	# property so non-biome worlds / dev scenes silently no-op.
+	var scene := get_tree().current_scene
+	if scene == null or not ("_biome_field_ref" in scene):
+		return ""
+	var field = scene.get("_biome_field_ref")
+	if field == null or not field.has_method("dominant_biome"):
+		return ""
+	const VoxelScale := preload("res://scripts/VoxelScale.gd")
+	var vx := int(round(world_pos.x * VoxelScale.VOXELS_PER_METER))
+	var vz := int(round(world_pos.z * VoxelScale.VOXELS_PER_METER))
+	var slot: int = field.dominant_biome(vx, vz)
+	const _NAMES := ["plains", "hills", "forest", "desert", "mountains"]
+	if slot >= 0 and slot < _NAMES.size():
+		return _NAMES[slot]
+	return ""
 
 
 func _build_aim_hud() -> void:

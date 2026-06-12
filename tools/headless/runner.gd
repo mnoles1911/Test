@@ -94,6 +94,8 @@ func _initialize() -> void:
 			quit(_sever())
 		"flora":
 			quit(_flora())
+		"biome":
+			quit(_biome())
 		"entity":
 			quit(_entity())
 		"scale":
@@ -2205,6 +2207,294 @@ func _flora_hash_buffer(buf: VoxelBuffer, bs: int) -> int:
 				var t: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
 				h = ((h ^ t) * 16777619) & 0x7FFFFFFF
 	return h
+
+
+# ============================================================
+# BIOME — BiomeFieldCpp parity vs BiomeReference + invariants.
+# Configures one BiomeFieldCpp identically to the World3DBootstrap wiring,
+# mirrors that config in GD, then checks:
+#   (1) GD == C++ eps-identical over a seeded grid incl. border columns
+#       (weights, blended height params, relative ground-Y, surface pick).
+#   (2) weights sum to ~1.0, <= 3 contributors, every column non-empty.
+#   (3) determinism: two fresh fields with the same config agree.
+#   (4) archetype invariants: pure plains region near-flat; pure mountains
+#       range >= 35 m; desert column produces >= 3 distinct terrace levels.
+#   (5) classification histogram over a large grid: every biome >= 5%.
+# Pure data — instantiates the Resource directly, no scene / GPU.
+# ============================================================
+const _BiomeRef := preload("res://scripts/_dev/BiomeReference.gd")
+const _BiomeProfile := preload("res://scripts/BiomeProfile.gd")
+const _VoxelScaleB := preload("res://scripts/VoxelScale.gd")
+
+# The SAME field config the bootstrap wires (keep in lockstep).
+const _BIOME_FP := {
+	"control_frequency_per_m": 1.0 / 600.0,
+	"warp_frequency_per_m": 1.0 / 1250.0,
+	"warp_strength": 140.0,
+	"blend_margin": 0.06,
+	"voxels_per_metre": 10.0,
+	"plains_index": 0, "hills_index": 1, "forest_index": 2,
+	"desert_index": 3, "mountains_index": 4,
+}
+const _BIOME_FILES_B: Array[String] = [
+	"flat_plains.tres", "rolling_hills.tres", "deciduous_forest.tres",
+	"rocky_desert.tres", "mountains.tres",
+]
+
+
+func _biome_make_control_noise() -> FastNoiseLite:
+	var n := FastNoiseLite.new()
+	n.seed = 1337
+	n.frequency = 1.0
+	n.fractal_type = FastNoiseLite.FRACTAL_FBM
+	n.fractal_octaves = 3
+	return n
+
+
+func _biome_load_profiles() -> Array:
+	# Returns Array[BiomeProfile] in slot order.
+	var out: Array = []
+	for f in _BIOME_FILES_B:
+		var path := "res://assets/biomes/" + f
+		if not ResourceLoader.exists(path):
+			return []
+		out.append(load(path))
+	return out
+
+
+func _biome_configure_cpp(profiles: Array) -> Object:
+	if not ClassDB.class_exists("BiomeFieldCpp"):
+		return null
+	var cpp: Object = ClassDB.instantiate("BiomeFieldCpp")
+	if cpp == null:
+		return null
+	cpp.call("set_control_noise", _biome_make_control_noise())
+	var pods: Array = []
+	for p in profiles:
+		pods.append(p.to_pod_dict())
+	cpp.call("set_biome_profiles", pods)
+	cpp.call("set_biome_field_params",
+		_BIOME_FP["control_frequency_per_m"], _BIOME_FP["warp_frequency_per_m"],
+		_BIOME_FP["warp_strength"], _BIOME_FP["blend_margin"], _BIOME_FP["voxels_per_metre"],
+		_BIOME_FP["plains_index"], _BIOME_FP["hills_index"], _BIOME_FP["forest_index"],
+		_BIOME_FP["desert_index"], _BIOME_FP["mountains_index"])
+	return cpp
+
+
+func _biome_pods(profiles: Array) -> Array:
+	var pods: Array = []
+	for p in profiles:
+		pods.append(p.to_pod_dict())
+	return pods
+
+
+func _biome() -> int:
+	print("[BIOME] === parity + invariants ===")
+	if not ClassDB.class_exists("BiomeFieldCpp"):
+		print("[BIOME] RESULT=FAIL reason=BiomeFieldCpp_not_registered — build extensions/voxel_gen.")
+		return 1
+	var profiles := _biome_load_profiles()
+	if profiles.is_empty():
+		print("[BIOME] RESULT=FAIL reason=biome_profiles_missing under res://assets/biomes/")
+		return 1
+	var cpp := _biome_configure_cpp(profiles)
+	if cpp == null:
+		print("[BIOME] RESULT=FAIL reason=configure_cpp_returned_null")
+		return 1
+	var noise := _biome_make_control_noise()
+	var pods := _biome_pods(profiles)
+	var fp := _BIOME_FP
+
+	var fails: int = 0
+
+	# --- (1) + (2): parity + weight sanity over a seeded grid. Step 73 vox
+	# (~7.3 m) wanders across many biome borders; the grid spans ~3.7 km so
+	# every biome + plenty of border columns are sampled.
+	var checked: int = 0
+	var border_cols: int = 0
+	var max_w_err: float = 0.0
+	var max_h_err: float = 0.0
+	var max_gy_err: int = 0
+	for gz in range(-25, 26):
+		for gx in range(-25, 26):
+			var wx: int = gx * 73
+			var wz: int = gz * 73
+			checked += 1
+			# C++ side.
+			var cw: Dictionary = cpp.call("resolve_biome_weights", wx, wz)
+			var ci: PackedInt32Array = cw["indices"]
+			var cwt: PackedFloat64Array = cw["weights"]
+			# GD side.
+			var gw: Dictionary = _BiomeRef.resolve_biome_weights(noise, wx, wz, pods, fp)
+			var gi: Array = gw["indices"]
+			var gwt: Array = gw["weights"]
+			if ci.size() > 1:
+				border_cols += 1
+			# (2) contributor cap + sum-to-1 (C++).
+			if ci.size() == 0 or ci.size() > 3:
+				fails += 1
+				push_error("[BIOME] column (%d,%d): C++ contributors=%d (want 1..3)" % [wx, wz, ci.size()])
+			var sumw: float = 0.0
+			for w in cwt:
+				sumw += w
+			if absf(sumw - 1.0) > 1e-6:
+				fails += 1
+				push_error("[BIOME] column (%d,%d): C++ weights sum=%.9f != 1" % [wx, wz, sumw])
+			# (1) GD/C++ indices + weights agreement.
+			if ci.size() != gi.size():
+				fails += 1
+				push_error("[BIOME] column (%d,%d): contributor count GD=%d C++=%d" % [wx, wz, gi.size(), ci.size()])
+			else:
+				for k in range(ci.size()):
+					if ci[k] != int(gi[k]):
+						fails += 1
+						push_error("[BIOME] column (%d,%d): idx[%d] GD=%d C++=%d" % [wx, wz, k, int(gi[k]), ci[k]])
+					var we: float = absf(cwt[k] - float(gwt[k]))
+					max_w_err = maxf(max_w_err, we)
+					if we > 1e-6:
+						fails += 1
+						push_error("[BIOME] column (%d,%d): weight[%d] GD=%.9f C++=%.9f" % [wx, wz, k, float(gwt[k]), cwt[k]])
+			# Blended height params.
+			var ch: Dictionary = cpp.call("blended_height_params", wx, wz)
+			var gh: Dictionary = _BiomeRef.blend_height_params(pods, gi, gwt)
+			for key in ["base_amplitude_m", "base_frequency_per_m", "ridge_mix",
+					"flatness", "terrace_band_m", "terrace_sharpness",
+					"mid_amplitude_m", "detail_amplitude_m"]:
+				var he: float = absf(float(ch[key]) - float(gh[key]))
+				max_h_err = maxf(max_h_err, he)
+				if he > 1e-6:
+					fails += 1
+					push_error("[BIOME] column (%d,%d): param %s GD=%.9f C++=%.9f" % [wx, wz, key, float(gh[key]), float(ch[key])])
+			# Relative ground-Y.
+			var cgy: int = cpp.call("compute_ground_y", wx, wz)
+			var ggy: int = _BiomeRef.compute_ground_y_rel(noise, wx, wz, pods, fp)
+			max_gy_err = maxi(max_gy_err, absi(cgy - ggy))
+			if cgy != ggy:
+				fails += 1
+				push_error("[BIOME] column (%d,%d): ground_y GD=%d C++=%d" % [wx, wz, ggy, cgy])
+			# Surface pick.
+			var cps: int = cpp.call("pick_surface_biome", wx, wz)
+			var gps: int = _BiomeRef.pick_surface_biome(noise, wx, wz, pods, fp)
+			if cps != gps:
+				fails += 1
+				push_error("[BIOME] column (%d,%d): surface pick GD=%d C++=%d" % [wx, wz, gps, cps])
+	print("[BIOME] parity: %d columns (%d border/multi-contributor); max errors weight=%.9f param=%.9f ground_y=%d" % [
+		checked, border_cols, max_w_err, max_h_err, max_gy_err])
+	if border_cols < 1:
+		fails += 1
+		push_error("[BIOME] no multi-contributor border columns in the grid — blend never exercised")
+
+	# --- (3): determinism — a second identically-configured field agrees.
+	var cpp2 := _biome_configure_cpp(profiles)
+	var determ_fail: int = 0
+	for s in range(64):
+		var wx: int = (s * 137) - 4000
+		var wz: int = (s * 251) - 6000
+		if int(cpp.call("compute_ground_y", wx, wz)) != int(cpp2.call("compute_ground_y", wx, wz)):
+			determ_fail += 1
+		if int(cpp.call("dominant_biome", wx, wz)) != int(cpp2.call("dominant_biome", wx, wz)):
+			determ_fail += 1
+	if determ_fail != 0:
+		fails += 1
+		push_error("[BIOME] determinism: %d divergences across two identical fields" % determ_fail)
+	else:
+		print("[BIOME] determinism: PASS — two identical fields agree over 64 probes.")
+
+	# --- (5): classification histogram (do this before the archetype
+	# invariants so we can FIND pure regions of each biome). Hard-classify a
+	# large grid by dominant biome; every biome must be >= 5%.
+	var hist := {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
+	var hist_total: int = 0
+	# Remember one strongly-dominant column (weight>=0.9) per biome for the
+	# archetype probes.
+	var pure_col := {}
+	for gz in range(-60, 61):
+		for gx in range(-60, 61):
+			var wx: int = gx * 53
+			var wz: int = gz * 53
+			var dom: int = cpp.call("dominant_biome", wx, wz)
+			if dom >= 0:
+				hist[dom] = hist.get(dom, 0) + 1
+				hist_total += 1
+				if not pure_col.has(dom):
+					var w: Dictionary = cpp.call("resolve_biome_weights", wx, wz)
+					var wts: PackedFloat64Array = w["weights"]
+					if wts.size() > 0 and wts[0] >= 0.9:
+						pure_col[dom] = Vector2i(wx, wz)
+	var names := ["plains", "hills", "forest", "desert", "mountains"]
+	for slot in range(5):
+		var pct: float = 100.0 * float(hist.get(slot, 0)) / float(maxi(hist_total, 1))
+		print("[BIOME] histogram %s = %.1f%% (%d cells)" % [names[slot], pct, hist.get(slot, 0)])
+		if pct < 5.0:
+			fails += 1
+			push_error("[BIOME] biome %s only %.1f%% of the world (<5%% — classifier thresholds need tuning)" % [names[slot], pct])
+
+	# --- (4): archetype invariants on the pure columns found above.
+	var vpm: float = float(fp["voxels_per_metre"])
+	# Plains (slot 0): a 60x60 m patch around a pure-plains column must be
+	# near-flat — >=95% of neighbour cells within 2 voxels of the centre.
+	if pure_col.has(0):
+		var c: Vector2i = pure_col[0]
+		var center_y: int = cpp.call("compute_ground_y", c.x, c.y)
+		var flat_ok: int = 0
+		var flat_tot: int = 0
+		for dz in range(-30, 31, 3):
+			for dx in range(-30, 31, 3):
+				flat_tot += 1
+				var y: int = cpp.call("compute_ground_y", c.x + dx, c.y + dz)
+				if absi(y - center_y) <= 2:
+					flat_ok += 1
+		var frac: float = float(flat_ok) / float(maxi(flat_tot, 1))
+		print("[BIOME] plains flatness at %s: %.1f%% of cells within 2 vox" % [str(c), frac * 100.0])
+		if frac < 0.95:
+			fails += 1
+			push_error("[BIOME] plains not flat enough: only %.1f%% within 2 vox (want >=95%%)" % (frac * 100.0))
+	else:
+		print("[BIOME] WARN no pure-plains (weight>=0.9) column found for the flatness probe.")
+	# Mountains (slot 4): height range across a ~300x300 m patch >= 35 m.
+	# Probe in VOXELS (vpm vox per metre): ±1500 vox = ±150 m, step 100 vox.
+	if pure_col.has(4):
+		var c: Vector2i = pure_col[4]
+		var ymin: int = 1 << 30
+		var ymax: int = -(1 << 30)
+		var pr: int = int(150.0 * vpm)
+		var pst: int = int(10.0 * vpm)
+		for dz in range(-pr, pr + 1, pst):
+			for dx in range(-pr, pr + 1, pst):
+				var y: int = cpp.call("compute_ground_y", c.x + dx, c.y + dz)
+				ymin = mini(ymin, y)
+				ymax = maxi(ymax, y)
+		var range_m: float = float(ymax - ymin) / vpm
+		print("[BIOME] mountains relief at %s: %.1f m range" % [str(c), range_m])
+		if range_m < 35.0:
+			fails += 1
+			push_error("[BIOME] mountains not dramatic: %.1f m range (want >=35 m)" % range_m)
+	else:
+		print("[BIOME] WARN no pure-mountains (weight>=0.9) column found for the relief probe.")
+	# Desert (slot 3): a transect across a pure-desert column must show >= 3
+	# distinct terrace plateau levels (quantized to the 2.5 m band). Probe a
+	# ~300 m transect in VOXELS so it actually crosses several mesa bands.
+	if pure_col.has(3):
+		var c: Vector2i = pure_col[3]
+		var levels := {}
+		var tr: int = int(150.0 * vpm)
+		var tst: int = int(2.0 * vpm)
+		for dx in range(-tr, tr + 1, tst):
+			var y: int = cpp.call("compute_ground_y", c.x + dx, c.y)
+			# Quantize to the desert terrace band (2.5 m = 25 vox at 10/m).
+			levels[int(floor(float(y) / (2.5 * vpm)))] = true
+		print("[BIOME] desert terrace levels at %s: %d distinct plateaus" % [str(c), levels.size()])
+		if levels.size() < 3:
+			fails += 1
+			push_error("[BIOME] desert lacks strata: only %d plateau levels (want >=3)" % levels.size())
+	else:
+		print("[BIOME] WARN no pure-desert (weight>=0.9) column found for the terrace probe.")
+
+	if fails == 0:
+		print("[BIOME] RESULT=PASS — GD/C++ eps-identical; weights normalized + capped; deterministic; histogram covers all five; archetype invariants hold.")
+		return 0
+	print("[BIOME] RESULT=FAIL — %d issue(s) (see push_error)." % fails)
+	return 1
 
 
 func _WaterMaterial():

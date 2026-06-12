@@ -28,7 +28,10 @@
 //     worker-thread safe themselves (e.g. Copper Isles' _ensure_image
 //     mutex on its lazy EXR cache — see LESSONS_LEARNED.md 2026-05-12).
 
+#include "biome_field.h"
+
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
@@ -186,6 +189,40 @@ public:
     void set_surface_detail_seed(int p_value);
     int get_surface_detail_seed() const;
 
+    // --- Biome framework --------------------------------------------------
+    // When biome profiles are loaded the generator switches to the
+    // biome-aware path: compute_ground_y blends per-biome heightfield
+    // params, and the block-fill loop reads per-biome surface materials +
+    // flora densities. With NO profiles set the generator keeps its legacy
+    // single-recipe behaviour byte-for-byte (so the `gen` parity baseline
+    // and the Copper Isles generator are untouched).
+    //
+    // set_biome_profiles forwards Array[Dictionary] to the owned
+    // BiomeFieldCpp. set_biome_field_params forwards the control-noise +
+    // classification knobs + the five KIND→slot bindings. The bootstrap
+    // calls both on the main thread before streaming.
+    void set_biome_profiles(const godot::Array &p_list);
+    void set_biome_field_params(double control_frequency_per_m,
+                                double warp_frequency_per_m,
+                                double warp_strength,
+                                double blend_margin,
+                                double voxels_per_metre,
+                                int plains_index, int hills_index,
+                                int forest_index, int desert_index,
+                                int mountains_index);
+    void set_biome_control_noise(const godot::Ref<godot::FastNoiseLite> &p_noise);
+    int get_biome_profile_count() const;
+
+    // The owned field, exposed so the headless gate can pull the SAME
+    // configured instance the generator uses (the `biome` selector reads
+    // it off the live World3D generator, like `gen`/`distant` do).
+    godot::Ref<voxel_gen::BiomeFieldCpp> get_biome_field() const { return _biome_field; }
+
+    // True once profiles are loaded — gates the biome-vs-legacy branch.
+    bool biome_active() const {
+        return _biome_field.is_valid() && _biome_field->has_profiles();
+    }
+
     // --- Core API ---------------------------------------------------------
 
     // Concrete generators override this with their ground-Y math.
@@ -298,6 +335,16 @@ protected:
     // Different salt from _flora_seed so pebble/twig placement is
     // statistically independent of where grass/flowers landed.
     int _surface_detail_seed = 7919;
+
+    // --- Biome framework --------------------------------------------------
+    // Lazily created when set_biome_profiles / set_biome_field_params /
+    // set_biome_control_noise first run (the bootstrap wires all three).
+    // Null until then → biome_active() false → legacy path.
+    godot::Ref<voxel_gen::BiomeFieldCpp> _biome_field;
+    // Map the biome top/slope material id to the band layout. The biome
+    // block-loop reuses the generator's grass/dirt/stone band thicknesses
+    // but swaps the TOP + SLOPE ids per the picked biome's surface params.
+    void _ensure_biome_field();
 
 private:
     mutable std::atomic<int> _generated_block_count{0};

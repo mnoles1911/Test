@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="BiomeProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/BiomeProfile.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+; ROLLING HILLS — THE CONTINUITY ANCHOR. Replicates today's single-recipe
+; generator so the world's default biome ≈ the shipped terrain. Conversion
+; from World3D.tscn's VoxelGen_Cpp (10 vox/m):
+;   height_range_voxels 333  -> half-range 166.5 vox = 16.65 m macro half-range -> base_amplitude_m 16.65
+;   FastNoiseLite frequency 0.0003 /voxel = 0.003 /metre -> base_frequency_per_m 0.003
+;   mid_amplitude_voxels 17 = 1.7 m -> mid_amplitude_m 1.7 (mid freq 3x, matches generator)
+;   detail_amplitude_voxels 3 = 0.3 m -> detail_amplitude_m 0.3 (detail freq 12x, matches)
+; ridge/flatness/terrace all OFF (the legacy generator has none). grass/flower
+; densities match the legacy 0.35 / 0.02 locked constants exactly.
+base_amplitude_m = 16.65
+base_frequency_per_m = 0.003
+ridge_mix = 0.0
+flatness = 0.0
+terrace_band_m = 0.0
+terrace_sharpness = 0.5
+mid_amplitude_m = 1.7
+detail_amplitude_m = 0.3
+detail_slope_only = false
+top_material_id = 3
+slope_material_id = 1
+slope_threshold = 1.7
+patch_material_id = 0
+patch_frequency_per_m = 0.08
+patch_threshold = 0.0
+micro_relief_chance = 0.0
+grass_density = 0.35
+flower_density = 0.02
+tree_table = []
+biome_name = "rolling_hills"
+debug_color = Color(0.42, 0.62, 0.28, 1)
