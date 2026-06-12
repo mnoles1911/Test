@@ -31,6 +31,7 @@ GDScript code. **Read `../design/PATTERNS_AND_GOTCHAS.md` before writing new cod
 - **`AudioManager.gd`** — single SFX entry point (`play(id, world_pos)`, `play_loop(id) -> handle`, `stop_loop(handle)`).
 - **`VoxelScale.gd`** — THE single authority for voxel grid scale (`VOXELS_PER_METER`, `VOXEL_SIZE_M`, helpers). **No `class_name`** (path-preload only — headless-safe). Never hardcode `6.0`/`0.166667`; read from here.
 - **`WaterMaterial.gd`** — water type checks; **no `class_name`** (path-preload only — headless-safe).
+- **`FloraMaterial.gd`** — R4 micro-voxel flora id authority (`is_flora()`, grass_blade=24 / flower_red=25 / flower_blue=26); **no `class_name`** (path-preload — headless-safe), same pattern as `WaterMaterial.gd`. Every physics/sim site that skips water also skips flora through this. Gated by the `flora` selector.
 - **`WaterByteCodec.gd`** — sim source of truth for water (level/source/dir bits in DATA5).
 - **`FiniteWaterCore.gd`** — finite volume-conserving water sim (pure, SceneTree-free, ledger-authority; **no `class_name`** — path-preload). Gated by the headless `finite` + `finite_world` selectors. Design: `../design/WATER_FINITE_SIM_PLAN.md`.
 - **`RiverFlowVolume.gd`** — designer-authored steady river current (stamps DATA5 DIR bits via `VoxelEditManager.queue_set_water_dir_box`; bootstrap calls `stamp()` on the `river_flow_volume` group at load).

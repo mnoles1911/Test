@@ -153,6 +153,24 @@ public:
     void set_cliff_ore_seed(int p_value);
     int get_cliff_ore_seed() const;
 
+    // --- R4 micro-voxel flora scatter -------------------------------------
+    // The three flora CHANNEL_TYPE ids (grass blade + two flowers). All
+    // default 0 = "disabled": the generator writes NO flora until the
+    // GDScript bootstrap wires the real ids (24/25/26) at startup, exactly
+    // like bedrock_material_id / snow_material_id are 0-gated. Mirrors
+    // scripts/FloraMaterial.gd: grass=24, flower_red=25, flower_blue=26.
+    void set_grass_blade_material_id(int p_value);
+    int get_grass_blade_material_id() const;
+
+    void set_flower_red_material_id(int p_value);
+    int get_flower_red_material_id() const;
+
+    void set_flower_blue_material_id(int p_value);
+    int get_flower_blue_material_id() const;
+
+    void set_flora_seed(int p_value);
+    int get_flora_seed() const;
+
     // --- Core API ---------------------------------------------------------
 
     // Concrete generators override this with their ground-Y math.
@@ -252,6 +270,12 @@ protected:
     int _disk_anchor_grid_voxels = 24;
     double _cliff_ore_outcrop_chance = 0.03;
     int _cliff_ore_seed = 5;
+
+    // --- R4 flora scatter (0 = disabled until the bootstrap wires ids) ----
+    int _grass_blade_material_id = 0;
+    int _flower_red_material_id = 0;
+    int _flower_blue_material_id = 0;
+    int _flora_seed = 1337;
 
 private:
     mutable std::atomic<int> _generated_block_count{0};

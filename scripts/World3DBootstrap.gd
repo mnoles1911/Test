@@ -2,6 +2,13 @@ extends Node3D
 
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Flora id authority (R4 micro-voxel vegetation). Path-preloaded, NO
+# class_name — headless-safe, same pattern as WaterMaterial. The three
+# flora voxel models (grass blade + two flowers) are injected at runtime
+# below at the ids FloraMaterial reserves (24..26), right after the 8
+# water fluid models (16..23).
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+
 # Single authority for the voxel grid scale. All scale literals in this
 # file read from here. See scripts/VoxelScale.gd for the full rationale.
 const VoxelScale := preload("res://scripts/VoxelScale.gd")
@@ -656,6 +663,18 @@ func _ready() -> void:
 			var disks: Array[VoxelMaterial] = VoxelMaterialRegistry.get_disk_materials()
 			gen.call("set_disk_materials", disks)
 			print("[World3D] Pushed %d disk material(s) to generator." % disks.size())
+		# R4: wire the three flora CHANNEL_TYPE ids into the generator's
+		# scatter pass. Until this runs the C++ flora ids are 0 (disabled),
+		# so a fresh build grows no grass. We pass FloraMaterial's reserved
+		# ids — the same numbers the runtime model injection used above — so
+		# the scattered voxel ids match the injected models exactly.
+		if gen != null and gen.has_method("set_flora_materials"):
+			gen.call("set_flora_materials",
+				FloraMaterial.GRASS_BLADE_ID,
+				FloraMaterial.FLOWER_RED_ID,
+				FloraMaterial.FLOWER_BLUE_ID)
+			print("[World3D] Wired flora scatter ids to generator: grass=%d red=%d blue=%d." % [
+				FloraMaterial.GRASS_BLADE_ID, FloraMaterial.FLOWER_RED_ID, FloraMaterial.FLOWER_BLUE_ID])
 
 	# --- Configure water surface + seed test pond ---
 	# Phase 5: the AABB-source-region model is gone. Ocean water lives
@@ -1081,6 +1100,20 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	else:
 		push_error("[World3D][WaterFluid] library has no add_model() — cannot inject native fluid models.")
 
+	# --- Micro-voxel flora (ids 24..26): grass blade + two flowers. ---
+	# R4. Three custom-mesh blocky models injected at RUNTIME via add_model
+	# (same "bootstrap is source of truth" reason as the water fluids and
+	# the atlas materials — Zylann's .tres doesn't restore these on load).
+	# Each is a CROSS-QUAD (two intersecting vertical quads, Minecraft-flora
+	# style) with NO collision (walk-through) so the player and water pass
+	# straight through. They land at ids 24, 25, 26 — right after the 8
+	# water fluid models at 16..23 — which is exactly what FloraMaterial,
+	# the three .tres materials, and the C++ generator all expect.
+	if lib.has_method("add_model"):
+		_inject_flora_models_into_library(lib)
+	else:
+		push_error("[World3D][Flora] library has no add_model() — cannot inject flora models.")
+
 	# Disable baked tangents. Nothing in this project uses a normal map
 	# (atlas = StandardMaterial3D albedo-only nearest; water v9 shader
 	# references no TANGENT/BINORMAL). With tangents baked, the blocky
@@ -1165,6 +1198,187 @@ func _inject_atlas_materials_into_library(mesher: Resource) -> void:
 	_lod_box_overlay = LodBoxOverlayScript.new()
 	_lod_box_overlay.name = "LodBoxOverlay"
 	add_child(_lod_box_overlay)
+
+
+func _inject_flora_models_into_library(lib: Resource) -> void:
+	# Build and inject the three micro-voxel flora models (R4) at ids
+	# 24, 25, 26 — directly after the 8 water fluid models (16..23).
+	#
+	# Each flora model is a Zylann VoxelBlockyModelMesh wrapping a custom
+	# CROSS-QUAD ArrayMesh: two intersecting vertical quads forming an "X"
+	# when seen from above, each quad double-sided so the blade reads from
+	# every camera angle (Minecraft tall-grass / flower geometry). The mesh
+	# is built in code here (see _build_flora_cross_quad_mesh) rather than
+	# authored as a .tres so there's a single source of truth and no
+	# Zylann .tres-doesn't-restore surprise.
+	#
+	# Collision is intentionally EMPTY (set_collision_aabbs([]) + mesh
+	# collision off) so the player walks straight through a field of grass
+	# — flora is decoration you can run through and dig out, never a wall.
+	#
+	# The model's vertex colours carry the flora tint (grass green, poppy
+	# red, cornflower blue) so v1 needs NO atlas art — a flat unshaded
+	# vertex-colour material draws them. Proper pixel-art tiles are a
+	# logged DESIGNER_TODO; this is deliberately art-free so R4 doesn't
+	# block on the texture pipeline.
+
+	# (flora id, half-width in metres, height in metres, low colour, high colour)
+	# Heights/widths read in WORLD METRES then scale into the voxel grid via
+	# VoxelScale — a blade ~25 cm tall, a flower ~30 cm, matching the
+	# "10 cm voxel" Lay-of-the-Land look (VISION_VOXEL_10CM.md ref_01).
+	var flora_specs: Array = [
+		{
+			"id": FloraMaterial.GRASS_BLADE_ID,
+			"name": "grass_blade",
+			"height_m": 0.25, "half_width_m": 0.05,
+			"color": Color(0.40, 0.56, 0.23),
+		},
+		{
+			"id": FloraMaterial.FLOWER_RED_ID,
+			"name": "flower_red",
+			"height_m": 0.30, "half_width_m": 0.06,
+			"color": Color(0.78, 0.15, 0.14),
+		},
+		{
+			"id": FloraMaterial.FLOWER_BLUE_ID,
+			"name": "flower_blue",
+			"height_m": 0.30, "half_width_m": 0.06,
+			"color": Color(0.31, 0.46, 0.84),
+		},
+	]
+
+	# One shared unshaded, vertex-colour, double-sided, alpha-scissor
+	# material for all three flora models (cheap — one material, three
+	# meshes). Unshaded keeps the colours bright like the reference shot;
+	# CULL_DISABLED draws both quad faces; alpha-scissor keeps any future
+	# textured version crisp. v1 has no texture so the flat colour shows.
+	var flora_mat := StandardMaterial3D.new()
+	flora_mat.resource_name = "flora_runtime"
+	flora_mat.vertex_color_use_as_albedo = true
+	flora_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	flora_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	flora_mat.roughness = 1.0
+	flora_mat.metallic = 0.0
+
+	if not ClassDB.class_exists("VoxelBlockyModelMesh"):
+		push_error("[World3D][Flora] VoxelBlockyModelMesh not registered in this Zylann build — flora cannot be injected. Grass/flower ids will render as missing models.")
+		return
+
+	var pre_count: int = -1
+	if "models" in lib:
+		pre_count = (lib.get("models") as Array).size()
+	# We injected water at 16..23, so the library should hold 24 models
+	# (0..23) before flora. If it doesn't, the add_model ids below won't
+	# line up with FloraMaterial's reserved ids — fail loud, don't silently
+	# paint flora into the wrong slots.
+	if pre_count != FloraMaterial.FLORA_BASE_ID:
+		push_error("[World3D][Flora] library has %d models, expected %d before flora inject — flora ids would misalign with FloraMaterial. Check the water-fluid inject ran first." % [pre_count, FloraMaterial.FLORA_BASE_ID])
+		return
+
+	var added_ids: Array[int] = []
+	for spec in flora_specs:
+		var fm: Object = ClassDB.instantiate("VoxelBlockyModelMesh")
+		if fm == null:
+			push_error("[World3D][Flora] could not instantiate VoxelBlockyModelMesh for %s." % spec["name"])
+			break
+		var mesh: ArrayMesh = _build_flora_cross_quad_mesh(
+			float(spec["height_m"]), float(spec["half_width_m"]), spec["color"])
+		if fm.has_method("set_mesh"):
+			fm.call("set_mesh", mesh)
+		elif "mesh" in fm:
+			fm.set("mesh", mesh)
+		if fm.has_method("set_material_override"):
+			fm.call("set_material_override", 0, flora_mat)
+		# Transparent class of its own (3) — distinct from leaves (1) and
+		# water (2) — so the blocky mesher sorts flora after opaque solids
+		# and doesn't cull the faces of the grass/dirt block underneath it.
+		if fm.has_method("set_transparency_index"):
+			fm.call("set_transparency_index", 3)
+		# Flora draws on every side regardless of neighbours (a blade next
+		# to a dirt wall must still show), so it must NOT cull neighbour
+		# faces and the neighbour must not cull it.
+		if "culls_neighbors" in fm:
+			fm.set("culls_neighbors", false)
+		# WALK-THROUGH: clear both collider paths exactly like the water
+		# models (box AABBs + per-surface mesh collision), so the player
+		# and the finite-water sim pass straight through a flower bed.
+		if fm.has_method("set_collision_aabbs"):
+			fm.call("set_collision_aabbs", [])
+		if fm.has_method("set_collision_mask"):
+			fm.call("set_collision_mask", 0)
+		if fm.has_method("set_mesh_collision_enabled"):
+			fm.call("set_mesh_collision_enabled", 0, false)
+		added_ids.append(int(lib.call("add_model", fm)))
+
+	var want: Array[int] = [
+		FloraMaterial.GRASS_BLADE_ID,
+		FloraMaterial.FLOWER_RED_ID,
+		FloraMaterial.FLOWER_BLUE_ID,
+	]
+	print("[World3D][Flora] injected %d flora model(s) at ids %s (grass_blade, flower_red, flower_blue; cross-quad, NON-COLLIDING, vertex-colour)." % [added_ids.size(), str(added_ids)])
+	if added_ids != want:
+		push_error("[World3D][Flora] add_model ids %s != expected %s — FloraMaterial / generator id math will be wrong." % [str(added_ids), str(want)])
+
+
+func _build_flora_cross_quad_mesh(height_m: float, half_width_m: float, color: Color) -> ArrayMesh:
+	# Build the two-intersecting-quad "X" mesh for one flora voxel, in
+	# CUBE-LOCAL space. Zylann blocky models live in a unit cube spanning
+	# (0,0,0)..(1,1,1) in MODEL space, where 1 model-unit = 1 voxel. So we
+	# convert the desired world-metre size into voxel units and centre the
+	# cross on the cube's vertical axis, rooted at the bottom face (y=0).
+	#
+	# Both quads are emitted DOUBLE-SIDED (front + back winding) so the
+	# blade reads from any camera angle without relying on the material's
+	# cull mode alone — belt-and-suspenders with CULL_DISABLED above.
+	var v_per_m: float = VoxelScale.VOXELS_PER_METER     # 10 at R2
+	var h: float = clampf(height_m * v_per_m, 0.1, 1.0)  # voxel units, capped to the cube
+	var hw: float = clampf(half_width_m * v_per_m, 0.05, 0.5)
+	var cx: float = 0.5   # cube centre on X
+	var cz: float = 0.5   # cube centre on Z
+
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+
+	# Helper: append one quad (4 corners, CCW from the front) plus its
+	# back-facing twin so the surface is visible from both sides.
+	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3) -> void:
+		var base: int = verts.size()
+		# Front face.
+		for p in [a, b, c, d]:
+			verts.append(p)
+			normals.append(n)
+			colors.append(color)
+		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+		# Back face (reversed winding, flipped normal).
+		var base2: int = verts.size()
+		for p in [d, c, b, a]:
+			verts.append(p)
+			normals.append(-n)
+			colors.append(color)
+		indices.append_array([base2, base2 + 1, base2 + 2, base2, base2 + 2, base2 + 3])
+
+	# Quad 1 — diagonal running NE-SW (varies in X and Z together).
+	add_quad.call(
+		Vector3(cx - hw, 0.0, cz - hw), Vector3(cx + hw, 0.0, cz + hw),
+		Vector3(cx + hw, h,  cz + hw), Vector3(cx - hw, h,  cz - hw),
+		Vector3(-1, 0, 1).normalized())
+	# Quad 2 — diagonal running NW-SE (the other arm of the "X").
+	add_quad.call(
+		Vector3(cx - hw, 0.0, cz + hw), Vector3(cx + hw, 0.0, cz - hw),
+		Vector3(cx + hw, h,  cz - hw), Vector3(cx - hw, h,  cz + hw),
+		Vector3(1, 0, 1).normalized())
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 func _stamp_river_flow_volumes() -> void:
@@ -2145,7 +2359,7 @@ func _seed_test_pond() -> void:
 	#
 	# RELOCATED + slope-robust 2026-05-17 (backlog #2). The legacy
 	# footprint was world (-23,-1.5,-1)..(-13,1.5,9) — fixed at world
-	# Y≈0, ~70 voxels BELOW sea level (72), buried in rock: unreachable,
+	# Y≈0, well BELOW sea level (vox 120 at 10 vox/m), buried in rock: unreachable,
 	# never testable. v1 of the relocation anchored the whole footprint
 	# to ONE ground sample at the centre — but the terrain near spawn is
 	# steep (ground vox 172 @ spawn(0,0), 155 @ campfire(-3,0), 128 @
@@ -2212,9 +2426,14 @@ func _seed_test_pond() -> void:
 				g_min = min(g_min, g)
 				g_max = max(g_max, g)
 	else:
-		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 72).")
-		g_min = 72
-		g_max = 72
+		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 120).")
+		# 120 = the generator's sea_level_voxels at 10 vox/m (12 m world).
+		# Was hardcoded 72 (the 6 vox/m sea level) — caught by the R1
+		# review pass; this fallback only fires when the generator lacks
+		# get_ground_voxel_y_at, but a wrong anchor buried the pond 4.8 m
+		# under the surface when it did.
+		g_min = 120
+		g_max = 120
 
 	# Water surface one voxel above the LOWEST ground in the footprint
 	# (≈flush on the downhill approach). Inclusive-min / exclusive-max

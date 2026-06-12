@@ -50,12 +50,14 @@ const BASE_DECEL: float        = 12.0   # m/s² rate to ramp DOWN to zero
 
 const STEP_HEIGHT: float = 0.30
 # Auto-step / climb height in metres. Roland walks over terrain
-# obstacles up to this tall WITHOUT pressing jump. At 6 vox/m
-# (16.7 cm per voxel), 0.30 m clears a single 1-voxel ledge with
-# ~13 cm of margin to handle the rounded capsule bottom catching
-# on cube corners. A 2-voxel ledge (33 cm) exceeds STEP_HEIGHT and
-# still requires jumping — that's intentional, otherwise the
-# terrain would feel mushy and walls would be meaningless.
+# obstacles up to this tall WITHOUT pressing jump. At 10 vox/m
+# (10 cm per voxel), 0.30 m clears ledges up to THREE voxels tall —
+# the finer grid means natural terrain steps are smaller, so this
+# feels like smooth walking. A 4-voxel ledge (40 cm) exceeds
+# STEP_HEIGHT and still requires jumping — that's intentional,
+# otherwise walls would be meaningless. (Pre-2026-06-12 at 6 vox/m
+# this cleared one 16.7 cm voxel; the metre value is unchanged but
+# the FEEL is now finer-grained — designer judges in-engine.)
 #
 # How it works (see _try_step_up below): after each move_and_slide
 # call where the player hit a wall while walking, we try lifting

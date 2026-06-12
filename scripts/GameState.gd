@@ -404,7 +404,12 @@ func _delete_voxel_deltas_files() -> void:
 	var fname := dir.get_next()
 	var deleted: int = 0
 	while fname != "":
-		if not dir.current_is_dir() and fname.begins_with(VOXEL_DELTAS_BASENAME):
+		# Match the live DB name AND the legacy pre-10 vox/m name
+		# ("voxel_deltas.sqlite*") — the old file is never read again
+		# after the 2026-06-12 rename, but New Game should still sweep
+		# it off disk rather than leave orphaned megabytes behind.
+		if not dir.current_is_dir() and (fname.begins_with(VOXEL_DELTAS_BASENAME)
+				or fname.begins_with("voxel_deltas.sqlite")):
 			var abs_path: String = ProjectSettings.globalize_path("user://" + fname)
 			var err: int = DirAccess.remove_absolute(abs_path)
 			if err == OK:

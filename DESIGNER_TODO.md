@@ -1218,3 +1218,48 @@ designer runs in the editor (the headless harness only covers data/logic):
   AI beyond ~12.8 m have no terrain collision at this scale. Don't file
   it — the fallback is a separate logged follow-up
   (`design/3D_VOXEL_MIGRATION.md` "10 vox/m hard constraint").
+
+---
+
+## Section 11 — Micro-voxel flora (PR R4) acceptance + art
+
+The R4 code is in and the headless `flora` gate is green, but flora is a
+LOOK feature — it needs your eyes in the editor. Run `World3D.tscn` and
+walk the grassland.
+
+### In-engine acceptance (run `World3D.tscn`)
+
+- [ ] **Walk grassland → dense blades.** Stand on plain grass above the
+  waterline. You should see a thick lawn of individual green grass blades
+  (~35% of surface columns) with the occasional red and blue flower
+  (~2%). Beaches/sand, snowcaps, cliffs and near-water disks stay BARE —
+  flora is grassland-only.
+- [ ] **Dig under grass → blades vanish with the ground.** Mine the dirt/
+  grass voxel directly under a blade. The blade must disappear with it
+  (it's a real voxel sitting on top — no floating grass left behind).
+- [ ] **Pour water uphill of flowers → mowed down as it flows.** Place /
+  flow water so the front advances through a patch of flowers. The water
+  must flow straight INTO the flora cells (no damming on a blade) and the
+  flora must be replaced by water — no grass surviving underwater.
+- [ ] **Fell a tree through grass → no blades ride the cluster.** Chop a
+  tree standing in a grass field. The falling trunk/crown cluster must
+  carry ONLY wood/leaves — no grass blades stuck to it — and the tree
+  must not refuse to fall because a blade "connected" it to the ground.
+- [ ] **F3 median still within R2 budget.** Capture the F3 profiler on the
+  standard coastline-sprint route. Median must stay under 5 ms, p99 under
+  16 ms on the RX 7800 XT. Flora is LOD0-only, but it adds cross-quad
+  meshes to near chunks — if the budget regresses, note it (the flora
+  density is a single constant in `cubic_heightmap_generator` / the
+  generator's flora roll thresholds and can be dialled down).
+
+### Art task (NOT code-blocking — v1 ships on flat colours)
+
+- [ ] **Author pixel-art flora atlas tiles.** v1 draws grass blades and
+  flowers as flat vertex-colour cross-quads (grass green, poppy red,
+  cornflower blue) — no texture. For the real Lay-of-the-Land look,
+  author 16 px pixel-art tiles for `grass_blade`, `flower_red`,
+  `flower_blue` (see `assets/CLAUDE.md`: pixel-art only, 16 px tiles,
+  `tools/build_texture_atlas.py`), add them to the atlas, and switch the
+  runtime flora material in `World3DBootstrap._inject_flora_models_into_library`
+  from the flat vertex-colour `StandardMaterial3D` to an atlas-sampling
+  material with per-tile UVs on the cross-quad mesh.

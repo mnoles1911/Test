@@ -130,6 +130,19 @@ double HeightmapGeneratorBase::get_cliff_ore_outcrop_chance() const { return _cl
 void HeightmapGeneratorBase::set_cliff_ore_seed(int p_value) { _cliff_ore_seed = p_value; }
 int HeightmapGeneratorBase::get_cliff_ore_seed() const { return _cliff_ore_seed; }
 
+// R4 flora scatter ids + seed.
+void HeightmapGeneratorBase::set_grass_blade_material_id(int p_value) { _grass_blade_material_id = p_value; }
+int HeightmapGeneratorBase::get_grass_blade_material_id() const { return _grass_blade_material_id; }
+
+void HeightmapGeneratorBase::set_flower_red_material_id(int p_value) { _flower_red_material_id = p_value; }
+int HeightmapGeneratorBase::get_flower_red_material_id() const { return _flower_red_material_id; }
+
+void HeightmapGeneratorBase::set_flower_blue_material_id(int p_value) { _flower_blue_material_id = p_value; }
+int HeightmapGeneratorBase::get_flower_blue_material_id() const { return _flower_blue_material_id; }
+
+void HeightmapGeneratorBase::set_flora_seed(int p_value) { _flora_seed = p_value; }
+int HeightmapGeneratorBase::get_flora_seed() const { return _flora_seed; }
+
 // ----- POD snapshot setters ---------------------------------------------
 //
 // The GDScript adapter translates Array[VoxelMaterial] into Array[Dict]
@@ -422,9 +435,72 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
             // a TYPE block emitted at every LOD).
             const bool emit_water_here = write_water && ground_y < sea_level_v;
 
+            // R4 micro-voxel flora scatter. Decide ONCE per column which
+            // flora voxel (if any) sits in the air cell one voxel above the
+            // surface (world_y == ground_y + 1):
+            //   * LOD0 only — coarser LODs must NEVER mesh flora (a single
+            //     10cm blade has no business surviving at a 2m+ voxel; it
+            //     would also break LOD cross-fade against the flora-less
+            //     coarse rings). This is the same lod==0 gate the design
+            //     calls for, mirrored on the is_top_voxel coarse-LOD logic.
+            //   * grassland only — the surface top material must be plain
+            //     grass (so beaches/sand, snowcaps, cliffs, and near-water
+            //     disks stay bare). top_id already folded in all those
+            //     overrides above, so a single top_id==GRASS test is enough.
+            //   * the surface must be ABOVE sea level — no underwater grass
+            //     (ground_y + 1 would be a water cell otherwise).
+            //   * deterministic: a per-(world_x, world_z, seed) hash decides
+            //     grass vs flower vs nothing, so the same column always
+            //     grows the same thing across regen / save / reload. Pure
+            //     integer/double math — worker-thread safe, no RNG state.
+            // flora_id 0 means "nothing here this column".
+            int flora_id = 0;
+            const bool flora_enabled = (lod == 0) && (_grass_blade_material_id != 0);
+            if (flora_enabled
+                    && top_id == GRASS_MATERIAL_ID
+                    && disk_match == nullptr      // not on a clay/gravel disk surface
+                    && (ground_y + 1) > sea_level_v) {
+                // One hash roll in [0,1) picks the outcome. Layout:
+                //   [0.00 .. 0.02)  -> a flower (red/blue split by a 2nd roll)
+                //   [0.02 .. 0.37)  -> a grass blade   (~35% of grassland)
+                //   [0.37 .. 1.00)  -> bare ground
+                // ~2% flowers, ~35% grass — the design's locked densities.
+                const double roll = voxel_gen::math::hash3(
+                        world_x, 0, world_z, static_cast<int64_t>(_flora_seed));
+                if (roll < 0.02) {
+                    // Split flowers ~50/50 red/blue via an independent roll.
+                    const double which = voxel_gen::math::hash3(
+                            world_x, 1, world_z, static_cast<int64_t>(_flora_seed) + 1);
+                    if (which < 0.5 && _flower_red_material_id != 0) {
+                        flora_id = _flower_red_material_id;
+                    } else if (_flower_blue_material_id != 0) {
+                        flora_id = _flower_blue_material_id;
+                    } else if (_flower_red_material_id != 0) {
+                        flora_id = _flower_red_material_id;
+                    } else {
+                        flora_id = _grass_blade_material_id;  // no flower ids wired — fall back to grass
+                    }
+                } else if (roll < 0.37) {
+                    flora_id = _grass_blade_material_id;
+                }
+            }
+
             for (int y = 0; y < size.y; ++y) {
                 const int world_y = origin_in_voxels.y + y * stride;
                 if (world_y > ground_y) {
+                    // R4 flora: the single air cell ONE voxel above the
+                    // surface becomes a grass blade / flower TYPE voxel
+                    // when this column rolled flora above. Written into
+                    // CHANNEL_TYPE just like terrain — the blocky mesher
+                    // draws our injected cross-quad model for ids 24..26.
+                    // No DATA5 byte (that's water-only). Placed BEFORE the
+                    // water branch but they can't overlap: flora only rolls
+                    // when ground_y+1 > sea_level (above water), water only
+                    // fills cells <= sea_level. flora_id stays 0 at lod>0.
+                    if (flora_id != 0 && world_y == ground_y + 1) {
+                        out_buffer.call("set_voxel", flora_id, x, y, z, CHANNEL_TYPE);
+                        continue;
+                    }
                     // Air above terrain. If this air voxel sits at or
                     // below sea level and the column dips below sea
                     // level, it becomes a native fluid TYPE block
@@ -735,6 +811,35 @@ void HeightmapGeneratorBase::_bind_methods() {
                          &HeightmapGeneratorBase::get_cliff_ore_seed);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "cliff_ore_seed"),
                  "set_cliff_ore_seed", "get_cliff_ore_seed");
+
+    // R4 flora scatter ids + seed (default 0 = disabled).
+    ClassDB::bind_method(D_METHOD("set_grass_blade_material_id", "value"),
+                         &HeightmapGeneratorBase::set_grass_blade_material_id);
+    ClassDB::bind_method(D_METHOD("get_grass_blade_material_id"),
+                         &HeightmapGeneratorBase::get_grass_blade_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "grass_blade_material_id"),
+                 "set_grass_blade_material_id", "get_grass_blade_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_flower_red_material_id", "value"),
+                         &HeightmapGeneratorBase::set_flower_red_material_id);
+    ClassDB::bind_method(D_METHOD("get_flower_red_material_id"),
+                         &HeightmapGeneratorBase::get_flower_red_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "flower_red_material_id"),
+                 "set_flower_red_material_id", "get_flower_red_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_flower_blue_material_id", "value"),
+                         &HeightmapGeneratorBase::set_flower_blue_material_id);
+    ClassDB::bind_method(D_METHOD("get_flower_blue_material_id"),
+                         &HeightmapGeneratorBase::get_flower_blue_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "flower_blue_material_id"),
+                 "set_flower_blue_material_id", "get_flower_blue_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_flora_seed", "value"),
+                         &HeightmapGeneratorBase::set_flora_seed);
+    ClassDB::bind_method(D_METHOD("get_flora_seed"),
+                         &HeightmapGeneratorBase::get_flora_seed);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "flora_seed"),
+                 "set_flora_seed", "get_flora_seed");
 
     // Core API — compute_ground_y is virtual; ClassDB dispatches to the
     // concrete child override at runtime. get_ground_voxel_y_at is the

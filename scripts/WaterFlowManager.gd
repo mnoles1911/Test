@@ -4,6 +4,11 @@ extends Node
 # WaterMaterial.gd for why it has no class_name).
 const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 
+# Flora-identity (R4) — path preload, headless-safe, same as WaterMaterial.
+# Used so the finite-water solid callback treats grass/flowers as
+# non-solid (water flows into and overwrites flora cells).
+const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+
 # Single authority for the voxel grid scale — all scale constants below
 # mirror values from this file. See scripts/VoxelScale.gd.
 const VoxelScale := preload("res://scripts/VoxelScale.gd")
@@ -1377,6 +1382,13 @@ func _finite_is_solid(p: Vector3i) -> bool:
 	_finite_tool.channel = VoxelBuffer.CHANNEL_TYPE
 	var t: int = _finite_tool.get_voxel(p)
 	if t == 0:
+		return false
+	# R4: micro-voxel flora (grass blades / flowers) is NON-SOLID to water
+	# — water must flow straight into a flora cell and mow it down, not
+	# treat a blade of grass as a dam. The flora TYPE byte is overwritten
+	# by water's own TYPE re-projection when the cell fills (see below), so
+	# the blade doesn't survive under water. Same treatment as water ids.
+	if FloraMaterial.is_flora(t):
 		return false
 	return not WaterMaterial.is_water_type(t)
 

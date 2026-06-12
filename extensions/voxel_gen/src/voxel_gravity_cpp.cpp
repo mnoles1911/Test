@@ -19,6 +19,19 @@ constexpr int CHANNEL_TYPE = 0;
 // these integers; the reference and the port agree by value.
 constexpr int FALL_LOOSE = 2;
 constexpr int FALL_PICKUP_DROP = 4;
+
+// R4 flora id range (mirrors scripts/FloraMaterial.gd + GravityReference:
+// 24..26). Flora is PASS-THROUGH AIR for the gravity analysis — a grass
+// blade / flower never anchors a structure and never rides a falling
+// cluster. The read pass skips these ids exactly like the GD reference,
+// so the two stay set-for-set identical under the `gravity` selector.
+constexpr int FLORA_BASE_ID = 24;
+constexpr int FLORA_COUNT = 3;
+
+inline bool is_flora_type(int packed) {
+    const int t = packed & 0xFF;
+    return t >= FLORA_BASE_ID && t < FLORA_BASE_ID + FLORA_COUNT;
+}
 }  // namespace
 
 VoxelGravityCpp::VoxelGravityCpp() {}
@@ -95,6 +108,9 @@ Dictionary VoxelGravityCpp::analyze_bubble(Variant p_buf,
                 const int32_t p = static_cast<int32_t>(static_cast<int64_t>(v));
                 if ((p & 0xFF) == 0) {
                     continue;
+                }
+                if (is_flora_type(p)) {
+                    continue;   // R4: flora is pass-through air for gravity
                 }
                 packed[static_cast<size_t>(x + y * side + z * side2)] = p;
                 ++bubble_solid_count;

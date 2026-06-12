@@ -94,6 +94,22 @@ func set_disk_materials(list: Array[VoxelMaterial]) -> void:
 	cpp_impl.set_disk_materials(translated)
 
 
+# R4 — wire the three flora CHANNEL_TYPE ids into the C++ scatter. The
+# bootstrap calls this duck-typed off the terrain's generator at startup
+# (same pattern as set_ore_materials). Passing the registry ids here keeps
+# the generator decoupled from FloraMaterial — if a flora id ever moves,
+# the bootstrap reads the new value and re-pushes it; nothing in C++ hard-
+# codes 24/25/26. Default 0 (the C++ default) means "scatter disabled", so
+# a stale build / missing wire-up simply grows no flora rather than writing
+# garbage ids into the terrain.
+func set_flora_materials(grass_blade_id: int, flower_red_id: int, flower_blue_id: int) -> void:
+	if cpp_impl == null:
+		return
+	cpp_impl.set("grass_blade_material_id", grass_blade_id)
+	cpp_impl.set("flower_red_material_id", flower_red_id)
+	cpp_impl.set("flower_blue_material_id", flower_blue_id)
+
+
 # The bake controller (scripts/_dev/WorldBakeController.gd) calls this
 # duck-typed off the terrain's generator during tile classification.
 # CopperIslesHeightmapGenerator defines it; the GDScript Cubic generator

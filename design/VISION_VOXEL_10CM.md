@@ -58,7 +58,7 @@ Everything in the vision above maps to code that either already exists or is in 
 | Visual pillar | Owning system | Current state |
 |---|---|---|
 | 10cm destructible world | R0/R1/R2 of the re-architecture PR track | **In flight** — see MILESTONES.md |
-| Micro-voxel flora (per-blade grass, per-petal flowers) | R4 (planned) — real destructible voxel grass via `VoxelBlockyModel` custom cross-quad meshes | **Planned, not started** |
+| Micro-voxel flora (per-blade grass, per-petal flowers) | R4 — real destructible voxel grass + flowers via `VoxelBlockyModelMesh` custom cross-quad meshes (ids 24–26), scattered by the C++ generator on grassland at LOD0 | **v1 LIVE** — see below |
 | Sky and day/night cycle | `scripts/DayNightCycle.gd` | **EXISTS** — 4-texture panorama blend, sun + moon `DirectionalLight3D` nodes |
 | Global illumination | SDFGI in the `World3D` `WorldEnvironment` node | **EXISTS, enabled** at ULTRA tier |
 | God rays / light shafts | `GraphicsManager.light_shafts_enabled` | **EXISTS** (PR #245), default OFF — flip is a designer decision |
@@ -66,6 +66,19 @@ Everything in the vision above maps to code that either already exists or is in 
 | Long-distance vistas (~5km horizon) | `scripts/DistantTerrainManager.gd` | **EXISTS** — streaming smooth-mesh horizon rings, ~5km range |
 | Night emissives and lanterns | `scripts/EmissiveBakedLightManager.gd` | **EXISTS** — baked 3D-texture floodfill; do NOT use the old `EmissiveLightManager.gd` |
 | Underwater look | `scripts/UnderwaterFilter.gd` + `WaterBiomeZone` | **EXISTS** (PR #249 / water track) |
+
+---
+
+## Micro-voxel flora — v1 LIVE (PR R4)
+
+Real, destructible voxel grass and flowers — the signature "Lay of the Land" flora benchmark (ref_01). Flora are **actual voxels**, not multimesh decoration: three CHANNEL_TYPE ids — `grass_blade` (24), `flower_red` (25), `flower_blue` (26) — drawn as cross-quad custom meshes (two intersecting vertical quads), injected at runtime in `World3DBootstrap` right after the water fluid models. The C++ cubic generator scatters them deterministically on grassland surfaces at LOD0 (~35 % grass blades, ~2 % flowers split red/blue). They are **walk-through** (no collision), **destructible** (dig the ground under them and they vanish with it), and behave correctly with the world sim: water flows into and mows them down, gravity/sever ignore them (a tree never connects to ground through a blade, a falling cluster never carries one). Identity funnels through `scripts/FloraMaterial.gd` (`is_flora()`), the grass/flower analogue of `WaterMaterial.is_water_type()`. Gated by the headless `flora` selector.
+
+**Deferred to a later flora PR (NOT in v1):**
+- **Trample** — flora bending / flattening as the player or enemies walk through it.
+- **Scythe drops + XP** — harvesting flora for an inventory item and routing XP through `SkillManager`.
+- **Wind sway** — per-blade vertex animation in the flora material/shader.
+- **Biome density maps** — per-region grass/flower density and species (v1 is a single global density on plain grassland).
+- **Pixel-art tiles** — v1 uses flat vertex-colour quads (grass green, poppy red, cornflower blue). Proper authored pixel-art atlas tiles are a `DESIGNER_TODO` row, not a code blocker.
 
 ---
 

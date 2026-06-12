@@ -30,6 +30,23 @@ const NEIGHBOURS_6: Array = [
 	Vector3i(0, 0, 1), Vector3i(0, 0, -1),
 ]
 
+# R4 flora id range (mirrors scripts/FloraMaterial.gd: 24..26). Flora is
+# treated as PASS-THROUGH AIR in the gravity analysis: a grass blade or
+# flower must never anchor a structure (so a tree can't "connect" to the
+# ground through a blade) and must never be carried in a falling cluster.
+# The C++ port (voxel_gravity_cpp.cpp) hardcodes the identical range, so
+# the read pass that builds `solids` skips flora on both sides. Kept as a
+# literal range (not a FloraMaterial preload) so the cross-language
+# contract is a plain constant both sides agree on by value, exactly like
+# the FALL_* enum mirror above.
+const FLORA_BASE_ID: int = 24
+const FLORA_COUNT: int = 3
+
+
+static func _is_flora_type(type_id: int) -> bool:
+	var t: int = type_id & 0xFF
+	return t >= FLORA_BASE_ID and t < FLORA_BASE_ID + FLORA_COUNT
+
 
 # Returns a Dictionary with the same key set as VoxelGravityCpp.analyze_bubble:
 #   loose: PackedInt32Array stream [from_x, from_y, from_z, to_x, to_y, to_z, packed, ...]
@@ -55,6 +72,9 @@ static func analyze_bubble(buf, side: int, fall_table: Dictionary, noeditzone_ma
 				var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
 				if (packed & 0xFF) == 0:
 					continue
+				if _is_flora_type(packed):
+					continue   # R4: flora is pass-through air for gravity —
+					           # never anchors, never joins a cluster
 				solids[Vector3i(x, y, z)] = packed
 
 	# --- Anchor identification: bottom-face seed + NoEditZone mask.

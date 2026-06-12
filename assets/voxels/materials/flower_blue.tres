@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "flower_blue"
+material_id = 26
+display_name = "Blue Flower"
+color_low = Color(0.26, 0.4, 0.78, 1)
+color_high = Color(0.36, 0.52, 0.9, 1)
+color_jitter = 0.08
+mining_time_seconds = 0.05
+allowed_tools = Array[String](["iron_shovel"])
+yield_item_id = ""
+yield_quantity = 1
+fall_behavior = 0
+gravity_scale = 1.0
+damage_multiplier = 0.0
+density_relative_to_water = 0.2

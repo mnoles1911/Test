@@ -37,6 +37,10 @@ extends SceneTree
 
 const ParityLib := preload("res://scripts/_dev/WaterByteCodecParityLib.gd")
 
+# R4 flora — id authority. The gate also reuses the existing _GravityRef
+# and _FiniteWaterCore preload consts declared further down this file.
+const _FloraMaterial := preload("res://scripts/FloraMaterial.gd")
+
 const _PROBE_CLASSES := [
 	"VoxelBlockyFluid", "VoxelBlockyModelFluid",
 	"VoxelBlockyLibrary", "VoxelBlockyModelCube",
@@ -84,6 +88,8 @@ func _initialize() -> void:
 			quit(_finite())
 		"sever":
 			quit(_sever())
+		"flora":
+			quit(_flora())
 		"entity":
 			quit(_entity())
 		"scale":
@@ -1012,7 +1018,9 @@ func _phase2_report() -> int:
 		return 1
 	var models: Array = lib.get("models")
 	var fails: int = 0
-	var expect_total: int = WM.WATER_FLUID_BASE_ID + WM.WATER_LEVEL_COUNT
+	# 16 static (0..15) + 8 water fluid (16..23) + 3 R4 flora (24..26) = 27.
+	var FLORA := preload("res://scripts/FloraMaterial.gd")
+	var expect_total: int = WM.WATER_FLUID_BASE_ID + WM.WATER_LEVEL_COUNT + FLORA.FLORA_COUNT
 	print("[PHASE2] library model count=%d (expect %d)" % [models.size(), expect_total])
 	if models.size() != expect_total:
 		fails += 1
@@ -1039,8 +1047,28 @@ func _phase2_report() -> int:
 	else:
 		fails += 1
 		push_error("[PHASE2] legacy water model[5] missing")
+	# R4 flora — the 3 cross-quad models must sit at ids 24..26, be
+	# collision-off (walk-through), and carry a mesh.
+	for fid in FLORA.FLORA_IDS:
+		if fid >= models.size() or models[fid] == null:
+			fails += 1
+			push_error("[PHASE2] flora model[%d] missing" % fid)
+			continue
+		var fm = models[fid]
+		var fcls: String = fm.get_class()
+		var faabbs = fm.call("get_collision_aabbs") if fm.has_method("get_collision_aabbs") else null
+		var fcoll_off: bool = (faabbs == null) or (faabbs is Array and (faabbs as Array).is_empty())
+		var fmesh = fm.call("get_mesh") if fm.has_method("get_mesh") else fm.get("mesh")
+		print("[PHASE2] flora id=%d class=%s coll_off=%s mesh=%s" % [
+			fid, fcls, fcoll_off, ("set" if fmesh != null else "null")])
+		if not fcoll_off:
+			fails += 1
+			push_error("[PHASE2] flora id=%d is collidable — must be walk-through" % fid)
+		if fmesh == null:
+			fails += 1
+			push_error("[PHASE2] flora id=%d has no mesh" % fid)
 	if fails == 0:
-		print("[PHASE2] RESULT=PASS — 8 fluid level-models injected at 16..23, collision off, legacy 5 intact.")
+		print("[PHASE2] RESULT=PASS — 8 fluid level-models at 16..23 + 3 flora cross-quads at 24..26, collision off, legacy 5 intact.")
 		return 0
 	print("[PHASE2] RESULT=FAIL — %d problems (see push_error)." % fails)
 	return 1
@@ -1627,6 +1655,296 @@ func _sever() -> int:
 		return 0
 	print("[SEVER] RESULT=FAIL — %d check(s) failed." % fails)
 	return 1
+
+
+# ============================================================
+# FLORA — R4 micro-voxel vegetation. Four pure scenarios, no GPU:
+#   (a) id classification: flora ids are flora, water ids are NOT flora,
+#       flora ids are NOT water (the helper contract).
+#   (b) FiniteWaterCore: water advances into a flora cell (flora is
+#       non-solid via the test's solid_cb) and conservation holds.
+#   (c) gravity/sever: flora adjacent to a severed column is NOT carried
+#       and does NOT connect the column to anything (pass-through air).
+#   (d) generator scatter determinism: same (x,z,seed) -> same flora
+#       decision; lod>0 -> no flora at all.
+# ============================================================
+
+func _flora() -> int:
+	var fails: int = 0
+	fails += _flora_ids()
+	fails += _flora_water()
+	fails += _flora_gravity()
+	fails += _flora_gen()
+	if fails == 0:
+		print("[FLORA] RESULT=PASS — id classification, water-displaces-flora, gravity/sever exclusion, generator determinism all green.")
+		return 0
+	print("[FLORA] RESULT=FAIL — %d scenario(s) failed." % fails)
+	return 1
+
+
+func _flora_ids() -> int:
+	# (a) The helper contract: flora ids classify as flora; water ids do
+	# NOT; flora ids are NOT water. This is the single safety net that
+	# keeps grass/flowers from ever being mistaken for water (or vice
+	# versa) anywhere in the physics/sim code.
+	var fails: int = 0
+	for id in _FloraMaterial.FLORA_IDS:
+		if not _FloraMaterial.is_flora(id):
+			fails += 1
+			push_error("[FLORA] id %d should classify as flora" % id)
+		if _WaterMaterial().is_water_type(id):
+			fails += 1
+			push_error("[FLORA] flora id %d must NOT be water" % id)
+	# Water ids are NOT flora.
+	for id in [5, 16, 17, 18, 19, 20, 21, 22, 23]:
+		if _FloraMaterial.is_flora(id):
+			fails += 1
+			push_error("[FLORA] water id %d must NOT be flora" % id)
+	# Air + terrain ids are NOT flora.
+	for id in [0, 1, 2, 3, 4, 6, 13, 14, 15]:
+		if _FloraMaterial.is_flora(id):
+			fails += 1
+			push_error("[FLORA] non-flora id %d wrongly classified as flora" % id)
+	# Range sanity: exactly 3 contiguous ids starting at 24.
+	if _FloraMaterial.FLORA_BASE_ID != 24 or _FloraMaterial.FLORA_COUNT != 3:
+		fails += 1
+		push_error("[FLORA] range wrong: base=%d count=%d (expected 24/3)" % [
+			_FloraMaterial.FLORA_BASE_ID, _FloraMaterial.FLORA_COUNT])
+	if Array(_FloraMaterial.FLORA_IDS) != [24, 25, 26]:
+		fails += 1
+		push_error("[FLORA] FLORA_IDS=%s expected [24,25,26]" % str(_FloraMaterial.FLORA_IDS))
+	if fails == 0:
+		print("[FLORA] ids: PASS — flora=[24,25,26] classify flora & not water; water/terrain ids not flora.")
+	return mini(fails, 1)
+
+
+func _flora_water() -> int:
+	# (b) Water must advance INTO a flora cell — a grass blade is no dam.
+	# We model a flat floor at y<=0 and a flora blade sitting at (3,1,3)
+	# that the test's solid_cb reports as NON-SOLID (exactly what
+	# WaterFlowManager._finite_is_solid does for flora). A pour at (0,1,*)
+	# spreads sideways; the front reaches the flora column and fills it.
+	# Conservation must still balance — the flora cell becoming water adds
+	# no units and loses none.
+	var fails: int = 0
+	var core: RefCounted = _FiniteWaterCore.new()
+	# Flora occupies a known cell; the solid callback treats it as air
+	# (returns false there). Everything at y<=0 is solid floor.
+	var flora_cell := Vector3i(3, 1, 3)
+	core.solid_cb = func(p: Vector3i) -> bool:
+		if p == flora_cell:
+			return false   # flora is non-solid: water flows in
+		return p.y <= 0
+	core.source_cb = func(_p: Vector3i) -> bool: return false
+	# Pour a generous column right next to the flora so the front has to
+	# travel across the floor and into the flora cell.
+	var placed: int = core.place(Vector3i(3, 1, 0), 64)
+	var ticks: int = 0
+	for t in range(500):
+		core.step(4096)
+		ticks += 1
+		if core.is_settled():
+			break
+	if core.conservation_delta() != 0:
+		fails += 1
+		push_error("[FLORA] water: conservation broken delta=%d stats=%s" % [
+			core.conservation_delta(), str(core.stats())])
+	if not core.has_cell(flora_cell):
+		fails += 1
+		push_error("[FLORA] water: front never reached the flora cell %s (water treated it as a wall?)" % str(flora_cell))
+	if core.total_units() != placed:
+		fails += 1
+		push_error("[FLORA] water: total=%d != placed=%d" % [core.total_units(), placed])
+	if fails == 0:
+		print("[FLORA] water: PASS — water advanced into the flora cell (placed=%d, ticks=%d, conservation OK)." % [placed, ticks])
+	return mini(fails, 1)
+
+
+func _flora_gravity() -> int:
+	# (c) A severed stone column with grass blades stuck to its side and a
+	# flower sitting on top must come down as JUST the stone — the flora is
+	# pass-through air for the gravity analysis, so it neither anchors the
+	# column nor rides the falling cluster.
+	#
+	# Scenario: 16^3 bubble. A 1x6x1 stone column at (8, 1..6, 8) — its
+	# bottom voxel sits on the bubble floor (y==0 layer is the anchor
+	# seed, so we put the column at y=1..6 with NOTHING at y=0 under it,
+	# making the whole column unanchored -> a falling cluster). Grass
+	# blades cling to the column at x=9 (one per height); a flower caps it
+	# at (8,7,8). We then bridge a SECOND stone block far away via a chain
+	# of grass blades and confirm the flora bridge does NOT connect them.
+	var fails: int = 0
+	var side: int = 16
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(side, side, side)
+	# The unanchored stone column (no support at y=0 below it).
+	for y in range(1, 7):
+		buf.set_voxel(1, 8, y, 8, VoxelBuffer.CHANNEL_TYPE)   # stone (NEVER)
+	# Grass blades clinging to the side (id 24) + a flower on top (id 25).
+	for y in range(1, 7):
+		buf.set_voxel(_FloraMaterial.GRASS_BLADE_ID, 9, y, 8, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(_FloraMaterial.FLOWER_RED_ID, 8, 7, 8, VoxelBuffer.CHANNEL_TYPE)
+	# A flora "bridge" of blades from the column's side toward a second,
+	# ANCHORED stone pillar (sits on the floor y==0). If flora were solid,
+	# the bridge would anchor the first column through the second pillar.
+	for x in range(10, 14):
+		buf.set_voxel(_FloraMaterial.GRASS_BLADE_ID, x, 1, 8, VoxelBuffer.CHANNEL_TYPE)
+	for y in range(0, 4):
+		buf.set_voxel(1, 14, y, 8, VoxelBuffer.CHANNEL_TYPE)   # anchored pillar (touches floor)
+
+	var fall_table := {
+		1: _GravityRef.FALL_NEVER,
+		_FloraMaterial.GRASS_BLADE_ID: _GravityRef.FALL_NEVER,
+		_FloraMaterial.FLOWER_RED_ID: _GravityRef.FALL_NEVER,
+		_FloraMaterial.FLOWER_BLUE_ID: _GravityRef.FALL_NEVER,
+	}
+	var out: Dictionary = _GravityRef.analyze_bubble(buf, side, fall_table, PackedByteArray())
+
+	# Solids count: 6 (column) + 4 (anchored pillar) = 10. Flora (6 blades
+	# + 1 flower + 4 bridge = 11) must be EXCLUDED entirely.
+	if int(out["bubble_solid_count"]) != 10:
+		fails += 1
+		push_error("[FLORA] gravity: bubble_solid_count=%d expected 10 (flora must not count as solid)" % int(out["bubble_solid_count"]))
+	# The unanchored column is 6 voxels; the anchored pillar stays put.
+	# So exactly one cluster of 6 voxels falls. If flora bridged the two,
+	# the column would be anchored and NO cluster would form.
+	if int(out["unanchored_cluster_count"]) != 6:
+		fails += 1
+		push_error("[FLORA] gravity: unanchored_cluster_count=%d expected 6 (flora wrongly anchored or joined the column?)" % int(out["unanchored_cluster_count"]))
+	# No flora id may appear in the cluster voxel stream.
+	var cv: PackedInt32Array = out["cluster_voxels"]
+	@warning_ignore("integer_division")
+	var n_cv: int = cv.size() / 4
+	for i in range(n_cv):
+		var packed: int = cv[i * 4 + 3]
+		if _FloraMaterial.is_flora(packed):
+			fails += 1
+			push_error("[FLORA] gravity: a flora voxel (id=%d) rode the falling cluster" % (packed & 0xFF))
+			break
+
+	# Cross-check against the C++ port if the DLL is present — flora
+	# exclusion must be byte-for-set identical on both sides.
+	if ClassDB.class_exists("VoxelGravityCpp"):
+		var cpp: Object = ClassDB.instantiate("VoxelGravityCpp")
+		if cpp != null and cpp.has_method("analyze_bubble"):
+			cpp.call("set_fall_behavior_table", fall_table)
+			cpp.call("set_noeditzone_anchor_mask", PackedByteArray())
+			var cpp_out: Dictionary = cpp.call("analyze_bubble", buf, Vector3i.ZERO, side)
+			if int(cpp_out["bubble_solid_count"]) != int(out["bubble_solid_count"]):
+				fails += 1
+				push_error("[FLORA] gravity: C++ solid_count=%d != GD %d (flora exclusion diverged)" % [
+					int(cpp_out["bubble_solid_count"]), int(out["bubble_solid_count"])])
+			if int(cpp_out["unanchored_cluster_count"]) != int(out["unanchored_cluster_count"]):
+				fails += 1
+				push_error("[FLORA] gravity: C++ cluster_count=%d != GD %d" % [
+					int(cpp_out["unanchored_cluster_count"]), int(out["unanchored_cluster_count"])])
+			print("[FLORA] gravity: C++ parity checked (solid=%d cluster=%d)." % [
+				int(cpp_out["bubble_solid_count"]), int(cpp_out["unanchored_cluster_count"])])
+	else:
+		print("[FLORA] gravity: VoxelGravityCpp not registered — GD-reference-only (build the DLL for C++ parity).")
+
+	if fails == 0:
+		print("[FLORA] gravity: PASS — flora excluded from solids/anchoring/cluster (10 solids, 6-voxel cluster, no flora carried).")
+	return mini(fails, 1)
+
+
+func _flora_gen() -> int:
+	# (d) Generator scatter determinism: instantiate the C++ cubic
+	# generator directly (no scene), wire the flora ids, and generate the
+	# SAME block twice — the flora decisions must be byte-identical. Then
+	# generate a LOD-1 block and assert it contains ZERO flora (distant
+	# rings must never mesh a 10cm blade).
+	if not ClassDB.class_exists("CubicHeightmapGeneratorCpp"):
+		print("[FLORA] gen: SKIP — CubicHeightmapGeneratorCpp not registered (build the DLL).")
+		return 0
+	var gen: Object = ClassDB.instantiate("CubicHeightmapGeneratorCpp")
+	if gen == null:
+		print("[FLORA] gen: FAIL — could not instantiate CubicHeightmapGeneratorCpp.")
+		return 1
+	var fails: int = 0
+	# Match the World3D generator config closely enough to produce
+	# grassland surfaces inside our scan band.
+	var noise := FastNoiseLite.new()
+	noise.seed = 8
+	noise.frequency = 0.0003
+	gen.set("noise", noise)
+	gen.set("height_range_voxels", 333.0)
+	gen.set("grass_blade_material_id", _FloraMaterial.GRASS_BLADE_ID)
+	gen.set("flower_red_material_id", _FloraMaterial.FLOWER_RED_ID)
+	gen.set("flower_blue_material_id", _FloraMaterial.FLOWER_BLUE_ID)
+
+	var bs := 16
+	# Find a block whose LOD0 generation actually contains flora, scanning
+	# a deterministic set of origins at a surface-spanning Y band.
+	var flora_origin := Vector3i(0, 0, 0)
+	var found := false
+	var coords := [0, 64, 128, 256, -64, -128, 512, -256, 1024]
+	for cz in coords:
+		for cx in coords:
+			var o := Vector3i(cx, 112, cz)   # Y band straddling typical surfaces
+			var b := VoxelBuffer.new()
+			b.create(bs, bs, bs)
+			gen.call("generate_block_into_buffer", b, o, 0)
+			if _flora_count_in_buffer(b, bs) > 0:
+				flora_origin = o
+				found = true
+				break
+		if found:
+			break
+	if not found:
+		print("[FLORA] gen: WARN — no flora found in the scan band; determinism still checked on a fixed origin.")
+		flora_origin = Vector3i(0, 112, 0)
+
+	# Generate the chosen block TWICE at LOD0 — must be byte-identical.
+	var b1 := VoxelBuffer.new(); b1.create(bs, bs, bs)
+	var b2 := VoxelBuffer.new(); b2.create(bs, bs, bs)
+	gen.call("generate_block_into_buffer", b1, flora_origin, 0)
+	gen.call("generate_block_into_buffer", b2, flora_origin, 0)
+	var h1 := _flora_hash_buffer(b1, bs)
+	var h2 := _flora_hash_buffer(b2, bs)
+	var fc1 := _flora_count_in_buffer(b1, bs)
+	if h1 != h2:
+		fails += 1
+		push_error("[FLORA] gen: same (origin,seed) produced different blocks (hash %d vs %d) — NOT deterministic" % [h1, h2])
+
+	# LOD-1 of the same origin must contain ZERO flora.
+	var bl := VoxelBuffer.new(); bl.create(bs, bs, bs)
+	gen.call("generate_block_into_buffer", bl, flora_origin, 1)
+	var fc_lod1 := _flora_count_in_buffer(bl, bs)
+	if fc_lod1 != 0:
+		fails += 1
+		push_error("[FLORA] gen: LOD-1 block contains %d flora voxel(s) — distant rings must never mesh flora" % fc_lod1)
+
+	if fails == 0:
+		print("[FLORA] gen: PASS — block %s deterministic (flora_count=%d, two runs identical), LOD1 flora=0." % [
+			str(flora_origin), fc1])
+	return mini(fails, 1)
+
+
+func _flora_count_in_buffer(buf: VoxelBuffer, bs: int) -> int:
+	var n := 0
+	for z in range(bs):
+		for y in range(bs):
+			for x in range(bs):
+				if _FloraMaterial.is_flora(buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)):
+					n += 1
+	return n
+
+
+func _flora_hash_buffer(buf: VoxelBuffer, bs: int) -> int:
+	var h: int = 2166136261
+	for z in range(bs):
+		for y in range(bs):
+			for x in range(bs):
+				var t: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
+				h = ((h ^ t) * 16777619) & 0x7FFFFFFF
+	return h
+
+
+func _WaterMaterial():
+	# Small accessor so the flora gate reads the water-id helper without
+	# a second top-of-file preload (one already exists locally where used).
+	return preload("res://scripts/WaterMaterial.gd")
 
 
 # ============================================================

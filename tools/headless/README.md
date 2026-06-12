@@ -30,6 +30,7 @@ Exit code 0 = pass.
 | `shader` | Shader compile + the foam removal contract |
 | `spike` | Does `VoxelLodTerrain` stream headless? (Yes — confirmed by this selector) |
 | `scale` | `VoxelScale.gd` contract: internal consistency + all refactored-script constants mirror it + World3D.tscn transform matches (PR R0) |
+| `flora` | R4 micro-voxel flora: `FloraMaterial.is_flora` id classification, water-displaces-flora (FiniteWaterCore), gravity/sever flora exclusion (GD ref + C++ parity), generator scatter determinism + no-flora-at-LOD>0 |
 
 ## Scope
 

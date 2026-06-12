@@ -34,6 +34,7 @@ Runs Godot's **`_console.exe`** (plain win64 exe is GUI-subsystem and won't pipe
 | `sever` | `SeverFollowLib.continue_bfs` — tree-sever upward follow (merge / top + side aborts / water exclusion) |
 | `entity` | `EntityRegistry` save/load + chunk-index parity (66 checks) |
 | `scale` | `VoxelScale.gd` single-source-of-truth contract: internal consistency, all refactored script constants mirror VoxelScale, World3D.tscn VoxelLodTerrain transform matches `VOXEL_SIZE_M` (PR R0) |
+| `flora` | R4 micro-voxel flora: `FloraMaterial.is_flora` id classification, water-displaces-flora (FiniteWaterCore), gravity/sever flora exclusion (GD ref + C++ parity), generator scatter determinism + LOD>0-has-no-flora |
 
 **Scope:** data/logic/parity only — dummy renderer, no GPU, no shaders execute. Visuals still need the designer running the editor.
 
