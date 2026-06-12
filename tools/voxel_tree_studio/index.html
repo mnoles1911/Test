@@ -143,6 +143,7 @@ import { TreePreset, loadPreset } from './vendor/ez-tree/presets/index.js';
 import TreeOptions from './vendor/ez-tree/options.js';
 import { voxelize, MAT, WOOD_IDS, COLLAPSE } from './tree_voxelizer.js';
 import { growSpaceColonization } from './space_colonization.js';
+import { buildGrass, buildFern, buildVine } from './plants.js';
 import { fitFromImage } from './reference_fit.js';
 
 const M_PER_VOXEL = 0.1, VOX_PER_M = 10;
@@ -163,8 +164,9 @@ const PALETTE_NAMES = { 24:'bark', 25:'heartwood', 26:'deadwood', 27:'leaf_dark'
 // ---------------------------------------------------------------------------
 const SCHEMA = [
   { group:'General', params:[
+    { id:'plantType', label:'Plant type', noRandom:true,
+      select:['Tree (ez-tree)','Tree (space-col)','Bush','Fern','Grass tuft','Ground cover','Vine'], def:'Tree (ez-tree)' },
     { id:'seed', label:'Seed', min:1, max:9999, step:1, def:5 },
-    { id:'growthMode', label:'Growth', select:['ez-tree','Space colonization'], def:'ez-tree', noRandom:true },
   ]},
   { group:'Size', params:[
     { id:'heightM', label:'Tree height (m)', min:1, max:20, step:0.5, def:8 },
@@ -207,7 +209,7 @@ const SCHEMA = [
     { id:'barkThickness', label:'Bark thickness', min:1, max:4, step:0.5, def:1 },
     { id:'deadwoodFraction', label:'Deadwood', min:0, max:0.5, step:0.05, def:0 },
   ]},
-  { group:'Growth · space-col (when selected above)', params:[
+  { group:'Tree · space-col (plant type)', params:[
     { id:'scAttractors', label:'Attractors', min:100, max:1500, step:50, def:500 },
     { id:'scCrownRadius', label:'Crown radius', min:4, max:30, step:1, def:12 },
     { id:'scCrownHeight', label:'Crown height', min:4, max:30, step:1, def:14 },
@@ -215,6 +217,25 @@ const SCHEMA = [
     { id:'scInfluence', label:'Influence radius', min:4, max:30, step:1, def:14 },
     { id:'scKill', label:'Kill distance', min:1, max:8, step:0.5, def:3 },
     { id:'scStep', label:'Step size', min:0.5, max:3, step:0.25, def:1.5 },
+  ]},
+  { group:'Grass / ground cover (plant type)', params:[
+    { id:'gcBlades', label:'Blades', min:4, max:40, step:1, def:14 },
+    { id:'gcCurl', label:'Curl / arch', min:0, max:1, step:0.05, def:0.4 },
+    { id:'gcSpread', label:'Spread', min:0, max:1, step:0.05, def:0.3 },
+    { id:'gcClumps', label:'Clumps (ground cover)', min:1, max:60, step:1, def:24 },
+    { id:'gcPatchRadius', label:'Patch radius', min:1, max:20, step:1, def:8 },
+  ]},
+  { group:'Fern (plant type)', params:[
+    { id:'fernFronds', label:'Fronds', min:2, max:10, step:1, def:5 },
+    { id:'fernArch', label:'Arch / droop', min:0, max:1, step:0.05, def:0.5 },
+    { id:'fernLeaflets', label:'Leaflet pairs', min:4, max:16, step:1, def:10 },
+    { id:'fernLeafletLen', label:'Leaflet length', min:1, max:6, step:0.5, def:3 },
+  ]},
+  { group:'Vine (plant type)', params:[
+    { id:'vineLength', label:'Length', min:10, max:60, step:2, def:28 },
+    { id:'vineMode', label:'Direction', select:['Hang','Climb'], def:'Hang' },
+    { id:'vineWander', label:'Wander', min:0, max:1, step:0.05, def:0.4 },
+    { id:'vineLeafEvery', label:'Leaf every', min:1, max:6, step:1, def:2 },
   ]},
 ];
 const PARAMS = {}; SCHEMA.forEach(g => g.params.forEach(p => PARAMS[p.id] = p));
@@ -262,6 +283,13 @@ document.querySelectorAll('[data-lock]').forEach(node => {
 // regen on any input
 Object.values(el).forEach(node => node.addEventListener('input', scheduleRegen));
 
+// Switching plant type sets a sensible default height (unless you've locked it).
+const PLANT_HEIGHT = { 'Tree (ez-tree)':8, 'Tree (space-col)':8, 'Bush':1.8, 'Fern':0.9, 'Grass tuft':0.4, 'Ground cover':0.35, 'Vine':3.5 };
+el.plantType.addEventListener('change', () => {
+  if (!locks.heightM) setVal('heightM', PLANT_HEIGHT[el.plantType.value] ?? 8);
+  scheduleRegen();
+});
+
 function readParams() {
   const p = {};
   for (const id in el) p[id] = el[id].tagName === 'SELECT' ? el[id].value : +el[id].value;
@@ -295,6 +323,16 @@ function buildEzOptions(p) {
   o.branch.force = { direction:{ x:p.lean, y:p.forceUp, z:0 }, strength:p.forceStrength };
   o.leaves.count = p.leafCount;
   o.leaves.start = p.leafStart;
+  return o;
+}
+// Bush = ez-tree biased short/wide/dense (no tall trunk).
+function buildBushOptions(p) {
+  const o = buildEzOptions(p);
+  o.branch.length[0] *= 0.22;                       // stubby trunk
+  o.branch.levels = Math.min(o.branch.levels, 3);
+  o.branch.children[0] = Math.max(o.branch.children[0], 9);
+  o.branch.angle[1] = Math.max(o.branch.angle[1], 75);
+  o.leaves.count = Math.max(o.leaves.count, 6);
   return o;
 }
 function buildVoxOptions(p, voxelScale) {
@@ -406,13 +444,16 @@ async function regenerate() {
   syncLabels();
   const p = readParams();
   const token = ++regenToken;
-  // 1. skeleton — ez-tree OR space colonization (both feed the same voxelizer)
-  let skeleton, leafAnchors, tree = null;
-  if (p.growthMode === 'Space colonization') {
-    const r = growSpaceColonization(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors;
-  } else {
-    tree = new Tree(buildEzOptions(p)); tree.generate();
-    skeleton = tree.skeleton; leafAnchors = tree.leafAnchors;
+  // 1. skeleton — every plant type emits the same {skeleton, leafAnchors}
+  let skeleton, leafAnchors, tree = null, groundDisc = null;
+  switch (p.plantType) {
+    case 'Tree (space-col)': { const r = growSpaceColonization(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    case 'Bush':  { tree = new Tree(buildBushOptions(p)); tree.generate(); skeleton = tree.skeleton; leafAnchors = tree.leafAnchors; break; }
+    case 'Fern':  { const r = buildFern(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    case 'Grass tuft':   { const r = buildGrass(p, { scatter:false }); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    case 'Ground cover': { const r = buildGrass(p, { scatter:true });  skeleton = r.skeleton; leafAnchors = r.leafAnchors; groundDisc = r.groundDisc; break; }
+    case 'Vine':  { const r = buildVine(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    default:      { tree = new Tree(buildEzOptions(p)); tree.generate(); skeleton = tree.skeleton; leafAnchors = tree.leafAnchors; }
   }
   lastTree = tree;
   if (!skeleton.length) { setBusy(false); return; }
@@ -422,7 +463,7 @@ async function regenerate() {
   const voxelScale = (p.heightM * VOX_PER_M) / Math.max(0.001, maxY - minY);
   // 3. voxelize (worker)
   setBusy(true);
-  const { positions, materials, stats } = await runVoxelize(skeleton, leafAnchors, buildVoxOptions(p, voxelScale));
+  const { positions, materials, stats } = await runVoxelize(skeleton, leafAnchors, { ...buildVoxOptions(p, voxelScale), groundDisc });
   if (token !== regenToken) return; // a newer request superseded this one
   setBusy(false);
   let discSet = null;

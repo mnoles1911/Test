@@ -111,8 +111,8 @@ export function voxelize(skeleton, leafAnchors, opts = {}) {
     else if (LEAF_IDS.includes(cur)) voxels.set(k, mat);
     else if (cur === MAT.HEARTWOOD && mat === MAT.BARK) voxels.set(k, mat);
   };
-  const stampBall = (cx, cy, cz, r, deadwood) => {
-    if (r < 1) { setWood(cx, cy, cz, deadwood ? MAT.DEADWOOD : MAT.BARK); return; }
+  const stampBall = (cx, cy, cz, r, deadwood, flatMat) => {
+    if (r < 1) { setWood(cx, cy, cz, flatMat != null ? flatMat : (deadwood ? MAT.DEADWOOD : MAT.BARK)); return; }
     const ri = Math.ceil(r);
     const r2 = r * r;
     const inner2 = Math.max(0, r - o.barkThickness) * Math.max(0, r - o.barkThickness);
@@ -122,7 +122,8 @@ export function voxelize(skeleton, leafAnchors, opts = {}) {
           const d2 = dx*dx + dy*dy + dz*dz;
           if (d2 > r2) continue;
           let mat;
-          if (deadwood) mat = MAT.DEADWOOD;
+          if (flatMat != null) mat = flatMat;                  // grass/fern green stems
+          else if (deadwood) mat = MAT.DEADWOOD;
           else mat = d2 >= inner2 ? MAT.BARK : MAT.HEARTWOOD;
           setWood(cx + dx, cy + dy, cz + dz, mat);
         }
@@ -132,13 +133,22 @@ export function voxelize(skeleton, leafAnchors, opts = {}) {
   for (const br of skeleton) {
     const deadwood = o.deadwoodFraction > 0 && br.level >= o.deadwoodMinLevel
       && rng() < o.deadwoodFraction;
-    const pts = br.points, radii = br.radii;
+    const pts = br.points, radii = br.radii, flatMat = br.mat;
     for (let i = 0; i < pts.length - 1; i++) {
       const a = [Math.round(pts[i][0]*S), Math.round(pts[i][1]*S), Math.round(pts[i][2]*S)];
       const b = [Math.round(pts[i+1][0]*S), Math.round(pts[i+1][1]*S), Math.round(pts[i+1][2]*S)];
       const r0 = radii[i] * S, r1 = radii[i+1] * S;
-      line6(a, b, (x, y, z, t) => stampBall(x, y, z, r0 + (r1 - r0) * t, deadwood));
+      line6(a, b, (x, y, z, t) => stampBall(x, y, z, r0 + (r1 - r0) * t, deadwood, flatMat));
     }
+  }
+
+  // Optional ground mat (ground cover) — a thin disc at y=0 that ties scattered
+  // tufts into one connected body.
+  if (o.groundDisc) {
+    const R = Math.round(o.groundDisc.radius * S), gm = o.groundDisc.mat;
+    for (let dx = -R; dx <= R; dx++)
+      for (let dz = -R; dz <= R; dz++)
+        if (dx*dx + dz*dz <= R*R) { const k = packKey(dx, 0, dz); if (!voxels.has(k)) voxels.set(k, gm); }
   }
 
   // Wood is placed. Snapshot which cells are wood for the leaf-adjacency test.
