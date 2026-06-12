@@ -45,6 +45,8 @@
   button { flex:1; background:#2a3138; color:var(--ink); border:1px solid #000; padding:9px 6px; font-family:inherit; font-size:11px; cursor:pointer; border-radius:4px; }
   button:hover { background:#353d46; }
   button.primary { background:var(--accent); color:#10141a; font-weight:bold; }
+  .quick { display:flex; flex-wrap:wrap; gap:6px; }
+  .quick button { flex:1 1 30%; padding:8px 4px; }
   label.inline { display:block; font-size:11px; margin:0 0 8px; }
   #stats { font-size:11px; opacity:.85; margin-top:6px; line-height:1.7; border-top:1px solid #ffffff14; padding-top:10px; }
   #stats b { color:var(--accent); }
@@ -90,10 +92,24 @@
       <input type="file" id="refFile" accept="image/*" style="display:none">
     </details>
 
+    <details open>
+      <summary><span>Quick adjust</span></summary>
+      <div class="quick">
+        <button data-quick="weather">🌧 Weather</button>
+        <button data-quick="rougher">🪨 Rougher</button>
+        <button data-quick="smoother">🧊 Smoother</button>
+        <button data-quick="angular">🔺 Angular</button>
+        <button data-quick="rounder">⚪ Rounder</button>
+        <button data-quick="mossier">🌿 Mossier</button>
+        <button data-quick="newshape">🎲 New shape</button>
+      </div>
+    </details>
+
     <div id="groups"></div>
 
     <details open>
       <summary><span>Display &amp; Export</span></summary>
+      <label class="inline"><input type="checkbox" id="showHuman"> Show 1.8 m human for scale</label>
       <label class="inline"><input type="checkbox" id="showDisc"> Highlight disconnected voxels (red)</label>
       <div class="btns">
         <button id="randomize">🎲 Randomize all</button>
@@ -126,6 +142,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { voxelizeRock } from './rock_voxelizer.js';
 import { analyzeRockImage } from './claude_vision.js';
+import { makeHumanFigure, placeFigureBeside } from '../voxel_studio_common/scale_figure.js';
 
 const M_PER_VOXEL = 0.1;
 const m = v => (v * M_PER_VOXEL).toFixed(1) + 'm';
@@ -234,6 +251,19 @@ document.getElementById('randomize').addEventListener('click', () => { SCHEMA.fo
 function applyRockType(name) { const b = ROCK_PRESETS[name]; if (!b) return; for (const id in b) setVal(id, b[id]); }
 el.rockType.addEventListener('change', () => { applyRockType(el.rockType.value); scheduleRegen(); });
 
+// Quick-adjust "easy buttons" — nudge groups of dials (respecting locks).
+function nudge(id, d) { if (!locks[id] && el[id]) setVal(id, +el[id].value + d); }
+const QUICK = {
+  weather:  () => { nudge('erosion',0.1); nudge('flatBottom',0.05); nudge('mossAmount',0.05); nudge('boxiness',-0.3); nudge('noiseScale',0.2); },
+  rougher:  () => { nudge('noiseAmp',0.06); nudge('noiseOctaves',1); nudge('erosion',-0.1); },
+  smoother: () => { nudge('noiseAmp',-0.06); nudge('erosion',0.1); nudge('noiseOctaves',-1); },
+  angular:  () => { nudge('faceting',0.15); nudge('scrapeCount',1); nudge('boxiness',0.6); nudge('erosion',-0.05); },
+  rounder:  () => { nudge('boxiness',-0.5); nudge('faceting',-0.1); nudge('erosion',0.08); },
+  mossier:  () => { nudge('mossAmount',0.1); },
+  newshape: () => { if (!locks.seed) el.seed.value = 1 + Math.floor(Math.random()*9999); },
+};
+document.querySelectorAll('[data-quick]').forEach(b => b.addEventListener('click', () => { QUICK[b.getAttribute('data-quick')](); scheduleRegen(); }));
+
 // ---------------------------------------------------------------------------
 // THREE scene
 // ---------------------------------------------------------------------------
@@ -246,6 +276,15 @@ scene.add(new THREE.HemisphereLight('#cfe3ff', '#34301f', 1.05));
 const sun = new THREE.DirectionalLight('#fff4d6', 1.15); sun.position.set(40, 80, 30); scene.add(sun);
 const fill = new THREE.DirectionalLight('#9fb8d8', 0.35); fill.position.set(-30, 30, -40); scene.add(fill);
 scene.add(new THREE.GridHelper(200, 20, 0x444a52, 0x2a2f36)); // 1 m cells
+
+// 1.8 m human for scale (toggle).
+const human = makeHumanFigure(THREE); let humanShown = false;
+function updateHuman(sizeVox) {
+  const on = document.getElementById('showHuman').checked;
+  if (on) { placeFigureBeside(human, sizeVox); if (!humanShown) { scene.add(human); humanShown = true; } }
+  else if (humanShown) { scene.remove(human); humanShown = false; }
+}
+document.getElementById('showHuman').addEventListener('change', () => { if (lastExport) updateHuman(lastExport.stats.sizeVox); });
 
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
 const cubeMat = new THREE.MeshLambertMaterial();   // per-voxel color via instanceColor
@@ -304,6 +343,7 @@ async function regenerate() {
   rebuildMesh(positions, materials, showDisc, discSet);
   lastExport = { positions, materials, stats, params };
   controls.target.set(0, stats.sizeVox[1] * 0.5, 0);
+  updateHuman(stats.sizeVox);
   const conn = stats.disconnected === 0 ? `<span style="color:#8fbf6f">✓ one solid body</span>`
     : `<span style="color:#d8a35a">⚠ ${stats.disconnected} detached voxel(s)</span>`;
   document.getElementById('stats').innerHTML =

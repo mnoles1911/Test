@@ -9,7 +9,7 @@
 //
 // Algorithm sources (see plan): gl-rock (scrape + noise), Blender Rock Generator
 // (Voronoi + noise displacement), Iñigo Quílez SDF primitives.
-import { ROCK_MAT, packKey, makeRng, normalizeMapToArrays, connectivityCheck } from '../voxel_studio_common/voxel_core.js';
+import { ROCK_MAT, packKey, unpackKey, FACES, makeRng, normalizeMapToArrays, connectivityCheck } from '../voxel_studio_common/voxel_core.js';
 import { makeSimplex, makeWorley, fbm } from '../voxel_studio_common/noise.js';
 
 const DEFAULTS = {
@@ -48,6 +48,11 @@ export function voxelizeRock(params = {}) {
     }
     stampRock(voxels, o, rng, simplex, worley, ox, oy, oz, scale, c);
   }
+
+  // Remove floating noise specks. A single rock keeps only its largest body
+  // (so it's provably connected); a scatter (pebbles/piles) keeps every chunk
+  // above a small minimum.
+  pruneComponents(voxels, clusters === 1, 6);
 
   // Moss on up-facing surfaces (after the solid is built).
   if (o.mossAmount > 0) growMoss(voxels, o, simplex);
@@ -93,7 +98,7 @@ function stampRock(voxels, o, rng, simplex, worley, ox, oy, oz, scale, ci) {
         // superquadric base distance
         let d = Math.pow(Math.pow(Math.abs(nx), e) + Math.pow(Math.abs(ny), e) + Math.pow(Math.abs(nz), e), inv_e);
         // FBM surface roughness (eroded down)
-        const nd = fbm((p)=>simplex(p[0],p[1],p[2]), [nx*o.noiseScale+ph, ny*o.noiseScale, nz*o.noiseScale], o.noiseOctaves) * o.noiseAmp * (1 - o.erosion);
+        const nd = fbm(simplex, nx*o.noiseScale+ph, ny*o.noiseScale, nz*o.noiseScale, o.noiseOctaves) * o.noiseAmp * (1 - o.erosion);
         d += nd;
         // Worley faceting (angular breaks)
         if (o.faceting > 0) {
@@ -115,7 +120,7 @@ function stampRock(voxels, o, rng, simplex, worley, ox, oy, oz, scale, ci) {
 function pickMaterial(x, y, z, ny, rng, simplex, worley, o) {
   // ore pockets
   if (o.oreAmount > 0) {
-    const ore = fbm((p)=>simplex(p[0],p[1],p[2]), [x*0.12+50, y*0.12, z*0.12+50], 3);
+    const ore = fbm(simplex, x*0.12+50, y*0.12, z*0.12+50, 3);
     if (ore > 1 - o.oreAmount * 0.6) return rng() < 0.5 ? ROCK_MAT.COPPER : ROCK_MAT.IRON;
   }
   // marble veins (thin Worley boundaries)
@@ -134,6 +139,27 @@ function pickMaterial(x, y, z, ny, rng, simplex, worley, o) {
   const n = simplex(x*0.13, y*0.13, z*0.13);
   if (n < (o.darkMix - 0.5) * 1.2) return ROCK_MAT.STONE_DARK;
   return ROCK_MAT.STONE;
+}
+
+// Keep the largest 6-connected component (single rock) or drop tiny detached
+// specks below minSize (scatter), so noise doesn't leave floating bits.
+function pruneComponents(voxels, keepLargestOnly, minSize) {
+  const visited = new Set(); const comps = [];
+  for (const start of voxels.keys()) {
+    if (visited.has(start)) continue;
+    const comp = [start]; visited.add(start); const stack = [start];
+    while (stack.length) {
+      const k = stack.pop(); const [x, y, z] = unpackKey(k);
+      for (const [a, b, c] of FACES) { const nk = packKey(x+a, y+b, z+c); if (voxels.has(nk) && !visited.has(nk)) { visited.add(nk); comp.push(nk); stack.push(nk); } }
+    }
+    comps.push(comp);
+  }
+  if (comps.length <= 1) return;
+  comps.sort((a, b) => b.length - a.length);
+  const keep = new Set();
+  if (keepLargestOnly) { for (const k of comps[0]) keep.add(k); }
+  else { for (const c of comps) if (c.length >= minSize) for (const k of c) keep.add(k); }
+  for (const k of [...voxels.keys()]) if (!keep.has(k)) voxels.delete(k);
 }
 
 // Moss on up-facing surface cells (cell directly above is empty).

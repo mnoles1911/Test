@@ -109,6 +109,7 @@
 
     <details open>
       <summary><span>Display &amp; Export</span></summary>
+      <label class="toggle"><input type="checkbox" id="showHuman"> Show 1.8 m human for scale</label>
       <label class="toggle"><input type="checkbox" id="showMesh"> Show ez-tree smooth mesh (compare)</label>
       <label class="toggle"><input type="checkbox" id="showDisc"> Highlight disconnected voxels (red)</label>
       <label class="toggle"><input type="checkbox" id="collapseMats"> Export as log/leaves only (collapse palette)</label>
@@ -148,6 +149,7 @@ import { voxelize, MAT, WOOD_IDS, COLLAPSE } from './tree_voxelizer.js';
 import { growSpaceColonization } from './space_colonization.js';
 import { buildGrass, buildFern, buildVine } from './plants.js';
 import { analyzeImage } from '../voxel_studio_common/claude_vision.js';
+import { makeHumanFigure, placeFigureBeside } from '../voxel_studio_common/scale_figure.js';
 
 const M_PER_VOXEL = 0.1, VOX_PER_M = 10;
 const m = v => (v * M_PER_VOXEL).toFixed(1) + 'm';
@@ -373,6 +375,15 @@ const sun = new THREE.DirectionalLight('#fff4d6', 1.15); sun.position.set(40, 80
 const fill = new THREE.DirectionalLight('#9fb8d8', 0.35); fill.position.set(-30, 30, -40); scene.add(fill); // soft back-fill
 scene.add(new THREE.GridHelper(200, 20, 0x335533, 0x223322)); // 1 m cells
 
+// 1.8 m human for scale (toggle).
+const human = makeHumanFigure(THREE); let humanShown = false;
+function updateHuman(sizeVox) {
+  const on = document.getElementById('showHuman').checked;
+  if (on) { placeFigureBeside(human, sizeVox); if (!humanShown) { scene.add(human); humanShown = true; } }
+  else if (humanShown) { scene.remove(human); humanShown = false; }
+}
+document.getElementById('showHuman').addEventListener('change', () => { if (lastExport) updateHuman(lastExport.stats.sizeVox); });
+
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
 // Per-voxel color comes from InstancedMesh.instanceColor (setColorAt). Do NOT
 // set vertexColors here — that makes the shader expect a geometry 'color'
@@ -479,6 +490,7 @@ async function regenerate() {
   lastExport = { positions, materials, stats, params: p };
   updateMeshCompare(tree, voxelScale); // null tree (SC mode) just clears it
   controls.target.set(0, stats.sizeVox[1] * 0.5, 0);
+  updateHuman(stats.sizeVox);
   renderStats(stats);
 }
 

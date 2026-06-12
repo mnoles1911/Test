@@ -20,6 +20,7 @@ export const ROCK_MAT = {
 
 const OFFSET = 4096, SPAN = 8192;
 export const packKey = (x, y, z) => (x + OFFSET) * SPAN * SPAN + (y + OFFSET) * SPAN + (z + OFFSET);
+export const unpackKey = (k) => [Math.floor(k / (SPAN*SPAN)) - OFFSET, Math.floor((k / SPAN) % SPAN) - OFFSET, (k % SPAN) - OFFSET];
 export const FACES = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
 
 export function makeRng(seed) {
