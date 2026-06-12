@@ -26,7 +26,8 @@ Game assets — textures, models, audio, fonts, resources.
 ## Rules
 
 - **Voxel textures must be pixel art**, not photo-style. Use Retrodiffusion / PixelLab.ai / Aseprite; demote NB / DALL-E to fallback-only (their output is continuous-gradient photo style; nearest-downscale samples random pixels → noise). `tools/build_texture_atlas.py` has a `_warn_if_not_pixel_art` heuristic.
-- **Voxel atlas:** 16 px tile × 64 cols (1024²), nearest filtering with mipmaps + anisotropy.
+- **Voxel atlas:** 16 px tile × 64 cols (1024²), nearest filtering with mipmaps + anisotropy. **Scale: 10 cm per voxel (10 vox/m)** — each tile is the surface of a 10 cm voxel face; author terrain detail at that scale. (Terrain/prop scale moved 6→10 vox/m on 2026-06-12; engine constant migration tracked in `DESIGNER_TODO.md` §8.)
+- **Vegetation/tree materials (ids 24–31):** bark/heartwood/deadwood + leaf_dark/leaf_light + grass/grass_dry/fern, driven by `tools/voxel_tree_studio/`. Currently **placeholder** tiles in `texture_packs/default/source/` — replace with real pixel art (prompts in `../tools/AI_TEXTURE_PROMPTS.md`). Leaf/grass/fern are alpha-cutout (non-culling, transparent).
 - **Audio file paths:** `assets/audio/sfx/<folder>/<id>[.ogg|_NN.ogg]` (variations enumerated). `AudioManager` picks one at random per call.
 - **NPCData resources:** one `.tres` per character, assigned to the `NPC.gd` script in the Inspector.
 - **Shader materials** authored in `.tres` may not restore correctly on load — runtime re-injection in `World3DBootstrap` is sometimes required (water case).

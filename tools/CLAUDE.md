@@ -45,6 +45,7 @@ Runs Godot's **`_console.exe`** (plain win64 exe is GUI-subsystem and won't pipe
 | `build_texture_atlas.py` | Pack voxel textures into 1024² atlas. Includes `_warn_if_not_pixel_art` heuristic (NB/DALL-E output is photo-style; nearest-downscale samples random pixels → noise) |
 | `_analyze_capture.py` | Parse F3 profiler capture JSON; surface top spike attribution |
 | `probe_zylann_blocky.gd` (Godot EditorScript) | Probe Zylann classes for `get_property_list()` + `get_method_list()` before guessing the API |
+| `voxel_tree_studio/` (forked ez-tree, browser) | Realistic trees → **cubic voxels** → game-ready JSON. ez-tree skeleton (`vendor/ez-tree/`, MIT fork w/ skeleton hook) → `tree_voxelizer.js` (6-connected rasterizer + adjacency foliage + connectivity check) → InstancedMesh preview + export. Rich palette ids 24–28 (collapse to 10/11 optional). Open via githack URL. Importer still unbuilt. |
 
 ## When adding a tool
 

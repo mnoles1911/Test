@@ -100,6 +100,17 @@ ATLAS_LAYOUT = {
     "leaves_all":      (2, 1),
     "copper_ore_all":  (3, 1),
     "bedrock_all":     (4, 1),
+    # Tree-asset palette (ids 24-28) — placeholder pixel art; replace with
+    # real tiles. Emitted by tools/voxel_tree_studio. See DESIGNER_TODO.
+    "bark_all":        (5, 1),
+    "heartwood_all":   (6, 1),
+    "deadwood_all":    (7, 1),
+    "leaf_dark_all":   (8, 1),
+    "leaf_light_all":  (9, 1),
+    # Vegetation (ground cover, ferns) — ids 29-31. Placeholders; replace.
+    "grass_blade_all": (10, 1),
+    "grass_dry_all":   (11, 1),
+    "fern_frond_all":  (12, 1),
 }
 
 
@@ -128,6 +139,15 @@ MATERIAL_FACES = {
     13: {"all": "snow_all"},        # Tier 2 — snow caps above the snow line
     14: {"all": "stone_dark_all"},  # Tier 3 — darker stone variant
     15: {"all": "iron_ore_all"},    # Tier 4 — iron ore vein
+    # Tree-asset palette (placeholders) — from tools/voxel_tree_studio.
+    24: {"all": "bark_all"},
+    25: {"all": "heartwood_all"},
+    26: {"all": "deadwood_all"},
+    27: {"all": "leaf_dark_all"},
+    28: {"all": "leaf_light_all"},
+    29: {"all": "grass_blade_all"},
+    30: {"all": "grass_dry_all"},
+    31: {"all": "fern_frond_all"},
 }
 
 

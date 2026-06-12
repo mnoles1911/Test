@@ -791,6 +791,56 @@ C++ `CubicHeightmapGeneratorCpp` generator (was GDScript, ported 2026-05-11), `V
 
 Open questions that need an answer before their dependent systems can be built.
 
+- [ ] **Voxel scale migration: 6 vox/m (16.7 cm) → 10 vox/m (10 cm)**
+  Designer set the asset standard at **10 cm per voxel** (Voxel Tree Studio is
+  built to it). But the live terrain/engine is **6 voxels per meter (16.7 cm)**,
+  hard-coded in several load-bearing spots:
+  - `scripts/EditToolHandler.gd:309` — `VOXELS_PER_METER = 6.0`
+  - `scripts/FallingVoxelCluster.gd:34`, `scripts/VoxelClusterBuilder.gd:31` — `VOXEL_SIZE_M = 1.0/6.0`
+  - `scripts/Player3D.gd` — step/jump clearances tuned to 16.7 cm voxels
+  Until these are migrated to 10 cm, trees authored in the studio will import
+  ~67% larger than intended. This is an architectural change (re-tunes player
+  movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
+  Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
+
+- [ ] **Vegetation/tree voxel materials (ids 24–31) — bake the library + replace placeholder art**
+  The Voxel Tree Studio (`tools/voxel_tree_studio/`) emits a rich palette
+  (24 bark, 25 heartwood, 26 deadwood, 27 leaf_dark, 28 leaf_light, 29 grass,
+  30 grass_dry, 31 fern — chosen to avoid the native fluid models at 16–23).
+  These are **already wired in code with PLACEHOLDER tiles**:
+  - `.tres` resources in `assets/voxels/materials/` (bark/heartwood/deadwood/
+    leaf_dark/leaf_light/grass_blade/grass_dry/fern_frond).
+  - placeholder 16px source PNGs in `assets/voxels/texture_packs/default/source/`.
+  - atlas rows in `tools/build_texture_atlas.py` (5,1)…(12,1).
+  - `MATERIAL_TILES` + leaf/grass/fern ids in
+    `NON_CULLING_MATERIALS`/`TRANSPARENT_MATERIALS` in
+    `tools/build_blocky_library.gd`.
+
+  To activate: **(1)** run `python tools/build_texture_atlas.py default`, **(2)**
+  run `tools/build_blocky_library.gd` from the Godot editor (Ctrl+Shift+X),
+  **(3)** restart Godot. Then **replace the placeholder PNGs with real pixel
+  art** (see `tools/AI_TEXTURE_PROMPTS.md`); for the leaves, add their source
+  names to `CHROMA_KEY_MATERIALS` in `build_texture_atlas.py` so the white
+  background becomes alpha gaps. Until baked, export trees with the
+  "log/leaves only" toggle (ids 10/11).
+
+- [ ] **Verify the tree importer in-editor (`scripts/_dev/VoxelTreeImporter.gd`)**
+  Reads a studio JSON export and stamps the voxels via
+  `VoxelEditManager.queue_set_voxels_bulk`. Written against the discovered API
+  but **not yet run in Godot**. Verify: export a tree, then at runtime call
+  `VoxelTreeImporter.stamp("res://path/tree.json", Vector3i(0, <ground_y>, 0))`
+  (e.g. from a dev key in `World3DBootstrap.gd`) and confirm the tree appears at
+  the right spot/size and chops correctly. Note the 6→10 vox/m scale caveat
+  (it places 1:1 at the engine grid; pass `voxels_per_meter` to taste).
+
+- [ ] **Raise the tree-felling sever caps for large trees (accurate physics)**
+  `VoxelGravityManager` caps a single falling cluster at `max_cluster_voxels`
+  (4096) and `sever_follow_max_height_m` (12 m). A realistic 10–15 m tree at
+  10 cm/voxel is far bigger than 4096 voxels, so it currently falls in slices
+  rather than as one body. Per design direction (prioritize accurate physics),
+  raise these caps (or make them scale-aware) so whole trees topple as one
+  connected cluster. Deliberate change — re-test sever performance after.
+
 - [ ] **Recipe placement map for Act I**
   Decide exactly which recipes Roland can find/learn in Act I. The Archive
   restricted section, Henrietta's quarters, and Old Mira the herbalist are the

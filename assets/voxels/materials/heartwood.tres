@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "heartwood"
+material_id = 25
+display_name = "Heartwood"
+color_low = Color(0.40, 0.29, 0.16, 1)
+color_high = Color(0.52, 0.40, 0.24, 1)
+color_jitter = 0.07
+mining_time_seconds = 0.8
+allowed_tools = Array[String](["iron_axe"])
+yield_item_id = "raw_log"
+yield_quantity = 1
+fall_behavior = 1
+gravity_scale = 0.8
+damage_multiplier = 0.7
+density_relative_to_water = 0.7

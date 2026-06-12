@@ -56,10 +56,11 @@ MagicaVoxel is the standard voxel art tool. It is free, intuitive, and exports d
 6. Set material to `BaseMaterial3D` with `vertex_color_use_as_albedo = true`
 
 ### Voxel block size convention:
-- All props use **1 voxel ≈ 0.167 metres** (6 voxels per meter — locked 2026-05-03)
-- A 1.8 m human-height doorway = ~11 voxels tall (or 12 for headroom)
-- A standard wall section ≈ 6 voxels wide × 12 voxels tall
+- All props use **1 voxel = 0.10 metres (10 voxels per meter)** — updated 2026-06-12 from 6 vox/m (0.167 m). Vegetation assets (`tools/voxel_tree_studio/`) author at this 10 cm scale.
+- A 1.8 m human-height doorway = ~18 voxels tall
+- A standard wall section ≈ 10 voxels wide × 20 voxels tall
 - This matches the terrain voxel scale so props align to terrain edges
+- ⚠ Engine constant migration (6→10 vox/m) tracked in `../DESIGNER_TODO.md` §8; older voxel-count figures elsewhere in this doc may still assume 6 vox/m.
 
 ---
 
@@ -250,5 +251,5 @@ Do not build Act II or III locations until Act I is content-complete.
 - **Do not use CSGBox/CSGMesh for anything permanent** — Godot CSG nodes are for prototype blocking only, not production scenes
 - **Do not ship raw AI-generated 3D models** — they require significant cleanup for game use; use AI for reference and concept only
 - **Do not animate Mordvar or the Ashlord** until Game Three — per `design/ART_DIRECTION.md`
-- **Do not use 1-meter voxel blocks** — the Minecraft scale is wrong for this game; stay at the locked 6 voxels per meter
+- **Do not use 1-meter voxel blocks** — the Minecraft scale is wrong for this game; stay at the locked **10 voxels per meter** (10 cm/voxel; updated 2026-06-12 from 6 vox/m)
 - **Do not skip LOD on terrain** — Zylann's VoxelTerrain has built-in LOD; always configure it or performance will suffer at zone scale

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voxel Tree Studio</title>
+<!--
+  ===========================================================================
+  VOXEL TREE STUDIO  (tools/voxel_tree_studio/index.html)
+  ===========================================================================
+  A fork of ez-tree (MIT, github.com/dgreenheck/ez-tree) that renders trees as
+  CUBIC VOXELS and exports game-ready assets for the Godot/Zylann voxel game.
+
+  HOW IT WORKS (plain English, for the designer)
+    1. ez-tree grows a realistic recursive branch skeleton from the dials.
+    2. We voxelize that skeleton into cubes (6-connected so the tree chops as
+       one body in-game) and grow leaves outward from the wood.
+    3. You tune dials / pick a species / randomize / overlay a reference image,
+       then Export the voxels as JSON.
+
+  Scale: 10 cm per voxel. Sizes shown in meters. Materials use the rich palette
+  (bark/heartwood/deadwood + two leaf shades, ids 24–28); export can collapse to
+  log(10)/leaves(11) for today's engine.
+
+  Open via the githack URL (ES modules need HTTP, not file://).
+  ===========================================================================
+-->
+<style>
+  :root { --panel:#1b1f24; --ink:#e7e3d8; --accent:#8fbf6f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  #app { display:flex; height:100%; background:#0e1013; color:var(--ink); }
+  #view { flex:1; position:relative; }
+  #panel { width:340px; background:var(--panel); padding:14px 16px; overflow-y:auto; border-right:1px solid #000; box-shadow:2px 0 12px #0008; }
+  h1 { font-size:15px; margin:0 0 2px; color:var(--accent); letter-spacing:.5px; }
+  .sub { font-size:11px; opacity:.55; margin:0 0 12px; line-height:1.4; }
+  details { border-top:1px solid #ffffff14; padding:4px 0; }
+  summary { font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:.7; cursor:pointer; padding:6px 0; display:flex; justify-content:space-between; align-items:center; list-style:none; }
+  summary::-webkit-details-marker { display:none; }
+  summary .mini { font-size:12px; opacity:.8; }
+  .param { font-size:11px; margin:0 0 9px; }
+  .prow { display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; gap:6px; }
+  .prow .lbl { flex:1; }
+  .val { color:var(--accent); }
+  .lock { cursor:pointer; opacity:.4; font-size:12px; user-select:none; }
+  .lock.on { opacity:1; color:var(--accent); }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  select { width:100%; background:#11151a; color:var(--ink); border:1px solid #000; padding:5px; font-family:inherit; font-size:11px; }
+  .btns { display:flex; gap:8px; margin:8px 0; }
+  button { flex:1; background:#2a3138; color:var(--ink); border:1px solid #000; padding:9px 6px; font-family:inherit; font-size:11px; cursor:pointer; border-radius:4px; }
+  button:hover { background:#353d46; }
+  button.primary { background:var(--accent); color:#14210a; font-weight:bold; }
+  .chip { background:#2a3138; border:none; color:var(--ink); font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer; }
+  .chip:hover { background:#353d46; }
+  #stats { font-size:11px; opacity:.85; margin-top:6px; line-height:1.7; border-top:1px solid #ffffff14; padding-top:10px; }
+  #stats b { color:var(--accent); }
+  #busy { font-size:11px; color:#d8a35a; height:14px; margin-top:10px; }
+  .hint { position:absolute; bottom:10px; left:12px; font-size:11px; opacity:.4; }
+  #panelToggle { position:absolute; top:10px; right:10px; z-index:11; display:none; width:auto; flex:none;
+    background:#2a3138cc; border:1px solid #000; border-radius:6px; padding:8px 12px; font-size:16px; color:var(--ink); cursor:pointer; }
+
+  /* Mobile / narrow: stack the panel above the canvas; toggle to hide it. */
+  @media (max-width: 760px) {
+    #app { flex-direction:column; }
+    #panel { width:100%; max-height:48vh; border-right:none; border-bottom:1px solid #000; }
+    #view { min-height:52vh; }
+    #panelToggle { display:block; }
+    #app.panel-hidden #panel { display:none; }
+    #app.panel-hidden #view { min-height:100vh; }
+    input[type=range] { height:26px; }            /* easier touch targets */
+    .lock { font-size:16px; }
+  }
+  #ref-overlay { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; opacity:0; z-index:5; image-rendering:pixelated; }
+  #view.dragging::after { content:"Drop reference image"; position:absolute; inset:12px; z-index:10; border:2px dashed var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:18px; background:#8fbf6f18; }
+  #ref-thumb { width:100%; border:1px solid #000; border-radius:4px; margin-bottom:6px; image-rendering:pixelated; display:none; background:#000; }
+  label.inline { display:block; margin:0 0 8px; }
+  .toggle { font-size:11px; display:flex; align-items:center; gap:6px; margin:6px 0; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <h1>🌳 Voxel Tree Studio</h1>
+    <p class="sub">ez-tree → cubic voxels. Tune, pick a species, randomize, fit a reference. Export game-ready voxels (10 cm scale).</p>
+
+    <details open>
+      <summary><span>Reference &amp; Species</span></summary>
+      <label class="inline">Species preset
+        <select id="species"></select>
+      </label>
+      <img id="ref-thumb" alt="reference">
+      <div class="param">
+        <div class="prow"><span class="lbl">Reference overlay</span><span class="val" id="refOpacity-v">0%</span></div>
+        <input type="range" id="refOpacity" min="0" max="100" value="0" step="1">
+      </div>
+      <div class="btns">
+        <button id="loadRef">📎 Image…</button>
+        <button id="clearRef">✕ Clear</button>
+      </div>
+      <button id="fitRef" class="primary" style="width:100%">✨ Fit dials to reference</button>
+      <p id="fitNote" class="sub" style="margin:6px 0 0"></p>
+      <input type="file" id="refFile" accept="image/*" style="display:none">
+    </details>
+
+    <div id="groups"></div>
+
+    <details open>
+      <summary><span>Display &amp; Export</span></summary>
+      <label class="toggle"><input type="checkbox" id="showMesh"> Show ez-tree smooth mesh (compare)</label>
+      <label class="toggle"><input type="checkbox" id="showDisc"> Highlight disconnected voxels (red)</label>
+      <label class="toggle"><input type="checkbox" id="collapseMats"> Export as log/leaves only (collapse palette)</label>
+      <div class="btns">
+        <button id="randomize">🎲 Randomize all</button>
+        <button id="export" class="primary">⬇ Export JSON</button>
+      </div>
+    </details>
+
+    <div id="busy"></div>
+    <div id="stats"></div>
+  </div>
+
+  <div id="view">
+    <img id="ref-overlay" alt="">
+    <button id="panelToggle" title="Show/hide panel">☰</button>
+    <div class="hint">drag = orbit · pinch = zoom · drop image = reference</div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Tree } from './vendor/ez-tree/tree.js';
+import { TreePreset, loadPreset } from './vendor/ez-tree/presets/index.js';
+import TreeOptions from './vendor/ez-tree/options.js';
+import { voxelize, MAT, WOOD_IDS, COLLAPSE } from './tree_voxelizer.js';
+import { growSpaceColonization } from './space_colonization.js';
+import { buildGrass, buildFern, buildVine } from './plants.js';
+import { fitFromImage } from './reference_fit.js';
+
+const M_PER_VOXEL = 0.1, VOX_PER_M = 10;
+const m = v => (v * M_PER_VOXEL).toFixed(1) + 'm';
+
+// Material id -> preview color (browns / black / greens).
+const PALETTE = {
+  [MAT.BARK]:      new THREE.Color('#5b4326'),
+  [MAT.HEARTWOOD]: new THREE.Color('#7a5a32'),
+  [MAT.DEADWOOD]:  new THREE.Color('#2c2620'),
+  [MAT.LEAF_DARK]: new THREE.Color('#3f6b2e'),
+  [MAT.LEAF_LIGHT]:new THREE.Color('#6fae44'),
+  [MAT.GRASS]:     new THREE.Color('#4a8c34'),
+  [MAT.GRASS_DRY]: new THREE.Color('#96964e'),
+  [MAT.FERN]:      new THREE.Color('#34785a'),
+};
+const PALETTE_NAMES = { 24:'bark', 25:'heartwood', 26:'deadwood', 27:'leaf_dark', 28:'leaf_light', 29:'grass', 30:'grass_dry', 31:'fern' };
+
+// ---------------------------------------------------------------------------
+// PARAMETER SCHEMA — drives the whole UI, randomize, and locks.
+// ---------------------------------------------------------------------------
+const SCHEMA = [
+  { group:'General', params:[
+    { id:'plantType', label:'Plant type', noRandom:true,
+      select:['Tree (ez-tree)','Tree (space-col)','Bush','Fern','Grass tuft','Ground cover','Vine'], def:'Tree (ez-tree)' },
+    { id:'seed', label:'Seed', min:1, max:9999, step:1, def:5 },
+  ]},
+  { group:'Size', params:[
+    { id:'heightM', label:'Tree height (m)', min:1, max:20, step:0.5, def:8 },
+  ]},
+  { group:'Trunk', params:[
+    { id:'type', label:'Type', select:['Deciduous','Evergreen'], def:'Deciduous' },
+    { id:'levels', label:'Branch levels', min:1, max:4, step:1, def:3 },
+    { id:'trunkLen', label:'Trunk length', min:5, max:40, step:1, def:20 },
+    { id:'trunkRadius', label:'Trunk radius', min:0.5, max:4, step:0.1, def:1.5 },
+    { id:'taper', label:'Taper', min:0, max:0.95, step:0.05, def:0.7 },
+    { id:'gnarliness', label:'Gnarliness', min:0, max:0.5, step:0.01, def:0.18 },
+    { id:'twist', label:'Twist', min:0, max:0.4, step:0.02, def:0 },
+  ]},
+  { group:'Branches', params:[
+    { id:'children0', label:'Children · trunk', min:0, max:12, step:1, def:7 },
+    { id:'children1', label:'Children · L2', min:0, max:10, step:1, def:7 },
+    { id:'children2', label:'Children · L3', min:0, max:8, step:1, def:5 },
+    { id:'angle1', label:'Angle · L1', min:10, max:130, step:5, def:70 },
+    { id:'angle2', label:'Angle · L2+', min:10, max:130, step:5, def:60 },
+    { id:'len1', label:'Length · L2', min:5, max:30, step:1, def:20 },
+    { id:'len2', label:'Length · L3', min:2, max:20, step:1, def:10 },
+    { id:'branchRadiusRatio', label:'Branch thickness', min:0.3, max:0.95, step:0.05, def:0.7 },
+    { id:'start', label:'Branch start', min:0, max:0.8, step:0.05, def:0.35 },
+    { id:'sections', label:'Smoothness', min:4, max:16, step:1, def:10 },
+  ]},
+  { group:'Forces (flow)', params:[
+    { id:'forceStrength', label:'Growth force', min:0, max:0.08, step:0.005, def:0.02 },
+    { id:'forceUp', label:'Up bias', min:-1, max:1, step:0.1, def:1 },
+    { id:'lean', label:'Lean / wind', min:-1, max:1, step:0.1, def:0 },
+  ]},
+  { group:'Foliage', params:[
+    { id:'leafCount', label:'Leaves per tip', min:1, max:12, step:1, def:4 },
+    { id:'leafStart', label:'Leaf start', min:0, max:0.8, step:0.05, def:0 },
+    { id:'clusterSize', label:'Cluster size', min:2, max:10, step:1, def:4 },
+    { id:'leafDensity', label:'Density', min:0.2, max:1, step:0.05, def:0.75 },
+    { id:'lightGap', label:'Light gaps', min:0, max:0.6, step:0.05, def:0.25 },
+    { id:'leafLightMix', label:'Light-green mix', min:0, max:1, step:0.05, def:0.5 },
+  ]},
+  { group:'Materials', params:[
+    { id:'barkThickness', label:'Bark thickness', min:1, max:4, step:0.5, def:1 },
+    { id:'deadwoodFraction', label:'Deadwood', min:0, max:0.5, step:0.05, def:0 },
+  ]},
+  { group:'Tree · space-col (plant type)', params:[
+    { id:'scAttractors', label:'Attractors', min:100, max:1500, step:50, def:500 },
+    { id:'scCrownRadius', label:'Crown radius', min:4, max:30, step:1, def:12 },
+    { id:'scCrownHeight', label:'Crown height', min:4, max:30, step:1, def:14 },
+    { id:'scTrunkHeight', label:'Trunk height', min:2, max:30, step:1, def:8 },
+    { id:'scInfluence', label:'Influence radius', min:4, max:30, step:1, def:14 },
+    { id:'scKill', label:'Kill distance', min:1, max:8, step:0.5, def:3 },
+    { id:'scStep', label:'Step size', min:0.5, max:3, step:0.25, def:1.5 },
+  ]},
+  { group:'Grass / ground cover (plant type)', params:[
+    { id:'gcBlades', label:'Blades', min:4, max:40, step:1, def:14 },
+    { id:'gcCurl', label:'Curl / arch', min:0, max:1, step:0.05, def:0.4 },
+    { id:'gcSpread', label:'Spread', min:0, max:1, step:0.05, def:0.3 },
+    { id:'gcClumps', label:'Clumps (ground cover)', min:1, max:60, step:1, def:24 },
+    { id:'gcPatchRadius', label:'Patch radius', min:1, max:20, step:1, def:8 },
+  ]},
+  { group:'Fern (plant type)', params:[
+    { id:'fernFronds', label:'Fronds', min:2, max:10, step:1, def:5 },
+    { id:'fernArch', label:'Arch / droop', min:0, max:1, step:0.05, def:0.5 },
+    { id:'fernLeaflets', label:'Leaflet pairs', min:4, max:16, step:1, def:10 },
+    { id:'fernLeafletLen', label:'Leaflet length', min:1, max:6, step:0.5, def:3 },
+  ]},
+  { group:'Vine (plant type)', params:[
+    { id:'vineLength', label:'Length', min:10, max:60, step:2, def:28 },
+    { id:'vineMode', label:'Direction', select:['Hang','Climb'], def:'Hang' },
+    { id:'vineWander', label:'Wander', min:0, max:1, step:0.05, def:0.4 },
+    { id:'vineLeafEvery', label:'Leaf every', min:1, max:6, step:1, def:2 },
+  ]},
+];
+const PARAMS = {}; SCHEMA.forEach(g => g.params.forEach(p => PARAMS[p.id] = p));
+
+// ---------------------------------------------------------------------------
+// Build the UI from the schema.
+// ---------------------------------------------------------------------------
+const el = {};       // input elements by id
+const groupsHost = document.getElementById('groups');
+for (const g of SCHEMA) {
+  const d = document.createElement('details'); d.open = true;
+  const s = document.createElement('summary');
+  s.innerHTML = `<span>${g.group}</span><span class="mini chip" title="Randomize this group">🎲</span>`;
+  s.querySelector('.chip').addEventListener('click', (e) => { e.preventDefault(); randomizeGroup(g); });
+  d.appendChild(s);
+  for (const p of g.params) {
+    const wrap = document.createElement('div'); wrap.className = 'param';
+    if (p.select) {
+      wrap.innerHTML = `<div class="prow"><span class="lbl">${p.label}</span><span class="lock" data-lock="${p.id}">🔓</span></div>`;
+      const sel = document.createElement('select'); sel.id = p.id;
+      p.select.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o; sel.appendChild(op); });
+      sel.value = p.def; wrap.appendChild(sel); el[p.id] = sel;
+    } else {
+      wrap.innerHTML =
+        `<div class="prow"><span class="lbl">${p.label}</span>` +
+        `<span><span class="val" id="${p.id}-v"></span> <span class="lock" data-lock="${p.id}">🔓</span></span></div>` +
+        `<input type="range" id="${p.id}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.def}">`;
+      d.appendChild(wrap); el[p.id] = wrap.querySelector('input');
+      continue;
+    }
+    d.appendChild(wrap);
+  }
+  groupsHost.appendChild(d);
+}
+// lock toggles
+const locks = {};
+document.querySelectorAll('[data-lock]').forEach(node => {
+  const id = node.getAttribute('data-lock');
+  node.addEventListener('click', () => {
+    locks[id] = !locks[id];
+    node.classList.toggle('on', locks[id]);
+    node.textContent = locks[id] ? '🔒' : '🔓';
+  });
+});
+// regen on any input
+Object.values(el).forEach(node => node.addEventListener('input', scheduleRegen));
+
+// Switching plant type sets a sensible default height (unless you've locked it).
+const PLANT_HEIGHT = { 'Tree (ez-tree)':8, 'Tree (space-col)':8, 'Bush':1.8, 'Fern':0.9, 'Grass tuft':0.4, 'Ground cover':0.35, 'Vine':3.5 };
+el.plantType.addEventListener('change', () => {
+  if (!locks.heightM) setVal('heightM', PLANT_HEIGHT[el.plantType.value] ?? 8);
+  scheduleRegen();
+});
+
+function readParams() {
+  const p = {};
+  for (const id in el) p[id] = el[id].tagName === 'SELECT' ? el[id].value : +el[id].value;
+  return p;
+}
+function syncLabels() {
+  for (const id in el) {
+    const v = document.getElementById(id + '-v');
+    if (v && PARAMS[id] && !PARAMS[id].select) v.textContent = el[id].value;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Map UI params -> ez-tree options + voxelizer options.
+// ---------------------------------------------------------------------------
+function buildEzOptions(p) {
+  const o = new TreeOptions();
+  o.seed = p.seed;
+  o.type = p.type === 'Evergreen' ? 'evergreen' : 'deciduous';
+  o.branch.levels = p.levels;
+  o.branch.length = { 0:p.trunkLen, 1:p.len1, 2:p.len2, 3:p.len2*0.5, 4:p.len2*0.25 };
+  o.branch.radius = { 0:p.trunkRadius, 1:p.branchRadiusRatio, 2:p.branchRadiusRatio, 3:p.branchRadiusRatio, 4:p.branchRadiusRatio };
+  o.branch.taper = { 0:p.taper, 1:p.taper, 2:p.taper, 3:p.taper, 4:p.taper };
+  o.branch.gnarliness = { 0:p.gnarliness, 1:p.gnarliness, 2:p.gnarliness, 3:p.gnarliness, 4:p.gnarliness };
+  o.branch.twist = { 0:p.twist, 1:p.twist, 2:p.twist, 3:p.twist, 4:p.twist };
+  o.branch.children = { 0:p.children0, 1:p.children1, 2:p.children2, 3:p.children2 };
+  o.branch.angle = { 1:p.angle1, 2:p.angle2, 3:p.angle2, 4:p.angle2 };
+  o.branch.start = { 1:p.start, 2:p.start, 3:p.start, 4:p.start };
+  o.branch.sections = { 0:p.sections, 1:Math.max(4,p.sections-2), 2:Math.max(4,p.sections-4), 3:6, 4:6 };
+  o.branch.segments = { 0:8, 1:6, 2:5, 3:4, 4:4 };
+  o.branch.force = { direction:{ x:p.lean, y:p.forceUp, z:0 }, strength:p.forceStrength };
+  o.leaves.count = p.leafCount;
+  o.leaves.start = p.leafStart;
+  return o;
+}
+// Bush = ez-tree biased short/wide/dense (no tall trunk).
+function buildBushOptions(p) {
+  const o = buildEzOptions(p);
+  o.branch.length[0] *= 0.22;                       // stubby trunk
+  o.branch.levels = Math.min(o.branch.levels, 3);
+  o.branch.children[0] = Math.max(o.branch.children[0], 9);
+  o.branch.angle[1] = Math.max(o.branch.angle[1], 75);
+  o.leaves.count = Math.max(o.leaves.count, 6);
+  return o;
+}
+function buildVoxOptions(p, voxelScale) {
+  return {
+    voxelScale,
+    barkThickness: p.barkThickness,
+    deadwoodFraction: p.deadwoodFraction,
+    leafClusterSize: p.clusterSize,
+    leafDensity: p.leafDensity,
+    lightGap: p.lightGap,
+    leafLightMix: p.leafLightMix,
+    seed: p.seed,
+    leaves: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// THREE scene
+// ---------------------------------------------------------------------------
+const view = document.getElementById('view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0e1013');
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000);
+camera.position.set(85, 70, 105);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.target.set(0, 40, 0);
+scene.add(new THREE.HemisphereLight('#cfe3ff', '#34301f', 1.05));   // sky/ground ambient
+const sun = new THREE.DirectionalLight('#fff4d6', 1.15); sun.position.set(40, 80, 30); scene.add(sun);
+const fill = new THREE.DirectionalLight('#9fb8d8', 0.35); fill.position.set(-30, 30, -40); scene.add(fill); // soft back-fill
+scene.add(new THREE.GridHelper(200, 20, 0x335533, 0x223322)); // 1 m cells
+
+const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+// Per-voxel color comes from InstancedMesh.instanceColor (setColorAt). Do NOT
+// set vertexColors here — that makes the shader expect a geometry 'color'
+// attribute the box lacks, which reads as black and zeroes the instance color.
+const cubeMat = new THREE.MeshLambertMaterial();
+let mesh = null, meshGroup = null;
+
+function rebuildMesh(positions, materials, showDisc, discSet) {
+  if (mesh) { scene.remove(mesh); mesh.dispose(); }
+  const n = materials.length;
+  mesh = new THREE.InstancedMesh(cubeGeo, cubeMat, n);
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n*3), 3);
+  const dummy = new THREE.Object3D(), c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const x = positions[i*3], y = positions[i*3+1], z = positions[i*3+2];
+    dummy.position.set(x, y, z); dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+    if (showDisc && discSet && discSet.has(i)) c.set('#d23');
+    else {
+      const base = PALETTE[materials[i]] || PALETTE[MAT.BARK];
+      const j = 0.86 + ((Math.sin(x*12.9 + y*78.2 + z*37.7) * 43758.5) % 1 + 1) % 1 * 0.28;
+      c.copy(base).multiplyScalar(j);
+    }
+    mesh.setColorAt(i, c);
+  }
+  mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true;
+  scene.add(mesh);
+}
+
+// ---------------------------------------------------------------------------
+// Regenerate
+// ---------------------------------------------------------------------------
+let regenTimer = null;
+function scheduleRegen() { syncLabels(); clearTimeout(regenTimer); regenTimer = setTimeout(regenerate, 120); }
+
+// Voxelization runs in a worker so slider drags stay smooth on big trees.
+// Falls back to inline (synchronous) if the worker is unavailable, errors, or
+// goes silent — so the tree always renders even if the worker fails to load.
+let worker = null;
+try { worker = new Worker(new URL('./tree.worker.js', import.meta.url), { type:'module' }); } catch (e) { worker = null; }
+let voxReqId = 0; const voxPending = new Map();
+function disableWorker() {
+  worker = null;
+  for (const [, entry] of voxPending) { clearTimeout(entry.timer); entry.inline(); }
+  voxPending.clear();
+}
+if (worker) {
+  worker.onmessage = (e) => {
+    const entry = voxPending.get(e.data.reqId); if (!entry) return;
+    voxPending.delete(e.data.reqId); clearTimeout(entry.timer);
+    if (e.data.ok) entry.finish(e.data); else entry.inline();
+  };
+  worker.onerror = () => disableWorker();   // worker broke -> inline from now on
+}
+function runVoxelize(skeleton, leafAnchors, opts) {
+  return new Promise((resolve) => {
+    const inline = () => resolve(voxelize(skeleton, leafAnchors, opts));
+    if (!worker) { inline(); return; }
+    const reqId = ++voxReqId;
+    let done = false;
+    const finish = (data) => { if (!done) { done = true; resolve(data); } };
+    const inlineOnce = () => { if (!done) { done = true; inline(); } };
+    // If the worker doesn't answer in time (silent load failure), use inline.
+    const timer = setTimeout(() => { voxPending.delete(reqId); inlineOnce(); }, 3000);
+    voxPending.set(reqId, { finish, inline: inlineOnce, timer });
+    try { worker.postMessage({ reqId, skeleton, leafAnchors, opts }); }
+    catch (e) { clearTimeout(timer); voxPending.delete(reqId); inlineOnce(); }
+  });
+}
+const busyEl = document.getElementById('busy');
+function setBusy(b) { busyEl.textContent = b ? '⏳ generating…' : ''; }
+
+let lastTree = null, regenToken = 0;
+async function regenerate() {
+  syncLabels();
+  const p = readParams();
+  const token = ++regenToken;
+  // 1. skeleton — every plant type emits the same {skeleton, leafAnchors}
+  let skeleton, leafAnchors, tree = null, groundDisc = null;
+  switch (p.plantType) {
+    case 'Tree (space-col)': { const r = growSpaceColonization(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    case 'Bush':  { tree = new Tree(buildBushOptions(p)); tree.generate(); skeleton = tree.skeleton; leafAnchors = tree.leafAnchors; break; }
+    case 'Fern':  { const r = buildFern(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    case 'Grass tuft':   { const r = buildGrass(p, { scatter:false }); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    case 'Ground cover': { const r = buildGrass(p, { scatter:true });  skeleton = r.skeleton; leafAnchors = r.leafAnchors; groundDisc = r.groundDisc; break; }
+    case 'Vine':  { const r = buildVine(p); skeleton = r.skeleton; leafAnchors = r.leafAnchors; break; }
+    default:      { tree = new Tree(buildEzOptions(p)); tree.generate(); skeleton = tree.skeleton; leafAnchors = tree.leafAnchors; }
+  }
+  lastTree = tree;
+  if (!skeleton.length) { setBusy(false); return; }
+  // 2. scale so skeleton height -> target height in voxels
+  let minY = 1e9, maxY = -1e9;
+  for (const br of skeleton) for (const pt of br.points) { if (pt[1]<minY) minY=pt[1]; if (pt[1]>maxY) maxY=pt[1]; }
+  const voxelScale = (p.heightM * VOX_PER_M) / Math.max(0.001, maxY - minY);
+  // 3. voxelize (worker)
+  setBusy(true);
+  const { positions, materials, stats } = await runVoxelize(skeleton, leafAnchors, { ...buildVoxOptions(p, voxelScale), groundDisc });
+  if (token !== regenToken) return; // a newer request superseded this one
+  setBusy(false);
+  let discSet = null;
+  const showDisc = document.getElementById('showDisc').checked;
+  if (showDisc && stats.disconnected > 0) discSet = computeDisconnected(positions, materials);
+  rebuildMesh(positions, materials, showDisc, discSet);
+  lastExport = { positions, materials, stats, params: p };
+  updateMeshCompare(tree, voxelScale); // null tree (SC mode) just clears it
+  controls.target.set(0, stats.sizeVox[1] * 0.5, 0);
+  renderStats(stats);
+}
+
+function renderStats(s) {
+  const conn = s.disconnected === 0
+    ? `<span style="color:#8fbf6f">✓ fully connected (choppable)</span>`
+    : `<span style="color:#d8a35a">⚠ ${s.disconnected} disconnected voxel(s) — tick "Highlight disconnected"</span>`;
+  document.getElementById('stats').innerHTML =
+    `<b>${s.total.toLocaleString()}</b> voxels &nbsp;(wood <b>${s.wood.toLocaleString()}</b> · leaves <b>${s.leaves.toLocaleString()}</b>)<br>` +
+    `size <b>${s.sizeVox[0]}×${s.sizeVox[1]}×${s.sizeVox[2]}</b> vox = <b>${m(s.sizeVox[0])}×${m(s.sizeVox[1])}×${m(s.sizeVox[2])}</b><br>` +
+    conn;
+}
+
+// Recompute which instance indices are unreachable (for red highlight).
+function computeDisconnected(positions, materials) {
+  const FACES = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  const idx = new Map(); const key = (x,y,z) => x+','+y+','+z;
+  let seed = 0, seedY = Infinity;
+  for (let i=0;i<materials.length;i++){
+    const x=positions[i*3],y=positions[i*3+1],z=positions[i*3+2];
+    idx.set(key(x,y,z), i);
+    if (WOOD_IDS.includes(materials[i]) && y<seedY){ seedY=y; seed=i; }
+  }
+  const vis = new Uint8Array(materials.length); const st=[seed]; vis[seed]=1;
+  while(st.length){ const i=st.pop(); const x=positions[i*3],y=positions[i*3+1],z=positions[i*3+2];
+    for(const [a,b,c] of FACES){ const j=idx.get(key(x+a,y+b,z+c)); if(j!==undefined&&!vis[j]){vis[j]=1;st.push(j);} } }
+  const out=new Set(); for(let i=0;i<vis.length;i++) if(!vis[i]) out.add(i); return out;
+}
+
+// ez-tree smooth mesh side-by-side (scaled to match the voxel tree height).
+function updateMeshCompare(tree, voxelScale) {
+  if (meshGroup) { scene.remove(meshGroup); meshGroup = null; }
+  if (!tree) return; // space-colonization mode has no ez-tree mesh to compare
+  if (!document.getElementById('showMesh').checked) return;
+  meshGroup = tree; // Tree is a THREE.Group with branch + leaf meshes
+  tree.scale.setScalar(voxelScale);
+  tree.position.set(0, 0, 0);
+  tree.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = 0.55; } });
+  scene.add(tree);
+}
+
+// ---------------------------------------------------------------------------
+// Randomize + species + reference + export
+// ---------------------------------------------------------------------------
+function randInRange(p) {
+  const steps = Math.round((p.max - p.min) / p.step);
+  return p.min + Math.round(Math.random() * steps) * p.step;
+}
+function randomizeOne(p) {
+  if (locks[p.id] || p.noRandom) return;
+  if (p.select) el[p.id].value = p.select[Math.floor(Math.random()*p.select.length)];
+  else el[p.id].value = randInRange(p);
+}
+function randomizeGroup(g) { g.params.forEach(randomizeOne); scheduleRegen(); }
+function randomizeAll() { SCHEMA.forEach(g => g.params.forEach(randomizeOne)); scheduleRegen(); }
+document.getElementById('randomize').addEventListener('click', randomizeAll);
+document.getElementById('showMesh').addEventListener('change', regenerate);
+document.getElementById('showDisc').addEventListener('change', regenerate);
+
+// species dropdown from ez-tree presets
+const speciesSel = document.getElementById('species');
+{ const none = document.createElement('option'); none.value=''; none.textContent='— custom —'; speciesSel.appendChild(none); }
+Object.keys(TreePreset).forEach(name => { const o=document.createElement('option'); o.value=name; o.textContent=name; speciesSel.appendChild(o); });
+speciesSel.addEventListener('change', () => applySpecies(speciesSel.value));
+function setVal(id, v) { if (el[id] === undefined || v === undefined) return; const p = PARAMS[id]; if (p.select) el[id].value = v; else el[id].value = Math.max(p.min, Math.min(p.max, v)); }
+function applySpecies(name) {
+  if (!name) return;
+  const b = loadPreset(name);
+  setVal('type', b.type === 'evergreen' ? 'Evergreen' : 'Deciduous');
+  setVal('levels', b.branch.levels);
+  setVal('trunkLen', b.branch.length[0]); setVal('len1', b.branch.length[1]); setVal('len2', b.branch.length[2]);
+  setVal('trunkRadius', b.branch.radius[0]); setVal('branchRadiusRatio', b.branch.radius[1]);
+  setVal('taper', b.branch.taper[0]); setVal('gnarliness', b.branch.gnarliness[0]); setVal('twist', b.branch.twist[0]);
+  setVal('children0', b.branch.children[0]); setVal('children1', b.branch.children[1]); setVal('children2', b.branch.children[2]);
+  setVal('angle1', b.branch.angle[1]); setVal('angle2', b.branch.angle[2]); setVal('start', b.branch.start[1]);
+  setVal('sections', b.branch.sections[0]);
+  setVal('forceStrength', b.branch.force.strength); setVal('forceUp', b.branch.force.direction.y); setVal('lean', b.branch.force.direction.x);
+  setVal('leafCount', b.leaves.count); setVal('leafStart', b.leaves.start);
+  scheduleRegen();
+}
+
+// reference overlay
+const overlay = document.getElementById('ref-overlay'), refThumb = document.getElementById('ref-thumb'),
+      refOpacity = document.getElementById('refOpacity'), refFile = document.getElementById('refFile');
+function setReference(src) {
+  if (src) { overlay.src = src; refThumb.src = src; refThumb.style.display='block'; if (+refOpacity.value===0) refOpacity.value=45; }
+  else { overlay.removeAttribute('src'); refThumb.removeAttribute('src'); refThumb.style.display='none'; refOpacity.value=0; }
+  applyOpacity();
+}
+function applyOpacity() { overlay.style.opacity = (+refOpacity.value/100).toString(); document.getElementById('refOpacity-v').textContent = refOpacity.value+'%'; }
+refOpacity.addEventListener('input', applyOpacity);
+document.getElementById('loadRef').addEventListener('click', () => refFile.click());
+refFile.addEventListener('change', () => { const f = refFile.files[0]; if (!f) return; const r = new FileReader(); r.onload = e => setReference(e.target.result); r.readAsDataURL(f); });
+document.getElementById('clearRef').addEventListener('click', () => setReference(null));
+view.addEventListener('dragover', e => { e.preventDefault(); view.classList.add('dragging'); });
+view.addEventListener('dragleave', () => view.classList.remove('dragging'));
+view.addEventListener('drop', e => { e.preventDefault(); view.classList.remove('dragging'); const f=[...e.dataTransfer.files].find(x=>x.type.startsWith('image/')); if(!f)return; const r=new FileReader(); r.onload=ev=>setReference(ev.target.result); r.readAsDataURL(f); });
+// default reference (the inspiration scene)
+setReference('references/steam_2776090_scene.png'); refOpacity.value = 0; applyOpacity();
+
+// export
+let lastExport = null;
+document.getElementById('export').addEventListener('click', () => {
+  if (!lastExport) return;
+  const collapse = document.getElementById('collapseMats').checked;
+  const { positions, materials, stats, params } = lastExport;
+  const voxels = [];
+  for (let i = 0; i < materials.length; i++) {
+    let mt = materials[i]; if (collapse) mt = COLLAPSE[mt] ?? mt;
+    voxels.push({ x: positions[i*3], y: positions[i*3+1], z: positions[i*3+2], m: mt });
+  }
+  const out = {
+    format: 'mira-thal-voxel-tree', version: 1,
+    voxel_size_m: M_PER_VOXEL,
+    note: collapse ? 'm=10 log, m=11 leaves. Trunk base at origin, +y up.'
+                   : 'Rich palette ids 24..28 (see palette). Trunk base at origin, +y up.',
+    species: speciesSel.value || 'custom',
+    palette: collapse ? { 10:'log', 11:'leaves' } : PALETTE_NAMES,
+    size: stats.sizeVox,
+    size_m: stats.sizeVox.map(n => +(n*M_PER_VOXEL).toFixed(2)),
+    params,
+    voxels,
+  };
+  const blob = new Blob([JSON.stringify(out)], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `tree_${out.species}_seed${params.seed}.json`; a.click(); URL.revokeObjectURL(a.href);
+});
+
+// Fit dials to the current reference image (heuristic).
+document.getElementById('fitRef').addEventListener('click', () => {
+  const src = overlay.getAttribute('src');
+  const note = document.getElementById('fitNote');
+  if (!src) { note.textContent = 'Load a reference image first (📎 or drag one on).'; return; }
+  note.textContent = 'analyzing…';
+  const img = new Image();
+  img.onload = () => {
+    const res = fitFromImage(img);
+    if (res.error) { note.textContent = res.error; return; }
+    if (res.species) { applySpecies(res.species); speciesSel.value = res.species; }
+    for (const id in res.overrides) setVal(id, res.overrides[id]);
+    note.textContent = `→ ${res.species} · ` + Object.entries(res.overrides).map(([k,v]) => `${k}=${v}`).join(', ');
+    scheduleRegen();
+  };
+  img.onerror = () => { note.textContent = 'Could not read the image — try dragging it onto the view.'; };
+  img.src = src;
+});
+
+// Mobile: collapse the panel to maximize the canvas.
+document.getElementById('panelToggle').addEventListener('click', () =>
+  document.getElementById('app').classList.toggle('panel-hidden'));
+
+// ---------------------------------------------------------------------------
+// Resize + loop + boot
+// ---------------------------------------------------------------------------
+function resize() { const w=view.clientWidth,h=view.clientHeight; renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+window.addEventListener('resize', resize); resize();
+let t0 = performance.now();
+function loop() { requestAnimationFrame(loop); controls.update(); if (lastTree && meshGroup) lastTree.update((performance.now()-t0)/1000); renderer.render(scene, camera); }
+applySpecies('Oak Medium'); speciesSel.value = 'Oak Medium';
+syncLabels(); regenerate(); loop();
+</script>
+</body>
+</html>

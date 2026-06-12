@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/VoxelMaterial.gd" id="1_voxmat"]
+
+[resource]
+script = ExtResource("1_voxmat")
+id_string = "fern_frond"
+material_id = 31
+display_name = "Fern"
+color_low = Color(0.18, 0.42, 0.28, 1)
+color_high = Color(0.26, 0.52, 0.36, 1)
+color_jitter = 0.12
+mining_time_seconds = 0.05
+allowed_tools = Array[String]([])
+yield_item_id = "raw_leaves"
+yield_quantity = 1
+fall_behavior = 0
+gravity_scale = 1.0
+damage_multiplier = 0.0
+density_relative_to_water = 0.3
