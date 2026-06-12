@@ -16,12 +16,13 @@ const DEFAULTS = {
   rockType: 'Boulder',
   seed: 1,
   sizeX: 24, sizeY: 18, sizeZ: 24,   // bounding box in voxels (10cm each)
-  boxiness: 2.6,                       // superquadric exponent (2=ellipsoid, 8=cube)
-  noiseScale: 1.8, noiseOctaves: 4, noiseAmp: 0.28,
+  boxiness: 2.0,                       // superquadric exponent (2=ellipsoid, 8=cube)
+  lumpiness: 0.4,                      // domain-warp amount (organic asymmetry)
+  noiseScale: 2.6, noiseOctaves: 5, noiseAmp: 0.34,
   faceting: 0.0, facetScale: 2.4,      // Worley angular facets
   scrapeCount: 0, scrapeDepth: 0.75,   // flat cut planes
   flatBottom: 0.45,                    // sit flat on the ground
-  erosion: 0.2,                        // smooth/round
+  erosion: 0.1,                        // smooth/round
   topTaper: 0.0,                       // point the top (spires)
   clusters: 1, clusterSpread: 0.0,     // scatter (pebbles/piles)
   // materials
@@ -95,9 +96,16 @@ function stampRock(voxels, o, rng, simplex, worley, ox, oy, oz, scale, ci) {
           if (k <= 0.05) continue;
           nx /= k; nz /= k;
         }
-        // superquadric base distance
-        let d = Math.pow(Math.pow(Math.abs(nx), e) + Math.pow(Math.abs(ny), e) + Math.pow(Math.abs(nz), e), inv_e);
-        // FBM surface roughness (eroded down)
+        // Domain warp — distort the sampling space with low-freq noise so the
+        // whole silhouette is lumpy and asymmetric (no flat faces / straight
+        // edges). This is the main "weathered rock" lever.
+        const ls = 1.3, la = o.lumpiness;
+        const wx = nx + la * simplex(nx*ls + 11 + ph, ny*ls, nz*ls);
+        const wy = ny + la * simplex(nx*ls, ny*ls + 11, nz*ls);
+        const wz = nz + la * simplex(nx*ls, ny*ls, nz*ls + 11 + ph);
+        // superquadric base distance on the warped coords
+        let d = Math.pow(Math.pow(Math.abs(wx), e) + Math.pow(Math.abs(wy), e) + Math.pow(Math.abs(wz), e), inv_e);
+        // FBM surface roughness (higher-freq detail, eroded down)
         const nd = fbm(simplex, nx*o.noiseScale+ph, ny*o.noiseScale, nz*o.noiseScale, o.noiseOctaves) * o.noiseAmp * (1 - o.erosion);
         d += nd;
         // Worley faceting (angular breaks)

@@ -169,11 +169,12 @@ const SCHEMA = [
     { id:'sizeZ', label:'Depth Z', min:4, max:80, step:1, def:24 },
   ]},
   { group:'Shape', params:[
-    { id:'boxiness', label:'Boxiness', min:2, max:8, step:0.1, def:2.6 },
-    { id:'noiseScale', label:'Roughness scale', min:0.5, max:5, step:0.1, def:1.8 },
-    { id:'noiseOctaves', label:'Roughness detail', min:1, max:6, step:1, def:4 },
-    { id:'noiseAmp', label:'Roughness amount', min:0, max:0.5, step:0.02, def:0.28 },
-    { id:'erosion', label:'Erosion (smooth)', min:0, max:0.8, step:0.05, def:0.2 },
+    { id:'boxiness', label:'Boxiness', min:2, max:8, step:0.1, def:2.0 },
+    { id:'lumpiness', label:'Lumpiness (organic)', min:0, max:0.6, step:0.05, def:0.4 },
+    { id:'noiseScale', label:'Roughness scale', min:0.5, max:5, step:0.1, def:2.6 },
+    { id:'noiseOctaves', label:'Roughness detail', min:1, max:6, step:1, def:5 },
+    { id:'noiseAmp', label:'Roughness amount', min:0, max:0.6, step:0.02, def:0.34 },
+    { id:'erosion', label:'Erosion (smooth)', min:0, max:0.8, step:0.05, def:0.1 },
   ]},
   { group:'Faceting & cuts', params:[
     { id:'faceting', label:'Faceting', min:0, max:0.8, step:0.05, def:0 },
@@ -201,12 +202,12 @@ const PARAMS = {}; SCHEMA.forEach(g => g.params.forEach(p => PARAMS[p.id] = p));
 
 // Rock-type presets (applied when you pick a type or fit a reference).
 const ROCK_PRESETS = {
-  Boulder: { boxiness:2.6, noiseScale:1.8, noiseOctaves:4, noiseAmp:0.28, faceting:0, scrapeCount:0, flatBottom:0.5, erosion:0.25, topTaper:0, clusters:1, clusterSpread:0, sizeX:24, sizeY:18, sizeZ:24, strata:0, mossAmount:0.2 },
-  Angular: { boxiness:4.5, noiseAmp:0.12, faceting:0.55, facetScale:2.0, scrapeCount:4, scrapeDepth:0.6, flatBottom:0.4, erosion:0.1, topTaper:0, clusters:1, sizeX:22, sizeY:20, sizeZ:22, strata:0, mossAmount:0 },
-  Cliff:   { boxiness:3.5, noiseAmp:0.2, scrapeCount:1, scrapeDepth:0.15, flatBottom:0.3, strata:0.6, strataBands:8, erosion:0.15, topTaper:0, clusters:1, sizeX:30, sizeY:40, sizeZ:18, mossAmount:0.1 },
-  Spire:   { boxiness:3, noiseAmp:0.2, topTaper:0.8, flatBottom:0.4, erosion:0.2, clusters:1, scrapeCount:0, faceting:0, sizeX:12, sizeY:48, sizeZ:12, strata:0, mossAmount:0 },
-  Pebbles: { boxiness:2.4, noiseAmp:0.3, clusters:24, clusterSpread:0.5, flatBottom:0.5, erosion:0.2, topTaper:0, scrapeCount:0, sizeX:8, sizeY:6, sizeZ:8, strata:0, mossAmount:0.1 },
-  Pile:    { boxiness:2.6, noiseAmp:0.28, clusters:5, clusterSpread:0.4, flatBottom:0.5, erosion:0.2, topTaper:0, sizeX:16, sizeY:14, sizeZ:16, strata:0, mossAmount:0.2 },
+  Boulder: { boxiness:2.0, lumpiness:0.45, noiseScale:2.6, noiseOctaves:5, noiseAmp:0.34, faceting:0, scrapeCount:0, flatBottom:0.5, erosion:0.1, topTaper:0, clusters:1, clusterSpread:0, sizeX:24, sizeY:18, sizeZ:24, strata:0, mossAmount:0.2 },
+  Angular: { boxiness:4.5, lumpiness:0.2, noiseScale:2.4, noiseAmp:0.14, faceting:0.55, facetScale:2.0, scrapeCount:4, scrapeDepth:0.6, flatBottom:0.4, erosion:0.08, topTaper:0, clusters:1, sizeX:22, sizeY:20, sizeZ:22, strata:0, mossAmount:0 },
+  Cliff:   { boxiness:3.0, lumpiness:0.3, noiseScale:2.6, noiseAmp:0.24, scrapeCount:1, scrapeDepth:0.15, flatBottom:0.3, strata:0.6, strataBands:8, erosion:0.1, topTaper:0, clusters:1, sizeX:30, sizeY:40, sizeZ:18, mossAmount:0.1 },
+  Spire:   { boxiness:2.5, lumpiness:0.3, noiseScale:2.6, noiseAmp:0.24, topTaper:0.8, flatBottom:0.4, erosion:0.1, clusters:1, scrapeCount:0, faceting:0, sizeX:12, sizeY:48, sizeZ:12, strata:0, mossAmount:0 },
+  Pebbles: { boxiness:2.0, lumpiness:0.45, noiseScale:2.8, noiseAmp:0.35, clusters:24, clusterSpread:0.5, flatBottom:0.5, erosion:0.1, topTaper:0, scrapeCount:0, sizeX:8, sizeY:6, sizeZ:8, strata:0, mossAmount:0.1 },
+  Pile:    { boxiness:2.1, lumpiness:0.4, noiseScale:2.6, noiseAmp:0.32, clusters:5, clusterSpread:0.4, flatBottom:0.5, erosion:0.1, topTaper:0, sizeX:16, sizeY:14, sizeZ:16, strata:0, mossAmount:0.2 },
 };
 
 // ---------------------------------------------------------------------------
