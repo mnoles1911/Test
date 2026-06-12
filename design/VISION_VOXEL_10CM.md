@@ -59,6 +59,7 @@ Everything in the vision above maps to code that either already exists or is in 
 |---|---|---|
 | 10cm destructible world | R0/R1/R2 of the re-architecture PR track | **In flight** — see MILESTONES.md |
 | Micro-voxel flora (per-blade grass, per-petal flowers) | R4 — real destructible voxel grass + flowers via `VoxelBlockyModelMesh` custom cross-quad meshes (ids 24–26), scattered by the C++ generator on grassland at LOD0 | **v1 LIVE** — see below |
+| 10cm micro-detail (pebbles/twigs, dug grain, grass trample, water foam) | D1–D4 micro-detail pass — pebble/twig scatter (ids 27–28), carve-time wall roughening, grass trample, flowing-water foam (default OFF) | **v1 LIVE** — see below |
 | Sky and day/night cycle | `scripts/DayNightCycle.gd` | **EXISTS** — 4-texture panorama blend, sun + moon `DirectionalLight3D` nodes |
 | Global illumination | SDFGI in the `World3D` `WorldEnvironment` node | **EXISTS, enabled** at ULTRA tier |
 | God rays / light shafts | `GraphicsManager.light_shafts_enabled` | **EXISTS** (PR #245), default OFF — flip is a designer decision |
@@ -74,11 +75,28 @@ Everything in the vision above maps to code that either already exists or is in 
 Real, destructible voxel grass and flowers — the signature "Lay of the Land" flora benchmark (ref_01). Flora are **actual voxels**, not multimesh decoration: three CHANNEL_TYPE ids — `grass_blade` (24), `flower_red` (25), `flower_blue` (26) — drawn as cross-quad custom meshes (two intersecting vertical quads), injected at runtime in `World3DBootstrap` right after the water fluid models. The C++ cubic generator scatters them deterministically on grassland surfaces at LOD0 (~35 % grass blades, ~2 % flowers split red/blue). They are **walk-through** (no collision), **destructible** (dig the ground under them and they vanish with it), and behave correctly with the world sim: water flows into and mows them down, gravity/sever ignore them (a tree never connects to ground through a blade, a falling cluster never carries one). Identity funnels through `scripts/FloraMaterial.gd` (`is_flora()`), the grass/flower analogue of `WaterMaterial.is_water_type()`. Gated by the headless `flora` selector.
 
 **Deferred to a later flora PR (NOT in v1):**
-- **Trample** — flora bending / flattening as the player or enemies walk through it.
 - **Scythe drops + XP** — harvesting flora for an inventory item and routing XP through `SkillManager`.
 - **Wind sway** — per-blade vertex animation in the flora material/shader.
 - **Biome density maps** — per-region grass/flower density and species (v1 is a single global density on plain grassland).
 - **Pixel-art tiles** — v1 uses flat vertex-colour quads (grass green, poppy red, cornflower blue). Proper authored pixel-art atlas tiles are a `DESIGNER_TODO` row, not a code blocker.
+
+---
+
+## 10cm micro-detail pass — v1 LIVE (D1–D4)
+
+The "world reads as material up close" follow-up to R4. Four small features that make the 10cm grid feel like real ground:
+
+- **D1 — Pebble + twig surface scatter.** Two new CHANNEL_TYPE ids — `pebble` (27), `twig` (28) — built EXACTLY like R4 flora: small low-profile vertex-coloured walk-through `VoxelBlockyModelMesh` models injected at runtime in `World3DBootstrap` right after the flora models (ids 24..26), and scattered deterministically by the C++ cubic generator at LOD0 only with its own salt (`surface_detail_seed`, default 7919) — ~1.5% pebbles on stone/dirt/sand/grass, ~1% twigs on dirt/grass. Identity funnels through `FloraMaterial.is_surface_detail()` (separate from `is_flora()`). They are **pass-through air** for the physics/sim exactly like flora: every gravity / sever / finite-water exclusion site now funnels through the new `FloraMaterial.is_passthrough()` helper, which covers the contiguous 24..28 block (flora + surface detail). The two C++ ports (`voxel_gravity_cpp.cpp`) and `GravityReference.gd` mirror the 24..28 range by value; the `gravity` / `sever` / `finite` / `flora` selectors enforce it.
+- **D2 — Dug-surface roughening (carve-time grain).** After a successful box carve in `EditToolHandler`, one extra bulk pass removes ~22% of the SOFT (dirt/grass/sand) voxels in the one-voxel shell just outside the carved box, so dug walls read as chewed instead of laser-cut (ref_01 dug-patch). Stone/ore are never roughened (precision mining stays precise); NoEditZone-adjacent shell voxels are dropped for free by the bulk-write per-voxel NoEditZone query. The removal is a **deterministic hash of each voxel's world grid coords** (not an RNG) so every multiplayer replica agrees, and the whole pass goes out as explicit voxel writes through `VoxelEditManager.queue_set_voxels_bulk` (which broadcasts the resolved writes), so MP replication is automatic. Const-gated (`CARVE_ROUGHEN_ENABLED`).
+- **D3 — Grass trample (minimal).** Walking on the ground every ~0.5 s, `Player3D` checks the 1–2 voxels at foot level; a `grass_blade` (24) found there is removed through `VoxelEditManager` (it vanishes underfoot — simplest believable v1). Hard-throttled, only while moving on ground, host-authority via the same `_can_take_input()` gate the water current uses. Const-gated (`TRAMPLE_ENABLED`). A leaning "flattened" variant model is deferred.
+- **D4 — Flowing-water foam (visual layer, default OFF).** Where the finite sim marks a cell MOVING (DATA5 DIR bits != STILL), `WaterFlowManager` feeds up to ~8 active flow sites near the player to ONE pooled `WaterFoamManager` particle node (GPU, CPU fallback) that repositions across them per tick — never one node per cell. Emission rate scales with flow level. Ships **default OFF** per the new-visual-layer rule (`GraphicsManager.water_foam_enabled`); the designer flips it on his GPU. The toggle is checked before any foam work, and the manager is never even built under `--headless`, so foam stays out of the headless hot path.
+
+**Deferred from the micro-detail pass (NOT in v1):**
+- A leaning "flattened-grass" trample variant model (v1 just removes the blade).
+- Trampling flowers / pebbles / twigs (D3 only flattens grass blades).
+- Pebble/twig pickup yields + a real harvest item (their `yield_item_id` is empty).
+- Carve roughening on stone/ore (deliberately excluded — precision mining).
+- Per-cell foam emitters / foam on waterfalls specifically (v1 is one pooled emitter visiting MOVING cells).
 
 ---
 

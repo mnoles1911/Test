@@ -70,6 +70,35 @@ const VoxelScale := preload("res://scripts/VoxelScale.gd")
 const AIR_VOXEL: int = 0
 # Voxel value 0 = air. Writing this removes the voxel.
 
+# --- D2: dug-surface roughening (carve-time grain) -------------------
+# WHAT (plain English): a clean N×N×N box carve leaves laser-cut walls —
+# the new dirt faces look machined, not chewed. To get the "freshly dug
+# patch" grain of VISION_VOXEL_10CM ref_01, after the main carve we remove
+# a FEW extra voxels from the shell just outside the box, but ONLY on soft
+# materials (dirt/grass/sand) and ONLY at random — so a dug wall ends up
+# bumpy instead of flat. Stone/ore are never roughened: precision mining
+# must stay precise.
+#
+# DETERMINISM: the random removal is a hash of the voxel's WORLD GRID
+# coords (not an RNG). The same wall voxel always rolls the same value, so
+# every multiplayer replica that recomputes the shell agrees — and because
+# the whole roughen pass is computed HOST-SIDE as explicit voxel writes
+# pushed through VoxelEditManager.queue_set_voxels_bulk (which broadcasts
+# the resolved writes to clients), replication is automatic. NoEditZone-
+# adjacent shell voxels are dropped for free: the bulk path queries
+# NoEditZone per-voxel and silently skips rejected writes.
+const CARVE_ROUGHEN_ENABLED: bool = true
+# Master switch for the D2 grain pass. Const-gated so it can be flipped
+# off without ripping the code out if a designer dislikes the look.
+
+const CARVE_ROUGHEN_CHANCE: float = 0.22
+# ~22% of eligible (soft, exposed) shell voxels get knocked out. Tuned so
+# walls read as "chewed" without losing the carve's overall shape.
+
+const CARVE_ROUGHEN_SALT: int = 0x6B0BB1E
+# Hash salt for the roughen roll — keeps it independent of any other
+# coord-hash in the project (e.g. the generator's flora/detail scatter).
+
 # --- Mining-time baseline anchor (physical volume, scale-proof) ---
 #
 # WHY THIS EXISTS (plain English): mining time scales with how BIG a
@@ -1277,6 +1306,11 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 	# surfaces until the player moved their aim).
 	_highlight_has_build = false
 
+	# D2: roughen the freshly-exposed walls so they read as chewed dirt,
+	# not laser-cut. One extra bulk pass through VoxelEditManager (so MP
+	# replication + NoEditZone are handled for us).
+	_roughen_carve_walls(box_vmin, box_vmax)
+
 	# Dig SFX — one strike per accepted carve. Tool + material are both
 	# known here. No-op-safe: silent (one notice) until the vox_* .ogg/
 	# .mp3 are curated in, then automatic. (NoEditZone rejects took the
@@ -1335,6 +1369,110 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 				"skill": skill,
 				"tool_id": equipped_id,
 			})
+
+
+func _roughen_carve_walls(box_vmin: Vector3i, box_vmax: Vector3i) -> void:
+	# D2 — after a successful box carve, knock out a sparse, deterministic
+	# scatter of SOFT (dirt/grass/sand) voxels in the one-voxel-thick SHELL
+	# just outside the carved box, so the resulting walls/floor read as
+	# chewed instead of laser-cut. See the CARVE_ROUGHEN_* consts up top for
+	# the full story.
+	#
+	# The shell is every voxel one step outside the box's six faces (we skip
+	# the box interior — it's already air — and the 12 edges / 8 corners are
+	# naturally covered because a face-neighbour cell can repeat across two
+	# faces; we de-dup with a Dictionary so each voxel is considered once).
+	#
+	# Reads are read-only (a VoxelTool snapshot — no VoxelEditManager needed
+	# for reads). Writes go out as ONE bulk command so MP replicates the
+	# resolved air-writes and NoEditZone is queried per-voxel (rejected
+	# shell voxels near a protected zone are silently dropped — we rely on
+	# that exactly as the design says).
+	if not CARVE_ROUGHEN_ENABLED:
+		return
+	if not get_node_or_null("/root/VoxelEditManager"):
+		return
+	var registry := get_node_or_null("/root/VoxelMaterialRegistry")
+	if registry == null:
+		return
+	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
+	if terrain == null:
+		return
+	var tool: VoxelTool = terrain.get_voxel_tool()
+	if tool == null:
+		return
+	tool.channel = VoxelBuffer.CHANNEL_TYPE
+
+	# Collect the unique shell voxel coords (the layer just outside each of
+	# the 6 box faces). Dictionary keyed by Vector3i de-dups overlaps.
+	var shell: Dictionary = {}
+	# -X / +X faces.
+	for y in range(box_vmin.y, box_vmax.y + 1):
+		for z in range(box_vmin.z, box_vmax.z + 1):
+			shell[Vector3i(box_vmin.x - 1, y, z)] = true
+			shell[Vector3i(box_vmax.x + 1, y, z)] = true
+	# -Y / +Y faces.
+	for x in range(box_vmin.x, box_vmax.x + 1):
+		for z in range(box_vmin.z, box_vmax.z + 1):
+			shell[Vector3i(x, box_vmin.y - 1, z)] = true
+			shell[Vector3i(x, box_vmax.y + 1, z)] = true
+	# -Z / +Z faces.
+	for x in range(box_vmin.x, box_vmax.x + 1):
+		for y in range(box_vmin.y, box_vmax.y + 1):
+			shell[Vector3i(x, y, box_vmin.z - 1)] = true
+			shell[Vector3i(x, y, box_vmax.z + 1)] = true
+
+	const VOXEL_SIZE_M: float = VoxelScale.VOXEL_SIZE_M
+	var writes: Array = []
+	for v in shell.keys():
+		var vp: Vector3i = v
+		var packed: int = tool.get_voxel(vp)
+		var mat_id: int = registry.material_id_from_packed(packed)
+		if mat_id == 0:
+			continue   # already air — nothing to chew
+		# Only roughen SOFT earth — never stone/ore (precision mining stays
+		# precise) and never water/flora/detail. Decide softness via the
+		# registry, never a raw id compare.
+		if not _is_soft_diggable(registry, mat_id):
+			continue
+		# Deterministic per-voxel roll on WORLD GRID coords so every MP
+		# replica that recomputes this shell agrees on which voxels vanish.
+		if _roughen_hash(vp) >= CARVE_ROUGHEN_CHANCE:
+			continue
+		# World-space CENTRE of this voxel cell (queue_set_voxels_bulk takes
+		# world-space positions; world_to_voxel floors back to this cell).
+		var world_centre: Vector3 = (Vector3(vp) + Vector3(0.5, 0.5, 0.5)) * VOXEL_SIZE_M
+		writes.append({"pos": world_centre, "value": AIR_VOXEL})
+
+	if writes.is_empty():
+		return
+	# ONE bulk command. NoEditZone is queried per-voxel inside the manager;
+	# rejected writes (protected-zone-adjacent) are silently dropped.
+	VoxelEditManager.queue_set_voxels_bulk(writes, "carve_roughen")
+
+
+func _is_soft_diggable(registry: Node, mat_id: int) -> bool:
+	# True only for the soft earth materials we want to roughen: dirt,
+	# grass, sand. Resolved through the registry's VoxelMaterial id_string
+	# (never a raw id compare, per the CLAUDE.md material-lookup rule).
+	var mat: VoxelMaterial = registry.get_by_id(mat_id)
+	if mat == null:
+		return false
+	return mat.id_string == "dirt" or mat.id_string == "grass" or mat.id_string == "sand"
+
+
+func _roughen_hash(vp: Vector3i) -> float:
+	# Deterministic [0,1) hash of a voxel's world grid coords + the roughen
+	# salt. Same coord -> same value on every machine, so the D2 wall grain
+	# is identical across multiplayer replicas. Pure integer math; no RNG
+	# state. Mixing constants are odd primes (classic xorshift-style mix).
+	var h: int = CARVE_ROUGHEN_SALT
+	h = (h ^ (vp.x * 73856093)) & 0x7FFFFFFF
+	h = (h ^ (vp.y * 19349663)) & 0x7FFFFFFF
+	h = (h ^ (vp.z * 83492791)) & 0x7FFFFFFF
+	# Final avalanche so neighbouring coords don't produce correlated rolls.
+	h = ((h ^ (h >> 13)) * 1274126177) & 0x7FFFFFFF
+	return float(h) / float(0x7FFFFFFF)
 
 
 func _spawn_voxel_drop(world_pos: Vector3, drop_item_id: String, color: Color, count: int, density: float = 2.5) -> void:

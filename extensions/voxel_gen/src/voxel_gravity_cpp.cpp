@@ -20,17 +20,21 @@ constexpr int CHANNEL_TYPE = 0;
 constexpr int FALL_LOOSE = 2;
 constexpr int FALL_PICKUP_DROP = 4;
 
-// R4 flora id range (mirrors scripts/FloraMaterial.gd + GravityReference:
-// 24..26). Flora is PASS-THROUGH AIR for the gravity analysis — a grass
-// blade / flower never anchors a structure and never rides a falling
-// cluster. The read pass skips these ids exactly like the GD reference,
-// so the two stay set-for-set identical under the `gravity` selector.
-constexpr int FLORA_BASE_ID = 24;
-constexpr int FLORA_COUNT = 3;
+// R4 flora + D1 surface-detail pass-through range (mirrors
+// scripts/FloraMaterial.gd PASSTHROUGH range + GravityReference: 24..28 =
+// grass/flowers 24..26 PLUS pebbles/twigs 27..28). All are PASS-THROUGH AIR
+// for the gravity analysis — a grass blade, flower, pebble or twig never
+// anchors a structure and never rides a falling cluster. The read pass
+// skips these ids exactly like the GD reference, so the two stay
+// set-for-set identical under the `gravity` selector.
+constexpr int PASSTHROUGH_BASE_ID = 24;
+constexpr int PASSTHROUGH_COUNT = 5;   // 24..28
 
 inline bool is_flora_type(int packed) {
+    // Name kept for back-compat; covers the full pass-through decoration
+    // range (flora + surface detail) by value, matching the GD side.
     const int t = packed & 0xFF;
-    return t >= FLORA_BASE_ID && t < FLORA_BASE_ID + FLORA_COUNT;
+    return t >= PASSTHROUGH_BASE_ID && t < PASSTHROUGH_BASE_ID + PASSTHROUGH_COUNT;
 }
 }  // namespace
 
@@ -110,7 +114,7 @@ Dictionary VoxelGravityCpp::analyze_bubble(Variant p_buf,
                     continue;
                 }
                 if (is_flora_type(p)) {
-                    continue;   // R4: flora is pass-through air for gravity
+                    continue;   // R4+D1: flora/pebbles/twigs are pass-through air for gravity
                 }
                 packed[static_cast<size_t>(x + y * side + z * side2)] = p;
                 ++bubble_solid_count;

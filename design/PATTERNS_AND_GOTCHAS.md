@@ -67,14 +67,16 @@ WaterMaterial.render_id_for_level(level, dir)   # sim level → CHANNEL_TYPE id
 
 8 fluid models, levels 1..8 → ids 16..23 (full=23). Injected at runtime in `World3DBootstrap.add_model()` — `.tres` doesn't restore on load; **bootstrap is source of truth**. Legacy id 5 retained for pre-pivot saves. `WaterByteCodec`/`DATA5` is sim truth; `CHANNEL_TYPE` is render projection. Player queries: `WaterFlowManager.is_position_in_water / get_water_level_at`.
 
-### Micro-voxel flora — `FloraMaterial.is_flora(t)`, never a raw `== 24`
+### Micro-voxel flora + surface detail — `FloraMaterial`, never a raw `== 24`
 
 ```gdscript
 const FloraMaterial := preload("res://scripts/FloraMaterial.gd")  # NO class_name (headless-safe)
-FloraMaterial.is_flora(t)   # grass_blade=24, flower_red=25, flower_blue=26
+FloraMaterial.is_flora(t)           # VEGETATION: grass_blade=24, flower_red=25, flower_blue=26
+FloraMaterial.is_surface_detail(t)  # SURFACE DETAIL: pebble=27, twig=28 (D1)
+FloraMaterial.is_passthrough(t)     # EITHER (24..28) — use this at physics/sim exclusion sites
 ```
 
-R4 grass blades + flowers are REAL destructible CHANNEL_TYPE voxels (cross-quad `VoxelBlockyModelMesh`, ids 24..26), injected at runtime in `World3DBootstrap` right after the water fluids — **bootstrap is source of truth** (`.tres` doesn't restore the models). They are **pass-through air for the physics/sim**: every place that already skips water (gravity flood-fill in `VoxelGravityManager` + `GravityReference` + `voxel_gravity_cpp.cpp`, the sever BFS in `SeverFollowLib`, the finite-water solid callback `WaterFlowManager._finite_is_solid`) ALSO skips flora via `is_flora()`. Never raw-compare a flora id — the id set grows in `FloraMaterial.gd` only. The C++ gravity/sever ports hardcode the **identical** 24..26 range so parity holds (the `gravity` + `sever` + `flora` selectors enforce it). Generator scatter ids are plumbed through settable properties (`grass_blade_material_id` etc., default 0 = disabled) and wired at startup by the bootstrap — flora is LOD0-only.
+R4 grass blades + flowers are REAL destructible CHANNEL_TYPE voxels (cross-quad `VoxelBlockyModelMesh`, ids 24..26); the D1 micro-detail pass adds pebbles + twigs (low-profile walk-through models, ids 27..28). All five are injected at runtime in `World3DBootstrap` right after the water fluids — **bootstrap is source of truth** (`.tres` doesn't restore the models). They are **pass-through air for the physics/sim**: every place that already skips water (gravity flood-fill in `VoxelGravityManager` + `GravityReference` + `voxel_gravity_cpp.cpp`, the sever BFS in `SeverFollowLib`, the finite-water solid callback `WaterFlowManager._finite_is_solid`) must skip decoration via **`is_passthrough()`** — NOT `is_flora()` (which is the vegetation-only subset, for call sites like trample that genuinely mean grass). Never raw-compare a decoration id — the id sets grow in `FloraMaterial.gd` only. The C++ gravity/sever ports + `GravityReference.gd` hardcode the **identical contiguous 24..28 range** by value so parity holds (the `gravity` + `sever` + `flora` selectors enforce it; keep flora 24..26 and surface detail 27..28 contiguous so the one pass-through range covers both). Generator scatter ids are plumbed through settable properties (`grass_blade_material_id` / `pebble_material_id` etc., default 0 = disabled, different seeds) and wired at startup by the bootstrap — all decoration is LOD0-only.
 
 ### `VoxelBuffer CHANNEL_COLOR` must be 32-bit before chunks stream
 

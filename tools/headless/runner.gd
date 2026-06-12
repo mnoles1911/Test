@@ -591,8 +591,33 @@ func _shader() -> int:
 			print("[SHADER] terrain_voxel.gdshader loaded; code_len=%d caustics_block=%s" % [t_code.length(), t_ok])
 	else:
 		print("[SHADER] terrain_voxel.gdshader missing")
-	var ok := (not has_foam) and has_flow and n_dbg >= 5 and t_ok
-	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s terrain_caustics=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5, t_ok])
+	# Far-grass PR (2026-06-12): the flora wind-sway shader (shared by the
+	# real LOD0 flora material AND the far-grass impostor MultiMesh) must
+	# load + compile and carry the sway machinery. Godot reports the shader
+	# invalid on a parse/semantic error even under --headless (dummy
+	# renderer), which surfaces as a 0-uniform list + a 'SHADER ERROR' line.
+	var fs_path := "res://assets/shaders/flora_sway.gdshader"
+	var fs_ok := false
+	if ResourceLoader.exists(fs_path):
+		var fs_sh = load(fs_path)
+		if fs_sh != null:
+			var fs_code: String = fs_sh.get("code")
+			# Must be a spatial shader, animate via TIME, and bend by blade
+			# height (the sway curve). Keying off these guards against a
+			# future edit silently stripping the sway out.
+			var fs_has_sway := fs_code.find("TIME") != -1 \
+				and fs_code.find("sway_amplitude_m") != -1 \
+				and fs_code.find("void vertex()") != -1
+			# A valid (compiled) shader exposes its uniforms; an errored one
+			# returns an empty list. rid_valid + non-empty uniforms = compiled.
+			var fs_ul = RenderingServer.get_shader_parameter_list(fs_sh.get_rid()) if fs_sh.get_rid().is_valid() else []
+			fs_ok = fs_has_sway and fs_sh.get_rid().is_valid() and fs_ul.size() > 0
+			print("[SHADER] flora_sway.gdshader loaded; code_len=%d sway_machinery=%s uniforms=%d rid_valid=%s" % [
+				fs_code.length(), fs_has_sway, fs_ul.size(), fs_sh.get_rid().is_valid()])
+	else:
+		print("[SHADER] flora_sway.gdshader missing")
+	var ok := (not has_foam) and has_flow and n_dbg >= 5 and t_ok and fs_ok
+	print("[SHADER] RESULT=%s — foam_removed=%s flow_present=%s debug_modes>=5=%s terrain_caustics=%s flora_sway=%s (grep stderr for 'SHADER ERROR' to confirm compile)" % ["PASS" if ok else "FAIL", not has_foam, has_flow, n_dbg >= 5, t_ok, fs_ok])
 	return 0 if ok else 1
 
 
@@ -1024,9 +1049,11 @@ func _phase2_report() -> int:
 		return 1
 	var models: Array = lib.get("models")
 	var fails: int = 0
-	# 16 static (0..15) + 8 water fluid (16..23) + 3 R4 flora (24..26) = 27.
+	# 16 static (0..15) + 8 water fluid (16..23) + 3 R4 flora (24..26)
+	# + 2 D1 surface detail (27..28) = 29.
 	var FLORA := preload("res://scripts/FloraMaterial.gd")
-	var expect_total: int = WM.WATER_FLUID_BASE_ID + WM.WATER_LEVEL_COUNT + FLORA.FLORA_COUNT
+	var expect_total: int = WM.WATER_FLUID_BASE_ID + WM.WATER_LEVEL_COUNT \
+		+ FLORA.FLORA_COUNT + FLORA.SURFACE_DETAIL_COUNT
 	print("[PHASE2] library model count=%d (expect %d)" % [models.size(), expect_total])
 	if models.size() != expect_total:
 		fails += 1
@@ -1073,8 +1100,27 @@ func _phase2_report() -> int:
 		if fmesh == null:
 			fails += 1
 			push_error("[PHASE2] flora id=%d has no mesh" % fid)
+	# D1 surface detail — the 2 low-profile models must sit at ids 27..28,
+	# be collision-off (walk-through), and carry a mesh.
+	for sid in FLORA.SURFACE_DETAIL_IDS:
+		if sid >= models.size() or models[sid] == null:
+			fails += 1
+			push_error("[PHASE2] surface-detail model[%d] missing" % sid)
+			continue
+		var sm = models[sid]
+		var saabbs = sm.call("get_collision_aabbs") if sm.has_method("get_collision_aabbs") else null
+		var scoll_off: bool = (saabbs == null) or (saabbs is Array and (saabbs as Array).is_empty())
+		var smesh = sm.call("get_mesh") if sm.has_method("get_mesh") else sm.get("mesh")
+		print("[PHASE2] surface-detail id=%d class=%s coll_off=%s mesh=%s" % [
+			sid, sm.get_class(), scoll_off, ("set" if smesh != null else "null")])
+		if not scoll_off:
+			fails += 1
+			push_error("[PHASE2] surface-detail id=%d is collidable — must be walk-through" % sid)
+		if smesh == null:
+			fails += 1
+			push_error("[PHASE2] surface-detail id=%d has no mesh" % sid)
 	if fails == 0:
-		print("[PHASE2] RESULT=PASS — 8 fluid level-models at 16..23 + 3 flora cross-quads at 24..26, collision off, legacy 5 intact.")
+		print("[PHASE2] RESULT=PASS — 8 fluid level-models at 16..23 + 3 flora cross-quads at 24..26 + 2 surface-detail at 27..28, collision off, legacy 5 intact.")
 		return 0
 	print("[PHASE2] RESULT=FAIL — %d problems (see push_error)." % fails)
 	return 1
@@ -1681,11 +1727,225 @@ func _flora() -> int:
 	fails += _flora_water()
 	fails += _flora_gravity()
 	fails += _flora_gen()
+	fails += _flora_far_grass()
+	fails += _flora_surface_detail()
 	if fails == 0:
-		print("[FLORA] RESULT=PASS — id classification, water-displaces-flora, gravity/sever exclusion, generator determinism all green.")
+		print("[FLORA] RESULT=PASS — id classification, water-displaces-flora, gravity/sever exclusion, generator determinism, far-grass continuity, surface-detail (pebble/twig) category + exclusion all green.")
 		return 0
 	print("[FLORA] RESULT=FAIL — %d scenario(s) failed." % fails)
 	return 1
+
+
+func _flora_surface_detail() -> int:
+	# (f) D1 surface detail (pebbles=27, twigs=28). Verifies the new
+	# is_surface_detail()/is_passthrough() contract AND that pebbles/twigs
+	# get the SAME physics exclusion as flora (gravity GD ref + C++ parity,
+	# water non-solid), plus generator scatter (pebble/twig land on the
+	# surface, LOD>0 has none).
+	var fails: int = 0
+	var FL := _FloraMaterial
+
+	# --- (f.1) id classification ---
+	for id in FL.SURFACE_DETAIL_IDS:
+		if not FL.is_surface_detail(id):
+			fails += 1
+			push_error("[FLORA] id %d should classify as surface_detail" % id)
+		if FL.is_flora(id):
+			fails += 1
+			push_error("[FLORA] surface-detail id %d must NOT be flora" % id)
+		if not FL.is_passthrough(id):
+			fails += 1
+			push_error("[FLORA] surface-detail id %d must be passthrough" % id)
+		if _WaterMaterial().is_water_type(id):
+			fails += 1
+			push_error("[FLORA] surface-detail id %d must NOT be water" % id)
+	# Flora ids are passthrough but NOT surface detail.
+	for id in FL.FLORA_IDS:
+		if not FL.is_passthrough(id):
+			fails += 1
+			push_error("[FLORA] flora id %d must be passthrough" % id)
+		if FL.is_surface_detail(id):
+			fails += 1
+			push_error("[FLORA] flora id %d must NOT be surface_detail" % id)
+	# Terrain/water ids are NOT passthrough.
+	for id in [0, 1, 2, 3, 4, 5, 16, 23, 29]:
+		if FL.is_passthrough(id):
+			fails += 1
+			push_error("[FLORA] non-decoration id %d wrongly classified passthrough" % id)
+	# Range sanity: passthrough is the contiguous 24..28 block.
+	if FL.PASSTHROUGH_BASE_ID != 24 or FL.PASSTHROUGH_COUNT != 5:
+		fails += 1
+		push_error("[FLORA] passthrough range wrong: base=%d count=%d (expected 24/5)" % [
+			FL.PASSTHROUGH_BASE_ID, FL.PASSTHROUGH_COUNT])
+
+	# --- (f.2) gravity exclusion: a pebble/twig must not anchor or fall ---
+	# A 1x4x1 unanchored stone column with pebbles clinging to its side and
+	# a twig on top; a pebble bridge toward an anchored pillar. Mirrors the
+	# flora gravity scenario but with surface-detail ids.
+	var side: int = 16
+	var buf: VoxelBuffer = VoxelBuffer.new()
+	buf.create(side, side, side)
+	for y in range(1, 5):
+		buf.set_voxel(1, 8, y, 8, VoxelBuffer.CHANNEL_TYPE)        # stone column (unanchored)
+	for y in range(1, 5):
+		buf.set_voxel(FL.PEBBLE_ID, 9, y, 8, VoxelBuffer.CHANNEL_TYPE)
+	buf.set_voxel(FL.TWIG_ID, 8, 5, 8, VoxelBuffer.CHANNEL_TYPE)
+	for x in range(10, 14):
+		buf.set_voxel(FL.PEBBLE_ID, x, 1, 8, VoxelBuffer.CHANNEL_TYPE)  # pebble "bridge"
+	for y in range(0, 4):
+		buf.set_voxel(1, 14, y, 8, VoxelBuffer.CHANNEL_TYPE)       # anchored pillar
+	var fall_table := {
+		1: _GravityRef.FALL_NEVER,
+		FL.PEBBLE_ID: _GravityRef.FALL_NEVER,
+		FL.TWIG_ID: _GravityRef.FALL_NEVER,
+	}
+	var out: Dictionary = _GravityRef.analyze_bubble(buf, side, fall_table, PackedByteArray())
+	# Solids: 4 (column) + 4 (pillar) = 8. Surface detail must be excluded.
+	if int(out["bubble_solid_count"]) != 8:
+		fails += 1
+		push_error("[FLORA] surface-detail gravity: solid_count=%d expected 8 (pebbles/twigs must not be solid)" % int(out["bubble_solid_count"]))
+	if int(out["unanchored_cluster_count"]) != 4:
+		fails += 1
+		push_error("[FLORA] surface-detail gravity: cluster_count=%d expected 4 (detail wrongly anchored/joined?)" % int(out["unanchored_cluster_count"]))
+	var cv: PackedInt32Array = out["cluster_voxels"]
+	@warning_ignore("integer_division")
+	var n_cv: int = cv.size() / 4
+	for i in range(n_cv):
+		var packed: int = cv[i * 4 + 3]
+		if FL.is_surface_detail(packed):
+			fails += 1
+			push_error("[FLORA] surface-detail gravity: a detail voxel (id=%d) rode the cluster" % (packed & 0xFF))
+			break
+	# C++ parity if the DLL is present (the C++ range now covers 24..28).
+	if ClassDB.class_exists("VoxelGravityCpp"):
+		var cpp: Object = ClassDB.instantiate("VoxelGravityCpp")
+		if cpp != null and cpp.has_method("analyze_bubble"):
+			cpp.call("set_fall_behavior_table", fall_table)
+			cpp.call("set_noeditzone_anchor_mask", PackedByteArray())
+			var cpp_out: Dictionary = cpp.call("analyze_bubble", buf, Vector3i.ZERO, side)
+			if int(cpp_out["bubble_solid_count"]) != int(out["bubble_solid_count"]):
+				fails += 1
+				push_error("[FLORA] surface-detail gravity: C++ solid=%d != GD %d (exclusion diverged)" % [
+					int(cpp_out["bubble_solid_count"]), int(out["bubble_solid_count"])])
+			if int(cpp_out["unanchored_cluster_count"]) != int(out["unanchored_cluster_count"]):
+				fails += 1
+				push_error("[FLORA] surface-detail gravity: C++ cluster=%d != GD %d" % [
+					int(cpp_out["unanchored_cluster_count"]), int(out["unanchored_cluster_count"])])
+			print("[FLORA] surface-detail gravity: C++ parity checked (solid=%d cluster=%d)." % [
+				int(cpp_out["bubble_solid_count"]), int(cpp_out["unanchored_cluster_count"])])
+	else:
+		print("[FLORA] surface-detail gravity: VoxelGravityCpp not registered — GD-reference-only.")
+
+	# --- (f.3) generator scatter: pebble/twig present at LOD0, none at LOD>0 ---
+	if ClassDB.class_exists("CubicHeightmapGeneratorCpp"):
+		var gen: Object = ClassDB.instantiate("CubicHeightmapGeneratorCpp")
+		if gen != null:
+			var noise := FastNoiseLite.new()
+			noise.seed = 8
+			noise.frequency = 0.0003
+			gen.set("noise", noise)
+			gen.set("height_range_voxels", 333.0)
+			gen.set("pebble_material_id", FL.PEBBLE_ID)
+			gen.set("twig_material_id", FL.TWIG_ID)
+			var bs := 16
+			var coords := [0, 64, 128, 256, -64, -128, 512, -256, 1024, 2048, -512]
+			var found_detail := false
+			for cz in coords:
+				for cx in coords:
+					var o := Vector3i(cx, 112, cz)
+					var b := VoxelBuffer.new(); b.create(bs, bs, bs)
+					gen.call("generate_block_into_buffer", b, o, 0)
+					if _surface_detail_count_in_buffer(b, bs) > 0:
+						found_detail = true
+						# LOD-1 of the same origin must contain ZERO detail.
+						var bl := VoxelBuffer.new(); bl.create(bs, bs, bs)
+						gen.call("generate_block_into_buffer", bl, o, 1)
+						if _surface_detail_count_in_buffer(bl, bs) != 0:
+							fails += 1
+							push_error("[FLORA] surface-detail gen: LOD-1 block has detail voxels (must be LOD0-only)")
+						break
+				if found_detail:
+					break
+			if not found_detail:
+				print("[FLORA] surface-detail gen: WARN — no pebble/twig found in scan band (sparse scatter; not a hard fail).")
+			else:
+				print("[FLORA] surface-detail gen: PASS — pebble/twig scattered at LOD0, none at LOD1.")
+	else:
+		print("[FLORA] surface-detail gen: SKIP — CubicHeightmapGeneratorCpp not registered.")
+
+	if fails == 0:
+		print("[FLORA] surface-detail: PASS — pebble/twig classify as surface_detail+passthrough (not flora/water), excluded from gravity (GD+C++), LOD0-only scatter.")
+	return mini(fails, 1)
+
+
+func _surface_detail_count_in_buffer(buf: VoxelBuffer, bs: int) -> int:
+	var n := 0
+	for z in range(bs):
+		for y in range(bs):
+			for x in range(bs):
+				if _FloraMaterial.is_surface_detail(buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)):
+					n += 1
+	return n
+
+
+func _flora_far_grass() -> int:
+	# (e) FAR-GRASS CONTINUITY (2026-06-12). The far-grass impostor layer
+	# (FarGrassManager) must place its blades at EXACTLY the columns the C++
+	# generator scatters real grass on — otherwise walking from the LOD1/2
+	# impostor band into the LOD0 real-grass ring would visibly re-shuffle
+	# the field (the seam this whole feature exists to hide).
+	#
+	# The manager replays the generator's first flora hash roll,
+	# hash3(world_x, 0, world_z, flora_seed) < 0.37, to decide grass. This
+	# check verifies:
+	#   1. FarGrassManager._hash3 is bit-identical to VoxelGenerationMath.hash3
+	#      (the GD mirror of the C++ voxel_gen::math::hash3) for a spread of
+	#      inputs — if these ever diverge, the impostor lands off the real
+	#      grass and the handoff pops.
+	#   2. The manager's grass-roll threshold matches the generator's grass
+	#      sub-band cutoff (0.37), so density + positions agree.
+	var fails: int = 0
+	var FGM := load("res://scripts/FarGrassManager.gd")
+	if FGM == null:
+		print("[FLORA] far_grass: FAIL — FarGrassManager.gd did not load.")
+		return 1
+	var mgr = FGM.new()
+
+	# 1. Hash parity vs VoxelGenerationMath.hash3 across a spread of coords.
+	var VGM := load("res://scripts/VoxelGenerationMath.gd")
+	var seed := 1337
+	var coords := [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 5),
+		Vector2i(123, -456), Vector2i(7919, 104729), Vector2i(-31, -97),
+		Vector2i(1000000, -1000000),
+	]
+	for c in coords:
+		# Manager uses y-salt 0 for the grass roll (mirrors the generator).
+		var hm: float = mgr._hash3(c.x, 0, c.y, seed)
+		var hg: float = VGM.hash3(c.x, 0, c.y, seed)
+		if not is_equal_approx(hm, hg):
+			fails += 1
+			push_error("[FLORA] far_grass: hash mismatch at %s — manager=%.9f vs VoxelGenerationMath=%.9f" % [str(c), hm, hg])
+
+	# 2. Threshold + grass-decision agreement: for every coord, the manager's
+	# _column_has_grass must equal (generator grass roll < 0.37). We assert
+	# the manager threshold is the locked 0.37 and that its decision tracks
+	# the same roll the generator uses.
+	mgr._flora_seed = seed
+	if not is_equal_approx(mgr.grass_roll_threshold, 0.37):
+		fails += 1
+		push_error("[FLORA] far_grass: grass_roll_threshold=%.4f != generator grass sub-band cutoff 0.37" % mgr.grass_roll_threshold)
+	for c in coords:
+		var want: bool = VGM.hash3(c.x, 0, c.y, seed) < 0.37
+		var got: bool = mgr._column_has_grass(c.x, c.y)
+		if want != got:
+			fails += 1
+			push_error("[FLORA] far_grass: grass decision mismatch at %s — manager=%s vs generator-roll<0.37=%s" % [str(c), str(got), str(want)])
+
+	mgr.free()
+	if fails == 0:
+		print("[FLORA] far_grass: PASS — impostor hash bit-identical to generator hash; grass decision + 0.37 threshold match (walk-in continuity holds).")
+	return mini(fails, 1)
 
 
 func _flora_ids() -> int:

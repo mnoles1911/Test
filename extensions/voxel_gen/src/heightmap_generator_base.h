@@ -171,6 +171,21 @@ public:
     void set_flora_seed(int p_value);
     int get_flora_seed() const;
 
+    // --- D1 surface-detail scatter (pebbles + twigs) ----------------------
+    // The two surface-detail CHANNEL_TYPE ids. Default 0 = disabled, same
+    // 0-gate as flora — the generator writes NO pebbles/twigs until the
+    // GDScript bootstrap wires the real ids (27/28) at startup. Mirrors
+    // scripts/FloraMaterial.gd: pebble=27, twig=28. Scattered with a
+    // DIFFERENT salt than flora so the two patterns don't correlate.
+    void set_pebble_material_id(int p_value);
+    int get_pebble_material_id() const;
+
+    void set_twig_material_id(int p_value);
+    int get_twig_material_id() const;
+
+    void set_surface_detail_seed(int p_value);
+    int get_surface_detail_seed() const;
+
     // --- Core API ---------------------------------------------------------
 
     // Concrete generators override this with their ground-Y math.
@@ -276,6 +291,13 @@ protected:
     int _flower_red_material_id = 0;
     int _flower_blue_material_id = 0;
     int _flora_seed = 1337;
+
+    // --- D1 surface-detail scatter (0 = disabled until bootstrap wires) ---
+    int _pebble_material_id = 0;
+    int _twig_material_id = 0;
+    // Different salt from _flora_seed so pebble/twig placement is
+    // statistically independent of where grass/flowers landed.
+    int _surface_detail_seed = 7919;
 
 private:
     mutable std::atomic<int> _generated_block_count{0};

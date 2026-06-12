@@ -143,6 +143,16 @@ int HeightmapGeneratorBase::get_flower_blue_material_id() const { return _flower
 void HeightmapGeneratorBase::set_flora_seed(int p_value) { _flora_seed = p_value; }
 int HeightmapGeneratorBase::get_flora_seed() const { return _flora_seed; }
 
+// D1 surface-detail scatter ids + seed.
+void HeightmapGeneratorBase::set_pebble_material_id(int p_value) { _pebble_material_id = p_value; }
+int HeightmapGeneratorBase::get_pebble_material_id() const { return _pebble_material_id; }
+
+void HeightmapGeneratorBase::set_twig_material_id(int p_value) { _twig_material_id = p_value; }
+int HeightmapGeneratorBase::get_twig_material_id() const { return _twig_material_id; }
+
+void HeightmapGeneratorBase::set_surface_detail_seed(int p_value) { _surface_detail_seed = p_value; }
+int HeightmapGeneratorBase::get_surface_detail_seed() const { return _surface_detail_seed; }
+
 // ----- POD snapshot setters ---------------------------------------------
 //
 // The GDScript adapter translates Array[VoxelMaterial] into Array[Dict]
@@ -482,6 +492,38 @@ void HeightmapGeneratorBase::generate_block_into_buffer(Variant out_buffer,
                     }
                 } else if (roll < 0.37) {
                     flora_id = _grass_blade_material_id;
+                }
+            }
+
+            // D1 micro-detail surface scatter: pebbles + twigs. Same air
+            // cell as flora (world_y == ground_y + 1), LOD0-only, above sea
+            // level, deterministic per-(world_x, world_z) hash but a
+            // DIFFERENT salt (_surface_detail_seed) so the pattern is
+            // statistically independent of where grass/flowers landed.
+            // Surface detail only fills the cell when NO flora rolled there
+            // (flora wins the cell) so the two never collide. Pebbles sit on
+            // stone/dirt/sand/grass; twigs only on dirt/grass (a stick on a
+            // beach or bare rock reads wrong). top_id already folded in
+            // sand/stone/snow/ore overrides, so a top_id test is enough.
+            const bool detail_enabled = (lod == 0) && (_pebble_material_id != 0 || _twig_material_id != 0);
+            if (flora_id == 0
+                    && detail_enabled
+                    && disk_match == nullptr
+                    && (ground_y + 1) > sea_level_v) {
+                const bool ground_is_soft =
+                        (top_id == DIRT_MATERIAL_ID || top_id == GRASS_MATERIAL_ID);
+                const bool ground_takes_pebble =
+                        (top_id == STONE_MATERIAL_ID || top_id == SAND_MATERIAL_ID || ground_is_soft);
+                // One hash roll in [0,1). Layout (independent of flora's):
+                //   [0.000 .. 0.015)  -> pebble (~1.5% on pebble-eligible)
+                //   [0.015 .. 0.025)  -> twig   (~1.0% on dirt/grass only)
+                //   [0.025 .. 1.000)  -> bare
+                const double droll = voxel_gen::math::hash3(
+                        world_x, 0, world_z, static_cast<int64_t>(_surface_detail_seed));
+                if (droll < 0.015 && ground_takes_pebble && _pebble_material_id != 0) {
+                    flora_id = _pebble_material_id;
+                } else if (droll < 0.025 && ground_is_soft && _twig_material_id != 0) {
+                    flora_id = _twig_material_id;
                 }
             }
 
@@ -840,6 +882,28 @@ void HeightmapGeneratorBase::_bind_methods() {
                          &HeightmapGeneratorBase::get_flora_seed);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "flora_seed"),
                  "set_flora_seed", "get_flora_seed");
+
+    // D1 surface-detail scatter ids + seed (default 0 = disabled).
+    ClassDB::bind_method(D_METHOD("set_pebble_material_id", "value"),
+                         &HeightmapGeneratorBase::set_pebble_material_id);
+    ClassDB::bind_method(D_METHOD("get_pebble_material_id"),
+                         &HeightmapGeneratorBase::get_pebble_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "pebble_material_id"),
+                 "set_pebble_material_id", "get_pebble_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_twig_material_id", "value"),
+                         &HeightmapGeneratorBase::set_twig_material_id);
+    ClassDB::bind_method(D_METHOD("get_twig_material_id"),
+                         &HeightmapGeneratorBase::get_twig_material_id);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "twig_material_id"),
+                 "set_twig_material_id", "get_twig_material_id");
+
+    ClassDB::bind_method(D_METHOD("set_surface_detail_seed", "value"),
+                         &HeightmapGeneratorBase::set_surface_detail_seed);
+    ClassDB::bind_method(D_METHOD("get_surface_detail_seed"),
+                         &HeightmapGeneratorBase::get_surface_detail_seed);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "surface_detail_seed"),
+                 "set_surface_detail_seed", "get_surface_detail_seed");
 
     // Core API — compute_ground_y is virtual; ClassDB dispatches to the
     // concrete child override at runtime. get_ground_voxel_y_at is the

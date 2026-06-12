@@ -110,6 +110,17 @@ func set_flora_materials(grass_blade_id: int, flower_red_id: int, flower_blue_id
 	cpp_impl.set("flower_blue_material_id", flower_blue_id)
 
 
+# D1 — wire the two surface-detail (pebble/twig) CHANNEL_TYPE ids into the
+# C++ scatter. Same duck-typed bootstrap pattern + 0-default-disabled
+# rationale as set_flora_materials above. Nothing in C++ hardcodes 27/28;
+# the bootstrap reads them from FloraMaterial and pushes them here.
+func set_surface_detail_materials(pebble_id: int, twig_id: int) -> void:
+	if cpp_impl == null:
+		return
+	cpp_impl.set("pebble_material_id", pebble_id)
+	cpp_impl.set("twig_material_id", twig_id)
+
+
 # The bake controller (scripts/_dev/WorldBakeController.gd) calls this
 # duck-typed off the terrain's generator during tile classification.
 # CopperIslesHeightmapGenerator defines it; the GDScript Cubic generator

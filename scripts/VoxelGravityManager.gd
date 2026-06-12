@@ -189,11 +189,12 @@ var _cpp: Resource = null
 # headless-safe.
 const _GravityRef := preload("res://scripts/_dev/GravityReference.gd")
 const _SeverFollowLib := preload("res://scripts/_dev/SeverFollowLib.gd")
-# Flora-identity (R4) — used to skip grass/flowers when building the
-# `solids` set in the GD fallback path, so they're treated as pass-through
-# air (never anchor a structure, never join a falling cluster). The C++
-# fast path skips the same ids in voxel_gravity_cpp.cpp; this keeps the
-# fallback in lock-step. Path preload, headless-safe.
+# Flora-identity (R4) + surface detail (D1) — used to skip grass/flowers
+# (24..26) AND pebbles/twigs (27..28) when building the `solids` set in the
+# GD fallback path, so they're treated as pass-through air (never anchor a
+# structure, never join a falling cluster). is_passthrough() covers both
+# ranges. The C++ fast path skips the same ids in voxel_gravity_cpp.cpp;
+# this keeps the fallback in lock-step. Path preload, headless-safe.
 const FloraMaterial := preload("res://scripts/FloraMaterial.gd")
 
 
@@ -429,8 +430,8 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 					var packed: int = buf.get_voxel(x, y, z, VoxelBuffer.CHANNEL_TYPE)
 					if (packed & 0xFF) == 0:
 						continue
-					if FloraMaterial.is_flora(packed):
-						continue   # R4: flora is pass-through air for gravity
+					if FloraMaterial.is_passthrough(packed):
+						continue   # R4+D1: flora/pebbles/twigs are pass-through air
 					solids[Vector3i(x, y, z)] = packed
 	else:
 		for x in range(side):
@@ -440,8 +441,8 @@ func _process_bubble(edit_world_pos: Vector3, edit_aabb: AABB) -> void:
 					var packed: int = tool.get_voxel(v_world_grid)
 					if (packed & 0xFF) == 0:
 						continue
-					if FloraMaterial.is_flora(packed):
-						continue   # R4: flora is pass-through air for gravity
+					if FloraMaterial.is_passthrough(packed):
+						continue   # R4+D1: flora/pebbles/twigs are pass-through air
 					solids[Vector3i(x, y, z)] = packed
 	if perf_log_enabled:
 		t_after_read = Time.get_ticks_usec()

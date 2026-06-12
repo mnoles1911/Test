@@ -719,6 +719,20 @@ func _ready() -> void:
 			print("[World3D] Wired flora scatter ids to generator: grass=%d red=%d blue=%d." % [
 				FloraMaterial.GRASS_BLADE_ID, FloraMaterial.FLOWER_RED_ID, FloraMaterial.FLOWER_BLUE_ID])
 
+		# --- D1 BLOCK START (10cm micro-detail surface scatter) -----------
+		# Wire the two surface-detail (pebble/twig) ids into the generator's
+		# scatter pass — same 0-default-disabled mechanism as flora above, so
+		# a stale build simply grows no pebbles rather than writing garbage
+		# ids. Self-contained block (D1) so concurrent edits to this file stay
+		# clear of it.
+		if gen != null and gen.has_method("set_surface_detail_materials"):
+			gen.call("set_surface_detail_materials",
+				FloraMaterial.PEBBLE_ID,
+				FloraMaterial.TWIG_ID)
+			print("[World3D] Wired surface-detail scatter ids to generator: pebble=%d twig=%d." % [
+				FloraMaterial.PEBBLE_ID, FloraMaterial.TWIG_ID])
+		# --- D1 BLOCK END -------------------------------------------------
+
 	# --- Configure water surface + seed test pond ---
 	# Phase 5: the AABB-source-region model is gone. Ocean water lives
 	# in CHANNEL_DATA, written at gen time by CubicHeightmapGenerator
@@ -849,6 +863,25 @@ func _ready() -> void:
 		distant.name = "DistantTerrain"
 		add_child(distant)
 		distant.call("setup_from_terrain", terrain)
+
+	# === FAR-GRASS PR (2026-06-12) — impostor layer wire-up, start =======
+	# Far-grass impostor layer: GPU-instanced, non-interactive grass that
+	# fills the LOD1/LOD2 bands (~13..51 m) so the REAL LOD0 voxel grass
+	# (~12.8 m ring) no longer ends in a visible "bald ring". The impostor
+	# blades sit at the SAME deterministic hash positions the C++ generator
+	# uses for real grass, so walking closer is a seamless handoff. Parented
+	# to this (unscaled) world root — like DistantTerrain, the impostor
+	# MultiMesh transforms are absolute world metres, so it must NOT live
+	# under the 1/10-scaled VoxelLodTerrain. Loaded by path (no class_name)
+	# to stay headless-safe. Default ON (see GraphicsManager.far_grass_enabled
+	# rationale); instant toggle frees/rebuilds the layer.
+	var far_grass_script := load("res://scripts/FarGrassManager.gd")
+	if far_grass_script != null:
+		var far_grass: Node3D = far_grass_script.new()
+		far_grass.name = "FarGrass"
+		add_child(far_grass)
+		far_grass.call("setup_from_terrain", terrain)
+	# === FAR-GRASS PR (2026-06-12) — impostor layer wire-up, end =========
 
 
 const _ATLAS_TEXTURE_PATH: String = "res://assets/voxels/texture_packs/default/atlas.png"
@@ -1290,18 +1323,42 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 		},
 	]
 
-	# One shared unshaded, vertex-colour, double-sided, alpha-scissor
-	# material for all three flora models (cheap — one material, three
-	# meshes). Unshaded keeps the colours bright like the reference shot;
-	# CULL_DISABLED draws both quad faces; alpha-scissor keeps any future
-	# textured version crisp. v1 has no texture so the flat colour shows.
-	var flora_mat := StandardMaterial3D.new()
-	flora_mat.resource_name = "flora_runtime"
-	flora_mat.vertex_color_use_as_albedo = true
-	flora_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	flora_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	flora_mat.roughness = 1.0
-	flora_mat.metallic = 0.0
+	# === FAR-GRASS PR (2026-06-12) — wind-sway material, start ===========
+	# One shared wind-sway material for all three flora models (cheap — one
+	# material, three meshes). This is the SAME flora_sway.gdshader the
+	# far-grass impostor layer (FarGrassManager) uses, so the real LOD0
+	# blades and the distant impostor blades sway identically and read as
+	# one continuous field across the LOD seam.
+	#
+	# The shader reproduces what the old StandardMaterial3D did
+	# (vertex-colour albedo, double-sided via render_mode cull_disabled,
+	# matte roughness) PLUS a gentle TIME-driven sway in the vertex stage.
+	# Swaying grass is a core part of the Lay-of-the-Land look
+	# (VISION_VOXEL_10CM.md ref_01). TIME needs no [shader_globals] entry,
+	# so this adds nothing to project.godot (PATTERNS_AND_GOTCHAS: never
+	# call RenderingServer.global_shader_parameter_add).
+	#
+	# FALLBACK: if the sway shader fails to load (missing file), fall back
+	# to the original StandardMaterial3D so flora still renders (just
+	# without sway) rather than going invisible.
+	var flora_mat: Material = null
+	var _sway_sh := load("res://assets/shaders/flora_sway.gdshader") as Shader
+	if _sway_sh != null:
+		var _sm := ShaderMaterial.new()
+		_sm.resource_name = "flora_runtime_sway"
+		_sm.shader = _sway_sh
+		flora_mat = _sm
+	else:
+		push_warning("[World3D][Flora] flora_sway.gdshader missing — flora renders without wind sway.")
+		var _std := StandardMaterial3D.new()
+		_std.resource_name = "flora_runtime"
+		_std.vertex_color_use_as_albedo = true
+		_std.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		_std.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_std.roughness = 1.0
+		_std.metallic = 0.0
+		flora_mat = _std
+	# === FAR-GRASS PR (2026-06-12) — wind-sway material, end =============
 
 	if not ClassDB.class_exists("VoxelBlockyModelMesh"):
 		push_error("[World3D][Flora] VoxelBlockyModelMesh not registered in this Zylann build — flora cannot be injected. Grass/flower ids will render as missing models.")
@@ -1320,37 +1377,11 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 
 	var added_ids: Array[int] = []
 	for spec in flora_specs:
-		var fm: Object = ClassDB.instantiate("VoxelBlockyModelMesh")
-		if fm == null:
-			push_error("[World3D][Flora] could not instantiate VoxelBlockyModelMesh for %s." % spec["name"])
-			break
 		var mesh: ArrayMesh = _build_flora_cross_quad_mesh(
 			float(spec["height_m"]), float(spec["half_width_m"]), spec["color"])
-		if fm.has_method("set_mesh"):
-			fm.call("set_mesh", mesh)
-		elif "mesh" in fm:
-			fm.set("mesh", mesh)
-		if fm.has_method("set_material_override"):
-			fm.call("set_material_override", 0, flora_mat)
-		# Transparent class of its own (3) — distinct from leaves (1) and
-		# water (2) — so the blocky mesher sorts flora after opaque solids
-		# and doesn't cull the faces of the grass/dirt block underneath it.
-		if fm.has_method("set_transparency_index"):
-			fm.call("set_transparency_index", 3)
-		# Flora draws on every side regardless of neighbours (a blade next
-		# to a dirt wall must still show), so it must NOT cull neighbour
-		# faces and the neighbour must not cull it.
-		if "culls_neighbors" in fm:
-			fm.set("culls_neighbors", false)
-		# WALK-THROUGH: clear both collider paths exactly like the water
-		# models (box AABBs + per-surface mesh collision), so the player
-		# and the finite-water sim pass straight through a flower bed.
-		if fm.has_method("set_collision_aabbs"):
-			fm.call("set_collision_aabbs", [])
-		if fm.has_method("set_collision_mask"):
-			fm.call("set_collision_mask", 0)
-		if fm.has_method("set_mesh_collision_enabled"):
-			fm.call("set_mesh_collision_enabled", 0, false)
+		var fm: Object = _make_walkthrough_blocky_model(mesh, flora_mat, spec["name"])
+		if fm == null:
+			break
 		added_ids.append(int(lib.call("add_model", fm)))
 
 	var want: Array[int] = [
@@ -1362,56 +1393,124 @@ func _inject_flora_models_into_library(lib: Resource) -> void:
 	if added_ids != want:
 		push_error("[World3D][Flora] add_model ids %s != expected %s — FloraMaterial / generator id math will be wrong." % [str(added_ids), str(want)])
 
+	# --- D1 surface detail (ids 27..28): pebble + twig --------------------
+	# Injected RIGHT AFTER the three flora models so the library now holds
+	# 0..26 and the two add_model calls below land at exactly 27, 28 — what
+	# FloraMaterial.PEBBLE_ID / TWIG_ID and the C++ generator expect. These
+	# are SMALL, LOW-PROFILE, vertex-coloured, walk-through meshes (no
+	# cross-quad — a squat lump for a pebble, a thin flat bar for a twig) so
+	# the world reads as material up close without becoming an obstacle.
+	# Reuses the same shared flora_mat (vertex-colour) since each mesh bakes
+	# its own colour into ARRAY_COLOR.
+	var detail_specs: Array = [
+		# Pebble — a squat hexagonal lump ~0.6 voxel wide, ~0.25 voxel tall,
+		# grey-brown. Sits flat on the ground.
+		{
+			"id": FloraMaterial.PEBBLE_ID, "name": "pebble", "kind": "pebble",
+			"half_width_m": 0.03, "height_m": 0.025,
+			"color": Color(0.42, 0.38, 0.33),
+		},
+		# Twig — a thin horizontal brown bar ~0.4 voxel long, very low.
+		{
+			"id": FloraMaterial.TWIG_ID, "name": "twig", "kind": "twig",
+			"half_width_m": 0.02, "height_m": 0.015, "length_m": 0.20,
+			"color": Color(0.34, 0.24, 0.14),
+		},
+	]
+	var detail_pre_count: int = -1
+	if "models" in lib:
+		detail_pre_count = (lib.get("models") as Array).size()
+	if detail_pre_count != FloraMaterial.SURFACE_DETAIL_BASE_ID:
+		push_error("[World3D][Detail] library has %d models, expected %d before surface-detail inject — pebble/twig ids would misalign with FloraMaterial." % [detail_pre_count, FloraMaterial.SURFACE_DETAIL_BASE_ID])
+		return
+	var detail_added: Array[int] = []
+	for spec in detail_specs:
+		var mesh: ArrayMesh = _build_surface_detail_mesh(spec)
+		var fm: Object = _make_walkthrough_blocky_model(mesh, flora_mat, spec["name"])
+		if fm == null:
+			break
+		detail_added.append(int(lib.call("add_model", fm)))
+	var detail_want: Array[int] = [FloraMaterial.PEBBLE_ID, FloraMaterial.TWIG_ID]
+	print("[World3D][Detail] injected %d surface-detail model(s) at ids %s (pebble, twig; low-profile, NON-COLLIDING, vertex-colour)." % [detail_added.size(), str(detail_added)])
+	if detail_added != detail_want:
+		push_error("[World3D][Detail] add_model ids %s != expected %s — FloraMaterial / generator id math will be wrong." % [str(detail_added), str(detail_want)])
 
-func _build_flora_cross_quad_mesh(height_m: float, half_width_m: float, color: Color) -> ArrayMesh:
-	# Build the two-intersecting-quad "X" mesh for one flora voxel, in
-	# CUBE-LOCAL space. Zylann blocky models live in a unit cube spanning
-	# (0,0,0)..(1,1,1) in MODEL space, where 1 model-unit = 1 voxel. So we
-	# convert the desired world-metre size into voxel units and centre the
-	# cross on the cube's vertical axis, rooted at the bottom face (y=0).
-	#
-	# Both quads are emitted DOUBLE-SIDED (front + back winding) so the
-	# blade reads from any camera angle without relying on the material's
-	# cull mode alone — belt-and-suspenders with CULL_DISABLED above.
-	var v_per_m: float = VoxelScale.VOXELS_PER_METER     # 10 at R2
-	var h: float = clampf(height_m * v_per_m, 0.1, 1.0)  # voxel units, capped to the cube
-	var hw: float = clampf(half_width_m * v_per_m, 0.05, 0.5)
-	var cx: float = 0.5   # cube centre on X
-	var cz: float = 0.5   # cube centre on Z
 
+func _make_walkthrough_blocky_model(mesh: ArrayMesh, mat: Material, label: String) -> Object:
+	# Shared builder for a vertex-coloured, walk-through VoxelBlockyModelMesh
+	# (flora + D1 surface detail). Mirrors the exact collision-off + no-cull
+	# setup the flora models used, so pebbles/twigs are decoration the player
+	# and the water sim pass straight through, same as grass blades.
+	var fm: Object = ClassDB.instantiate("VoxelBlockyModelMesh")
+	if fm == null:
+		push_error("[World3D] could not instantiate VoxelBlockyModelMesh for %s." % label)
+		return null
+	if fm.has_method("set_mesh"):
+		fm.call("set_mesh", mesh)
+	elif "mesh" in fm:
+		fm.set("mesh", mesh)
+	if fm.has_method("set_material_override"):
+		fm.call("set_material_override", 0, mat)
+	# Transparent class of its own (3) — distinct from leaves (1) and water
+	# (2) — so the mesher sorts these after opaque solids and doesn't cull
+	# the face of the block underneath.
+	if fm.has_method("set_transparency_index"):
+		fm.call("set_transparency_index", 3)
+	if "culls_neighbors" in fm:
+		fm.set("culls_neighbors", false)
+	# WALK-THROUGH: clear both collider paths (box AABBs + per-surface mesh
+	# collision) so the player and the finite-water sim pass straight through.
+	if fm.has_method("set_collision_aabbs"):
+		fm.call("set_collision_aabbs", [])
+	if fm.has_method("set_collision_mask"):
+		fm.call("set_collision_mask", 0)
+	if fm.has_method("set_mesh_collision_enabled"):
+		fm.call("set_mesh_collision_enabled", 0, false)
+	return fm
+
+
+func _build_surface_detail_mesh(spec: Dictionary) -> ArrayMesh:
+	# Build a SMALL, low-profile horizontal mesh for a pebble or twig in
+	# CUBE-LOCAL space (unit cube (0,0,0)..(1,1,1), 1 unit = 1 voxel). Unlike
+	# flora these are NOT cross-quads — they're squat solids sitting on the
+	# cube floor (y=0) so they read as something lying on the ground, never
+	# as a standing blade. Double-sided emission is unnecessary (they have
+	# real top/side faces); the shared material is CULL_DISABLED anyway.
+	var v_per_m: float = VoxelScale.VOXELS_PER_METER
+	var color: Color = spec["color"]
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
 
-	# Helper: append one quad (4 corners, CCW from the front) plus its
-	# back-facing twin so the surface is visible from both sides.
+	# Helper to push one quad (a,b,c,d CCW) with a flat normal.
 	var add_quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3) -> void:
 		var base: int = verts.size()
-		# Front face.
 		for p in [a, b, c, d]:
 			verts.append(p)
 			normals.append(n)
 			colors.append(color)
 		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
-		# Back face (reversed winding, flipped normal).
-		var base2: int = verts.size()
-		for p in [d, c, b, a]:
-			verts.append(p)
-			normals.append(-n)
-			colors.append(color)
-		indices.append_array([base2, base2 + 1, base2 + 2, base2, base2 + 2, base2 + 3])
 
-	# Quad 1 — diagonal running NE-SW (varies in X and Z together).
-	add_quad.call(
-		Vector3(cx - hw, 0.0, cz - hw), Vector3(cx + hw, 0.0, cz + hw),
-		Vector3(cx + hw, h,  cz + hw), Vector3(cx - hw, h,  cz - hw),
-		Vector3(-1, 0, 1).normalized())
-	# Quad 2 — diagonal running NW-SE (the other arm of the "X").
-	add_quad.call(
-		Vector3(cx - hw, 0.0, cz + hw), Vector3(cx + hw, 0.0, cz - hw),
-		Vector3(cx + hw, h,  cz - hw), Vector3(cx - hw, h,  cz + hw),
-		Vector3(1, 0, 1).normalized())
+	var h: float = clampf(float(spec["height_m"]) * v_per_m, 0.04, 0.6)
+	if String(spec["kind"]) == "twig":
+		# A thin horizontal box: long in Z, narrow in X, very low in Y.
+		var half_len: float = clampf(float(spec["length_m"]) * v_per_m * 0.5, 0.05, 0.48)
+		var half_w: float = clampf(float(spec["half_width_m"]) * v_per_m, 0.02, 0.2)
+		var cx: float = 0.5
+		var cz: float = 0.5
+		var x0: float = cx - half_w
+		var x1: float = cx + half_w
+		var z0: float = cz - half_len
+		var z1: float = cz + half_len
+		_emit_box(add_quad, x0, x1, 0.0, h, z0, z1)
+	else:
+		# Pebble: a squat box (cheaper than a faux-dome, reads fine at 10cm).
+		var half_w2: float = clampf(float(spec["half_width_m"]) * v_per_m, 0.05, 0.4)
+		var cx2: float = 0.5
+		var cz2: float = 0.5
+		_emit_box(add_quad,
+			cx2 - half_w2, cx2 + half_w2, 0.0, h, cz2 - half_w2, cz2 + half_w2)
 
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -1422,6 +1521,38 @@ func _build_flora_cross_quad_mesh(height_m: float, half_width_m: float, color: C
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+func _emit_box(add_quad: Callable, x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> void:
+	# Append the 6 faces of an axis-aligned box to a quad-accumulator
+	# Callable (signature: a,b,c,d corners CCW + outward normal). Used by
+	# the D1 pebble/twig low-profile solids.
+	# Top (+Y) and bottom (-Y).
+	add_quad.call(Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x0, y1, z1), Vector3(0, 1, 0))
+	add_quad.call(Vector3(x0, y0, z1), Vector3(x1, y0, z1), Vector3(x1, y0, z0), Vector3(x0, y0, z0), Vector3(0, -1, 0))
+	# +Z and -Z.
+	add_quad.call(Vector3(x0, y0, z1), Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y0, z1), Vector3(0, 0, 1))
+	add_quad.call(Vector3(x1, y0, z0), Vector3(x1, y1, z0), Vector3(x0, y1, z0), Vector3(x0, y0, z0), Vector3(0, 0, -1))
+	# +X and -X.
+	add_quad.call(Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0), Vector3(x1, y0, z0), Vector3(1, 0, 0))
+	add_quad.call(Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x0, y1, z1), Vector3(x0, y0, z1), Vector3(-1, 0, 0))
+
+
+func _build_flora_cross_quad_mesh(height_m: float, half_width_m: float, color: Color) -> ArrayMesh:
+	# Build the two-intersecting-quad "X" mesh for one flora voxel in
+	# CUBE-LOCAL space (Zylann blocky model space — a unit cube (0,0,0)..
+	# (1,1,1) where 1 unit = 1 voxel).
+	#
+	# The geometry now lives in scripts/FloraMeshBuilder.gd so the far-grass
+	# IMPOSTOR layer (FarGrassManager) builds the SAME blade shape — one
+	# source of truth means the near (real voxel) blades and the far
+	# (GPU-instanced) blades are guaranteed to look identical across the LOD
+	# seam (far-grass PR, 2026-06-12). world_space=false keeps the legacy
+	# cube-local behaviour (metres -> voxel units, clamped + centred in the
+	# unit cube) byte-for-byte identical to the old inline builder.
+	const FloraMeshBuilder := preload("res://scripts/FloraMeshBuilder.gd")
+	return FloraMeshBuilder.build_cross_quad(
+		height_m, half_width_m, color, VoxelScale.VOXELS_PER_METER, false)
 
 
 func _stamp_river_flow_volumes() -> void:

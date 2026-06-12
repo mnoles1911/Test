@@ -155,6 +155,18 @@ var _player_pos: Vector3 = Vector3.ZERO
 # frame via set_player_position(). Used to bound dirty-chunk scans
 # to the active radius.
 
+# --- D4: flowing-water foam (visual layer, default OFF) --------------
+# A single pooled-particle WaterFoamManager child that we reposition across
+# the active MOVING flow sites each finite tick. Created lazily in _ready
+# ONLY in a real windowed game (never headless), and only ever DRIVEN when
+# GraphicsManager.water_foam_enabled is true — so foam is zero-cost off and
+# never touches the headless hot path. See scripts/graphics/WaterFoamManager.gd.
+const WaterFoamManagerScript := preload("res://scripts/graphics/WaterFoamManager.gd")
+var _foam_mgr: Node3D = null
+# Max flow sites we bother harvesting per tick (matches the foam manager's
+# own MAX_FOAM_SITES — no point collecting more than it can visit).
+const FOAM_MAX_SITES: int = 8
+
 var _player_chunk: Vector3i = Vector3i(2147483647, 2147483647, 2147483647)
 # Last seen player chunk coord. Used to detect chunk transitions and
 # notify WaterChunkMesher (so it can update which chunks have meshes
@@ -372,6 +384,15 @@ func _ready() -> void:
 			print("[WaterFlowManager] WaterFlowCpp registered but instantiate failed; using GD fallback.")
 	else:
 		print("[WaterFlowManager] WaterFlowCpp not registered; using GD fallback.")
+
+	# D4 foam: build the pooled-particle manager, but ONLY in a real
+	# windowed game — never under --headless (no GPU, and the harness must
+	# stay particle-free). The manager itself does no work until we feed it
+	# sites, and we only feed it when the GraphicsManager toggle is on.
+	if DisplayServer.get_name() != "headless":
+		_foam_mgr = WaterFoamManagerScript.new()
+		_foam_mgr.name = "WaterFoamManager"
+		add_child(_foam_mgr)
 
 	# Water Voxel V2 (2026-05-16): WaterChunkMesher + the horizon plane
 	# are DELETED. Water is now a normal transparent TYPE block (id 5)
@@ -1383,12 +1404,14 @@ func _finite_is_solid(p: Vector3i) -> bool:
 	var t: int = _finite_tool.get_voxel(p)
 	if t == 0:
 		return false
-	# R4: micro-voxel flora (grass blades / flowers) is NON-SOLID to water
-	# — water must flow straight into a flora cell and mow it down, not
-	# treat a blade of grass as a dam. The flora TYPE byte is overwritten
-	# by water's own TYPE re-projection when the cell fills (see below), so
-	# the blade doesn't survive under water. Same treatment as water ids.
-	if FloraMaterial.is_flora(t):
+	# R4 + D1: micro-voxel flora (grass blades / flowers, 24..26) AND
+	# surface detail (pebbles / twigs, 27..28) are NON-SOLID to water —
+	# water must flow straight into a decoration cell and mow it down, not
+	# treat a blade of grass (or a pebble) as a dam. The TYPE byte is
+	# overwritten by water's own TYPE re-projection when the cell fills, so
+	# the decoration doesn't survive under water. Same treatment as water
+	# ids. is_passthrough() covers both 24..26 and 27..28 in one branch.
+	if FloraMaterial.is_passthrough(t):
 		return false
 	return not WaterMaterial.is_water_type(t)
 
@@ -1427,12 +1450,33 @@ func _step_finite(tool: VoxelTool) -> void:
 	var ch: PackedInt32Array = res["changes"]
 	@warning_ignore("integer_division")
 	var n: int = ch.size() / 4
+	# D4 foam: only collect MOVING flow sites when the designer toggle is on
+	# AND the foam manager exists (windowed game). Checked ONCE here so the
+	# common path (foam off / headless) pays a single bool test, not per-cell.
+	var _foam_on: bool = false
+	var _foam_sites: Array = []
+	if _foam_mgr != null:
+		var _gm: Node = get_node_or_null("/root/GraphicsManager")
+		if _gm != null and _gm.has_method("is_effect_enabled"):
+			_foam_on = _gm.is_effect_enabled("water_foam")
 	for i in range(n):
 		var pos: Vector3i = Vector3i(ch[i * 4], ch[i * 4 + 1], ch[i * 4 + 2])
 		var byte: int = ch[i * 4 + 3]
 		VoxelEditManager.queue_set_water_voxel(pos, byte)
 		# Fresh change: needs the full reconcile schedule from scratch.
 		_unprojected[pos] = Vector2i(RECONCILE_PASSES, _finite_tick_no + 1)
+		# D4: a changed cell whose new byte has non-STILL DIR bits is a
+		# MOVING flow site → a foam candidate. Cap the harvest at
+		# FOAM_MAX_SITES (the manager can't visit more than that anyway).
+		if _foam_on and _foam_sites.size() < FOAM_MAX_SITES \
+				and WaterByteCodec.is_water(byte):
+			var dir_code: int = WaterByteCodec.dir_of(byte)
+			if dir_code != WaterByteCodec.DIR_STILL and dir_code != WaterByteCodec.DIR_RSVD:
+				var lvl: int = WaterByteCodec.level_of(byte)
+				_foam_sites.append({
+					"pos": _voxel_center_world(pos),
+					"flow": float(lvl) / float(MAX_LEVEL),
+				})
 
 	# Verified projection (see _unprojected docs above): read each due
 	# cell's WORLD byte; match -> one pass done, re-check later;
@@ -1463,6 +1507,12 @@ func _step_finite(tool: VoxelTool) -> void:
 		for pos in done:
 			_unprojected.erase(pos)
 	_finite_tool = null
+
+	# D4: push the harvested MOVING flow sites to the pooled foam emitter.
+	# When foam is off (or no cells moved) _foam_sites is empty and the
+	# manager simply stops emitting. Only runs in a windowed game.
+	if _foam_on and _foam_mgr != null and _foam_mgr.has_method("update_foam_sites"):
+		_foam_mgr.update_foam_sites(_foam_sites)
 
 
 func _finite_wake_from_aabb(vmin: Vector3i, vmax: Vector3i) -> void:

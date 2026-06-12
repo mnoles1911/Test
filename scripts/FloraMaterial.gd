@@ -56,10 +56,59 @@ const FLORA_COUNT: int = 3                   # 24, 25, 26
 const FLORA_IDS: Array[int] = [24, 25, 26]
 
 
+# --- 10cm micro-detail pass: surface scatter (D1) -------------------
+# Pebbles and twigs — tiny low-profile decoration voxels scattered on the
+# ground so the world "reads as material" up close (VISION_VOXEL_10CM.md
+# micro-detail pillar). They are NOT flora (not vegetation), so they get
+# their OWN helper `is_surface_detail()` — but for the physics/sim they
+# behave EXACTLY like flora: pass-through air. A pebble must never anchor a
+# structure, never ride a falling cluster, never dam water, never count as
+# solid ground.
+#
+# Ids 27, 28 sit DIRECTLY after the flora ids (24..26) so the combined
+# "pass-through decoration" range is one contiguous block 24..28 — which is
+# what every physics/sim exclusion site range-checks (see is_passthrough()).
+# They are injected at runtime right after the flora models in
+# World3DBootstrap, and scattered by the C++ generator with its own salt.
+#
+#   27 = pebble   (a squat grey-brown mini-rock lump)
+#   28 = twig     (a thin horizontal brown stick)
+const PEBBLE_ID: int = 27
+const TWIG_ID: int = 28
+
+const SURFACE_DETAIL_BASE_ID: int = PEBBLE_ID   # 27
+const SURFACE_DETAIL_COUNT: int = 2             # 27, 28
+const SURFACE_DETAIL_IDS: Array[int] = [27, 28]
+
+# The combined pass-through decoration range: flora (24..26) PLUS surface
+# detail (27..28) = 24..28 inclusive. EVERY physics/sim site that treats
+# flora as air uses THIS range so pebbles/twigs get the identical exemption
+# with one branch and no second preload. The C++ ports (gravity, sever) and
+# GravityReference.gd mirror this exact range by value.
+const PASSTHROUGH_BASE_ID: int = FLORA_BASE_ID                          # 24
+const PASSTHROUGH_COUNT: int = FLORA_COUNT + SURFACE_DETAIL_COUNT       # 5 → 24..28
+
+
 # "Is this CHANNEL_TYPE value flora?" — the grass/flower analogue of
 # WaterMaterial.is_water_type(). Contiguous range -> single branch.
-# Callers that already special-case water (gravity, sever, finite water)
-# add an OR on this so grass and flowers are treated as pass-through air
-# by the physics/sim, never as solid ground and never as water.
+# NOTE: flora is the VEGETATION subset (24..26) only — pebbles/twigs are
+# surface detail, not flora. For the "treat as pass-through air" question
+# use is_passthrough(), which covers both.
 static func is_flora(type_id: int) -> bool:
 	return type_id >= FLORA_BASE_ID and type_id < FLORA_BASE_ID + FLORA_COUNT
+
+
+# "Is this CHANNEL_TYPE value pebble/twig surface detail?" (27..28).
+# Separate helper from is_flora() so call sites that genuinely care about
+# vegetation (e.g. trample, scythe drops) don't accidentally include rocks.
+static func is_surface_detail(type_id: int) -> bool:
+	return type_id >= SURFACE_DETAIL_BASE_ID and type_id < SURFACE_DETAIL_BASE_ID + SURFACE_DETAIL_COUNT
+
+
+# "Should the physics/sim treat this voxel as pass-through air?" — true for
+# BOTH flora (24..26) and surface detail (27..28). This is the single helper
+# every gravity / sever / finite-water exclusion site funnels through, so
+# adding a new decoration id is a one-line range change here, mirrored by
+# value in the two C++ ports + GravityReference.gd.
+static func is_passthrough(type_id: int) -> bool:
+	return type_id >= PASSTHROUGH_BASE_ID and type_id < PASSTHROUGH_BASE_ID + PASSTHROUGH_COUNT
