@@ -65,19 +65,26 @@ const MATERIAL_TILES: Dictionary = {
 	13: {"top": Vector2i(8, 0),  "side": Vector2i(8, 0),  "bottom": Vector2i(8, 0)},   # snow (Tier 2)
 	14: {"top": Vector2i(9, 0),  "side": Vector2i(9, 0),  "bottom": Vector2i(9, 0)},   # stone_dark (Tier 3)
 	15: {"top": Vector2i(10, 0), "side": Vector2i(10, 0), "bottom": Vector2i(10, 0)},  # iron_ore (Tier 4)
+	# Tree-asset palette (ids 24-28) from tools/voxel_tree_studio. Placeholder
+	# tiles; replace with real pixel art. ids 16-23 are native fluid models.
+	24: {"top": Vector2i(5, 1),  "side": Vector2i(5, 1),  "bottom": Vector2i(5, 1)},   # bark
+	25: {"top": Vector2i(6, 1),  "side": Vector2i(6, 1),  "bottom": Vector2i(6, 1)},   # heartwood
+	26: {"top": Vector2i(7, 1),  "side": Vector2i(7, 1),  "bottom": Vector2i(7, 1)},   # deadwood
+	27: {"top": Vector2i(8, 1),  "side": Vector2i(8, 1),  "bottom": Vector2i(8, 1)},   # leaf_dark
+	28: {"top": Vector2i(9, 1),  "side": Vector2i(9, 1),  "bottom": Vector2i(9, 1)},   # leaf_light
 }
 
 # Material IDs that should NOT cull adjacent block faces. Leaves are
 # the canonical example -- the canopy needs to look dense from outside,
 # so each leaf voxel keeps its faces visible even when surrounded by
 # other leaves.
-const NON_CULLING_MATERIALS: Array[int] = [11]   # leaves
+const NON_CULLING_MATERIALS: Array[int] = [11, 27, 28]   # leaves + tree leaf shades
 
 # Material IDs that should render as transparent. Different
 # transparency_index values mean Zylann groups faces into separate
 # render passes for correct alpha sorting. 1 = leaves' alpha-cutout
 # group.
-const TRANSPARENT_MATERIALS: Array[int] = [11]   # leaves
+const TRANSPARENT_MATERIALS: Array[int] = [11, 27, 28]   # leaves + tree leaf shades
 
 
 # =============================================================

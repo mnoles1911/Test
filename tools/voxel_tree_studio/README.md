@@ -83,10 +83,28 @@ Trunk base at the origin, `+y` up.
 - `vendor/ez-tree/` — our MIT fork of ez-tree's `src/lib` (see `VENDOR.md`).
 - `references/` — reference images for the overlay.
 
-## Not yet built (next)
+## Other features
 
-- **Fit to reference** — auto-tune dials from a reference image (heuristic).
-- **Web Worker** — offload voxelization for very large trees.
-- **Space colonization** growth mode.
-- The **Godot importer** (JSON → `VoxelEditManager.queue_set_voxels_bulk`) +
-  real bark/leaf textures wired into `tools/build_blocky_library.gd`.
+- **Fit dials to reference** — heuristic auto-tune from the reference image
+  (`reference_fit.js`): detects canopy/trunk proportions → species + dials.
+- **Space colonization** growth mode — organic attractor-based growth
+  (`space_colonization.js`); switch via the **Growth** dropdown.
+- **Web Worker** — voxelization runs off-thread (`tree.worker.js`) so big trees
+  stay responsive; inline fallback if workers are unavailable.
+- **Mobile** — responsive layout + a panel show/hide toggle.
+
+## Deploying into Godot
+
+- **Importer:** `scripts/_dev/VoxelTreeImporter.gd` reads an exported JSON and
+  stamps it via `VoxelEditManager.queue_set_voxels_bulk`. Runtime only (needs
+  the autoload) — see its header for usage. *Needs in-editor verification
+  (`DESIGNER_TODO.md`).*
+- **Materials:** ids 24–28 are wired with **placeholder** tiles + `.tres`
+  resources. Bake them with `python tools/build_texture_atlas.py default` then
+  `tools/build_blocky_library.gd` in-editor, and replace the placeholder PNGs
+  with real pixel art. Until then, export with *log/leaves only*.
+
+## Future (v2)
+
+- Iterative reference optimizer (silhouette/colour fitting, not just heuristic).
+- Real authored textures + the 6→10 vox/m engine scale migration.

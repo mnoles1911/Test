@@ -803,24 +803,34 @@ Open questions that need an answer before their dependent systems can be built.
   movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
   Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
 
-- [ ] **Tree voxel materials — author textures + register ids 24–28**
+- [ ] **Tree voxel materials (ids 24–28) — bake the library + replace placeholder art**
   The Voxel Tree Studio (`tools/voxel_tree_studio/`) emits a rich wood/leaf
-  palette. The ids are chosen to avoid the native fluid models at 16–23:
+  palette (24 bark, 25 heartwood, 26 deadwood, 27 leaf_dark, 28 leaf_light —
+  chosen to avoid the native fluid models at 16–23). These are **already wired
+  in code with PLACEHOLDER tiles**:
+  - `.tres` resources in `assets/voxels/materials/` (bark/heartwood/deadwood/
+    leaf_dark/leaf_light).
+  - placeholder 16px source PNGs in `assets/voxels/texture_packs/default/source/`.
+  - atlas rows in `tools/build_texture_atlas.py` (5,1)…(9,1).
+  - `MATERIAL_TILES` + leaf ids in `NON_CULLING_MATERIALS`/`TRANSPARENT_MATERIALS`
+    in `tools/build_blocky_library.gd`.
 
-  | id | name | family | render flags |
-  |----|------|--------|--------------|
-  | 24 | bark | wood | culling, opaque |
-  | 25 | heartwood | wood | culling, opaque |
-  | 26 | deadwood | wood | culling, opaque |
-  | 27 | leaf_dark | leaves | non-culling, alpha-scissor |
-  | 28 | leaf_light | leaves | non-culling, alpha-scissor |
+  To activate: **(1)** run `python tools/build_texture_atlas.py default`, **(2)**
+  run `tools/build_blocky_library.gd` from the Godot editor (Ctrl+Shift+X),
+  **(3)** restart Godot. Then **replace the placeholder PNGs with real pixel
+  art** (see `tools/AI_TEXTURE_PROMPTS.md`); for the leaves, add their source
+  names to `CHROMA_KEY_MATERIALS` in `build_texture_atlas.py` so the white
+  background becomes alpha gaps. Until baked, export trees with the
+  "log/leaves only" toggle (ids 10/11).
 
-  To light these up in-engine: author 16px pixel-art tiles (see
-  `tools/AI_TEXTURE_PROMPTS.md`), add them to `tools/build_texture_atlas.py`,
-  create `VoxelMaterial` `.tres` resources, and add rows to `MATERIAL_TILES`
-  (+ `NON_CULLING_MATERIALS`/`TRANSPARENT_MATERIALS` for the leaf ids) in
-  `tools/build_blocky_library.gd`. Until then, export trees with the
-  "log/leaves only" toggle so they use existing ids 10/11.
+- [ ] **Verify the tree importer in-editor (`scripts/_dev/VoxelTreeImporter.gd`)**
+  Reads a studio JSON export and stamps the voxels via
+  `VoxelEditManager.queue_set_voxels_bulk`. Written against the discovered API
+  but **not yet run in Godot**. Verify: export a tree, then at runtime call
+  `VoxelTreeImporter.stamp("res://path/tree.json", Vector3i(0, <ground_y>, 0))`
+  (e.g. from a dev key in `World3DBootstrap.gd`) and confirm the tree appears at
+  the right spot/size and chops correctly. Note the 6→10 vox/m scale caveat
+  (it places 1:1 at the engine grid; pass `voxels_per_meter` to taste).
 
 - [ ] **Raise the tree-felling sever caps for large trees (accurate physics)**
   `VoxelGravityManager` caps a single falling cluster at `max_cluster_voxels`
