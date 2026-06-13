@@ -3,7 +3,7 @@
 // ===========================================================================
 // PURE (no THREE, no DOM) — safe in a Web Worker. Assembles a bilaterally
 // symmetric T-POSE humanoid from named body-part volumes (head, neck, torso,
-// pelvis, arms, hands, legs, feet) at 18 voxels/metre, so it feeds the existing
+// pelvis, arms, hands, legs, feet) at 30 voxels/metre, so it feeds the existing
 // Blender import -> Mixamo auto-rig -> .glb pipeline. Output is the shared
 // {positions, materials, stats} shape (via voxel_core), same as the other
 // studios.
@@ -64,7 +64,7 @@ export function buildCharacter(params = {}) {
   const rng = makeRng((p.seed | 0) || 1);
   const map = new Map();
 
-  const H = Math.max(10, Math.round(p.heightM * 18));
+  const H = Math.max(10, Math.round(p.heightM * 30));
   const b = p.build;
   const fr = (f) => Math.round(f * H);
 

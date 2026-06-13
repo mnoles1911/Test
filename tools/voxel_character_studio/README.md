@@ -1,7 +1,7 @@
 # Voxel Character Studio
 
 Procedurally generates **bipedal characters/creatures** (human, goblin, dwarf,
-Ashfallen knight) as cubic voxels in a strict **T-pose** at **18 voxels/metre**.
+Ashfallen knight) as cubic voxels in a strict **T-pose** at **30 voxels/metre**.
 Exports the shared voxel JSON — feed it through `tools/blender/import_voxel_json.py`
 → Blender → **Mixamo auto-rig** → `assets/models/<name>.glb`.
 
@@ -66,7 +66,7 @@ auto-detects Skeleton3D + AnimationPlayer.
 
 ## Notes / limits
 
-- At 18 vox/m a character is ~32 voxels tall — faces/hands are **suggestive, not
-  detailed** (brow/eye/jaw blocks; hands as claw/mitten silhouettes). This matches
-  the stylized look and survives Remesh.
+- At 30 vox/m a 1.8 m character is ~54 voxels tall — features are blocky but
+  readable (brow/eye/jaw, hands as claw/mitten silhouettes). Good fidelity heading
+  into Remesh + rigging.
 - Quadrupeds (wolf/bear) are out of scope (not biped / not Mixamo-auto-riggable).

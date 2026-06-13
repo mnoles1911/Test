@@ -9,7 +9,7 @@
   VOXEL CHARACTER STUDIO  (tools/voxel_character_studio/index.html)
   ===========================================================================
   Procedurally generates BIPEDAL characters/creatures (human/goblin/dwarf/
-  Ashfallen) as cubic voxels in a strict T-POSE at 18 voxels/metre. Exports the
+  Ashfallen) as cubic voxels in a strict T-POSE at 30 voxels/metre. Exports the
   shared voxel JSON (with an embedded RGB palette) — feed it to
   tools/blender/import_voxel_json.py -> Blender -> Mixamo auto-rig -> .glb.
   This replaces the Nano-Banana -> Meshy step of the character pipeline.
@@ -71,7 +71,7 @@
 <div id="app">
   <div id="panel">
     <h1>🧍 Voxel Character Studio</h1>
-    <p class="sub">T-pose biped voxels (18 vox/m). Pick a species, tune, randomize, or fit a reference with Claude. Export → Blender → Mixamo rig.</p>
+    <p class="sub">T-pose biped voxels (30 vox/m). Pick a species, tune, randomize, or fit a reference with Claude. Export → Blender → Mixamo rig.</p>
 
     <details open>
       <summary><span>Reference &amp; Claude</span></summary>
@@ -137,7 +137,8 @@ import { buildCharacter, CMAT } from './character_builder.js';
 import { analyzeCharacterImage } from './claude_character.js';
 import { makeHumanFigure, placeFigureBeside } from '../voxel_studio_common/scale_figure.js';
 
-const M_PER_VOXEL = 1 / 18;
+const VOX_PER_M = 30;
+const M_PER_VOXEL = 1 / VOX_PER_M;
 const m = v => (v * M_PER_VOXEL).toFixed(2) + 'm';
 const MAT_NAMES = { 40:'skin',41:'skin_shadow',42:'cloth',43:'leather',44:'metal',45:'hair',46:'eye',47:'dark',48:'tooth',49:'accent' };
 
@@ -271,19 +272,20 @@ document.querySelectorAll('[data-quick]').forEach(b => b.addEventListener('click
 // ---------------------------------------------------------------------------
 const view = document.getElementById('view');
 const scene = new THREE.Scene(); scene.background = new THREE.Color('#0e1013');
-const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000); camera.position.set(40, 24, 52);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000); camera.position.set(60, 46, 84);
 const renderer = new THREE.WebGLRenderer({ antialias:true }); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); view.appendChild(renderer.domElement);
-const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0, 16, 0);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0, 27, 0);
 scene.add(new THREE.HemisphereLight('#cfe3ff', '#34301f', 1.05));
 const sun = new THREE.DirectionalLight('#fff4d6', 1.15); sun.position.set(30, 60, 25); scene.add(sun);
 const fill = new THREE.DirectionalLight('#9fb8d8', 0.35); fill.position.set(-30, 30, -40); scene.add(fill);
-scene.add(new THREE.GridHelper(72, 36, 0x444a52, 0x2a2f36));
+scene.add(new THREE.GridHelper(120, 40, 0x444a52, 0x2a2f36)); // 4 m, ~13 cm cells
 
-// 1.8 m human for scale (~18 voxels) — placed beside the character.
+// 1.8 m human for scale. The shared figure is 18 units = 1.8 m at 10 vox/m, so
+// scale it by VOX_PER_M/10 to match this preview's voxel size (= 1.8*VOX_PER_M units).
 const human = makeHumanFigure(THREE); let humanShown = false;
 function updateHuman(sizeVox) {
   const on = document.getElementById('showHuman').checked;
-  if (on) { human.scale.setScalar(18 / 18); placeFigureBeside(human, sizeVox); if (!humanShown) { scene.add(human); humanShown = true; } }
+  if (on) { human.scale.setScalar(VOX_PER_M / 10); placeFigureBeside(human, sizeVox); if (!humanShown) { scene.add(human); humanShown = true; } }
   else if (humanShown) { scene.remove(human); humanShown = false; }
 }
 
@@ -346,7 +348,7 @@ async function regenerate() {
   const conn = stats.disconnected === 0 ? `<span style="color:#8fbf6f">✓ one connected body</span>` : `<span style="color:#d8a35a">⚠ ${stats.disconnected} detached</span>`;
   document.getElementById('stats').innerHTML =
     `<b>${stats.total.toLocaleString()}</b> voxels · <b>${m(stats.sizeVox[1])}</b> tall<br>` +
-    `size <b>${stats.sizeVox[0]}×${stats.sizeVox[1]}×${stats.sizeVox[2]}</b> vox &nbsp;<span style="opacity:.5">T-pose @ 18 vox/m</span><br>` + conn;
+    `size <b>${stats.sizeVox[0]}×${stats.sizeVox[1]}×${stats.sizeVox[2]}</b> vox &nbsp;<span style="opacity:.5">T-pose @ 30 vox/m</span><br>` + conn;
 }
 
 // ---------------------------------------------------------------------------

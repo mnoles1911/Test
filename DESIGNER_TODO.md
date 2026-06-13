@@ -827,7 +827,7 @@ Open questions that need an answer before their dependent systems can be built.
 
 - [ ] **Character studio → Blender → Mixamo flow (verify the pipeline)**
   `tools/voxel_character_studio/` exports T-pose biped voxels (`mira-thal-voxel-character`,
-  18 vox/m, embedded RGB palette). It **replaces the Nano-Banana→Meshy step** of
+  30 vox/m, embedded RGB palette). It **replaces the Nano-Banana→Meshy step** of
   `design/ASSET_PIPELINE_AI.md`. Verify end-to-end: export a Goblin → run
   `tools/blender/run.sh tools/blender/import_voxel_json.py -- char.json --save x.blend`
   (the importer now reads the embedded palette — no engine material wiring needed
