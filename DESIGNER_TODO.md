@@ -825,6 +825,17 @@ Open questions that need an answer before their dependent systems can be built.
   background becomes alpha gaps. Until baked, export trees with the
   "log/leaves only" toggle (ids 10/11).
 
+- [ ] **Character studio → Blender → Mixamo flow (verify the pipeline)**
+  `tools/voxel_character_studio/` exports T-pose biped voxels (`mira-thal-voxel-character`,
+  18 vox/m, embedded RGB palette). It **replaces the Nano-Banana→Meshy step** of
+  `design/ASSET_PIPELINE_AI.md`. Verify end-to-end: export a Goblin → run
+  `tools/blender/run.sh tools/blender/import_voxel_json.py -- char.json --save x.blend`
+  (the importer now reads the embedded palette — no engine material wiring needed
+  for characters since they become meshes, not terrain) → optional Remesh →
+  Mixamo auto-rig (T-pose) → `assets/models/<name>.glb` → drop into a
+  `CharacterBody3D`. NOTE: character material ids 40–49 are **not** registered
+  `VoxelMaterial`s and must NOT be (characters aren't terrain voxels).
+
 - [ ] **Verify the tree importer in-editor (`scripts/_dev/VoxelTreeImporter.gd`)**
   Reads a studio JSON export and stamps the voxels via
   `VoxelEditManager.queue_set_voxels_bulk`. Written against the discovered API

@@ -115,17 +115,29 @@ def import_voxel_json(path, scale=None, name=None):
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
 
+    # Embedded palette (character exports): {"40":[r,g,b], ...} in 0-255.
+    # Falls back to the hardcoded PALETTE for terrain/vegetation/rock ids.
+    embedded = {}
+    for k, rgb in (data.get("palette") or {}).items():
+        try:
+            embedded[int(k)] = (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+        except Exception:
+            pass
+
+    def rgb_for(mid):
+        return embedded.get(mid) or PALETTE.get(mid, DEFAULT_RGB)
+
     # materials: one slot per used id, in sorted order
     used = sorted(set(quad_mat))
     slot_of = {}
     for mid in used:
         m = bpy.data.materials.new(f"vox_{mid}")
-        m.diffuse_color = (*PALETTE.get(mid, DEFAULT_RGB), 1.0)
+        m.diffuse_color = (*rgb_for(mid), 1.0)
         try:
             m.use_nodes = True
             bsdf = m.node_tree.nodes.get("Principled BSDF")
             if bsdf:
-                bsdf.inputs["Base Color"].default_value = (*PALETTE.get(mid, DEFAULT_RGB), 1.0)
+                bsdf.inputs["Base Color"].default_value = (*rgb_for(mid), 1.0)
                 bsdf.inputs["Roughness"].default_value = 0.9
         except Exception:
             pass
