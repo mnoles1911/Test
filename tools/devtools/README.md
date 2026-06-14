@@ -23,6 +23,18 @@ tools/devtools/verify.sh tools/voxel_rock_studio/index.html /tmp/rock.png --wait
 tools/devtools/verify.sh tools/voxel_tree_studio/index.html /tmp/tree.png --click "#randomize"
 ```
 
+### Regression sweep: `verify_all.sh`
+
+```bash
+tools/devtools/verify_all.sh [out_dir]   # default out dir: /tmp/verify_all
+```
+
+Serves the repo once and screenshots **every studio in its major modes** (rock:
+boulder/angular/cliff/spire/pebbles; tree: oak/pine/space-col/fern/grass/vine +
+randomize), printing a `PASS`/`FAIL` line per mode and **exiting nonzero if any
+mode logged a console error**. Run it before pushing studio changes (or after a
+dependency/CDN bump) to catch a broken studio fast.
+
 `verify.sh` prints a JSON report (`httpStatus`, `errorCount`, `errors[]`) and
 exits **1 if the page logged any error** — so it drives a fix-rerun loop. The
 PNG is written to the given path (Claude can then *view* it).

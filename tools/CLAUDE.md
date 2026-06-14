@@ -51,7 +51,7 @@ Runs Godot's **`_console.exe`** (plain win64 exe is GUI-subsystem and won't pipe
 | `blender/import_voxel_json.py` | Import a studio JSON export into Blender as a welded surface mesh (face-culled, palette materials). Add-on + Scripting + headless CLI (`--render`/`--turntable`/`--save`). Pure `build_surface()` is bpy-free + unit-tested. Studio +Y up → Blender +Z up. |
 | `blender/run.sh` | Headless Blender runner (`blender --background --python …`) — also the way to drive Blender for ad-hoc modelling tasks. Needs Blender installed. |
 | `aigen/` (Python CLIs) | AI asset generation. `gemini_image.py` (Gemini 2.5 Flash Image / Nano Banana, REST, `GEMINI_API_KEY`), `fal_image_to_3d.py` (fal.ai image→`.glb`, queue API, `FAL_KEY`, default `fal-ai/trellis`), `asset_pipeline.py` (chains both). All support `--dry-run`. Mirrors the concept-image→AI-3D steps of `design/ASSET_PIPELINE_AI.md`. |
-| `devtools/` (Playwright) | **Browser self-verification.** `browse_shot.mjs` screenshots a URL + reports console errors (exit 1 on error); `verify.sh` serves the repo locally and shoots a studio (tests actual files). Lets Claude *see* the studios. Setup: `npm i playwright && npx playwright install chromium` (`node_modules/` git-ignored). |
+| `devtools/` (Playwright) | **Browser self-verification.** `browse_shot.mjs` screenshots a URL + reports console errors (exit 1 on error); `verify.sh` serves the repo locally and shoots a studio (tests actual files); `verify_all.sh` is the regression sweep — 12 studio modes, nonzero exit on any console error. Lets Claude *see* the studios. Setup: `npm i playwright && npx playwright install chromium` (`node_modules/` git-ignored). |
 
 ## When adding a tool
 
