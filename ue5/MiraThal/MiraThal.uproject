@@ -1,0 +1,42 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.4",
+	"Category": "Game",
+	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via Voxel Plugin Pro, Nanite/Lumen, Chaos physics, dedicated-server multiplayer.",
+	"Modules": [
+		{
+			"Name": "MiraThalVoxel",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"AdditionalDependencies": [ "Engine" ]
+		},
+		{
+			"Name": "MiraThalCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [ "Engine" ]
+		},
+		{
+			"Name": "MiraThalNet",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [ "Engine" ]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "Voxel",
+			"Enabled": true,
+			"//comment": "Voxel Plugin Pro (Phyronnaz) — paid; install into Plugins/Voxel on the build machine. The voxel-world + runtime-edit layer depends on it."
+		},
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemSteam",
+			"Enabled": true,
+			"//comment": "Phase 4 multiplayer sessions. Safe to leave enabled earlier; sessions are only created in MiraThalNet."
+		}
+	]
+}

@@ -1,0 +1,17 @@
+# Unreal Engine build artifacts — never commit these (generated on the build machine).
+MiraThal/Binaries/
+MiraThal/Build/
+MiraThal/DerivedDataCache/
+MiraThal/Intermediate/
+MiraThal/Saved/
+MiraThal/.vs/
+MiraThal/*.sln
+MiraThal/*.VC.db
+MiraThal/*.opensdf
+MiraThal/*.sdf
+
+# Voxel Plugin Pro is a licensed third-party plugin — install locally, do not commit.
+MiraThal/Plugins/Voxel/
+
+# Standalone Core test harness build output (clang).
+MiraThal/tests/standalone/run_tests
