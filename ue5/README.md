@@ -60,7 +60,23 @@ Prerequisites: **Unreal Engine 5.4**, and **Voxel Plugin Pro** installed into `M
 
 ## Status
 
-Foundation (Phase 0, partial): project + module skeleton, `Core/VoxelScale.h`, `Core/WaterByteCodec.h`,
-`UVoxelScaleSettings`, `UVoxelEditSubsystem` (edit-gateway contract), clang harness with `scale` +
-`codec` green. Next: port `FiniteWaterCore`, voxel gravity flood-fill, and the heightmap/biome
-generator into Core with their selectors, then stand up the Voxel Plugin world + mining loop.
+**Phase 0 Core ports — all green (8,420 checks, 0 failures via `./build.sh`):**
+
+| System | Core files | Godot source | Harness |
+|---|---|---|---|
+| Voxel scale (SSOT) | `Core/VoxelScale.h` | `VoxelScale.gd` | `scale` |
+| Water byte codec | `Core/WaterByteCodec.h` | `WaterByteCodec.gd` | `codec` |
+| Finite water sim | `Core/FiniteWaterCore.{h,cpp}` | `FiniteWaterCore.gd` | `water` (47) |
+| Voxel gravity / sever | `Core/VoxelGravity.{h,cpp}` | `GravityReference.gd` + `SeverFollowLib.gd` | `gravity` (33) |
+| Heightmap + biome gen | `Core/HeightmapGenerator.{h,cpp}`, `Core/Noise.h` | `cubic_heightmap_generator` + `biome_field` + `heightmap_generator_base` | `gen` (7732) |
+
+UE wrapper layer: `UVoxelScaleSettings`, `UVoxelEditSubsystem` (edit-gateway contract).
+
+**Known divergence (documented):** `Core/Noise.h` is a self-contained deterministic value-noise, NOT
+bit-exact with Godot's FastNoiseLite (vendoring FNL was out of scope). Procedural hill *heights* won't
+match a Godot-baked world voxel-for-voxel; the algorithm structure, hash3 scatter, banding, sea-level,
+biome blend, and material ids are all faithful. This matters little for the shipped world, which is
+seeded from baked **Gaea heightmaps** (`.exr`), not procedural noise — the noise is fill/variation only.
+
+**Next:** stand up the Voxel Plugin world + triplanar atlas material, wire `UVoxelEditSubsystem` to the
+plugin edit API, port the mining carve math, and run the dig-under-Lumen perf gate (Phase 0 step 6).
