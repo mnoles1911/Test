@@ -46,6 +46,9 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 ### Multiplayer
 - `MULTIPLAYER.md` — MP-1/2/3/etc. record.
 
+### Engine port (proposed)
+- **`UE5_PORT_PLAN.md`** — PROPOSED strategy/scoping doc for porting Mira-Thal to Unreal Engine 5 (Voxel Plugin Pro, true blocky 10cm cubes, Nanite/Lumen, C++-first, vertical-slice-first). Planning only — no engine work started; Godot remains the live build.
+
 ### Process + ops
 - **`PATTERNS_AND_GOTCHAS.md`** — non-negotiable code rules, scene hierarchies, autoload load order. **READ BEFORE WRITING CODE.**
 - **`PROFILER_AND_DIAGNOSTICS.md`** — read before guessing at perf.
