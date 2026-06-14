@@ -22,14 +22,14 @@ Roland trained here for four years. He came back twice as an instructor. He was 
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
-- Outer wall: ~3–4 m thick, 6–8 m tall = 24–32 × 48–64 voxels; dressed stone, functional crenellation
-- Watchtower: ~4 m × 4 m footprint, 15–18 m tall = 32 × 32 × 120–144 voxels; visible from 2–3 km
-- Main gate arch: ~4 m wide × 5 m tall = 32 × 40 voxels; iron-banded wood gate
-- Training yard: ~40 m × 30 m open space = 320 × 240 voxels; packed dirt, weapon racks along the walls
-- Barracks block: ~20 m × 8 m × 4 m = 160 × 64 × 32 voxels; two floors, communal sleeping
-- Chapel: ~10 m × 6 m × 4 m = 80 × 48 × 32 voxels; the smallest significant building on the compound
+- Outer wall: ~3–4 m thick, 6–8 m tall = 30–40 × 60–80 voxels; dressed stone, functional crenellation
+- Watchtower: ~4 m × 4 m footprint, 15–18 m tall = 40 × 40 × 150–180 voxels; visible from 2–3 km
+- Main gate arch: ~4 m wide × 5 m tall = 40 × 50 voxels; iron-banded wood gate
+- Training yard: ~40 m × 30 m open space = 400 × 300 voxels; packed dirt, weapon racks along the walls
+- Barracks block: ~20 m × 8 m × 4 m = 200 × 80 × 40 voxels; two floors, communal sleeping
+- Chapel: ~10 m × 6 m × 4 m = 100 × 60 × 40 voxels; the smallest significant building on the compound
 - Camera arm length: exterior approach = arm 12, elevation 48°; interior compound = arm 10, elevation 50°; watchtower approach = arm 8, elevation 55°
 
 ---

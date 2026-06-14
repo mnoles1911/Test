@@ -18,13 +18,13 @@ Map note: Star symbol with amphitheater curve. Deep Greatwood position.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 **Status: GAP — needs definition**
 
 Key dimensions to define:
 - [ ] Amphitheater bowl diameter (approximate footprint)
-- [ ] Amphitheater depth (shallow bowl — estimate ~3–5 m below rim = 24–40 voxels)
+- [ ] Amphitheater depth (shallow bowl — estimate ~3–5 m below rim = 30–50 voxels)
 - [ ] Hall of the Vigil: central structure, the chrysalis-rooms — footprint and height
 - [ ] Seating/gathering terraces on the bowl sides: natural terrain, shaped living wood, or worked stone?
 - [ ] Acoustic implications for voxel space: wide open bowl suggests arm 14–16 elevation 40–42° camera

@@ -20,15 +20,15 @@ Map note: Dark fortress symbol on cliff face, no windows west.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Cliff face height: dark sedimentary/metamorphic escarpment, older and more weathered than volcanic peaks — estimate 40–80 m exposed cliff face = 320–640 voxels
-- [x] Bone arch gate: from something large — arch span ~4 m wide × 5 m tall = 32 × 40 voxels; bone material implies curved, organic geometry
-- [x] Interior passage width: narrow, no waste — ~2–3 m = 16–24 voxels
-- [x] Interior passage ceiling: cold stone, low ceiling — ~3 m = 24 voxels; no volcanic vent heating; braziers burning black provide the only warmth
-- [x] Serethi's audience chamber: one carved chair, one carved bowl, nothing else — deliberately small room; suggest ~6 m × 6 m × 4 m = 48 × 48 × 32 voxels (the smallness is the point)
+- [x] Cliff face height: dark sedimentary/metamorphic escarpment, older and more weathered than volcanic peaks — estimate 40–80 m exposed cliff face = 400–800 voxels
+- [x] Bone arch gate: from something large — arch span ~4 m wide × 5 m tall = 40 × 50 voxels; bone material implies curved, organic geometry
+- [x] Interior passage width: narrow, no waste — ~2–3 m = 20–30 voxels
+- [x] Interior passage ceiling: cold stone, low ceiling — ~3 m = 30 voxels; no volcanic vent heating; braziers burning black provide the only warmth
+- [x] Serethi's audience chamber: one carved chair, one carved bowl, nothing else — deliberately small room; suggest ~6 m × 6 m × 4 m = 60 × 60 × 40 voxels (the smallness is the point)
 - [x] No windows on western face: affects geometry — all window openings (where they exist) face east or are cut into the cliff's outer escarpment face; the western wall toward the Weeping Wood and Aelorin lands is solid stone
 - [x] Camera arm length: exterior approach = arm 12, elevation 48°; interior passages = arm 8–9, elevation 52°; Serethi's chamber = arm 8, elevation 55° (tight, no wasted space)
 

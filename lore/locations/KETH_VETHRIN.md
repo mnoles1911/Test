@@ -24,7 +24,7 @@ Map note: Dark cliff-face fortress symbol, sea-facing, western Thal coast. No ha
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 All dimensions marked GAP — Keth-Vethrin has not been designed for Game One and scene-level dimensions are not yet needed. For reference, use Mor-Vethrin's scale as a baseline but reduce by approximately one-third: Keth-Vethrin is smaller and more functional, less architecturally developed.
 

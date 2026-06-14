@@ -38,16 +38,16 @@ The largest surviving structure in the Sundered Isles — the remnant of the Aes
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- Ash Tower footprint: roughly 25 m × 25 m = 200 × 200 voxels per floor
-- Floor height: ~4 m = 32 voxels (tall ceilings — this was a citadel, built for presence)
-- Total tower height (floors 4–7 + roof): ~20 m above the waterline = 160 voxels exposed; 12 m below waterline (floors 1–3) = 96 voxels submerged
-- The anvil on floor 4: dominant feature, ~1.2 m tall × 0.8 m wide = 10 × 6 voxels
-- Sea-cave approach channel: ~6 m wide × 3 m tall at high clearance point = 48 × 24 voxels; tighter at the inner courtyard entry
-- Inner courtyard (flooded): ~15 m × 15 m open water = 120 × 120 voxels; iron rungs on the north wall
+- Ash Tower footprint: roughly 25 m × 25 m = 250 × 250 voxels per floor
+- Floor height: ~4 m = 40 voxels (tall ceilings — this was a citadel, built for presence)
+- Total tower height (floors 4–7 + roof): ~20 m above the waterline = 200 voxels exposed; 12 m below waterline (floors 1–3) = 120 voxels submerged
+- The anvil on floor 4: dominant feature, ~1.2 m tall × 0.8 m wide = 12 × 8 voxels
+- Sea-cave approach channel: ~6 m wide × 3 m tall at high clearance point = 60 × 30 voxels; tighter at the inner courtyard entry
+- Inner courtyard (flooded): ~15 m × 15 m open water = 150 × 150 voxels; iron rungs on the north wall
 - Camera arm: forge (floor 4) arm 10–12, elevation 50° (enclosed workshop); war room (floor 6) arm 10, elevation 45°; approach channel arm 8, elevation 35° (tight, claustrophobic)
 
 The outer island channels: wide enough for a small craft, lined on both sides by half-submerged tower sections. Camera arm 12–14 during navigation approach, pulling back to show the towers flanking the channel.

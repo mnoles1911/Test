@@ -135,26 +135,26 @@ The two populations intersect daily at every point of contact and trust each oth
 
 ## 3D Scale Reference
 
-> At 6 voxels per meter (project standard, locked 2026-05-03)
+> At 10 voxels per meter (project standard, locked 2026-05-03)
 
 | Feature | Real-world | Voxels |
 |---|---|---|
-| Playable area | 5,000 m × 5,000 m | 30,000 × 30,000 vox |
-| Caer Aelynd footprint (largest) | 1,600 m × 1,100 m | 9,600 × 6,600 vox |
-| Tor Galdoryn peak (highest in archipelago) | 580 m above sea | 3,480 vox above sea level |
-| Bryn Mor's Brothers spires | 480 m above sea | 2,880 vox above sea level |
-| Marrow Holt summit cairn | 320 m above sea | 1,920 vox above sea level |
-| Treeline (forest top) | 350 m above sea | 2,100 vox above sea level |
-| Open ocean depth (outer) | 30+ m below sea | 180+ vox below sea level |
-| Inter-island channel depth | 15–25 m | 90–150 vox below sea level |
-| Harbor approach depth | 4–10 m | 24–60 vox below sea level |
-| The Calderet fortress (Tor Galdoryn) | ~80 m × 80 m × 25 m | 480 × 480 × 150 vox |
-| Furrow Keep (Bryn Mor) | ~50 m × 40 m × 18 m | 300 × 240 × 108 vox |
-| Cinderhall counting-house | ~30 m × 25 m × 15 m | 180 × 150 × 90 vox |
-| Sailor's Guild Archive building | 30 m × 40 m × 28 m | 180 × 240 × 168 vox |
-| Standard fishing village | 80 m × 60 m | 480 × 360 vox |
+| Playable area | 5,000 m × 5,000 m | 50,000 × 50,000 vox |
+| Caer Aelynd footprint (largest) | 1,600 m × 1,100 m | 16,000 × 11,000 vox |
+| Tor Galdoryn peak (highest in archipelago) | 580 m above sea | 5,800 vox above sea level |
+| Bryn Mor's Brothers spires | 480 m above sea | 4,800 vox above sea level |
+| Marrow Holt summit cairn | 320 m above sea | 3,200 vox above sea level |
+| Treeline (forest top) | 350 m above sea | 3,500 vox above sea level |
+| Open ocean depth (outer) | 30+ m below sea | 300+ vox below sea level |
+| Inter-island channel depth | 15–25 m | 150–250 vox below sea level |
+| Harbor approach depth | 4–10 m | 40–100 vox below sea level |
+| The Calderet fortress (Tor Galdoryn) | ~80 m × 80 m × 25 m | 800 × 800 × 250 vox |
+| Furrow Keep (Bryn Mor) | ~50 m × 40 m × 18 m | 500 × 400 × 180 vox |
+| Cinderhall counting-house | ~30 m × 25 m × 15 m | 300 × 250 × 150 vox |
+| Sailor's Guild Archive building | 30 m × 40 m × 28 m | 300 × 400 × 280 vox |
+| Standard fishing village | 80 m × 60 m | 800 × 600 vox |
 
-**Sea level reference:** keep `sea_level_voxels = 48` (Y = 8 m) as established by the previous demo spec. Peaks at 580 m above sea will sit at Y = 3,528 vox in world space.
+**Sea level reference:** keep `sea_level_voxels = 80` (Y = 8 m) as established by the previous demo spec. Peaks at 580 m above sea will sit at Y = 5,880 vox in world space.
 
 **Camera arm guidance:**
 - Open-water sailing: arm 14–18, elevation 25–30°

@@ -18,15 +18,15 @@ Map note: Small coastal settlement, star symbol, pale tone.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Scale: smaller than Lirien-Thal — a village-to-town scale Aelorin settlement; estimate footprint ~150 m × 100 m = 1200 × 800 voxels (outer bounds only)
-- [x] Street width: actual streets (unlike canopy platforms) — ~4–6 m = 32–48 voxels (narrower than human cities; Aelorin are slender and their settlements reflect this)
-- [x] Building height: Aelorin structures are likely taller and narrower than human equivalents — GAP for exact figures; suggest 3–5 stories = 10–18 m = 80–144 voxels
+- [x] Scale: smaller than Lirien-Thal — a village-to-town scale Aelorin settlement; estimate footprint ~150 m × 100 m = 1500 × 1000 voxels (outer bounds only)
+- [x] Street width: actual streets (unlike canopy platforms) — ~4–6 m = 40–60 voxels (narrower than human cities; Aelorin are slender and their settlements reflect this)
+- [x] Building height: Aelorin structures are likely taller and narrower than human equivalents — GAP for exact figures; suggest 3–5 stories = 10–18 m = 100–180 voxels
 - [x] Mother-of-pearl inlay: surface texture on significant structures — ~0.05 m depth = less than 1 voxel; rendered as a material/shader property, not geometry
-- [x] Harbor: small but functional — dock for ~3–5 vessels simultaneously; dock width ~4 m = 32 voxels
+- [x] Harbor: small but functional — dock for ~3–5 vessels simultaneously; dock width ~4 m = 40 voxels
 - [ ] Camera arm length: coastal outdoor = arm 12, elevation 48°, possible horizontal rotation facing the sea; GAP for specific values
 
 ---

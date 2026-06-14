@@ -18,15 +18,15 @@ Map note: Tree-and-star symbol. No walls.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Silverwood trunk diameter: trees described as wider than houses — ~4–8 m across = 32–64 voxels
-- [x] Canopy height above ground: ancient trees of this scale — ~40–60 m = 320–480 voxels
-- [x] Platform walkway width: two Aelorin walking side by side — ~2–3 m = 16–24 voxels
-- [x] Platform structural thickness: shaped living wood — ~0.5 m = 4 voxels
-- [x] Gap spacing between platforms: traversal distance — GAP, but must be jumpable or bridged; suggest no gap larger than 3 m = 24 voxels for gameplay
+- [x] Silverwood trunk diameter: trees described as wider than houses — ~4–8 m across = 40–80 voxels
+- [x] Canopy height above ground: ancient trees of this scale — ~40–60 m = 400–600 voxels
+- [x] Platform walkway width: two Aelorin walking side by side — ~2–3 m = 20–30 voxels
+- [x] Platform structural thickness: shaped living wood — ~0.5 m = 5 voxels
+- [x] Gap spacing between platforms: traversal distance — GAP, but must be jumpable or bridged; suggest no gap larger than 3 m = 30 voxels for gameplay
 - [ ] Aelthurion's audience hall: the city's most significant interior — GAP (is it a platform? a carved interior space in a trunk? needs design decision)
 - [x] Camera arm length — Greatwood canopy walk: arm 14, elevation 38°, optional horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md)
 

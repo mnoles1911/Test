@@ -20,17 +20,17 @@ Map note: Fortress-tower icon. River bend shown.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] City walls: iron-banded stone, military grade — ~6–8 m tall = 48–64 voxels
-- [x] Wall iron banding: decorative/structural bands at regular intervals — ~0.3 m thick = 2–3 voxels
-- [x] Street width: garrison-functional, wide for equipment movement — ~8–10 m = 64–80 voxels
-- [x] Building ceiling height: low for heat retention — ~3 m = 24 voxels (lower than standard human construction)
-- [x] Wide building doors (for equipment): ~2 m wide × 2.5 m tall = 16 × 20 voxels
-- [x] War council chamber (underground): austere, seating for 12, maps on central table — ~12 m wide × 15 m long × 3 m tall = 96 × 120 × 24 voxels (estimate)
-- [x] Yaromir's citadel profile: deliberately squat — GAP for exact dimensions, but should read as low-slung against the sky (2–3 stories maximum, ~8–10 m = 64–80 voxels)
+- [x] City walls: iron-banded stone, military grade — ~6–8 m tall = 60–80 voxels
+- [x] Wall iron banding: decorative/structural bands at regular intervals — ~0.3 m thick = 3 voxels
+- [x] Street width: garrison-functional, wide for equipment movement — ~8–10 m = 80–100 voxels
+- [x] Building ceiling height: low for heat retention — ~3 m = 30 voxels (lower than standard human construction)
+- [x] Wide building doors (for equipment): ~2 m wide × 2.5 m tall = 20 × 25 voxels
+- [x] War council chamber (underground): austere, seating for 12, maps on central table — ~12 m wide × 15 m long × 3 m tall = 120 × 150 × 30 voxels (estimate)
+- [x] Yaromir's citadel profile: deliberately squat — GAP for exact dimensions, but should read as low-slung against the sky (2–3 stories maximum, ~8–10 m = 80–100 voxels)
 - [x] Camera arm length: outdoor city = arm 12–14, elevation 48°; war council chamber (underground) = arm 10, elevation 50°, no horizontal rotation
 
 Ash-haze visible from eastern wall: particle effect, slow drift, grey. This is a visual ambient detail, not a geometry concern.

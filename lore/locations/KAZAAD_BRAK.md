@@ -18,15 +18,15 @@ Map note: Mountain-gate icon below twin-peaked symbol.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Defensive choke points: narrow corridor pinch-points — ~1.5–2 m wide = 12–16 voxels at narrowest (deliberately tight for one-at-a-time combat)
-- [x] Standard corridor width: ~3–4 m = 24–32 voxels (wider than choke points but narrower than trade-hold equivalents — efficiency, not hospitality)
-- [x] Main gate: three backup mechanisms implies triple-gate structure — each gate ~3 m wide × 3.5 m tall = 24 × 28 voxels; spacing between gates ~4 m = 32 voxels
+- [x] Defensive choke points: narrow corridor pinch-points — ~1.5–2 m wide = 15–20 voxels at narrowest (deliberately tight for one-at-a-time combat)
+- [x] Standard corridor width: ~3–4 m = 30–40 voxels (wider than choke points but narrower than trade-hold equivalents — efficiency, not hospitality)
+- [x] Main gate: three backup mechanisms implies triple-gate structure — each gate ~3 m wide × 3.5 m tall = 30 × 35 voxels; spacing between gates ~4 m = 40 voxels
 - [x] Independent storage per level: water cisterns and food stores built into each level — structural feature, not decoration
-- [x] Lightning conductor infrastructure: exterior, above-ground; conductor towers visible from outside — ~10–15 m tall = 80–120 voxels (on the approach path to the Broken Fang)
+- [x] Lightning conductor infrastructure: exterior, above-ground; conductor towers visible from outside — ~10–15 m tall = 100–150 voxels (on the approach path to the Broken Fang)
 - [ ] Barak Stonecroft's isolation area: not imprisoned, but separated — private quarters or guarded wing; GAP for dimensions
 - [x] Camera arm length: interior corridors = arm 10, elevation 50°, no horizontal rotation; choke-point corridors = arm 8, elevation 52° (tight spaces)
 

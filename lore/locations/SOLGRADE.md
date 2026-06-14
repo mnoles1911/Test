@@ -23,15 +23,15 @@ Map note: Open city symbol (towers, no enclosing wall).
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Street width: open city, no walls, streets organically wider — ~8–12 m = 64–96 voxels
-- [x] Council Hall: 12 equal entrances, circular interior — ~40 m diameter = 320 voxels; each of the 12 entrances ~3 m wide = 24 voxels; interior height ~8–10 m = 64–80 voxels
-- [x] Council Hall entrance archway: 3 m wide × 4 m tall = 24 × 32 voxels (each of 12, equally proportioned)
+- [x] Street width: open city, no walls, streets organically wider — ~8–12 m = 80–120 voxels
+- [x] Council Hall: 12 equal entrances, circular interior — ~40 m diameter = 400 voxels; each of the 12 entrances ~3 m wide = 30 voxels; interior height ~8–10 m = 80–100 voxels
+- [x] Council Hall entrance archway: 3 m wide × 4 m tall = 30 × 40 voxels (each of 12, equally proportioned)
 - [x] Terracotta roof pitch: low pitch for flat farmland climate — ~15–20° slope, approximate
-- [x] Banking Quarter building height: urban commercial, 3–4 stories — ~10–14 m = 80–112 voxels
+- [x] Banking Quarter building height: urban commercial, 3–4 stories — ~10–14 m = 100–140 voxels
 - [x] Surgeons' School: institutional, 2–3 stories, adjoining Apothecaries' College — GAP for exact dimensions
 - [ ] Korvath counting house: infiltration scene — needs design session for layout and guard placement
 - [x] Camera arm length: outdoor Solgrade = arm 14–16, elevation 42°, optional horizontal rotation (brightest outdoor scenes in the game; open, no walls)

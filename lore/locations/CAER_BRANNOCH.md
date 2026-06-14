@@ -20,16 +20,16 @@ Map note: Coastal fortress with cliff-tick marks. Lighthouse symbol at headland 
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Cliff height: dramatic sea-cliff — 30–60 m = 240–480 voxels
-- [x] Sea-lift cage height (vertical travel distance): ~30–50 m = 240–400 voxels
-- [x] Lower city street width: working-port district, ~6 m = 48 voxels
-- [x] Upper city street width: fortress administrative quarter, ~8 m = 64 voxels
-- [x] Switchback road width: two carts passing = ~4 m = 32 voxels
-- [x] Sailor's Guild Hall: modest guild hall — ~12 m wide × 20 m long × 6 m tall = 96 × 160 × 48 voxels (estimate)
+- [x] Cliff height: dramatic sea-cliff — 30–60 m = 300–600 voxels
+- [x] Sea-lift cage height (vertical travel distance): ~30–50 m = 300–500 voxels
+- [x] Lower city street width: working-port district, ~6 m = 60 voxels
+- [x] Upper city street width: fortress administrative quarter, ~8 m = 80 voxels
+- [x] Switchback road width: two carts passing = ~4 m = 40 voxels
+- [x] Sailor's Guild Hall: modest guild hall — ~12 m wide × 20 m long × 6 m tall = 120 × 200 × 60 voxels (estimate)
 - [ ] Eilwen's court dimensions: GAP — needs design session
 - [x] Camera arm length: outdoor lower docks = arm 12–14, elevation 48°; upper city = arm 12, elevation 48°; sea-lift transition scene = GAP
 

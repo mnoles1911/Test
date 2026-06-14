@@ -20,15 +20,15 @@ Map note: Shield-volcano symbol with broad profile, caldera glow, ash-cloud exte
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
 - [x] Shield volcano profile: broad, low — shield volcanoes are typically 5–10× wider than they are tall; if summit is ~500 m elevation, footprint is ~3–5 km across = enormous; playable area is only the upper slopes and caldera
-- [x] Caldera width: GAP — shield volcano calderas vary; suggest ~300–800 m across = 2400–6400 voxels (not all traversable; the playable caldera rim and Ash Hearth are a fraction of this)
-- [x] Ash Hearth chamber: natural chamber in caldera inner wall — ~30 m wide × 20 m deep × 15 m tall = 240 × 160 × 120 voxels (estimate; final boss arena scale)
-- [x] Aescstól throne dimensions: formed from cooled lava and bone-meal, inlaid with obsidian and silver — ~2.5 m tall × 1.5 m wide = 20 × 12 voxels (the throne itself; the platform it sits on is larger)
-- [x] Upper slope playable width: the approach path on the final slope — ~30–50 m traversable width = 240–400 voxels (narrow enough to feel exposed, wide enough for combat)
+- [x] Caldera width: GAP — shield volcano calderas vary; suggest ~300–800 m across = 3000–8000 voxels (not all traversable; the playable caldera rim and Ash Hearth are a fraction of this)
+- [x] Ash Hearth chamber: natural chamber in caldera inner wall — ~30 m wide × 20 m deep × 15 m tall = 300 × 200 × 150 voxels (estimate; final boss arena scale)
+- [x] Aescstól throne dimensions: formed from cooled lava and bone-meal, inlaid with obsidian and silver — ~2.5 m tall × 1.5 m wide = 25 × 15 voxels (the throne itself; the platform it sits on is larger)
+- [x] Upper slope playable width: the approach path on the final slope — ~30–50 m traversable width = 300–500 voxels (narrow enough to feel exposed, wide enough for combat)
 - [x] Nothing grows on upper two-thirds: vegetation cutoff line visible as the player ascends — below the line: sparse ash-adapted scrub; above: bare rock and ash
 - [x] Camera arm length: upper slopes = arm 14–16, elevation 42° (open, exposed, wide view); Ash Hearth = arm 10–12, elevation 50°; caldera floor = GAP
 

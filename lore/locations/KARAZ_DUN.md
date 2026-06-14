@@ -18,16 +18,16 @@ Map note: Mountain-gate icon below Kara-Thûn (tallest named peak).
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Main gate archway: dwarven engineering, built for cart access — ~4 m wide × 4 m tall = 32 × 32 voxels
-- [x] Upper hall corridor width: trade-accessible levels — ~4–5 m = 32–40 voxels
-- [x] Upper hall ceiling height: comfortable for dwarf + cargo — ~4–5 m = 32–40 voxels
-- [x] Forge hall: the never-cold forges — large industrial space, ~20 m wide × 30 m long × 8 m tall = 160 × 240 × 64 voxels (estimate)
-- [x] Dragon-Watcher records vault (Level 3): fire-resistant stone vault, cooler than upper forge levels — ~12 m × 15 m × 4 m = 96 × 120 × 32 voxels
-- [x] Thrarin's treasury: private collection, not a public vault — ~8 m × 10 m × 4 m = 64 × 80 × 32 voxels (estimate)
+- [x] Main gate archway: dwarven engineering, built for cart access — ~4 m wide × 4 m tall = 40 × 40 voxels
+- [x] Upper hall corridor width: trade-accessible levels — ~4–5 m = 40–50 voxels
+- [x] Upper hall ceiling height: comfortable for dwarf + cargo — ~4–5 m = 40–50 voxels
+- [x] Forge hall: the never-cold forges — large industrial space, ~20 m wide × 30 m long × 8 m tall = 200 × 300 × 80 voxels (estimate)
+- [x] Dragon-Watcher records vault (Level 3): fire-resistant stone vault, cooler than upper forge levels — ~12 m × 15 m × 4 m = 120 × 150 × 40 voxels
+- [x] Thrarin's treasury: private collection, not a public vault — ~8 m × 10 m × 4 m = 80 × 100 × 40 voxels (estimate)
 - [x] Level depth: upper levels are warm (forge heat); cooler going deeper; Dragon-Watcher vault at Level 3 described as cooler and more sober than upper levels
 - [x] Camera arm length: upper halls = arm 10, elevation 50°, no horizontal rotation; treasury = arm 8–10; forge hall = arm 12, elevation 48° (larger space)
 

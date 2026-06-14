@@ -18,18 +18,18 @@ Map texture: dense stippled or cross-hatched forest canopy with individual large
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Ancient trunk diameter: described as wider than houses — ~4–8 m = 32–64 voxels (at the base; significant taper upward)
-- [x] Trunk height to first branch: old growth scale — ~20–30 m before canopy starts = 160–240 voxels
-- [x] Canopy height: ~40–60 m above ground = 320–480 voxels
-- [x] Root system walls: natural root bridges and enclosures — root diameters ~1–2 m = 8–16 voxels; root walls ~3–5 m tall = 24–40 voxels
-- [x] Forest floor corridor width: path between trunk-root systems — ~3–5 m = 24–40 voxels
+- [x] Ancient trunk diameter: described as wider than houses — ~4–8 m = 40–80 voxels (at the base; significant taper upward)
+- [x] Trunk height to first branch: old growth scale — ~20–30 m before canopy starts = 200–300 voxels
+- [x] Canopy height: ~40–60 m above ground = 400–600 voxels
+- [x] Root system walls: natural root bridges and enclosures — root diameters ~1–2 m = 10–20 voxels; root walls ~3–5 m tall = 30–50 voxels
+- [x] Forest floor corridor width: path between trunk-root systems — ~3–5 m = 30–50 voxels
 - [x] Light level: permanent green twilight even at noon — ambient light from WorldEnvironment, green-filtered, low energy; no direct sun on the floor
-- [x] Silverwood grove area: pale silver patches visible from above — GAP for exact area; suggest ~50 m diameter per grove = 400 voxels
-- [x] Eight Glades: circular light-openings in the canopy — circular clearings, suggest ~20–40 m diameter = 160–320 voxels each
+- [x] Silverwood grove area: pale silver patches visible from above — GAP for exact area; suggest ~50 m diameter per grove = 500 voxels
+- [x] Eight Glades: circular light-openings in the canopy — circular clearings, suggest ~20–40 m diameter = 200–400 voxels each
 - [x] Camera arm length — Greatwood canopy walk: arm 14, elevation 38°, optional horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md)
 
 The sound-travels-differently note is an audio design cue, not a geometry concern. The geometry implication: the forest floor is enclosed by massive trunks and root walls enough to create natural reverb chambers.

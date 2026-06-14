@@ -21,15 +21,15 @@ Dame Calla waits in the anteroom during Roland's 40 minutes alone in the chapel.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions (derived from LEVEL_LAYOUTS_ACT1.md — fully detailed):
 
-- [x] Chapel scale: "modest" per scale reference — ~8 m wide × 12 m long × 8 m tall = 64 × 96 × 64 voxels
-- [x] Anteroom: small waiting room — ~4 m × 5 m × 3.5 m = 32 × 40 × 28 voxels
-- [x] Nave pew spacing: rows of pews both sides, stone floor — pew rows every ~1.5 m = 12 voxels; central aisle ~2.5 m = 20 voxels
-- [x] Altar step height: one step up — ~0.25 m = 2 voxels (subtle, but Roland should be visibly one step higher at the altar)
-- [x] Altar dimensions: stone, pommel on a fitted mount — ~1.5 m wide × 0.8 m deep × 1.0 m tall = 12 × 6 × 8 voxels
+- [x] Chapel scale: "modest" per scale reference — ~8 m wide × 12 m long × 8 m tall = 80 × 120 × 80 voxels
+- [x] Anteroom: small waiting room — ~4 m × 5 m × 3.5 m = 40 × 50 × 35 voxels
+- [x] Nave pew spacing: rows of pews both sides, stone floor — pew rows every ~1.5 m = 15 voxels; central aisle ~2.5 m = 25 voxels
+- [x] Altar step height: one step up — ~0.25 m = 2–3 voxels (subtle, but Roland should be visibly one step higher at the altar)
+- [x] Altar dimensions: stone, pommel on a fitted mount — ~1.5 m wide × 0.8 m deep × 1.0 m tall = 15 × 8 × 10 voxels
 - [x] Pommel mount: fitted receptacle in the altar — the replacement rod must match exactly; this is a geometry note for the altar prop
 - [x] Camera arm length — Iron Chalice chapel: arm 9, elevation 52°, no horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md)
 

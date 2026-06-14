@@ -114,28 +114,28 @@ Briefly, because the demo level needs the texture even if the deeper content is 
 ---
 
 ## 3D Scale Reference
-> At 6 voxels per meter (project standard, locked 2026-05-03)
+> At 10 voxels per meter (project standard, locked 2026-05-03)
 
 Key dimensions, in voxels:
 
 | Feature | Real-world | Voxels |
 |---|---|---|
-| Demo playable area | 3,000 m × 3,000 m | 18,000 × 18,000 vox |
-| Main Island footprint | 1,100 m × 800 m | 6,600 × 4,800 vox |
-| Watcher's Hill summit | 85 m above sea | 510 vox above sea level |
-| Copper Isles Port harbor | 250 m mouth × 200 m deep | 1,500 × 1,200 vox |
-| Sailor's Guild Hall | ~20 m × 20 m × 12 m | 120 × 120 × 72 vox |
-| Archive Isle footprint | 600 m × 400 m | 3,600 × 2,400 vox |
-| Sailor's Guild Archive building | 30 m × 40 m × 28 m | 180 × 240 × 168 vox |
-| Lantern Rock pinnacle | 55 m above sea | 330 vox above sea level |
-| Lighthouse tower | ~6 m diameter × 14 m tall | 36 × 36 × 84 vox |
-| Cradle Isle footprint | 350 m × 250 m | 2,100 × 1,500 vox |
-| Cradle Isle lagoon | 80 m × 60 m × 5 m deep | 480 × 360 × 30 vox |
-| Safe-house building | ~12 m × 8 m × 4 m | 72 × 48 × 24 vox |
-| Deep Channel max depth | 18 m below sea | 108 vox below sea level |
-| Outer shelf edge depth | 40 m below sea | 240 vox below sea level |
+| Demo playable area | 3,000 m × 3,000 m | 30,000 × 30,000 vox |
+| Main Island footprint | 1,100 m × 800 m | 11,000 × 8,000 vox |
+| Watcher's Hill summit | 85 m above sea | 850 vox above sea level |
+| Copper Isles Port harbor | 250 m mouth × 200 m deep | 2,500 × 2,000 vox |
+| Sailor's Guild Hall | ~20 m × 20 m × 12 m | 200 × 200 × 120 vox |
+| Archive Isle footprint | 600 m × 400 m | 6,000 × 4,000 vox |
+| Sailor's Guild Archive building | 30 m × 40 m × 28 m | 300 × 400 × 280 vox |
+| Lantern Rock pinnacle | 55 m above sea | 550 vox above sea level |
+| Lighthouse tower | ~6 m diameter × 14 m tall | 60 × 60 × 140 vox |
+| Cradle Isle footprint | 350 m × 250 m | 3,500 × 2,500 vox |
+| Cradle Isle lagoon | 80 m × 60 m × 5 m deep | 800 × 600 × 50 vox |
+| Safe-house building | ~12 m × 8 m × 4 m | 120 × 80 × 40 vox |
+| Deep Channel max depth | 18 m below sea | 180 vox below sea level |
+| Outer shelf edge depth | 40 m below sea | 400 vox below sea level |
 
-**Sea level reference:** `sea_level_voxels = 0` in `CubicHeightmapGenerator.gd`. For the Copper Isles demo set the absolute world-space sea level at **Y = 8 m (48 vox)** so the seabed has room to dip below Y=0 without underflowing the chunk grid.
+**Sea level reference:** `sea_level_voxels = 0` in `CubicHeightmapGenerator.gd`. For the Copper Isles demo set the absolute world-space sea level at **Y = 8 m (80 vox)** so the seabed has room to dip below Y=0 without underflowing the chunk grid.
 
 **Camera arm:** Open-water sailing arm 12–14, elevation 25–35°. Town/harbor arm 8–10, elevation 40–50°. Indoor (safe-house cellar, Archive interior) arm 6–8, elevation 50–60°.
 

@@ -24,16 +24,16 @@ Map texture: light grey-brown stippling increasing in density toward the east. G
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Ash-soil depth (surface detail): ~0.1–0.3 m = 1–2 voxels of ash overlay on the terrain
-- [x] Ghost stump height: remnants of felled or dead trees — ~0.5–2 m tall = 4–16 voxels; ~1–3 m wide = 8–24 voxels; weathered, grey-brown, no bark remaining
-- [x] Crumbled farmstead wall height: collapsed stone walls — ~0.5–1.5 m remaining = 4–12 voxels; provide partial cover in the Ashfields fighting retreat
+- [x] Ash-soil depth (surface detail): ~0.1–0.3 m = 1–3 voxels of ash overlay on the terrain
+- [x] Ghost stump height: remnants of felled or dead trees — ~0.5–2 m tall = 5–20 voxels; ~1–3 m wide = 10–30 voxels; weathered, grey-brown, no bark remaining
+- [x] Crumbled farmstead wall height: collapsed stone walls — ~0.5–1.5 m remaining = 5–15 voxels; provide partial cover in the Ashfields fighting retreat
 - [x] Ash-haze density: increases toward the east — particle effect in WorldEnvironment, grey, density increasing; no clear line of sight beyond ~200 m in the deep Ashfields
-- [x] Vosskaran garrison town scale: small fortress-style settlements — ~80 m × 60 m = 640 × 480 voxels approximate footprint; garrison walls ~4–5 m tall = 32–40 voxels
-- [x] Garrison road (Frontier Road): dotted line on maps — maintained gravel/stone surface, ~4 m wide = 32 voxels
+- [x] Vosskaran garrison town scale: small fortress-style settlements — ~80 m × 60 m = 800 × 600 voxels approximate footprint; garrison walls ~4–5 m tall = 40–50 voxels
+- [x] Garrison road (Frontier Road): dotted line on maps — maintained gravel/stone surface, ~4 m wide = 40 voxels
 - [ ] Goblin territory markers: how far into the Ashfields before goblin presence begins — GAP
 - [x] Camera arm length — Ashfields open: arm 16, elevation 42°, optional horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md — maximum open-space camera settings)
 

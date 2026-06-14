@@ -23,16 +23,16 @@ Map texture: classic Tolkien-style row-of-peaks illustration, denser and more dr
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Kara-Thûn height: permanently snow-crowned, visible from the Central Plains on clear days — must be significant; estimate ~2000–3000 m = 16000–24000 voxels total elevation (background geometry only; player does not summit)
+- [x] Kara-Thûn height: permanently snow-crowned, visible from the Central Plains on clear days — must be significant; estimate ~2000–3000 m = 20000–30000 voxels total elevation (background geometry only; player does not summit)
 - [x] Khorumzad's Crown: broad, flat-topped — distinctive silhouette from below; the flat summit is a navigation landmark
 - [x] The Broken Fang: twin peaks with an ancient fault split — the split between the peaks should be visible from below
 - [x] Western foothills: pine forest to farmland transition — gradual terrain change over ~20–30 km; the playable portion is only the approach to each hold
-- [x] Eastern cliff face: sheer drop into Ashfields — cliff height at approach to Ashfields ~30–80 m = 240–640 voxels (varies by location)
-- [x] Underway entrance near Khorumzad (King's Road endpoint): the main overland route terminates here — approach road ~4 m wide = 32 voxels; Underway gate ~4 m × 4 m = 32 × 32 voxels
+- [x] Eastern cliff face: sheer drop into Ashfields — cliff height at approach to Ashfields ~30–80 m = 300–800 voxels (varies by location)
+- [x] Underway entrance near Khorumzad (King's Road endpoint): the main overland route terminates here — approach road ~4 m wide = 40 voxels; Underway gate ~4 m × 4 m = 40 × 40 voxels
 - [x] Snow line altitude: visual transition from grey-green to white-black — background art direction, not gameplay geometry
 
 The Spine is background geography for most of Game One. The playable zones are the Underway interior and the hold interiors — not the mountain faces themselves.

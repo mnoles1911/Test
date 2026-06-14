@@ -18,13 +18,13 @@ The wrongness is not dangerous in the direct sense — there are no monsters, no
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- Total playable footprint (if visited): suggest a representative section ~200 m × 150 m = 1600 × 1200 voxels; the full marsh is much larger but a scene uses a slice
-- Channel width: dead waterways, ~3–6 m wide = 24–48 voxels; knee-to-waist depth
-- Open ground between channels: low hummocks of dead grass and grey mud, ~10–20 m between waterways = 80–160 voxels
+- Total playable footprint (if visited): suggest a representative section ~200 m × 150 m = 2000 × 1500 voxels; the full marsh is much larger but a scene uses a slice
+- Channel width: dead waterways, ~3–6 m wide = 30–60 voxels; knee-to-waist depth
+- Open ground between channels: low hummocks of dead grass and grey mud, ~10–20 m between waterways = 100–200 voxels
 - Ghost-lights: particle effects at ~1–1.5 m elevation, pale blue-white, low energy — OmniLight3D at very low intensity, radius 2–3 m, color `#B8D4FF`
 - Visibility: low ground fog in morning and evening; permanent overcast sky (lighter than the Weeping Wood's cloud cover — grey-white rather than dark grey)
 - Camera arm length: arm 12–14, elevation 45° (flat terrain, wide sightlines, fog adds depth)

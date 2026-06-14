@@ -25,16 +25,16 @@ Map note: Walled city symbol with multiple towers. Two river lines converging at
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions (derived from lore and standard urban scale):
 
-- [ ] Approximate footprint: large walled city — GAP (needs map-level definition, but walls are a 4-century structure, 3-men-thick = ~2 m = 16 voxels thick)
-- [x] Street width — Scholar's Block street (hub scene): ~8 m wide = 64 voxels
-- [x] Alley width — Night Chase alleys: ~2–3 m wide = 16–24 voxels
-- [x] Standard door/archway height: 2.2 m = 18 voxels
-- [x] City wall height: city wall this substantial — ~8–10 m = 64–80 voxels
-- [x] King's Hall tower height: GAP — but three towers implies significant vertical scale, suggest 20–30 m = 160–240 voxels
+- [ ] Approximate footprint: large walled city — GAP (needs map-level definition, but walls are a 4-century structure, 3-men-thick = ~2 m = 20 voxels thick)
+- [x] Street width — Scholar's Block street (hub scene): ~8 m wide = 80 voxels
+- [x] Alley width — Night Chase alleys: ~2–3 m wide = 20–30 voxels
+- [x] Standard door/archway height: 2.2 m = 22 voxels
+- [x] City wall height: city wall this substantial — ~8–10 m = 80–100 voxels
+- [x] King's Hall tower height: GAP — but three towers implies significant vertical scale, suggest 20–30 m = 200–300 voxels
 - [x] Camera arm length — Aldenholt streets: arm 12, elevation 48°, no horizontal rotation (per design/CAMERA_AND_PERSPECTIVE.md)
 
 Playable area scope: Act I uses five distinct scenes within the city — Night Chase alleys, Scholar's Block street hub, Archive interior (two versions), Iron Chalice Chapel. Full city is background/ambient, not fully traversable in Act I.

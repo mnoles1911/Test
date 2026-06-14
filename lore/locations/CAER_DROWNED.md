@@ -18,14 +18,14 @@ Map note: Ruined-tower symbol partially submerged in the Bay of Sulwyn.
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 **Status: GAP — needs definition (location not visited in Game One)**
 
 Key dimensions to define if a scene is ever built:
-- [ ] Tower height above waterline at extreme low tide (towers visible at "wrong angles" — perhaps 10–20 m exposed = 80–160 voxels)
-- [ ] Submerged street width (same scale as other human cities — ~6–8 m = 48–64 voxels, but flooded)
-- [ ] Interior room dimensions (modest human-scale rooms, furnished — ~4 m × 5 m × 3 m = 32 × 40 × 24 voxels per room)
+- [ ] Tower height above waterline at extreme low tide (towers visible at "wrong angles" — perhaps 10–20 m exposed = 100–200 voxels)
+- [ ] Submerged street width (same scale as other human cities — ~6–8 m = 60–80 voxels, but flooded)
+- [ ] Interior room dimensions (modest human-scale rooms, furnished — ~4 m × 5 m × 3 m = 40 × 50 × 30 voxels per room)
 - [ ] Waterline depth for playable access: the diver report suggests at least one building is accessible by swimming; water depth is GAP
 - [ ] Camera arm length: likely requires a specialized camera solution for an underwater or partially-submerged scene — GAP
 

@@ -21,7 +21,7 @@ All world-building, plot, and character reference for the Mira-Thal trilogy live
 
 ## Locations
 
-Individual location files live in `lore/locations/`. Each file includes: physical description (from CITY_DESCRIPTIONS.md or stubs), 3D scale reference (at 8 voxels per meter), art direction notes, level layout status, scene connections, and open questions.
+Individual location files live in `lore/locations/`. Each file includes: physical description (from CITY_DESCRIPTIONS.md or stubs), 3D scale reference (at 10 voxels per meter), art direction notes, level layout status, scene connections, and open questions.
 
 `CITY_DESCRIPTIONS.md` has been deleted — all content is now in the individual location files below.
 

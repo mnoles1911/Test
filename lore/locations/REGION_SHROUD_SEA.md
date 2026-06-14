@@ -22,14 +22,14 @@ From HISTORY_SHROUD_SEA.md: 200 years of Brotherhood charting, 40-year windows, 
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 **Status: GAP — the crossing is a narrative event, not a traversable space**
 
 Key dimensions for scenes that exist at the crossing boundaries:
 
-- [x] Shroud Shore (departure): grey pebble beach, no natural harbor — ~50 m wide × 200 m long accessible beach = 400 × 1600 voxels; the Brotherhood observation station is a small building (~10 m × 8 m = 80 × 64 voxels)
-- [x] Thal Coast (arrival): rocky grey-black volcanic shoreline, flat terrace above tide line — similar scale to Shroud Shore; the Aescryd ruins on the terrace are ~20 m × 15 m = 160 × 120 voxels (estimate)
+- [x] Shroud Shore (departure): grey pebble beach, no natural harbor — ~50 m wide × 200 m long accessible beach = 500 × 2000 voxels; the Brotherhood observation station is a small building (~10 m × 8 m = 100 × 80 voxels)
+- [x] Thal Coast (arrival): rocky grey-black volcanic shoreline, flat terrace above tide line — similar scale to Shroud Shore; the Aescryd ruins on the terrace are ~20 m × 15 m = 200 × 150 voxels (estimate)
 - [ ] Ship deck scene (the crossing itself): if the voyage is a playable traveling scene like Caer Brannoch's Sailor's Guild voyage, ship deck dimensions GAP
 - [x] Camera arm length: coastal/beach scenes = arm 14–16, elevation 42°; ship deck (if playable) = GAP
 

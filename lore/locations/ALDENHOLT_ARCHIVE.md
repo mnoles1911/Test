@@ -18,17 +18,17 @@ The restricted section is a smaller back room: only the oldest and most sensitiv
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions (derived from LEVEL_LAYOUTS_ACT1.md — fully detailed):
 
-- [x] Building footprint: a full city block — ~60 m × 40 m = 480 × 320 voxels (estimate for a dense urban city block)
-- [x] Lower floors: windowless — solid stone exterior; no light from outside; ~6–8 m ground floor height = 48–64 voxels
-- [x] Archive entrance hall: small foyer, one archivist desk — ~8 m × 10 m × 4 m = 64 × 80 × 32 voxels
-- [x] Main stacks: rows of shelving, lamplight, vaulted stone ceiling — ~20 m × 30 m × 6 m = 160 × 240 × 48 voxels (estimate)
-- [x] Side room (Tomlin's sorting room): small room off the main stacks — ~5 m × 6 m × 3 m = 40 × 48 × 24 voxels
-- [x] Restricted section: smaller back room — ~6 m × 8 m × 3 m = 48 × 64 × 24 voxels (darker, mustier than main stacks)
-- [x] Henrietta's study: single suite of rooms, accessible via staircase — ~8 m × 10 m × 3.5 m per room = 64 × 80 × 28 voxels (estimate)
+- [x] Building footprint: a full city block — ~60 m × 40 m = 600 × 400 voxels (estimate for a dense urban city block)
+- [x] Lower floors: windowless — solid stone exterior; no light from outside; ~6–8 m ground floor height = 60–80 voxels
+- [x] Archive entrance hall: small foyer, one archivist desk — ~8 m × 10 m × 4 m = 80 × 100 × 40 voxels
+- [x] Main stacks: rows of shelving, lamplight, vaulted stone ceiling — ~20 m × 30 m × 6 m = 200 × 300 × 60 voxels (estimate)
+- [x] Side room (Tomlin's sorting room): small room off the main stacks — ~5 m × 6 m × 3 m = 50 × 60 × 30 voxels
+- [x] Restricted section: smaller back room — ~6 m × 8 m × 3 m = 60 × 80 × 30 voxels (darker, mustier than main stacks)
+- [x] Henrietta's study: single suite of rooms, accessible via staircase — ~8 m × 10 m × 3.5 m per room = 80 × 100 × 35 voxels (estimate)
 - [x] Camera arm length — Archive interior: arm 8, elevation 55°, no horizontal rotation (tight ceiling per design/CAMERA_AND_PERSPECTIVE.md)
 
 ---

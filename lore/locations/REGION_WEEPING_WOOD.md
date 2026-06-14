@@ -26,12 +26,12 @@ Map texture: bare-branch tree symbols (no leaf canopy), grey/dark shading beneat
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions:
 
-- [x] Dead tree trunk diameter: old-growth scale — ~0.5–1.5 m = 4–12 voxels; no bark variation, uniform grey-brown dead wood
-- [x] Dead tree height: ~10–20 m = 80–160 voxels; branches interlocking overhead at roughly 8–15 m height = 64–120 voxels
+- [x] Dead tree trunk diameter: old-growth scale — ~0.5–1.5 m = 5–15 voxels; no bark variation, uniform grey-brown dead wood
+- [x] Dead tree height: ~10–20 m = 100–200 voxels; branches interlocking overhead at roughly 8–15 m height = 80–150 voxels
 - [x] Canopy-equivalent height (bare branches overhead): creates a ceiling effect at ~8–15 m without actual canopy cover; light is reduced and directionless
 - [x] Ground level: bare dark earth, no undergrowth, occasional fallen branch debris — essentially clear at foot level; the trees do not obstruct ground movement significantly
 - [x] Visibility: reduced by tree density; clear line of sight ~30–50 m in most directions, then obscured by trunk density; no ash-haze here (different from the Ashfields) but grey ambient light makes distance judgment difficult

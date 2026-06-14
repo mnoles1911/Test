@@ -20,15 +20,15 @@ From WORLD_GEOGRAPHY.md: shown on maps as dotted lines connecting Karaz-Dûn, Kh
 ---
 
 ## 3D Scale Reference
-> At 8 voxels per meter (project standard: 1 voxel = 0.125 m)
+> At 10 voxels per meter (project standard: 1 voxel = 0.1 m)
 
 Key dimensions (from scale reference guide):
 
-- [x] Standard tunnel width: ~3 m wide × 3 m tall = 24 × 24 voxels (dwarven tunnel standard)
-- [x] Waystation alcove: recessed chamber off the main tunnel — ~4 m wide × 3 m deep × 3 m tall = 32 × 24 × 24 voxels; supply cache storage and rest area
-- [x] Junction chamber: wider space where tunnels intersect — ~6 m × 6 m × 4 m = 48 × 48 × 32 voxels (enough for a party to gather and consult)
-- [x] Runelight spacing: regular warm illumination — runelight sources embedded in the ceiling at ~4 m intervals = 32 voxels
-- [x] Dead-end branch length: navigational wrong turns — ~20–30 m = 160–240 voxels before the dead end (long enough to reward exploration but clearly finite)
+- [x] Standard tunnel width: ~3 m wide × 3 m tall = 30 × 30 voxels (dwarven tunnel standard)
+- [x] Waystation alcove: recessed chamber off the main tunnel — ~4 m wide × 3 m deep × 3 m tall = 40 × 30 × 30 voxels; supply cache storage and rest area
+- [x] Junction chamber: wider space where tunnels intersect — ~6 m × 6 m × 4 m = 60 × 60 × 40 voxels (enough for a party to gather and consult)
+- [x] Runelight spacing: regular warm illumination — runelight sources embedded in the ceiling at ~4 m intervals = 40 voxels
+- [x] Dead-end branch length: navigational wrong turns — ~20–30 m = 200–300 voxels before the dead end (long enough to reward exploration but clearly finite)
 - [x] Dagna's chalk marks: ~0.3 m diameter circles or directional arrows on the wall — sub-voxel scale detail; rendered as a texture or decal on the wall surface
 - [x] Camera arm length: Underway tunnels — arm 10, elevation 50°, no horizontal rotation (standard enclosed 3D tunnel settings; similar to Khorumzad upper levels)
 
