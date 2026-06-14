@@ -15,3 +15,4 @@ MiraThal/Plugins/Voxel/
 
 # Standalone Core test harness build output (clang).
 MiraThal/tests/standalone/run_tests
+MiraThal/tests/standalone/*.run
