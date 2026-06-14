@@ -239,8 +239,8 @@ func _ready() -> void:
 	# WaterFlowManager that the surface is at world Y = 10 m so swim /
 	# breath physics work and the WaterChunkMesher can render it.
 	#
-	# Surface Y = sea_level_voxels (60) × terrain.transform.scale (1/6)
-	# = 10 m world at the default scale. When the F5–F9 hotkeys cycle
+	# Surface Y = sea_level_voxels × terrain.transform.scale (1/10)
+	# at the default scale. When the F5–F9 hotkeys cycle
 	# scale, the surface moves with the terrain — the AABB stays fixed
 	# in world space, so at smaller scales the water surface shifts to
 	# the actual world-Y the generator's sea level renders at.
@@ -645,8 +645,12 @@ func _terrain_scale(terrain: Node3D) -> float:
 # author's visual placement intuition. Bake at user//baked_baseline
 # emitted CHANNEL_DATA5 water bytes up to this voxel-Y, so the
 # chunked water mesher will find a surface at Y=240 to render.
-const GEN_SEA_LEVEL_VOXELS: float = 1440.0
-const GEN_PEAK_ABOVE_SEA_VOXELS: float = 15000.0
+# 2026-06-14: 10 vox/m migration — scaled x10/6 (1440 -> 2400,
+# 15000 -> 25000) to keep the SAME world Y (240 m sea level, 2500 m
+# peak) at the new terrain.transform.scale = 0.1. Mirrors the scaled
+# sea_level_voxels / elevation_above_at_white_voxels in the .tres.
+const GEN_SEA_LEVEL_VOXELS: float = 2400.0
+const GEN_PEAK_ABOVE_SEA_VOXELS: float = 25000.0
 
 # Horizon plane override DISABLED 2026-05-08 — now that the
 # generator's sea level is at voxel-Y 1200 (= world Y 200 m), the
@@ -928,9 +932,9 @@ func _mark_world_ready_when_settled() -> void:
 	# deep below the seabed for water testing); a player-relative ±200 m
 	# probe would miss all terrain in those cases. These bounds bracket
 	# the entire generator output range:
-	#   - Top: above peaks at gray=1 (= elevation_above_at_white/6 = 2500 m
-	#     world at the canonical 6 vox/m). +500 m headroom.
-	#   - Bottom: below the WORLD_FLOOR_VOXEL_Y bedrock (= -300 vox / -50 m
+	#   - Top: above peaks at gray=1 (= elevation_above_at_white/10 = 2500 m
+	#     world at the canonical 10 vox/m). +500 m headroom.
+	#   - Bottom: below the WORLD_FLOOR_VOXEL_Y bedrock (= -500 vox / -50 m
 	#     world). -200 m for cushion.
 	const PROBE_Y_TOP: float = 3000.0
 	const PROBE_Y_BOTTOM: float = -200.0

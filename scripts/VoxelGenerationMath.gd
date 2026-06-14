@@ -43,7 +43,7 @@ static func cliff_threshold_for_angle_voxels(angle_degrees: float, sample_distan
 	# `min_drop = tan(angle) × distance`. ceil() rounds up so an angle
 	# of "exactly threshold" still triggers.
 	#
-	# At the canonical 6 vox/m scale and sample_distance=6 voxels (=1 m):
+	# At the canonical 10 vox/m scale and sample_distance=10 voxels (=1 m):
 	#   45° → 6, 50° → 8, 55° → 9, 60° → 11, 65° → 13, 70° → 17, 75° → 23
 	#
 	# Callers usually hardcode the threshold in the generator

@@ -36,8 +36,8 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # in Y to a realistic surface slab makes Zylann never even request
 # chunks outside that band — pure win.
 #
-# Units are VOXEL coordinates (not world metres). With the canonical 1/6
-# terrain scale, voxel Y * (1/6) = world Y metres.
+# Units are VOXEL coordinates (not world metres). With the canonical 1/10
+# terrain scale, voxel Y * (1/10) = world Y metres.
 #
 # Mira's cubic generator: sea level ~ voxel Y 72 (= 12 m world); macro
 # noise centred around offset 60 with +/-100 swing; max ground rarely
@@ -307,7 +307,7 @@ func _ready() -> void:
 	# NOTE: lod_distance + secondary_lod_distance are both HARD-CAPPED at
 	# 128 by Zylann — re-confirmed for the CLIPBOX streaming system on
 	# 2026-05-22 (a sweep up to 2048 all clamped to 128). The LOD0 ring is
-	# therefore fixed at ~21 m world (128 voxels x the 1/6 terrain scale);
+	# therefore fixed at ~12.8 m world (128 voxels x the 1/10 terrain scale);
 	# the way to keep the near band crisp is FAST streaming (a tight
 	# view_distance matched to the LOD coverage), not a bigger ring.
 	#
@@ -412,7 +412,7 @@ func _ready() -> void:
 		terrain.set("view_distance", terrain_view_distance_voxels)
 		print("[World3D] terrain.view_distance set to %d voxels (~%d m; actual=%s)" % [
 			terrain_view_distance_voxels,
-			int(terrain_view_distance_voxels / 6.0),
+			int(terrain_view_distance_voxels / 10.0),
 			terrain.get("view_distance"),
 		])
 
@@ -577,7 +577,7 @@ func _ready() -> void:
 	# legacy test pond) via the new water-edit API.
 	#
 	# OCEAN_SURFACE_Y at 12 m — matches the generator's
-	# SEA_LEVEL_VOXELS=72 / 6 vox/m. Keep them aligned or the chunked
+	# SEA_LEVEL_VOXELS=120 / 10 vox/m. Keep them aligned or the chunked
 	# water mesh and any future horizon plane will sit at different Ys.
 	const OCEAN_SURFACE_Y: float = 12.0
 	if get_node_or_null("/root/WaterFlowManager"):
@@ -690,7 +690,7 @@ func _ready() -> void:
 	# Replaces the baked HorizonSkirt: a ring of LOD'd smooth heightmesh
 	# chunks that follow the player, built in C++ by DistantTerrainMesher
 	# from the same world generator. Parented to this (unscaled) world
-	# root, NOT the 1/6-scaled VoxelLodTerrain — the mesh is world-metres.
+	# root, NOT the 1/10-scaled VoxelLodTerrain — the mesh is world-metres.
 	# Loaded by path (no class_name) so this bootstrap stays headless-safe.
 	var distant_script := load("res://scripts/DistantTerrainManager.gd")
 	if distant_script != null:
@@ -1503,7 +1503,7 @@ func _snap_campfire_to_ground() -> void:
 		return
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+		terrain_scale = 0.1  # fall-through: assume 10 vox/m
 	var voxels_per_m: float = 1.0 / terrain_scale
 	var generator = terrain.get("generator") if "generator" in terrain else null
 	if generator == null:
@@ -1541,7 +1541,7 @@ func _pre_snap_player_to_generator_ground() -> void:
 	#
 	# Sequence:
 	#   1. Find player + terrain in tree
-	#   2. Read terrain transform scale (1/6 → 6 vox/m)
+	#   2. Read terrain transform scale (1/10 → 10 vox/m)
 	#   3. Convert player world X,Z to voxel coords
 	#   4. Call generator.get_ground_voxel_y_at(vx, vz) — for the
 	#      adapter pattern, drill through to cpp_impl if needed
@@ -1566,7 +1566,7 @@ func _pre_snap_player_to_generator_ground() -> void:
 
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through safety: assume 6 vox/m
+		terrain_scale = 0.1  # fall-through safety: assume 10 vox/m
 	var voxels_per_m: float = 1.0 / terrain_scale
 
 	var generator = terrain.get("generator") if "generator" in terrain else null
@@ -1628,7 +1628,7 @@ var _spawn_timeout_warned: bool = false
 # outward, respecting the existing PrefetchViewer).
 var _suspend_terrain: Object = null
 var _suspend_view_distance: int = -1
-const SPAWN_VIEW_DISTANCE_VOX: int = 96
+const SPAWN_VIEW_DISTANCE_VOX: int = 160  # 16 m spawn-load radius (scaled x10/6 for 10 vox/m)
 const SPAWN_WIGGLE_MAX_S: float = 45.0
 # Bumped 15 → 45s on 2026-05-13 after user reported falling through the
 # world when voxel_deltas.sqlite was deleted. Cold-cache regen (no
@@ -2082,7 +2082,7 @@ func _seed_test_pond() -> void:
 		return
 	var terrain_scale: float = terrain.transform.basis.get_scale().y
 	if absf(terrain_scale) < 0.00001:
-		terrain_scale = 0.166667  # fall-through: assume 6 vox/m
+		terrain_scale = 0.1  # fall-through: assume 10 vox/m
 	var voxels_per_m: float = 1.0 / terrain_scale
 
 	# Pond footprint in WORLD metres, then → voxels. Centred at world
@@ -2091,7 +2091,7 @@ func _seed_test_pond() -> void:
 	const POND_CENTER_Z_M: float = 0.0
 	const POND_HALF_M: float = 3.5      # → 7 m square footprint
 	const POND_DEPTH_M: float = 3.0     # water depth below the surface
-	const POND_RIM_VOX: int = 4         # extra air cleared above g_max
+	const POND_RIM_VOX: int = 7         # extra air cleared above g_max (~0.7 m at 10 vox/m)
 	var cx_vox: int = int(roundf(POND_CENTER_X_M * voxels_per_m))
 	var cz_vox: int = int(roundf(POND_CENTER_Z_M * voxels_per_m))
 	var half_vox: int = int(roundf(POND_HALF_M * voxels_per_m))
@@ -2123,9 +2123,9 @@ func _seed_test_pond() -> void:
 				g_min = min(g_min, g)
 				g_max = max(g_max, g)
 	else:
-		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 72).")
-		g_min = 72
-		g_max = 72
+		push_warning("[World3D] Test pond: no get_ground_voxel_y_at; anchoring at sea level (vox 120).")
+		g_min = 120
+		g_max = 120
 
 	# Water surface one voxel above the LOWEST ground in the footprint
 	# (≈flush on the downhill approach). Inclusive-min / exclusive-max

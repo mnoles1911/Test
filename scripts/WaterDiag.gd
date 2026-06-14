@@ -37,13 +37,13 @@ const WaterMaterial := preload("res://scripts/WaterMaterial.gd")
 # Water is CHANNEL_TYPE id 5 (Water Voxel V2). Mirror the constants the
 # manager uses so this file stays self-contained.
 const WATER_TYPE_ID: int = WaterMaterial.BODY_ID
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = 10.0
 const HEAD_OFFSET_M: float = 1.6   # ~Roland eye height, for submersion test
 const WATER_MATERIAL_PATH: String = "res://assets/shaders/water_material.tres"
 
 # Vertical voxel span the "where is the water surface" probe scans
-# around the player before giving up (≈ ±8 m at 6 vox/m).
-const SURFACE_SCAN_VOXELS: int = 48
+# around the player before giving up (≈ ±8 m at 10 vox/m).
+const SURFACE_SCAN_VOXELS: int = 80
 # F5 radial "nearest water near the character" scan. Bounded + one-shot
 # only (NEVER per-frame — that volume scan every tick would be the bad
 # version of this; the F4 panel stays a cheap single player-column

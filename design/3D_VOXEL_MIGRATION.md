@@ -13,9 +13,9 @@ If a design doc still says "see `design/3D_VOXEL_MIGRATION.md` for canonical ter
 
 ## Pivot summary (one-paragraph)
 
-Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `CharacterBody3D` + `SpringArm3D` over-shoulder + `VoxelLodTerrain` (Zylann's Voxel Tools, GDExtension edition) at 6 voxels/m, with destructible terrain by default (edits stored as deltas in `VoxelStreamSQLite`), `NoEditZone` Area3Ds protecting settlements/landmarks, MagicaVoxel-authored props (`.glb`), low-poly Blender characters (200–500 tris), and a real-time 1-vs-many action combat system. Dialogic 2 + GameState + TransitionManager survived the pivot unchanged.
+Game One switched from `CharacterBody2D` + `Camera2D` + 2D scene tiles to `CharacterBody3D` + `SpringArm3D` over-shoulder + `VoxelLodTerrain` (Zylann's Voxel Tools, GDExtension edition) at 10 voxels/m, with destructible terrain by default (edits stored as deltas in `VoxelStreamSQLite`), `NoEditZone` Area3Ds protecting settlements/landmarks, MagicaVoxel-authored props (`.glb`), low-poly Blender characters (200–500 tris), and a real-time 1-vs-many action combat system. Dialogic 2 + GameState + TransitionManager survived the pivot unchanged.
 
-Voxel scale is locked at **6 voxels/m** (~16.7 cm/block). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125.
+Voxel scale is **10 voxels/m** (10 cm/block) — migrated 2026-06-14 from the original 6 voxels/m (16.7 cm/block); the world keeps the same physical size in metres (generator voxel-coords scaled ×10/6, noise freq ×6/10). Characters/NPCs author at a finer 20 voxels/m (rigged `.glb` meshes, not terrain voxels). Playable Mira is 12 km × 10 km (compression 125:1). Sea level is Y=125 m (world-space metres, unchanged).
 
 ## Destructible terrain — short version
 

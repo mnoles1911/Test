@@ -62,7 +62,7 @@ public:
     //   p_player_pos     — world-space player position (metres).
     //   p_active_radius_m— ACTIVE_RADIUS_M + CHUNK_SIZE_M (caller adds the
     //                      one-chunk skirt the GD original uses).
-    //   p_voxels_per_metre— 6.0 (the canonical scale).
+    //   p_voxels_per_metre— 10.0 (the canonical scale).
     //   p_pending        — Dictionary[Vector3i, *] of cells already queued
     //                      for fill (key-existence test only).
     //   p_retry          — Dictionary[Vector3i, int] of retry counts;

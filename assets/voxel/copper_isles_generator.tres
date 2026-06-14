@@ -2,11 +2,24 @@
 
 [ext_resource type="Script" uid="uid://3sp0db3l8bao" path="res://scripts/_dev/CopperIslesHeightmapGeneratorAdapter.gd" id="1_adapter"]
 
+; 10 vox/m migration (2026-06-14): all voxel-coordinate params below are scaled
+; x10/6 from the old 6 vox/m values so the world stays the SAME physical size in
+; metres at the new terrain.transform.scale = 0.1.
+;   sea_level_voxels   1440 -> 2400  (= 240 m at 0.1)
+;   beach_y_threshold  1452 -> 2420  (= 242 m)
+; extent/origin/elevation are C++ defaults (also updated in
+; copper_isles_heightmap_generator.h); overridden here too so the world is correct
+; with the CURRENTLY-COMPILED binary, before the GDExtension is rebuilt.
 [sub_resource type="CopperIslesHeightmapGeneratorCpp" id="cpp_impl"]
-beach_y_threshold = 1452
+beach_y_threshold = 2420
 bedrock_material_id = 6
-sea_level_voxels = 1440
+sea_level_voxels = 2400
 snow_material_id = 13
+extent_x_voxels = 50000
+extent_z_voxels = 50000
+origin_x_voxels = -25000
+origin_z_voxels = -25000
+elevation_above_at_white_voxels = 25000
 
 [resource]
 script = ExtResource("1_adapter")

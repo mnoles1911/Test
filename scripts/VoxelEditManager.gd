@@ -95,14 +95,14 @@ const WORLD_GENERATOR_VERSION: int = 16
 # World floor (bedrock layer)
 # ============================================================
 
-const WORLD_FLOOR_VOXEL_Y: int = -300
-# Y coordinate (in voxel units, 6 vox/m) of the bedrock layer. Edits
+const WORLD_FLOOR_VOXEL_Y: int = -500
+# Y coordinate (in voxel units, 10 vox/m) of the bedrock layer. Edits
 # whose AABB extends to or below this Y are rejected — bedrock is
 # unbreakable. Mirror of the same constant in
 # `CubicHeightmapGenerator.WORLD_FLOOR_VOXEL_Y`. Keep them in sync.
 
-const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) / 6.0
-# Same value in world-space metres (6 vox/m). Used by world-coord
+const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) / 10.0
+# Same value in world-space metres (10 vox/m). Used by world-coord
 # AABB checks below.
 #
 # GameState.save_game() stamps this version into every save. On
@@ -122,8 +122,8 @@ const WORLD_FLOOR_WORLD_Y: float = float(WORLD_FLOOR_VOXEL_Y) / 6.0
 
 @export var voxels_per_frame: int = 200000
 # Soft per-frame budget for the voxel edit queue. With one 2m
-# explosive sphere at 6 vox/m costing ~7300 voxels, this lets
-# ~10 sphere edits drain in a single physics frame, so rapid
+# explosive sphere at 10 vox/m costing ~33500 voxels, this lets
+# ~6 sphere edits drain in a single physics frame, so rapid
 # explosive throws don't bottleneck on the queue.
 #
 # (The earlier 256 was way too low — it forced one sphere per
@@ -721,10 +721,10 @@ func _apply_edit(cmd: Dictionary) -> void:
 	tool.value = cmd.get("value", 0)
 
 	# CRITICAL — VoxelTool.do_sphere / do_box take voxel-grid coords,
-	# NOT world-space. The terrain has transform.scale = 0.166667
-	# (6 vox per metre), so a world position must be divided by that
+	# NOT world-space. The terrain has transform.scale = 0.1
+	# (10 vox per metre), so a world position must be divided by that
 	# scale before being passed to the tool. terrain.to_local() applies
-	# the inverse transform (which for our scale-only setup is *=6).
+	# the inverse transform (which for our scale-only setup is *=10).
 	#
 	# Symptom of getting this wrong: queue drains, _apply_edit logs
 	# correctly, BUT the carve appears 1/8 the size and 8x closer to
@@ -792,7 +792,7 @@ func _apply_edit(cmd: Dictionary) -> void:
 
 		"set":
 			# Single-voxel write. Cubes meshing IS discrete; a 0.5 m
-			# sphere clears ~3 cubes at 6 vox/m — feels like a
+			# sphere clears ~5 cubes at 10 vox/m — feels like a
 			# pickaxe-bite of stone rather than the bring-up-sized
 			# 1.5 m crater. Bump back up only if a player swing needs
 			# to look more dramatic.
@@ -1112,19 +1112,19 @@ func _mark_chunk(chunk_coords: Vector3i) -> void:
 # Private — coordinate helpers
 # ============================================================
 
-# Voxel scale: 6 voxels per meter — locked in 2026-05-03 as the
-# project-wide default. Each voxel block is ~16.67 cm (1/6 m) on a
+# Voxel scale: 10 voxels per meter — locked in 2026-05-03 as the
+# project-wide default. Each voxel block is ~10 cm (1/10 m) on a
 # side. The VoxelLodTerrain in World3D.tscn has transform.scale =
-# 0.166667 to match.
-const VOXELS_PER_METER: float = 6.0
+# 0.1 to match.
+const VOXELS_PER_METER: float = 10.0
 
 # Chunk side length in voxels. Zylann's default for VoxelLodTerrain is
 # 16 voxels. If you change `mesh_block_size` or `data_block_size` on
 # the terrain node, update this constant to match.
 const CHUNK_SIZE_VOXELS: int = 16
 
-# Chunk side length in meters — derived. At 6 vox/m, each chunk is
-# 16/6 ≈ 2.67 m on a side.
+# Chunk side length in meters — derived. At 10 vox/m, each chunk is
+# 16/10 = 1.6 m on a side.
 const CHUNK_SIZE_METERS: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER
 
 
@@ -1154,9 +1154,9 @@ func _estimate_voxel_cost(cmd: Dictionary) -> int:
 	# small over-estimate just means we're conservative about stutter,
 	# which is the safer direction.
 	#
-	# The 216 multiplier is voxels-per-cubic-meter at our scale:
-	# 6 vox/m on each axis = 6^3 = 216 voxels per m^3.
-	const VOXELS_PER_CUBIC_METER: float = 216.0
+	# The multiplier is voxels-per-cubic-meter at our scale:
+	# 10 vox/m on each axis = 10^3 = 1000 voxels per m^3.
+	const VOXELS_PER_CUBIC_METER: float = 1000.0
 	match cmd["type"]:
 		"sphere":
 			# Sphere volume = 4/3 * pi * r^3.

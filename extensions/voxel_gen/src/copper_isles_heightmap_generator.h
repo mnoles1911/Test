@@ -96,11 +96,19 @@ private:
     godot::Ref<godot::Image> ensure_image_const() const;
 
     // --- Heightmap config ---
+    // 10 vox/m migration (2026-06-14): voxel-coordinate defaults scaled x10/6
+    // from the old 6 vox/m values so the world keeps the SAME physical size in
+    // metres at terrain.transform.scale = 0.1 (~5 km map, 2.5 km max elevation).
+    //   extent  30000 -> 50000  (= 5000 m at 0.1)
+    //   origin -15000 -> -25000
+    //   elevation 15000 -> 25000 (= 2500 m at 0.1)
+    // The .tres (assets/voxel/copper_isles_generator.tres) overrides these too,
+    // so the world is correct even before this GDExtension is recompiled.
     godot::String _heightmap_path = "res://assets/heightmaps/copper_isles_heightmap.exr";
-    int _extent_x_voxels = 30000;
-    int _extent_z_voxels = 30000;
-    int _origin_x_voxels = -15000;
-    int _origin_z_voxels = -15000;
-    int _elevation_above_at_white_voxels = 15000;
+    int _extent_x_voxels = 50000;
+    int _extent_z_voxels = 50000;
+    int _origin_x_voxels = -25000;
+    int _origin_z_voxels = -25000;
+    int _elevation_above_at_white_voxels = 25000;
     bool _bilinear_sampling = true;
 };

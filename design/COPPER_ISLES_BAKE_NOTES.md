@@ -12,6 +12,21 @@ here so future passes don't re-litigate the same questions.
 
 ---
 
+## 10 vox/m migration (2026-06-14)
+
+The engine moved from 6 voxels/m to **10 voxels/m** (`terrain.transform.scale`
+`1/6 → 1/10`). To keep the Copper Isles the SAME physical size in metres, every
+voxel-coordinate generator param was scaled **×10/6**: `sea_level_voxels`
+1440→2400, `elevation_above_at_white_voxels` 15000→25000, `extent_*_voxels`
+30000→50000, `origin_*_voxels` −15000→−25000, world floor −300→−500, snow line
+30000→50000. The EXR heightmap is unchanged (bilinear sampling handles the finer
+grid). So the world Y values in the table below are **unchanged in metres** — at
+the new scale `2400 vox × 0.1 = 240 m` sea level, `25000 vox × 0.1 = 2500 m`
+peak. The voxel numbers in the historical table below are the OLD 6 vox/m values;
+multiply by 10/6 for the current grid. Any bake from before this date must be
+wiped + re-baked (see "Cache invalidation"); `WorldBakeController.TILE_SIZE_M`
+also dropped 30→18 to match the smaller physical LOD0 radius.
+
 ## World-scale refactor (2026-05-09)
 
 The generator's gray-to-ground-Y formula was conflating two

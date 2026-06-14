@@ -316,7 +316,7 @@ enum FallBehavior {
 @export_range(0, 32, 1) var disk_max_distance_to_water_voxels: int = 12
 # Tier 5 proximity filter — the disk only spawns when the column's
 # ground_y is within this many voxels of sea level. 12 = ~2 m above or
-# below the waterline at 6 vox/m.
+# below the waterline at 10 vox/m.
 
 
 # =============================================================

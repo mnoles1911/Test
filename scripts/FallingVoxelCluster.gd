@@ -31,7 +31,7 @@ extends RigidBody3D
 # CONFIGURATION (passed in by VoxelGravityManager.configure())
 # =============================================================
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
+const VOXEL_SIZE_M: float = 1.0 / 10.0
 # Edge length of one voxel in meters. Mirrors VoxelClusterBuilder
 # constant. Hardcoded here too so this file is parsable in isolation.
 

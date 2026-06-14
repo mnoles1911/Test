@@ -791,17 +791,42 @@ C++ `CubicHeightmapGeneratorCpp` generator (was GDScript, ported 2026-05-11), `V
 
 Open questions that need an answer before their dependent systems can be built.
 
-- [ ] **Voxel scale migration: 6 vox/m (16.7 cm) → 10 vox/m (10 cm)**
-  Designer set the asset standard at **10 cm per voxel** (Voxel Tree Studio is
-  built to it). But the live terrain/engine is **6 voxels per meter (16.7 cm)**,
-  hard-coded in several load-bearing spots:
-  - `scripts/EditToolHandler.gd:309` — `VOXELS_PER_METER = 6.0`
-  - `scripts/FallingVoxelCluster.gd:34`, `scripts/VoxelClusterBuilder.gd:31` — `VOXEL_SIZE_M = 1.0/6.0`
-  - `scripts/Player3D.gd` — step/jump clearances tuned to 16.7 cm voxels
-  Until these are migrated to 10 cm, trees authored in the studio will import
-  ~67% larger than intended. This is an architectural change (re-tunes player
-  movement + edit volumes), so it needs a deliberate pass, not a drive-by edit.
-  Decide: migrate the engine to 10 cm, or have the importer rescale on the way in?
+- [x] **Voxel scale migration: 6 vox/m (16.7 cm) → 10 vox/m (10 cm)** — CODE DONE 2026-06-14
+  Decision: **migrated the engine to 10 cm** (not importer-rescale). The code
+  changes are committed; the world keeps the SAME physical size in metres
+  (generator voxel-coordinates scaled ×10/6, noise frequencies ×6/10), so player
+  movement / capsule / gravity (all in metres) are unchanged. Studio-authored
+  trees/rocks now import at their designed size 1:1. Characters/NPCs author at a
+  finer **20 vox/m** (rigged `.glb` meshes via Blender→Mixamo, not terrain voxels).
+
+  What changed in code: canonical `VOXELS_PER_METER 6→10` / `VOXEL_SIZE_M 1/6→1/10`
+  across all autoloads; `VoxelLodTerrain.transform.scale 0.166667→0.1` in all 4
+  scenes; generator voxel-coordinate constants scaled ×10/6 (sea level 1440→2400,
+  world floor −300→−500, snow line, cliff sample/threshold, copper-isles
+  extent/origin/elevation, cubic height/offset/amplitude) and noise frequency
+  0.0005→0.0003; several hardcoded `*6`/`/6` conversions fixed; all scale comments
+  updated.
+
+  **REMAINING MANUAL STEPS (need the editor / your machine — I can't do these here):**
+  1. **Recompile the C++ GDExtension** (`extensions/voxel_gen/`, see its CLAUDE.md)
+     — the generator default changes live in the `.h`/`.cpp` and only take effect
+     after a rebuild. The `.tres` overrides the copper-isles params so that world is
+     correct even before the rebuild, but World3D's cubic generator offset/amplitude
+     defaults need the recompile.
+  2. **Wipe the `user://` voxel sqlite caches** (`user://voxel_deltas.sqlite`,
+     `user://voxel_baked.sqlite`, copper-isles cache) — they hold chunks baked at the
+     old scale and will mismatch. Fresh runtime generation is correct (see
+     `design/COPPER_ISLES_BAKE_NOTES.md` "Cache invalidation").
+  3. **Re-bake** any shipped baseline (Copper Isles) via `BakeWorld.tscn` — note
+     `WorldBakeController.TILE_SIZE_M` dropped 30→18 to match the now-smaller LOD0
+     physical radius (Zylann's voxel-based lod_distance is capped at 128, so finer
+     voxels = smaller physical LOD0 ring); bakes take ~2.8× longer.
+  4. **Run the headless parity gates** (`tools/headless/run.ps1 gen distant gravity
+     emissive baked_light water_flow finite finite_world`) and **playtest** World3D —
+     confirm terrain looks right, the player moves/steps/jumps normally, water sits
+     at sea level, and a studio tree imports at the correct size.
+  5. Bump `WORLD_GENERATOR_VERSION` if you want old saves hard-rejected (the baseline
+     changed), per `VoxelEditManager` save-version policy.
 
 - [ ] **Vegetation/tree/rock voxel materials (ids 24–32) — bake the library + replace placeholder art**
   The voxel studios emit a rich palette (24 bark, 25 heartwood, 26 deadwood,

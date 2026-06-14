@@ -65,7 +65,7 @@ static func scan_settle_region(
 	var bpv: int = ch_bytes.size() / voxel_count if voxel_count > 0 else 1
 	@warning_ignore("integer_division")
 	var bpv5: int = d5_bytes.size() / voxel_count if voxel_count > 0 else 1
-	var voxel_size_m: float = 1.0 / voxels_per_metre if voxels_per_metre > 0.0 else (1.0 / 6.0)
+	var voxel_size_m: float = 1.0 / voxels_per_metre if voxels_per_metre > 0.0 else (1.0 / 10.0)
 	var radius_sq: float = active_radius_m * active_radius_m
 
 	var y: int = y_start

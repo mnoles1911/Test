@@ -10,8 +10,8 @@
 ;       └── SpringArm3D (CameraRig.gd — 6m arm, 15° elevation)
 ;           └── Camera3D (the actual camera, looks back down the arm)
 ;
-; Roland is 1.8 m tall — at the locked 6 vox/m terrain scale that's
-; ~11 voxels of height. Capsule centre sits at Y=0.9 (half-height).
+; Roland is 1.8 m tall — at the 10 vox/m terrain scale that's
+; 18 voxels of height. Capsule centre sits at Y=0.9 (half-height).
 ; When the Blender model lands, replace the MeshInstance3D with
 ; the imported .glb scene.
 
@@ -29,8 +29,8 @@ height = 1.8
 
 [sub_resource type="BoxMesh" id="BoxMesh_1"]
 ; Realistic adult silhouette: 0.4 m wide × 1.8 m tall × 0.25 m deep.
-; At 6 vox/m (16.7 cm cubes), Roland covers ~11 voxels of height and
-; ~2.4 voxels of shoulder width — proportions read as a person rather
+; At 10 vox/m (10 cm cubes), Roland covers 18 voxels of height and
+; ~4 voxels of shoulder width — proportions read as a person rather
 ; than a column of cubes.
 size = Vector3(0.4, 1.8, 0.25)
 

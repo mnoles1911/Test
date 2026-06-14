@@ -26,13 +26,13 @@ save_generator_output = true
 
 [sub_resource type="FastNoiseLite" id="TerrainNoise"]
 seed = 8
-frequency = 0.0005
+frequency = 0.0003
 fractal_type = 2
 fractal_lacunarity = 2.1
 
 [sub_resource type="CubicHeightmapGeneratorCpp" id="VoxelGen_Cpp"]
 noise = SubResource("TerrainNoise")
-height_range_voxels = 200.0
+height_range_voxels = 333.0
 bedrock_material_id = 6
 snow_material_id = 13
 
@@ -67,7 +67,7 @@ streaming_system = 1
 stream = SubResource("VoxelStream_1")
 generator = SubResource("VoxelGen_Adapter")
 mesher = SubResource("VoxelMesher_1")
-transform = Transform3D(0.166667, 0, 0, 0, 0.166667, 0, 0, 0, 0.166667, 0, 0, 0)
+transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)
 
 [node name="ObserverCamera" type="Camera3D" parent="." unique_id=445430208]
 transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 800, 800)

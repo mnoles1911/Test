@@ -28,8 +28,8 @@ extends RefCounted
 # Reference: design/3D_VOXEL_MIGRATION.md → "Voxel Gravity"
 
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
-# Edge length of one voxel in meters. Matches VOXELS_PER_METER = 6 from
+const VOXEL_SIZE_M: float = 1.0 / 10.0
+# Edge length of one voxel in meters. Matches VOXELS_PER_METER = 10 from
 # VoxelEditManager. Hardcoded here to keep this file dependency-free
 # (no autoload calls inside a static utility).
 

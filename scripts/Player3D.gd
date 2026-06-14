@@ -50,12 +50,13 @@ const BASE_DECEL: float        = 12.0   # m/s² rate to ramp DOWN to zero
 
 const STEP_HEIGHT: float = 0.30
 # Auto-step / climb height in metres. Roland walks over terrain
-# obstacles up to this tall WITHOUT pressing jump. At 6 vox/m
-# (16.7 cm per voxel), 0.30 m clears a single 1-voxel ledge with
-# ~13 cm of margin to handle the rounded capsule bottom catching
-# on cube corners. A 2-voxel ledge (33 cm) exceeds STEP_HEIGHT and
-# still requires jumping — that's intentional, otherwise the
-# terrain would feel mushy and walls would be meaningless.
+# obstacles up to this tall WITHOUT pressing jump. This is a PHYSICAL
+# clearance in metres, so the 6 -> 10 vox/m migration (2026-06-14) did
+# NOT change it — the world keeps the same physical shape, just finer
+# voxels. At 10 vox/m (10 cm per voxel), 0.30 m clears a 3-voxel ledge;
+# a 4-voxel ledge (40 cm) exceeds STEP_HEIGHT and still requires
+# jumping — that's intentional, otherwise the terrain would feel mushy
+# and walls would be meaningless.
 #
 # How it works (see _try_step_up below): after each move_and_slide
 # call where the player hit a wall while walking, we try lifting
@@ -66,8 +67,9 @@ const STEP_HEIGHT: float = 0.30
 const GRAVITY: float = 20.0
 # Initial upward velocity applied on jump. With GRAVITY=20 m/s², a
 # 7 m/s jump peaks at v²/(2g) ≈ 1.22 m — well clear of a single voxel
-# (~16.7 cm at 6 vox/m) or a stair-stepped two-voxel ledge, comfortable
-# for hopping over rocks.
+# (~10 cm at 10 vox/m) or a stair-stepped few-voxel ledge, comfortable
+# for hopping over rocks. (Physical metres — unchanged by the 6 -> 10
+# vox/m migration; the world keeps the same physical scale.)
 const JUMP_VELOCITY: float = 7.0
 # Stronger than real-world 9.8 m/s². Game gravity should feel snappy on drops.
 
@@ -403,7 +405,7 @@ const VIEWER_LOOKAHEAD_MAX_OFFSET_M: float = 0.0
 # History: this cap was 40.0 m for months. The original comment
 # claimed "40 m is ~31 % of the 128 m LOD0 ring" — that was an
 # off-by-6 UNIT BUG. `terrain.lod_distance = 128` is in VOXELS, not
-# metres; at 6 vox/m the LOD0 ring is ~21 m, not 128 m. So a 40 m
+# metres; at 10 vox/m the LOD0 ring is ~12.8 m, not 128 m. So a 40 m
 # offset was pushing the main viewer ~188 % of the ring radius
 # AHEAD of the player — leaving the player standing OUTSIDE the LOD0
 # ring whenever they moved. That is exactly the "I outrun LOD0
@@ -472,7 +474,7 @@ var _viewer_offset_smoothed: Vector3 = Vector3.ZERO
 # Half-life of the Y smoothing — every CAMERA_Y_SMOOTH_HALFLIFE_S the
 # offset between smoothed and real body Y halves. 0.08 s ≈ 5 frames at
 # 60 fps; small enough that the lag isn't perceptible, large enough
-# that single-voxel auto-step bumps (≈ 0.167 m at 6 vox/m) get
+# that single-voxel auto-step bumps (≈ 0.10 m at 10 vox/m) get
 # noticeably smoothed.
 const CAMERA_Y_SMOOTH_HALFLIFE_S: float = 0.08
 
@@ -1057,8 +1059,8 @@ func _physics_process_inner(delta: float) -> void:
 	_update_footsteps()
 
 	# --- Auto-step over small voxel ledges ---
-	# Walking forward into a 1-voxel cube (16.7 cm at 6 vox/m, since
-	# we run at 6 voxels per metre) catches the capsule's rounded
+	# Walking forward into a 1-voxel cube (10 cm at 10 vox/m, since
+	# we run at 10 voxels per metre) catches the capsule's rounded
 	# bottom on the cube's top corner at a near-45° contact normal.
 	# Godot classifies that contact as a "wall" rather than a slope,
 	# and the player gets stopped cold. Auto-step lifts Roland up to

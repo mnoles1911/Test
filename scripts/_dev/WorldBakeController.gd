@@ -22,8 +22,8 @@ extends Node3D
 #   pause / cancel the process. For shipping-baseline scenes (Copper
 #   Isles), a Copy button promotes the finished DB into assets/voxel/.
 #
-#   The bake runs at the canonical terrain.transform.scale (1/6, ≈ 6
-#   voxels per metre). World metres × 6 = voxel-grid coordinates.
+#   The bake runs at the canonical terrain.transform.scale (1/10, = 10
+#   voxels per metre). World metres × 10 = voxel-grid coordinates.
 
 # =============================================================
 # CONFIGURATION
@@ -65,23 +65,24 @@ extends Node3D
 # Walker tile size in WORLD METRES. Sized for LOD0 coverage at the
 # runtime's lod_distance:
 #
-#   LOD0 radius (m world) = lod_distance / 6     (terrain.scale = 1/6)
+#   LOD0 radius (m world) = lod_distance / 10    (terrain.scale = 1/10)
 #   For full corner-to-corner coverage on an axis-aligned grid:
 #     S × √2 / 2 ≤ R   →   S ≤ R × √2
 #
-#   lod_distance = 128  →  R = 21 m  →  S ≤ 30 m   (CURRENT)
+#   lod_distance = 128  →  R = 12.8 m  →  S ≤ 18 m   (CURRENT)
 #
 # Zylann caps lod_distance at 128 (verified via the probe button),
-# so this is the only working value pair. Earlier we set
-# TILE_SIZE_M=180 sized for an imaginary lod_distance=768 — caused
-# 95% LOD0 cache misses because the real LOD0 was only 21 m.
+# so this is the only working value pair. lod_distance is in VOXELS,
+# so at the 2026-06-14 migration to 10 vox/m the LOD0 physical radius
+# shrank from 21 m to 12.8 m — TILE_SIZE_M dropped 30 → 18 to match,
+# or bakes get LOD0 cache misses (same failure as the old TILE_SIZE_M=180).
 #
 # Bake time scales as (1/S)²:
-#   1 km² @ 30 m → 33² ≈ 1089 tiles → ~75 min @ 4 s/tile
-#   5 km² @ 30 m → 167² ≈ 28000 tiles → ~31 hours overnight
-# To shorten bakes, drop voxel resolution (3 vox/m would give R=43m
-# and let TILE_SIZE_M go to ~60 → 9× fewer tiles).
-const TILE_SIZE_M: float = 30.0
+#   1 km² @ 18 m → 56² ≈ 3136 tiles → ~3.5 h @ 4 s/tile
+#   5 km² @ 18 m → 278² ≈ 77000 tiles → multi-day overnight
+# To shorten bakes, drop voxel resolution (6 vox/m would give R=21m
+# and let TILE_SIZE_M go back to ~30 → ~2.8× fewer tiles).
+const TILE_SIZE_M: float = 18.0
 
 # Wait time at each viewer position (seconds) for Zylann to stream
 # everything within view_distance and persist it via
@@ -102,9 +103,9 @@ const SAVE_EVERY_N_TILES: int = 8
 # ±30 m editing window" (2026-05-09). The player edits voxels almost
 # exclusively within ±30 m of the local ground surface; the bake
 # covers exactly that band per land tile, plus an upward margin for
-# scaffold/tower placements. LOD0 sphere radius is ≈21 m world
-# (lod_distance=128 vox at 1/6 scale), so two stops 42 m apart
-# overlap and bound a 60 m+ band cleanly.
+# scaffold/tower placements. LOD0 sphere radius is ≈12.8 m world
+# (lod_distance=128 vox at 1/10 scale), so two stops ~25 m apart
+# overlap and bound a 36 m+ band cleanly.
 enum TileClass {
 	LAND,           # gray ≥ 2× ocean threshold; full surface band
 	COAST,          # narrow beach band; treat like land but use sea level as anchor
@@ -129,7 +130,7 @@ const STOP_SHALLOW: float    = 5.0     # sea + 5      single stop, covers sea−
 # rather than LAND. Mirrors generator.beach_y_threshold semantics —
 # kept generous so the walker uses the sea-level-anchored stops where
 # the visual sand band actually exists.
-const COAST_BAND_VOXELS_ABOVE_SEA: int = 12   # = 2 m world
+const COAST_BAND_VOXELS_ABOVE_SEA: int = 20   # = 2 m world (10 vox/m)
 
 # Legacy multi-vertical knobs — retained for backward-compat with
 # code paths that may still reference them. The new classifier-driven
@@ -183,9 +184,9 @@ const BAKE_DB_PATH: String = "user://baked_baseline_v14.sqlite"
 const FINAL_BASELINE_PATH: String = "res://assets/voxel/copper_isles_baseline_v14.sqlite"
 
 # Voxels per world metre at the canonical terrain.transform.scale of
-# 1/6. Used to convert tile centres (world metres) into voxel-grid
+# 1/10. Used to convert tile centres (world metres) into voxel-grid
 # coords for generator sampling.
-const VOXELS_PER_METRE: float = 6.0
+const VOXELS_PER_METRE: float = 10.0
 
 
 # =============================================================

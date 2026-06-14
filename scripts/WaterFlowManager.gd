@@ -89,9 +89,9 @@ const _TICK_MASK: int = 0x1FE0  # bits 5–12, shifted up
 # Chunk dimensions — must match VoxelEditManager.CHUNK_SIZE_VOXELS and
 # VoxelEditManager.VOXELS_PER_METER. Replicated here so this file
 # doesn't need to call into private helpers on another autoload.
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = 10.0
 const CHUNK_SIZE_VOXELS: int = 16
-const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER  # ≈ 2.667 m
+const CHUNK_SIZE_M: float = float(CHUNK_SIZE_VOXELS) / VOXELS_PER_METER  # ≈ 1.6 m
 
 
 # ============================================================
@@ -124,10 +124,10 @@ var _horizon_plane_y: float = 10.0
 # mesher reads it on every frame's follow-player update and the manager
 # is the natural single owner of "what is the configured water level."
 
-var _sea_level_voxel_y: int = 72
+var _sea_level_voxel_y: int = 120
 # Voxel-grid Y where the generator writes water source bytes into
 # CHANNEL_DATA5. WaterChunkMesher needs this to know which chunk-Y
-# row to scan for water surfaces. Default 72 = Mira's
+# row to scan for water surfaces. Default 120 = Mira's
 # CubicHeightmapGenerator.SEA_LEVEL_VOXELS — no behaviour change for
 # World3D. Copper Isles overrides via set_sea_level_voxel_y(720) at
 # bootstrap so the mesher scans the correct chunk-Y row (45) instead
@@ -1501,9 +1501,9 @@ func _chunk_in_active_radius(chunk: Vector3i) -> bool:
 
 func _voxel_center_world(voxel_pos: Vector3i) -> Vector3:
 	return Vector3(
-		(float(voxel_pos.x) + 0.5) / 6.0,
-		(float(voxel_pos.y) + 0.5) / 6.0,
-		(float(voxel_pos.z) + 0.5) / 6.0,
+		(float(voxel_pos.x) + 0.5) / VOXELS_PER_METER,
+		(float(voxel_pos.y) + 0.5) / VOXELS_PER_METER,
+		(float(voxel_pos.z) + 0.5) / VOXELS_PER_METER,
 	)
 
 
@@ -1565,17 +1565,17 @@ func _world_to_voxel(world_pos: Vector3) -> Vector3i:
 	# back to a local computation.
 	if get_node_or_null("/root/VoxelEditManager") != null:
 		return VoxelEditManager.world_to_voxel(world_pos)
-	# Fallback: use the locked 6 vox/m scale.
+	# Fallback: use the locked 10 vox/m scale.
 	return Vector3i(
-		floori(world_pos.x * 6.0),
-		floori(world_pos.y * 6.0),
-		floori(world_pos.z * 6.0),
+		floori(world_pos.x * VOXELS_PER_METER),
+		floori(world_pos.y * VOXELS_PER_METER),
+		floori(world_pos.z * VOXELS_PER_METER),
 	)
 
 
 func _world_to_chunk(world_pos: Vector3) -> Vector3i:
 	# Convert world-space (meters) to chunk coord. Chunk = 16 voxels =
-	# 16/6 m on a side. Mirrors VoxelEditManager._world_to_chunk; the
+	# 16/10 = 1.6 m on a side. Mirrors VoxelEditManager._world_to_chunk; the
 	# constant lives there and we replicate to avoid a private call.
 	return Vector3i(
 		floori(world_pos.x / CHUNK_SIZE_M),

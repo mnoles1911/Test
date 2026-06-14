@@ -194,7 +194,7 @@ var _frame_times_idx: int = 0
 # terrain_scale = 1 / vox_per_metre — keeping both pre-computed avoids
 # float-division noise in the comparison and read-back path.
 const F7_CYCLE: Array = [
-	{"vox_per_m": 6, "scale": 1.0 / 6.0},
+	{"vox_per_m": 10, "scale": 1.0 / 10.0},
 	{"vox_per_m": 8, "scale": 1.0 / 8.0},
 	{"vox_per_m": 10, "scale": 1.0 / 10.0},
 ]
@@ -998,11 +998,11 @@ func _refresh_view_dist_label() -> void:
 	var viewer := _get_voxel_viewer()
 	var dist_vox: int = int(viewer.view_distance) if viewer != null else -1
 	if dist_vox >= 0:
-		# VoxelViewer.view_distance is in voxels; terrain is 6 vox/m.
+		# VoxelViewer.view_distance is in voxels; terrain is 10 vox/m.
 		# Truncating to whole meters for the label is the intent (the
 		# voxel count is shown in parentheses for precision).
 		@warning_ignore("integer_division")
-		var dist_m: int = dist_vox / 6
+		var dist_m: int = dist_vox / 10
 		_view_dist_label.text = "%d m  (%d vox)" % [dist_m, dist_vox]
 	else:
 		_view_dist_label.text = "— (no VoxelViewer)"
@@ -1013,10 +1013,10 @@ func _adjust_view_distance(delta_m: int) -> void:
 	if viewer == null:
 		log_action("DEV: view distance change ignored — VoxelViewer not found")
 		return
-	# VoxelViewer.view_distance is in voxels. Multiply meters × 6 to convert.
-	# Clamp: 600 vox (100 m) minimum, 18000 vox (3000 m) maximum.
+	# VoxelViewer.view_distance is in voxels. Multiply meters × 10 to convert.
+	# Clamp: 1000 vox (100 m) minimum, 30000 vox (3000 m) maximum.
 	var before_vox: int = int(viewer.view_distance)
-	var requested_vox: int = clamp(before_vox + delta_m * 6, 600, 18000)
+	var requested_vox: int = clamp(before_vox + delta_m * 10, 1000, 30000)
 	viewer.view_distance = requested_vox
 	# Read back to verify the write — Zylann's plugin can silently clamp
 	# view_distance against an internal max.
@@ -1990,7 +1990,7 @@ func _cycle_f7_vox_per_m() -> void:
 	# scale or some other path mutates it).
 	var entry: Dictionary = F7_CYCLE[_f7_next_index]
 	var vox_per_m: int = int(entry.get("vox_per_m", 6))
-	var new_scale: float = float(entry.get("scale", 1.0 / 6.0))
+	var new_scale: float = float(entry.get("scale", 1.0 / 10.0))
 	_f7_next_index = (_f7_next_index + 1) % F7_CYCLE.size()
 	_apply_terrain_scale_hotkey(new_scale, "F7  (%d vox/m)" % vox_per_m)
 

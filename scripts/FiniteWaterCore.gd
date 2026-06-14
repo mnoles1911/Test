@@ -43,10 +43,10 @@ extends RefCounted
 # Tunables (designer dials — see WATER_FINITE_SIM_PLAN.md)
 # ============================================================
 
-const SPREAD_REACH_VOXELS: int = 18
+const SPREAD_REACH_VOXELS: int = 30
 # How far water may CREEP ACROSS A LEVEL SURFACE from where it was
-# introduced, in voxels (18 vox = 3 m at 6 vox/m). Each sideways step
-# into fresh air increments a cell's "distance budget"; at 18 the front
+# introduced, in voxels (30 vox = 3 m at 10 vox/m). Each sideways step
+# into fresh air increments a cell's "distance budget"; at 30 the front
 # stops advancing and the pool deepens instead. Falling down a ledge
 # RESETS the budget (a waterfall starts a fresh pool at its base).
 # Equalization between cells that are already water ignores this —

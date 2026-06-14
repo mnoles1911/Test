@@ -306,7 +306,7 @@ func _update_aim_outline() -> void:
 	# helper so the outline exactly matches what an LMB press will
 	# remove — including the depth-bias along the surface normal.
 	var voxel_world_pos: Vector3 = hit_pos - hit_normal * 0.1
-	const VOXELS_PER_METER: float = 6.0
+	const VOXELS_PER_METER: float = 10.0
 	const VOXEL_SIZE_M: float = 1.0 / VOXELS_PER_METER
 	var centre_voxel: Vector3i = Vector3i(
 		floori(voxel_world_pos.x * VOXELS_PER_METER),
@@ -641,9 +641,9 @@ func _tick_held_action(delta: float) -> void:
 	# stone voxel anywhere in the 3×3×3 box makes the swing as slow
 	# as a pure-stone carve, regardless of where the crosshair lies.
 	var centre_voxel: Vector3i = Vector3i(
-		floori(voxel_world_pos.x * 6.0),
-		floori(voxel_world_pos.y * 6.0),
-		floori(voxel_world_pos.z * 6.0),
+		floori(voxel_world_pos.x * 10.0),
+		floori(voxel_world_pos.y * 10.0),
+		floori(voxel_world_pos.z * 10.0),
 	)
 	var box: Array = _compute_carve_box(centre_voxel, hit_normal, carve_volume_size)
 	var box_vmin: Vector3i = box[0]
@@ -853,7 +853,7 @@ func _read_material_at(world_pos: Vector3) -> VoxelMaterial:
 	# CRITICAL: VoxelTool.get_voxel takes voxel-grid coords (Vector3i),
 	# not world-space metres. We use VoxelEditManager.world_to_voxel
 	# which already does the conversion (multiplies by VOXELS_PER_METER
-	# = 6 and floors).
+	# = 10 and floors).
 	if not get_node_or_null("/root/VoxelEditManager"):
 		return null
 	var terrain: VoxelLodTerrain = VoxelEditManager.get_terrain()
@@ -900,7 +900,7 @@ func _carve(voxel_world_pos: Vector3, material: VoxelMaterial, equipped_id: Stri
 	# return -0.999... instead of -1.0 due to FP rounding, collapsing
 	# the 3×3×3 carve to 1×1×1 after truncation. Integer arithmetic
 	# avoids the conversion entirely.
-	const VOXELS_PER_METER: float = 6.0
+	const VOXELS_PER_METER: float = 10.0
 	var centre_voxel: Vector3i = Vector3i(
 		floori(voxel_world_pos.x * VOXELS_PER_METER),
 		floori(voxel_world_pos.y * VOXELS_PER_METER),

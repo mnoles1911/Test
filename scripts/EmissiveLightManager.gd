@@ -149,7 +149,7 @@ var _scan_queue: Array = []
 const _SCAN_QUEUE_MAX: int = 24
 # Largest box (per axis) a single scan may cover — guards the buffer
 # allocation against a runaway request.
-const _MAX_SCAN_SIDE: int = 72
+const _MAX_SCAN_SIDE: int = 120  # ~12 m per axis (scaled x10/6 for 10 vox/m)
 # At most this many queued scans are drained per tick. Vicinity sweeps
 # are sliced into 8 octants in _queue_vicinity_scan, so a value of 1
 # spreads each sweep over 8 ticks (~1.6 s) — keeping each tick's scan

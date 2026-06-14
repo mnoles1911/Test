@@ -32,7 +32,7 @@ extends Node3D
 # Created and configure()'d at runtime by World3DBootstrap /
 # CopperIslesTestBootstrap as a child of the (unscaled) world root — the
 # mesh vertices are absolute world metres, so the manager must NOT live
-# under the 1/6-scaled VoxelLodTerrain.
+# under the 1/10-scaled VoxelLodTerrain.
 
 const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 
@@ -58,8 +58,8 @@ const _DISTANT_SHADER_PATH := "res://assets/shaders/distant_terrain.gdshader"
 @export var apron_base_depth: float = 8.0
 ## LOD-swap dither cross-fade duration, in seconds.
 @export var fade_seconds: float = 0.35
-## World voxels per metre (canonical 6.0) — overridden by configure().
-@export var voxels_per_metre: float = 6.0
+## World voxels per metre (canonical 10.0) — overridden by configure().
+@export var voxels_per_metre: float = 10.0
 
 # --- Runtime state ---------------------------------------------------
 var _active: bool = false
@@ -94,8 +94,8 @@ func setup_from_terrain(terrain: Node) -> void:
 	# real HeightmapGeneratorBase, not the GDScript VoxelGeneratorScript
 	# adapter that forwards to it.
 	var cpp = gen.get("cpp_impl") if "cpp_impl" in gen else gen
-	# voxels-per-metre from the terrain's own scale (canonical 1/6 -> 6).
-	var vpm := 6.0
+	# voxels-per-metre from the terrain's own scale (canonical 1/10 -> 10).
+	var vpm := 10.0
 	if terrain is Node3D:
 		var sx: float = (terrain as Node3D).transform.basis.get_scale().x
 		if sx > 0.0:

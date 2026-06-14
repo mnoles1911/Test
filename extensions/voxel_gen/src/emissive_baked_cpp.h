@@ -27,7 +27,7 @@
 // Volume sizing (autoload-driven, configurable):
 //   * cells_per_axis = N           (the texture is NxNxN cells)
 //   * cell_size_voxels = K         (each cell spans K voxels per axis)
-//   * world coverage = N * K voxels per axis (at 6 vox/m = N*K/6 metres)
+//   * world coverage = N * K voxels per axis (at 10 vox/m = N*K/10 metres)
 //   * volume origin = min-corner world-voxel coord, snapped to cell grid
 //   * memory = N^3 * 4 bytes (R8G8B8A8)
 //

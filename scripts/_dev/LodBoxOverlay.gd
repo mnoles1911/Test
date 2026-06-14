@@ -77,8 +77,8 @@ func _process(_delta: float) -> void:
 	_collect_viewers(get_tree().get_root(), viewers)
 
 	# LOD0 ring half-extent. terrain.lod_distance is in VOXELS; the
-	# terrain Node3D scale converts voxels → world meters (e.g. 1/6 for
-	# the project's 6 vox/m).
+	# terrain Node3D scale converts voxels → world meters (e.g. 1/10 for
+	# the project's 10 vox/m).
 	var lod_distance_vox: float = 128.0
 	if _terrain.has_method("get") and "lod_distance" in _terrain:
 		lod_distance_vox = float(_terrain.get("lod_distance"))

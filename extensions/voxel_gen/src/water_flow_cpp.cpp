@@ -159,7 +159,7 @@ Dictionary WaterFlowCpp::scan_settle_region(
     //   _voxel_center_world(p).distance_to(_player_pos) > active_radius_m
     // is equivalent to dist_sq > active_radius_m^2.
     const double radius_sq = p_active_radius_m * p_active_radius_m;
-    const double voxel_size_m = (p_voxels_per_metre > 0.0) ? (1.0 / p_voxels_per_metre) : (1.0 / 6.0);
+    const double voxel_size_m = (p_voxels_per_metre > 0.0) ? (1.0 / p_voxels_per_metre) : (1.0 / 10.0);
 
     int y = p_y_start;
     while (y <= p_y_end_max && scanned < p_scan_cap) {

@@ -44,7 +44,7 @@ extends Node
 # memory/project_vgm_elm_cpp_port.md (the cosmetic issue this fixes).
 
 # --- Volume sizing ---------------------------------------------------
-# N=32 cells × K=4 voxels each = 128-voxel cube (~21.3 m at 6 vox/m).
+# N=32 cells × K=4 voxels each = 128-voxel cube (~12.8 m at 10 vox/m).
 # Texture: 32^3 * 4 bytes = 128 KB. Buffer to copy: 128^3 = 2 MB.
 # Sweet spot — small enough that the per-bake cost stays under one
 # frame at 5 Hz on the bench machine.
@@ -81,8 +81,8 @@ extends Node
 @export var verbose: bool = false
 
 # --- Constants -------------------------------------------------------
-const VOXEL_SIZE_M: float = 1.0 / 6.0    # match VoxelGravityManager
-const VOXELS_PER_METER: float = 6.0
+const VOXEL_SIZE_M: float = 1.0 / 10.0    # match VoxelGravityManager
+const VOXELS_PER_METER: float = 10.0
 
 const _GLOBAL_TEX: String = "baked_light_tex"
 const _GLOBAL_ORIGIN: String = "baked_light_origin_world"

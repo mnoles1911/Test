@@ -23,9 +23,9 @@ const LIFETIME_S: float = 30.0
 # Long enough that the designer can see chunks settle + walk around
 # them; short enough that overnight sessions don't accumulate hundreds.
 
-const VISUAL_SIZE_M: float = 0.16
+const VISUAL_SIZE_M: float = 0.10
 # Voxel-grid-sized cube so chunks read as "body voxels" not abstract
-# debris. Matches the 1/6 m voxel scale.
+# debris. Matches the 1/10 m voxel scale.
 
 const GRAVITY_SCALE: float = 1.0
 # Match the project's default gravity (which is tuned for Player3D

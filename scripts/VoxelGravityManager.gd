@@ -51,7 +51,7 @@ extends Node
 
 @export var max_analysis_side_m: float = 8.0
 # Hard cap on the bubble's side length. Even very large blasts won't
-# scan more than this. 8 m at 6 vox/m = 48 voxels per side, ~110k
+# scan more than this. 8 m at 10 vox/m = 80 voxels per side, ~512k
 # bubble volume.
 
 @export var use_bulk_read: bool = true
@@ -132,8 +132,8 @@ extends Node
 # CONSTANTS
 # =============================================================
 
-const VOXEL_SIZE_M: float = 1.0 / 6.0
-const VOXELS_PER_METER: float = 6.0
+const VOXEL_SIZE_M: float = 1.0 / 10.0
+const VOXELS_PER_METER: float = 10.0
 
 const FALLING_CLUSTER_SCENE_PATH: String = "res://scenes/voxel/FallingVoxelCluster.tscn"
 

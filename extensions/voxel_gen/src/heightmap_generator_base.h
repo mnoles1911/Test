@@ -220,21 +220,28 @@ protected:
     int _marble_jitter_max_lod = 1;
 
     // --- Bedrock / world floor / sea ---------------------------------------
+    // 10 vox/m migration (2026-06-14): voxel-coordinate distance/height defaults
+    // scaled x10/6 from the old 6 vox/m values so the world keeps the same
+    // physical size in metres at terrain.transform.scale = 0.1. Material ids,
+    // seeds and LOD caps are dimensionless and unchanged.
+    //   world_floor -300 -> -500   sea_level 72 -> 120
     int _bedrock_material_id = 0;     // 0 disables the bedrock row
-    int _world_floor_voxel_y = -300;
-    int _sea_level_voxels = 72;
+    int _world_floor_voxel_y = -500;
+    int _sea_level_voxels = 120;
 
     // --- Tier 2: snow line -------------------------------------------------
+    //   snow_line 30000 -> 50000   jitter 30 -> 50   block_size 8 -> 13
     int _snow_material_id = 0;        // 0 disables the snow tier
-    int _snow_line_voxels = 30000;
-    int _snow_line_jitter_voxels = 30;
-    int _snow_line_jitter_block_size = 8;
+    int _snow_line_voxels = 50000;
+    int _snow_line_jitter_voxels = 50;
+    int _snow_line_jitter_block_size = 13;
     int _snow_line_seed = 2;
     int _snow_line_max_lod = 2;
 
     // --- Tier 1: cliff slope ----------------------------------------------
-    int _cliff_slope_sample_distance_voxels = 6;
-    int _cliff_slope_threshold_voxels = 10;
+    //   sample_distance 6 -> 10 (still = 1 m)   threshold 10 -> 17 (same angle)
+    int _cliff_slope_sample_distance_voxels = 10;
+    int _cliff_slope_threshold_voxels = 17;
     int _cliff_rule_max_lod = 2;
 
     // --- POD snapshots (set on main thread; read on worker threads) -------

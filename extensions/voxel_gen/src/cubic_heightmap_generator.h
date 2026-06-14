@@ -58,12 +58,20 @@ protected:
     static void _bind_methods();
 
 private:
+    // 10 vox/m migration (2026-06-14): voxel-coordinate amplitude/offset defaults
+    // scaled x10/6 from the old 6 vox/m values so terrain keeps the SAME physical
+    // height in metres at terrain.transform.scale = 0.1. Frequency multipliers are
+    // dimensionless and unchanged; the per-voxel noise frequency lives on the
+    // FastNoiseLite resource (scaled x6/10 there). height_range is overridden per
+    // scene (.tscn), but offset/amplitudes fall through to these defaults.
+    //   height_range  900 -> 1500   offset 60 -> 100
+    //   mid_amplitude  10 -> 17      detail_amplitude 2 -> 3
     godot::Ref<godot::FastNoiseLite> _noise;
-    double _height_range_voxels = 900.0;
-    int _height_offset_voxels = 60;
+    double _height_range_voxels = 1500.0;
+    int _height_offset_voxels = 100;
     bool _quantize_to_meters = false;
-    int _mid_amplitude_voxels = 10;
+    int _mid_amplitude_voxels = 17;
     double _mid_frequency_multiplier = 3.0;
-    int _detail_amplitude_voxels = 2;
+    int _detail_amplitude_voxels = 3;
     double _detail_frequency_multiplier = 12.0;
 };

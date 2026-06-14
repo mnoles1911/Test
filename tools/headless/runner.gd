@@ -346,7 +346,7 @@ func _finite_world_tick() -> void:
 	# Find the ground column near the spawn (player spawns at XZ 0,0).
 	# Probe a spot a couple of metres out so we don\'t pour on the player.
 	tool.channel = VoxelBuffer.CHANNEL_TYPE
-	var px: int = 18   # voxel coords (3 m out at 6 vox/m)
+	var px: int = 18   # voxel coords (1.8 m out at 10 vox/m)
 	var pz: int = 18
 	var ground_y: int = -1
 	for y in range(400, 72, -1):
@@ -757,7 +757,7 @@ const _DISTANT_BASELINE := "res://tools/headless/distant_parity_baseline.json"
 const _DISTANT_MIN := Vector2(-192.0, -192.0)
 const _DISTANT_MAX := Vector2(192.0, 192.0)
 const _DISTANT_QUAD_M := 12.0   # the fixed parity-region quad size
-const _DISTANT_VPM := 6.0       # canonical 6 voxels / metre
+const _DISTANT_VPM := 10.0       # canonical 10 voxels / metre
 const _DISTANT_APRON_TEST_DEPTH := 64.0  # Phase 2 apron-additive check
 
 
@@ -1467,8 +1467,8 @@ func _water_flow() -> int:
 	var region_min := Vector3i(0, 0, 0)
 	var region_max := Vector3i(sx - 1, sy - 1, sz - 1)
 	var player_pos := Vector3(0, 0, 0)
-	var active_radius_m: float = 100.0  # easily covers the whole buffer at 6 vox/m
-	var voxels_per_metre: float = 6.0
+	var active_radius_m: float = 100.0  # easily covers the whole buffer at 10 vox/m
+	var voxels_per_metre: float = 10.0
 	var scan_cap: int = 4096
 	var fill_max_retry: int = 40
 

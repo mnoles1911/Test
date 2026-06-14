@@ -22,13 +22,20 @@ class_name VoxelTreeImporter
 #   print("stamped %d voxels" % n)
 #   # base_grid = the engine voxel-grid cell where the TRUNK BASE should sit.
 #
-# SCALE NOTE: the studio authors at 10 voxels/m; the live engine is currently
-# 6 vox/m (VOXELS_PER_METER below). We place ONE studio voxel per ONE engine
-# grid cell (1:1), so the tree comes out ~67% larger than designed until the
-# engine migrates to 10 vox/m (DESIGNER_TODO §8). Pass a different
-# `voxels_per_meter` if your build has migrated.
+# SCALE NOTE: the studio authors terrain/prop assets at 10 voxels/m, which now
+# matches the live engine scale (migrated 6 -> 10 vox/m on 2026-06-14). We place
+# ONE studio voxel per ONE engine grid cell (1:1), so a tree/rock comes out at
+# its designed size with no rescale.
+#
+# CHARACTERS / NPCs are authored at a FINER 20 vox/m for extra detail, but they
+# are imported as rigged .glb MESHES (Blender -> Mixamo), NOT stamped as terrain
+# voxels — so 20 vox/m never reaches this importer. If you ever do stamp a
+# character voxel asset directly, pass `voxels_per_meter = 20.0` (then it lands
+# at half-size relative to the 10 vox/m grid, which is correct: 20 voxels = 1 m).
 
-const VOXELS_PER_METER: float = 6.0
+const VOXELS_PER_METER: float = 10.0
+# Finer authoring scale for character/NPC voxel assets (meshes, not terrain).
+const CHARACTER_VOXELS_PER_METER: float = 20.0
 
 # When a studio palette id has no registered material in-engine, collapse it to
 # the nearest base material (wood -> 10 log, leaves -> 11 leaves).

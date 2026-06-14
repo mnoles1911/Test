@@ -47,7 +47,7 @@ class_name VoxelDrop
 @export var despawn_seconds: float = 300.0
 
 ## Cube edge length for the visual mesh + collision shape (metres).
-## Smaller than a single voxel (16.7 cm) so the drop reads as an
+## Smaller than a single voxel (10 cm) so the drop reads as an
 ## item, not a chunk of terrain.
 @export var visual_size_m: float = 0.20
 

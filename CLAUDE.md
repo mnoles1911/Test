@@ -27,7 +27,8 @@ I am a writer + game designer, not a programmer. Explain code in plain English, 
 
 Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
 
-- **Open PRs:** none in the combat / gameplay track — the whole combat slice shipped 2026-05-30. (Old multiplayer-stack drafts #182–#199 still exist but are dormant; ignore unless resuming MP.)
+- **Open PRs:** none in the combat / gameplay track — the whole combat slice shipped 2026-05-30. (Old multiplayer-stack drafts #182–#199 still exist but are dormant; ignore unless resuming MP.) Voxel-studio + AI-tooling work is in flight on the `claude/voxel-threejs-rendering-oc4akx` branch (draft PR #252).
+- **Voxel scale = 10 voxels/meter (10 cm)** as of the 2026-06-14 engine migration from 6 vox/m — `transform.scale = 0.1`, `VOXELS_PER_METER = 10.0`. World keeps the same physical size in metres. **Characters/NPCs author at 20 vox/m** (rigged `.glb` meshes, not terrain voxels). The migration's in-editor follow-ups (recompile the C++ extension, wipe `user://` voxel sqlite caches, re-bake, playtest) are **not yet done** — see `DESIGNER_TODO.md` §8.
 - **Default-OFF features (do not flip without designer direction):**
   - `GraphicsManager.rain_visuals_enabled = false` — rain shader + splash particles + wet-surface mod (PR #245, merged but gated).
   - `GraphicsManager.light_shafts_enabled = false` — per-state vol-fog god rays (PR #245, merged but gated).
