@@ -1,10 +1,10 @@
 // VoxelEditSubsystem.cpp — edit gateway implementation.
 //
-// NOTE: the actual voxel-world mutation calls are stubbed until Voxel Plugin Pro
-// is installed on the build machine (see MiraThalVoxel.Build.cs). The QUEUEING,
+// NOTE: the actual voxel-world mutation calls are stubbed until the custom cubic
+// mesher lands on the build machine (see MiraThalVoxel.Build.cs). The QUEUEING,
 // NoEditZone gate, budget, and edit-applied broadcast are all live now so the
 // gameplay layer (mining tool, explosions, water, gravity) can be wired and
-// tested against this contract before the plugin is dropped in.
+// tested against this contract before the mesher is in place.
 #include "VoxelEditSubsystem.h"
 
 void UVoxelEditSubsystem::QueueEditSphere(const FVector& WorldCenter, double RadiusMeters, int32 Value)
@@ -78,7 +78,7 @@ void UVoxelEditSubsystem::DrainQueue(float /*DeltaSeconds*/)
 		return;
 	}
 
-	// TODO(Phase 0, step 3-4): apply against the Voxel Plugin world here,
+	// TODO(Phase 0, step 3-4): apply against the cubic mesher's chunk store here,
 	// spreading across frames on VoxelsPerFrame. For now drain everything and
 	// broadcast so subscribers (gravity/water/LOD) can be exercised end-to-end.
 	TArray<FVoxelEditCommand> Applied = MoveTemp(PendingEdits);

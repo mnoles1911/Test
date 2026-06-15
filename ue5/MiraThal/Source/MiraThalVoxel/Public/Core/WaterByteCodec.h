@@ -2,7 +2,7 @@
 //
 // Ported 1:1 from Godot scripts/WaterByteCodec.gd. In the Godot build every
 // water voxel is one byte in VoxelBuffer.CHANNEL_DATA5; in the UE build it is
-// one byte in the Voxel Plugin per-voxel data channel. The bit layout is
+// one byte in our cubic mesher's per-voxel data channel. The bit layout is
 // identical so save data and the finite-water sim stay format-compatible.
 //
 // Bit layout (8 bits total):

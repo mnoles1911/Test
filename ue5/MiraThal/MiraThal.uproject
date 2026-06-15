@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.4",
 	"Category": "Game",
-	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via Voxel Plugin Pro, Nanite/Lumen, Chaos physics, dedicated-server multiplayer.",
+	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via a custom cubic greedy mesher (MiraThalVoxel), Nanite/Lumen, Chaos physics, dedicated-server multiplayer.",
 	"Modules": [
 		{
 			"Name": "MiraThalVoxel",
@@ -25,9 +25,12 @@
 	],
 	"Plugins": [
 		{
-			"Name": "Voxel",
+			"//comment": "No third-party voxel plugin. Voxel Plugin 2 dropped cubic terrain; the cubic spike (design/UE5_VOXEL_BACKEND_EVALUATION.md) found no off-the-shelf cubic backend meeting our bar, so MiraThalVoxel owns a custom cubic greedy mesher built on the engine-agnostic Core."
+		},
+		{
+			"Name": "GeometryScripting",
 			"Enabled": true,
-			"//comment": "Voxel Plugin Pro (Phyronnaz) — paid; install into Plugins/Voxel on the build machine. The voxel-world + runtime-edit layer depends on it."
+			"//comment": "Procedural/dynamic mesh helpers for the custom cubic mesher (UProceduralMeshComponent / UDynamicMesh)."
 		},
 		{
 			"Name": "ModelingToolsEditorMode",

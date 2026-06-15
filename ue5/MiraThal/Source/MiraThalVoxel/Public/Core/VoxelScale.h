@@ -24,7 +24,7 @@ namespace scale {
 constexpr double VoxelsPerMeter = 10.0;
 
 // Edge length of one voxel in world-space metres. 1/10 = 0.1 m = 10 cm exactly.
-// This is the uniform scale the Voxel Plugin world must use.
+// This is the uniform scale the cubic voxel world must use.
 constexpr double VoxelSizeM = 1.0 / VoxelsPerMeter;
 
 // Convert a world-space distance (metres) to the nearest integer voxel count.

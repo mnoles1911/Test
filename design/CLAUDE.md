@@ -49,6 +49,7 @@ System implementation docs. **One `.md` per system; lore wins when lore vs desig
 ### Engine port (proposed)
 - **`UE5_PORT_PLAN.md`** — PROPOSED strategy/scoping doc for porting Mira-Thal to Unreal Engine 5 (Voxel Plugin Pro, true blocky 10cm cubes, Nanite/Lumen, C++-first, vertical-slice-first). Planning only — no engine work started; Godot remains the live build.
 - **`UE5_RENDERING_STRATEGY.md`** — PROPOSED rendering decision record for the UE5 cubic voxel world: mesh-near / ray-march-far / Nanite-cold-chunks hybrid over a shared GPU brickmap, GPU-offload plan, and the Phase 0 dig-under-Lumen perf-gate spikes. Companion to the port plan.
+- **`UE5_VOXEL_BACKEND_EVALUATION.md`** — SPIKE/decision record: Voxel Plugin 2 does NOT support cubic (removed in v2 rewrite); no off-the-shelf cubic UE backend meets our bar, so we build a **custom cubic greedy mesher on the engine-agnostic Core**. Cubes are locked as core identity.
 
 ### Process + ops
 - **`PATTERNS_AND_GOTCHAS.md`** — non-negotiable code rules, scene hierarchies, autoload load order. **READ BEFORE WRITING CODE.**

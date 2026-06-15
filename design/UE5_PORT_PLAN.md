@@ -24,8 +24,8 @@ physics, and built-in dedicated-server replication let Mira-Thal hit the photore
 Skyrim atmosphere" target and a robust multiplayer foundation that the current engine can't reach.
 
 **Decisions locked with the designer:**
-- **Voxel tech:** Voxel Plugin Pro (Phyronnaz) — fastest path to a destructible runtime-editable world; we write gameplay C++ on its API.
-- **Aesthetic:** True blocky 10cm cubes (crisp cubic faces, not smoothed/marching-cubes).
+- **Voxel tech:** ~~Voxel Plugin Pro (Phyronnaz)~~ → **custom cubic greedy mesher on our engine-agnostic Core.** Voxel Plugin 2 was found to *not support cubic terrain* (it's smooth/SDF, Nanite-first; cubic was removed in the v2 rewrite). The cubic-plugin spike (`UE5_VOXEL_BACKEND_EVALUATION.md`) found no off-the-shelf backend meeting our bar (10cm + scale + destructible + collision + multiplayer + maintained), so we own the mesher. The Core is backend-independent, so this changed only the rendering wrapper, not the ported logic.
+- **Aesthetic:** True blocky 10cm cubes (crisp cubic faces, not smoothed/marching-cubes) — **core visual identity, non-negotiable.**
 - **Code split:** C++-first for systems; Blueprints only for designer tuning, UI, VFX wiring. Mirrors the current GDScript+GDExtension discipline.
 - **Sequencing:** Vertical slice first — prove the core loop end-to-end before porting all 12 skills / 300 perks / weather / dialogue.
 
@@ -42,7 +42,7 @@ hard-won design (scale discipline, edit routing, water conservation, combat feel
 geometry; it does not love meshes that regenerate every time the player digs. The realistic
 rendering split for "true blocky 10cm cubes" is:
 
-- **Near / editable band (Voxel Plugin cubic mesher):** standard greedy-meshed chunk meshes with
+- **Near / editable band (our custom cubic greedy mesher):** standard greedy-meshed chunk meshes with
   Lumen lighting + a triplanar material atlas. This is where mining/water/destruction live. **Not Nanite.**
 - **Far / static band:** Nanite for baked distant terrain skirt, static props (trees that aren't
   being chopped, rocks, structures), and set dressing. Nanite + Lumen carry the photoreal horizon.
@@ -66,8 +66,8 @@ smooth far" — so we keep the rendering layer swappable.
 | Autoload singletons (24) | `UGameInstanceSubsystem` / `UWorldSubsystem` per manager | Load order → subsystem dependency + explicit init; signals → delegates |
 | GDScript gameplay | UE5 **C++** classes | `UObject`/`AActor`/`UActorComponent` |
 | `_can_take_input()` gate | `Role == ROLE_AutonomousProxy` / `IsLocallyControlled()` | UE replication gives this for free |
-| Zylann VoxelLodTerrain | **Voxel Plugin Pro** `AVoxelWorld` (cubic mesher) | Runtime edit + LOD + collision built-in |
-| `voxel_gen` GDExtension (gen/gravity/water/biome/emissive) | UE5 C++ inside our voxel module | Pure logic ports nearly 1:1 |
+| Zylann VoxelLodTerrain | **Custom cubic greedy mesher** in `MiraThalVoxel` + World Partition streaming | Voxel Plugin 2 dropped cubic; we own the mesher (see `UE5_VOXEL_BACKEND_EVALUATION.md`) |
+| `voxel_gen` GDExtension (gen/gravity/water/biome/emissive) | UE5 C++ inside our voxel module (the `Core/` layer) | Pure logic ports nearly 1:1; **done + harness-locked** |
 | `VoxelEditManager` (single write gateway + async budget + NoEditZone + MP RPC) | `UVoxelEditSubsystem` wrapping Voxel Plugin's edit API | Keep the single-gateway discipline; MP via UE RPCs |
 | `VoxelScale.gd` (10 vox/m SSOT) | `UVoxelScaleSettings` (`UDeveloperSettings`) | Single source of truth, config-exposed |
 | Material ids 1–28 (terrain/water/flora/detail) | `UDataAsset` registry + material-index table | Triplanar atlas material; keep id ranges (water 16–23, flora 24–26, detail 27–28) |
@@ -102,8 +102,10 @@ Goal: one biome, end-to-end core loop, proving the engine choices. Everything he
    control + `.gitignore` for `Saved/`, `Intermediate/`, `DerivedDataCache/`.
 2. **Voxel scale SSOT.** `UVoxelScaleSettings` (`UDeveloperSettings`) with `VoxelsPerMeter=10`,
    `VoxelSizeM=0.1`, helper conversions. Mirror the never-hardcode discipline from `VoxelScale.gd`.
-3. **Voxel Plugin Pro install + cubic world.** Stand up `AVoxelWorld` with the cubic mesher at
-   10cm, runtime editing, LOD, collision. Wire a triplanar material from the existing atlas PNG.
+3. **Custom cubic mesher + chunk streaming.** Stand up the `MiraThalVoxel` cubic greedy mesher at
+   10cm (chunk of material ids → quad list → `UProceduralMeshComponent`/`URealtimeMesh`), Chaos
+   collision from the mesh, and World Partition chunk streaming. Wire a triplanar material from the
+   existing atlas PNG. (Was "install Voxel Plugin Pro" until the cubic spike ruled it out.)
 4. **Edit gateway.** `UVoxelEditSubsystem` as the *only* write path (sphere/box/single, async
    budget, NoEditZone hook, edit-applied delegate) — the `VoxelEditManager` contract, on UE.
 5. **Gaea-seeded generation.** Port `CubicHeightmapGeneratorCpp` + `BiomeFieldCpp` logic into

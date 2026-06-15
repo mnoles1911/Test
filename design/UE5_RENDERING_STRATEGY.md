@@ -4,7 +4,8 @@
 Phase 0 "dig-under-Lumen perf gate" — the spikes and measurement criteria below are the gate's content.
 
 **Aesthetic target (locked):** true blocky 10cm cubes, fully destructible, photoreal lighting
-(Nanite/Lumen), Skyrim-scale streamed world, multiplayer. Voxel runtime: Voxel Plugin Pro.
+(Nanite/Lumen), Skyrim-scale streamed world, multiplayer. Voxel runtime: **custom cubic greedy mesher**
+(Voxel Plugin 2 dropped cubic; see `UE5_VOXEL_BACKEND_EVALUATION.md`).
 
 ---
 
@@ -33,7 +34,7 @@ field.** That principle drives the whole architecture in §4.
 
 | # | Technique | For us | Verdict |
 |---|---|---|---|
-| 1 | **Greedy polygon meshing** (Voxel Plugin Pro) | ✅ native Lumen/Nanite/Chaos/shadows, proven, collision free ❌ re-mesh on edit, vertex memory, LOD seams | **Near-band backbone** |
+| 1 | **Greedy polygon meshing** (our custom cubic mesher) | ✅ native Lumen/Nanite/Chaos/shadows, standard meshes ❌ re-mesh on edit, vertex memory, LOD seams | **Near-band backbone** |
 | 2 | **Ray marching a voxel volume** (DDA / Amanatides–Woo) | ✅ no meshing, ✅ destruction = a texture write, ✅ perfect cubes, constant geometry ❌ a *parallel renderer* in UE (custom RDG pass + manual depth); **Lumen can't see it**; secondary rays costly | **Hybrid: far field only** |
 | 3 | **Sparse Voxel Octree / DAG (SVDAG)** | great static compression ❌ destruction shatters node-sharing | Reject (not destructible-friendly) |
 | 4 | **Brickmap** (sparse flat grid of 8³ bricks; cf. NanoVDB) | O(1) edits, GPU-friendly, two-level DDA | **The shared data structure** |
@@ -189,7 +190,7 @@ Run each as an isolated experiment, capture with **Unreal Insights** against a t
 
 | Spike | What | Pass criterion |
 |---|---|---|
-| **Baseline** | Voxel Plugin greedy mesh + Lumen, heavy sustained carving | Frame holds budget during the worst carve; record mesh-rebuild ms |
+| **Baseline** | Custom cubic greedy mesh + Lumen, heavy sustained carving | Frame holds budget during the worst carve; record mesh-rebuild ms |
 | **A — GPU meshing** | Move re-mesh to compute; re-mesh only affected bricks | Edit stall drops vs baseline; no visual regression |
 | **B — Cold→Nanite bake** | Bake unedited near chunks to Nanite static meshes | Draw-call / culling win on a static field; bake cost amortizes |
 | **C — Ray-marched horizon** | Brickmap + single-pass DDA far band | Cheaper than a distant mesh; no seams; far edits free |
@@ -205,8 +206,8 @@ Keep the render layer swappable behind the brickmap so this stays a config decis
 
 ## 7. What this means for the modules
 
-- `MiraThalVoxel` owns the brickmap (CPU authority + GPU mirror), the meshing path (Voxel Plugin
-  integration + the GPU-meshing compute spike), the cold→Nanite baker, and the far ray-march pass.
+- `MiraThalVoxel` owns the brickmap (CPU authority + GPU mirror), the meshing path (the custom cubic
+  greedy mesher + the GPU-meshing compute spike), the cold→Nanite baker, and the far ray-march pass.
 - The ray-march pass is a custom render pass (`FSceneViewExtension` / RDG) — clearly isolated so it
   can be toggled and so it never blocks the meshed-near-band path that everything else depends on.
 - `Core/` stays render-agnostic: it's the voxel *data + math* (generation, water, gravity, carve),

@@ -28,8 +28,8 @@ public:
 	UPROPERTY(VisibleAnywhere, config, Category = "Voxel Scale")
 	double VoxelSizeM = 0.1;
 
-	// Unreal works in centimetres; this is VoxelSizeM * 100 = the Voxel Plugin
-	// world's VoxelSize in UE units. Convenience for world setup.
+	// Unreal works in centimetres; this is VoxelSizeM * 100 = the cubic voxel
+	// world's voxel size in UE units. Convenience for world setup.
 	UPROPERTY(VisibleAnywhere, config, Category = "Voxel Scale")
 	double VoxelSizeUnreal = 10.0;
 

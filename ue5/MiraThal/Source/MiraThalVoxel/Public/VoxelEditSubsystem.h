@@ -7,7 +7,7 @@
 // (4) fire an edit-applied event, and (5) route through multiplayer RPCs.
 //
 // This subsystem preserves that contract on UE. It is the ONLY thing that calls
-// into the Voxel Plugin's edit API. Gameplay (mining, explosions, water, gravity
+// into the cubic mesher's edit path. Gameplay (mining, explosions, water, gravity
 // re-deposits) queues edits here; it never touches the voxel world directly.
 //
 // Multiplayer (Phase 4): on a client these calls become a server RPC request;

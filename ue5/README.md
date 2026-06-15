@@ -17,7 +17,8 @@ This is deliberate. Unreal cannot build in CI / the dev container (no engine, no
 disk/RAM, Epic download gated). The pure Core can — so the math that the Godot project guarded with
 its 25-selector headless gate is verified the same way here, on every change, with zero Unreal setup.
 The UE wrapper layer (`UVoxelEditSubsystem`, `UVoxelScaleSettings`, the future world/combat/skill
-subsystems) converts `FVector`/`FIntVector` ↔ `mira::Vec3` at the boundary and drives Voxel Plugin Pro.
+subsystems) converts `FVector`/`FIntVector` ↔ `mira::Vec3` at the boundary and drives the custom cubic
+greedy mesher (no third-party voxel plugin — see `../design/UE5_VOXEL_BACKEND_EVALUATION.md`).
 
 ```
 Source/
@@ -46,9 +47,9 @@ heavier systems land — `finite`/`water_flow`, `gravity`/`sever`, `gen`). Each 
 
 ## Full Unreal build (on the build machine — Phase 0 target: a local Windows/Linux box with UE5)
 
-Prerequisites: **Unreal Engine 5.4**, and **Voxel Plugin Pro** installed into `MiraThal/Plugins/Voxel/`
-(licensed; not committed — see `.gitignore`). Then re-enable the `"Voxel"` dependency in
-`Source/MiraThalVoxel/MiraThalVoxel.Build.cs` and the plugin in `MiraThal.uproject`.
+Prerequisites: **Unreal Engine 5.4** (no third-party voxel plugin — the cubic mesher is ours,
+in `MiraThalVoxel`). The cubic-backend decision and why we don't use Voxel Plugin are in
+`../design/UE5_VOXEL_BACKEND_EVALUATION.md`.
 
 ```bash
 # Generate project files, then build the editor target:
@@ -88,8 +89,8 @@ match a Godot-baked world voxel-for-voxel; the algorithm structure, hash3 scatte
 biome blend, and material ids are all faithful. Low impact: the shipped world is seeded from baked
 **Gaea heightmaps** (`.exr`), not procedural noise — the noise is fill/variation only.
 
-**Next (needs the build machine — UE5 + Voxel Plugin Pro):** stand up the `AVoxelWorld` (cubic mesher,
-10cm, triplanar atlas material), wire `UVoxelEditSubsystem` + the mining component to the plugin's edit
-API, drive `UEnemyAttackComponent`/`USkillSubsystem`/`UEntityStreamSubsystem` from the verified Core,
+**Next (needs the build machine — UE5):** stand up the custom cubic greedy mesher (10cm,
+triplanar atlas material) + chunk streaming, wire `UVoxelEditSubsystem` + the mining component to the
+mesher, drive `UEnemyAttackComponent`/`USkillSubsystem`/`UEntityStreamSubsystem` from the verified Core,
 and run the **dig-under-Lumen perf gate (Phase 0 step 6)** — the make-or-break test for the blocky-cube
 + Lumen bet. The Core math is done and locked by the harness; this is the engine-integration half.
