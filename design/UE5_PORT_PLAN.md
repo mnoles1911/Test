@@ -53,6 +53,10 @@ The slice must **measure** dig-edit mesh-rebuild cost at 10cm under Lumen before
 port. If cubic-mesh + Lumen can't hold framerate during heavy carving, the fallback is "cubes near,
 smooth far" — so we keep the rendering layer swappable.
 
+> **Full rendering decision record:** `design/UE5_RENDERING_STRATEGY.md` expands this into the chosen
+> hybrid — mesh-near / ray-march-far / Nanite-cold-chunks over a shared GPU brickmap, the GPU-offload
+> plan (compute meshing + GPU generation), and the Phase 0 perf-gate spikes (A–D) with pass criteria.
+
 ---
 
 ## Target UE5 architecture (maps Godot → UE5)
