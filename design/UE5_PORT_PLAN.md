@@ -111,7 +111,8 @@ Goal: one biome, end-to-end core loop, proving the engine choices. Everything he
    source. One biome only (rolling hills) with material banding + flora ids.
 6. **Mining loop + the dig-under-Lumen perf gate.** Port `EditToolHandler` carve math
    (physical-volume anchor, S/M/F presets, destroy preview, D2 wall-grain). Then run the perf gate —
-   this is the engine-bet make-or-break, detailed in `UE5_RENDERING_STRATEGY.md` §5. Each spike is
+   this is the engine-bet make-or-break, detailed in `UE5_RENDERING_STRATEGY.md` §6 (targets/budget
+   in §5). Each spike is
    isolated and captured with **Unreal Insights** against a target frame budget:
    - **6.0 — Baseline.** Voxel Plugin greedy mesh + Lumen under heavy sustained carving. *Pass:* frame
      holds budget during the worst carve; record mesh-rebuild ms. **This single number gates the port.**

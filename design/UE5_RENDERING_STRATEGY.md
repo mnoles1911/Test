@@ -114,7 +114,75 @@ collision, and renderer.
 
 ---
 
-## 5. Phase 0 spikes (this IS the dig-under-Lumen perf gate)
+## 5. Performance targets & budget
+
+Estimates to be **validated by the step-6 gate**, not benchmarks — grounded in how Lumen/Nanite/Chaos
+cost out and in the game design (over-shoulder 3rd person, 1-vs-many action combat, co-op 1–4,
+destructible 10cm world, Skyrim atmosphere). These tiers + the worst-case scenario are **acceptance
+criteria** for the gate.
+
+### Hardware tiers
+
+| Tier | Hardware | Resolution / FPS | Settings |
+|---|---|---|---|
+| **Recommended** | RTX 4070 / RX 7800 XT, 32 GB RAM | 1440p **60 fps** | Software Lumen, TSR/DLSS Quality, hybrid renderer |
+| **Min spec** | RTX 3060 / RX 6600, 16 GB RAM | 1080p **60 fps** | Lumen low, upscaling, reduced view distance |
+| **High-end** | RTX 4080 / 4090 | 1440p high-refresh or 4K60 | Hardware Lumen, higher far-field detail |
+
+**Upscaling (TSR/DLSS/FSR) is a hard requirement, not a toggle** — native-res full-Lumen 60 fps is not
+a target. Normal for a UE5 Lumen title.
+
+### Frame budget — 60 fps = 16.6 ms (1440p, software Lumen, mid-high GPU, rough)
+
+| Slice | Budget | Note |
+|---|---|---|
+| Lumen GI + reflections | 4–7 ms | biggest single cost; the price of the atmosphere look |
+| Geometry (Nanite cold chunks + meshed near band) | 3–5 ms | what 6.B / 6.C claw back |
+| Virtual Shadow Maps | 2–4 ms | |
+| Post / TSR upscale | 2–3 ms | |
+| Game thread (gen, water sim, AI, edit queue) | **< ~8 ms** | must not become the bottleneck |
+
+The budget is tight by design — that's *why* cold→Nanite (6.B) and ray-marched far (6.C) exist: to
+leave Lumen room.
+
+### The real battle: frame-time consistency (1% lows), not average FPS
+
+Average 60 is the easy half. The design stresses the lows. Watch, in priority order:
+
+1. **Destruction hitches** — dig/explosion → mesh rebuild. Mitigated by GPU meshing (6.A) + the ported
+   edit budget (926k voxels/frame). **The #1 thing the gate must prove.**
+2. **Lumen relighting large holes** — blowing open a cavern forces GI/surface-cache re-converge; brief
+   cost spike + possible GI lag on big topology changes. Tunable, real.
+3. **Chaos cluster storms** — gibs + collapses spawn many rigid bodies → physics + draw-call spikes.
+   Needs pooling + island-merging (the Godot `FallingVoxelCluster` pooling discipline, ported).
+4. **Combined worst case (the canonical stress test):** *blow a hole under a lake while fighting a
+   group* — re-mesh + water-flow sim + falling clusters + Lumen relight + multiple skeletal enemies in
+   one frame. The gate must hold playable frame time through this, not just an idle vista.
+
+### What the design buys us
+
+- Over-shoulder 3rd person (narrow frustum) beats open vistas for on-screen load.
+- Co-op 1–4 is trivial for replication; the load is the server-authoritative voxel sim, not client render.
+- 1-vs-many is dozens, not hundreds — fine with skeletal LOD + the ported 4-tier entity streaming.
+- **10cm is nearly free in the far band** (ray marching is resolution-bound, not voxel-count-bound);
+  near-band cost is bounded by *surface area* (greedy meshing), not volume — so 10cm vs 6cm mainly
+  raises the *edit* budget (already scaled), not triangle count.
+
+### Memory
+
+VRAM is the quiet constraint (brickmap + near meshes + Nanite + Lumen + virtual textures): comfortable
+at 12 GB+, tight on 8 GB — likely the true min-spec gate, mitigated by World Partition streaming +
+sparse storage.
+
+### Confidence
+
+Medium-high on hitting **1440p60 on recommended hardware** with the hybrid + upscaling. Medium on
+**holding frame time through worst-case destruction** — which is precisely what step 6 measures, and
+why it gates the rest of the port.
+
+---
+
+## 6. Phase 0 spikes (this IS the dig-under-Lumen perf gate)
 
 Run each as an isolated experiment, capture with **Unreal Insights** against a target frame budget
 (the UE analogue of the Godot F3 profiler + `_analyze_capture.py` flow):
@@ -135,7 +203,7 @@ Keep the render layer swappable behind the brickmap so this stays a config decis
 
 ---
 
-## 6. What this means for the modules
+## 7. What this means for the modules
 
 - `MiraThalVoxel` owns the brickmap (CPU authority + GPU mirror), the meshing path (Voxel Plugin
   integration + the GPU-meshing compute spike), the cold→Nanite baker, and the far ray-march pass.
@@ -147,7 +215,7 @@ Keep the render layer swappable behind the brickmap so this stays a config decis
 
 ---
 
-## 7. References (for the spikes)
+## 8. References (for the spikes)
 
 - **NanoVDB** — GPU-friendly sparse voxel structure with built-in DDA (brickmap model).
 - **Teardown / John Lin / Gabe Rundlett** — ray-marched brickmap voxel renderers (note: all bespoke
