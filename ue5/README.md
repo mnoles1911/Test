@@ -60,23 +60,36 @@ Prerequisites: **Unreal Engine 5.4**, and **Voxel Plugin Pro** installed into `M
 
 ## Status
 
-**Phase 0 Core ports — all green (8,420 checks, 0 failures via `./build.sh`):**
+**Phase 0 Core ports — all green (8,955 checks, 0 failures via `./build.sh`):**
 
-| System | Core files | Godot source | Harness |
+| System | Core files | Godot source | Harness (checks) |
 |---|---|---|---|
 | Voxel scale (SSOT) | `Core/VoxelScale.h` | `VoxelScale.gd` | `scale` |
-| Water byte codec | `Core/WaterByteCodec.h` | `WaterByteCodec.gd` | `codec` |
+| Water byte codec | `Core/WaterByteCodec.h` | `WaterByteCodec.gd` | `codec` (608 w/ scale) |
+| Material id authority | `Core/MaterialIds.h` | `WaterMaterial.gd` + `FloraMaterial.gd` | `materials` (45) |
 | Finite water sim | `Core/FiniteWaterCore.{h,cpp}` | `FiniteWaterCore.gd` | `water` (47) |
 | Voxel gravity / sever | `Core/VoxelGravity.{h,cpp}` | `GravityReference.gd` + `SeverFollowLib.gd` | `gravity` (33) |
-| Heightmap + biome gen | `Core/HeightmapGenerator.{h,cpp}`, `Core/Noise.h` | `cubic_heightmap_generator` + `biome_field` + `heightmap_generator_base` | `gen` (7732) |
+| Heightmap + biome gen | `Core/HeightmapGenerator.{h,cpp}`, `Core/Noise.h` | `cubic_heightmap_generator` + `biome_field` + base | `gen` (7732) |
+| Mining carve geometry | `Core/MiningCarve.h` | `EditToolHandler.gd` | `mining` (166) |
+| Directional combat | `Core/MouseDirectionSampler.h`, `Core/ParryChainTracker.h`, `Core/EnemyAttackPool.h` | `combat/*` + `enemies/EnemyAttackPool.gd` | `combat` (54) |
+| Throwable charge | `Core/ThrowableCharge.h` | `ThrowableHandler.gd` | `throwable` (22) |
+| Skill XP progression | `Core/SkillProgression.h`, `Core/CombatXPRouter.h` | `SkillCurve.gd` + `SkillManager.gd` + `CombatXPRouter.gd` | `skills` (190) |
+| Entity registry + streaming | `Core/EntityRegistry.h`, `Core/EntityStreaming.h` | `EntityRegistry.gd` + `EntityStreamer.gd` | `entities` (58) |
+| Deterministic RNG | `Core/Rng.h` | (new; SplitMix64 for reproducible tests) | (used by `combat`) |
 
-UE wrapper layer: `UVoxelScaleSettings`, `UVoxelEditSubsystem` (edit-gateway contract).
+UE wrapper layer (compiles on the build machine): `UVoxelScaleSettings`, `UVoxelEditSubsystem`
+(the `VoxelEditManager` single-gateway contract). Remaining wrappers (skill subsystem, melee/mining/
+enemy components, entity-stream subsystem) bind the verified Core into UE classes — written against
+the Core APIs during Phase 0 world bring-up.
 
 **Known divergence (documented):** `Core/Noise.h` is a self-contained deterministic value-noise, NOT
 bit-exact with Godot's FastNoiseLite (vendoring FNL was out of scope). Procedural hill *heights* won't
 match a Godot-baked world voxel-for-voxel; the algorithm structure, hash3 scatter, banding, sea-level,
-biome blend, and material ids are all faithful. This matters little for the shipped world, which is
-seeded from baked **Gaea heightmaps** (`.exr`), not procedural noise — the noise is fill/variation only.
+biome blend, and material ids are all faithful. Low impact: the shipped world is seeded from baked
+**Gaea heightmaps** (`.exr`), not procedural noise — the noise is fill/variation only.
 
-**Next:** stand up the Voxel Plugin world + triplanar atlas material, wire `UVoxelEditSubsystem` to the
-plugin edit API, port the mining carve math, and run the dig-under-Lumen perf gate (Phase 0 step 6).
+**Next (needs the build machine — UE5 + Voxel Plugin Pro):** stand up the `AVoxelWorld` (cubic mesher,
+10cm, triplanar atlas material), wire `UVoxelEditSubsystem` + the mining component to the plugin's edit
+API, drive `UEnemyAttackComponent`/`USkillSubsystem`/`UEntityStreamSubsystem` from the verified Core,
+and run the **dig-under-Lumen perf gate (Phase 0 step 6)** — the make-or-break test for the blocky-cube
++ Lumen bet. The Core math is done and locked by the harness; this is the engine-integration half.
