@@ -109,8 +109,23 @@ Goal: one biome, end-to-end core loop, proving the engine choices. Everything he
 5. **Gaea-seeded generation.** Port `CubicHeightmapGeneratorCpp` + `BiomeFieldCpp` logic into
    `MiraThalVoxel` as the world generator; import one Gaea `.exr` (Copper Isles) as the heightmap
    source. One biome only (rolling hills) with material banding + flora ids.
-6. **Mining loop.** Port `EditToolHandler` carve math (physical-volume anchor, S/M/F presets,
-   destroy preview, D2 wall-grain). Verify dig framerate under Lumen — **the engine-bet gate**.
+6. **Mining loop + the dig-under-Lumen perf gate.** Port `EditToolHandler` carve math
+   (physical-volume anchor, S/M/F presets, destroy preview, D2 wall-grain). Then run the perf gate —
+   this is the engine-bet make-or-break, detailed in `UE5_RENDERING_STRATEGY.md` §5. Each spike is
+   isolated and captured with **Unreal Insights** against a target frame budget:
+   - **6.0 — Baseline.** Voxel Plugin greedy mesh + Lumen under heavy sustained carving. *Pass:* frame
+     holds budget during the worst carve; record mesh-rebuild ms. **This single number gates the port.**
+   - **6.A — GPU meshing.** Move re-mesh to a compute pass; re-mesh only the ~3³ affected bricks.
+     *Pass:* edit stall drops vs baseline, no visual regression.
+   - **6.B — Cold→Nanite bake.** Bake unedited near chunks to Nanite static meshes; revert to dynamic
+     mesh on edit. *Pass:* draw-call/culling win on a static field, bake cost amortizes.
+   - **6.C — Ray-marched horizon.** Brickmap + single-pass DDA far band (replaces distant-terrain
+     rings/skirt). *Pass:* cheaper than a distant mesh, no seams, far edits free.
+   - **6.D — Voxel AO ray-march.** Short DDA rays for AO/contact shadows on the meshed near band.
+     *Pass:* look worth the ms, within budget.
+   - **Decision rule:** if 6.0 holds the budget, ship the simple path for the slice and treat A–D as
+     optimizations; if 6.0 fails, A + C become required; if cubic-mesh + Lumen still can't hold,
+     fall back to "cubes near / smooth far" (kept swappable behind the brickmap).
 7. **Water slice.** Port `FFiniteWaterCore` + `WaterByteCodec` (pure logic, ports cleanly); render
    one pool/stream with a UE water surface material. Prove volume conservation via a ported test.
 8. **Gravity/sever slice.** Port flood-fill connectivity; spawn falling clusters as Chaos rigid
