@@ -246,6 +246,47 @@ int main() {
         CHECK(checked, "+Y triangle found for winding check");
     }
 
+    // ---------------------------------------------------------------------
+    // 9. AO integration: a flat run that would merge into ONE +Y quad is split
+    //    into TWO when a neighbour casts ambient occlusion on part of it, and the
+    //    darkened corners carry an ao weight below 1.0.
+    // ---------------------------------------------------------------------
+    {
+        DenseGrid slab = make_mesh_slab();
+        // A 3-voxel run along X at y=10 (z=5). Their +Y faces merge to one quad.
+        for (int x = 5; x <= 7; ++x) set_local(slab, x, 10, 5, mat::STONE);
+
+        // Baseline: one merged +Y quad at the patch top (py == 11).
+        {
+            MeshBuffers m = greedy_mesh(slab);
+            const MeshSection& sec = m.section(FaceClass::Opaque);
+            int patch_posY = 0;
+            for (size_t v = 0; v < sec.vertices.size(); v += 4)
+                if (approx(sec.vertices[v].ny, 1.0f) && approx(sec.vertices[v].py, 11.0f)) ++patch_posY;
+            CHECK(patch_posY == 1, "AO baseline: flat run merges to one +Y quad");
+        }
+
+        // Add an occluder in the OUTSIDE plane (y=11), one step -X beyond voxel x=5.
+        // It does NOT cull any +Y face (no voxel sits directly below it), but it
+        // darkens voxel x=5's -X-facing corners -> that cell's AO differs -> the
+        // greedy merge breaks, and x=5 splits off into its own quad.
+        set_local(slab, 4, 11, 5, mat::STONE);
+        {
+            MeshBuffers m = greedy_mesh(slab);
+            const MeshSection& sec = m.section(FaceClass::Opaque);
+            int patch_posY = 0;
+            bool saw_darkened = false;
+            for (size_t v = 0; v < sec.vertices.size(); v += 4) {
+                if (!(approx(sec.vertices[v].ny, 1.0f) && approx(sec.vertices[v].py, 11.0f))) continue;
+                ++patch_posY;
+                for (int k = 0; k < 4; ++k)
+                    if (sec.vertices[v + k].ao < 0.999f) saw_darkened = true;
+            }
+            CHECK(patch_posY == 2, "AO splits the flat run into two +Y quads");
+            CHECK(saw_darkened, "AO writes a sub-1.0 weight on the occluded corners");
+        }
+    }
+
     std::printf("[mesher  ] %s\n", g_fails == 0 ? "PASS" : "FAIL");
     std::printf("---- %d checks, %d failure(s)\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

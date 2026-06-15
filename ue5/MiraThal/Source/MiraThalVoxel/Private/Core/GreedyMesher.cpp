@@ -19,6 +19,7 @@
 #include "Core/ChunkCoords.h" // coords::CHUNK, FACE_OFFSET, flatten
 #include "Core/AtlasUV.h"     // atlas::uv_for
 #include "Core/MaterialIds.h" // mat:: predicates
+#include "Core/VoxelAO.h"     // ao::compute_face_ao, ao::CornerAO, ao::ao_weight
 
 #include <vector>
 #include <cstdint>
@@ -56,14 +57,16 @@ inline uint8_t at_local(const DenseGrid& slab, int lx, int ly, int lz) {
     return slab.type_at(lx + APRON, ly + APRON, lz + APRON);
 }
 
-// One painted mask cell: which material to draw here, or 0 for "no face".
-// We pack the id only; (dir is fixed per sweep, ao is 1 in M0) so two cells merge
-// iff their ids match. When AO lands (M1) this struct grows an ao field and the
-// equality test below tightens — the merge loop already compares whole cells.
+// One painted mask cell: which material to draw here (0 == no visible face) plus
+// the 4 baked corner AO levels of that face. Two cells merge iff BOTH match — so
+// an AO gradient (a darker crease running across a flat wall) correctly breaks a
+// would-be giant quad into pieces instead of smearing the shading. dir is fixed
+// per sweep, so it isn't stored.
 struct MaskCell {
     uint8_t id = 0; // 0 == empty (no visible face here)
-    bool operator==(const MaskCell& o) const { return id == o.id; }
-    bool operator!=(const MaskCell& o) const { return id != o.id; }
+    ao::CornerAO ao;
+    bool operator==(const MaskCell& o) const { return id == o.id && ao == o.ao; }
+    bool operator!=(const MaskCell& o) const { return !(*this == o); }
     explicit operator bool() const { return id != 0; }
 };
 
@@ -81,7 +84,7 @@ struct MaskCell {
 // quad (M0 simplification — see header), so the 4 corners get the 4 tile corners.
 void emit_quad(MeshBuffers& out, FaceDir dir, uint8_t id,
                const float origin[3], const float du[3], const float dv[3],
-               int w, int h) {
+               int w, int h, const ao::CornerAO& cao) {
     const FaceClass cls = face_class_of(id);
     MeshSection& sec = out.section(cls);
 
@@ -98,35 +101,46 @@ void emit_quad(MeshBuffers& out, FaceDir dir, uint8_t id,
     // Atlas tile rect for this id+face; stretched across the whole merged quad.
     const atlas::UVRect uv = atlas::uv_for(id, static_cast<FaceDir>(dir));
 
-    // Tie each corner's UV to its (u,v) parameter so the tile maps corner-to-corner.
-    auto add = [&](const float p[3], float uu, float vv) -> uint32_t {
+    // Tie each corner's UV to its (u,v) parameter so the tile maps corner-to-corner,
+    // and bake the corner's AO level into the vertex weight.
+    auto add = [&](const float p[3], float uu, float vv, uint8_t ao_level) -> uint32_t {
         MeshVertex mv;
         mv.px = p[0]; mv.py = p[1]; mv.pz = p[2];
         mv.nx = nrm[0]; mv.ny = nrm[1]; mv.nz = nrm[2];
         mv.u = uu; mv.v = vv;
-        mv.ao = 1.0f; // M0: flat lighting; AO pass is M1.
+        mv.ao = ao::ao_weight(ao_level);
         const uint32_t idx = static_cast<uint32_t>(sec.vertices.size());
         sec.vertices.push_back(mv);
         return idx;
     };
 
-    const uint32_t i00 = add(p00, uv.u0, uv.v0);
-    const uint32_t i10 = add(p10, uv.u1, uv.v0);
-    const uint32_t i11 = add(p11, uv.u1, uv.v1);
-    const uint32_t i01 = add(p01, uv.u0, uv.v1);
+    const uint32_t i00 = add(p00, uv.u0, uv.v0, cao.level[0]);
+    const uint32_t i10 = add(p10, uv.u1, uv.v0, cao.level[1]);
+    const uint32_t i11 = add(p11, uv.u1, uv.v1, cao.level[2]);
+    const uint32_t i01 = add(p01, uv.u0, uv.v1, cao.level[3]);
 
     // The parameter winding 00->10->11->01 is CCW in the (du,dv) plane. Whether
     // that looks CCW from OUTSIDE depends on whether (du x dv) points along +normal
     // or -normal. We pick du/dv per direction (below) so (du x dv) == +normal for
-    // the POSITIVE faces and == -normal for the NEGATIVE faces, then flip the
-    // triangle order for negative faces. Result: every quad faces outward.
-    const bool flip = (dir == FACE_NEG_X || dir == FACE_NEG_Y || dir == FACE_NEG_Z);
-    if (!flip) {
-        sec.indices.push_back(i00); sec.indices.push_back(i10); sec.indices.push_back(i11);
-        sec.indices.push_back(i00); sec.indices.push_back(i11); sec.indices.push_back(i01);
+    // the POSITIVE faces and == -normal for the NEGATIVE faces, then reverse the
+    // winding for negative faces. Result: every quad faces outward.
+    const bool flip_wind = (dir == FACE_NEG_X || dir == FACE_NEG_Y || dir == FACE_NEG_Z);
+    auto tri = [&](uint32_t a, uint32_t b, uint32_t c) {
+        sec.indices.push_back(a);
+        if (!flip_wind) { sec.indices.push_back(b); sec.indices.push_back(c); }
+        else            { sec.indices.push_back(c); sec.indices.push_back(b); }
+    };
+
+    // Pick the triangulation diagonal. Splitting along 00-11 is the default; when
+    // the AO of the 00/11 pair is darker than the 10/01 pair, split along 10-01 so
+    // the shading gradient interpolates smoothly across the quad instead of
+    // creasing along the wrong diagonal (the classic AO anisotropy fix).
+    if (!cao.should_flip_diagonal()) {
+        tri(i00, i10, i11); // 00->10->11
+        tri(i00, i11, i01); // 00->11->01
     } else {
-        sec.indices.push_back(i00); sec.indices.push_back(i11); sec.indices.push_back(i10);
-        sec.indices.push_back(i00); sec.indices.push_back(i01); sec.indices.push_back(i11);
+        tri(i10, i11, i01); // 10->11->01
+        tri(i10, i01, i00); // 10->01->00
     }
 }
 
@@ -160,7 +174,15 @@ void sweep_dir(const DenseGrid& slab, MeshBuffers& out, FaceDir dir, int axis) {
                 MaskCell cell;
                 if (meshes_here(id)) {
                     const int nb = at_local(slab, c[0] + off.x, c[1] + off.y, c[2] + off.z);
-                    if (!occludes(nb)) cell.id = static_cast<uint8_t>(id);
+                    if (!occludes(nb)) {
+                        cell.id = static_cast<uint8_t>(id);
+                        // Bake this face's 4 corner AO levels. The occupancy probe
+                        // reads the slab (incl. apron) through the AO occluder rule.
+                        auto occ = [&](int ox, int oy, int oz) {
+                            return ao::is_occluder(at_local(slab, ox, oy, oz));
+                        };
+                        cell.ao = ao::compute_face_ao(occ, c[0], c[1], c[2], dir);
+                    }
                 }
                 mask[static_cast<size_t>(j) * N + i] = cell;
             }
@@ -201,7 +223,7 @@ void sweep_dir(const DenseGrid& slab, MeshBuffers& out, FaceDir dir, int axis) {
                 du[ua] = 1.0f;
                 dv[va] = 1.0f;
 
-                emit_quad(out, dir, start.id, origin, du, dv, w, h);
+                emit_quad(out, dir, start.id, origin, du, dv, w, h, start.ao);
 
                 // Clear the consumed rectangle so we don't re-emit it.
                 for (int hh = 0; hh < h; ++hh)
