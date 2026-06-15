@@ -3,27 +3,36 @@
 #
 # This is the headless verification loop that runs in CI and the dev container
 # (no Unreal needed). Each test_*.cpp is a self-contained program (its own main)
-# covering one ported Core system; it is compiled against all Core sources and
-# run. Exit 0 = every harness green.
+# covering one ported Core system; it is compiled against ALL Core sources from
+# EVERY module (MiraThalVoxel, MiraThalCore, ...) and run. Exit 0 = every green.
+#
+# Adding a module's pure-logic Core is automatic: drop headers in
+# <Module>/Public/Core and sources in <Module>/Private/Core, add a test_*.cpp,
+# and this script finds them.
 #
 # Usage:
 #   ./build.sh                 # build + run every test_*.cpp
-#   ./build.sh water gravity   # build + run only test_water / test_gravity
+#   ./build.sh water combat    # build + run only test_water / test_combat
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INCLUDE="$HERE/../../Source/MiraThalVoxel/Public"
-CORE_SRC_DIR="$HERE/../../Source/MiraThalVoxel/Private/Core"
+SOURCE_ROOT="$HERE/../../Source"
 CXX="${CXX:-clang++}"
-FLAGS=(-std=c++17 -O2 -Wall -Wextra -Wshadow -I "$INCLUDE")
 
-# Every Core .cpp (water sim, gravity, generator, ...). Each test links all of
-# them; Core sources contain no main(), so there are no symbol clashes.
+# Include path: every module's Public dir (so "Core/Foo.h" resolves regardless
+# of which module owns it).
+INCLUDES=()
+while IFS= read -r -d '' d; do INCLUDES+=(-I "$d"); done \
+    < <(find "$SOURCE_ROOT" -type d -name Public -print0 | sort -z)
+
+FLAGS=(-std=c++17 -O2 -Wall -Wextra -Wshadow "${INCLUDES[@]}")
+
+# Every Core .cpp across all modules. Core sources contain no main(), so a test
+# can link the whole set with no symbol clashes.
 CORE_SRCS=()
-if [ -d "$CORE_SRC_DIR" ]; then
-    while IFS= read -r -d '' f; do CORE_SRCS+=("$f"); done \
-        < <(find "$CORE_SRC_DIR" -name '*.cpp' -print0 | sort -z)
-fi
+while IFS= read -r -d '' f; do CORE_SRCS+=("$f"); done \
+    < <(find "$SOURCE_ROOT" -type d -name Core -path '*/Private/*' \
+            -exec find {} -name '*.cpp' -print0 \; | sort -z)
 
 # Which harnesses to run: all test_*.cpp, or just the named ones.
 declare -a TESTS
