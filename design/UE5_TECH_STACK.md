@@ -162,7 +162,7 @@ From `design/UE5_VOXEL_MESHER_PLAN.md`. `✅` = done, `⏳` = next, `—` = plan
 | **M0** | Mesher foundations: chunk coords, greedy mesher, per-face color. | **✅** |
 | **M1** | AO + LOD + seams + **first render under Lumen**. Perf baseline ≈ **6.4 ms** GPU (7800 XT, empty Lumen scene). | **✅** |
 | **M2** | **Brickmap + generation + carve loop** — multi-chunk generated terrain + live dig with Chaos collision. | **✅** |
-| **M3** | **(a) EXR heightmap import ✅** — import a hand-crafted Gaea `.exr` as the terrain source (banding/cliff/water/flora re-derive off the imported surface). **(b) Water + flora + gravity sim** (wire `FiniteWaterCore` + `VoxelGravity` as a tick) — ⏳ next. | **◐** |
+| **M3** | **(a) EXR heightmap import ✅** — import a hand-crafted Gaea `.exr` as the terrain source. **(b) Dynamic water ✅** — `FiniteWaterCore` sim tick: pour/feed water flows down + fills holes bottom-up as cubic voxels; carving next to water floods the opening. **(c) gravity-on-dig** (terrain collapse via `VoxelGravity`) — ⏳ last M3 sub-item. | **◕** |
 | **M4** | **Streaming ✅** — focus-driven chunk-column paging (the 5 km map is explorable). **Persistence / World Partition** — ⏳. | **◐** |
 | **M5** | Multiplayer (server-authoritative edits). **Deferred to last** (per direction). | — |
 | **M6** | Cold → **Nanite** bake. | — |
