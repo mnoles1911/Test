@@ -44,6 +44,8 @@
 #include <vector>
 
 #include "Core/Noise.h"
+#include "Core/MaterialIds.h" // single authority for the mira::mat ids (incl. the
+                              // TREE_LOG / FLORA_GRASS_BLADE / ... aliases below)
 
 namespace mira {
 
@@ -61,38 +63,9 @@ inline double hash3(int64_t x, int64_t y, int64_t z, int64_t seed = 0) {
     return static_cast<double>(h) / static_cast<double>(0xFFFFFFLL);
 }
 
-// =============================================================================
-// Material id constants — verified against heightmap_generator_base.cpp.
-// =============================================================================
-namespace mat {
-constexpr int AIR          = 0;
-constexpr int STONE        = 1;
-constexpr int DIRT         = 2;
-constexpr int GRASS        = 3;
-constexpr int SAND         = 4;
-constexpr int MARBLE       = 9;
-constexpr int TREE_LOG     = 10;
-constexpr int TREE_LEAVES  = 11;
-constexpr int STONE_DARK   = 14;
-
-// Native-fluid pivot: water is a Zylann blocky fluid, ids 16..23.
-// level L (1..8) -> base + L - 1; full (level 8) -> 16 + 8 - 1 = 23.
-constexpr int WATER_FLUID_BASE = 16;
-constexpr int WATER_LEVEL_COUNT = 8;
-constexpr int WATER_FULL = WATER_FLUID_BASE + WATER_LEVEL_COUNT - 1; // 23
-
-// The canonical water SOURCE byte written into the DATA5 channel
-// (MAX_LEVEL 8 | SOURCE_BIT 0x10 = 0x18 = 24). Same value as
-// WaterByteCodec::SOURCE_BYTE.
-constexpr int WATER_SOURCE_BYTE = 0x18;
-
-// Flora + surface detail (0-gated until wired, but the Core defaults wire them).
-constexpr int FLORA_GRASS_BLADE = 24;
-constexpr int FLORA_FLOWER_RED  = 25;
-constexpr int FLORA_FLOWER_BLUE = 26;
-constexpr int DETAIL_PEBBLE     = 27;
-constexpr int DETAIL_TWIG       = 28;
-} // namespace mat
+// Material id constants now live in Core/MaterialIds.h (the single authority),
+// included above. It defines mira::mat with the canonical ids PLUS the alias
+// names this generator uses (TREE_LOG, FLORA_GRASS_BLADE, WATER_FULL, ...).
 
 // =============================================================================
 // BiomeProfile — one biome's heightfield + surface + vegetation recipe.

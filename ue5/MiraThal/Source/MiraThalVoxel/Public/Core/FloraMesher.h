@@ -383,7 +383,7 @@ inline void emit_ground_quad(MeshSection& sec,
 inline void append_flora(const DenseGrid& slab, MeshBuffers& out) {
 
     MeshSection& sec = out.section(FaceClass::Flora);
-    constexpr float TWO_PI = 6.28318530718f;
+    constexpr float MIRA_TWO_PI = 6.28318530718f; // not TWO_PI: that's a UE macro
 
     // Sweep only the inner chunk, not the apron shell. Chunk-local coords [0..31]
     // correspond to slab coords [APRON..APRON+31].
@@ -416,7 +416,7 @@ inline void append_flora(const DenseGrid& slab, MeshBuffers& out) {
                 const float dz = (static_cast<float>(bits_dz) / 1023.0f - 0.5f) * 0.2f;
 
                 // Map bits_yaw to [0, 2π].
-                const float yaw = (static_cast<float>(bits_yaw) / 4095.0f) * TWO_PI;
+                const float yaw = (static_cast<float>(bits_yaw) / 4095.0f) * MIRA_TWO_PI;
 
                 // Look up the flora-atlas UV tile for this id.
                 const flora_atlas::FloraUVRect uv = flora_atlas::uv_for_id(type_id);

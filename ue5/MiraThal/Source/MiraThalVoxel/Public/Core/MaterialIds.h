@@ -111,5 +111,22 @@ constexpr bool is_passthrough(int type_id) {
         && type_id < PASSTHROUGH_BASE_ID + PASSTHROUGH_COUNT;
 }
 
+// ---------------------------------------------------------------------------
+// Aliases used by HeightmapGenerator.h. That header originally declared its own
+// parallel `mat` namespace (TREE_LOG / FLORA_GRASS_BLADE / ...); co-including it
+// with this authority inside the UE module collided. These aliases let the
+// generator keep its names while THIS file stays the single source of the ids.
+// ---------------------------------------------------------------------------
+constexpr int TREE_LOG          = LOG;                  // 10
+constexpr int TREE_LEAVES       = LEAVES;               // 11
+constexpr int WATER_FLUID_BASE  = WATER_FLUID_BASE_ID;  // 16
+constexpr int WATER_FULL        = FULL_FLUID_ID;        // 23
+constexpr int WATER_SOURCE_BYTE = 0x18;                 // DATA5 source byte (== WaterByteCodec::SOURCE_BYTE)
+constexpr int FLORA_GRASS_BLADE = GRASS_BLADE_ID;       // 24
+constexpr int FLORA_FLOWER_RED  = FLOWER_RED_ID;        // 25
+constexpr int FLORA_FLOWER_BLUE = FLOWER_BLUE_ID;       // 26
+constexpr int DETAIL_PEBBLE     = PEBBLE_ID;            // 27
+constexpr int DETAIL_TWIG       = TWIG_ID;              // 28
+
 } // namespace mat
 } // namespace mira
