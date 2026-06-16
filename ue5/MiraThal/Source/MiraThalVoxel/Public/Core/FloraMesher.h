@@ -62,6 +62,7 @@
 #include "Core/VoxelChunk.h"    // DenseGrid, APRON, make_mesh_slab
 #include "Core/MeshTypes.h"     // MeshBuffers, MeshSection, MeshVertex, FaceClass
 #include "Core/MaterialIds.h"   // mat::is_passthrough, GRASS_BLADE_ID, etc.
+#include "Core/VoxelColor.h"    // base_color, Rgb8
 #include "Core/ChunkCoords.h"   // coords::CHUNK
 
 namespace mira {
@@ -146,16 +147,20 @@ inline uint32_t hash3(int x, int y, int z) {
 namespace flora_detail {
 
 // Push one mesh vertex into the Flora section's vertex buffer and return its index.
+// `col` is the baked solid color for this decoration (flora uses base_color with
+// a flat shade — see emit_cross/emit_ground_quad — not a directional face_shade).
 inline uint32_t push_vert(MeshSection& sec,
                           float px, float py, float pz,
                           float nx, float ny, float nz,
-                          float u,  float v)
+                          float u,  float v,
+                          Rgb8 col)
 {
     MeshVertex vtx;
     vtx.px = px; vtx.py = py; vtx.pz = pz;
     vtx.nx = nx; vtx.ny = ny; vtx.nz = nz;
     vtx.u  = u;  vtx.v  = v;
     vtx.ao = 1.0f; // flora is unoccluded (blades poke above terrain surface)
+    vtx.cr = col.r; vtx.cg = col.g; vtx.cb = col.b;
     const auto idx = static_cast<uint32_t>(sec.vertices.size());
     sec.vertices.push_back(vtx);
     return idx;
@@ -189,13 +194,14 @@ inline void emit_double_sided_quad(MeshSection& sec,
     float x2, float y2, float z2,   // corner 2 (top-right)
     float x3, float y3, float z3,   // corner 3 (top-left)
     float nx, float ny, float nz,   // outward normal (front face)
-    const flora_atlas::FloraUVRect& uv)
+    const flora_atlas::FloraUVRect& uv,
+    Rgb8 col)                       // baked solid color (flat, no face_shade)
 {
     // Four unique vertices with UV corners mapped to the tile rect.
-    const uint32_t i0 = push_vert(sec, x0, y0, z0, nx, ny, nz, uv.u0, uv.v1); // BL
-    const uint32_t i1 = push_vert(sec, x1, y1, z1, nx, ny, nz, uv.u1, uv.v1); // BR
-    const uint32_t i2 = push_vert(sec, x2, y2, z2, nx, ny, nz, uv.u1, uv.v0); // TR
-    const uint32_t i3 = push_vert(sec, x3, y3, z3, nx, ny, nz, uv.u0, uv.v0); // TL
+    const uint32_t i0 = push_vert(sec, x0, y0, z0, nx, ny, nz, uv.u0, uv.v1, col); // BL
+    const uint32_t i1 = push_vert(sec, x1, y1, z1, nx, ny, nz, uv.u1, uv.v1, col); // BR
+    const uint32_t i2 = push_vert(sec, x2, y2, z2, nx, ny, nz, uv.u1, uv.v0, col); // TR
+    const uint32_t i3 = push_vert(sec, x3, y3, z3, nx, ny, nz, uv.u0, uv.v0, col); // TL
 
     // Front winding (CCW from front = toward the outward normal).
     sec.indices.push_back(i0); sec.indices.push_back(i1); sec.indices.push_back(i2);
@@ -224,7 +230,8 @@ inline void emit_cross(MeshSection& sec,
     int cx, int cy, int cz,   // chunk-local cell origin (integer voxel coords)
     float dx, float dz,       // jitter: horizontal offset applied to the centre
     float yaw,                // rotation about the cell's Y axis (radians)
-    const flora_atlas::FloraUVRect& uv)
+    const flora_atlas::FloraUVRect& uv,
+    Rgb8 col)                 // baked solid color for this blade/flower
 {
     // Centre position with jitter applied. Y is the full voxel extent (cy..cy+1).
     const float cx_f   = static_cast<float>(cx);
@@ -264,7 +271,7 @@ inline void emit_cross(MeshSection& sec,
             mx + tx, cy_top, mz + tz,  // TR
             mx - tx, cy_top, mz - tz,  // TL
             nx, 0.0f, nz,
-            uv);
+            uv, col);
     }
 
     // --- Quad 1: perpendicular to quad 0 (the Z-axis quad after rotation). ---
@@ -281,7 +288,7 @@ inline void emit_cross(MeshSection& sec,
             mx + tx, cy_top, mz + tz,  // TR
             mx - tx, cy_top, mz - tz,  // TL
             nx, 0.0f, nz,
-            uv);
+            uv, col);
     }
 }
 
@@ -299,7 +306,8 @@ inline void emit_ground_quad(MeshSection& sec,
     float dx, float dz,
     float yaw,
     int type_id,
-    const flora_atlas::FloraUVRect& uv)
+    const flora_atlas::FloraUVRect& uv,
+    Rgb8 col)                 // baked solid color for this pebble/twig
 {
     // Ground level: just barely above the cell floor so Z-fighting is avoided.
     const float ground_y = static_cast<float>(cy) + 0.02f;
@@ -344,7 +352,7 @@ inline void emit_ground_quad(MeshSection& sec,
         x2, ground_y, z2,
         x3, ground_y, z3,
         0.0f, 1.0f, 0.0f,   // normal +Y (flat on the ground)
-        uv);
+        uv, col);
 }
 
 } // namespace flora_detail
@@ -421,12 +429,23 @@ inline void append_flora(const DenseGrid& slab, MeshBuffers& out) {
                 // Look up the flora-atlas UV tile for this id.
                 const flora_atlas::FloraUVRect uv = flora_atlas::uv_for_id(type_id);
 
+                // Baked solid color for this decoration. Flora is unlit-ish — it
+                // has no real face direction (a cross faces every way), so we do
+                // NOT apply a directional face_shade. We use the material's flat
+                // base_color knocked down by a small constant 0.95 so it doesn't
+                // glare brighter than the lit terrain top faces around it.
+                const Rgb8 raw = base_color(type_id);
+                const auto knock = [](uint8_t v) -> uint8_t {
+                    return static_cast<uint8_t>(static_cast<float>(v) * 0.95f + 0.5f);
+                };
+                const Rgb8 col{ knock(raw.r), knock(raw.g), knock(raw.b) };
+
                 if (mat::is_flora(type_id)) {
                     // Grass blades (24) and flowers (25, 26): billboard cross.
-                    flora_detail::emit_cross(sec, x, y, z, dx, dz, yaw, uv);
+                    flora_detail::emit_cross(sec, x, y, z, dx, dz, yaw, uv, col);
                 } else {
                     // Pebbles (27) and twigs (28): flat ground quad.
-                    flora_detail::emit_ground_quad(sec, x, y, z, dx, dz, yaw, type_id, uv);
+                    flora_detail::emit_ground_quad(sec, x, y, z, dx, dz, yaw, type_id, uv, col);
                 }
             }
         }

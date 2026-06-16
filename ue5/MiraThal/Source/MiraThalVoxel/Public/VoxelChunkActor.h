@@ -12,6 +12,10 @@
 #include "VoxelChunkActor.generated.h"
 
 class UProceduralMeshComponent;
+class UMaterialInterface;
+
+// Engine-agnostic Core slab type (pure C++; real include lives in the .cpp).
+namespace mira { struct DenseGrid; }
 
 UCLASS()
 class MIRATHALVOXEL_API AVoxelChunkActor : public AActor
@@ -44,9 +48,26 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel")
 	int32 Seed = 1337;
 
-	// Rebuild from the editor without PIE (button in the Details panel).
+	// When true, this chunk is driven by AVoxelWorld: it does NOT auto-rebuild on
+	// construction/BeginPlay; the world calls RenderManaged() directly with a slab
+	// it extracted from the authoritative brickmap. (M2 multi-chunk world.)
+	UPROPERTY()
+	bool bWorldManaged = false;
+
+	// Rebuild from the editor without PIE (button in the Details panel). Standalone
+	// (non-world-managed) path only — builds from test pattern or the generator.
 	UFUNCTION(CallInEditor, Category = "MiraThal|Voxel")
 	void Rebuild();
+
+	// World-managed render entry: greedy-mesh a pre-filled apron'd slab (the world
+	// extracted it from the brickmap), upload it, and assign per-FaceClass materials.
+	// Opaque/Cutout share the terrain material; Water/Flora get their own.
+	void RenderManaged(const mira::DenseGrid& Slab,
+	                   UMaterialInterface* OpaqueMat,
+	                   UMaterialInterface* WaterMat,
+	                   UMaterialInterface* FloraMat,
+	                   bool bCollision,
+	                   bool bReverse);
 
 protected:
 	virtual void BeginPlay() override;

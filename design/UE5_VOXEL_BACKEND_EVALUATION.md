@@ -1,8 +1,16 @@
 # UE5 Voxel Backend Evaluation (cubic spike)
 
-**Status:** SPIKE COMPLETE — decision record. Triggered because the originally-chosen Voxel Plugin Pro
-turned out **not to support cubic terrain** (see below). Designer constraint reaffirmed: **true blocky
-10cm cubes are core visual identity, non-negotiable.**
+**Status:** SPIKE COMPLETE — decision record. **Outcome realized:** we built the custom cubic mesher on
+our Core, and as of **2026-06-16** it has shipped **M0/M1/M2** (foundations → first chunk under Lumen →
+brickmap + generation + dig loop). Triggered because the originally-chosen Voxel Plugin Pro turned out
+**not to support cubic terrain** (see below). Designer constraint reaffirmed: **true blocky 10cm cubes
+are core visual identity, non-negotiable.** Companion to `UE5_TECH_STACK.md` (canonical stack) and
+`UE5_VOXEL_MESHER_PLAN.md` (the build plan this spike fed into).
+
+> **Texturing note (2026-06-16):** requirement #7 below ("per-voxel materials via a triplanar atlas")
+> is **superseded** — the shipped surface is **per-face solid color** baked into vertex color (no atlas;
+> see `UE5_RENDERING_STRATEGY.md`). It doesn't change the verdict: the custom mesher is still the only
+> backend that meets the bar, and per-face color is *easier* than atlas UVs, not harder.
 
 ## Why this spike happened
 

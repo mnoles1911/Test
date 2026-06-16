@@ -1,10 +1,21 @@
 # UE5 Port Plan — Mira-Thal (Godot 4.6 → Unreal Engine 5)
 
-**Status:** PROPOSED (planning only — no engine work started). This is a strategy/scoping document,
-not a record of shipped work. Claude Code is the intended lead developer for the port.
+**Status:** IN PROGRESS — the port is **underway, not proposed**. As of **2026-06-16** the UE5 voxel
+foundation is built: **M0 ✅ (mesher foundations), M1 ✅ (first chunk rendered under Lumen, baseline
+≈ 6.4 ms GPU on a 7800 XT), M2 ✅ (brickmap + heightmap generation + live dig/carve loop with Chaos)**.
+Engine = **Unreal Engine 5.7** (custom source build at `D:/UE5/UE_5.7`), language = **C++**. This is a
+strategy/scoping document; for "what the stack is *now*" read **`UE5_TECH_STACK.md`** (canonical), and
+for the build/milestone detail **`UE5_VOXEL_MESHER_PLAN.md`**. Claude Code is the lead developer.
 
-**Scope note:** This doc lives in the Godot repo as the canonical reference for the port decision and
-sequencing. The actual UE5 project would live in a separate repository/module tree.
+**Heritage note:** the original Godot build is preserved on the **`busy-cannon`** branch — superseded
+for this line of work, not deleted. This worktree is the active UE5 line.
+
+**Texturing update (2026-06-16):** the "triplanar material atlas" referenced below is **dropped** in
+favor of **per-face solid color** baked into vertex color (better for 10 cm voxels; lets Lumen light
+everything). See `UE5_RENDERING_STRATEGY.md` + `UE5_TECH_STACK.md` §6.
+
+**Scope note:** This doc originated in the Godot repo as the canonical reference for the port decision
+and sequencing. The UE5 project now lives under `ue5/MiraThal/` on this branch.
 
 ---
 
@@ -70,7 +81,7 @@ smooth far" — so we keep the rendering layer swappable.
 | `voxel_gen` GDExtension (gen/gravity/water/biome/emissive) | UE5 C++ inside our voxel module (the `Core/` layer) | Pure logic ports nearly 1:1; **done + harness-locked** |
 | `VoxelEditManager` (single write gateway + async budget + NoEditZone + MP RPC) | `UVoxelEditSubsystem` wrapping Voxel Plugin's edit API | Keep the single-gateway discipline; MP via UE RPCs |
 | `VoxelScale.gd` (10 vox/m SSOT) | `UVoxelScaleSettings` (`UDeveloperSettings`) | Single source of truth, config-exposed |
-| Material ids 1–28 (terrain/water/flora/detail) | `UDataAsset` registry + material-index table | Triplanar atlas material; keep id ranges (water 16–23, flora 24–26, detail 27–28) |
+| Material ids 1–28 (terrain/water/flora/detail) | `UDataAsset` registry + material-index table | **Per-face solid color** (`Core/VoxelColor.h`, vertex-color baked) — *atlas dropped*; keep id ranges (water 16–23, flora 24–26, detail 27–28) |
 | Finite water sim (`FiniteWaterCore` ledger + `WaterByteCodec`) | C++ `FFiniteWaterCore` in voxel module | Pure, SceneTree-free already → ports cleanly; render via custom water surface material |
 | Voxel gravity/sever (`VoxelGravityCpp`, `FallingVoxelCluster`) | C++ flood-fill + **Chaos** rigid clusters | Chaos replaces Godot RigidBody3D |
 | Combat (MeleeHandler, EnemyAttackPool, ParryChainTracker, MouseDirectionSampler) | C++ `UActorComponent`s on player/enemy pawns | State machines port directly; free-aim, no lock-on |
@@ -104,8 +115,9 @@ Goal: one biome, end-to-end core loop, proving the engine choices. Everything he
    `VoxelSizeM=0.1`, helper conversions. Mirror the never-hardcode discipline from `VoxelScale.gd`.
 3. **Custom cubic mesher + chunk streaming.** Stand up the `MiraThalVoxel` cubic greedy mesher at
    10cm (chunk of material ids → quad list → `UProceduralMeshComponent`/`URealtimeMesh`), Chaos
-   collision from the mesh, and World Partition chunk streaming. Wire a triplanar material from the
-   existing atlas PNG. (Was "install Voxel Plugin Pro" until the cubic spike ruled it out.)
+   collision from the mesh, and World Partition chunk streaming. Surface = **per-face solid color** baked
+   into vertex color (`M_VoxelTerrain` = VertexColor→BaseColor) — *the triplanar-atlas idea was dropped;
+   see `UE5_RENDERING_STRATEGY.md`*. (Was "install Voxel Plugin Pro" until the cubic spike ruled it out.)
 4. **Edit gateway.** `UVoxelEditSubsystem` as the *only* write path (sphere/box/single, async
    budget, NoEditZone hook, edit-applied delegate) — the `VoxelEditManager` contract, on UE.
 5. **Gaea-seeded generation.** Port `CubicHeightmapGeneratorCpp` + `BiomeFieldCpp` logic into

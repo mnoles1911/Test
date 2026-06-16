@@ -1,11 +1,28 @@
 # UE5 Rendering Strategy — the cubic voxel world at high performance
 
-**Status:** PROPOSED (decision record for the UE5 port). Companion to `UE5_PORT_PLAN.md`. Drives the
-Phase 0 "dig-under-Lumen perf gate" — the spikes and measurement criteria below are the gate's content.
+**Status:** PARTLY REALIZED (decision record for the UE5 port). Companion to `UE5_TECH_STACK.md`,
+`UE5_PORT_PLAN.md`, `UE5_VOXEL_MESHER_PLAN.md`. Drives the Phase 0 "dig-under-Lumen perf gate" — the
+spikes and measurement criteria below are the gate's content. **As of 2026-06-16, M1 (first chunk under
+Lumen, baseline ≈ 6.4 ms GPU on a 7800 XT for an empty Lumen scene) and M2 (brickmap + generation + dig
+loop) are built;** the Baseline render path (greedy mesh + Lumen) is the shipped near-band, with the
+ray-march far band (spike C) and Nanite cold-bake (spike B) still ahead (M6/M7).
+
+> ### Texturing decision (NEW, 2026-06-16): per-face SOLID COLOR — supersedes the atlas
+>
+> This doc originally referenced a **triplanar material atlas / Runtime Virtual Texture** for the voxel
+> surface. **That is dropped.** The shipped look is **per-face solid color**: each voxel face is one flat
+> color = `base_color(material)` × `face_shade(direction)` (six fixed directional shades — top brightest,
+> bottom darkest — so cubes read as 3D before any dynamic light). The mesher **bakes that color into
+> vertex color**; AO rides in vertex **alpha**. The UE material **`M_VoxelTerrain`** is simply
+> **VertexColor → BaseColor** — no textures, no UVs, no atlas. At 10 cm a face is tiny on screen, flat
+> color reads cleaner, and it lets **Lumen** do all the dynamic lighting. Palette = the old Godot
+> per-material colors, in `Core/VoxelColor.h`. Wherever "atlas" / "triplanar" / "Runtime Virtual Texture
+> (terrain)" appears below, read it as **the superseded plan**. See `UE5_TECH_STACK.md` §6.
 
 **Aesthetic target (locked):** true blocky 10cm cubes, fully destructible, photoreal lighting
 (Nanite/Lumen), Skyrim-scale streamed world, multiplayer. Voxel runtime: **custom cubic greedy mesher**
-(Voxel Plugin 2 dropped cubic; see `UE5_VOXEL_BACKEND_EVALUATION.md`).
+(Voxel Plugin 2 dropped cubic; see `UE5_VOXEL_BACKEND_EVALUATION.md`). **Surface = per-face solid color**
+(above), not a textured atlas.
 
 ---
 
@@ -63,8 +80,9 @@ Most wins keep mesh-based rendering and just move the expensive part to the GPU:
   coherent source of truth.
 - **Niagara GPU particles** for far grass, dig debris, water foam, weather (replaces the Godot
   `FarGrassManager` / `WaterFoamManager` impostor layers).
-- **Inherited GPU work:** UE already GPU-drives culling, GPU Scene, mesh-draw commands; the texture
-  atlas becomes a **Runtime Virtual Texture**; Lumen (GI/reflections) + Virtual Shadow Maps run on GPU.
+- **Inherited GPU work:** UE already GPU-drives culling, GPU Scene, mesh-draw commands; ~~the texture
+  atlas becomes a **Runtime Virtual Texture**~~ *(superseded — surface is per-face vertex color, no
+  texture; see header)*; Lumen (GI/reflections) + Virtual Shadow Maps run on GPU.
 
 ---
 

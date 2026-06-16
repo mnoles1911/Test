@@ -1,8 +1,21 @@
 # UE5 Custom Cubic Voxel Plugin — Build Plan
 
-**Status:** APPROVED, in progress. Companion to `UE5_PORT_PLAN.md`, `UE5_RENDERING_STRATEGY.md`,
+**Status:** APPROVED, **in progress — M0 ✅, M1 ✅, M2 ✅ (built 2026-06-16).** Companion to
+`UE5_TECH_STACK.md` (the canonical stack overview), `UE5_PORT_PLAN.md`, `UE5_RENDERING_STRATEGY.md`,
 `UE5_VOXEL_BACKEND_EVALUATION.md`. This is the execution plan for the custom mesher/rendering/streaming
 plugin we own (no third-party voxel backend — Voxel Plugin 2 dropped cubic; see the evaluation doc).
+
+> **Status note (2026-06-16):** the foundation is real, not just planned. **M0** (mesher foundations),
+> **M1** (AO/LOD/seams + first chunk rendered under Lumen, perf baseline ≈ 6.4 ms GPU on a 7800 XT in an
+> empty Lumen scene), and **M2** (brickmap + generation + the dig/carve loop, with multi-chunk generated
+> terrain and Chaos collision) are **built**. M3 (water/flora/gravity) is next. The headless gate is the
+> standalone clang Core harness — **"ALL HARNESSES GREEN"** in `ue5/MiraThal/tests/standalone/build.sh`.
+>
+> **Texturing changed since this plan was written:** the "AtlasUV" / texture-atlas approach below is
+> **superseded** by **per-face solid color baked into vertex color** (top-brightest..bottom-darkest
+> directional shade × per-material base color from `Core/VoxelColor.h`; AO in vertex alpha; UE material
+> `M_VoxelTerrain` = VertexColor→BaseColor). See `UE5_RENDERING_STRATEGY.md` and `UE5_TECH_STACK.md` §6.
+> `AtlasUV`/`atlas` below is retained only as the historical plan; the shipped path needs no atlas.
 
 ## Why custom
 
@@ -45,8 +58,11 @@ chunks + static set-dressing). Skyrim-scale 10cm needs Large World Coordinates +
 
 `type` uint8 = `MaterialIds` value (0=air); `water` uint8 = `WaterByteCodec`. `Brickmap` = sparse hash
 of 8³ bricks, mutated by edits + `FiniteWaterCore` + `VoxelGravity`; shared by sim, collision, mesher,
-GPU mirror. Mesh chunk = 32³ *view* (4³ bricks + 1-voxel apron). LWC: `ChunkCoords` splits world pos
-into int32 voxel index + double tile origin. Persistence: baseline-from-seed + delta log.
+GPU mirror. Mesh chunk = 32³ *view* (4³ bricks + 1-voxel apron) — built as M2's `AVoxelWorld`/
+`BrickmapMeshing` path, where `BrickmapMeshing` computes the edit-affected chunks so only those re-mesh.
+LWC: `ChunkCoords` splits world pos into int32 voxel index + double tile origin. Persistence:
+baseline-from-seed + delta log. **Texturing:** no atlas — the mesher bakes a **per-face solid color**
+(`VoxelColor` = per-material base × per-direction shade) into vertex color, AO into vertex alpha.
 
 ## Rendering bands
 
@@ -60,7 +76,7 @@ In `MiraThalVoxel/Public/Core/` (+ `Private/Core/`), reading the authorities (`V
 `MaterialIds.h`, `WaterByteCodec.h`, `HeightmapGenerator.h`), never re-hardcoding:
 
 `ChunkCoords` (`chunkcoords`), `VoxelChunk` (via `mesher`), `MeshTypes` (face classes/dirs/buffers),
-`GreedyMesher` (`mesher`), `VoxelAO` (`ao`), `AtlasUV` (`atlas`), `LodDownsample` (`lod`),
+`GreedyMesher` (`mesher`), `VoxelAO` (`ao`), `VoxelColor` (per-face solid color — replaces `AtlasUV`), `LodDownsample` (`lod`),
 `WaterSurfaceMesher` (`watersurf`), `FloraMesher` (`flora`), `Brickmap` (`brickmap`),
 `RegionFormat` (`region`), `BandPolicy` (`bands`), `MeshBudget` (`meshbudget`), `NetVoxelCodec` (`netvoxel`).
 
@@ -71,10 +87,10 @@ UE glue (no Core): `UVoxelWorldSubsystem`, `AVoxelChunkActor`, `IVoxelMeshSink`/
 
 `[H]` clang here · `[B]` UE build machine · `[OSS]` lib lands.
 
-- **M0** Core meshing foundations: `ChunkCoords`, `VoxelChunk`, `MeshTypes`, `AtlasUV`, `GreedyMesher` (no AO). `chunkcoords`/`atlas`/`mesher`. `[OSS]` binary-greedy-meshing.
-- **M1** AO + LOD + seams + first render: `VoxelAO`, `LodDownsample`, skirts; `FRealtimeMeshSink` + `AVoxelChunkActor`. `ao`/`lod`/`seams`. `[B]` chunk under Lumen = perf Baseline. `[OSS]` RealtimeMeshComponent.
-- **M2** Brickmap + generation + carve loop: `Brickmap`, generator wire, `OnEditsApplied`→re-mesh, Chaos. `brickmap`/`meshbudget`. `[B]` dig-under-Lumen; perf gate. `[OSS]` FastNoiseLite.
-- **M3** Water + flora + gravity: `WaterSurfaceMesher`, `FloraMesher`; wire `FiniteWaterCore`+`VoxelGravity`. `watersurf`/`flora`. `[B]` water shader, flora alpha-scissor.
+- **M0 ✅** Core meshing foundations: `ChunkCoords`, `VoxelChunk`, `MeshTypes`, ~~`AtlasUV`~~ **per-face `VoxelColor`**, `GreedyMesher`. `chunkcoords`/`mesher` (color baked in mesher). `[OSS]` binary-greedy-meshing. *(Atlas dropped → per-face solid color, see header note.)*
+- **M1 ✅** AO + LOD + seams + first render: `VoxelAO`, `LodDownsample`, skirts; `AVoxelChunkActor` (ProceduralMeshComponent for now; `FRealtimeMeshSink` planned). `ao`/`lod`/`seams`. `[B]` **chunk rendered under Lumen — perf Baseline ≈ 6.4 ms GPU (7800 XT, empty Lumen scene).** `[OSS]` RealtimeMeshComponent.
+- **M2 ✅** Brickmap + generation + carve loop: `Brickmap`, generator wire (`HeightmapGenerator`), `BrickmapMeshing` edit-affected-chunk compute, `AVoxelWorld` manager, `CarveAtWorld`/`CarveTestHole` → re-mesh → Chaos. `brickmap`/`meshbudget`. `[B]` **dig-under-Lumen built: multi-chunk generated terrain + live dig.** `[OSS]` FastNoiseLite.
+- **M3 ⏳** Water + flora + gravity: `WaterSurfaceMesher`, `FloraMesher`; wire `FiniteWaterCore`+`VoxelGravity`. `watersurf`/`flora`. `[B]` water shader, flora alpha-scissor. *(next milestone)*
 - **M4** Streaming + persistence: `RegionFormat`, `BandPolicy`; World Partition + tile-local origins. `region`/`bands` + LWC tests. `[B]` World Partition, rebase soak.
 - **M5** Multiplayer: `NetVoxelCodec`; server-authoritative, edit RPC + multicast, join-in-progress. `netvoxel`. `[B]` replication + late-join.
 - **M6** Cold→Nanite bake: `MiraThalVoxelBake` + `meshoptimizer`. `[B]` perf spike B. `[OSS]` meshoptimizer.

@@ -2,12 +2,14 @@
 #include "VoxelChunkActor.h"
 #include "ProceduralMeshComponent.h"
 #include "MiraVoxelMesh.h"
+#include "Materials/MaterialInterface.h"
 
 // Engine-agnostic Core (no Unreal types).
 #include "Core/VoxelChunk.h"        // DenseGrid, make_mesh_slab, APRON
 #include "Core/ChunkCoords.h"       // coords::CHUNK, chunk_origin_voxel, Vec3i
 #include "Core/MaterialIds.h"       // mat::*
 #include "Core/WaterByteCodec.h"    // WaterByteCodec::SOURCE_BYTE
+#include "Core/MeshTypes.h"         // FaceClass (per-section material assignment)
 #include "Core/GreedyMesher.h"      // greedy_mesh
 #include "Core/WaterSurfaceMesher.h"// append_water_surface
 #include "Core/FloraMesher.h"       // append_flora
@@ -144,14 +146,65 @@ void AVoxelChunkActor::Rebuild()
 	}
 }
 
+// ---------------------------------------------------------------------------
+// World-managed render: AVoxelWorld extracted this slab from the authoritative
+// brickmap and hands it to us. We just mesh + upload + assign materials. No
+// generation here — the world owns the voxel data. (M2 multi-chunk path.)
+// ---------------------------------------------------------------------------
+void AVoxelChunkActor::RenderManaged(const mira::DenseGrid& Slab,
+                                     UMaterialInterface* OpaqueMat,
+                                     UMaterialInterface* WaterMat,
+                                     UMaterialInterface* FloraMat,
+                                     bool bCollision,
+                                     bool bReverse)
+{
+	using namespace mira;
+
+	MeshBuffers Mb = greedy_mesh(Slab);
+	append_water_surface(Slab, Mb);
+	append_flora(Slab, Mb);
+
+	if (!Mesh)
+	{
+		return;
+	}
+
+	Mesh->ClearAllMeshSections();
+	MiraVoxelMesh::ApplyMeshBuffers(Mesh, Mb, bReverse, bCollision);
+
+	// Section index == FaceClass value (see MiraVoxelMesh::ApplyMeshBuffers).
+	// Opaque + Cutout both draw atlas-free solid-colour terrain, so they share the
+	// terrain material; water and flora get their own.
+	if (OpaqueMat)
+	{
+		Mesh->SetMaterial(static_cast<int32>(FaceClass::Opaque), OpaqueMat);
+		Mesh->SetMaterial(static_cast<int32>(FaceClass::Cutout), OpaqueMat);
+	}
+	if (WaterMat)
+	{
+		Mesh->SetMaterial(static_cast<int32>(FaceClass::Water), WaterMat);
+	}
+	if (FloraMat)
+	{
+		Mesh->SetMaterial(static_cast<int32>(FaceClass::Flora), FloraMat);
+	}
+}
+
 void AVoxelChunkActor::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-	Rebuild(); // builds in-editor when placed/moved, no PIE needed
+	// World-managed chunks are driven by AVoxelWorld::RenderManaged — never self-build.
+	if (!bWorldManaged)
+	{
+		Rebuild(); // standalone: builds in-editor when placed/moved, no PIE needed
+	}
 }
 
 void AVoxelChunkActor::BeginPlay()
 {
 	Super::BeginPlay();
-	Rebuild();
+	if (!bWorldManaged)
+	{
+		Rebuild();
+	}
 }

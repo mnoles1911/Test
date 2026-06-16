@@ -2,9 +2,39 @@
 
 Top-level navigator. **Each subdirectory has its own `CLAUDE.md` with detail for that area** — Claude Code loads the nearest one as you work.
 
+> ## ⚙️ ENGINE: this branch is the **Unreal Engine 5 port** (active line of work)
+>
+> **This worktree/branch is the UE5 port of Mira-Thal.** The active engine is **Unreal Engine 5.7**
+> (custom source build at `D:/UE5/UE_5.7`, GUID-registered), language is **C++** (no C#, no GDScript),
+> rendering is **Lumen** (dynamic global illumination + reflections), **Nanite** (a cold-bake step,
+> arriving in a later milestone), **Virtual Shadow Maps**, and **Chaos** physics. The world is built on
+> our **own custom cubic voxel engine** (module `MiraThalVoxel`) at **10 voxels per metre** — i.e. each
+> cube is **10 cm**. True blocky cubes are core visual identity, non-negotiable.
+>
+> **The original Godot build is heritage / legacy.** It still lives, intact, on the **`busy-cannon`
+> branch** and is preserved as the trilogy's history — do **not** delete it. For *this* (UE5) line of
+> work it is **superseded**: when a doc here describes "the engine," it means UE5. Godot detail is kept
+> below and in the design docs for reference, clearly marked as the legacy line.
+>
+> **Start here for the current stack:** `design/UE5_TECH_STACK.md` (the canonical "what is the stack
+> now" entry point — engine, modules, data model, verification, milestone status, tooling).
+> **Current milestone status:** **M0 ✅, M1 ✅ (first chunk rendered under Lumen), M2 ✅ built tonight
+> (brickmap + generated multi-chunk terrain + dig/carve loop)** — see `design/UE5_VOXEL_MESHER_PLAN.md`.
+
 ## Project
 
-3D voxel narrative RPG (Veloren + Skyrim atmosphere), Godot 4.6.2 + Zylann Voxel Tools, Forward+ desktop. Real-time action combat, 1-vs-many, co-op 1-4. World is **Mira-Thal**, LOTR-scale fantasy. Game one of a planned trilogy from a 200-page source manuscript.
+3D voxel narrative RPG (Veloren + Skyrim atmosphere). World is **Mira-Thal**, LOTR-scale fantasy. Game
+one of a planned trilogy from a 200-page source manuscript. Real-time action combat, 1-vs-many, co-op 1-4.
+
+**Engine (this branch): Unreal Engine 5.7, C++**, custom cubic voxel engine (`MiraThalVoxel`) at **10 cm
+voxels**, rendered with **Lumen + Nanite (later) + Chaos** on a desktop target. The voxel world's
+load-bearing logic lives in an **engine-agnostic C++ "Core"** (namespace `mira`, pure C++17, no engine
+headers) so it can be unit-tested headlessly with a standalone clang harness before any Unreal build.
+
+> **Legacy (Godot) — superseded by the UE5 port:** the previous build ran on **Godot 4.6.2 + Zylann
+> Voxel Tools, Forward+**. That build is preserved on the `busy-cannon` branch as heritage. The "Legacy
+> (Godot)" details further down this file describe how that build worked — keep them for reference, but
+> new work on this branch targets UE5.
 
 I am a writer + game designer, not a programmer. Explain code in plain English, comment heavily, prefer simple readable solutions.
 
@@ -20,20 +50,49 @@ Subagents never commit or push. Each planned PR or task names its executor tier 
 
 ## Navigate
 
+**UE5 port (active engine) — start here:**
+
 | Going to work on... | Read |
 |---|---|
-| GDScript code / autoloads / gameplay | `scripts/CLAUDE.md` |
-| Godot scene files (.tscn) | `scenes/CLAUDE.md` |
-| System design — combat, weather, skills, etc. | `design/CLAUDE.md` |
+| **The current tech stack (canonical entry point)** | **`design/UE5_TECH_STACK.md`** |
+| UE5 voxel engine C++ (mesher, brickmap, chunk actors, Core) | `ue5/MiraThal/Source/MiraThalVoxel` (Core in `Public/Core/`) |
+| Headless Core verification (the green gate) | `ue5/MiraThal/tests/standalone/build.sh` |
+| UE5 port strategy / sequencing | `design/UE5_PORT_PLAN.md` |
+| UE5 rendering decisions (Lumen / bands / per-face color) | `design/UE5_RENDERING_STRATEGY.md` |
+| Why we own the mesher (cubic backend spike) | `design/UE5_VOXEL_BACKEND_EVALUATION.md` |
+| UE5 mesher build plan + milestone ladder (M0–M8) | `design/UE5_VOXEL_MESHER_PLAN.md` |
+| UE5 atmosphere art assets (CC0 sky/water/VFX) | `design/UE5_ART_ASSETS.md` |
+| In-editor live bridge (spawn/inspect/screenshot via Claude) | `mcp-unreal` — see `design/UE5_TECH_STACK.md` §mcp-unreal |
+| System design — combat, weather, skills, etc. (engine-agnostic) | `design/CLAUDE.md` |
 | Narrative canon — world, characters, locations | `lore/CLAUDE.md` |
-| Textures, models, audio, profiles, atlases | `assets/CLAUDE.md` |
-| C++ GDExtension (perf code) | `extensions/voxel_gen/CLAUDE.md` |
+| "What shipped recently / what's in flight" | `MILESTONES.md` + the **Current state** block below |
+
+**Legacy (Godot) — superseded; preserved on `busy-cannon`:**
+
+| Going to work on... | Read |
+|---|---|
+| GDScript code / autoloads / gameplay (legacy) | `scripts/CLAUDE.md` |
+| Godot scene files (.tscn) (legacy) | `scenes/CLAUDE.md` |
+| Godot textures, models, audio, atlases (legacy) | `assets/CLAUDE.md` |
+| Godot C++ GDExtension (legacy perf code) | `extensions/voxel_gen/CLAUDE.md` |
 | Pipeline tools (TTS, headless harness, SFX gen) | `tools/CLAUDE.md` |
 | Dialogic timelines, voice + style guides | `dialogue/CLAUDE.md` |
-| "What shipped recently / what's in flight" | `MILESTONES.md` + the **Current state** block below |
-| "Non-negotiable code rules" | `design/PATTERNS_AND_GOTCHAS.md` |
+| "Non-negotiable Godot code rules" (legacy) | `design/PATTERNS_AND_GOTCHAS.md` |
 
 ## Current state (check before starting work)
+
+> **UE5 port — current state (this branch):** **M0 ✅, M1 ✅, M2 ✅ (built tonight).** The UE5 voxel
+> engine now generates multi-chunk terrain from a heightmap, renders it under Lumen, and supports a
+> live dig/carve loop with Chaos collision. Texturing is **per-face solid color** (not an atlas) baked
+> into vertex color — see `design/UE5_TECH_STACK.md` and `design/UE5_RENDERING_STRATEGY.md`. The
+> milestone ladder (M0–M8) and what each gate proves live in `design/UE5_VOXEL_MESHER_PLAN.md`. For
+> UE5 milestone history see `MILESTONES.md` (entries tagged **`[ue5]`**).
+
+### Legacy (Godot) current-state snapshot — superseded by the UE5 port (kept for heritage)
+
+The block below describes the **Godot** build's PR/feature state at the time of the port. It is the
+state of the `busy-cannon` legacy line, **not** the UE5 branch. Read it for design intent / parity
+reference, not as the live engine.
 
 Update this block whenever a branch opens / closes. **Read it before assuming a feature is unbuilt.**
 
@@ -74,7 +133,12 @@ Files that still exist on disk but look canonical without being it.
 - **`design/PATTERNS_AND_GOTCHAS.md`** — every non-negotiable code rule, scene hierarchy, autoload load order. Read before writing GDScript.
 - **`design/PROFILER_AND_DIAGNOSTICS.md`** — read before guessing at perf issues.
 
-## Non-negotiables (one-line summary; details in `design/PATTERNS_AND_GOTCHAS.md`)
+## Non-negotiables — Legacy (Godot); see `design/UE5_TECH_STACK.md` for the UE5 rules
+
+> These were the **Godot** build's non-negotiable code rules. On the UE5 branch the equivalents are:
+> voxel writes go through the single edit gateway on `AVoxelWorld` (`CarveAtWorld`), the brickmap is the
+> one authoritative store, and the engine-agnostic Core must pass the clang harness ("ALL HARNESSES
+> GREEN") before any UE build. The Godot-specific rules below are kept for parity reference.
 
 - Player input must gate on `_can_take_input()`. Voxel writes through `VoxelEditManager` only. Skill XP through `SkillManager` only. UI clicks via manual `_input` dispatch.
 - Water type check via `WaterMaterial.is_water_type(t)`, never `== 5`. Voxel material lookup via `VoxelMaterialRegistry`.

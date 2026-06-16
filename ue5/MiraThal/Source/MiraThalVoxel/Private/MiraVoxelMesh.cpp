@@ -44,10 +44,12 @@ void MiraVoxelMesh::ApplyMeshBuffers(UProceduralMeshComponent* Pmc,
 			Normals.Add(NormalToUE(V.nx, V.ny, V.nz));
 			UV0.Add(FVector2D(V.u, V.v));
 
-			// Bake AO (0..1) into a grey vertex color. A vertex-color-aware
-			// material will read it; the default material ignores it (fine for M1).
-			const uint8 A = static_cast<uint8>(FMath::Clamp(V.ao * 255.0f, 0.0f, 255.0f));
-			Colors.Add(FColor(A, A, A, 255));
+			// Vertex color carries TWO things the material reads separately:
+			//   rgb = baked solid albedo (base_color × per-face shade, from the mesher)
+			//   a   = ambient occlusion (0..1 -> 0..255)
+			// So the material does albedo (rgb) × AO (alpha) at shade time.
+			const uint8 AoA = static_cast<uint8>(FMath::Clamp(V.ao * 255.0f, 0.0f, 255.0f));
+			Colors.Add(FColor(V.cr, V.cg, V.cb, AoA));
 		}
 
 		Triangles.Reserve(static_cast<int32>(Sec.indices.size()));

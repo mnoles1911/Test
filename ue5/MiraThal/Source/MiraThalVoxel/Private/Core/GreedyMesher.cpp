@@ -18,6 +18,7 @@
 #include "Core/GreedyMesher.h"
 #include "Core/ChunkCoords.h" // coords::CHUNK, FACE_OFFSET, flatten
 #include "Core/AtlasUV.h"     // atlas::uv_for
+#include "Core/VoxelColor.h"  // shaded_color, Rgb8
 #include "Core/MaterialIds.h" // mat:: predicates
 #include "Core/VoxelAO.h"     // ao::compute_face_ao, ao::CornerAO, ao::ao_weight
 
@@ -101,6 +102,10 @@ void emit_quad(MeshBuffers& out, FaceDir dir, uint8_t id,
     // Atlas tile rect for this id+face; stretched across the whole merged quad.
     const atlas::UVRect uv = atlas::uv_for(id, static_cast<FaceDir>(dir));
 
+    // Solid baked color for this id+face. One value for the whole quad (color is
+    // per material+direction, never per voxel), so greedy merging is preserved.
+    const Rgb8 col = shaded_color(id, static_cast<FaceDir>(dir));
+
     // Tie each corner's UV to its (u,v) parameter so the tile maps corner-to-corner,
     // and bake the corner's AO level into the vertex weight.
     auto add = [&](const float p[3], float uu, float vv, uint8_t ao_level) -> uint32_t {
@@ -109,6 +114,7 @@ void emit_quad(MeshBuffers& out, FaceDir dir, uint8_t id,
         mv.nx = nrm[0]; mv.ny = nrm[1]; mv.nz = nrm[2];
         mv.u = uu; mv.v = vv;
         mv.ao = ao::ao_weight(ao_level);
+        mv.cr = col.r; mv.cg = col.g; mv.cb = col.b;
         const uint32_t idx = static_cast<uint32_t>(sec.vertices.size());
         sec.vertices.push_back(mv);
         return idx;

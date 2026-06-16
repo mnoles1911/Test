@@ -59,6 +59,10 @@ struct MeshVertex {
     float nx = 0, ny = 0, nz = 0; // normal
     float u  = 0, v  = 0;         // atlas UV (tile space)
     float ao = 1.0f;              // ambient-occlusion weight 0..1
+    // Baked solid voxel color (base_color × face_shade). Default white so any
+    // existing producer that doesn't set it renders untinted. AO stays separate
+    // in `ao`; the UE material reads rgb = albedo, alpha = AO.
+    uint8_t cr = 255, cg = 255, cb = 255;
 };
 
 // One material section: a triangle list (indices into vertices) for one class.

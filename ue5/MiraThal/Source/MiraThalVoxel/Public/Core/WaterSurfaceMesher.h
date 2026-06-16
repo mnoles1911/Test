@@ -78,6 +78,7 @@
 #include "Core/ChunkCoords.h"     // coords::CHUNK
 #include "Core/MeshTypes.h"       // MeshBuffers, MeshVertex, FaceClass, FaceDir, FACE_NORMAL
 #include "Core/WaterByteCodec.h"  // WaterByteCodec::is_water / level_of / MAX_LEVEL
+#include "Core/VoxelColor.h"      // base_color, Rgb8
 
 namespace mira {
 
@@ -149,12 +150,19 @@ inline void emit_water_quad(MeshBuffers& out, const float* nrm,
                             const float p11[3], const float p01[3]) {
     MeshSection& sec = out.section(FaceClass::Water);
 
+    // One flat tint for the whole water surface — water has its own material, so
+    // a sensible per-vertex albedo is the base water color (WATER_FULL). The water
+    // shader can ignore or tint by this; it gives a sane fallback under the default
+    // vertex-color material. No directional face_shade (water reads as one sheet).
+    const Rgb8 wcol = base_color(mat::WATER_FULL);
+
     auto add = [&](const float p[3], float uu, float vv) -> uint32_t {
         MeshVertex mv;
         mv.px = p[0]; mv.py = p[1]; mv.pz = p[2];
         mv.nx = nrm[0]; mv.ny = nrm[1]; mv.nz = nrm[2];
         mv.u = uu; mv.v = vv;
         mv.ao = 1.0f; // water has no baked AO (translucent, lit by the water shader)
+        mv.cr = wcol.r; mv.cg = wcol.g; mv.cb = wcol.b;
         const uint32_t idx = static_cast<uint32_t>(sec.vertices.size());
         sec.vertices.push_back(mv);
         return idx;

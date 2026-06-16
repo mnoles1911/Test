@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.7",
+	"EngineAssociation": "{A6218E3C-4F9D-776A-3DFD-77A0E94FDAC6}",
 	"Category": "Game",
 	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via a custom cubic greedy mesher (MiraThalVoxel), Nanite/Lumen, Chaos physics.",
 	"Modules": [
@@ -28,6 +28,11 @@
 			"Name": "ProceduralMeshComponent",
 			"Enabled": true,
 			"//comment": "M1 mesh backend (built-in, zero external deps). RealtimeMeshComponent swaps in behind IVoxelMeshSink in M2 for perf — but the first chunk must NOT be blocked on installing a 5.7 build of a third-party plugin."
+		},
+		{
+			"Name": "RemoteControl",
+			"Enabled": true,
+			"//comment": "Built-in UE Remote Control API (HTTP/WebSocket on port 30010). This is what the mcp-unreal MCP server drives so Claude can spawn/inspect actors and run console commands in the live editor. Editor-iteration tooling only — no gameplay dependency. Auto-started via DefaultEngine.ini [ConsoleVariables] WebControl.EnableServerOnStartup."
 		}
 	]
 }
