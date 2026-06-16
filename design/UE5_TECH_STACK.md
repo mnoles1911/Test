@@ -91,9 +91,13 @@ Read this as a pipeline, left to right. Each stage is a real file in `Public/Cor
 - **`AVoxelChunkActor` — the renderer.** Holds the finished mesh in a **ProceduralMeshComponent** for now
   (a **RealtimeMeshComponent** swap is planned for perf), builds **Chaos** collision from it, and is lit
   by **Lumen**.
-- **`AVoxelWorld` — the manager (built at M2).** Owns the brickmap; generates a region from the
-  `HeightmapGenerator`; spawns the per-chunk `AVoxelChunkActor` renderers; and runs the carve loop
-  (`CarveAtWorld` / `CarveTestHole`) → re-mesh only the affected chunks → rebuild Chaos collision.
+- **`AVoxelWorld` — the manager (built at M2, extended M3/M4).** Owns the brickmap; generates terrain
+  from the `HeightmapGenerator`; spawns the per-chunk `AVoxelChunkActor` renderers; and runs the carve
+  loop (`CarveAtWorld` / `CarveTestHole`) → re-mesh only the affected chunks → rebuild Chaos collision.
+  **M3:** a `HeightSource` switch lets the terrain come from an imported **EXR heightmap** instead of
+  noise (see §10). **M4:** when `bEnableStreaming`, it pages chunk-columns in/out around a focus so a
+  huge map stays explorable without all voxels resident (`FillChunkColumn` / `MeshChunkColumn`, a
+  one-column fill skirt keeps borders seamless because the mesh apron is 1 voxel).
 
 Deeper data-model + rendering-bands detail: **`design/UE5_VOXEL_MESHER_PLAN.md`** and
 **`design/UE5_RENDERING_STRATEGY.md`**.
@@ -157,18 +161,45 @@ From `design/UE5_VOXEL_MESHER_PLAN.md`. `✅` = done, `⏳` = next, `—` = plan
 |---|---|---|
 | **M0** | Mesher foundations: chunk coords, greedy mesher, per-face color. | **✅** |
 | **M1** | AO + LOD + seams + **first render under Lumen**. Perf baseline ≈ **6.4 ms** GPU (7800 XT, empty Lumen scene). | **✅** |
-| **M2** | **Brickmap + generation + carve loop** — multi-chunk generated terrain + live dig with Chaos collision. **Built tonight.** | **✅** |
-| **M3** | Water + flora + gravity (wire `FiniteWaterCore` + `VoxelGravity`). | ⏳ |
-| **M4** | Streaming + persistence + World Partition. | — |
-| **M5** | Multiplayer (server-authoritative edits). | — |
+| **M2** | **Brickmap + generation + carve loop** — multi-chunk generated terrain + live dig with Chaos collision. | **✅** |
+| **M3** | **(a) EXR heightmap import ✅** — import a hand-crafted Gaea `.exr` as the terrain source (banding/cliff/water/flora re-derive off the imported surface). **(b) Water + flora + gravity sim** (wire `FiniteWaterCore` + `VoxelGravity` as a tick) — ⏳ next. | **◐** |
+| **M4** | **Streaming ✅** — focus-driven chunk-column paging (the 5 km map is explorable). **Persistence / World Partition** — ⏳. | **◐** |
+| **M5** | Multiplayer (server-authoritative edits). **Deferred to last** (per direction). | — |
 | **M6** | Cold → **Nanite** bake. | — |
-| **M7** | Far-field ray-march horizon. | — |
+| **M7** | Far-field ray-march horizon (CPU oracle `Brickmap::raycast_solid` is the parity spec). | — |
 | **M8** | GPU meshing + GPU world generation. | — |
+
+**Build order note (2026-06-16):** M5 multiplayer is intentionally deferred to the very end; M3-sim,
+M6, M7, M8 come first. The EXR-import half of M3 was prioritised because the designer has a 5 km Gaea
+heightmap to bring in.
 
 ---
 
-## 9. Companion docs
+## 9. EXR heightmap import (M3) — bringing in a hand-crafted Gaea map
 
+You can now drive the terrain shape from a **hand-painted heightmap** (e.g. a 5 km map sculpted in
+**Gaea**) instead of the procedural noise. Full step-by-step: **`design/UE5_HEIGHTMAP_IMPORT.md`**.
+The short version:
+
+- Export the map from Gaea as an **`.exr`** (32-bit float; a normalised 0..1 grayscale height is ideal).
+- On the **`AVoxelWorld`** actor set **Height Source = Imported EXR Heightmap**, point **Heightmap File**
+  at the `.exr`, and set **Map Span Meters** (5000 for 5 km), **Altitude Meters** (how tall white is),
+  and **Base Meters** (where black sits; 12 = sea level).
+- Press **Generate World** (or enter play with streaming on for the full map).
+
+**How it works:** the engine decodes the EXR (Unreal's ImageWrapper) into a `Core/ImageHeightmap` — a
+georeferenced float grid with **bilinear** sampling so one pixel smoothly covers many 10 cm voxels. The
+generator's `compute_ground_y` reads that grid when a source is attached, and because cliff detection,
+material banding (grass/dirt/stone), the below-sea water flag and flora scatter **all** funnel through
+`compute_ground_y`, they automatically follow the imported surface — no other code changes. The Core
+sampling math is unit-tested headless (`test_imageheightmap`, 36 checks). At 10 vox/m a 5 km map is
+50,000² voxels, which is why **M4 streaming** (§4) pages it in around the player rather than all at once.
+
+---
+
+## 10. Companion docs
+
+- **`design/UE5_HEIGHTMAP_IMPORT.md`** — how to import a Gaea/other `.exr` heightmap (designer how-to).
 - **`design/UE5_PORT_PLAN.md`** — why we ported, full Godot→UE5 mapping, phase sequencing.
 - **`design/UE5_RENDERING_STRATEGY.md`** — Lumen-near / ray-march-far / Nanite-cold bands; per-face color.
 - **`design/UE5_VOXEL_BACKEND_EVALUATION.md`** — why we own the mesher (cubic backend market spike).
