@@ -25,9 +25,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "MiraThal|Voxel")
 	UProceduralMeshComponent* Mesh = nullptr;
 
-	// Flip if the chunk renders inside-out (the Y/Z basis swap reverses winding).
+	// Default OFF: the Y/Z basis swap turned out NOT to need a winding flip
+	// (verified visually). Tick this only if a chunk ever renders inside-out.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel")
-	bool bReverseWinding = true;
+	bool bReverseWinding = false;
 
 	// false = a hand-built test pattern (flat ground + pillar + water pool + flora,
 	// the safest first-light shape). true = sample the real Core HeightmapGenerator

@@ -114,7 +114,18 @@ void AVoxelChunkActor::Rebuild()
 	DenseGrid Slab = make_mesh_slab(); // 34^3, apron 1
 	if (bUseGenerator)
 	{
-		FillFromGenerator(Slab, ChunkCoord, Seed);
+		// The procedural ground sits at an unpredictable height (the legacy noise
+		// has a big amplitude), so a fixed ChunkCoord.Y usually misses the surface
+		// entirely -> the chunk is all-air (invisible) or all-solid (no exposed
+		// faces, also invisible). Sample the ground at this chunk's centre column
+		// and place the vertical band so the surface lands near the chunk's middle.
+		HeightmapGenerator ProbeGen;
+		ProbeGen.set_seed((int64_t)Seed);
+		const Vec3i ColOrigin = coords::chunk_origin_voxel(Vec3i(ChunkCoord.X, 0, ChunkCoord.Z));
+		const int GroundY = ProbeGen.compute_ground_y(ColOrigin.x + coords::CHUNK / 2,
+		                                              ColOrigin.z + coords::CHUNK / 2);
+		const int SurfaceChunkY = coords::floor_div(GroundY - coords::CHUNK / 2, coords::CHUNK);
+		FillFromGenerator(Slab, FIntVector(ChunkCoord.X, SurfaceChunkY, ChunkCoord.Z), Seed);
 	}
 	else
 	{
