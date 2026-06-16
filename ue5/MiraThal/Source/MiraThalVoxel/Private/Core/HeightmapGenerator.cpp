@@ -16,6 +16,7 @@
 // are carried over faithfully. See Core/Noise.h for the divergence note.
 
 #include "Core/HeightmapGenerator.h"
+#include "Core/ImageHeightmap.h" // the EXR-import override consulted by compute_ground_y
 
 #include <algorithm>
 #include <cmath>
@@ -369,7 +370,17 @@ int HeightmapGenerator::dominant_biome(int world_x, int world_z) const {
 // sea-level voxel offset to the biome's sea-relative height; legacy path runs
 // the three-layer cubic noise.
 // ============================================================================
+bool HeightmapGenerator::height_source_active() const {
+    return height_src_ != nullptr && height_src_->valid();
+}
+
 int HeightmapGenerator::compute_ground_y(int world_x, int world_z) const {
+    // Imported EXR heightmap wins when present: the artist's hand-crafted surface
+    // replaces the noise, and every downstream rule (cliff, banding, water, flora)
+    // re-derives off this height because they all call back through here.
+    if (height_source_active()) {
+        return height_src_->height_voxels_at(world_x, world_z);
+    }
     if (biome_active()) {
         return biome_ground_y(world_x, world_z) + sea_level_voxels;
     }

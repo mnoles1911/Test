@@ -49,6 +49,11 @@
 
 namespace mira {
 
+// Forward decl: an external georeferenced heightmap (e.g. an imported Gaea EXR)
+// that can OVERRIDE the procedural ground height. Defined in Core/ImageHeightmap.h;
+// only a pointer is held here so this header stays light.
+class ImageHeightmap;
+
 // =============================================================================
 // hash3 — the gameplay scatter hash, ported 1:1 from VoxelGenerationMath.gd /
 // voxel_gen_math.cpp. This is NOT the noise-field hash; it is the integer hash
@@ -203,6 +208,16 @@ public:
     bool biome_active() const { return !profiles_.empty(); }
     int  profile_count() const { return static_cast<int>(profiles_.size()); }
 
+    // ---- Imported heightmap override (M3 EXR import) ----
+    // When set to a valid heightmap, compute_ground_y reads the imported surface
+    // instead of the procedural noise — and because cliff/banding/water/flora all
+    // funnel through compute_ground_y, they automatically follow the imported
+    // terrain. Pass nullptr (the default) to use the procedural path. The pointer
+    // is NOT owned; the caller keeps the ImageHeightmap alive across generation.
+    void set_height_source(const ImageHeightmap* hm) { height_src_ = hm; }
+    const ImageHeightmap* height_source() const { return height_src_; }
+    bool height_source_active() const;
+
     // =========================================================================
     // CORE API
     // =========================================================================
@@ -240,6 +255,7 @@ public:
 private:
     int64_t seed_ = 0;
     std::vector<BiomeProfile> profiles_;
+    const ImageHeightmap* height_src_ = nullptr; // not owned; see set_height_source
 
     // Legacy three-layer noise heightfield.
     int legacy_ground_y(int world_x, int world_z) const;
