@@ -1,0 +1,53 @@
+// VoxelChunkActor.h — M1: generate ONE chunk, mesh it with the Core, render it.
+//
+// Drop this actor into an empty Lumen level and it builds a 32^3 voxel chunk on
+// construction (and on BeginPlay): fill a slab -> greedy_mesh + water + flora ->
+// ProceduralMesh. This is the first proof the engine-agnostic Core renders, and
+// the perf "Baseline" the later milestones measure against.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "VoxelChunkActor.generated.h"
+
+class UProceduralMeshComponent;
+
+UCLASS()
+class MIRATHALVOXEL_API AVoxelChunkActor : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	AVoxelChunkActor();
+
+	// The mesh this actor builds into.
+	UPROPERTY(VisibleAnywhere, Category = "MiraThal|Voxel")
+	UProceduralMeshComponent* Mesh = nullptr;
+
+	// Flip if the chunk renders inside-out (the Y/Z basis swap reverses winding).
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel")
+	bool bReverseWinding = true;
+
+	// false = a hand-built test pattern (flat ground + pillar + water pool + flora,
+	// the safest first-light shape). true = sample the real Core HeightmapGenerator
+	// for ChunkCoord.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel")
+	bool bUseGenerator = false;
+
+	// Which chunk to generate (only used when bUseGenerator). Y=3 puts the chunk's
+	// 32-voxel band around the generator's ~y100-120 ground so you see a surface.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel")
+	FIntVector ChunkCoord = FIntVector(0, 3, 0);
+
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel")
+	int32 Seed = 1337;
+
+	// Rebuild from the editor without PIE (button in the Details panel).
+	UFUNCTION(CallInEditor, Category = "MiraThal|Voxel")
+	void Rebuild();
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+};

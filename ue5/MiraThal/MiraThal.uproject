@@ -1,8 +1,8 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.4",
+	"EngineAssociation": "5.7",
 	"Category": "Game",
-	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via a custom cubic greedy mesher (MiraThalVoxel), Nanite/Lumen, Chaos physics, dedicated-server multiplayer.",
+	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via a custom cubic greedy mesher (MiraThalVoxel), Nanite/Lumen, Chaos physics.",
 	"Modules": [
 		{
 			"Name": "MiraThalVoxel",
@@ -25,21 +25,9 @@
 	],
 	"Plugins": [
 		{
-			"//comment": "No third-party voxel plugin. Voxel Plugin 2 dropped cubic terrain; the cubic spike (design/UE5_VOXEL_BACKEND_EVALUATION.md) found no off-the-shelf cubic backend meeting our bar, so MiraThalVoxel owns a custom cubic greedy mesher built on the engine-agnostic Core."
-		},
-		{
-			"Name": "GeometryScripting",
+			"Name": "ProceduralMeshComponent",
 			"Enabled": true,
-			"//comment": "Procedural/dynamic mesh helpers for the custom cubic mesher (UProceduralMeshComponent / UDynamicMesh)."
-		},
-		{
-			"Name": "ModelingToolsEditorMode",
-			"Enabled": true
-		},
-		{
-			"Name": "OnlineSubsystemSteam",
-			"Enabled": true,
-			"//comment": "Phase 4 multiplayer sessions. Safe to leave enabled earlier; sessions are only created in MiraThalNet."
+			"//comment": "M1 mesh backend (built-in, zero external deps). RealtimeMeshComponent swaps in behind IVoxelMeshSink in M2 for perf — but the first chunk must NOT be blocked on installing a 5.7 build of a third-party plugin."
 		}
 	]
 }

@@ -1,4 +1,7 @@
-// MiraThalCore.Build.cs — gameplay module (player, combat, skills, entities, UI glue).
+// MiraThalCore.Build.cs — primary game module (gameplay glue grows here later).
+//
+// Trimmed to the M1 minimum. Combat/skills/UI deps (EnhancedInput, UMG, …) come
+// back as those systems land — keeping the first build's surface small.
 using UnrealBuildTool;
 
 public class MiraThalCore : ModuleRules
@@ -12,17 +15,7 @@ public class MiraThalCore : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
-			"InputCore",
-			"EnhancedInput",   // free-aim camera + directional-melee mouse sampling
-			"MiraThalVoxel",   // gameplay queues edits through the voxel subsystem
-		});
-
-		PrivateDependencyModuleNames.AddRange(new string[]
-		{
-			"UMG",             // HUD direction arrows / combat radar
-			"Slate",
-			"SlateCore",
-			"GameplayTags",
+			"MiraThalVoxel",
 		});
 	}
 }

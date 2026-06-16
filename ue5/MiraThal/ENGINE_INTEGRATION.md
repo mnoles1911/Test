@@ -9,6 +9,42 @@ Engine: **UE 5.7** at `D:\UE5\UE_5.7` (Windows). Plan of record: `design/UE5_VOX
 
 ---
 
+## M1 scaffold status (2026-06-16)
+
+The M1 project is scaffolded and its build rules are **validated** — UBT discovers all modules
+cleanly (`-projectfiles` succeeds up to toolchain detection). **The only remaining blocker is a C++
+compiler: install Visual Studio 2022 with the "Game development with C++" workload.** Then build.
+
+Scaffolded so far:
+- `MiraThal.uproject` (UE 5.7), `MiraThal[Editor].Target.cs`, three module `Build.cs` (trimmed to M1 deps).
+- Mesh backend = built-in **ProceduralMeshComponent** (M1; RealtimeMeshComponent swaps in at M2 for perf).
+- `Public/MiraVoxelMesh.h` + `Private/MiraVoxelMesh.cpp` — `MeshBuffers` → ProceduralMesh, with the
+  **Core Y-up → UE Z-up basis swap + ×10 voxel→cm scale + winding flip** (toggle `bReverseWinding`).
+- `Public/VoxelChunkActor.h` + `Private/VoxelChunkActor.cpp` — `AVoxelChunkActor`: builds one 32³ chunk
+  (hand-built test pattern *or* the real `HeightmapGenerator`) → `greedy_mesh` + `append_water_surface`
+  + `append_flora` → ProceduralMesh. Editor **Rebuild** button + `OnConstruction` so it shows without PIE.
+
+### Build commands (PowerShell, after VS2022 is installed)
+```powershell
+$UE   = "D:\UE5\UE_5.7"
+$PROJ = "C:\Users\Matt Noles\Test-ue5\ue5\MiraThal\MiraThal.uproject"
+# 1. Generate IDE project files
+& "$UE\Engine\Build\BatchFiles\Build.bat" -projectfiles -project="$PROJ" -game -progress
+# 2. Build the editor target
+& "$UE\Engine\Build\BatchFiles\Build.bat" MiraThalEditor Win64 Development -project="$PROJ" -waitmutex
+# 3. Open the editor
+& "$UE\Engine\Binaries\Win64\UnrealEditor.exe" "$PROJ"
+```
+Then: new empty level → drag **VoxelChunkActor** in → it builds a chunk on placement (default = the
+test pattern; tick **Use Generator** for real terrain). Confirm it's right-side-out (flip
+`bReverseWinding` if inside-out) and lit by Lumen. Capture `stat unit` / `stat GPU` for the Baseline.
+
+> NOTE on red squiggles before the first build: the clang language server has no UE include paths yet,
+> so `CoreMinimal.h` / `FORCEINLINE` / `uint8_t` show as "errors". They clear after steps 1–2 generate
+> the intellisense. They are NOT real build errors.
+
+---
+
 ## Where things stand
 
 - The whole CPU brain of the custom cubic voxel plugin lives in
