@@ -20,6 +20,7 @@
 #include "Core/MaterialIds.h"        // mat::*
 #include "Core/WaterByteCodec.h"     // WaterByteCodec::SOURCE_BYTE
 #include "Core/MiningCarve.h"        // mining::compute_carve_box / compute_carve, VoxelWrite
+#include "Core/FiniteWaterCore.h"    // FiniteWaterCore — the dynamic water sim (M3b)
 
 AVoxelWorld::AVoxelWorld()
 {
@@ -28,6 +29,10 @@ AVoxelWorld::AVoxelWorld()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false;
 }
+
+// Out-of-line dtor: TUniquePtr<FiniteWaterCore> needs the complete type to destruct,
+// and it's only forward-declared in the header (kept light).
+AVoxelWorld::~AVoxelWorld() = default;
 
 void AVoxelWorld::BeginPlay()
 {
@@ -47,6 +52,13 @@ void AVoxelWorld::BeginPlay()
 	{
 		GenerateWorld();
 	}
+
+	// The water sim also needs ticking (independently of streaming).
+	if (bEnableWaterSim)
+	{
+		EnsureWaterSim();
+		SetActorTickEnabled(true);
+	}
 }
 
 void AVoxelWorld::Tick(float DeltaSeconds)
@@ -55,6 +67,22 @@ void AVoxelWorld::Tick(float DeltaSeconds)
 	if (bEnableStreaming)
 	{
 		TickStreaming();
+	}
+	if (bEnableWaterSim && WaterSim.IsValid())
+	{
+		// Fire the sim at WaterSimHz regardless of frame rate (deterministic ticks).
+		WaterSimAccum += DeltaSeconds;
+		const float Period = 1.0f / FMath::Max(1.0f, WaterSimHz);
+		int Steps = 0;
+		while (WaterSimAccum >= Period && Steps < 4) // cap catch-up to avoid spirals
+		{
+			WaterSimAccum -= Period;
+			++Steps;
+		}
+		if (Steps > 0)
+		{
+			StepWaterSim(Steps, WaterStepBudget);
+		}
 	}
 }
 
@@ -384,6 +412,9 @@ void AVoxelWorld::CarveTestHole()
 	{
 		RemeshChunk(FIntVector(C.x, C.y, C.z));
 	}
+
+	// If the dig opened space next to water, let the parent volume flood in.
+	FloodCarveFromNeighbours(Writes);
 }
 
 void AVoxelWorld::CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal, int32 SideVoxels)
@@ -410,6 +441,9 @@ void AVoxelWorld::CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal
 	{
 		RemeshChunk(FIntVector(C.x, C.y, C.z));
 	}
+
+	// If the dig opened space next to water, let the parent volume flood in.
+	FloodCarveFromNeighbours(Writes);
 }
 
 // ---------------------------------------------------------------------------
@@ -522,4 +556,168 @@ void AVoxelWorld::ClearWorld()
 	FilledColumns.Empty();
 	MeshedColumns.Empty();
 	ColumnYRange.Empty();
+
+	// Drop the water sim — it captured the old brickmap; a fresh one binds lazily.
+	WaterSim.Reset();
+	WaterSimAccum = 0.0f;
+}
+
+// ===========================================================================
+// Dynamic water (M3b) — FiniteWaterCore pour-and-settle.
+//
+// The ledger-based sim flows water DOWN first, then sideways toward lower
+// neighbours, conserving every unit. The mesher draws a cell's level (1..8) as a
+// partial-height cubic water voxel, so a settling pool reads as discrete water
+// cubes filling bottom-up — the look in the reference screenshots. The generated
+// ocean is the infinite SOURCE; carving next to it seeds finite water so the
+// parent volume floods the opening (FloodCarveFromNeighbours).
+// ===========================================================================
+void AVoxelWorld::EnsureWaterSim()
+{
+	if (WaterSim.IsValid())
+	{
+		return;
+	}
+	using namespace mira;
+	const Brickmap* BM = &WorldStore;
+	// solid = any non-air terrain blocks water; source = ocean SOURCE bytes.
+	auto SolidFn  = [BM](const Vec3i& p) { return BM->type_at(p) != mat::AIR; };
+	auto SourceFn = [BM](const Vec3i& p) { return WaterByteCodec::is_source(BM->water_at(p)); };
+	WaterSim = MakeUnique<FiniteWaterCore>(SolidFn, SourceFn);
+}
+
+int AVoxelWorld::StepWaterSim(int32 steps, int32 budget)
+{
+	using namespace mira;
+	if (!WaterSim.IsValid() || steps <= 0)
+	{
+		return 0;
+	}
+
+	// Collect the chunks any change touched across all the steps, then re-mesh
+	// each once (a cell can change several times; we only need one re-mesh).
+	TSet<FIntVector> Dirty;
+	for (int32 s = 0; s < steps; ++s)
+	{
+		FiniteWaterCore::StepResult R = WaterSim->step(budget);
+		for (const FiniteWaterCore::Change& C : R.changes)
+		{
+			// Write the projected byte into the authoritative store.
+			WorldStore.set_water(C.pos, static_cast<uint8_t>(C.byte));
+			// Every chunk this voxel borders (apron-aware) needs a re-mesh.
+			std::vector<Vec3i> Touched;
+			chunks_touched_by_voxel(C.pos, Touched);
+			for (const Vec3i& T : Touched)
+			{
+				Dirty.Add(FIntVector(T.x, T.y, T.z));
+			}
+		}
+		if (R.changes.empty())
+		{
+			break; // settled — nothing left to do
+		}
+	}
+
+	for (const FIntVector& C : Dirty)
+	{
+		RemeshChunk(C);
+	}
+	return Dirty.Num();
+}
+
+void AVoxelWorld::PourWaterAtWorld(const FVector& WorldPos, int32 Units)
+{
+	using namespace mira;
+	EnsureWaterSim();
+
+	// UE world (cm) -> core voxel (same mapping as CarveAtWorld).
+	const FVector Local = WorldPos - GetActorLocation();
+	const Vec3i Cell(
+		FMath::FloorToInt(Local.X / 10.0f),
+		FMath::FloorToInt(Local.Z / 10.0f),
+		FMath::FloorToInt(Local.Y / 10.0f));
+
+	WaterSim->place(Cell, FMath::Max(1, Units));
+
+	// In the editor (no play tick) settle synchronously so it's visible at once.
+	if (!GetWorld() || !GetWorld()->IsGameWorld())
+	{
+		StepWaterSim(120, WaterStepBudget);
+	}
+}
+
+void AVoxelWorld::PourTestWater()
+{
+	using namespace mira;
+	EnsureWaterSim();
+
+	HeightmapGenerator Gen;
+	ConfigureGenerator(Gen);
+	const int GroundCentre = Gen.compute_ground_y(0, 0);
+
+	// Drop a column a few voxels above the centre surface; it collapses + spreads.
+	const Vec3i Top(0, GroundCentre + 6, 0);
+	WaterSim->place(Top, FMath::Max(1, TestPourUnits));
+
+	// Settle synchronously so the editor button shows the result immediately.
+	StepWaterSim(160, WaterStepBudget);
+}
+
+void AVoxelWorld::FloodCarveFromNeighbours(const std::vector<mira::VoxelWrite>& Writes)
+{
+	using namespace mira;
+	if (!bEnableWaterSim)
+	{
+		return; // water flooding is opt-in
+	}
+	EnsureWaterSim();
+
+	// Sea level from the configured generator (cheap; defaults to 120 = 12 m).
+	HeightmapGenerator Gen;
+	ConfigureGenerator(Gen);
+	const int SeaY = Gen.sea_level_voxels;
+
+	static const Vec3i N6[6] = {
+		{1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}
+	};
+
+	bool bSeeded = false;
+	for (const VoxelWrite& W : Writes)
+	{
+		if (W.value != mat::AIR)
+		{
+			continue; // only newly-opened air can take water
+		}
+		const Vec3i P = W.pos;
+		if (P.y > SeaY)
+		{
+			continue; // never flood above sea level
+		}
+		if (WorldStore.type_at(P) != mat::AIR || WaterByteCodec::is_water(WorldStore.water_at(P)))
+		{
+			continue; // still solid, or already water
+		}
+		// Any face-neighbour that already holds water? Then the parent volume can
+		// feed this opening — seed it full and let the sim flow it down + level.
+		bool bWaterAdjacent = false;
+		for (const Vec3i& D : N6)
+		{
+			if (WaterByteCodec::is_water(WorldStore.water_at(P + D)))
+			{
+				bWaterAdjacent = true;
+				break;
+			}
+		}
+		if (bWaterAdjacent)
+		{
+			WaterSim->place(P, WaterByteCodec::MAX_LEVEL);
+			bSeeded = true;
+		}
+	}
+
+	if (bSeeded && (!GetWorld() || !GetWorld()->IsGameWorld()))
+	{
+		// Editor (no tick): settle now so the flood is visible from the button.
+		StepWaterSim(160, WaterStepBudget);
+	}
 }

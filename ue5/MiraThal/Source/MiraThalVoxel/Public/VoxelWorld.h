@@ -18,11 +18,13 @@
 #include "GameFramework/Actor.h"
 #include "Core/Brickmap.h"        // mira::Brickmap — the authoritative store, held directly
 #include "Core/ImageHeightmap.h"  // mira::ImageHeightmap — imported EXR surface (held directly)
+#include "Core/FiniteWaterCore.h" // mira::FiniteWaterCore — full type (TUniquePtr in a UCLASS
+                                  // needs the complete type for UHT's vtable-helper ctor)
 #include "VoxelWorld.generated.h"
 
 class UMaterialInterface;
 class AVoxelChunkActor;
-namespace mira { class HeightmapGenerator; }
+namespace mira { class HeightmapGenerator; struct VoxelWrite; }
 
 // Where the terrain SHAPE comes from. Procedural = the built-in noise/biome
 // generator; HeightmapEXR = an imported Gaea (or other) .exr the artist crafted.
@@ -40,6 +42,7 @@ class MIRATHALVOXEL_API AVoxelWorld : public AActor
 
 public:
 	AVoxelWorld();
+	virtual ~AVoxelWorld(); // out-of-line so TUniquePtr<FiniteWaterCore> (fwd-declared) destructs
 
 	// World generation seed (fed to the Core HeightmapGenerator).
 	UPROPERTY(EditAnywhere, Category = "MiraThal|World")
@@ -141,6 +144,28 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
 	TObjectPtr<AActor> StreamFocusActor;
 
+	// --- Dynamic water (M3b): a finite, volume-conserving pour-and-settle sim
+	//     (Core `FiniteWaterCore`). Player-poured water flows downhill, pools, and
+	//     merges into the generated ocean (which acts as an infinite source). Off
+	//     by default; the PourTestWater button works in-editor without it. ---
+
+	// Run the water sim every tick in play (water keeps settling/flowing live).
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Water")
+	bool bEnableWaterSim = false;
+
+	// How many sim ticks per second (the sim is deterministic per tick). 4 Hz
+	// matches the Godot cadence; higher = faster settling, more cost.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Water", meta = (ClampMin = "1", ClampMax = "30"))
+	float WaterSimHz = 4.0f;
+
+	// Active cells processed per sim step (0 = no cap). Caps per-step cost.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Water", meta = (ClampMin = "0", ClampMax = "100000"))
+	int32 WaterStepBudget = 4096;
+
+	// How many units (1 unit = 1/8 of a full voxel) the test-pour drops.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Water", meta = (ClampMin = "1", ClampMax = "100000"))
+	int32 TestPourUnits = 2000;
+
 	// Solid-colour terrain material (vertex-colour albedo + AO in alpha). Opaque
 	// and cutout faces use this; water and flora get their own.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|World")
@@ -170,6 +195,16 @@ public:
 	// removing an N^3 box (depth-biased into terrain). Applies to the brickmap and
 	// re-meshes affected chunks. This is the entry a player tool / RPC will call.
 	void CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal, int32 SideVoxels);
+
+	// Pour finite water at a UE world-space point (cm): adds units to the sim,
+	// which then flows downhill and pools. The entry a bucket/hose tool calls.
+	void PourWaterAtWorld(const FVector& WorldPos, int32 Units);
+
+	// Editor convenience: pour TestPourUnits of water just above the centre
+	// surface and run the sim to settle, so the dynamic water is visible from the
+	// Details panel with no play session. Demonstrates the M3b pour-and-settle path.
+	UFUNCTION(CallInEditor, BlueprintCallable, Category = "MiraThal|Water")
+	void PourTestWater();
 
 protected:
 	virtual void BeginPlay() override;
@@ -216,6 +251,23 @@ private:
 	// --- Streaming (M4) ---
 	void TickStreaming();
 	bool GetFocusChunkXZ(FIntPoint& OutColumn) const;
+
+	// --- Dynamic water (M3b) ---
+	// Lazily build the FiniteWaterCore bound to WorldStore (solid = non-air terrain,
+	// source = ocean SOURCE bytes). Safe to call repeatedly.
+	void EnsureWaterSim();
+	// Advance the water sim by `steps` ticks, write projected bytes into the
+	// brickmap, and re-mesh every chunk a change touched. Returns chunks re-meshed.
+	int  StepWaterSim(int32 steps, int32 budget);
+	// After a carve, seed finite water into newly-opened air cells that sit at/below
+	// sea level next to existing water, so the parent volume floods the hole (the
+	// sim then fills it bottom-up). No-op unless the water sim is enabled.
+	void FloodCarveFromNeighbours(const std::vector<mira::VoxelWrite>& Writes);
+	// The finite water sim; null until the first pour/EnsureWaterSim. Pointer (not
+	// value) because FiniteWaterCore has no default ctor (predicates injected).
+	TUniquePtr<mira::FiniteWaterCore> WaterSim;
+	// Real-seconds accumulator so the play-mode tick fires the sim at WaterSimHz.
+	float WaterSimAccum = 0.0f;
 
 	// XZ columns whose brick voxels are generated (the fill skirt is a superset of
 	// the meshed set so every meshed chunk's apron has neighbour data).
