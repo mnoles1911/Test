@@ -16,11 +16,22 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Core/Brickmap.h"   // mira::Brickmap — the authoritative store, held directly
+#include "Core/Brickmap.h"        // mira::Brickmap — the authoritative store, held directly
+#include "Core/ImageHeightmap.h"  // mira::ImageHeightmap — imported EXR surface (held directly)
 #include "VoxelWorld.generated.h"
 
 class UMaterialInterface;
 class AVoxelChunkActor;
+namespace mira { class HeightmapGenerator; }
+
+// Where the terrain SHAPE comes from. Procedural = the built-in noise/biome
+// generator; HeightmapEXR = an imported Gaea (or other) .exr the artist crafted.
+UENUM(BlueprintType)
+enum class EVoxelHeightSource : uint8
+{
+	Procedural    UMETA(DisplayName = "Procedural Noise"),
+	HeightmapEXR  UMETA(DisplayName = "Imported EXR Heightmap"),
+};
 
 UCLASS()
 class MIRATHALVOXEL_API AVoxelWorld : public AActor
@@ -33,6 +44,37 @@ public:
 	// World generation seed (fed to the Core HeightmapGenerator).
 	UPROPERTY(EditAnywhere, Category = "MiraThal|World")
 	int32 Seed = 1337;
+
+	// --- Terrain source (M3): procedural noise, or an imported EXR heightmap. ---
+
+	// Procedural noise (default) or an imported hand-crafted EXR heightmap.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Heightmap")
+	EVoxelHeightSource HeightSource = EVoxelHeightSource::Procedural;
+
+	// The .exr (or .png/.hdr) file to import when HeightSource = HeightmapEXR.
+	// A 5 km Gaea export goes here. Absolute path, or relative to the project dir.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Heightmap", meta = (FilePathFilter = "exr"))
+	FFilePath HeightmapFile;
+
+	// Real-world span the EXR covers, in metres (square map). 5000 = a 5 km map.
+	// At 10 voxels/m this stretches the image across 5000*10 = 50,000 voxels.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Heightmap", meta = (ClampMin = "10", ClampMax = "50000"))
+	float MapSpanMeters = 5000.0f;
+
+	// Elevation (metres) that an EXR value of 1.0 represents — the height of the
+	// tallest white pixel above the base. 700 = peaks rise 700 m over the floor.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Heightmap", meta = (ClampMin = "1", ClampMax = "9000"))
+	float HeightmapAltitudeMeters = 700.0f;
+
+	// Elevation (metres) that an EXR value of 0.0 sits at — the map floor. 12 m
+	// puts the darkest pixels right at sea level (sea level = 12 m at 10 vox/m).
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Heightmap", meta = (ClampMin = "0", ClampMax = "1000"))
+	float HeightmapBaseMeters = 12.0f;
+
+	// Gaea rows usually run top→down; flip so the imported terrain faces the same
+	// way it looked in Gaea. Toggle if the map comes out mirrored north/south.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Heightmap")
+	bool bFlipHeightmapZ = true;
 
 	// --- Terrain shape (legacy generator knobs). The raw generator defaults swing
 	//     ±75 m (height_range 1500) which makes vertical spires; these gentle values
@@ -113,6 +155,20 @@ private:
 	// — it's not a UObject, just the sparse brick hash the renderers read from).
 	// Named WorldStore (not "Brickmap") to avoid colliding with the mira::Brickmap type.
 	mira::Brickmap WorldStore;
+
+	// The imported EXR surface, held directly. Empty (invalid) until a successful
+	// load; the generator only consults it when HeightSource = HeightmapEXR.
+	mira::ImageHeightmap ImportedHeightmap;
+
+	// Decode HeightmapFile into ImportedHeightmap and apply the georef/vertical
+	// knobs above. Returns false (and logs) on any load failure. No-op + true when
+	// HeightSource is Procedural.
+	bool LoadHeightmapIfNeeded();
+
+	// Build a HeightmapGenerator configured from the current knobs, with the EXR
+	// override attached when in HeightmapEXR mode. Shared by generate + carve so
+	// the dig digs into exactly the terrain that was generated.
+	void ConfigureGenerator(mira::HeightmapGenerator& Gen) const;
 
 	// Fill the brickmap from the generator across the configured region.
 	void GenerateRegion();

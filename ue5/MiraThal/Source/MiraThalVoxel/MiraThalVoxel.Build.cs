@@ -19,6 +19,7 @@ public class MiraThalVoxel : ModuleRules
 			"Engine",
 			"DeveloperSettings",        // UVoxelScaleSettings (UDeveloperSettings)
 			"ProceduralMeshComponent",  // M1 mesh backend (AVoxelChunkActor's mesh)
+			"ImageWrapper",             // M3 EXR heightmap decode (Gaea import)
 		});
 
 		// Public/Core/*.h is on the public include path automatically, so the UE

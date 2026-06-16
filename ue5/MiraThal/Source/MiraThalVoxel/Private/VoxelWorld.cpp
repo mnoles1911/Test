@@ -1,8 +1,11 @@
 // VoxelWorld.cpp — M2 multi-chunk world: generate + carve + re-mesh.
+//                  M3 adds an imported-EXR terrain source (see ConfigureGenerator).
 #include "VoxelWorld.h"
 #include "VoxelChunkActor.h"
+#include "HeightmapImport.h"          // MiraHeightmapImport::LoadHeightmapImage
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
+#include "Misc/Paths.h"
 
 // Engine-agnostic Core (no Unreal types below this line's logic).
 #include "Core/MiraVec.h"            // Vec3i, Vec3
@@ -42,7 +45,69 @@ void AVoxelWorld::EndPlay(const EEndPlayReason::Type Reason)
 void AVoxelWorld::GenerateWorld()
 {
 	ClearWorld();
+	LoadHeightmapIfNeeded();
 	GenerateRegion();
+}
+
+// ---------------------------------------------------------------------------
+// Terrain source plumbing (M3): load the EXR + build a configured generator.
+// ---------------------------------------------------------------------------
+bool AVoxelWorld::LoadHeightmapIfNeeded()
+{
+	ImportedHeightmap = mira::ImageHeightmap(); // reset to invalid each (re)generate
+	if (HeightSource != EVoxelHeightSource::HeightmapEXR)
+	{
+		return true; // procedural path needs no image
+	}
+
+	// Resolve the path (allow project-relative entries for convenience).
+	FString Path = HeightmapFile.FilePath;
+	if (!Path.IsEmpty() && FPaths::IsRelative(Path))
+	{
+		Path = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), Path);
+	}
+
+	FString LoadError;
+	if (Path.IsEmpty() || !MiraHeightmapImport::LoadHeightmapImage(Path, ImportedHeightmap, LoadError))
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[MiraThal] EXR heightmap load failed (%s) — falling back to procedural."),
+			Path.IsEmpty() ? TEXT("no file set") : *LoadError);
+		ImportedHeightmap = mira::ImageHeightmap();
+		return false;
+	}
+
+	// Apply georeferencing from the designer knobs. 10 voxels per metre is the
+	// world scale (VoxelScale single source of truth). A 5 km map => 50,000 voxels.
+	constexpr double VoxelsPerMetre = 10.0;
+	const double SpanVoxels = static_cast<double>(MapSpanMeters) * VoxelsPerMetre;
+	ImportedHeightmap.set_centered_extent(SpanVoxels, SpanVoxels);
+	ImportedHeightmap.vertical_scale_voxels = static_cast<double>(HeightmapAltitudeMeters) * VoxelsPerMetre;
+	ImportedHeightmap.vertical_base_voxels  = static_cast<double>(HeightmapBaseMeters) * VoxelsPerMetre;
+	ImportedHeightmap.flip_z = bFlipHeightmapZ;
+
+	UE_LOG(LogTemp, Display,
+		TEXT("[MiraThal] EXR heightmap loaded: %dx%d px over %.0f m (%.1f vox/px), "
+		     "altitude %.0f m, base %.0f m."),
+		ImportedHeightmap.width, ImportedHeightmap.height, MapSpanMeters,
+		ImportedHeightmap.voxels_per_pixel, HeightmapAltitudeMeters, HeightmapBaseMeters);
+	return true;
+}
+
+void AVoxelWorld::ConfigureGenerator(mira::HeightmapGenerator& Gen) const
+{
+	Gen.set_seed(static_cast<int64_t>(Seed));
+	Gen.height_range_voxels  = MacroRangeVoxels;
+	Gen.mid_amplitude_voxels = MidAmplitudeVoxels;
+	Gen.height_offset_voxels = HeightOffsetVoxels;
+	Gen.macro_frequency      = MacroFrequency;
+
+	// Attach the imported surface when in EXR mode and it loaded successfully.
+	// compute_ground_y then reads the EXR and the banding/water/flora follow.
+	if (HeightSource == EVoxelHeightSource::HeightmapEXR && ImportedHeightmap.valid())
+	{
+		Gen.set_height_source(&ImportedHeightmap);
+	}
 }
 
 void AVoxelWorld::GenerateRegion()
@@ -52,11 +117,7 @@ void AVoxelWorld::GenerateRegion()
 	Brickmap& BM = WorldStore;
 
 	HeightmapGenerator Gen;
-	Gen.set_seed(static_cast<int64_t>(Seed));
-	Gen.height_range_voxels  = MacroRangeVoxels;
-	Gen.mid_amplitude_voxels = MidAmplitudeVoxels;
-	Gen.height_offset_voxels = HeightOffsetVoxels;
-	Gen.macro_frequency      = MacroFrequency;
+	ConfigureGenerator(Gen);
 
 	// Dig floor: fill from this Y up. Anchored to the centre surface so the band
 	// has a consistent bottom; the TOP is discovered per-column (terrain amplitude
@@ -132,11 +193,7 @@ void AVoxelWorld::CarveTestHole()
 	using namespace mira;
 
 	HeightmapGenerator Gen;
-	Gen.set_seed(static_cast<int64_t>(Seed));
-	Gen.height_range_voxels  = MacroRangeVoxels;
-	Gen.mid_amplitude_voxels = MidAmplitudeVoxels;
-	Gen.height_offset_voxels = HeightOffsetVoxels;
-	Gen.macro_frequency      = MacroFrequency;
+	ConfigureGenerator(Gen);
 	const int GroundCentre = Gen.compute_ground_y(0, 0);
 
 	// Dig a Full (5^3) box straight down into the surface at the world centre.
