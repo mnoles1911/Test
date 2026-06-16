@@ -6,6 +6,9 @@
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/Paths.h"
+#include "Kismet/GameplayStatics.h"   // GetPlayerPawn (streaming focus)
+#include "GameFramework/Pawn.h"
+#include <climits>                    // INT_MAX / INT_MIN
 
 // Engine-agnostic Core (no Unreal types below this line's logic).
 #include "Core/MiraVec.h"            // Vec3i, Vec3
@@ -20,16 +23,38 @@
 
 AVoxelWorld::AVoxelWorld()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Tickable so streaming can page columns around the focus; the tick is only
+	// actually enabled in BeginPlay when bEnableStreaming is set.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 }
 
 void AVoxelWorld::BeginPlay()
 {
 	Super::BeginPlay();
-	// Auto-build the world when play starts if nothing has been generated yet.
+
+	if (bEnableStreaming)
+	{
+		// Streaming owns generation: load the heightmap once, then the tick pages
+		// columns in around the focus. Don't pre-build the fixed region.
+		LoadHeightmapIfNeeded();
+		SetActorTickEnabled(true);
+		return;
+	}
+
+	// Non-streaming: auto-build the fixed region when play starts if empty.
 	if (ChunkActors.Num() == 0)
 	{
 		GenerateWorld();
+	}
+}
+
+void AVoxelWorld::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (bEnableStreaming)
+	{
+		TickStreaming();
 	}
 }
 
@@ -112,77 +137,227 @@ void AVoxelWorld::ConfigureGenerator(mira::HeightmapGenerator& Gen) const
 
 void AVoxelWorld::GenerateRegion()
 {
+	// Build the fixed preview region. Fill the radius PLUS a one-column skirt so
+	// every meshed chunk's 1-voxel apron has real neighbour data (seamless), then
+	// mesh only the inner radius.
+	const int R = ChunkRadiusXZ;
+	for (int ccx = -R - 1; ccx <= R + 1; ++ccx)
+	for (int ccz = -R - 1; ccz <= R + 1; ++ccz)
+	{
+		FillChunkColumn(ccx, ccz);
+	}
+	for (int ccx = -R; ccx <= R; ++ccx)
+	for (int ccz = -R; ccz <= R; ++ccz)
+	{
+		MeshChunkColumn(ccx, ccz);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-column generation primitives (shared by the fixed region + streaming).
+// ---------------------------------------------------------------------------
+void AVoxelWorld::FillChunkColumn(int32 ccx, int32 ccz)
+{
 	using namespace mira;
 
-	Brickmap& BM = WorldStore;
+	const FIntPoint Key(ccx, ccz);
+	if (FilledColumns.Contains(Key))
+	{
+		return; // already generated
+	}
 
+	Brickmap& BM = WorldStore;
 	HeightmapGenerator Gen;
 	ConfigureGenerator(Gen);
 
-	// Dig floor: fill from this Y up. Anchored to the centre surface so the band
-	// has a consistent bottom; the TOP is discovered per-column (terrain amplitude
-	// is large, so we mesh the real ground range rather than a fixed band — no
-	// clipped peaks, no valley holes).
-	const int GroundCentre = Gen.compute_ground_y(0, 0);
-	const int SurfChunkY   = coords::floor_div(GroundCentre, coords::CHUNK);
-	const int YBottomVoxel = (SurfChunkY - ChunkDepthBelow) * coords::CHUNK;
+	const Vec3i ChunkOrigin = coords::chunk_origin_voxel(Vec3i(ccx, 0, ccz));
+	const int DepthVoxels = ChunkDepthBelow * coords::CHUNK; // soil thickness below surface
 
-	// Track the actual filled vertical extent so we mesh exactly the populated band.
-	int FilledMaxY = YBottomVoxel;
-	int FilledMinY = GroundCentre;
+	int FilledMinY = INT_MAX;
+	int FilledMaxY = INT_MIN;
 
-	// --- Fill: one resolve_column per (wx,wz), then a vertical sweep. ---
-	for (int ccx = -ChunkRadiusXZ; ccx <= ChunkRadiusXZ; ++ccx)
-	for (int ccz = -ChunkRadiusXZ; ccz <= ChunkRadiusXZ; ++ccz)
+	for (int lx = 0; lx < coords::CHUNK; ++lx)
+	for (int lz = 0; lz < coords::CHUNK; ++lz)
 	{
-		const Vec3i ChunkOrigin = coords::chunk_origin_voxel(Vec3i(ccx, 0, ccz));
-		for (int lx = 0; lx < coords::CHUNK; ++lx)
-		for (int lz = 0; lz < coords::CHUNK; ++lz)
+		const int wx = ChunkOrigin.x + lx;
+		const int wz = ChunkOrigin.z + lz;
+		const ColumnInfo Col = Gen.resolve_column(wx, wz);
+
+		// Solid column from a per-column dig floor (follows the terrain) to surface.
+		const int YBottom = Col.ground_y - DepthVoxels;
+		for (int wy = YBottom; wy <= Col.ground_y; ++wy)
 		{
-			const int wx = ChunkOrigin.x + lx;
-			const int wz = ChunkOrigin.z + lz;
-			const ColumnInfo Col = Gen.resolve_column(wx, wz);
-
-			// Solid column from the dig floor up to the surface.
-			for (int wy = YBottomVoxel; wy <= Col.ground_y; ++wy)
+			const int Id = Gen.material_at(wx, wy, wz, Col);
+			if (Id != mat::AIR)
 			{
-				const int Id = Gen.material_at(wx, wy, wz, Col);
-				if (Id != mat::AIR)
-				{
-					BM.set_type(Vec3i(wx, wy, wz), static_cast<uint8_t>(Id));
-				}
+				BM.set_type(Vec3i(wx, wy, wz), static_cast<uint8_t>(Id));
 			}
-			FilledMaxY = FMath::Max(FilledMaxY, Col.ground_y + 1);
-			FilledMinY = FMath::Min(FilledMinY, Col.ground_y);
+		}
+		FilledMinY = FMath::Min(FilledMinY, YBottom);
+		FilledMaxY = FMath::Max(FilledMaxY, Col.ground_y + 1);
 
-			// Water fills air below sea level for dipped columns.
-			if (Col.below_sea)
+		// Water fills air below sea level for dipped columns.
+		if (Col.below_sea)
+		{
+			for (int wy = Col.ground_y + 1; wy <= Gen.sea_level_voxels; ++wy)
 			{
-				for (int wy = Col.ground_y + 1; wy <= Gen.sea_level_voxels; ++wy)
-				{
-					BM.set_water(Vec3i(wx, wy, wz), static_cast<uint8_t>(WaterByteCodec::SOURCE_BYTE));
-				}
-				FilledMaxY = FMath::Max(FilledMaxY, Gen.sea_level_voxels);
+				BM.set_water(Vec3i(wx, wy, wz), static_cast<uint8_t>(WaterByteCodec::SOURCE_BYTE));
 			}
+			FilledMaxY = FMath::Max(FilledMaxY, Gen.sea_level_voxels);
+		}
 
-			// One flora/detail voxel sitting on the surface, if the column has one.
-			if (Col.flora_id != 0)
+		// One flora/detail voxel sitting on the surface, if the column has one.
+		if (Col.flora_id != 0)
+		{
+			BM.set_type(Vec3i(wx, Col.ground_y + 1, wz), static_cast<uint8_t>(Col.flora_id));
+		}
+	}
+
+	// Empty column guard (shouldn't happen on land, but keep the map sane).
+	if (FilledMaxY < FilledMinY)
+	{
+		FilledMinY = FilledMaxY = 0;
+	}
+
+	const int ChunkYLo = coords::floor_div(FilledMinY, coords::CHUNK);
+	const int ChunkYHi = coords::floor_div(FilledMaxY, coords::CHUNK);
+	ColumnYRange.Add(Key, FIntPoint(ChunkYLo, ChunkYHi));
+	FilledColumns.Add(Key);
+}
+
+void AVoxelWorld::MeshChunkColumn(int32 ccx, int32 ccz)
+{
+	const FIntPoint Key(ccx, ccz);
+	if (MeshedColumns.Contains(Key))
+	{
+		return;
+	}
+	const FIntPoint* Range = ColumnYRange.Find(Key);
+	if (!Range)
+	{
+		return; // not filled yet — caller must FillChunkColumn first
+	}
+	for (int32 ccy = Range->X; ccy <= Range->Y; ++ccy)
+	{
+		RemeshChunk(FIntVector(ccx, ccy, ccz));
+	}
+	MeshedColumns.Add(Key);
+}
+
+void AVoxelWorld::UnmeshChunkColumn(int32 ccx, int32 ccz)
+{
+	const FIntPoint Key(ccx, ccz);
+	if (!MeshedColumns.Contains(Key))
+	{
+		return;
+	}
+	const FIntPoint* Range = ColumnYRange.Find(Key);
+	if (Range)
+	{
+		for (int32 ccy = Range->X; ccy <= Range->Y; ++ccy)
+		{
+			DestroyChunkActor(FIntVector(ccx, ccy, ccz));
+		}
+	}
+	MeshedColumns.Remove(Key);
+}
+
+// ---------------------------------------------------------------------------
+// Streaming (M4): page columns in/out around the focus, throttled per tick.
+// ---------------------------------------------------------------------------
+bool AVoxelWorld::GetFocusChunkXZ(FIntPoint& OutColumn) const
+{
+	FVector FocusWorld;
+	if (StreamFocusActor)
+	{
+		FocusWorld = StreamFocusActor->GetActorLocation();
+	}
+	else if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0))
+	{
+		FocusWorld = Pawn->GetActorLocation();
+	}
+	else
+	{
+		return false; // no focus available yet
+	}
+
+	// UE world (cm) -> core voxel XZ. PositionToUE maps core (vx,vy,vz) ->
+	// (vx, vz, vy)*10, so UE.X = core-x*10 and UE.Y = core-z*10.
+	const FVector Local = FocusWorld - GetActorLocation();
+	const int vx = FMath::FloorToInt(Local.X / 10.0f);
+	const int vz = FMath::FloorToInt(Local.Y / 10.0f);
+	OutColumn = FIntPoint(mira::coords::floor_div(vx, mira::coords::CHUNK),
+	                      mira::coords::floor_div(vz, mira::coords::CHUNK));
+	return true;
+}
+
+void AVoxelWorld::TickStreaming()
+{
+	FIntPoint Focus;
+	if (!GetFocusChunkXZ(Focus))
+	{
+		return;
+	}
+
+	const int R = StreamRadiusChunks;
+	int Budget = MaxColumnOpsPerTick;
+
+	// 1) FILL the radius + 1-column skirt (nearest-first), so meshed aprons are
+	//    satisfied. Throttled by the per-tick budget.
+	for (int ring = 0; ring <= R + 1 && Budget > 0; ++ring)
+	{
+		for (int dx = -ring; dx <= ring && Budget > 0; ++dx)
+		for (int dz = -ring; dz <= ring && Budget > 0; ++dz)
+		{
+			// Only the shell at chebyshev distance == ring (inner shells done already).
+			if (FMath::Max(FMath::Abs(dx), FMath::Abs(dz)) != ring)
 			{
-				BM.set_type(Vec3i(wx, Col.ground_y + 1, wz), static_cast<uint8_t>(Col.flora_id));
+				continue;
+			}
+			const FIntPoint Col(Focus.X + dx, Focus.Y + dz);
+			if (!FilledColumns.Contains(Col))
+			{
+				FillChunkColumn(Col.X, Col.Y);
+				--Budget;
 			}
 		}
 	}
 
-	// --- Mesh every chunk across the real filled band (empties skipped). ---
-	const int ChunkYLo = coords::floor_div(YBottomVoxel, coords::CHUNK);
-	const int ChunkYHi = coords::floor_div(FilledMaxY, coords::CHUNK);
-	for (int ccx = -ChunkRadiusXZ; ccx <= ChunkRadiusXZ; ++ccx)
-	for (int ccz = -ChunkRadiusXZ; ccz <= ChunkRadiusXZ; ++ccz)
-	for (int ccy = ChunkYLo; ccy <= ChunkYHi; ++ccy)
+	// 2) MESH the inner radius (nearest-first) for columns whose skirt is filled.
+	for (int ring = 0; ring <= R && Budget > 0; ++ring)
 	{
-		RemeshChunk(FIntVector(ccx, ccy, ccz));
+		for (int dx = -ring; dx <= ring && Budget > 0; ++dx)
+		for (int dz = -ring; dz <= ring && Budget > 0; ++dz)
+		{
+			if (FMath::Max(FMath::Abs(dx), FMath::Abs(dz)) != ring)
+			{
+				continue;
+			}
+			const FIntPoint Col(Focus.X + dx, Focus.Y + dz);
+			if (FilledColumns.Contains(Col) && !MeshedColumns.Contains(Col))
+			{
+				MeshChunkColumn(Col.X, Col.Y);
+				--Budget;
+			}
+		}
 	}
-	(void)FilledMinY;
+
+	// 3) EVICT meshed columns that drifted beyond radius + hysteresis. (Brick data
+	//    is kept for now; CPU-store eviction is a follow-up — see UE5_TECH_STACK.)
+	const int EvictDist = R + StreamEvictPaddingChunks;
+	TArray<FIntPoint> ToEvict;
+	for (const FIntPoint& Col : MeshedColumns)
+	{
+		const int d = FMath::Max(FMath::Abs(Col.X - Focus.X), FMath::Abs(Col.Y - Focus.Y));
+		if (d > EvictDist)
+		{
+			ToEvict.Add(Col);
+		}
+	}
+	for (const FIntPoint& Col : ToEvict)
+	{
+		UnmeshChunkColumn(Col.X, Col.Y);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +516,10 @@ void AVoxelWorld::ClearWorld()
 	}
 	ChunkActors.Empty();
 
-	// Reset the authoritative store (default-constructed brickmap = empty).
+	// Reset the authoritative store (default-constructed brickmap = empty) and the
+	// streaming bookkeeping so a regenerate starts from a clean slate.
 	WorldStore = mira::Brickmap();
+	FilledColumns.Empty();
+	MeshedColumns.Empty();
+	ColumnYRange.Empty();
 }

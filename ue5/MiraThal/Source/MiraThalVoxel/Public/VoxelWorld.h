@@ -112,6 +112,35 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|World")
 	bool bCreateCollision = true;
 
+	// --- Streaming (M4): page chunk columns in/out around a moving focus so a
+	//     huge map (e.g. the 5 km EXR) is explorable without all 50k^2 voxels
+	//     resident. Off by default — the editor GenerateWorld button still builds
+	//     a fixed ChunkRadiusXZ region for previewing. Streaming runs in play. ---
+
+	// Turn on focus-following chunk streaming (play-mode). When off, the world is
+	// the fixed ChunkRadiusXZ region built by GenerateWorld.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
+	bool bEnableStreaming = false;
+
+	// How many chunks each way from the focus stay meshed (the visible radius).
+	// 6 -> a 13x13 chunk disc ≈ 416 voxels ≈ 41.6 m of meshed terrain each way.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 StreamRadiusChunks = 6;
+
+	// Extra chunks beyond the radius a column may drift before it's evicted
+	// (hysteresis, so a column straddling the edge doesn't thrash load/unload).
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 StreamEvictPaddingChunks = 2;
+
+	// Max column fill/mesh operations per tick — caps the per-frame work so
+	// streaming spreads cost over frames instead of hitching on a big jump.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "256"))
+	int32 MaxColumnOpsPerTick = 4;
+
+	// What the streaming ring centres on. If empty, the first player pawn is used.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
+	TObjectPtr<AActor> StreamFocusActor;
+
 	// Solid-colour terrain material (vertex-colour albedo + AO in alpha). Opaque
 	// and cutout faces use this; water and flora get their own.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|World")
@@ -145,6 +174,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+	virtual void Tick(float DeltaSeconds) override;
 
 	// The spawned chunk renderers, keyed by chunk coord.
 	UPROPERTY(Transient)
@@ -172,6 +202,29 @@ private:
 
 	// Fill the brickmap from the generator across the configured region.
 	void GenerateRegion();
+
+	// --- Per-column generation primitives (shared by GenerateRegion + streaming) ---
+	// Fill ONE XZ chunk-column's voxels into the brickmap (terrain + water + flora),
+	// recording its vertical chunk span. No meshing. Idempotent (skips if filled).
+	void FillChunkColumn(int32 ccx, int32 ccz);
+	// Mesh the vertical chunks of an already-filled column. Idempotent. The 1-voxel
+	// mesh apron is satisfied because callers fill a +1 column skirt first.
+	void MeshChunkColumn(int32 ccx, int32 ccz);
+	// Destroy the chunk actors of a column (drops its mesh; brick data is kept).
+	void UnmeshChunkColumn(int32 ccx, int32 ccz);
+
+	// --- Streaming (M4) ---
+	void TickStreaming();
+	bool GetFocusChunkXZ(FIntPoint& OutColumn) const;
+
+	// XZ columns whose brick voxels are generated (the fill skirt is a superset of
+	// the meshed set so every meshed chunk's apron has neighbour data).
+	TSet<FIntPoint> FilledColumns;
+	// XZ columns currently meshed (have chunk actors).
+	TSet<FIntPoint> MeshedColumns;
+	// Per filled column: the [min,max] vertical CHUNK indices that hold voxels,
+	// so meshing/eviction knows how tall the column is. (X=loChunkY, Y=hiChunkY.)
+	TMap<FIntPoint, FIntPoint> ColumnYRange;
 
 	// Extract the chunk's slab from the brickmap and (re)render it; skips/destroys
 	// the actor when the chunk is fully empty.
