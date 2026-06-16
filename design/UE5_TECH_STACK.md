@@ -199,6 +199,9 @@ sampling math is unit-tested headless (`test_imageheightmap`, 36 checks). At 10 
 
 ## 10. Companion docs
 
+- **`design/UE5_WORLD_STREAMING_PLAN.md`** — production plan for streaming/LOD/Nanite/persistence to roam
+  the full 5 km world (EXR + edit-journal model, five render tiers, disk caching, phased build).
+- **`design/UE5_GPU_PHASES.md`** — M6 Nanite bake / M7 far ray-march / M8 GPU meshing approach + groundwork.
 - **`design/UE5_HEIGHTMAP_IMPORT.md`** — how to import a Gaea/other `.exr` heightmap (designer how-to).
 - **`design/UE5_PORT_PLAN.md`** — why we ported, full Godot→UE5 mapping, phase sequencing.
 - **`design/UE5_RENDERING_STRATEGY.md`** — Lumen-near / ray-march-far / Nanite-cold bands; per-face color.
