@@ -280,20 +280,35 @@ server owns the authoritative deltas, clients receive region delta streams via `
 
 ---
 
-## 12. Open decisions for the designer
+## 12. Designer decisions — RESOLVED (2026-06-16)
 
-1. **Vista fidelity:** is the EXR heightmesh (T3) enough for the horizon, or do you want voxel-accurate
-   far detail (T4 GPU ray-march)? T3 first regardless; T4 is later polish.
-2. **Permanent player lakes:** should settled finite-water pools persist to the edit journal (player can
-   build a reservoir that's there on reload), or is water always transient until it touches a source?
-3. **Edit durability scope:** do edits persist forever (single big world save) or per-save-slot? Affects
+The designer chose the ambitious end on every axis. Recorded direction:
+
+1. **Permanent player lakes — YES.** Settled finite-water pools persist to the edit journal (§7a); a
+   dammed valley / built reservoir is there on reload. Implication: water final-state (per-cell level
+   bytes) is part of the authoritative delta, and load replays both terrain edits AND saved water before
+   handing the region to the live sim. Adds modest storage + a replay step on load.
+2. **Voxel-accurate far detail — YES.** T4 GPU ray-march is **in scope, not optional** — caves,
+   overhangs, and cube detail must read to the horizon. The far heightmesh (T3) still ships first as the
+   base vista; T4 marches the GPU brick mirror on top for accuracy. Elevates M7 from polish to required.
+3. **Traversal: vehicles / flight — YES.** Fast/aerial traversal means the CPU streamer WILL be outrun;
+   **GPU meshing + GPU generation (M8) move earlier** and prefetch must be aggressive + velocity-led. Flight
+   also means more tiers visible at once (you see the whole map from altitude) → T3 heightmesh + T4 march
+   carry more of the frame, and LOD selection must key off altitude, not just horizontal distance.
+4. **First build: the region preview level** (run `setup_voxel_preview.py`) before committing a phase.
+
+**Net effect on phasing:** the GPU-heavy phases (M7 ray-march, M8 GPU meshing) are pulled forward from
+"later polish" toward the critical path, because flight + voxel-accurate vistas both demand them. P4 (far
+heightmesh) and P1 (async streaming) remain the right first moves; P7/P8 rise in priority right after.
+
+## 13. Remaining open items (still need a designer call, lower urgency)
+
+1. **Edit durability scope:** do edits persist forever (single big world save) or per-save-slot? Affects
    where region files live.
-4. **Disk-cache budget:** default cap (5 GB? 20 GB?) and where it lives (project Saved/ vs user dir).
-5. **Traversal speed:** top movement speed (walk vs mount vs vehicle/flight) sets the prefetch radius and
-   whether P8 GPU meshing is required sooner.
-6. **Altitude scaling of the import:** your EXR uses 0–0.31 of its range (peaks ~219 m at altitude 700).
+2. **Disk-cache budget:** default cap (5 GB? 20 GB?) and where it lives (project Saved/ vs user dir).
+3. **Altitude scaling of the import:** your EXR uses 0–0.31 of its range (peaks ~219 m at altitude 700).
    Lock a final vertical scale so the heightmesh, voxels, and gameplay all agree on "how tall is a
-   mountain."
+   mountain." (More pressing now that flight makes the full vertical relief visible at once.)
 
 ---
 
