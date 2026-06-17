@@ -1,82 +1,59 @@
-# setup_voxel_preview.py — build a CLEAN, lit preview level for the imported EXR
-# voxel terrain. Run via the mcp-unreal execute_script bridge with the editor open.
+# setup_voxel_preview.py — build a CLEAN, lit preview showing the imported EXR
+# voxel terrain PLUS the whole-map far heightmesh vista. Run via the mcp-unreal
+# execute_script bridge with the editor open.
 #
-# WHAT IT MAKES (and why it's clean):
-#   * a brand-new EMPTY level — NOT the "Open World" template, so there is no
-#     stock sky/landscape/background, only what we add;
-#   * minimal lighting that makes the voxel palette read right (sun + sky +
-#     fog + a locked daylight exposure so a small terrain under a big sky isn't
-#     crushed to tan by auto-exposure);
-#   * the MiraVoxelWorld actor configured for the 5 km Export.exr, generating a
-#     ~67 m region at full 10 cm detail around the map centre;
-#   * the level SAVED as /Game/Maps/VoxelPreview so it's reusable (reopen it any
-#     time instead of rebuilding by hand).
+# WHAT IT MAKES:
+#   * a transient BLANK level (no Open-World template background) — not saved, so
+#     no 1.3 GB .umap; re-run this to rebuild it;
+#   * lighting that reads right: a sun that drives the Sky Atmosphere + sky light
+#     + height fog, with plain auto-exposure (the hard EV100 lock crushed it dark);
+#   * the MiraVoxelWorld near terrain (~67 m full-detail region from Export.exr);
+#   * the AVoxelFarHeightmesh VISTA — one coarse mesh of the entire 5 km map so the
+#     horizon is filled in behind the near voxels.
 #
-# NOTE: the EXR path below is this machine's absolute path. This is a local
-# editor convenience script, not shipping code.
+# NOTE: the EXR path below is this machine's absolute path. Local editor convenience.
 
-import unreal, traceback
+import unreal, math, traceback
 
 EXR = "C:/Users/Matt Noles/Test-ue5/ue5/MiraThal/Content/Heightmaps/Export.exr"
-MAP = "/Game/Maps/VoxelPreview"
-CHUNK_RADIUS = 10          # ~67 m each way of full-detail terrain (21x21 columns)
+CHUNK_RADIUS = 10          # ~67 m each way of full-detail near terrain
 ALTITUDE_M   = 700.0       # white pixel = +700 m (raise for taller mountains)
+FAR_GRID     = 512         # far vista vertices per side (~10 m/vertex on 5 km)
 
-
-def log(m):
-    unreal.log("MIRA-SETUP: " + m)
-
+def log(m): unreal.log("MIRA-SETUP: " + m)
 
 try:
-    les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-
-    # 1. Fresh EMPTY level — no template background.
-    les.new_level(MAP)
-    log("empty level created: " + MAP)
+    # Transient blank level — no template background, nothing saved to disk.
+    unreal.EditorLoadingAndSavingUtils.new_blank_map(False)
+    log("blank level created (transient)")
 
     def spawn(cls, loc=None, rot=None, label=None):
-        a = eas.spawn_actor_from_class(cls, loc or unreal.Vector(0, 0, 0),
-                                       rot or unreal.Rotator(0, 0, 0))
-        if label:
-            a.set_actor_label(label)
+        a = eas.spawn_actor_from_class(cls, loc or unreal.Vector(0,0,0), rot or unreal.Rotator(0,0,0))
+        if label: a.set_actor_label(label)
         return a
 
-    # 2. Lighting.
-    sun = spawn(unreal.DirectionalLight, rot=unreal.Rotator(-45, -35, 0), label="Sun")
-    try:
-        sc = sun.get_editor_property("directional_light_component")
-        sc.set_intensity(8.0)
-        sc.set_editor_property("atmosphere_sun_light", True)
-    except Exception:
-        log("sun component tweak skipped (SkyAtmosphere still auto-binds the sun)")
-
+    # --- Lighting (the version that reads right) ---
+    sun = spawn(unreal.DirectionalLight, rot=unreal.Rotator(-45,-35,0), label="Sun")
+    c = sun.get_editor_property("light_component")
+    c.set_editor_property("intensity", 10.0)
+    for prop in ("atmosphere_sun_light","used_as_atmosphere_sun_light"):
+        try: c.set_editor_property(prop, True)
+        except Exception: pass
     spawn(unreal.SkyAtmosphere, label="SkyAtmosphere")
-    spawn(unreal.ExponentialHeightFog, loc=unreal.Vector(0, 0, 9000), label="HeightFog")
+    spawn(unreal.ExponentialHeightFog, loc=unreal.Vector(0,0,9000), label="HeightFog")
+    spawn(unreal.SkyLight, loc=unreal.Vector(0,0,9600), label="SkyLight")
+    log("lighting placed (sun drives atmosphere, auto-exposure)")
 
-    sky = spawn(unreal.SkyLight, loc=unreal.Vector(0, 0, 9600), label="SkyLight")
-    try:
-        skc = sky.get_editor_property("light_component")
-        skc.set_editor_property("real_time_capture", True)
-    except Exception:
-        log("skylight real-time-capture tweak skipped")
+    terr = unreal.load_asset("/Game/Voxel/Materials/M_VoxelTerrainV2")
+    water = unreal.load_asset("/Game/Voxel/Materials/M_VoxelWater")
+    flora = unreal.load_asset("/Game/Voxel/Materials/M_VoxelFlora")
 
-    # Exposure lock (the key fix for the washed-out look): unbound PPV, EV100 ~11.
-    ppv = spawn(unreal.PostProcessVolume, loc=unreal.Vector(0, 0, 9600), label="ExposureLock")
-    ppv.set_editor_property("unbound", True)
-    s = ppv.get_editor_property("settings")
-    s.set_editor_property("override_auto_exposure_min_brightness", True)
-    s.set_editor_property("auto_exposure_min_brightness", 11.0)
-    s.set_editor_property("override_auto_exposure_max_brightness", True)
-    s.set_editor_property("auto_exposure_max_brightness", 11.0)
-    ppv.set_editor_property("settings", s)
-    log("lighting + exposure lock placed")
-
-    # 3. The voxel world (EXR region preview).
+    # --- Near voxel terrain ---
     vw = spawn(unreal.VoxelWorld, label="MiraVoxelWorld")
-    vw.set_editor_property("terrain_material", unreal.load_asset("/Game/Voxel/Materials/M_VoxelTerrainV2"))
-    vw.set_editor_property("water_material",   unreal.load_asset("/Game/Voxel/Materials/M_VoxelWater"))
-    vw.set_editor_property("flora_material",   unreal.load_asset("/Game/Voxel/Materials/M_VoxelFlora"))
+    vw.set_editor_property("terrain_material", terr)
+    vw.set_editor_property("water_material", water)
+    vw.set_editor_property("flora_material", flora)
     vw.set_editor_property("height_source", unreal.VoxelHeightSource.HEIGHTMAP_EXR)
     vw.set_editor_property("heightmap_file", unreal.FilePath(file_path=EXR))
     vw.set_editor_property("map_span_meters", 5000.0)
@@ -84,14 +61,31 @@ try:
     vw.set_editor_property("heightmap_base_meters", 12.0)
     vw.set_editor_property("chunk_radius_xz", CHUNK_RADIUS)
     vw.call_method("GenerateWorld")
-    log("voxel terrain generated (radius %d)" % CHUNK_RADIUS)
+    log("near voxel terrain generated (radius %d)" % CHUNK_RADIUS)
 
-    # 4. Frame the camera on the terrain (it sits ~95 m up at the map centre).
-    ues = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
-    ues.set_level_viewport_camera_info(unreal.Vector(6500, 6500, 12800), unreal.Rotator(-22, 225, 0))
+    # --- Far vista (whole-map heightmesh) ---
+    fm = spawn(unreal.VoxelFarHeightmesh, label="MiraFarVista")
+    fm.set_editor_property("material", terr)
+    fm.set_editor_property("heightmap_file", unreal.FilePath(file_path=EXR))
+    fm.set_editor_property("map_span_meters", 5000.0)
+    fm.set_editor_property("heightmap_altitude_meters", ALTITUDE_M)
+    fm.set_editor_property("heightmap_base_meters", 12.0)
+    fm.set_editor_property("grid_resolution", FAR_GRID)
+    fm.call_method("BuildFarMesh")
+    log("far vista mesh built (grid %d)" % FAR_GRID)
 
-    # 5. Save the level so it's reusable.
-    unreal.EditorLoadingAndSavingUtils.save_current_level()
-    log("DONE — saved level " + MAP)
+    # --- Frame the camera on the near terrain ---
+    xs=[]; ys=[]; zs=[]
+    for a in eas.get_all_level_actors():
+        if a.get_class().get_name() == "VoxelChunkActor":
+            o=a.get_actor_location(); xs.append(o.x); ys.append(o.y); zs.append(o.z)
+    if xs:
+        cx=(min(xs)+max(xs))/2; cy=(min(ys)+max(ys))/2; cz=(min(zs)+max(zs))/2
+        span=max(max(xs)-min(xs), max(ys)-min(ys), 3000.0)
+        cam=unreal.Vector(cx+span*0.9, cy+span*0.9, cz+span*0.7)
+        d=unreal.Vector(cx-cam.x, cy-cam.y, cz-cam.z)
+        yaw=math.degrees(math.atan2(d.y,d.x)); pitch=math.degrees(math.atan2(d.z, math.sqrt(d.x*d.x+d.y*d.y)))
+        unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).set_level_viewport_camera_info(cam, unreal.Rotator(pitch,yaw,0))
+    log("DONE — near terrain + far vista built")
 except Exception:
     unreal.log_error("MIRA-SETUP EXC: " + traceback.format_exc())
