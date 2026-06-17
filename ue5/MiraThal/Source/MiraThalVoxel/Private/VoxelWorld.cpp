@@ -23,6 +23,7 @@
 #include "Core/WaterByteCodec.h"     // WaterByteCodec::SOURCE_BYTE
 #include "Core/MiningCarve.h"        // mining::compute_carve_box / compute_carve, VoxelWrite
 #include "Core/FiniteWaterCore.h"    // FiniteWaterCore — the dynamic water sim (M3b)
+#include "Core/VoxelGravity.h"       // analyze_bubble — gravity-on-dig (M3c)
 
 AVoxelWorld::AVoxelWorld()
 {
@@ -431,6 +432,9 @@ void AVoxelWorld::CarveTestHole()
 
 	// If the dig opened space next to water, let the parent volume flood in.
 	FloodCarveFromNeighbours(Writes);
+
+	// Drop any loose material that lost its support.
+	ApplyGravityAfterCarve(Centre);
 }
 
 void AVoxelWorld::CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal, int32 SideVoxels)
@@ -466,6 +470,9 @@ void AVoxelWorld::CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal
 
 	// If the dig opened space next to water, let the parent volume flood in.
 	FloodCarveFromNeighbours(Writes);
+
+	// Drop any loose material that lost its support.
+	ApplyGravityAfterCarve(CentreVoxel);
 }
 
 // ---------------------------------------------------------------------------
@@ -823,5 +830,71 @@ void AVoxelWorld::SaveEdits()
 	{
 		UE_LOG(LogTemp, Display, TEXT("[MiraThal] saved %d edited region(s) -> %s"),
 			Saved, *MiraWorldPersist::WorldDir(WorldSaveName));
+	}
+}
+
+// ===========================================================================
+// Gravity-on-dig (M3c) — loose material slides down when its support is gone.
+// ===========================================================================
+void AVoxelWorld::ApplyGravityAfterCarve(const mira::Vec3i& CarveCenterVoxel)
+{
+	using namespace mira;
+	if (!bEnableGravity)
+	{
+		return;
+	}
+
+	// Analyse a cube around the dig. Anchor seed is the bubble's bottom face (y==0),
+	// so place the bubble with solid ground below the carve: the carve sits ~3/4 up.
+	constexpr int kSide = 32;
+	const Vec3i Origin(CarveCenterVoxel.x - kSide / 2,
+	                   CarveCenterVoxel.y - (kSide * 3) / 4,
+	                   CarveCenterVoxel.z - kSide / 2);
+
+	auto get_packed = [this, Origin](const Vec3i& local) -> int32_t {
+		return static_cast<int32_t>(WorldStore.type_at(Origin + local));
+	};
+	auto fall_of = [](int id) -> int {
+		// Only sand + gravel are loose; everything else holds (no rigid collapse v1).
+		if (id == mat::SAND || id == 7 /*gravel*/) return FALL_LOOSE;
+		return FALL_NEVER;
+	};
+
+	const GravityResult Res = analyze_bubble(kSide, get_packed, fall_of);
+	if (Res.loose.empty())
+	{
+		return; // nothing slid
+	}
+
+	// Apply the slides into the brickmap: clear every source, then write every
+	// destination (two passes so a cell that is both source and dest resolves).
+	std::vector<Vec3i> Touched;
+	Touched.reserve(Res.loose.size() * 2);
+	for (const LooseMove& m : Res.loose)
+	{
+		const Vec3i From = Origin + m.from;
+		WorldStore.set_type(From, static_cast<uint8_t>(mat::AIR));
+		Touched.push_back(From);
+		if (bPersistEdits) { RecordEdit(From); }
+	}
+	for (const LooseMove& m : Res.loose)
+	{
+		const Vec3i To = Origin + m.to;
+		WorldStore.set_type(To, static_cast<uint8_t>(m.packed & 0xFF));
+		Touched.push_back(To);
+		if (bPersistEdits) { RecordEdit(To); }
+	}
+
+	// Re-mesh every chunk the moved voxels border (apron-aware), de-duplicated.
+	TSet<FIntVector> Dirty;
+	for (const Vec3i& V : Touched)
+	{
+		std::vector<Vec3i> Chunks;
+		chunks_touched_by_voxel(V, Chunks);
+		for (const Vec3i& C : Chunks) { Dirty.Add(FIntVector(C.x, C.y, C.z)); }
+	}
+	for (const FIntVector& C : Dirty)
+	{
+		RemeshChunk(C);
 	}
 }

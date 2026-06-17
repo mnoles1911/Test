@@ -183,6 +183,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Water", meta = (ClampMin = "1", ClampMax = "100000"))
 	int32 TestPourUnits = 2000;
 
+	// --- Gravity-on-dig (M3c): when you carve out the support under LOOSE material
+	//     (sand/gravel), it slides down to rest. Solid terrain (stone/grass) does
+	//     NOT collapse (no rigid-body sim yet) — only loose materials fall. Opt-in. ---
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Gravity")
+	bool bEnableGravity = false;
+
 	// Solid-colour terrain material (vertex-colour albedo + AO in alpha). Opaque
 	// and cutout faces use this; water and flora get their own.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|World")
@@ -216,6 +222,11 @@ public:
 	// Pour finite water at a UE world-space point (cm): adds units to the sim,
 	// which then flows downhill and pools. The entry a bucket/hose tool calls.
 	void PourWaterAtWorld(const FVector& WorldPos, int32 Units);
+
+	// After a carve, drop LOOSE material (sand/gravel) that lost its support within
+	// a bubble around the dig. Applies the slides to the brickmap, journals them,
+	// and re-meshes affected chunks. No-op unless bEnableGravity.
+	void ApplyGravityAfterCarve(const mira::Vec3i& CarveCenterVoxel);
 
 	// Editor convenience: pour TestPourUnits of water just above the centre
 	// surface and run the sim to settle, so the dynamic water is visible from the
