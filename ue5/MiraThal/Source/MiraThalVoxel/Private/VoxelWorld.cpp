@@ -215,9 +215,16 @@ void AVoxelWorld::FillChunkColumn(int32 ccx, int32 ccz)
 		const int wz = ChunkOrigin.z + lz;
 		const ColumnInfo Col = Gen.resolve_column(wx, wz);
 
-		// Solid column from a per-column dig floor (follows the terrain) to surface.
-		const int YBottom = Col.ground_y - DepthVoxels;
-		for (int wy = YBottom; wy <= Col.ground_y; ++wy)
+		// Solid column from a per-column dig floor (follows the terrain) up to the
+		// surface. We fill ONE EXTRA CHUNK of solid BELOW the visible floor and do
+		// NOT mesh it: that hidden solid is the apron that lets the lowest *visible*
+		// chunk cull its underside. Without it, the band's bottom faces (the "dig
+		// floor", which mirrors the surface contours) render as a phantom second
+		// layer ~DepthVoxels below the surface — the "terrain sandwich". Deeper
+		// terrain is generated on demand when the player digs through the floor.
+		const int YBottom      = Col.ground_y - DepthVoxels;     // lowest VISIBLE/meshed voxel
+		const int YBottomApron = YBottom - coords::CHUNK;        // hidden solid below (apron only)
+		for (int wy = YBottomApron; wy <= Col.ground_y; ++wy)
 		{
 			const int Id = Gen.material_at(wx, wy, wz, Col);
 			if (Id != mat::AIR)
@@ -225,6 +232,8 @@ void AVoxelWorld::FillChunkColumn(int32 ccx, int32 ccz)
 				BM.set_type(Vec3i(wx, wy, wz), static_cast<uint8_t>(Id));
 			}
 		}
+		// Mesh range stops at YBottom; the apron chunk below stays filled-but-unmeshed
+		// so the floor is hidden, not rendered as a separate layer.
 		FilledMinY = FMath::Min(FilledMinY, YBottom);
 		FilledMaxY = FMath::Max(FilledMaxY, Col.ground_y + 1);
 

@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{A6218E3C-4F9D-776A-3DFD-77A0E94FDAC6}",
+	"EngineAssociation": "5.7",
 	"Category": "Game",
 	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via a custom cubic greedy mesher (MiraThalVoxel), Nanite/Lumen, Chaos physics.",
 	"Modules": [
@@ -8,19 +8,25 @@
 			"Name": "MiraThalVoxel",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
-			"AdditionalDependencies": [ "Engine" ]
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		},
 		{
 			"Name": "MiraThalCore",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
-			"AdditionalDependencies": [ "Engine" ]
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		},
 		{
 			"Name": "MiraThalNet",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
-			"AdditionalDependencies": [ "Engine" ]
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		}
 	],
 	"Plugins": [
