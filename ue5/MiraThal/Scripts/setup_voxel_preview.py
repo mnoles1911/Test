@@ -41,7 +41,9 @@ try:
         try: c.set_editor_property(prop, True)
         except Exception: pass
     spawn(unreal.SkyAtmosphere, label="SkyAtmosphere")
-    spawn(unreal.ExponentialHeightFog, loc=unreal.Vector(0,0,9000), label="HeightFog")
+    # NOTE: no ExponentialHeightFog — at 10 cm (cm world units) the default fog
+    # density (per-cm) hazes even near objects to grey. Add fog later with a tiny
+    # density (~3e-5) tuned for cm units if atmospheric depth is wanted.
     spawn(unreal.SkyLight, loc=unreal.Vector(0,0,9600), label="SkyLight")
     log("lighting placed (sun drives atmosphere, auto-exposure)")
 
@@ -71,6 +73,7 @@ try:
     fm.set_editor_property("heightmap_altitude_meters", ALTITUDE_M)
     fm.set_editor_property("heightmap_base_meters", 12.0)
     fm.set_editor_property("grid_resolution", FAR_GRID)
+    fm.set_editor_property("reverse_winding", False)  # up-facing front faces (verified)
     fm.call_method("BuildFarMesh")
     log("far vista mesh built (grid %d)" % FAR_GRID)
 

@@ -57,8 +57,10 @@ public:
 	int32 VerticalBiasVoxels = 2;
 
 	// Flip triangle winding if the surface renders inside-out (faces downward).
+	// Default false = front faces point UP (correct: the voxel->UE axis swap already
+	// keeps the Core's +Y winding facing up once mapped). Verified in-editor.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh")
-	bool bReverseWinding = true;
+	bool bReverseWinding = false;
 
 	// Vertex-color terrain material (reuse M_VoxelTerrainV2 so far hue == near hue).
 	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh")
