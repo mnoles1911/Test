@@ -87,3 +87,7 @@ ue5/MiraThal/Content/__ExternalActors__/
 ue5/MiraThal/Content/__ExternalObjects__/
 ue5/MiraThal/Content/HLOD/
 docs/index.bleve/
+
+# Generated voxel preview map (1.3GB, regenerable via Scripts/setup_voxel_preview.py)
+ue5/MiraThal/Content/Maps/VoxelPreview.umap
+ue5/MiraThal/Saved/
