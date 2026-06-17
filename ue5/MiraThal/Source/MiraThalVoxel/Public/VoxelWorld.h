@@ -20,6 +20,7 @@
 #include "Core/ImageHeightmap.h"  // mira::ImageHeightmap — imported EXR surface (held directly)
 #include "Core/FiniteWaterCore.h" // mira::FiniteWaterCore — full type (TUniquePtr in a UCLASS
                                   // needs the complete type for UHT's vtable-helper ctor)
+#include "Core/WorldEditStore.h"  // mira::WorldEditStore — the player-edit journal (P2)
 #include "VoxelWorld.generated.h"
 
 class UMaterialInterface;
@@ -144,6 +145,22 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
 	TObjectPtr<AActor> StreamFocusActor;
 
+	// --- Persistence (P2): the player's edits survive reload. Carves/places are
+	//     journalled into region files under Saved/Worlds/<WorldSaveName>/ and
+	//     replayed on top of the generated terrain when a column loads. Only edits
+	//     are stored — unedited terrain is always regenerated from the EXR. ---
+
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Persistence")
+	bool bPersistEdits = true;
+
+	// Save slot name (the folder under Saved/Worlds/). Different names = different saves.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Persistence")
+	FString WorldSaveName = TEXT("DefaultWorld");
+
+	// Flush every dirty region's edits to disk now. CallInEditor button + EndPlay.
+	UFUNCTION(CallInEditor, BlueprintCallable, Category = "MiraThal|Persistence")
+	void SaveEdits();
+
 	// --- Dynamic water (M3b): a finite, volume-conserving pour-and-settle sim
 	//     (Core `FiniteWaterCore`). Player-poured water flows downhill, pools, and
 	//     merges into the generated ocean (which acts as an infinite source). Off
@@ -224,6 +241,20 @@ private:
 	// The imported EXR surface, held directly. Empty (invalid) until a successful
 	// load; the generator only consults it when HeightSource = HeightmapEXR.
 	mira::ImageHeightmap ImportedHeightmap;
+
+	// The authoritative player-edit journal (P2). Persists across regenerate; only
+	// reset on an explicit new-world. Region files load on demand, save on flush.
+	mira::WorldEditStore EditStore;
+	// Region tiles whose disk file we've already tried to load this session (so we
+	// don't hit disk repeatedly for the same region as its columns stream in).
+	TSet<FIntPoint> LoadedEditRegions;
+
+	// Record one carve/place edit (the voxel's FINAL state) into the journal.
+	void RecordEdit(const mira::Vec3i& Voxel);
+	// Ensure a region tile's saved edits are loaded from disk into EditStore.
+	void EnsureEditRegionLoaded(const FIntPoint& Region);
+	// Replay the journal's edits for a chunk-column's XZ footprint onto the brickmap.
+	void ApplyEditsToColumn(int32 ccx, int32 ccz);
 
 	// Decode HeightmapFile into ImportedHeightmap and apply the georef/vertical
 	// knobs above. Returns false (and logs) on any load failure. No-op + true when

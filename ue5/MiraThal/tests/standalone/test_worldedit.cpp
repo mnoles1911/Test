@@ -134,6 +134,24 @@ int main() {
         CHECK(b.type_at(Vec3i(20,20,20)) == mat::DIRT, "round-tripped placed block present");
     }
 
+    // ---------------------------------------------------------------------
+    // 6. apply_xz_box: only edits inside the column footprint are replayed.
+    // ---------------------------------------------------------------------
+    {
+        Brickmap bm;
+        bm.set_type(Vec3i(5, 10, 5),   mat::STONE); // inside box
+        bm.set_type(Vec3i(40, 10, 5),  mat::STONE); // outside box (x >= 32)
+
+        WorldEditStore s;
+        s.record(Vec3i(5, 10, 5),  mat::AIR, 0);   // dig inside the column
+        s.record(Vec3i(40, 10, 5), mat::AIR, 0);   // dig in a neighbour column
+
+        // Replay only the [0,32) x [0,32) column footprint.
+        s.apply_xz_box(0, 32, 0, 32, bm);
+        CHECK(bm.type_at(Vec3i(5, 10, 5))  == mat::AIR,   "in-column edit replayed");
+        CHECK(bm.type_at(Vec3i(40, 10, 5)) == mat::STONE, "out-of-column edit NOT replayed (still generated stone)");
+    }
+
     std::printf("[worldedit] %s\n", g_fails == 0 ? "PASS" : "FAIL");
     std::printf("---- %d checks, %d failure(s)\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

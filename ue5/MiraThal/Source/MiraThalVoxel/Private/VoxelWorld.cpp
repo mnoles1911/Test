@@ -3,6 +3,8 @@
 #include "VoxelWorld.h"
 #include "VoxelChunkActor.h"
 #include "HeightmapImport.h"          // MiraHeightmapImport::LoadHeightmapImage
+#include "WorldEditPersistence.h"     // region delta-file I/O (P2)
+#include "Core/RegionFormat.h"        // encode/decode_delta_log (P2)
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/Paths.h"
@@ -88,6 +90,7 @@ void AVoxelWorld::Tick(float DeltaSeconds)
 
 void AVoxelWorld::EndPlay(const EEndPlayReason::Type Reason)
 {
+	SaveEdits(); // flush the player's journalled edits before tearing down
 	ClearWorld();
 	Super::EndPlay(Reason);
 }
@@ -239,6 +242,13 @@ void AVoxelWorld::FillChunkColumn(int32 ccx, int32 ccz)
 		{
 			BM.set_type(Vec3i(wx, Col.ground_y + 1, wz), static_cast<uint8_t>(Col.flora_id));
 		}
+	}
+
+	// P2: replay the player's saved edits for this column on top of the generated
+	// terrain (load-on-demand from disk), so a previously-dug hole comes back.
+	if (bPersistEdits)
+	{
+		ApplyEditsToColumn(ccx, ccz);
 	}
 
 	// Empty column guard (shouldn't happen on land, but keep the map sane).
@@ -408,6 +418,12 @@ void AVoxelWorld::CarveTestHole()
 	std::vector<VoxelWrite> Writes = mining::compute_carve(Box);
 	apply_writes(WorldStore, Writes);
 
+	// Journal each carved voxel's final state so the dig survives reload (P2).
+	if (bPersistEdits)
+	{
+		for (const VoxelWrite& W : Writes) { RecordEdit(W.pos); }
+	}
+
 	for (const Vec3i& C : affected_chunks(Writes))
 	{
 		RemeshChunk(FIntVector(C.x, C.y, C.z));
@@ -436,6 +452,12 @@ void AVoxelWorld::CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal
 
 	std::vector<VoxelWrite> Writes = mining::compute_carve(Box);
 	apply_writes(WorldStore, Writes);
+
+	// Journal each carved voxel's final state so the dig survives reload (P2).
+	if (bPersistEdits)
+	{
+		for (const VoxelWrite& W : Writes) { RecordEdit(W.pos); }
+	}
 
 	for (const Vec3i& C : affected_chunks(Writes))
 	{
@@ -719,5 +741,87 @@ void AVoxelWorld::FloodCarveFromNeighbours(const std::vector<mira::VoxelWrite>& 
 	{
 		// Editor (no tick): settle now so the flood is visible from the button.
 		StepWaterSim(160, WaterStepBudget);
+	}
+}
+
+// ===========================================================================
+// Persistence (P2) — journal the player's edits, replay them on load.
+// ===========================================================================
+void AVoxelWorld::RecordEdit(const mira::Vec3i& Voxel)
+{
+	// Store the voxel's FINAL state (post-carve/place) so replay reproduces it.
+	EditStore.record(Voxel, WorldStore.type_at(Voxel), WorldStore.water_at(Voxel));
+}
+
+void AVoxelWorld::EnsureEditRegionLoaded(const FIntPoint& Region)
+{
+	using namespace mira;
+	if (LoadedEditRegions.Contains(Region))
+	{
+		return; // already attempted this session
+	}
+	LoadedEditRegions.Add(Region);
+
+	std::vector<uint8_t> Bytes;
+	if (!MiraWorldPersist::LoadRegion(WorldSaveName, Region, Bytes))
+	{
+		return; // no file = never-edited region (normal)
+	}
+	std::vector<region::VoxelEdit> Edits;
+	if (region::decode_delta_log(Bytes, Edits))
+	{
+		EditStore.load_region(Vec3i(Region.X, 0, Region.Y), Edits);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[MiraThal] corrupt region delta r_%d_%d.delta — ignored"),
+			Region.X, Region.Y);
+	}
+}
+
+void AVoxelWorld::ApplyEditsToColumn(int32 ccx, int32 ccz)
+{
+	using namespace mira;
+	const Vec3i Origin = coords::chunk_origin_voxel(Vec3i(ccx, 0, ccz));
+	const int x0 = Origin.x, x1 = Origin.x + coords::CHUNK;
+	const int z0 = Origin.z, z1 = Origin.z + coords::CHUNK;
+
+	// Make sure every region tile overlapping this column has been read from disk.
+	const int RS = WorldEditStore::REGION_SIZE;
+	const int rx0 = coords::floor_div(x0, RS), rx1 = coords::floor_div(x1 - 1, RS);
+	const int rz0 = coords::floor_div(z0, RS), rz1 = coords::floor_div(z1 - 1, RS);
+	for (int rx = rx0; rx <= rx1; ++rx)
+	for (int rz = rz0; rz <= rz1; ++rz)
+	{
+		EnsureEditRegionLoaded(FIntPoint(rx, rz));
+	}
+
+	// Replay exactly the edits in this column's footprint onto the brickmap.
+	EditStore.apply_xz_box(x0, x1, z0, z1, WorldStore);
+}
+
+void AVoxelWorld::SaveEdits()
+{
+	using namespace mira;
+	if (!bPersistEdits)
+	{
+		return;
+	}
+	int Saved = 0;
+	for (const Vec3i& R : EditStore.dirty_regions())
+	{
+		const std::vector<region::VoxelEdit> List = EditStore.region_edit_list(R);
+		const std::vector<uint8_t> Bytes = region::encode_delta_log(List);
+		if (MiraWorldPersist::SaveRegion(WorldSaveName, FIntPoint(R.x, R.z), Bytes))
+		{
+			EditStore.mark_clean(R);
+			++Saved;
+		}
+	}
+	if (Saved > 0)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[MiraThal] saved %d edited region(s) -> %s"),
+			Saved, *MiraWorldPersist::WorldDir(WorldSaveName));
 	}
 }

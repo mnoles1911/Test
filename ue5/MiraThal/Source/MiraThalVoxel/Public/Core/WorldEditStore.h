@@ -126,6 +126,31 @@ public:
             bm.set_water(e.voxel, e.water);
         }
     }
+    // Apply only the edits whose X/Z fall in [x0,x1) x [z0,z1) (any Y). This is
+    // what a chunk-column replays AFTER it generates from the EXR, so generation
+    // can't overwrite the player's edits and neighbouring columns aren't touched.
+    // Only the overlapping region buckets are scanned, so it stays cheap.
+    void apply_xz_box(int x0, int x1, int z0, int z1, Brickmap& bm) const {
+        if (x1 <= x0 || z1 <= z0) return;
+        const int rx0 = coords::floor_div(x0,     REGION_SIZE);
+        const int rx1 = coords::floor_div(x1 - 1, REGION_SIZE);
+        const int rz0 = coords::floor_div(z0,     REGION_SIZE);
+        const int rz1 = coords::floor_div(z1 - 1, REGION_SIZE);
+        for (int rx = rx0; rx <= rx1; ++rx)
+        for (int rz = rz0; rz <= rz1; ++rz) {
+            auto it = regions_.find(Vec3i(rx, 0, rz));
+            if (it == regions_.end()) continue;
+            for (const auto& kv : it->second.edits) {
+                const region::VoxelEdit& e = kv.second;
+                if (e.voxel.x >= x0 && e.voxel.x < x1 &&
+                    e.voxel.z >= z0 && e.voxel.z < z1) {
+                    bm.set_type(e.voxel, e.type);
+                    bm.set_water(e.voxel, e.water);
+                }
+            }
+        }
+    }
+
     // Apply every region (used for small worlds / tests).
     void apply_all(Brickmap& bm) const {
         for (const auto& kv : regions_) apply_region(kv.first, bm);
