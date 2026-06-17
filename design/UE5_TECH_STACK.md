@@ -153,25 +153,29 @@ actually on screen). This bridge is how the in-editor checks in §5 step 3 happe
 
 ---
 
-## 8. Milestone ladder (status as of 2026-06-16)
+## 8. Milestone ladder (status as of 2026-06-17)
 
-From `design/UE5_VOXEL_MESHER_PLAN.md`. `✅` = done, `⏳` = next, `—` = planned.
+From `design/UE5_VOXEL_MESHER_PLAN.md`. `✅` = done, `⏳` = next, `—` = planned. The production
+streaming phases (P1–P8) are tracked in `design/UE5_WORLD_STREAMING_PLAN.md`.
 
 | Milestone | What it delivers | Status |
 |---|---|---|
 | **M0** | Mesher foundations: chunk coords, greedy mesher, per-face color. | **✅** |
 | **M1** | AO + LOD + seams + **first render under Lumen**. Perf baseline ≈ **6.4 ms** GPU (7800 XT, empty Lumen scene). | **✅** |
 | **M2** | **Brickmap + generation + carve loop** — multi-chunk generated terrain + live dig with Chaos collision. | **✅** |
-| **M3** | **(a) EXR heightmap import ✅** — import a hand-crafted Gaea `.exr` as the terrain source. **(b) Dynamic water ✅** — `FiniteWaterCore` sim tick: pour/feed water flows down + fills holes bottom-up as cubic voxels; carving next to water floods the opening. **(c) gravity-on-dig** (terrain collapse via `VoxelGravity`) — ⏳ last M3 sub-item. | **◕** |
-| **M4** | **Streaming ✅** — focus-driven chunk-column paging (the 5 km map is explorable). **Persistence / World Partition** — ⏳. | **◐** |
+| **M3** | **(a) EXR heightmap import ✅** · **(b) Dynamic water ✅** (pour/feed flows down + fills holes bottom-up; carving next to water floods the opening) · **(c) gravity-on-dig ✅** (sand/gravel slides when its support is dug; solid stays). | **✅** |
+| **M4** | **Streaming ✅** — focus-driven chunk-column paging (5 km map explorable). **Persistence ✅** — edit-journal region files (digs survive reload). World Partition + async = P-phases. | **✅** |
 | **M5** | Multiplayer (server-authoritative edits). **Deferred to last** (per direction). | — |
 | **M6** | Cold → **Nanite** bake. | — |
-| **M7** | Far-field ray-march horizon (CPU oracle `Brickmap::raycast_solid` is the parity spec). | — |
+| **M7** | Far-field ray-march horizon (CPU oracle `Brickmap::raycast_solid` pinned by `test_raymarch`). | — |
 | **M8** | GPU meshing + GPU world generation. | — |
 
-**Build order note (2026-06-16):** M5 multiplayer is intentionally deferred to the very end; M3-sim,
-M6, M7, M8 come first. The EXR-import half of M3 was prioritised because the designer has a 5 km Gaea
-heightmap to bring in.
+**Production phases (P1–P8)** toward the full 5 km roaming world (`design/UE5_WORLD_STREAMING_PLAN.md`):
+**P4 far-heightmesh vista ✅** (whole-map silhouette from high points), **P2 edit persistence ✅**.
+Next: **P1 async streaming** (worker-thread gen/mesh) and **P3 voxel LOD** (mid-band downsample), then
+the GPU phases (pulled forward per the designer's flight + voxel-accurate-vista direction).
+
+**Build order note:** M5 multiplayer is deferred to the very end; the GPU phases (M6/M7/M8) come first.
 
 ---
 
