@@ -220,18 +220,17 @@ UStaticMesh* BuildNaniteStaticMeshFromMesh(const mira::MeshBuffers& Mb,
 		return nullptr;
 	}
 
-	// ---- Step 4: compute TANGENTS only; KEEP our flat per-face normals --------
-	// RESOLVED // VERIFY (b) — flat-shaded cubes.
-	// Our cubes are flat-shaded: the mesher already gave every corner the correct
-	// outward FACE normal, and we want to KEEP those (blending or recomputing normals
-	// would round the cube edges and change the lighting vs the live near band). Nanite
-	// + the material still need TANGENTS, so we ask only for tangents (MikkTSpace), and
-	// deliberately do NOT pass EComputeNTBsFlags::Normals so our supplied normals stand.
-	// (Per UE 5.7 StaticMeshOperations.h: Normals = force-recompute normals; Tangents =
-	//  force-recompute tangents; UseMikkTSpace = the tangent basis to use.)
-	FStaticMeshOperations::ComputeTangentsAndNormals(
-		MeshDescription,
-		EComputeNTBsFlags::Tangents | EComputeNTBsFlags::UseMikkTSpace);
+	// ---- Step 4: (normals + tangents are computed by the build, below) --------
+	// We deliberately do NOT call FStaticMeshOperations::ComputeTangentsAndNormals here. In this
+	// UE 5.7 build that helper asserts `TriangleNormals.Num() > 0` — it requires the per-triangle
+	// normals to be pre-populated, and computes nothing when they're absent, regardless of the
+	// EComputeNTBsFlags passed. Because the assert is an appError (not a C++ exception) the
+	// per-tile try/catch can't catch it, so it took the whole editor down on the first tile.
+	// Instead we let StaticMesh->Build() compute normals + tangents through the engine's own
+	// (battle-tested) mesh-build pipeline — the same path every imported static mesh uses — by
+	// setting bRecomputeNormals/Tangents in the build settings below. The mesher emits NON-SHARED
+	// vertices per face, so recomputed normals stay per-face (90 deg voxel edges remain hard), and
+	// the far crust still reads as blocky terrain matching the near band.
 
 	// ---- Step 5: create the UStaticMesh and turn on Nanite --------------------
 	// Do NOT call InitResources() here — BuildFromMeshDescriptions() calls it for us
@@ -281,18 +280,11 @@ UStaticMesh* BuildNaniteStaticMeshFromMesh(const mira::MeshBuffers& Mb,
 	StaticMesh->CreateMeshDescription(0, MeshDescription);
 
 	FMeshBuildSettings& LODBuild = StaticMesh->GetSourceModel(0).BuildSettings;
-	// NORMALS/TANGENTS — the crash fix. The previous setup kept our supplied normals
-	// (bRecomputeNormals=false) but asked the build to recompute tangents
-	// (bRecomputeTangents=true). The tangent step needs per-TRIANGLE normals as input, and
-	// with normal-recompute OFF those are never computed — so Build() hit a fatal engine
-	// assert (StaticMeshOperations: `TriangleNormals.Num() > 0`). That's an appError, NOT a
-	// C++ exception, so the per-tile try/catch can't catch it -> it took the whole editor down.
-	// Fix: let the build recompute normals (which also computes the triangle normals the
-	// tangent step needs). This does NOT round our cube edges: the greedy mesher emits
-	// non-shared vertices per face, and the build's hard-edge angle threshold keeps 90° voxel
-	// edges sharp — so the far crust still reads as blocky terrain, just built robustly.
-	LODBuild.bRecomputeNormals  = true;  // compute normals (+ the triangle normals tangents need)
-	LODBuild.bRecomputeTangents = true;  // and tangents from those
+	// Let the engine's build pipeline compute normals + tangents (see Step 4). This is the robust
+	// path that correctly derives per-triangle normals first, so it never hits the assert that the
+	// manual helper does. Non-shared per-face verts keep 90 deg voxel edges hard.
+	LODBuild.bRecomputeNormals  = true;  // engine computes normals (incl. the triangle normals)
+	LODBuild.bRecomputeTangents = true;  // and MikkTSpace tangents from them
 	LODBuild.bUseMikkTSpace     = true;  // standard tangent basis
 	LODBuild.bRemoveDegenerates = true;  // drop any zero-area tris defensively
 	LODBuild.bBuildReversedIndexBuffer = true;

@@ -255,7 +255,12 @@ UVoxelBakeManifest* BakeWorldCrust(AVoxelWorld* World,
 
 	// ---- STEP B: SERIALLY consume payloads on the game/editor thread (UObject build +
 	//      package save are not thread-safe). Build the Nanite mesh, save it, record it. ----
-	UVoxelBakeManifest* Manifest = NewObject<UVoxelBakeManifest>(GetTransientPackage());
+	// RF_Public | RF_Standalone so SavePackage actually persists the manifest. Without these
+	// flags the save is skipped ("does not have any of the provided object flags ... would cause
+	// data loss") and the runtime streamer then has no manifest to load the baked tiles from.
+	// Created in the transient package, then Rename()d into the real manifest package before save.
+	UVoxelBakeManifest* Manifest = NewObject<UVoxelBakeManifest>(
+		GetTransientPackage(), NAME_None, RF_Public | RF_Standalone);
 	Manifest->WorldSaveName  = WorldSaveName;
 	Manifest->TileSpanVoxels = TileSpan;
 
