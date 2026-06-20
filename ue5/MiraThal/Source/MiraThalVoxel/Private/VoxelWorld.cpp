@@ -1723,31 +1723,63 @@ void AVoxelWorld::TickStreaming()
 		MeshOpsThisTick += MeshApplied; // TOOL 2: chunk meshes uploaded this tick
 	}
 
-	// HERO-COLUMN LOD0 PRIORITY (Step 1: "the ground under your feet is always sharp"). Force the
-	// column(s) directly under / immediately around the player to full detail (LOD0) RIGHT NOW,
-	// bypassing the async mesh queue entirely, so a tile you just walked onto is never left at
-	// coarse LOD while the far-band pipeline is backed up (the exact LOD0-doesn't-catch-up bug).
-	// We SYNC-mesh the nearest HeroRadiusChunks rings at LOD0 with a SMALL reserved budget
-	// (separate from MeshBudget); kept tiny so this guaranteed-sharp work can't blow the frame.
-	// A column already meshed at LOD0 is skipped, so when you stand still this costs nothing.
+	// HERO-COLUMN LOD0 PRIORITY (Step 1, hardened for MOVEMENT). Force the columns nearest the
+	// player — and, when moving, the ones in the VIEW (forward) direction — to full detail (LOD0)
+	// RIGHT NOW, ahead of everything else. This is the "LOD0 must catch up under you as you move"
+	// fix. Two things the first version got wrong when moving:
+	//   (1) it DEFERRED to any in-flight async mesh. But a column you walk onto was usually
+	//       enqueued at a COARSE LOD while it was still a ring away, so deferring meant you stared
+	//       at LOD1/2 until that slow async job landed. Now we CANCEL the in-flight/pending coarse
+	//       job for the column and sync-mesh LOD0 immediately; the abandoned worker result is
+	//       simply discarded (HarvestColumnMesh only applies entries still in PendingMesh).
+	//   (2) it processed cells in plain nearest order. Now, when view-prioritized streaming is on,
+	//       we sort each ring's cells FORWARD-first (the harness-locked view_priority_key) so the
+	//       budget is spent on what you're looking at before what's behind you.
+	// SYNC-meshed on a small reserved budget (separate from MeshBudget); with surface-volume each
+	// column is only a thin shell, so a dozen LOD0 columns/frame is cheap. Already-LOD0 columns are
+	// skipped, so standing still costs nothing.
 	if (bHeroColumnPriority)
 	{
 		int32 HeroBudget = HeroColumnBudget;
+		const bool bHeroViewBias = bViewPrioritizedStreaming &&
+			(FocusForwardXZ.X != 0.0f || FocusForwardXZ.Y != 0.0f);
 		TArray<FIntPoint> HeroCells;
 		for (int ring = 0; ring <= HeroRadiusChunks && HeroBudget > 0; ++ring)
 		{
-			CollectRing(ring, Focus, HeroCells); // nearest, spawn-safe order (view-sort skips ring<=1)
+			CollectRing(ring, Focus, HeroCells); // nearest, spawn-safe order
+			// View-direction bias for the hero band: forward cells first (CollectRing only
+			// view-sorts ring>1, so we sort the small near rings here too — these are the ones
+			// "ahead of the player" the user wants prioritized).
+			if (bHeroViewBias && ring >= 1)
+			{
+				const float Bias = ViewBiasChunks;
+				const FVector2D Fwd = FocusForwardXZ;
+				HeroCells.Sort([Bias, Fwd](const FIntPoint& A, const FIntPoint& B)
+				{
+					const float ka = mira::viewpriority::view_priority_key(A.X, A.Y, Fwd.X, Fwd.Y, Bias);
+					const float kb = mira::viewpriority::view_priority_key(B.X, B.Y, Fwd.X, Fwd.Y, Bias);
+					if (ka != kb) { return ka < kb; }
+					if (A.X != B.X) { return A.X < B.X; }
+					return A.Y < B.Y;
+				});
+			}
 			for (const FIntPoint& Cell : HeroCells)
 			{
 				if (HeroBudget <= 0) { break; }
 				const FIntPoint Col(Focus.X + Cell.X, Focus.Y + Cell.Y);
-				if (!FilledColumns.Contains(Col))      { continue; } // voxels not generated yet
-				if (InFlightMeshColumns.Contains(Col)) { continue; } // a worker is already on it
+				if (!FilledColumns.Contains(Col)) { continue; } // voxels not generated yet (prefetch leads)
 				const int32* CurLod = ColumnLod.Find(Col);
-				// Hero band renders at LOD0; nothing to do if it's already meshed there.
-				const bool bNeeds = !MeshedColumns.Contains(Col) || (CurLod && *CurLod != 0);
-				if (!bNeeds) { continue; }
-				// Synchronous mesh: no queue, no wait — the tile is sharp THIS frame.
+				// Already sharp? nothing to do (this is why standing still is free).
+				if (MeshedColumns.Contains(Col) && CurLod && *CurLod == 0) { continue; }
+				// CANCEL any in-flight / queued async mesh for this column so its (coarse) result
+				// can't land later and clobber the LOD0 we're about to commit. The worker keeps
+				// running but its result is dropped (no PendingMesh entry left to harvest).
+				if (InFlightMeshColumns.Contains(Col))
+				{
+					InFlightMeshColumns.Remove(Col);
+					PendingMesh.RemoveAll([&Col](const FPendingMesh& P) { return P.Key == Col; });
+				}
+				// Synchronous mesh at full detail: no queue, no wait — sharp THIS frame.
 				MeshChunkColumn(Col.X, Col.Y, /*Lod=*/0, ring);
 				DirtyRemeshColumns.Remove(Col);
 				++MeshOpsThisTick; // TOOL 2: count the hero mesh as visible work this tick

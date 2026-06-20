@@ -39,8 +39,8 @@
 		{
 			"Name": "MiraThalVoxelRender",
 			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"//comment": "P7/P8 GPU voxel raymarch/mesh. LoadingPhase Default (NOT PostConfigInit) + all render hooks gated behind default-off cvar r.MiraThal.GpuRaymarch so the editor always launches; raymarch is enabled live at runtime.",
+			"LoadingPhase": "PostConfigInit",
+			"//comment": "P7/P8 GPU voxel raymarch/mesh. MUST be PostConfigInit because the module declares GLOBAL SHADER types (the engine asserts !AreShaderTypesInitialized() otherwise). StartupModule only maps the shader dir; the SceneViewExtension stays unregistered so nothing renders until the GPU path is wired live.",
 			"AdditionalDependencies": [
 				"Engine"
 			]

@@ -250,12 +250,15 @@ public:
 	// entirely) so the tile under you is guaranteed sharp. Kept tiny so the frame cost is bounded.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming")
 	bool bHeroColumnPriority = true; // ON: never let the column under the player lag at coarse LOD
-	// Chebyshev ring radius of the hero band (1 = the 3×3 columns around you). Keep small.
+	// Chebyshev ring radius of the hero band (2 = a 5×5 area around you). With view-bias on, the
+	// budget below is spent forward-first within this band, so "under you + a step ahead" stays
+	// sharp while moving. Cheap because surface-volume makes each column a thin shell.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "0", ClampMax = "4"))
-	int32 HeroRadiusChunks = 1;
-	// Max hero columns force-meshed per frame (caps the guaranteed-sharp work; 9 = a full 3×3).
+	int32 HeroRadiusChunks = 2;
+	// Max hero columns force-meshed (sync, LOD0) per frame — the cap on guaranteed-sharp work.
+	// Spent nearest-then-forward, so it covers what's under you and just ahead of you first.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "49"))
-	int32 HeroColumnBudget = 9;
+	int32 HeroColumnBudget = 12;
 
 	// --- SUPER-CHUNK sweep CADENCE cap (Step 1: stop the idle-frame far-band cost) ---
 	// The super-chunk ENQUEUE ring sweep scans the whole far field (thousands of cells, each an
@@ -281,7 +284,7 @@ public:
 	//     locked (Core/ViewPriority.h). DEFAULT OFF — with the flag off the fill +
 	//     mesh selection is byte-for-byte today's order. ---
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
-	bool bViewPrioritizedStreaming = false; // DEFAULT OFF — streaming order unchanged
+	bool bViewPrioritizedStreaming = true; // ON: load/mesh what you're looking at first (forward-biased)
 
 	// Strength of the forward bias, in CHUNKS: the most a perfectly-forward chunk's
 	// effective distance is discounted (and a perfectly-behind chunk penalised). Keep
