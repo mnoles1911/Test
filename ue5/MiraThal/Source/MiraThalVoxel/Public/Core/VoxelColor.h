@@ -114,4 +114,67 @@ inline Rgb8 shaded_color(int material_id, FaceDir dir) {
     return Rgb8{ ch(c.r), ch(c.g), ch(c.b) };
 }
 
+// ---------------------------------------------------------------------------
+// lod_debug_color — DIAGNOSTIC palette: one flat, vivid color per LOD LEVEL.
+//
+// This is a DEBUG-ONLY render override (cvar `mira.LodDebug` on the UE side). It
+// has NOTHING to do with a voxel's material — when the tester flips the cvar, the
+// terrain is recolored by which LOD a chunk loaded at, so the concentric LOD rings
+// are visible at a glance. It NEVER touches voxel/brick data; it is only written
+// into the mesh-upload vertex color in place of the real albedo.
+//
+// COLOR CHOICE (important — read this if you ever wonder why these bytes):
+//   The UE terrain material takes the vertex color as if it were sRGB and decodes
+//   it to linear with Power(2.2) before using it as BaseColor. So a stored byte
+//   value v ends up on screen at roughly (v/255)^2.2. We WANT vivid, clearly-
+//   distinct hues, so we just store strong primaries/secondaries near 0 or 255 in
+//   each channel: 255 stays ~1.0 after decode, 0 stays 0.0, so the hue survives the
+//   Power(2.2) cleanly (only mid-grays get pulled dark, and we avoid those). The
+//   ramp green->yellow->orange->red->magenta is the same "cool=near, hot=far" ramp
+//   the Godot build used, so the designer reads it the same way.
+//
+//   PER-CHUNK LODs (is_super = false) use the bright ramp:
+//     L0 = green        (near / finest)
+//     L1 = yellow-green
+//     L2 = yellow
+//     L3 = orange
+//     L4 = red
+//     L5 = magenta      (far / coarsest per-chunk)
+//
+//   SUPER-CHUNK LODs (is_super = true) use a BLUE-SHIFTED, darker variant of the
+//   same ramp so a super tile is never confused with a per-chunk tile at the same
+//   LOD number — supers always read "cooler / bluer":
+//     L0 = teal         L1 = cyan        L2 = sky-blue
+//     L3 = blue         L4 = indigo      L5 = violet
+//
+// `lod` is clamped to [0,5]. AO (the vertex alpha) is left untouched by the caller,
+// so the debug terrain still gets the same fake-AO shading the real terrain has.
+// ---------------------------------------------------------------------------
+inline Rgb8 lod_debug_color(int lod, bool is_super) {
+    if (lod < 0) lod = 0;
+    if (lod > 5) lod = 5;
+
+    if (!is_super) {
+        // Per-chunk: bright green -> magenta ramp (cool=near, hot=far).
+        switch (lod) {
+            case 0: return Rgb8{   0, 255,   0 }; // green
+            case 1: return Rgb8{ 160, 255,   0 }; // yellow-green
+            case 2: return Rgb8{ 255, 255,   0 }; // yellow
+            case 3: return Rgb8{ 255, 140,   0 }; // orange
+            case 4: return Rgb8{ 255,   0,   0 }; // red
+            default:return Rgb8{ 255,   0, 255 }; // L5 magenta
+        }
+    }
+
+    // Super-chunk: blue-shifted cool ramp, so per-chunk vs super is unmistakable.
+    switch (lod) {
+        case 0: return Rgb8{   0, 200, 180 }; // teal
+        case 1: return Rgb8{   0, 220, 255 }; // cyan
+        case 2: return Rgb8{   0, 140, 255 }; // sky-blue
+        case 3: return Rgb8{   0,  60, 255 }; // blue
+        case 4: return Rgb8{  90,   0, 255 }; // indigo
+        default:return Rgb8{ 160,   0, 255 }; // L5 violet
+    }
+}
+
 } // namespace mira

@@ -1,8 +1,9 @@
 # UE5 Voxel Backend Evaluation (cubic spike)
 
 **Status:** SPIKE COMPLETE — decision record. **Outcome realized:** we built the custom cubic mesher on
-our Core, and as of **2026-06-16** it has shipped **M0/M1/M2** (foundations → first chunk under Lumen →
-brickmap + generation + dig loop). Triggered because the originally-chosen Voxel Plugin Pro turned out
+our Core, and as of **2026-06-17** it has shipped **M0/M1/M2** (foundations → first chunk under Lumen →
+brickmap + generation + dig loop), with **M3 (water + flora + gravity wiring) in active build now**.
+Triggered because the originally-chosen Voxel Plugin Pro turned out
 **not to support cubic terrain** (see below). Designer constraint reaffirmed: **true blocky 10cm cubes
 are core visual identity, non-negotiable.** Companion to `UE5_TECH_STACK.md` (canonical stack) and
 `UE5_VOXEL_MESHER_PLAN.md` (the build plan this spike fed into).

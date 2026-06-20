@@ -7,6 +7,7 @@
 
 #include <algorithm> // std::sort, std::min, std::max
 #include <climits>   // INT_MAX
+#include <iterator>  // std::next (forget_region prune loops)
 
 namespace mira {
 
@@ -153,7 +154,7 @@ int FiniteWaterCore::units_at(const Vec3i& pos) const {
 }
 
 int FiniteWaterCore::conservation_delta() const {
-    return total_units() - (placed - evaporated - absorbed - merged - removed);
+    return total_units() - (placed - evaporated - absorbed - merged - removed - forgotten);
 }
 
 FiniteWaterCore::Stats FiniteWaterCore::stats() const {
@@ -165,7 +166,57 @@ FiniteWaterCore::Stats FiniteWaterCore::stats() const {
     s.absorbed   = absorbed;
     s.merged     = merged;
     s.removed    = removed;
+    s.forgotten  = forgotten;
     return s;
+}
+
+// ----------------------------------------------------------------------------
+// forget_region — STREAMING SUPPORT (additive; never called by step_cell).
+// Release every per-cell map entry inside the inclusive AABB and tally the
+// dropped units into `forgotten` so the conservation audit still balances. This
+// keeps the live ledger bounded to the near band when the streaming layer evicts
+// a column/region; the projected DATA5 bytes already in the world store are NOT
+// touched (that is the world's job — only the sim forgets here).
+// ----------------------------------------------------------------------------
+void FiniteWaterCore::forget_region(const Vec3i& lo, const Vec3i& hi) {
+    // Normalise the corners so a caller passing them in any order still works.
+    const int xlo = mini(lo.x, hi.x), xhi = maxi(lo.x, hi.x);
+    const int ylo = mini(lo.y, hi.y), yhi = maxi(lo.y, hi.y);
+    const int zlo = mini(lo.z, hi.z), zhi = maxi(lo.z, hi.z);
+
+    auto inside = [&](const Vec3i& p) {
+        return p.x >= xlo && p.x <= xhi &&
+               p.y >= ylo && p.y <= yhi &&
+               p.z >= zlo && p.z <= zhi;
+    };
+
+    // Tally + drop the ledger entries first (that is where the units live).
+    for (auto it = _ledger.begin(); it != _ledger.end();) {
+        if (inside(it->first)) {
+            forgotten += it->second; // units leave the live books (audited)
+            it = _ledger.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Drop the parallel bookkeeping maps so no stale entry outlives the ledger.
+    auto prune = [&](std::unordered_map<Vec3i, int>& m) {
+        for (auto it = m.begin(); it != m.end();) {
+            it = inside(it->first) ? m.erase(it) : std::next(it);
+        }
+    };
+    auto prune_b = [&](std::unordered_map<Vec3i, bool>& m) {
+        for (auto it = m.begin(); it != m.end();) {
+            it = inside(it->first) ? m.erase(it) : std::next(it);
+        }
+    };
+    prune(_dist);
+    prune(_evap_ttl);
+    prune(_dir);
+    prune_b(_active);
+    prune_b(_merged_sources);
+    prune_b(_external_changed);
 }
 
 std::string FiniteWaterCore::state_signature() const {

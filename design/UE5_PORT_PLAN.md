@@ -1,9 +1,11 @@
 # UE5 Port Plan — Mira-Thal (Godot 4.6 → Unreal Engine 5)
 
-**Status:** IN PROGRESS — the port is **underway, not proposed**. As of **2026-06-16** the UE5 voxel
+**Status:** IN PROGRESS — the port is **underway, not proposed**. As of **2026-06-17** the UE5 voxel
 foundation is built: **M0 ✅ (mesher foundations), M1 ✅ (first chunk rendered under Lumen, baseline
 ≈ 6.4 ms GPU on a 7800 XT), M2 ✅ (brickmap + heightmap generation + live dig/carve loop with Chaos)**.
-Engine = **Unreal Engine 5.7** (custom source build at `D:/UE5/UE_5.7`), language = **C++**. This is a
+**M3 (water + flora + gravity wiring), EXR heightmap import, and the production streaming phases
+(P1–P4) are in active build right now (2026-06-17).** Engine = **Unreal Engine 5.7** (custom source
+build at `D:/UE5/UE_5.7`), language = **C++**. This is a
 strategy/scoping document; for "what the stack is *now*" read **`UE5_TECH_STACK.md`** (canonical), and
 for the build/milestone detail **`UE5_VOXEL_MESHER_PLAN.md`**. Claude Code is the lead developer.
 
@@ -54,7 +56,8 @@ geometry; it does not love meshes that regenerate every time the player digs. Th
 rendering split for "true blocky 10cm cubes" is:
 
 - **Near / editable band (our custom cubic greedy mesher):** standard greedy-meshed chunk meshes with
-  Lumen lighting + a triplanar material atlas. This is where mining/water/destruction live. **Not Nanite.**
+  Lumen lighting + ~~a triplanar material atlas~~ **per-face solid color baked into vertex color**
+  (atlas dropped — see the texturing update above). This is where mining/water/destruction live. **Not Nanite.**
 - **Far / static band:** Nanite for baked distant terrain skirt, static props (trees that aren't
   being chopped, rocks, structures), and set dressing. Nanite + Lumen carry the photoreal horizon.
 - **Lumen everywhere:** dynamic GI + reflections on both bands; this is the single biggest visual
@@ -79,7 +82,7 @@ smooth far" — so we keep the rendering layer swappable.
 | `_can_take_input()` gate | `Role == ROLE_AutonomousProxy` / `IsLocallyControlled()` | UE replication gives this for free |
 | Zylann VoxelLodTerrain | **Custom cubic greedy mesher** in `MiraThalVoxel` + World Partition streaming | Voxel Plugin 2 dropped cubic; we own the mesher (see `UE5_VOXEL_BACKEND_EVALUATION.md`) |
 | `voxel_gen` GDExtension (gen/gravity/water/biome/emissive) | UE5 C++ inside our voxel module (the `Core/` layer) | Pure logic ports nearly 1:1; **done + harness-locked** |
-| `VoxelEditManager` (single write gateway + async budget + NoEditZone + MP RPC) | `UVoxelEditSubsystem` wrapping Voxel Plugin's edit API | Keep the single-gateway discipline; MP via UE RPCs |
+| `VoxelEditManager` (single write gateway + async budget + NoEditZone + MP RPC) | `UVoxelEditSubsystem` / `AVoxelWorld::CarveAtWorld` over our own brickmap | Keep the single-gateway discipline; MP via UE RPCs |
 | `VoxelScale.gd` (10 vox/m SSOT) | `UVoxelScaleSettings` (`UDeveloperSettings`) | Single source of truth, config-exposed |
 | Material ids 1–28 (terrain/water/flora/detail) | `UDataAsset` registry + material-index table | **Per-face solid color** (`Core/VoxelColor.h`, vertex-color baked) — *atlas dropped*; keep id ranges (water 16–23, flora 24–26, detail 27–28) |
 | Finite water sim (`FiniteWaterCore` ledger + `WaterByteCodec`) | C++ `FFiniteWaterCore` in voxel module | Pure, SceneTree-free already → ports cleanly; render via custom water surface material |
@@ -128,7 +131,7 @@ Goal: one biome, end-to-end core loop, proving the engine choices. Everything he
    this is the engine-bet make-or-break, detailed in `UE5_RENDERING_STRATEGY.md` §6 (targets/budget
    in §5). Each spike is
    isolated and captured with **Unreal Insights** against a target frame budget:
-   - **6.0 — Baseline.** Voxel Plugin greedy mesh + Lumen under heavy sustained carving. *Pass:* frame
+   - **6.0 — Baseline.** Our custom cubic greedy mesh + Lumen under heavy sustained carving. *Pass:* frame
      holds budget during the worst carve; record mesh-rebuild ms. **This single number gates the port.**
    - **6.A — GPU meshing.** Move re-mesh to a compute pass; re-mesh only the ~3³ affected bricks.
      *Pass:* edit stall drops vs baseline, no visual regression.
@@ -165,9 +168,9 @@ Generation: all 5 biomes (`BiomeProfile` → DataAssets), trees (8m lattice, des
 flora R4 (ids 24–26) + micro-detail D1 (ids 27–28), ore/disk scatter, distant terrain rings +
 Nanite skirt, far-grass impostors (hash-continuity handoff), sky panoramas/time-of-day, full water
 (rivers `RiverFlowVolume`, biome water zones, foam D4, underwater filter). Port remaining C++:
-`DistantTerrainMesher`, emissive (evaluate Lumen-emissive-only first). Save/load: Voxel Plugin save
-format for terrain deltas + JSON sidecars for entities, mirroring `VoxelStreamSQLite` +
-`entities.json`.
+`DistantTerrainMesher`, emissive (evaluate Lumen-emissive-only first). Save/load: our own
+`RegionFormat` edit-delta store (`WorldEditStore`/`WorldEditPersistence`) for terrain deltas + JSON
+sidecars for entities, mirroring `VoxelStreamSQLite` + `entities.json`.
 
 ## Phase 2 — RPG & combat to parity
 
@@ -221,9 +224,9 @@ Design docs to honor (rules, not code): `design/PATTERNS_AND_GOTCHAS.md`,
 - **Skills system:** roll our own data-driven `USkillSubsystem` (closest to current design, full
   control) **vs** Unreal Gameplay Ability System (GAS) (powerful, replication-ready, steeper). Lean:
   custom subsystem for parity speed; revisit GAS if MP demands it.
-- **Voxel Plugin licensing/seats** for a Claude-led + designer workflow — confirm terms before deep investment.
+- ~~**Voxel Plugin licensing/seats**~~ — **resolved/moot:** Voxel Plugin was dropped (cubic unsupported); we own the mesher, no third-party seats.
 - **Dialogue plugin** choice (open-source UE dialogue plugin vs custom subsystem) — decide in Phase 3.
-- **UE version pin** (latest 5.x at Phase 0 start) and whether to track or freeze.
+- ~~**UE version pin**~~ — **resolved:** pinned to **UE 5.7** (custom source build at `D:/UE5/UE_5.7`).
 
 ---
 

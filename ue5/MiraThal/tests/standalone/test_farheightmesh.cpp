@@ -107,6 +107,69 @@ int main() {
     }
 
     // ---------------------------------------------------------------------
+    // 3b. CONSERVATIVE (always-below) sampling — the poke-through fix.
+    //   On a CONVEX synthetic terrain (a smooth ridge), the min-over-footprint
+    //   height must be <= the single-point sample at every vertex, must EQUAL it
+    //   on a flat map, and must never exceed the true ground at any fine column
+    //   inside the vertex's footprint (the no-overshoot invariant).
+    // ---------------------------------------------------------------------
+    {
+        // A convex ridge: height(wx) peaks at wx=0 and falls off as -(wx^2 scaled).
+        // Concave-up between samples is the worst case for the coarse mesh bulging.
+        auto ridge = [](int wx, int) {
+            // Inverted parabola -> convex hilltop; integer voxels.
+            const double h = 1000.0 - 0.5 * static_cast<double>(wx) * static_cast<double>(wx) * 0.001;
+            return static_cast<int>(std::floor(h));
+        };
+        auto grass = [](int, int) { return base_color(mat::GRASS); };
+
+        // Use a big map so cells span many voxels (footprint actually scans a range).
+        ImageHeightmap hm;
+        hm.width = 64; hm.height = 64; hm.data.assign(64 * 64, 0.f);
+        hm.voxels_per_pixel = 50.0;          // 3200-voxel span
+        hm.set_centered_extent(3200.0, 3200.0);
+        const int N = 17;                    // coarse grid -> ~200 vox/cell
+
+        FarHeightmesh single = build_far_heightmesh(hm, N, ridge, grass, /*footprint*/1);
+        FarHeightmesh minM   = build_far_heightmesh(hm, N, ridge, grass, /*footprint*/3);
+        CHECK(single.valid() && minM.valid(), "both meshes valid");
+        CHECK(single.vertex_count() == minM.vertex_count(), "same vertex count");
+
+        // (a) min-over-footprint <= single-sample at EVERY vertex on a convex map.
+        bool min_le_single = true;
+        // (b) strictly lower at SOME interior vertex (proves the min actually bit).
+        bool strictly_lower_somewhere = false;
+        for (int k = 0; k < single.vertex_count(); ++k) {
+            if (minM.vertices[k].py > single.vertices[k].py + 1e-3f) min_le_single = false;
+            if (minM.vertices[k].py < single.vertices[k].py - 1e-3f) strictly_lower_somewhere = true;
+        }
+        CHECK(min_le_single, "convex: min-over-footprint <= single-sample everywhere");
+        CHECK(strictly_lower_somewhere, "convex: min is strictly lower at some vertex");
+
+        // (c) NO-OVERSHOOT INVARIANT: each conservative vertex height must be <= the
+        //     true ground at its OWN world point (the chord can only go lower than the
+        //     vertices, and each vertex is at/below the real surface there).
+        bool no_overshoot = true;
+        for (const FarMeshVertex& v : minM.vertices) {
+            const int true_ground = ridge(static_cast<int>(std::llround(v.px)),
+                                           static_cast<int>(std::llround(v.pz)));
+            if (v.py > true_ground + 1e-3f) no_overshoot = false;
+        }
+        CHECK(no_overshoot, "no-overshoot: every vertex sits at/below true ground");
+
+        // (d) FLAT map: min == single (min of equal values changes nothing).
+        ImageHeightmap flat = hm;
+        auto level = [](int, int) { return 250; };
+        FarHeightmesh fSingle = build_far_heightmesh(flat, N, level, grass, 1);
+        FarHeightmesh fMin    = build_far_heightmesh(flat, N, level, grass, 4);
+        bool flat_equal = true;
+        for (int k = 0; k < fSingle.vertex_count(); ++k) {
+            if (!approx(fSingle.vertices[k].py, fMin.vertices[k].py)) flat_equal = false;
+        }
+        CHECK(flat_equal, "flat map: conservative min equals single-sample");
+    }
+
+    // ---------------------------------------------------------------------
     // 4. Invalid inputs -> invalid mesh.
     // ---------------------------------------------------------------------
     {

@@ -2,10 +2,11 @@
 
 **Status:** PARTLY REALIZED (decision record for the UE5 port). Companion to `UE5_TECH_STACK.md`,
 `UE5_PORT_PLAN.md`, `UE5_VOXEL_MESHER_PLAN.md`. Drives the Phase 0 "dig-under-Lumen perf gate" — the
-spikes and measurement criteria below are the gate's content. **As of 2026-06-16, M1 (first chunk under
+spikes and measurement criteria below are the gate's content. **As of 2026-06-17, M0/M1 (first chunk under
 Lumen, baseline ≈ 6.4 ms GPU on a 7800 XT for an empty Lumen scene) and M2 (brickmap + generation + dig
-loop) are built;** the Baseline render path (greedy mesh + Lumen) is the shipped near-band, with the
-ray-march far band (spike C) and Nanite cold-bake (spike B) still ahead (M6/M7).
+loop) are built; M3 (water/flora/gravity wiring) + EXR heightmap import + the production streaming phases
+(P1–P4) are in active build right now;** the Baseline render path (greedy mesh + Lumen) is the shipped
+near-band, with the ray-march far band (spike C) and Nanite cold-bake (spike B) still ahead (M6/M7).
 
 > ### Texturing decision (NEW, 2026-06-16): per-face SOLID COLOR — supersedes the atlas
 >
@@ -13,8 +14,9 @@ ray-march far band (spike C) and Nanite cold-bake (spike B) still ahead (M6/M7).
 > surface. **That is dropped.** The shipped look is **per-face solid color**: each voxel face is one flat
 > color = `base_color(material)` × `face_shade(direction)` (six fixed directional shades — top brightest,
 > bottom darkest — so cubes read as 3D before any dynamic light). The mesher **bakes that color into
-> vertex color**; AO rides in vertex **alpha**. The UE material **`M_VoxelTerrain`** is simply
-> **VertexColor → BaseColor** — no textures, no UVs, no atlas. At 10 cm a face is tiny on screen, flat
+> vertex color**; AO rides in vertex **alpha**. The UE material **`M_VoxelTerrainV2`** (canonical) is
+> essentially **VertexColor → BaseColor** (with an sRGB-decode; see `UE5_VOXEL_MATERIAL_SETUP.md`) — no
+> textures, no UVs, no atlas. At 10 cm a face is tiny on screen, flat
 > color reads cleaner, and it lets **Lumen** do all the dynamic lighting. Palette = the old Godot
 > per-material colors, in `Core/VoxelColor.h`. Wherever "atlas" / "triplanar" / "Runtime Virtual Texture
 > (terrain)" appears below, read it as **the superseded plan**. See `UE5_TECH_STACK.md` §6.

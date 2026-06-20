@@ -61,6 +61,24 @@ public:
     double vertical_scale_voxels = 1000.0;
     double vertical_base_voxels  = 0.0;
 
+    // -------------------------------------------------------------------------
+    // normalize_to_unit — stretch the raw values so the LOWEST becomes 0.0 and the
+    // HIGHEST becomes 1.0, in place. Gaea EXRs often only fill part of the 0..1 range
+    // (e.g. peaks at 0.31), which makes the terrain look flat when multiplied by a
+    // fixed altitude. After this call, value 1.0 == the tallest point in the map, so
+    // `vertical_scale_voxels` (altitude × 10) means literally "real-world height of the
+    // highest peak". A perfectly flat map (max==min) is left unchanged (no div-by-zero).
+    // -------------------------------------------------------------------------
+    void normalize_to_unit() {
+        if (data.empty()) return;
+        float lo = data[0], hi = data[0];
+        for (float v : data) { if (v < lo) lo = v; if (v > hi) hi = v; }
+        const float range = hi - lo;
+        if (range <= 1e-8f) return; // flat (or single value) — nothing to stretch
+        const float inv = 1.0f / range;
+        for (float& v : data) { v = (v - lo) * inv; }
+    }
+
     // Usable only once the engine has filled a matching-size grid.
     bool valid() const {
         return width > 0 && height > 0

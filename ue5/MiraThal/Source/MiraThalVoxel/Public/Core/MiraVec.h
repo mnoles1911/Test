@@ -33,6 +33,21 @@ struct Vec3i {
     constexpr bool   operator!=(const Vec3i& o) const { return !(*this == o); }
 };
 
+// Integer 2D coordinate (X,Z grid keys: chunk columns, bake tiles). Member `y` is
+// the SECOND axis (we use it for Z in XZ-plane keys) to keep the API uniform with Vec3i.
+struct Vec2i {
+    int32_t x = 0;
+    int32_t y = 0;
+
+    constexpr Vec2i() = default;
+    constexpr Vec2i(int32_t ix, int32_t iy) : x(ix), y(iy) {}
+
+    constexpr Vec2i operator+(const Vec2i& o) const { return {x + o.x, y + o.y}; }
+    constexpr Vec2i operator-(const Vec2i& o) const { return {x - o.x, y - o.y}; }
+    constexpr bool   operator==(const Vec2i& o) const { return x == o.x && y == o.y; }
+    constexpr bool   operator!=(const Vec2i& o) const { return !(*this == o); }
+};
+
 // Float world-space position (metres). Mirrors Godot's Vector3.
 struct Vec3 {
     float x = 0.0f;

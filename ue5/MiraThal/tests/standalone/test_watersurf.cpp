@@ -11,6 +11,9 @@
 //   * water-vs-air side emits; water-vs-water side is culled.
 //   * an empty slab -> zero quads.
 //   * the solid sections (Opaque/Cutout/Flora) stay empty — water lives alone.
+//   * FLOW CHANNEL (M-water): a cell's flow direction byte stamps (flow_x,flow_z) on
+//     every emitted water vertex (+X/-Z map to unit vectors; STILL + vertical DIR_DOWN
+//     map to (0,0)); flow output is deterministic.
 //
 // Prints "[watersurf] PASS" / "[watersurf] FAIL"; returns 0 on success, 1 on any
 // failure (matches the other tests/standalone harnesses).
@@ -39,6 +42,13 @@ static int flora_quads (const MeshBuffers& m) { return m.section(FaceClass::Flor
 // Set a WATER byte at CHUNK-LOCAL coords [0..31] into an apron'd slab (+APRON).
 static void set_water_local(DenseGrid& slab, int x, int y, int z, int level) {
     const int byte = WaterByteCodec::pack(level, /*source=*/false, WaterByteCodec::DIR_STILL);
+    slab.set_water(x + APRON, y + APRON, z + APRON, static_cast<uint8_t>(byte));
+}
+
+// Same, but with an explicit FLOW DIRECTION (WaterByteCodec::DIR_*), so we can test
+// that the flow byte reaches the emitted vertices' (flow_x, flow_z).
+static void set_water_local_dir(DenseGrid& slab, int x, int y, int z, int level, int dir) {
+    const int byte = WaterByteCodec::pack(level, /*source=*/false, dir);
     slab.set_water(x + APRON, y + APRON, z + APRON, static_cast<uint8_t>(byte));
 }
 
@@ -243,6 +253,90 @@ int main() {
         MeshBuffers m;
         append_water_surface(slab, m);
         CHECK(water_quads(m) == 0, "apron-only water emits nothing (inner cells only)");
+    }
+
+    // ---------------------------------------------------------------------
+    // 7. FLOW CHANNEL (M-water). A water cell carrying a horizontal flow direction
+    //    must stamp the matching (flow_x, flow_z) onto EVERY emitted water vertex;
+    //    a STILL cell stamps (0,0); and a vertical (DIR_DOWN) cell — which has no
+    //    horizontal surface scroll — also stamps (0,0). Any solid/flora verts stay 0,0.
+    // ---------------------------------------------------------------------
+    {
+        // 7a. +X flow: every water vertex carries (flow_x,flow_z) = (+1, 0).
+        DenseGrid slab = make_mesh_slab();
+        set_water_local_dir(slab, 5, 5, 5, WaterByteCodec::MAX_LEVEL, WaterByteCodec::DIR_POS_X);
+        MeshBuffers m;
+        append_water_surface(slab, m);
+
+        const MeshSection& sec = m.section(FaceClass::Water);
+        CHECK(sec.vertices.size() > 0, "+X flow cell emitted water vertices");
+        bool all_pos_x = true;
+        for (const MeshVertex& v : sec.vertices)
+            if (!approx(v.flow_x, 1.0f) || !approx(v.flow_z, 0.0f)) all_pos_x = false;
+        CHECK(all_pos_x, "+X flow: all water verts carry (flow_x,flow_z) = (1,0)");
+
+        // Solid/flora/cutout sections never get water verts -> nothing to carry flow.
+        CHECK(opaque_quads(m) == 0 && cutout_quads(m) == 0 && flora_quads(m) == 0,
+              "+X flow: no solid/flora/cutout geometry (so none carry flow)");
+    }
+    {
+        // 7b. -Z flow: every water vertex carries (flow_x,flow_z) = (0, -1).
+        DenseGrid slab = make_mesh_slab();
+        set_water_local_dir(slab, 7, 7, 7, WaterByteCodec::MAX_LEVEL, WaterByteCodec::DIR_NEG_Z);
+        MeshBuffers m;
+        append_water_surface(slab, m);
+
+        const MeshSection& sec = m.section(FaceClass::Water);
+        bool all_neg_z = true;
+        for (const MeshVertex& v : sec.vertices)
+            if (!approx(v.flow_x, 0.0f) || !approx(v.flow_z, -1.0f)) all_neg_z = false;
+        CHECK(sec.vertices.size() > 0 && all_neg_z,
+              "-Z flow: all water verts carry (flow_x,flow_z) = (0,-1)");
+    }
+    {
+        // 7c. STILL water (DIR_STILL): no scroll -> (0,0) on every vertex.
+        DenseGrid slab = make_mesh_slab();
+        set_water_local_dir(slab, 9, 9, 9, WaterByteCodec::MAX_LEVEL, WaterByteCodec::DIR_STILL);
+        MeshBuffers m;
+        append_water_surface(slab, m);
+
+        const MeshSection& sec = m.section(FaceClass::Water);
+        bool all_still = true;
+        for (const MeshVertex& v : sec.vertices)
+            if (!approx(v.flow_x, 0.0f) || !approx(v.flow_z, 0.0f)) all_still = false;
+        CHECK(sec.vertices.size() > 0 && all_still, "still water: all verts have flow (0,0)");
+    }
+    {
+        // 7d. VERTICAL flow (DIR_DOWN, a waterfall drain): no HORIZONTAL scroll, so
+        //     the surface flow stays (0,0) — we only animate XZ drift.
+        DenseGrid slab = make_mesh_slab();
+        set_water_local_dir(slab, 11, 11, 11, WaterByteCodec::MAX_LEVEL, WaterByteCodec::DIR_DOWN);
+        MeshBuffers m;
+        append_water_surface(slab, m);
+
+        const MeshSection& sec = m.section(FaceClass::Water);
+        bool all_zero = true;
+        for (const MeshVertex& v : sec.vertices)
+            if (!approx(v.flow_x, 0.0f) || !approx(v.flow_z, 0.0f)) all_zero = false;
+        CHECK(sec.vertices.size() > 0 && all_zero,
+              "vertical (DIR_DOWN) flow: no horizontal scroll -> flow (0,0)");
+    }
+    {
+        // 7e. Determinism: meshing the SAME +X-flow slab twice yields byte-identical
+        //     flow values (and vertex counts), so flow output is fully deterministic.
+        DenseGrid slab = make_mesh_slab();
+        set_water_local_dir(slab, 13, 6, 13, WaterByteCodec::MAX_LEVEL, WaterByteCodec::DIR_POS_X);
+        MeshBuffers a, b;
+        append_water_surface(slab, a);
+        append_water_surface(slab, b);
+        const MeshSection& sa = a.section(FaceClass::Water);
+        const MeshSection& sb = b.section(FaceClass::Water);
+        bool same = (sa.vertices.size() == sb.vertices.size());
+        if (same)
+            for (size_t i = 0; i < sa.vertices.size(); ++i)
+                if (!approx(sa.vertices[i].flow_x, sb.vertices[i].flow_x) ||
+                    !approx(sa.vertices[i].flow_z, sb.vertices[i].flow_z)) same = false;
+        CHECK(same, "flow is deterministic across two identical mesh runs");
     }
 
     std::printf("[watersurf] %s\n", g_fails == 0 ? "PASS" : "FAIL");

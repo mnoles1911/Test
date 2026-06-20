@@ -1,6 +1,6 @@
 # UE5 Tech Stack — Mira-Thal (the canonical "what is the stack now" doc)
 
-**Status:** LIVE / CANONICAL (2026-06-16). This is the single entry point for "what engine, language,
+**Status:** LIVE / CANONICAL (2026-06-17). This is the single entry point for "what engine, language,
 and architecture is this game built on *right now*." If another doc disagrees with this one about the
 engine, this one wins. Companion docs (linked throughout) go deeper on each piece.
 
@@ -153,7 +153,7 @@ actually on screen). This bridge is how the in-editor checks in §5 step 3 happe
 
 ---
 
-## 8. Milestone ladder (status as of 2026-06-17)
+## 8. Milestone ladder (status as of 2026-06-18)
 
 From `design/UE5_VOXEL_MESHER_PLAN.md`. `✅` = done, `⏳` = next, `—` = planned. The production
 streaming phases (P1–P8) are tracked in `design/UE5_WORLD_STREAMING_PLAN.md`.
@@ -171,9 +171,22 @@ streaming phases (P1–P8) are tracked in `design/UE5_WORLD_STREAMING_PLAN.md`.
 | **M8** | GPU meshing + GPU world generation. | — |
 
 **Production phases (P1–P8)** toward the full 5 km roaming world (`design/UE5_WORLD_STREAMING_PLAN.md`):
-**P4 far-heightmesh vista ✅** (whole-map silhouette from high points), **P2 edit persistence ✅**.
-Next: **P1 async streaming** (worker-thread gen/mesh) and **P3 voxel LOD** (mid-band downsample), then
-the GPU phases (pulled forward per the designer's flight + voxel-accurate-vista direction).
+**P1 async streaming ✅** (column generation on worker threads + velocity-led prefetch),
+**P2 edit persistence ✅**, **P3 voxel LOD ✅** (mid-band downsample, distance tiers with hysteresis),
+**P4 far-heightmesh vista ✅** (whole-map silhouette from high points). All four are runtime-verified
+and **default-ON** (see below). **P6 Nanite bake** = module `MiraThalVoxelBake` built + linked (bake at
+cook, swap at runtime); the bake-on-idle trigger is not wired yet. **P7 ray-march / P8 GPU meshing** =
+module `MiraThalVoxelRender` scaffolded on disk (real HLSL DDA) but deliberately NOT wired into the
+build — needs a GPU session with the designer. **P5 disk cache** = not started (low value; async gen
+is fast). Still open from playtest: water-sim polish, a sub-surface "sandwich" residual, and async
+*meshing* (only generation is async today — the cause of the remaining LOD-distance/hitching limits).
+
+**Playable test rig (default-ON since 2026-06-18).** Opening the editor and pressing Play needs zero
+setup: `EditorStartupMap = /Game/Maps/MiraStreamTest` loads a saved level with the streaming EXR world,
+far vista, locked-exposure volume, and an `AMiraTestGameMode` that spawns a **first-person test pawn**
+(`AMiraFPCharacter`, MiraThalCore) with a **crosshair HUD** (`AMiraHUD`). The streaming/async/LOD/gravity
+flags default ON in C++. Controls + camera are recorded in `design/INPUT_AND_CONTROLS.md` → "UE5 Port".
+This FP pawn is a DEV rig; the canonical game camera is third-person over-shoulder (deferred).
 
 **Build order note:** M5 multiplayer is deferred to the very end; the GPU phases (M6/M7/M8) come first.
 

@@ -118,6 +118,7 @@ public:
         int absorbed   = 0; // units that fell/flowed into source water
         int merged     = 0; // units in cells that joined the ocean
         int removed    = 0; // units scooped back out (bucket fill)
+        int forgotten  = 0; // units dropped when a region was streamed out / evicted
     };
 
     struct StepResult {
@@ -149,6 +150,18 @@ public:
     // then from the cells stacked directly above it. Returns units removed
     // (ledgered so the audit still balances).
     int remove(const Vec3i& pos, int max_units);
+
+    // STREAMING SUPPORT (additive — does NOT touch the flow rules). Drop every
+    // ledger/_active/_dist/_dir/_evap_ttl/_external_changed entry whose position
+    // lies inside the INCLUSIVE voxel AABB [lo, hi]. The units that were in those
+    // cells are tallied into the `forgotten` counter so the conservation audit
+    // still balances (placed = units + evaporated + absorbed + merged + removed +
+    // forgotten). This lets the streaming layer keep the active ledger bounded to
+    // the near band when a column/region is evicted: the PROJECTED water bytes
+    // already written into the world store stay; only the sim's live memory of
+    // that region is released. It emits NO Change stream — the caller is dropping
+    // the region's mesh anyway. Source-merge markers in the box are also cleared.
+    void forget_region(const Vec3i& lo, const Vec3i& hi);
 
     // The DATA5 byte the world should show for `pos` right now.
     int projected_byte(const Vec3i& pos) const;
@@ -198,6 +211,7 @@ private:
     int absorbed   = 0;
     int merged     = 0;
     int removed    = 0;
+    int forgotten  = 0; // units released by forget_region (streaming eviction)
 
     // ---- per-cell rules ----
     void step_cell(const Vec3i& c, std::unordered_map<Vec3i, bool>& changed);

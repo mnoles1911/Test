@@ -87,6 +87,29 @@ int main() {
     // (255 × 1.0 = 255) must stay exactly 255, never overflow the uint8.
     CHECK(shaded_color(13, FACE_POS_Y).r == 255, "snow top channel clamps at 255");
 
+    // ---- lod_debug_color: DIAGNOSTIC per-LOD palette (cvar mira.LodDebug) ----
+    // Per-chunk ramp: green(L0) -> magenta(L5); supers are a distinct cool ramp.
+    CHECK(ceq(lod_debug_color(0, /*super=*/false),   0, 255,   0), "per-chunk L0 = green");
+    CHECK(ceq(lod_debug_color(2, false),           255, 255,   0), "per-chunk L2 = yellow");
+    CHECK(ceq(lod_debug_color(4, false),           255,   0,   0), "per-chunk L4 = red");
+    CHECK(ceq(lod_debug_color(5, false),           255,   0, 255), "per-chunk L5 = magenta");
+    CHECK(ceq(lod_debug_color(0, /*super=*/true),    0, 200, 180), "super L0 = teal");
+    CHECK(ceq(lod_debug_color(5, true),            160,   0, 255), "super L5 = violet");
+
+    // Clamp out-of-range LODs into [0,5] (never read past the palette).
+    CHECK(ceq(lod_debug_color(-3, false), 0, 255, 0),   "LOD < 0 clamps to L0");
+    CHECK(ceq(lod_debug_color(99, false), 255, 0, 255), "LOD > 5 clamps to L5 (per-chunk)");
+    CHECK(ceq(lod_debug_color(99, true),  160, 0, 255), "LOD > 5 clamps to L5 (super)");
+
+    // Per-chunk and super for the SAME LOD number must be DIFFERENT colors, so the
+    // tester can never confuse a super tile with a near chunk at the same LOD.
+    for (int L = 0; L <= 5; ++L) {
+        const Rgb8 c = lod_debug_color(L, false);
+        const Rgb8 s = lod_debug_color(L, true);
+        CHECK(!(c.r == s.r && c.g == s.g && c.b == s.b),
+              "per-chunk vs super color differs at this LOD");
+    }
+
     std::printf("[color   ] %s\n", g_fails == 0 ? "PASS" : "FAIL");
     std::printf("---- %d checks, %d failure(s)\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

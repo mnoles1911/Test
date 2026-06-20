@@ -15,6 +15,7 @@ public class MiraThalTarget : TargetRules
 			"MiraThalVoxel",
 			"MiraThalCore",
 			"MiraThalNet",
+			"MiraThalVoxelBake",
 		});
 	}
 }

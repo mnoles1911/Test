@@ -9,6 +9,46 @@ The full control scheme for Game One — keyboard/mouse and controller.
 
 ---
 
+## UE5 Port — First-Person Test Pawn Controls (dev rig)
+
+> **Scope:** this section documents the **UE5 dev test pawn** (`AMiraFPCharacter`, module
+> MiraThalCore), used to drive/verify the streamed voxel world. It is NOT the final game control
+> scheme — the canonical scheme (Roland, third-person, remappable) is everything below this section.
+> The final game camera is third-person over-shoulder (`design/CAMERA_AND_PERSPECTIVE.md`); this
+> first-person rig comes first only because it's the simplest way to fly the 5 km map and test
+> streaming/LOD/dig. As of 2026-06-18 this pawn is the default Play pawn on `/Game/Maps/MiraStreamTest`.
+
+**Implementation note:** the EnhancedInput plugin (on in this project) forces the
+`UEnhancedInputComponent`, on which legacy `BindAxis` still fires but legacy `BindAction` is **silently
+dropped**. So WASD + mouse use legacy axis bindings, but every BUTTON goes through **Enhanced Input** —
+`UInputAction`s + a `UInputMappingContext` created in-code in the pawn's constructor (no Input asset
+files), added in `BeginPlay`. Continuous fly up/down is applied every frame in `Tick` from
+press/release flags, because the per-frame `ETriggerEvent::Triggered` event proved unreliable here.
+
+| Key | Walk/Run mode | Fly mode |
+|---|---|---|
+| **W A S D** | Move (camera-relative; W = where you look) | Same; in fly, look-up + W climbs |
+| **Mouse** | Look (yaw rotates the body so move stays camera-relative; pitch = camera) | Same |
+| **Space** | **Jump** | **Hold = ascend** (gain altitude, continuous) |
+| **Left Shift** | **Hold = sprint** (momentary, not a toggle) | **Hold = descend** (lose altitude, continuous) |
+| **C** | **Crouch toggle** (lower view ↔ standing; standing default) | — |
+| **F** | Toggle **Walk ↔ Fly** | Toggle **Walk ↔ Fly** |
+| **LMB** | **Dig** — camera line-trace (80 m reach) carves a **3×3×3** voxel box at the crosshair | Same |
+
+Each button flashes a short on-screen confirmation (dev feedback) when it fires.
+
+**Camera / body:** human capsule (90 cm half-height → 180 cm / 18-voxel tall), eye height **168 cm**
+above ground when standing (camera follows the capsule down when crouched), first-person **FOV 95°**.
+Mouse is captured (cursor hidden) during play.
+
+**Dig aiming aids (mirror the Godot destroy-preview):** a centre **crosshair** is drawn by `AMiraHUD`
+(the game mode's HUD class), and a **3D wireframe outline** of the exact 3×3×3 volume the next dig will
+remove is drawn every frame from `AVoxelWorld::ComputeCarvePreviewWorld` — it uses the identical
+`compute_carve_box` math as the real carve, so what you outline is what you dig. `DigSizeVoxels` (default
+3) and `bShowDigPreview` are pawn properties.
+
+---
+
 ## Design Philosophy
 
 **Controls are learnable, not complex.** Roland does three primary things: move, fight, and interact. Every control serves one of these. There are no mode switches, no complex input sequences, no button combinations except where the interaction is specifically designed to feel like effort (power attack charge).

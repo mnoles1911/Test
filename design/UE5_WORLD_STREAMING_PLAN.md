@@ -1,9 +1,10 @@
 # UE5 World Streaming, LOD, Nanite & Persistence — Production Plan
 
-**Status:** PLAN (2026-06-16). The production architecture for roaming the full **5 km × 5 km** world at
-**10 cm voxels**, with long view distances, vistas from high points, on-disk caching, and Nanite. This
-is the umbrella plan that M4 (streaming/persistence), M6 (Nanite), M7 (far-field), and M8 (GPU) all
-serve. Companion: `design/UE5_GPU_PHASES.md` (M6/M7/M8 detail), `design/UE5_HEIGHTMAP_IMPORT.md`
+**Status:** IN PROGRESS (2026-06-17). The production architecture for roaming the full **5 km × 5 km**
+world at **10 cm voxels**, with long view distances, vistas from high points, on-disk caching, and Nanite.
+This is the umbrella plan that M4 (streaming/persistence), M6 (Nanite), M7 (far-field), and M8 (GPU) all
+serve. **P2 (edit-journal persistence) and P4 (far heightmesh vista) are built; P1 (async streaming) and
+P3 (voxel LOD) are being built now; P5–P8 not started.** See §11 for the phased status. Companion: `design/UE5_GPU_PHASES.md` (M6/M7/M8 detail), `design/UE5_HEIGHTMAP_IMPORT.md`
 (the EXR source), `design/UE5_TECH_STACK.md` (the stack).
 
 Plain-English framing for the non-programmer: the world is enormous, so we never hold all of it in memory
@@ -65,7 +66,7 @@ representation that still looks right. Distances are tuning starting points, not
 | **T0 — Near** | 0–80 m | full **10 cm voxel mesh** (greedy mesher, per-face color, PMC→RealtimeMesh) | **yes** | **yes (Chaos)** | M2 ✅ + M4 streaming ✅ |
 | **T1 — Mid voxel LOD** | 80–300 m | **downsampled voxel mesh** (20/40/80 cm) via `LodDownsample` + `SeamSkirt` | no | optional | M4 LOD (new) |
 | **T2 — Nanite cold-bake** | 80 m–~1 km, *static only* | unedited chunks baked to **Nanite** static meshes | no | from baked mesh | M6 (new) |
-| **T3 — Far heightmesh** | 0.3–5 km+ | one coarse **mesh of the whole EXR**, biome-coloured (the vista) | no | no | M4/M6 (new) |
+| **T3 — Far heightmesh** | 0.3–5 km+ | one coarse **mesh of the whole EXR**, biome-coloured (the vista) | no | no | P4 `AVoxelFarHeightmesh` ✅ |
 | **T4 — GPU ray-march** | optional, far voxel detail | screen-space march over a GPU brick mirror | no | no | M7 (new) |
 
 **T2 vs T1 is a choice, not both-always:** a chunk in the mid band is rendered EITHER as a cheap
@@ -237,17 +238,20 @@ world cost the same to stand in.
 - `Brickmap` sparse store + `raycast_solid` oracle (M7 spec, `test_raymarch`).
 - Greedy mesher + per-face color + AO; `BrickmapMeshing` slab extraction + affected-chunks.
 - `LodDownsample`, `SeamSkirt`, `MeshBudget`, `BandPolicy` (LOD/seam/budget Core, ported from Godot).
-- `RegionFormat` (region file container — the persistence substrate).
+- `RegionFormat` (region file container — the persistence substrate) — now wired into the live
+  edit-journal store (`WorldEditStore` + `WorldEditPersistence`), see P2 below ✅.
 - `HeightmapGenerator` + EXR `ImageHeightmap` (deterministic base; EXR sampling is a plain bilinear lookup,
   GPU-portable).
-- M4 column streaming (ring load/evict, fill skirt, focus follow); M3 carve + finite water.
+- M4 column streaming (ring load/evict, fill skirt, focus follow); M3 carve + finite water + gravity + flora.
+- **P2 edit-journal region store ✅** (write/replay/flush, atomic temp+rename) — `bPersistEdits` /
+  `WorldSaveName`, region files under `Saved/Worlds/<name>/`; digs survive reload.
+- **P4 EXR far heightmesh ✅** (T3) — `AVoxelFarHeightmesh` + `Core/FarHeightmesh`, whole-map vista.
 
 **New for production:**
-- World Partition integration + streaming-source-follows-player; async gen/mesh task graph.
-- Distance→tier selection with hysteresis; LOD mesh path wired (downsample→mesh→skirt).
+- World Partition integration + streaming-source-follows-player; async gen/mesh task graph (P1, in progress).
+- Distance→tier selection with hysteresis; LOD mesh path wired (downsample→mesh→skirt) (P3, in progress).
 - Nanite cold-bake module (`MiraThalVoxelBake`) + invalidation.
-- EXR far heightmesh builder (T3).
-- Edit-journal region store (write/replay/flush, atomic) + rebuildable disk cache (key + LRU).
+- Rebuildable disk cache (key + LRU).
 - GPU brick mirror + ray-march (T4, optional) — `MiraThalVoxelRender`.
 
 ---
@@ -257,15 +261,17 @@ world cost the same to stand in.
 Ordered for earliest playable payoff, lowest risk first. Each phase ends green on the clang harness for
 its Core parts + a build/PIE check for the UE parts.
 
-1. **P1 — Async streaming hardening (M4):** move gen/mesh to worker threads; per-frame upload budget;
-   World Partition streaming source follows the pawn; predictive prefetch. *Payoff: smooth roaming of a
-   large region without hitches.*
-2. **P2 — Edit journal persistence (M4):** region delta store on `RegionFormat`; generate-then-replay on
-   load; atomic flush. *Payoff: your digs survive reload; foundation for the disk cache.*
-3. **P3 — Voxel LOD (M4):** wire `LodDownsample` + `SeamSkirt` into the mid band; distance tier selection.
-   *Payoff: mid-distance terrain at a fraction of the triangles → bigger view distance.*
-4. **P4 — Far heightmesh (T3):** build the whole-map Nanite heightmesh from the EXR, biome-coloured.
-   *Payoff: real vistas from high points — the headline visual ask.*
+1. **P1 — Async streaming hardening (M4) — IN PROGRESS (2026-06-17):** move gen/mesh to worker threads;
+   per-frame upload budget; World Partition streaming source follows the pawn; predictive prefetch.
+   *Payoff: smooth roaming of a large region without hitches.*
+2. **P2 — Edit journal persistence (M4) — ✅ BUILT:** region delta store on `RegionFormat`
+   (`WorldEditStore`); generate-then-replay on load; atomic flush. *Payoff: your digs survive reload;
+   foundation for the disk cache.*
+3. **P3 — Voxel LOD (M4) — IN PROGRESS (2026-06-17):** wire `LodDownsample` + `SeamSkirt` into the mid
+   band; distance tier selection. *Payoff: mid-distance terrain at a fraction of the triangles → bigger
+   view distance.*
+4. **P4 — Far heightmesh (T3) — ✅ BUILT:** the whole-map heightmesh from the EXR, biome-coloured
+   (`AVoxelFarHeightmesh`). *Payoff: real vistas from high points — the headline visual ask.*
 5. **P5 — Rebuildable disk cache:** cache generated bricks + meshes keyed by EXR/seed/version, LRU-capped.
    *Payoff: fast restarts and revisits.*
 6. **P6 — Nanite cold-bake (M6):** bake static mid chunks to Nanite; invalidate on edit; cache bakes.

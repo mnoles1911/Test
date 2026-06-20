@@ -11,6 +11,53 @@ their section with a brief note of what it unlocks.
 
 ---
 
+## Section 0 — UE5 PORT (ACTIVE BRANCH): Far-Render Enable & Material Checklist
+
+> Added 2026-06-18 after an autonomous build session on the UE5 voxel engine (`ue5/MiraThal`).
+> Everything below is **built, compiled clean, and harness-green** — it just needs you in the
+> editor to enable/feel/tune (the parts that can't be verified blind). Full technical notes live in
+> Claude's memory (`project_ue5_far_render_systems.md`). Flags are on the `AVoxelWorld` actor (or
+> its material assets). Open `MiraStreamTest` and toggle in the Details panel.
+
+**Already LIVE + verified ON in the saved level (no action needed — just look):**
+super-chunks to ~1.23 km, coarse far-gen, 3D/spherical shell streaming (~30% fewer near actors),
+vista cull-under (smooth far silhouette no longer pokes through the cubes), and a far-render
+diagnostics overlay (toggle `bShowDebug` to see super/coarse/shell/fade counts + FPS).
+
+**Enable + feel these (ordered easiest → most involved):**
+
+- [ ] **View-prioritized streaming** — set `b_view_prioritized_streaming` = true; walk forward;
+  terrain ahead should fill before terrain behind. If ahead loads LAST, the camera-forward axis
+  mapping is flipped — flag it. (No material needed.)
+- [ ] **N=16 super size** — set `SuperChunkSizeChunks` = 16 (from 8); watch the `bShowDebug` HUD —
+  `SUPER total` should drop ~4× and FPS rise. Keep 8 if the mid-far silhouette looks too blocky.
+- [ ] **Tune far distance vs FPS** — `super_radius_chunks` is 384 (~1.23 km, ~1000 far actors at
+  full fill). Lower it (256 ≈ 820 m, 192 ≈ 615 m) if FPS is too low. Hard ceiling 512 (~1.6 km;
+  beyond that needs Nanite — see below).
+- [ ] **Water sim** — set `bEnableWaterSim` = true; pour water or dig into a pool — it flows,
+  settles, and conserves volume in the near band. (Looks like flat translucent water until the
+  water material below is done.)
+- [ ] **AO audit (material)** — open `M_VoxelTerrainV2`; confirm `VertexColor.A → AmbientOcclusion`
+  is wired (AO is already baked into vertex alpha by the mesher). If missing, connect it.
+- [ ] **Single Layer Water (material)** — rebuild `M_VoxelWater` as Shading Model = Single Layer
+  Water: depth-based absorption color, fresnel (Lumen reflection), and a panning normal driven by
+  **UV1** (the flow channel the sim already writes — `TexCoord[1]` = flow direction). Then enable
+  `enable_sea_plane` for the open-ocean surface at sea level. This makes water read as wet.
+- [ ] **LOD-fade dither (material + flag)** — on `M_VoxelTerrainV2` add a scalar param `FadeAlpha`
+  (default 1) feeding a Dither / DitherTemporalAA node into Opacity Mask (Blend Mode = Masked).
+  Then set `b_enable_lod_fade` = true — chunk LOD swaps cross-dissolve instead of popping. (Without
+  the material node both meshes render opaque = no dissolve, so do the material first.)
+- [ ] **Nanite far crust (supervised — it crashed once, now fixed)** — the cold-bake builds static
+  Nanite tiles for the deep horizon (beyond the dig range). Procedure: spawn an `AVoxelCrustBakeTool`,
+  set its `target_world` to the VoxelWorld, set `max_tiles_per_bake` = 4 (small safe test), click
+  **Bake Nanite Crust**. **Stop PIE first** (the bake refuses to run in PIE). Watch the Output Log
+  for `[MiraThal] BAKE tile i/N … step=…` lines. If it crashes, the **last `step=` line names the
+  failing substep** — send it to Claude. If 4 tiles bake clean, raise `max_tiles_per_bake` (or set 0
+  for a full bake), then enable `enable_nanite_crust` on the VoxelWorld (this auto-gates super-chunks
+  off in the crust band). Writes one-time `.uasset` tiles under `/Game/VoxelBake/`.
+
+---
+
 ## Section 1 — Godot Editor: One-Time Project Setup
 
 These are settings and installs that survive across all future work. Do them once.

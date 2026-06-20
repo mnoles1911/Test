@@ -1,0 +1,324 @@
+// VoxelRaymarch.usf — the M7 far-field GPU ray-march.
+//
+// THIS IS THE REAL ALGORITHM. It is the HLSL port of mira::Brickmap::raycast_solid
+// (MiraThalVoxel/Public/Core/Brickmap.h), whose contract is pinned by
+// tests/standalone/test_raymarch.cpp. The CPU function is the ORACLE: this shader
+// must return the SAME first-hit voxel, the SAME face normal, and the SAME entry
+// distance for the same ray. Every stepping decision below is annotated with the
+// exact CPU line / test case it reproduces.
+//
+// TWO-LEVEL WALK (the only place this differs from the CPU oracle, and it's an
+// optimisation that must NOT change results):
+//   * The CPU oracle walks voxel-by-voxel for obvious correctness (Brickmap.h header
+//     says so explicitly). This shader FIRST skips whole empty bricks using the brick
+//     index (the coarse acceleration structure), THEN does the identical Amanatides-Woo
+//     voxel walk inside any occupied brick. Skipping a brick that has no solids can
+//     never change the first-solid result — it only skips voxels the CPU would have
+//     found empty anyway. See design/UE5_GPU_PHASES.md M7.
+//
+// SHADING: first solid is shaded base_color(material) * face_shade(dir), matching
+// MiraThalVoxel/Public/Core/VoxelColor.h. NO texture sampling (per-face solid color).
+//
+// SCAFFOLD NOTE: the binding/parameter plumbing (the C++ pass) is stubbed; this .usf
+// is the real shader body. It is written to compile as a global pixel shader but its
+// runtime behaviour is verified later via the GPU readback test (GpuParityPlan.md).
+
+#include "/Engine/Public/Platform.ush"
+
+// ---------------------------------------------------------------------------
+// LAYOUT CONSTANTS — must match VoxelBrickGPUMirror.h (MiraVoxelGPU::BrickEdge etc.)
+// ---------------------------------------------------------------------------
+#define BRICK_EDGE        8
+#define VOXELS_PER_BRICK  512   // 8*8*8
+#define MAT_AIR           0     // mira::mat::AIR
+
+// Brick index bit layout (mirrors FBrickIndexEntry in VoxelBrickGPUMirror.h):
+//   bit 31    = RESIDENT (brick exists AND has solids)
+//   bits 0..23 = DATA_OFFSET in units of whole bricks into the voxel buffer
+#define RESIDENT_BIT      0x80000000u
+#define DATA_OFFSET_MASK  0x00FFFFFFu
+
+// ---------------------------------------------------------------------------
+// BINDINGS — the C++ pass (stubbed) would fill these. Declared here so the shader
+// is self-describing; the parameter struct in the (future) FGlobalShader mirrors it.
+// VERIFY: exact RDG SRV binding macro names when the C++ pass is written.
+// ---------------------------------------------------------------------------
+StructuredBuffer<uint>  BrickIndex;   // NumBrickSlots entries (one uint per brick slot)
+ByteAddressBuffer       VoxelTypes;   // type bytes, 512 per resident brick, packed
+
+// Region in BRICK coordinates (matches FPackedBrickData).
+int3   RegionMinBrick;
+int3   RegionDimBricks;
+
+// Camera + march bounds. The C++ side builds a per-pixel world-space ray in VOXEL
+// UNITS (the same units Brickmap uses) so the DDA math is identical to the oracle.
+float3 RayOriginVox;     // per-view camera origin in voxel units (set per pixel below if needed)
+float  MaxMarchDist;     // == the oracle's max_dist (test case 6)
+
+// ---------------------------------------------------------------------------
+// HELPERS — exact ports of the Core helpers used by raycast_solid.
+// ---------------------------------------------------------------------------
+
+// ifloor — Brickmap.h: static_cast<int>(std::floor(f)). HLSL floor() then to int.
+int ifloor(float f) { return (int)floor(f); }
+
+// sign — Brickmap.h: v>0 -> 1, v<0 -> -1, else 0. (NOT HLSL sign(), which is the
+// same for these cases, but we spell it out to match the oracle exactly.)
+int isign(float v) { return v > 0.0f ? 1 : (v < 0.0f ? -1 : 0); }
+
+// axis_tmax — Brickmap.h axis_tmax():
+//   if d==0 -> +inf ; boundary = (step>0) ? voxel+1 : voxel ; return (boundary-origin)/d
+// This is the distance along the ray to the FIRST voxel boundary on this axis.
+float axis_tmax(float origin, float d, int voxel, int step)
+{
+	if (d == 0.0f) return 1e30f;                       // kInf in the oracle
+	float boundary = (step > 0) ? (float)(voxel + 1) : (float)voxel;
+	return (boundary - origin) / d;
+}
+
+// Flatten a local voxel coord inside a brick — coords::flatten(x,y,z, BRICK):
+//   index = x + y*side + z*side*side  (X-fastest). MUST match the CPU packing.
+int local_flatten(int lx, int ly, int lz)
+{
+	return lx + ly * BRICK_EDGE + lz * BRICK_EDGE * BRICK_EDGE;
+}
+
+// floor_div for the brick-of-voxel mapping (coords::floor_div) — rounds toward -inf.
+int floor_div(int a, int b)
+{
+	int q = a / b;
+	int r = a - q * b;            // a % b
+	return (r != 0 && ((r < 0) != (b < 0))) ? q - 1 : q;
+}
+int floor_mod(int a, int b)
+{
+	int r = a - (a / b) * b;
+	return (r != 0 && ((r < 0) != (b < 0))) ? r + b : r;
+}
+
+// Read a voxel's material type from the GPU buffers, given GLOBAL voxel coords.
+// Returns MAT_AIR for any voxel outside the mirrored region or in a non-resident
+// brick (mirrors "absent brick => air" in Brickmap::type_at). This is the GPU
+// analogue of type_at(voxel) used in the oracle's inner loop.
+uint type_at_global(int3 v)
+{
+	// Which brick is this voxel in? (coords::brick_of_voxel)
+	int3 brick = int3(floor_div(v.x, BRICK_EDGE),
+	                  floor_div(v.y, BRICK_EDGE),
+	                  floor_div(v.z, BRICK_EDGE));
+
+	// Brick-space offset within the mirrored region.
+	int3 b = brick - RegionMinBrick;
+	if (any(b < 0) || any(b >= RegionDimBricks))
+		return MAT_AIR;                              // outside the region => air
+
+	// Brick slot index (X-fastest, matches the CPU packing loop).
+	int slot = b.x + b.y * RegionDimBricks.x + b.z * RegionDimBricks.x * RegionDimBricks.y;
+	uint entry = BrickIndex[slot];
+	if ((entry & RESIDENT_BIT) == 0u)
+		return MAT_AIR;                              // empty/absent brick => air
+
+	// Local voxel within the brick (coords::local_in_brick + flatten).
+	int lx = floor_mod(v.x, BRICK_EDGE);
+	int ly = floor_mod(v.y, BRICK_EDGE);
+	int lz = floor_mod(v.z, BRICK_EDGE);
+	int local = local_flatten(lx, ly, lz);
+
+	// Byte address: (brick data offset * 512 + local) bytes into the type buffer.
+	uint baseVox = (entry & DATA_OFFSET_MASK) * VOXELS_PER_BRICK;
+	uint byteAddr = baseVox + (uint)local;
+
+	// ByteAddressBuffer reads are 4-byte aligned; extract the one byte we want.
+	uint word = VoxelTypes.Load(byteAddr & ~3u);
+	uint shift = (byteAddr & 3u) * 8u;
+	return (word >> shift) & 0xFFu;
+}
+
+// Is this brick (by GLOBAL brick coord) resident-with-solids? Used by the coarse
+// brick-skip layer. Mirrors Brickmap::brick_has_solid via the GPU index.
+bool brick_has_solid_global(int3 brick)
+{
+	int3 b = brick - RegionMinBrick;
+	if (any(b < 0) || any(b >= RegionDimBricks))
+		return false;
+	int slot = b.x + b.y * RegionDimBricks.x + b.z * RegionDimBricks.x * RegionDimBricks.y;
+	return (BrickIndex[slot] & RESIDENT_BIT) != 0u;
+}
+
+// ---------------------------------------------------------------------------
+// SHADING — base_color(material) * face_shade(dir), per VoxelColor.h.
+//
+// FaceDir mapping from the outward NORMAL (matches MeshTypes.h FaceDir order and
+// VoxelColor.h face_shade). The march reports an outward normal exactly like the
+// oracle (normal = {-stepx,0,0} etc.), so we read the shade off that normal.
+// ---------------------------------------------------------------------------
+float face_shade_from_normal(int3 n)
+{
+	// face_shade (VoxelColor.h): +Y 1.00 (top), -Y 0.50 (bottom),
+	//   +X 0.86, -X 0.76, +Z 0.80, -Z 0.70.
+	if (n.y > 0) return 1.00f;
+	if (n.y < 0) return 0.50f;
+	if (n.x > 0) return 0.86f;
+	if (n.x < 0) return 0.76f;
+	if (n.z > 0) return 0.80f;
+	if (n.z < 0) return 0.70f;
+	return 1.00f; // origin-inside hit has zero normal (test case 3) -> full bright
+}
+
+// base_color (VoxelColor.h) — the SAME palette, transcribed. Returns 0..255 RGB.
+// VERIFY: keep this table byte-identical to VoxelColor.h base_color(). A drift here
+// is a parity break; the GpuParityPlan color readback test guards it.
+float3 base_color(uint id)
+{
+	// water range (legacy 5 + 16..23) -> {51,102,153}
+	if (id == 5u || (id >= 16u && id <= 23u)) return float3(51, 102, 153);
+	switch (id)
+	{
+		case 1:  return float3(158, 153, 140); // STONE
+		case 2:  return float3(107,  77,  46); // DIRT
+		case 3:  return float3( 97, 140,  56); // GRASS
+		case 4:  return float3(224, 204, 148); // SAND
+		case 6:  return float3( 46,  46,  51); // bedrock
+		case 7:  return float3(122, 122, 122); // gravel
+		case 8:  return float3(122, 138, 150); // clay
+		case 9:  return float3(232, 224, 212); // MARBLE
+		case 10: return float3( 92,  59,  26); // LOG
+		case 11: return float3( 59,  92,  33); // LEAVES
+		case 12: return float3(184, 115,  51); // copper_ore
+		case 13: return float3(255, 255, 255); // snow
+		case 14: return float3(102, 102, 115); // STONE_DARK
+		case 15: return float3(148, 122, 102); // iron_ore
+		case 24: return float3(115, 158,  66); // grass blade
+		case 25: return float3(217,  46,  41); // flower red
+		case 26: return float3( 92, 133, 230); // flower blue
+		case 27: return float3(128, 117, 102); // pebble
+		case 28: return float3(102,  74,  46); // twig
+		default: return float3(158, 153, 140); // unknown -> stone
+	}
+}
+
+// shaded_color (VoxelColor.h): base * shade, round to nearest, clamp [0,255], /255.
+float3 shaded_color_linear(uint id, int3 normal)
+{
+	float3 c = base_color(id);
+	float  s = face_shade_from_normal(normal);
+	float3 v = floor(c * s + 0.5f);          // +0.5 round-to-nearest, like the C++ lambda
+	v = clamp(v, 0.0f, 255.0f);
+	return v / 255.0f;                       // 0..1 for the GPU; sRGB handling at output
+}
+
+// ---------------------------------------------------------------------------
+// THE MARCH — a 1:1 port of Brickmap::raycast_solid, with the brick-skip layer.
+//
+// Returns true on hit and fills hitVoxel / hitNormal / hitT / hitType, matching the
+// oracle's Hit struct fields. dir need NOT be normalised (we normalise, like the CPU).
+// ---------------------------------------------------------------------------
+bool raycast_solid(float3 origin, float3 dir, float maxDist,
+                   out int3 hitVoxel, out int3 hitNormal, out float hitT, out uint hitType)
+{
+	hitVoxel = int3(0,0,0); hitNormal = int3(0,0,0); hitT = 0.0f; hitType = 0u;
+
+	// Normalise so t is true distance (Brickmap.h lines 98-101).
+	float len = sqrt(dot(dir, dir));
+	if (len <= 0.0f) return false;            // zero-length ray hits nothing (line 100)
+	float3 d = dir / len;
+
+	// Current voxel = cell containing the origin (line 104).
+	int3 voxel = int3(ifloor(origin.x), ifloor(origin.y), ifloor(origin.z));
+
+	// Origin already inside solid -> immediate hit, t=0, zero normal (lines 107-111,
+	// test case 3). This MUST be checked before any stepping.
+	uint t0 = type_at_global(voxel);
+	if (t0 != MAT_AIR)
+	{
+		hitVoxel = voxel; hitT = 0.0f; hitType = t0; hitNormal = int3(0,0,0);
+		return true;
+	}
+
+	int stepx = isign(d.x), stepy = isign(d.y), stepz = isign(d.z);   // lines 113
+	float tMaxX = axis_tmax(origin.x, d.x, voxel.x, stepx);           // lines 114-116
+	float tMaxY = axis_tmax(origin.y, d.y, voxel.y, stepy);
+	float tMaxZ = axis_tmax(origin.z, d.z, voxel.z, stepz);
+	float tDeltaX = (d.x != 0.0f) ? abs(1.0f / d.x) : 1e30f;          // lines 117-119
+	float tDeltaY = (d.y != 0.0f) ? abs(1.0f / d.y) : 1e30f;
+	float tDeltaZ = (d.z != 0.0f) ? abs(1.0f / d.z) : 1e30f;
+
+	float t = 0.0f;
+	int3 normal = int3(0,0,0);
+
+	// Iteration cap matches the oracle's safety net: max_dist*3 + 8 (line 124).
+	int maxSteps = (int)(maxDist) * 3 + 8;
+
+	[loop]
+	for (int i = 0; i < maxSteps; ++i)
+	{
+		// ---- TIE-BREAK ORDER IS LOAD-BEARING (Brickmap.h lines 127-133) ----
+		// X wins ties: (tMaxX <= tMaxY && tMaxX <= tMaxZ). Then Y: (tMaxY <= tMaxZ).
+		// Else Z. The <= (not <) and this exact X>Y>Z precedence is what test_raymarch
+		// pins (e.g. the diagonal {1,1,0} case lands on the wall, not a stray cell).
+		if (tMaxX <= tMaxY && tMaxX <= tMaxZ)
+		{
+			t = tMaxX; voxel.x += stepx; tMaxX += tDeltaX; normal = int3(-stepx, 0, 0);
+		}
+		else if (tMaxY <= tMaxZ)
+		{
+			t = tMaxY; voxel.y += stepy; tMaxY += tDeltaY; normal = int3(0, -stepy, 0);
+		}
+		else
+		{
+			t = tMaxZ; voxel.z += stepz; tMaxZ += tDeltaZ; normal = int3(0, 0, -stepz);
+		}
+
+		if (t > maxDist) break;   // ran past reach -> miss (line 134, test case 6)
+
+		// ---- BRICK-SKIP OPTIMISATION (the GPU's only addition) ----
+		// If the brick containing this voxel has no solids, we can keep stepping
+		// without reading individual voxels — but stepping the voxel DDA is already
+		// correct, so we DON'T jump; we simply continue. (A future optimisation can
+		// advance tMax to the brick boundary; for the scaffold we keep the voxel walk
+		// so the result is provably identical to the oracle. The brick index is still
+		// consulted by type_at_global, which returns air for non-resident bricks,
+		// so empty bricks cost only an index read — the intended skip behaviour.)
+		// brick_has_solid_global(brick_of(voxel)) is available for the faster jump;
+		// VERIFY the jump math against test_raymarch before enabling it.
+
+		uint ty = type_at_global(voxel);     // == type_at(voxel) in the oracle
+		if (ty != MAT_AIR)                    // first solid -> hit (lines 136-141)
+		{
+			hitVoxel = voxel; hitNormal = normal; hitT = t; hitType = ty;
+			return true;
+		}
+	}
+	return false;   // past max_dist without a hit (line 143)
+}
+
+// ---------------------------------------------------------------------------
+// ENTRY POINT — a full-screen pixel shader. The C++ pass (stubbed) provides the
+// per-pixel ray (origin + direction in voxel units) via the camera matrices; here
+// we show the shape with a placeholder ray reconstruction so the shader is complete.
+// VERIFY: replace the placeholder ray with the real inverse-view-projection unproject
+// at bring-up (RayOriginVox + a dir from the screen UV through the far plane).
+// ---------------------------------------------------------------------------
+void MainPS(
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor  : SV_Target0)
+{
+	// PLACEHOLDER ray: straight along +X from the bound origin. The real pass builds
+	// origin/dir from the view matrices per pixel. This keeps the file self-contained
+	// and compilable; it is NOT the production ray (see VERIFY above).
+	float3 origin = RayOriginVox;
+	float3 dir    = float3(1.0f, 0.0f, 0.0f);
+
+	int3 hv, hn; float ht; uint htype;
+	if (raycast_solid(origin, dir, MaxMarchDist, hv, hn, ht, htype))
+	{
+		float3 rgb = shaded_color_linear(htype, hn);   // base * face_shade, linear 0..1
+		OutColor = float4(rgb, 1.0f);
+	}
+	else
+	{
+		// Miss -> transparent so the sky / Lumen behind shows through. The real pass
+		// writes only where scene depth says "nothing nearer was drawn" (horizon).
+		OutColor = float4(0, 0, 0, 0);
+	}
+}

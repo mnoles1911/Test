@@ -51,13 +51,72 @@ struct FarHeightmesh {
     int  triangle_count() const { return static_cast<int>(indices.size() / 3); }
 };
 
+// CONSERVATIVE (always-below) height sampling — fixes the vista poking THROUGH the
+// near voxel cubes.
+//
+// WHY (plain English): the coarse vista mesh only samples the ground at its grid
+// vertices (one point every ~3 m on a 5 km map), then draws straight lines between
+// them. The near voxels follow the TRUE height at every 10 cm column. At a ridge or
+// peak the land bulges up (concave-up) between two grid samples, so the straight
+// line drawn between those two samples sits ABOVE the real terrain — and therefore
+// above the near cubes — and pokes through. That over-shoot is the clipping.
+//
+// THE FIX: instead of reading the height at the single grid-vertex point, scan the
+// little square of terrain that the vertex "owns" (half a cell out in every
+// direction) and take the LOWEST ground there. Because every vertex is now pinned
+// to the lowest point in its footprint, the straight line between any two vertices
+// can never rise above the true terrain — so the near cubes always cover it and the
+// poke-through is gone. The cost is the silhouette sits a touch lower in valleys,
+// which is exactly what the existing VerticalBias sink already does on purpose.
+//
+// `footprint_samples` = how many fine sub-samples per axis to scan across the cell
+// (so footprint_samples^2 reads per vertex). 0 or 1 = legacy single-point sampling
+// (the old look). 2..N = conservative min over the cell footprint. The scan covers
+// [-step/2, +step/2] on each axis so adjacent vertices' footprints meet in the
+// middle of every cell, leaving no gap the chord could overshoot through.
+//
+// NO-OVERSHOOT INVARIANT: for every grid vertex, the stored height is <= height_at
+// at that vertex's own world point (min includes the centre), and <= the true
+// ground at every fine column inside its footprint. A flat map returns the same
+// value everywhere (min of equal values), so flat terrain is unchanged.
+inline int conservative_height_min(
+    const std::function<int(int, int)>& height_at,
+    int wx, int wz, double half_x, double half_z, int footprint_samples)
+{
+    if (footprint_samples <= 1 || (half_x <= 0.0 && half_z <= 0.0)) {
+        return height_at(wx, wz); // legacy single-point sample
+    }
+    int best = height_at(wx, wz); // always include the centre point
+    const int n = footprint_samples;
+    // Spread n sub-samples evenly across [-half, +half] on each axis.
+    for (int sj = 0; sj < n; ++sj) {
+        const double tz = (n > 1) ? (static_cast<double>(sj) / (n - 1)) : 0.5; // 0..1
+        const int dz = static_cast<int>(std::llround((tz * 2.0 - 1.0) * half_z));
+        for (int si = 0; si < n; ++si) {
+            const double tx = (n > 1) ? (static_cast<double>(si) / (n - 1)) : 0.5;
+            const int dx = static_cast<int>(std::llround((tx * 2.0 - 1.0) * half_x));
+            const int h = height_at(wx + dx, wz + dz);
+            if (h < best) best = h;
+        }
+    }
+    return best;
+}
+
 // Build a grid_n x grid_n heightfield spanning the heightmap's FULL world extent
 // (origin + width*voxels_per_pixel). Heights and colors come from the callbacks.
 // Returns an empty (invalid) mesh if grid_n < 2 or the heightmap is invalid.
+//
+// `footprint_samples` controls conservative min-over-footprint height sampling (see
+// conservative_height_min above): <=1 keeps the original single-point behaviour;
+// >=2 pins each vertex to the lowest ground in its cell so the mesh never overshoots
+// the true terrain (kills the near-voxel poke-through). Defaults to 1 so existing
+// callers are unchanged; the far-mesh actor passes a higher value when its
+// conservative-height flag is on.
 inline FarHeightmesh build_far_heightmesh(
     const ImageHeightmap& hm, int grid_n,
     const std::function<int(int, int)>&  height_at,
-    const std::function<Rgb8(int, int)>& color_at)
+    const std::function<Rgb8(int, int)>& color_at,
+    int footprint_samples = 1)
 {
     FarHeightmesh out;
     if (grid_n < 2 || !hm.valid()) {
@@ -76,11 +135,19 @@ inline FarHeightmesh build_far_heightmesh(
     auto wx_of = [&](int i) { return static_cast<int>(std::llround(ox + i * step_x)); };
     auto wz_of = [&](int j) { return static_cast<int>(std::llround(oz + j * step_z)); };
 
-    // Pass 1: sample heights into a buffer (needed for smooth normals).
+    // Half a cell on each axis — the footprint each vertex scans for its min height.
+    const double half_x = 0.5 * step_x;
+    const double half_z = 0.5 * step_z;
+
+    // Pass 1: sample heights into a buffer (needed for smooth normals). When
+    // footprint_samples >= 2 this is the conservative MIN over the cell footprint so
+    // the coarse surface sits at/below the true terrain everywhere (no poke-through).
     std::vector<int> H(static_cast<size_t>(grid_n) * grid_n);
     for (int j = 0; j < grid_n; ++j)
     for (int i = 0; i < grid_n; ++i) {
-        H[static_cast<size_t>(j) * grid_n + i] = height_at(wx_of(i), wz_of(j));
+        H[static_cast<size_t>(j) * grid_n + i] =
+            conservative_height_min(height_at, wx_of(i), wz_of(j),
+                                    half_x, half_z, footprint_samples);
     }
 
     // Pass 2: build vertices (position + central-difference normal + color).

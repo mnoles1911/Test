@@ -48,6 +48,11 @@ bool AVoxelFarHeightmesh::LoadHeightmap()
 		return false;
 	}
 
+	// Vertical exaggeration (matches VoxelWorld 2026-06-18): normalize so the tallest
+	// peak reaches the full HeightmapAltitudeMeters ceiling (2500 m). MUST match the near
+	// terrain or the vista won't line up. Remove both calls to restore true heights.
+	Heightmap.normalize_to_unit();
+
 	constexpr double VoxelsPerMetre = 10.0;
 	const double SpanVoxels = static_cast<double>(MapSpanMeters) * VoxelsPerMetre;
 	Heightmap.set_centered_extent(SpanVoxels, SpanVoxels);
@@ -78,7 +83,21 @@ void AVoxelFarHeightmesh::BuildFarMesh()
 		return base_color(Col.top_id);
 	};
 
-	const FarHeightmesh FM = build_far_heightmesh(Heightmap, GridResolution, HeightAt, ColorAt);
+	// Floor the vista resolution: the saved level pins this at 384 (~13 m/vertex), which
+	// is too coarse for the exaggerated terrain and bulges over near voxels at cliff
+	// bottoms/valleys. 1024 (~5 m/vertex) hugs the surface far better. Designer may set
+	// it HIGHER, but not below this clipping-avoidance floor. (One static mesh; cheap.)
+	const int32 EffectiveRes = FMath::Max(GridResolution, 1536);
+
+	// Conservative (always-below) sampling: when ON, each vista grid vertex takes the
+	// LOWEST ground over the cell it covers so the smooth mesh can't bulge above the
+	// near voxel cubes and poke through (the reported clipping bug). 1 = legacy
+	// single-point sample (recovers the old look via the bConservativeVistaHeight flag).
+	const int FootprintSamples = bConservativeVistaHeight
+		? FMath::Max(2, ConservativeFootprintSamples)
+		: 1;
+	const FarHeightmesh FM = build_far_heightmesh(
+		Heightmap, EffectiveRes, HeightAt, ColorAt, FootprintSamples);
 	if (!FM.valid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[MiraThal] FarMesh build produced an empty mesh"));

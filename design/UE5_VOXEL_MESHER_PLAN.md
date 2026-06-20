@@ -1,6 +1,6 @@
 # UE5 Custom Cubic Voxel Plugin — Build Plan
 
-**Status:** APPROVED, **in progress — M0 ✅, M1 ✅, M2 ✅ (built 2026-06-16).** Companion to
+**Status:** APPROVED, **in progress — M0 ✅, M1 ✅, M2 ✅ (built 2026-06-16); M3 ⏳ in active build now (2026-06-17).** Companion to
 `UE5_TECH_STACK.md` (the canonical stack overview), `UE5_PORT_PLAN.md`, `UE5_RENDERING_STRATEGY.md`,
 `UE5_VOXEL_BACKEND_EVALUATION.md`. This is the execution plan for the custom mesher/rendering/streaming
 plugin we own (no third-party voxel backend — Voxel Plugin 2 dropped cubic; see the evaluation doc).
@@ -8,7 +8,10 @@ plugin we own (no third-party voxel backend — Voxel Plugin 2 dropped cubic; se
 > **Status note (2026-06-16):** the foundation is real, not just planned. **M0** (mesher foundations),
 > **M1** (AO/LOD/seams + first chunk rendered under Lumen, perf baseline ≈ 6.4 ms GPU on a 7800 XT in an
 > empty Lumen scene), and **M2** (brickmap + generation + the dig/carve loop, with multi-chunk generated
-> terrain and Chaos collision) are **built**. M3 (water/flora/gravity) is next. The headless gate is the
+> terrain and Chaos collision) are **built**. M3 (water/flora/gravity) is **in active build right now
+> (2026-06-17)** — water (`FiniteWaterCore`) and gravity-on-dig (`VoxelGravity`) are already wired into
+> `AVoxelWorld` (pour/settle + loose-material slides), flora voxels place on the surface; EXR heightmap
+> import (`ImageHeightmap`) and the production streaming phases are landing alongside it. The headless gate is the
 > standalone clang Core harness — **"ALL HARNESSES GREEN"** in `ue5/MiraThal/tests/standalone/build.sh`.
 >
 > **Texturing changed since this plan was written:** the "AtlasUV" / texture-atlas approach below is
@@ -90,7 +93,7 @@ UE glue (no Core): `UVoxelWorldSubsystem`, `AVoxelChunkActor`, `IVoxelMeshSink`/
 - **M0 ✅** Core meshing foundations: `ChunkCoords`, `VoxelChunk`, `MeshTypes`, ~~`AtlasUV`~~ **per-face `VoxelColor`**, `GreedyMesher`. `chunkcoords`/`mesher` (color baked in mesher). `[OSS]` binary-greedy-meshing. *(Atlas dropped → per-face solid color, see header note.)*
 - **M1 ✅** AO + LOD + seams + first render: `VoxelAO`, `LodDownsample`, skirts; `AVoxelChunkActor` (ProceduralMeshComponent for now; `FRealtimeMeshSink` planned). `ao`/`lod`/`seams`. `[B]` **chunk rendered under Lumen — perf Baseline ≈ 6.4 ms GPU (7800 XT, empty Lumen scene).** `[OSS]` RealtimeMeshComponent.
 - **M2 ✅** Brickmap + generation + carve loop: `Brickmap`, generator wire (`HeightmapGenerator`), `BrickmapMeshing` edit-affected-chunk compute, `AVoxelWorld` manager, `CarveAtWorld`/`CarveTestHole` → re-mesh → Chaos. `brickmap`/`meshbudget`. `[B]` **dig-under-Lumen built: multi-chunk generated terrain + live dig.** `[OSS]` FastNoiseLite.
-- **M3 ⏳** Water + flora + gravity: `WaterSurfaceMesher`, `FloraMesher`; wire `FiniteWaterCore`+`VoxelGravity`. `watersurf`/`flora`. `[B]` water shader, flora alpha-scissor. *(next milestone)*
+- **M3 ⏳** Water + flora + gravity: `WaterSurfaceMesher`, `FloraMesher`; wire `FiniteWaterCore`+`VoxelGravity`. `watersurf`/`flora`. `[B]` water shader, flora alpha-scissor. *(in active build now, 2026-06-17 — `FiniteWaterCore` pour/settle + `VoxelGravity` loose-material slides wired into `AVoxelWorld`; EXR import via `ImageHeightmap` landing alongside.)*
 - **M4** Streaming + persistence: `RegionFormat`, `BandPolicy`; World Partition + tile-local origins. `region`/`bands` + LWC tests. `[B]` World Partition, rebase soak.
 - **M5** Multiplayer: `NetVoxelCodec`; server-authoritative, edit RPC + multicast, join-in-progress. `netvoxel`. `[B]` replication + late-join.
 - **M6** Cold→Nanite bake: `MiraThalVoxelBake` + `meshoptimizer`. `[B]` perf spike B. `[OSS]` meshoptimizer.

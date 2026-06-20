@@ -1,8 +1,9 @@
 # UE5 GPU phases (M6 Nanite bake · M7 far-field ray-march · M8 GPU meshing)
 
-**Status:** PLAN + groundwork (2026-06-16). The three late milestones that move work to the GPU. M5
-(multiplayer) is deferred to the very end by direction, so these come first after the M3 sim. This doc
-captures the approach and what's **already in place** so each can be picked up cleanly. Build detail and
+**Status:** PLAN + groundwork (2026-06-17) — none of M6/M7/M8 is built yet. The three late milestones
+that move work to the GPU. M5 (multiplayer) is deferred to the very end by direction, so these come after
+the M3 sim (water/flora/gravity wiring) + EXR import + the P1–P4 streaming phases now in active build.
+This doc captures the approach and what's **already in place** so each can be picked up cleanly. Build detail and
 the module scoping live in `design/UE5_VOXEL_MESHER_PLAN.md`; this is the focused state-of-play.
 
 ---
@@ -73,4 +74,4 @@ M6 is the lowest-risk visual win (reuses the existing mesh, just rehouses it in 
 biggest renderer change (new pass + GPU brick mirror) but has the cleanest spec (the oracle test). M8 is
 the largest and should come last of the three — once the GPU brick mirror from M7 exists, GPU meshing
 and GPU generation build on the same upload. All three keep the Core CPU path as the parity oracle, the
-same discipline that carried M0–M4.
+same discipline that carried M0–M2 (and now M3 + the streaming phases).

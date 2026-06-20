@@ -15,6 +15,8 @@ public class MiraThalCore : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"InputCore",      // legacy axis input (WASD/mouse) for the test pawn
+			"EnhancedInput",  // button actions (Jump/Sprint/Crouch/Fly/Dig) via Enhanced Input
 			"MiraThalVoxel",
 		});
 	}

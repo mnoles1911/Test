@@ -52,9 +52,33 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh", meta = (ClampMin = "8", ClampMax = "2048"))
 	int32 GridResolution = 512;
 
-	// Sink the vista this many voxels below the true surface so near voxels win.
-	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh", meta = (ClampMin = "0", ClampMax = "50"))
-	int32 VerticalBiasVoxels = 2;
+	// Sink the vista this many voxels below the true surface so near voxels win. The
+	// vista is COARSE (one vertex per ~13 m at GridResolution 384); between samples it
+	// linearly interpolates, so on steep terrain it can bulge ABOVE the per-voxel near
+	// surface and poke through. A bigger sink keeps the near voxels on top everywhere.
+	// 24 voxels = 2.4 m below; from a distance the silhouette drop is imperceptible.
+	// (Concave valleys are the worst case for the coarse mesh bulging up; a finer
+	// GridResolution plus this sink is what keeps near voxels on top there.)
+	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh", meta = (ClampMin = "0", ClampMax = "80"))
+	int32 VerticalBiasVoxels = 24;
+
+	// CONSERVATIVE (always-below) vista height — FIXES the bug where the smooth vista
+	// silhouette pokes THROUGH the near voxel cubes at ridges/peaks. When ON, each
+	// grid vertex takes the LOWEST ground over the little square of terrain it covers
+	// (instead of one centre point), so the coarse mesh can never bulge above the true
+	// per-voxel surface and the near cubes always render on top. Default ON because it
+	// fixes a named visual bug; flip OFF to recover the original single-sample look.
+	// (VerticalBiasVoxels still applies on top as an extra safety sink.)
+	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh")
+	bool bConservativeVistaHeight = true;
+
+	// How many fine sub-samples per axis to scan across each cell when
+	// bConservativeVistaHeight is ON (so this^2 height reads per vertex). 3 (=9 reads)
+	// is enough to catch the worst-case bulge between grid vertices; higher is more
+	// conservative but costs a slightly lower silhouette and more build-time reads.
+	// Ignored when bConservativeVistaHeight is OFF.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|FarMesh", meta = (ClampMin = "2", ClampMax = "9", EditCondition = "bConservativeVistaHeight"))
+	int32 ConservativeFootprintSamples = 3;
 
 	// Flip triangle winding if the surface renders inside-out (faces downward).
 	// Default false = front faces point UP (correct: the voxel->UE axis swap already

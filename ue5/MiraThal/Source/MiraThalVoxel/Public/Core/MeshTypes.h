@@ -63,6 +63,20 @@ struct MeshVertex {
     // existing producer that doesn't set it renders untinted. AO stays separate
     // in `ao`; the UE material reads rgb = albedo, alpha = AO.
     uint8_t cr = 255, cg = 255, cb = 255;
+
+    // FLOW VECTOR for water scroll/animation (M-water). This is a 2D direction in
+    // the world XZ plane telling the water shader WHICH WAY this surface is moving,
+    // so the material can scroll its normal/foam UVs that way (a river drifts
+    // downstream, still water doesn't move). It is written ONLY by the water surface
+    // mesher; every solid/flora/leaf vertex leaves it at the default (0,0) = "no
+    // scroll", which is completely inert until a material actually samples it.
+    //   * (0,0)            -> still water (or any non-water vertex): no movement.
+    //   * a unit-ish vector-> the flow direction decoded from the water cell's byte.
+    // The UE bridge carries this into a SECOND UV channel (UV1) for the water section;
+    // a future Single Layer Water material reads UV1 to drive its scroll. Default 0
+    // keeps it harmless for every existing vertex producer (additive, opt-in).
+    float flow_x = 0.0f; // world +X component of the flow direction
+    float flow_z = 0.0f; // world +Z component of the flow direction
 };
 
 // One material section: a triangle list (indices into vertices) for one class.

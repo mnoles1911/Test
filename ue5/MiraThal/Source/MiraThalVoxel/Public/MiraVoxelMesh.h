@@ -39,8 +39,20 @@ namespace MiraVoxelMesh
 	// color (grey). bReverseWinding flips triangle order for the handedness swap;
 	// leave it true unless the chunk renders inside-out, then flip it (it's an
 	// editor toggle on the actor so you can fix it without a recompile).
+	// PositionScale multiplies every vertex position (after the voxel->UE scale), so a
+	// downsampled LOD chunk (positions in COARSE-voxel units) renders at its true world
+	// size — pass 2^Lod for a LOD chunk, 1.0 (default) for full-detail.
+	//
+	// DebugColor (DIAGNOSTIC, default null): when non-null, every vertex's RGB albedo is
+	// REPLACED by this flat color (the per-LOD debug tint from mira::lod_debug_color) while
+	// the per-vertex AO alpha is KEPT, so the LOD-color debug mode (cvar mira.LodDebug) reads
+	// as a flat hue that still has the fake-AO shading. This is a RENDER override only —
+	// nothing is written back to the Core MeshBuffers or the voxel/brick store. When null
+	// (the default / cvar-off path) the vertex color is byte-for-byte the original albedo×AO.
 	MIRATHALVOXEL_API void ApplyMeshBuffers(UProceduralMeshComponent* Pmc,
 	                                        const mira::MeshBuffers& Mb,
 	                                        bool bReverseWinding,
-	                                        bool bCreateCollision);
+	                                        bool bCreateCollision,
+	                                        float PositionScale = 1.0f,
+	                                        const FColor* DebugColor = nullptr);
 }

@@ -3,6 +3,7 @@
 #include "ProceduralMeshComponent.h"
 #include "MiraVoxelMesh.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h" // UMaterialInstanceDynamic (LOD cross-fade scalar)
 
 // Engine-agnostic Core (no Unreal types).
 #include "Core/VoxelChunk.h"        // DenseGrid, make_mesh_slab, APRON
@@ -14,6 +15,8 @@
 #include "Core/WaterSurfaceMesher.h"// append_water_surface
 #include "Core/FloraMesher.h"       // append_flora
 #include "Core/HeightmapGenerator.h"// HeightmapGenerator (generator path)
+#include "Core/NaniteBakeTiling.h"  // nanitebake::sample_crust_slab (editor crust bake)
+#include "VoxelGenParams.h"         // FGenParams / BuildGen (shared generator snapshot)
 
 AVoxelChunkActor::AVoxelChunkActor()
 {
@@ -151,26 +154,94 @@ void AVoxelChunkActor::Rebuild()
 // brickmap and hands it to us. We just mesh + upload + assign materials. No
 // generation here — the world owns the voxel data. (M2 multi-chunk path.)
 // ---------------------------------------------------------------------------
-void AVoxelChunkActor::RenderManaged(const mira::DenseGrid& Slab,
-                                     UMaterialInterface* OpaqueMat,
-                                     UMaterialInterface* WaterMat,
-                                     UMaterialInterface* FloraMat,
-                                     bool bCollision,
-                                     bool bReverse)
+// PURE Core mesh build — no UE objects touched, safe to run on a worker thread.
+mira::MeshBuffers AVoxelChunkActor::BuildMeshBuffers(const mira::DenseGrid& Slab, bool bSolidsOnly)
 {
 	using namespace mira;
-
 	MeshBuffers Mb = greedy_mesh(Slab);
-	append_water_surface(Slab, Mb);
-	append_flora(Slab, Mb);
+	if (!bSolidsOnly)
+	{
+		// LOD chunks carry no water/flora (the downsample drops those channels), so
+		// the mid/far bands mesh solids only; the near band still gets water + flora.
+		append_water_surface(Slab, Mb);
+		append_flora(Slab, Mb);
+	}
+	return Mb;
+}
 
+// PURE crust-tile sampler+mesher for the editor Nanite cold-bake (see header). Runs the
+// generator INSIDE this module (where compute_ground_y/resolve_column are linked) so the
+// bake module never references those unexported Core symbols. Mirrors MeshSuperPure.
+FCrustTileMesh AVoxelChunkActor::SampleAndMeshCrustTile(const FGenParams& P,
+                                                        int32 TileX, int32 TileZ,
+                                                        int32 TileSpan, int32 Stride,
+                                                        int32 SkirtDepth)
+{
+	using namespace mira;
+	FCrustTileMesh Out;
+	Out.Stride = Stride;
+
+	HeightmapGenerator Gen;
+	BuildGen(P, Gen);
+
+	// Generator-backed callbacks bind the pure tiling math to this world's terrain — the
+	// SAME compute_ground_y/resolve_column the live near voxels use (seam alignment).
+	auto HeightAt = [&Gen](int wx, int wz) { return Gen.compute_ground_y(wx, wz); };
+	auto TopIdAt  = [&Gen](int wx, int wz) -> uint8_t {
+		return static_cast<uint8_t>(Gen.resolve_column(wx, wz).top_id);
+	};
+
+	const Vec2i Tile(TileX, TileZ);
+	const nanitebake::CrustSlab Cr =
+		nanitebake::sample_crust_slab(Tile, TileSpan, Stride, SkirtDepth, HeightAt, TopIdAt);
+
+	Out.BaseFineY = Cr.base_fine_y;
+	const nanitebake::TileBounds B = nanitebake::tile_bounds(Tile, TileSpan);
+	Out.MinVoxelX = B.minX; Out.MinVoxelZ = B.minZ;
+	Out.MaxVoxelX = B.maxX; Out.MaxVoxelZ = B.maxZ;
+
+	if (!Cr.has_solid)
+	{
+		Out.bHasContent = false;
+		return Out;
+	}
+
+	// Same greedy mesher the live + super-chunk paths use; solids only (no water/flora).
+	Out.Mb = BuildMeshBuffers(Cr.slab, /*bSolidsOnly=*/true);
+	Out.bHasContent = (Out.Mb.total_quads() > 0);
+	return Out;
+}
+
+// Game-thread upload of finished buffers into the ProceduralMesh + per-FaceClass mats.
+void AVoxelChunkActor::UploadMeshBuffers(const mira::MeshBuffers& Mb,
+                                         UMaterialInterface* OpaqueMat,
+                                         UMaterialInterface* WaterMat,
+                                         UMaterialInterface* FloraMat,
+                                         bool bCollision,
+                                         bool bReverse,
+                                         float PositionScale,
+                                         const FColor* DebugColor)
+{
+	using namespace mira;
 	if (!Mesh)
 	{
 		return;
 	}
 
+	// Cache the buffers + params so the DIAGNOSTIC RecolorDebug pass can re-upload the SAME
+	// geometry with the debug tint toggled on/off when the tester flips mira.LodDebug — no
+	// voxel regeneration. This is a render-side copy; it never touches the voxel/brick store.
+	CachedMesh          = Mb;
+	CachedOpaqueMat     = OpaqueMat;
+	CachedWaterMat      = WaterMat;
+	CachedFloraMat      = FloraMat;
+	CachedCollision     = bCollision;
+	CachedReverse       = bReverse;
+	CachedPositionScale = PositionScale;
+	bHasCachedMesh      = true;
+
 	Mesh->ClearAllMeshSections();
-	MiraVoxelMesh::ApplyMeshBuffers(Mesh, Mb, bReverse, bCollision);
+	MiraVoxelMesh::ApplyMeshBuffers(Mesh, Mb, bReverse, bCollision, PositionScale, DebugColor);
 
 	// Section index == FaceClass value (see MiraVoxelMesh::ApplyMeshBuffers).
 	// Opaque + Cutout both draw atlas-free solid-colour terrain, so they share the
@@ -188,6 +259,105 @@ void AVoxelChunkActor::RenderManaged(const mira::DenseGrid& Slab,
 	{
 		Mesh->SetMaterial(static_cast<int32>(FaceClass::Flora), FloraMat);
 	}
+}
+
+// DIAGNOSTIC LOD debug-color recolor pass. Re-upload the LAST cached mesh with the debug
+// tint applied (DebugColor != null) or removed (null = real albedo restored). Lets a LIVE
+// `mira.LodDebug` toggle recolor already-loaded chunks WITHOUT regenerating voxels — we
+// just re-run the GPU upload over the geometry we stashed at upload time. No-op if nothing
+// was ever uploaded. Touches no voxel/brick data.
+void AVoxelChunkActor::RecolorDebug(const FColor* DebugColor)
+{
+	if (!Mesh || !bHasCachedMesh)
+	{
+		return; // nothing meshed on this actor yet — nothing to recolor (safe no-op)
+	}
+	Mesh->ClearAllMeshSections();
+	MiraVoxelMesh::ApplyMeshBuffers(Mesh, CachedMesh, CachedReverse, CachedCollision,
+	                                CachedPositionScale, DebugColor);
+	// Re-bind the per-FaceClass materials (ClearAllMeshSections dropped them). Mirror the
+	// exact assignment UploadMeshBuffers does so the recolored mesh shades identically.
+	if (CachedOpaqueMat)
+	{
+		Mesh->SetMaterial(static_cast<int32>(mira::FaceClass::Opaque), CachedOpaqueMat);
+		Mesh->SetMaterial(static_cast<int32>(mira::FaceClass::Cutout), CachedOpaqueMat);
+	}
+	if (CachedWaterMat)
+	{
+		Mesh->SetMaterial(static_cast<int32>(mira::FaceClass::Water), CachedWaterMat);
+	}
+	if (CachedFloraMat)
+	{
+		Mesh->SetMaterial(static_cast<int32>(mira::FaceClass::Flora), CachedFloraMat);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LOD-transition dither cross-fade: push the per-chunk "FadeAlpha" scalar onto the
+// TERRAIN section(s). See the header for the contract. This is the ONLY new render
+// state the cross-fade adds, and it's only ever called from inside AVoxelWorld's
+// flag-gated fade machine — when the flag is off this never runs, so a normal chunk's
+// material binding is byte-for-byte what it was before.
+// ---------------------------------------------------------------------------
+void AVoxelChunkActor::SetFadeAlpha(float A)
+{
+	using namespace mira;
+	if (!Mesh)
+	{
+		return; // no mesh component — nothing to fade (no-op safe)
+	}
+
+	// The terrain lives in the Opaque + Cutout sections (both share TerrainMaterial).
+	// If neither section exists (e.g. this chunk meshed only water/flora, or is empty),
+	// there's nothing to fade — bail without creating a MID.
+	const int32 OpaqueIdx = static_cast<int32>(FaceClass::Opaque);
+	const int32 CutoutIdx = static_cast<int32>(FaceClass::Cutout);
+	const bool bHasOpaque = (Mesh->GetProcMeshSection(OpaqueIdx) != nullptr);
+	const bool bHasCutout = (Mesh->GetProcMeshSection(CutoutIdx) != nullptr);
+	if (!bHasOpaque && !bHasCutout)
+	{
+		return; // no terrain section on this actor — nothing to drive (no-op safe)
+	}
+
+	// Lazily create the dynamic material instance the FIRST time we fade. We base it on
+	// whatever material is currently bound to a terrain section (that's TerrainMaterial,
+	// assigned in UploadMeshBuffers); using the live binding means we don't need a
+	// pointer back to the world's TerrainMaterial here. If that binding is somehow null
+	// we can't build a MID, so we no-op (the fade just won't be visible — safe).
+	if (!TerrainFadeMID)
+	{
+		const int32 BaseIdx = bHasOpaque ? OpaqueIdx : CutoutIdx;
+		UMaterialInterface* Base = Mesh->GetMaterial(BaseIdx);
+		if (!Base)
+		{
+			return; // no base material to instance — can't fade (no-op safe)
+		}
+		TerrainFadeMID = UMaterialInstanceDynamic::Create(Base, this);
+		if (!TerrainFadeMID)
+		{
+			return; // creation failed (defensive) — no-op
+		}
+		// Bind the MID onto every terrain section that exists so both get the dither.
+		if (bHasOpaque) { Mesh->SetMaterial(OpaqueIdx, TerrainFadeMID); }
+		if (bHasCutout) { Mesh->SetMaterial(CutoutIdx, TerrainFadeMID); }
+	}
+
+	// Push the scalar the in-editor Dither node reads. Clamp defensively to [0,1].
+	TerrainFadeMID->SetScalarParameterValue(TEXT("FadeAlpha"), FMath::Clamp(A, 0.0f, 1.0f));
+}
+
+// Synchronous convenience (unchanged behaviour): build then upload on the game thread.
+void AVoxelChunkActor::RenderManaged(const mira::DenseGrid& Slab,
+                                     UMaterialInterface* OpaqueMat,
+                                     UMaterialInterface* WaterMat,
+                                     UMaterialInterface* FloraMat,
+                                     bool bCollision,
+                                     bool bReverse,
+                                     float PositionScale,
+                                     bool bSolidsOnly)
+{
+	const mira::MeshBuffers Mb = BuildMeshBuffers(Slab, bSolidsOnly);
+	UploadMeshBuffers(Mb, OpaqueMat, WaterMat, FloraMat, bCollision, bReverse, PositionScale);
 }
 
 void AVoxelChunkActor::OnConstruction(const FTransform& Transform)

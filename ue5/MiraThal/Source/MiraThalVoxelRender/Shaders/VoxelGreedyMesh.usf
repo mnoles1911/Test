@@ -1,0 +1,210 @@
+// VoxelGreedyMesh.usf — the M8 GPU greedy-mesh compute shader (SKELETON).
+//
+// GOAL (plain English): build the SAME quads the CPU mira::greedy_mesh builds
+// (Core/GreedyMesher.cpp), but on the GPU, so streaming a huge map doesn't bottleneck
+// on CPU meshing. The CPU GreedyMesher output is the PARITY ORACLE
+// (tests/standalone/test_mesher.cpp).
+//
+// SCAFFOLD STATUS: this is a REAL STRUCTURE with REAL buffer layout + thread mapping
+// + the cull/emit rules ported from the CPU. The inner greedy RECTANGLE-MERGE loop
+// is laid out and commented but left as a documented TODO (it is the large, tricky
+// part and must be parity-tested against the CPU mask-merge carefully — see the
+// merge section below and GpuParityPlan.md). Per-face SOLID COLOR matches VoxelColor.h.
+//
+// PORT MAP (CPU -> GPU):
+//   GreedyMesher.cpp sweep_dir(dir, axis)  -> one Dispatch per face direction (6 total),
+//                                             or one dispatch with dir in a constant.
+//   the per-slice mask paint                -> per-thread mask cell write to groupshared
+//   occludes() / meshes_here()              -> ported below, byte-identical rules
+//   the rectangle merge                     -> TODO (documented), emits quads to a buffer
+//   emit_quad (color = shaded_color)        -> AppendStructuredBuffer of quads
+
+#include "/Engine/Public/Platform.ush"
+
+// ---------------------------------------------------------------------------
+// SLAB LAYOUT — matches Core/VoxelChunk.h.
+//   MESH_SLAB_SIDE = 34 (CHUNK 32 + 2*APRON). Inner chunk = [1..32]; shell = apron.
+//   X-fastest flatten: index = x + y*side + z*side*side (coords::flatten).
+// One workgroup meshes ONE slab. Threads map to the 32x32 in-plane mask of a slice.
+// ---------------------------------------------------------------------------
+#define CHUNK_N        32
+#define APRON          1
+#define SLAB_SIDE      34       // CHUNK_N + 2*APRON
+#define MAT_AIR        0
+#define MAT_LEAVES     11       // FaceClass::Cutout (non-occluding)
+
+// FaceDir enum (MeshTypes.h order): -X,+X,-Y,+Y,-Z,+Z.
+#define FACE_NEG_X 0
+#define FACE_POS_X 1
+#define FACE_NEG_Y 2
+#define FACE_POS_Y 3
+#define FACE_NEG_Z 4
+#define FACE_POS_Z 5
+
+// ---------------------------------------------------------------------------
+// BINDINGS — the C++ pass (stubbed in VoxelGpuMeshPass.cpp) fills these.
+// ---------------------------------------------------------------------------
+ByteAddressBuffer  SlabTypes;     // SLAB_SIDE^3 type bytes (one apron'd slab)
+int                SweepDir;      // which of the 6 face dirs this dispatch handles
+int                SweepAxis;     // 0/1/2 — the axis the slices stack along
+
+// One emitted quad, mirroring what emit_quad writes (positions in VOXEL UNITS,
+// chunk-local; per-face baked color; normal from FACE_NORMAL[dir]). The CPU emits 4
+// verts + 6 indices; here we emit a compact quad record and the C++/readback expands
+// or compares it. VERIFY the exact vertex packing the M8 RMC sink wants at bring-up.
+struct FQuad
+{
+	float3 Origin;    // min corner, voxel units (chunk-local)
+	float3 Du;        // in-plane step * width  (origin + Du = far-u corner)
+	float3 Dv;        // in-plane step * height
+	int3   Normal;    // outward face normal (FACE_NORMAL[dir])
+	uint   Material;  // id (drives base_color + face class)
+	uint   ColorRGBA; // packed shaded_color(id,dir) (per-face solid color)
+};
+AppendStructuredBuffer<FQuad> OutQuads;
+
+// ---------------------------------------------------------------------------
+// HELPERS — ported byte-for-byte from GreedyMesher.cpp.
+// ---------------------------------------------------------------------------
+
+int slab_flatten(int x, int y, int z) { return x + y * SLAB_SIDE + z * SLAB_SIDE * SLAB_SIDE; }
+
+// at_local: read the slab at a CHUNK-LOCAL coord with the +APRON shift, so local -1
+// reaches apron slot 0 and local 32 reaches slot 33 (GreedyMesher.cpp at_local).
+uint at_local(int lx, int ly, int lz)
+{
+	int idx = slab_flatten(lx + APRON, ly + APRON, lz + APRON);
+	uint word = SlabTypes.Load((idx & ~3) << 0);   // VERIFY byte addressing vs packing
+	uint shift = (uint)(idx & 3) * 8u;
+	return (word >> shift) & 0xFFu;
+}
+
+// face_class_of (MeshTypes.h): leaves->Cutout(1); water(5,16..23)->Water(2);
+// flora(24..28)->Flora(3); else Opaque(0).
+int face_class_of(uint id)
+{
+	if (id == (uint)MAT_LEAVES)                 return 1; // Cutout
+	if (id == 5u || (id >= 16u && id <= 23u))   return 2; // Water
+	if (id >= 24u && id <= 28u)                 return 3; // Flora
+	return 0;                                              // Opaque
+}
+
+// occludes (GreedyMesher.cpp): only fully-opaque SOLIDS occlude; air never occludes.
+bool occludes(uint n)
+{
+	return n != (uint)MAT_AIR && face_class_of(n) == 0;
+}
+
+// meshes_here (GreedyMesher.cpp): emit only Opaque solids + Cutout leaves.
+bool meshes_here(uint id)
+{
+	if (id == (uint)MAT_AIR) return false;
+	int c = face_class_of(id);
+	return c == 0 || c == 1;
+}
+
+// FACE_OFFSET[dir] (ChunkCoords.h): the neighbour step for a face dir.
+int3 face_offset(int dir)
+{
+	switch (dir)
+	{
+		case FACE_NEG_X: return int3(-1, 0, 0);
+		case FACE_POS_X: return int3( 1, 0, 0);
+		case FACE_NEG_Y: return int3( 0,-1, 0);
+		case FACE_POS_Y: return int3( 0, 1, 0);
+		case FACE_NEG_Z: return int3( 0, 0,-1);
+		default:         return int3( 0, 0, 1); // FACE_POS_Z
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GROUPSHARED MASK — one 32x32 slice mask, exactly like the CPU `mask` vector in
+// sweep_dir. cell = material id of a visible face (0 = no face). (The CPU also bakes
+// 4 corner AO levels per cell to break merges across AO gradients; the GPU skeleton
+// tracks only the id here and flags AO as a TODO — see the merge section.)
+// ---------------------------------------------------------------------------
+groupshared uint gMask[CHUNK_N * CHUNK_N];   // [j*N + i], j along va, i along ua
+
+[numthreads(CHUNK_N, CHUNK_N, 1)]
+void MainCS(uint3 GroupId : SV_GroupID, uint3 GtId : SV_GroupThreadID)
+{
+	const int axis = SweepAxis;
+	const int ua = (axis + 1) % 3;   // first in-plane axis (GreedyMesher.cpp)
+	const int va = (axis + 2) % 3;   // second in-plane axis
+	const int dir = SweepDir;
+	const int3 off = face_offset(dir);
+	const bool positive = (dir == FACE_POS_X || dir == FACE_POS_Y || dir == FACE_POS_Z);
+
+	const int i = (int)GtId.x;       // along ua  (0..31)
+	const int j = (int)GtId.y;       // along va  (0..31)
+
+	// Walk every slice along `axis`, just like the CPU's outer `for s` loop. Each
+	// thread owns one (i,j) mask cell and re-paints it per slice.
+	for (int s = 0; s < CHUNK_N; ++s)
+	{
+		// ---- PAINT THE MASK (per-thread; mirrors the CPU paint loop) ----
+		int c[3];
+		c[axis] = s; c[ua] = i; c[va] = j;
+		uint id = at_local(c[0], c[1], c[2]);
+
+		uint cell = 0;
+		if (meshes_here(id))
+		{
+			uint nb = at_local(c[0] + off.x, c[1] + off.y, c[2] + off.z);
+			if (!occludes(nb))
+			{
+				cell = id;
+				// TODO(AO PARITY): the CPU also bakes ao::compute_face_ao here and
+				// stores the 4 corner levels in the mask cell, so two cells only merge
+				// when BOTH id AND ao match. The GPU skeleton omits AO, so it would
+				// over-merge across AO creases. Add a parallel groupshared AO buffer
+				// (4 levels packed per cell) before claiming mesher parity. test_mesher
+				// case 9 pins this behaviour.
+			}
+		}
+		gMask[j * CHUNK_N + i] = cell;
+
+		GroupMemoryBarrierWithGroupSync();   // mask fully painted before merge
+
+		// ---- GREEDY RECTANGLE MERGE (THE BIG TODO) ----
+		// The CPU does a serial scan: for each unconsumed cell, grow width along ua
+		// while cells match, then grow height along va while the whole next row
+		// matches, emit one quad, clear the consumed rectangle, advance. (See
+		// GreedyMesher.cpp sweep_dir, the "greedily merge the mask" block.)
+		//
+		// On the GPU this must NOT be run by every thread (that would emit each quad
+		// 1024 times). The standard approaches:
+		//   (a) Single-thread-per-group serial merge: let thread (0,0) run the exact
+		//       CPU scan over gMask and Append quads. Simplest, provably parity-equal
+		//       to the CPU, modest parallelism (1 thread/slab/slice). Good FIRST cut.
+		//   (b) Parallel span-merge: each thread finds maximal runs, then a reduction
+		//       merges rows. Faster but the merge order can differ from the CPU's
+		//       top-left-first scan, so the QUAD SET is identical but emission order
+		//       differs — the parity test must compare as a SET, not a sequence.
+		//
+		// We pick (a) for the first parity pass; left as a TODO so this skeleton stays
+		// honest about not yet producing quads.
+		if (i == 0 && j == 0)
+		{
+			// TODO(MERGE): port the exact serial scan here:
+			//   for (jj=0..N) for (ii=0..N step) { if(!gMask) continue;
+			//       grow w along ua while gMask matches; grow h along va while row matches;
+			//       build origin/du/dv (positive face plane at s+1 else s);
+			//       FQuad q = ...; q.Material=start; q.Normal=FACE_NORMAL[dir];
+			//       q.ColorRGBA = pack(shaded_color(start, dir));
+			//       OutQuads.Append(q);
+			//       clear consumed rect; ii += w; }
+			//
+			// Geometry recipe (from GreedyMesher.cpp, verified against test_mesher
+			// cases 1/3/4 — solid 32^3 -> 6 quads, flat patch -> 1 quad):
+			//   origin[ua]=i_start; origin[va]=j_start; origin[axis]=positive?s+1:s;
+			//   du[ua]=1*w; dv[va]=1*h; winding flips for negative faces (CCW outside).
+			//   color = shaded_color(id, dir) per VoxelColor.h (per material+direction).
+			//
+			// NOT IMPLEMENTED in the scaffold: emits nothing yet. Parity-verify before
+			// enabling (GpuParityPlan.md describes the readback assert vs test_mesher).
+		}
+
+		GroupMemoryBarrierWithGroupSync();   // merge done before next slice overwrites mask
+	}
+}

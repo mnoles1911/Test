@@ -6,7 +6,9 @@
 //   - 7 air + 1 stone -> stone (solid wins over majority air)
 //   - 8 air -> air
 //   - 7 air + 1 flora (grass blade id 24) -> air (passthrough != solid)
-//   - majority + tie-break across two solid ids
+//   - top-wins material rule (surface-preserving): the topmost solid voxel
+//     along world-up (grid Y) wins, so a thin grass cap survives the halving
+//   - DECISIVE: a 32^3 grass/dirt/stone column keeps GRASS on top at LOD 1..5
 //   - water max-level via WaterByteCodec (codec encodes inputs, codec reads output)
 //   - downsample_to_lod chains (4^3 -> lod 2 = 1^3; 32^3 -> lod 1 = 16^3)
 //   - odd-side contract guard returns empty grid (side 0)
@@ -119,63 +121,130 @@ int main() {
     }
 
     // ========================================================================
-    // TEST 5a: majority — more of id A than id B -> picks A
+    // TEST 5a: TOP-WINS — grass cap on top of dirt survives the halving
     // ========================================================================
-    // Build a 2x2x2 with 5 STONE (id 1) and 3 DIRT (id 2).
-    // Stone wins outright (5 > 3).
+    // The whole point of the surface-preserving rule. Build a 2x2x2 block whose
+    // TOP layer (grid Y = 1, dy = 1) is GRASS (id 3) and whose BOTTOM layer
+    // (Y = 0) is DIRT (id 2). The old majority rule would have tied 4-4 and
+    // picked the SMALLER id (dirt) — losing the grass. Top-wins must keep GRASS
+    // because grid Y is world-up and the grass voxels are the highest solids.
     {
         mira::DenseGrid src(2);
-        // Fill all 8 with DIRT first, then overwrite 5 with STONE.
-        fill_type(src, static_cast<uint8_t>(mira::mat::DIRT));
-        // STONE at (0,0,0), (1,0,0), (0,1,0), (1,1,0), (0,0,1) => 5 slots
-        src.set_type(0, 0, 0, mira::mat::STONE);
-        src.set_type(1, 0, 0, mira::mat::STONE);
-        src.set_type(0, 1, 0, mira::mat::STONE);
-        src.set_type(1, 1, 0, mira::mat::STONE);
-        src.set_type(0, 0, 1, mira::mat::STONE);
-        // Remaining 3 slots stay DIRT.
+        fill_type(src, static_cast<uint8_t>(mira::mat::DIRT)); // bottom row dirt
+        // Overwrite the entire TOP row (y = 1) with grass.
+        src.set_type(0, 1, 0, mira::mat::GRASS);
+        src.set_type(1, 1, 0, mira::mat::GRASS);
+        src.set_type(0, 1, 1, mira::mat::GRASS);
+        src.set_type(1, 1, 1, mira::mat::GRASS);
 
         mira::DenseGrid out = mira::lod::downsample_half(src);
 
-        CHECK(out.type_at(0,0,0) == mira::mat::STONE,
-              "majority 5stone+3dirt: stone wins (more frequent)");
+        CHECK(out.type_at(0,0,0) == mira::mat::GRASS,
+              "top-wins 4grass(top)+4dirt(bottom): grass (top, world-up) survives");
     }
 
     // ========================================================================
-    // TEST 5b: tie-break — equal count, smaller id wins
+    // TEST 5b: TOP-WINS — a SINGLE grass voxel on top beats a dirt majority
     // ========================================================================
-    // 4 STONE (id 1) and 4 DIRT (id 2) -> tie -> smaller id = STONE (1).
+    // Only ONE of the 8 is grass, and it sits in the top row (y = 1). The other
+    // 7 are dirt (one in the top row, four in the bottom... wait: 1 grass + 7
+    // dirt). Top-wins scans the top row first, finds grass, and keeps it even
+    // though dirt is the 7-vs-1 majority. This is the thin-grass-cap case that
+    // the old majority rule destroyed.
     {
         mira::DenseGrid src(2);
         fill_type(src, static_cast<uint8_t>(mira::mat::DIRT));
-        src.set_type(0, 0, 0, mira::mat::STONE);
-        src.set_type(1, 0, 0, mira::mat::STONE);
-        src.set_type(0, 1, 0, mira::mat::STONE);
-        src.set_type(1, 1, 0, mira::mat::STONE);
-        // (0,0,1), (1,0,1), (0,1,1), (1,1,1) remain DIRT
+        src.set_type(0, 1, 0, mira::mat::GRASS); // one grass voxel in the TOP row
 
         mira::DenseGrid out = mira::lod::downsample_half(src);
 
-        CHECK(out.type_at(0,0,0) == mira::mat::STONE,
-              "tie-break 4stone+4dirt: smaller id (stone=1) wins over dirt=2");
+        CHECK(out.type_at(0,0,0) == mira::mat::GRASS,
+              "top-wins 1grass(top)+7dirt: lone top grass beats dirt majority");
     }
 
     // ========================================================================
-    // TEST 5c: tie-break second scenario — 4 DIRT (id 2) vs 4 MARBLE (id 9)
-    //          -> tie -> smaller id = DIRT (2)
+    // TEST 5c: TOP-WINS — grass only in the BOTTOM row does NOT win
     // ========================================================================
+    // Symmetric guard: if the only grass is in the BOTTOM row (y = 0) and the
+    // top row is dirt, the surface material is dirt, so dirt must win. This
+    // proves we scan the correct (world-up) direction and don't just pick grass
+    // wherever it appears.
     {
         mira::DenseGrid src(2);
-        fill_type(src, static_cast<uint8_t>(mira::mat::MARBLE));
-        src.set_type(0, 0, 0, mira::mat::DIRT);
-        src.set_type(1, 0, 0, mira::mat::DIRT);
-        src.set_type(0, 1, 0, mira::mat::DIRT);
-        src.set_type(1, 1, 0, mira::mat::DIRT);
+        fill_type(src, static_cast<uint8_t>(mira::mat::DIRT)); // top row dirt
+        // Bottom row (y = 0) all grass; top row (y = 1) stays dirt.
+        src.set_type(0, 0, 0, mira::mat::GRASS);
+        src.set_type(1, 0, 0, mira::mat::GRASS);
+        src.set_type(0, 0, 1, mira::mat::GRASS);
+        src.set_type(1, 0, 1, mira::mat::GRASS);
 
         mira::DenseGrid out = mira::lod::downsample_half(src);
 
         CHECK(out.type_at(0,0,0) == mira::mat::DIRT,
-              "tie-break 4dirt+4marble: smaller id (dirt=2) wins over marble=9");
+              "top-wins grass-in-bottom-only: top (dirt) wins, not the buried grass");
+    }
+
+    // ========================================================================
+    // TEST 5d: DECISIVE REGRESSION GATE — grass cap survives EVERY LOD 1..5
+    // ========================================================================
+    // Build a realistic 32^3 chunk column matching the generator's banding:
+    //   grass(1 voxel on top) + dirt(3) + stone(28), stacked along world-up = Y.
+    // Then downsample to EVERY lod level 1..5 and assert that the TOP solid
+    // voxel's id == GRASS at every level (so green reaches the rendered top
+    // face), AND that no level produced air-where-solid (the column is fully
+    // solid, so the coarse column must be fully solid too).
+    //
+    // y = 31 (highest)         -> GRASS  (1 voxel thick top cap)
+    // y = 30, 29, 28           -> DIRT   (3 voxels)
+    // y = 27 .. 0              -> STONE  (28 voxels)
+    {
+        mira::DenseGrid src(32);
+        fill_type(src, static_cast<uint8_t>(mira::mat::AIR));
+        for (int z = 0; z < 32; ++z)
+        for (int x = 0; x < 32; ++x)
+        {
+            for (int y = 0; y <= 27; ++y)  src.set_type(x, y, z, mira::mat::STONE);
+            for (int y = 28; y <= 30; ++y) src.set_type(x, y, z, mira::mat::DIRT);
+            src.set_type(x, 31, z, mira::mat::GRASS); // 1-voxel grass cap on top
+        }
+
+        for (int L = 1; L <= 5; ++L) {
+            mira::DenseGrid out = mira::lod::downsample_to_lod(src, L);
+            const int s = out.side;
+            CHECK(s == (32 >> L), "grass-cap LOD: coarse side is 32>>L");
+            if (s <= 0) continue;
+
+            // For each (x,z) coarse column, the TOP solid voxel (highest Y) must
+            // be GRASS, and every voxel in the column must be solid (no holes).
+            bool all_top_grass = true;
+            bool any_hole = false;
+            for (int z = 0; z < s; ++z)
+            for (int x = 0; x < s; ++x)
+            {
+                // Find the topmost solid voxel in this coarse column.
+                int top_y = -1;
+                for (int y = s - 1; y >= 0; --y) {
+                    const uint8_t t = out.type_at(x, y, z);
+                    if (t != mira::mat::AIR && !mira::mat::is_passthrough(t)) {
+                        top_y = y;
+                        break;
+                    }
+                }
+                if (top_y < 0) { any_hole = true; continue; }
+                if (out.type_at(x, top_y, z) != mira::mat::GRASS) all_top_grass = false;
+                // The whole input column was solid, so every coarse voxel from
+                // 0..top_y must be solid too (the cap can't sit on a hole).
+                for (int y = 0; y <= top_y; ++y) {
+                    const uint8_t t = out.type_at(x, y, z);
+                    if (t == mira::mat::AIR || mira::mat::is_passthrough(t)) any_hole = true;
+                }
+                // The coarse voxel's id must never map to a white base color
+                // (the grey/white rock bug we are fixing). GRASS is green; a
+                // sanity check that the top id is specifically GRASS covers this.
+            }
+            CHECK(all_top_grass, "grass-cap LOD: top solid voxel is GRASS at this L");
+            CHECK(!any_hole,     "grass-cap LOD: no air-where-solid in the coarse column");
+        }
     }
 
     // ========================================================================

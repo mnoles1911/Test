@@ -50,11 +50,15 @@
 //     toward the neighbour.
 //   * NO bottom faces, NO collision (water is non-colliding).
 //
+// FLOW DIRECTION (M-water — DONE): each emitted water vertex now carries a 2D
+//   world-XZ flow vector (MeshVertex.flow_x/flow_z), decoded from the cell's water
+//   byte via flow_xz_of_byte (WaterByteCodec::dir_of -> dir_to_offset, horizontal
+//   part only). Still/vertical/settled cells get (0,0) = no scroll. The UE bridge
+//   carries this into a second UV channel (UV1) for the water section so a future
+//   Single Layer Water material can scroll its normal/foam UVs downstream. UV0 (the
+//   plain per-cell tile) is unchanged.
+//
 // TODOs LEFT (documented, not bugs):
-//   * Flow-direction UV scroll: the water byte carries a flow direction
-//     (WaterByteCodec::dir_of), but MeshVertex has no flow channel yet, so we
-//     cannot encode per-vertex scroll direction. UVs here are a plain per-cell unit
-//     tile; wiring flow->UV-scroll waits on a MeshVertex flow field.
 //   * Water-vs-solid side culling: right now a water side against SOLID terrain is
 //     still emitted (we only cull water-vs-water). The water material is
 //     translucent so this is visually acceptable for now; a later pass can read the
@@ -140,12 +144,31 @@ inline float corner_height(const DenseGrid& slab, int x, int y, int z, int sx, i
     return static_cast<float>(y) + sum / static_cast<float>(count);
 }
 
+// Decode a water cell's FLOW DIRECTION byte into a 2D world-XZ unit-ish vector
+// (flow_x, flow_z) for the shader to scroll along. The water byte's direction field
+// (WaterByteCodec::dir_of) names which way the cell drains; WaterByteCodec::
+// dir_to_offset maps that to a grid offset. We only care about the HORIZONTAL part:
+//   * DIR_POS_X / DIR_NEG_X -> (±1, 0)
+//   * DIR_POS_Z / DIR_NEG_Z -> (0, ±1)
+//   * DIR_DOWN / DIR_UP / DIR_STILL / reserved -> (0, 0)  (no horizontal scroll —
+//     a vertical waterfall or settled-still cell has no XZ drift to animate)
+// Returns (0,0) for still/vertical/reserved, so still ponds simply don't scroll.
+inline void flow_xz_of_byte(uint8_t water_byte, float& out_fx, float& out_fz) {
+    const int dir = WaterByteCodec::dir_of(water_byte);
+    const Vec3i off = WaterByteCodec::dir_to_offset(dir); // grid offset (x, y, z)
+    // Keep only the horizontal (XZ) part — y (up/down) carries no surface scroll.
+    out_fx = static_cast<float>(off.x);
+    out_fz = static_cast<float>(off.z);
+}
+
 // Push one water quad. Four corners are given DIRECTLY in chunk-local voxel units
 // in parameter order 00,10,11,01 (the same order GreedyMesher uses). We tag each
-// vertex with the face normal, a plain per-cell unit UV (00->(0,0), 11->(1,1)), and
-// ao = 1.0. Winding: 00->10->11 / 00->11->01. The caller orders the corners so this
-// is CCW from outside for the face it is emitting (see the call sites).
+// vertex with the face normal, a plain per-cell unit UV (00->(0,0), 11->(1,1)),
+// ao = 1.0, and the cell's FLOW VECTOR (flow_x, flow_z) so the water material can
+// scroll along it. Winding: 00->10->11 / 00->11->01. The caller orders the corners
+// so this is CCW from outside for the face it is emitting (see the call sites).
 inline void emit_water_quad(MeshBuffers& out, const float* nrm,
+                            float flow_x, float flow_z,
                             const float p00[3], const float p10[3],
                             const float p11[3], const float p01[3]) {
     MeshSection& sec = out.section(FaceClass::Water);
@@ -163,6 +186,9 @@ inline void emit_water_quad(MeshBuffers& out, const float* nrm,
         mv.u = uu; mv.v = vv;
         mv.ao = 1.0f; // water has no baked AO (translucent, lit by the water shader)
         mv.cr = wcol.r; mv.cg = wcol.g; mv.cb = wcol.b;
+        // The whole quad shares ONE flow direction (the source cell's), so all four
+        // corners get the same (flow_x, flow_z). Still water -> (0,0) -> no scroll.
+        mv.flow_x = flow_x; mv.flow_z = flow_z;
         const uint32_t idx = static_cast<uint32_t>(sec.vertices.size());
         sec.vertices.push_back(mv);
         return idx;
@@ -193,6 +219,14 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
             for (int x = 0; x < N; ++x) {
                 if (!is_water_local(slab, x, y, z)) continue;
 
+                // FLOW for this cell, decoded ONCE from its water byte and shared by
+                // every quad (top + sides) we emit for it. Still/vertical -> (0,0).
+                // This is the per-vertex scroll direction the water material reads
+                // (carried into UV1 by the UE bridge). Land/flora verts never reach
+                // here, so they keep MeshVertex's default flow (0,0) = no scroll.
+                float flow_x = 0.0f, flow_z = 0.0f;
+                flow_xz_of_byte(water_local(slab, x, y, z), flow_x, flow_z);
+
                 // The four blended TOP corner heights for this cell. Naming:
                 //   h<minX/maxX><minZ/maxZ>. sx=-1 is the -X side, +1 the +X side.
                 const float h00 = corner_height(slab, x, y, z, -1, -1); // (x,   z)
@@ -213,7 +247,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x1, h10, z0 };
                     const float p11[3] = { x1, h11, z1 };
                     const float p01[3] = { x0, h01, z1 };
-                    emit_water_quad(out, n, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
                 }
 
                 // ---- SIDES: one per horizontal neighbour that is NOT water ----
@@ -231,7 +265,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x1, yb,  z0 };
                     const float p11[3] = { x1, h10, z0 }; // top at (x1,z0) corner
                     const float p01[3] = { x1, h11, z1 }; // top at (x1,z1) corner
-                    emit_water_quad(out, n, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
                 }
 
                 // -X face (boundary at x0). Outward normal -X. Looking from -X back
@@ -243,7 +277,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x0, yb,  z1 };
                     const float p11[3] = { x0, h01, z1 }; // top at (x0,z1) corner
                     const float p01[3] = { x0, h00, z0 }; // top at (x0,z0) corner
-                    emit_water_quad(out, n, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
                 }
 
                 // +Z face (boundary at z1). Outward normal +Z. Looking from +Z back
@@ -255,7 +289,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x1, yb,  z1 };
                     const float p11[3] = { x1, h11, z1 }; // top at (x1,z1) corner
                     const float p01[3] = { x0, h01, z1 }; // top at (x0,z1) corner
-                    emit_water_quad(out, n, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
                 }
 
                 // -Z face (boundary at z0). Outward normal -Z. Looking from -Z back
@@ -267,7 +301,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x0, yb,  z0 };
                     const float p11[3] = { x0, h00, z0 }; // top at (x0,z0) corner
                     const float p01[3] = { x1, h10, z0 }; // top at (x1,z0) corner
-                    emit_water_quad(out, n, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
                 }
             }
         }

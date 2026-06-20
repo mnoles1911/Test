@@ -6,7 +6,7 @@
 // This file does exactly that, following the same no-engine-types, pure-C++17
 // rule as every other Core header (clang-testable in the headless harness).
 //
-// TWO RULES drive every decision:
+// THREE RULES drive every decision:
 //
 //   1. SOLID SURVIVES. At distance you should never see holes where solid
 //      terrain existed. So a 2x2x2 block is treated as solid if ANY of the 8
@@ -15,7 +15,35 @@
 //      treated as air for LOD purposes: a chunk made of 7 air + 1 grass blade
 //      collapses to air, not a solid cube of grass.
 //
-//   2. WATER KEEPS ITS LEVEL. The surface mesher only needs to know "how full
+//   2. SURFACE MATERIAL WINS (the "top-most solid voxel" rule). The greedy
+//      mesher colours a coarse voxel's +Y (top) face from the topmost solid
+//      voxel's material id, and that top face is almost all you see at LOD
+//      distance. The grass layer is only ONE voxel thick (the generator bands
+//      down from ground_y: depth 0 = grass, 1-3 = dirt, deeper = stone/marble).
+//      So when we collapse a 2x2x2 block we must NOT average / majority-vote the
+//      material — that throws away the thin grass cap and the block reads dirt,
+//      then by L4-5 it reads the stone/marble bulk (grey/white). Instead, the
+//      coarse voxel takes the material of the HIGHEST solid fine voxel along the
+//      WORLD-UP axis (= the DenseGrid Y axis; see the up-axis note below). Chain
+//      this through every halving and the grass cap survives to L5 (whole chunk
+//      → 1 voxel), so per-chunk LODs agree with the super-chunk path (which
+//      already samples resolve_column().top_id directly → green).
+//
+//      WORLD-UP AXIS = grid Y. Confirmed three ways: (a) the generator bands by
+//      depth = ground_y - world_y, so larger Y is "up / surface" (grass at the
+//      top); (b) DenseGrid flatten is index = x + y*side + z*side*side and the
+//      VoxelWorld slab fill (MeshColumnPure) copies world (x,y,z) straight to
+//      grid (x,y,z) with no axis swap; (c) the mesher's FACE_POS_Y has normal
+//      (0,1,0) and shaded_color uses it for the top face. So "topmost solid" =
+//      the solid fine voxel with the largest Y (dy = 1 before dy = 0).
+//
+//      SIDE-FACE TRADEOFF (accepted, documented): because the whole coarse voxel
+//      now carries the top material, a coarse voxel's SIDE faces also read the
+//      surface material (e.g. a distant cliff face may read grass-tinted instead
+//      of stone). This is invisible at LOD distance and is EXACTLY what the
+//      super-chunk path already does. We ship the simple top-wins rule.
+//
+//   3. WATER KEEPS ITS LEVEL. The surface mesher only needs to know "how full
 //      is this water voxel?" — direction and source flags are irrelevant at
 //      coarse LOD. So the output water byte carries the MAX level among the 8
 //      inputs (decoded + re-encoded via WaterByteCodec), with direction = STILL
@@ -69,8 +97,8 @@ inline DenseGrid downsample_half(const DenseGrid& src) {
             for (int ox = 0; ox < out_side; ++ox) {
 
                 // The 8 source voxels whose corner is at (2*ox, 2*oy, 2*oz).
-                // We gather both channels for all 8 before making decisions.
-                std::array<uint8_t, 8> types{};
+                // We gather the water channel for all 8 before deciding water.
+                // The type channel is resolved by a top-down scan (see below).
                 std::array<uint8_t, 8> waters{};
 
                 int slot = 0;
@@ -80,7 +108,6 @@ inline DenseGrid downsample_half(const DenseGrid& src) {
                             const int sx = 2 * ox + dx;
                             const int sy = 2 * oy + dy;
                             const int sz = 2 * oz + dz;
-                            types[slot]  = src.type_at(sx, sy, sz);
                             waters[slot] = src.water_at(sx, sy, sz);
                             ++slot;
                         }
@@ -88,73 +115,46 @@ inline DenseGrid downsample_half(const DenseGrid& src) {
                 }
 
                 // ===========================================================
-                // TYPE CHANNEL — majority vote, solid survives, flora = air
+                // TYPE CHANNEL — surface-preserving "top-most solid voxel wins"
                 // ===========================================================
                 //
-                // Step 1: count only ids that are NOT air and NOT passthrough
-                // (passthrough = flora + surface detail, ids 24-28).  These are
-                // the "solid" voxels that can win the majority vote.
+                // Occupancy is UNCHANGED from the old rule: the coarse voxel is
+                // solid iff ANY fine voxel in the block is non-air and non-
+                // passthrough (flora/surface-detail, ids 24-28, count as air).
+                // What changed is WHICH solid id we keep.
                 //
-                // Step 2: if there are no solid voxels at all, the output is AIR.
+                // We scan the 2x2x2 block from the TOP of the world-up axis (grid
+                // Y) downward and take the material of the FIRST solid voxel we
+                // meet. World-up = grid Y (see file-top up-axis note), so the top
+                // layer is dy = 1, the bottom is dy = 0. For each (dx,dz) column
+                // we look at dy = 1 first, then dy = 0. The overall "topmost solid
+                // in the block" is the first solid found while iterating dy = 1
+                // across all (dx,dz), then dy = 0 across all (dx,dz).
                 //
-                // Step 3: among the solid ids, pick the MOST FREQUENT one.
-                // Tie-break: choose the SMALLER id (deterministic; also happens
-                // to favour the "base terrain" material when there is ambiguity
-                // at an interface, since terrain ids are generally lower).
-                //
-                // We use a tiny hand-rolled frequency table over the 8 slots to
-                // avoid allocating anything.  With only 8 entries a linear scan
-                // is cheaper than sorting.
-
-                // Accumulate counts for each unique solid id seen.
-                // We have at most 8 distinct ids across 8 voxels.
-                uint8_t seen_id[8]    = {};
-                int     seen_cnt[8]   = {};
-                int     unique_count  = 0;
-                int     total_solid   = 0;
-
-                for (int i = 0; i < 8; ++i) {
-                    const int t = types[i];
-
-                    // Flora and passthrough are treated as air for LOD purposes.
-                    if (t == mat::AIR || mat::is_passthrough(t)) {
-                        continue;
-                    }
-
-                    ++total_solid;
-
-                    // Find the slot for this id (or add a new one).
-                    bool found = false;
-                    for (int k = 0; k < unique_count; ++k) {
-                        if (seen_id[k] == static_cast<uint8_t>(t)) {
-                            ++seen_cnt[k];
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        seen_id[unique_count]  = static_cast<uint8_t>(t);
-                        seen_cnt[unique_count] = 1;
-                        ++unique_count;
-                    }
-                }
+                // This keeps the thin grass cap: if the highest solid fine voxel
+                // was grass, the coarse voxel is grass — at every LOD level.
 
                 uint8_t out_type = mat::AIR; // default: no solids -> air
+                bool found_solid = false;
 
-                if (total_solid > 0) {
-                    // Find the id with the highest count, tie-break by smaller id.
-                    int best_cnt = -1;
-                    uint8_t best_id = 255;
-                    for (int k = 0; k < unique_count; ++k) {
-                        const int   c = seen_cnt[k];
-                        const uint8_t id = seen_id[k];
-                        // Prefer higher count; on equal count prefer smaller id.
-                        if (c > best_cnt || (c == best_cnt && id < best_id)) {
-                            best_cnt = c;
-                            best_id  = id;
+                // Top row first (dy = 1), then bottom row (dy = 0). Within a row
+                // the (dx,dz) order is arbitrary — any solid in the top row is at
+                // the same world-up height, so picking the first is well-defined.
+                for (int dy = 1; dy >= 0 && !found_solid; --dy) {
+                    for (int dz = 0; dz < 2 && !found_solid; ++dz) {
+                        for (int dx = 0; dx < 2 && !found_solid; ++dx) {
+                            const int sx = 2 * ox + dx;
+                            const int sy = 2 * oy + dy;
+                            const int sz = 2 * oz + dz;
+                            const int t = src.type_at(sx, sy, sz);
+                            // Flora and passthrough are treated as air for LOD.
+                            if (t == mat::AIR || mat::is_passthrough(t)) {
+                                continue;
+                            }
+                            out_type = static_cast<uint8_t>(t);
+                            found_solid = true;
                         }
                     }
-                    out_type = best_id;
                 }
 
                 // ===========================================================
