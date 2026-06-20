@@ -218,6 +218,18 @@ void AVoxelWorld::Tick(float DeltaSeconds)
 			HoleScanAccum = 0.0f;
 		}
 	}
+	// DIAGNOSTIC (TOOL 5): reconcile every column's lifecycle phase + flag hangs, at ≈1 Hz.
+	// Runs on its own cadence so the per-phase histogram + worst-hang age are fresh for the
+	// next CSV row. Off by default; pure measurement (≈1 Hz O(N), never per-frame).
+	if (bTrackColumnLifecycle)
+	{
+		ColumnLifeAccum += DeltaSeconds;
+		if (ColumnLifeAccum >= FMath::Max(0.25f, ColumnLifeIntervalSeconds))
+		{
+			UpdateColumnLifecycle();
+			ColumnLifeAccum = 0.0f;
+		}
+	}
 	// Advance any in-flight LOD cross-fades (drives both meshes' dither FadeAlpha and
 	// retires finished fades). No-op when bEnableLodFade is off (ActiveFades is empty).
 	TickFades(DeltaSeconds);
@@ -1562,13 +1574,26 @@ void AVoxelWorld::TickStreaming()
 
 	// Surface chunk-Y of an arbitrary column (for the spherical cull's vertical term).
 	// Only called on the flag-ON path; samples the same generator the fill path uses.
+	//
+	// MEMOIZED (the streaming frame-killer fix): a column's surface chunk-Y depends only on the
+	// immutable heightmap, so it's constant for the life of the world. This lambda used to build
+	// a fresh HeightmapGenerator and sample the EXR on EVERY call — and it's called once per
+	// column in the fill field (~16k) AND once per meshed column (~5k) EVERY frame, which alone
+	// pinned the game thread at ~333 ms (≈3 FPS). Now we compute each column ONCE and reuse the
+	// cached value; the cache is cleared on ClearWorld (a regen can change generator inputs).
 	auto ColumnSurfaceChunkY = [&](const FIntPoint& Col) -> int
 	{
+		if (const int32* Hit = ColumnSurfaceYCache.Find(Col))
+		{
+			return *Hit; // already computed for this column — just a hash lookup now
+		}
 		mira::HeightmapGenerator G;
 		ConfigureGenerator(G);
 		const mira::Vec3i O = mira::coords::chunk_origin_voxel(mira::Vec3i(Col.X, 0, Col.Y));
 		const int g = G.compute_ground_y(O.x + mira::coords::CHUNK / 2, O.z + mira::coords::CHUNK / 2);
-		return mira::streamshell::chunk_of_voxel_y(g);
+		const int sy = mira::streamshell::chunk_of_voxel_y(g);
+		ColumnSurfaceYCache.Add(Col, sy);
+		return sy;
 	};
 
 	// 1) FILL the radius + 1-column skirt (nearest-first), so meshed aprons are
@@ -2954,6 +2979,8 @@ void AVoxelWorld::ClearWorld()
 	MeshedColumns.Empty();
 	ColumnYRange.Empty();
 	ColumnMeshedYRange.Empty(); // surface-shell streaming: per-column meshed span tracking
+	ColumnSurfaceYCache.Empty(); // PERF: surface-Y memo is generator-dependent — drop on regen
+	ColumnLife.Empty();          // TOOL 5: per-column lifecycle/hang tracking — start fresh
 	ColumnLod.Empty();
 	ColumnGenLod.Empty();
 	DirtyRemeshColumns.Empty(); // BUG-1: drop any pending finer-re-gen re-mesh flags
@@ -3193,7 +3220,8 @@ void AVoxelWorld::WritePerfCsvRow()
 			"coarseGen,shellCulled,fades,holds,genOps,meshOps,jobsInFlight,pending,"
 			"pendGen,pendMesh,pendSuper,inFlightGen,inFlightMesh,inFlightSuper,"
 			"streamRadius,superRadius,uploadsCap,uploadMs,"
-			"waterActive,waterUnits,waterPlaced,waterForgotten,waterDelta\n");
+			"waterActive,waterUnits,waterPlaced,waterForgotten,waterDelta,"
+			"lifeQueuedGen,lifeFilled,lifeQueuedMesh,lifeMeshed,hangingCols,worstHangSec,worstHangPhase\n");
 		FFileHelper::SaveStringToFile(Header, *Path); // overwrite: fresh file
 		bPerfCsvStarted = true;
 	}
@@ -3235,7 +3263,8 @@ void AVoxelWorld::WritePerfCsvRow()
 		TEXT("%d,%d,%d,%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%.1f,")
-		TEXT("%d,%d,%d,%d,%d\n"),
+		TEXT("%d,%d,%d,%d,%d,")
+		TEXT("%d,%d,%d,%d,%d,%.1f,%s\n"),
 		NowS, Fps, PerfCsvWorstMsInterval, Far.WorstLoadFrameMs,
 		FilledColumns.Num(), MeshedColumns.Num(), ChunkActors.Num(),
 		LodHist[0], LodHist[1], LodHist[2], LodHist[3],
@@ -3246,7 +3275,14 @@ void AVoxelWorld::WritePerfCsvRow()
 		PendingGen.Num(), PendingMesh.Num(), PendingSuperMesh.Num(),
 		InFlightColumns.Num(), InFlightMeshColumns.Num(), InFlightSuperMeshes.Num(),
 		StreamRadiusChunks, SuperRadiusChunks, MaxColumnMeshUploadsPerTick, MeshUploadBudgetMs,
-		WActive, WUnits, WPlaced, WForgot, WDelta);
+		WActive, WUnits, WPlaced, WForgot, WDelta,
+		// TOOL 5 — per-column lifecycle phase histogram + hang headline (cached by the last
+		// UpdateColumnLifecycle reconcile; all zero when bTrackColumnLifecycle is off).
+		LifeCount[static_cast<uint8>(EColPhase::QueuedGen)],
+		LifeCount[static_cast<uint8>(EColPhase::Filled)],
+		LifeCount[static_cast<uint8>(EColPhase::QueuedMesh)],
+		LifeCount[static_cast<uint8>(EColPhase::Meshed)],
+		HangingColumns, WorstHangSec, ColPhaseName(WorstHangPhase));
 
 	FFileHelper::SaveStringToFile(Row, *Path, FFileHelper::EEncodingOptions::AutoDetect,
 		&IFileManager::Get(), EFileWrite::FILEWRITE_Append);
@@ -3301,6 +3337,155 @@ void AVoxelWorld::ScanForHoles()
 			TEXT("[MiraThal] HOLE SCAN: %d filled-but-unmeshed columns within %d chunks of focus (logged %d) | pendMesh=%d inFlightMesh=%d uploadsCap=%d"),
 			Holes, Radius, FMath::Min(Holes, MaxLog),
 			PendingMesh.Num(), InFlightMeshColumns.Num(), MaxColumnMeshUploadsPerTick);
+	}
+}
+
+// ===========================================================================
+// DIAGNOSTIC TOOL 5 — per-column lifecycle + HANG tracker.
+//
+// The older tools answer "is a column stuck?" but not "for how long?". This one
+// stamps the world-time each column ENTERS its lifecycle phase, so we can measure
+// how long it has been sitting there and flag the genuinely-hung ones. It runs at
+// ≈1 Hz (NOT every frame) and only READS the streaming sets — it changes nothing.
+// ===========================================================================
+
+const TCHAR* AVoxelWorld::ColPhaseName(EColPhase P)
+{
+	switch (P)
+	{
+		case EColPhase::QueuedGen:  return TEXT("queued-gen");
+		case EColPhase::Filled:     return TEXT("filled");
+		case EColPhase::QueuedMesh: return TEXT("queued-mesh");
+		case EColPhase::Meshed:     return TEXT("meshed");
+		default:                    return TEXT("none");
+	}
+}
+
+// The phase a column is in RIGHT NOW. Checked from the finish line backward so the
+// MOST-progressed phase wins (a meshed column is also still in FilledColumns; a
+// column being meshed is also filled — we report the furthest-along state).
+AVoxelWorld::EColPhase AVoxelWorld::DeriveColumnPhase(const FIntPoint& Col) const
+{
+	if (MeshedColumns.Contains(Col))       { return EColPhase::Meshed; }
+	if (InFlightMeshColumns.Contains(Col)) { return EColPhase::QueuedMesh; } // worker meshing OR waiting upload
+	if (FilledColumns.Contains(Col))       { return EColPhase::Filled; }     // voxels exist, no mesh queued
+	if (InFlightColumns.Contains(Col))     { return EColPhase::QueuedGen; }  // gen worker still running
+	return EColPhase::None;
+}
+
+void AVoxelWorld::UpdateColumnLifecycle()
+{
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+
+	// Reset this reconcile's cached results (read later by WritePerfCsvRow).
+	for (int32 i = 0; i < 5; ++i) { LifeCount[i] = 0; }
+	HangingColumns = 0;
+	WorstHangSec   = 0.0;
+	WorstHangPhase = EColPhase::None;
+
+	// 1) Union of every column in any active phase. FilledColumns is the superset of all
+	//    generated columns; the in-flight sets add columns still being generated/meshed that
+	//    aren't filled yet. At ≈1 Hz an O(N) pass over ~17k columns is cheap (the 60 Hz
+	//    version is exactly the per-frame cost we're hunting elsewhere — so NOT every frame).
+	TSet<FIntPoint> Active;
+	Active.Reserve(FilledColumns.Num() + InFlightColumns.Num() + InFlightMeshColumns.Num());
+	for (const FIntPoint& C : FilledColumns)       { Active.Add(C); }
+	for (const FIntPoint& C : InFlightColumns)     { Active.Add(C); }
+	for (const FIntPoint& C : InFlightMeshColumns) { Active.Add(C); }
+	for (const FIntPoint& C : MeshedColumns)       { Active.Add(C); }
+
+	// Mesh results that are FINISHED on the worker and only waiting for the game-thread upload
+	// (so a hang report can say "mesh done, upload backed up" vs "worker still meshing").
+	TSet<FIntPoint> ReadyUpload;
+	for (const FPendingMesh& P : PendingMesh)
+	{
+		if (P.Future.IsReady()) { ReadyUpload.Add(P.Key); }
+	}
+
+	FIntPoint Focus;
+	const bool bHaveFocus = GetFocusChunkXZ(Focus);
+
+	// Collect the hanging columns so we can sort + log the worst N after the pass.
+	struct FHang { FIntPoint Col; EColPhase Ph; double Age; };
+	TArray<FHang> Hangers;
+
+	// 2) Stamp phase-entry times; count phases; gather hangs.
+	for (const FIntPoint& Col : Active)
+	{
+		const EColPhase Ph = DeriveColumnPhase(Col);
+		if (Ph == EColPhase::None) { continue; }
+
+		FColLife& L = ColumnLife.FindOrAdd(Col);
+		if (L.Phase != Ph)
+		{
+			// A genuine transition (or first sighting) — restamp the clock.
+			L.Phase      = Ph;
+			L.EnteredSec = Now;
+		}
+		++LifeCount[static_cast<uint8>(Ph)];
+
+		// Meshed = done. Everything else is in-progress and can hang.
+		if (Ph != EColPhase::Meshed)
+		{
+			const double Age = Now - L.EnteredSec;
+			if (Age >= ColumnHangSeconds)
+			{
+				++HangingColumns;
+				Hangers.Add({ Col, Ph, Age });
+				if (Age > WorstHangSec) { WorstHangSec = Age; WorstHangPhase = Ph; }
+			}
+		}
+	}
+
+	// 3) Drop tracking entries for columns that vanished (evicted / world-cleared) so the map
+	//    can't grow without bound as the player roams.
+	for (auto It = ColumnLife.CreateIterator(); It; ++It)
+	{
+		if (!Active.Contains(It.Key())) { It.RemoveCurrent(); }
+	}
+
+	// 4) Log the worst hangs (oldest first), each with the reason it's stuck.
+	if (Hangers.Num() > 0)
+	{
+		Hangers.Sort([](const FHang& A, const FHang& B) { return A.Age > B.Age; });
+		UE_LOG(LogTemp, Warning,
+			TEXT("[MiraThal] HANG REPORT: %d columns stuck >%.0fs | by phase: queuedGen=%d filled=%d queuedMesh=%d (meshed=%d) | worst=%.1fs"),
+			HangingColumns, ColumnHangSeconds,
+			LifeCount[static_cast<uint8>(EColPhase::QueuedGen)],
+			LifeCount[static_cast<uint8>(EColPhase::Filled)],
+			LifeCount[static_cast<uint8>(EColPhase::QueuedMesh)],
+			LifeCount[static_cast<uint8>(EColPhase::Meshed)],
+			WorstHangSec);
+
+		const int32 N = FMath::Min(Hangers.Num(), FMath::Max(1, ColumnHangLogCount));
+		for (int32 i = 0; i < N; ++i)
+		{
+			const FHang& H = Hangers[i];
+			// Why is THIS column stuck, given its phase?
+			const TCHAR* Why = TEXT("");
+			switch (H.Ph)
+			{
+				case EColPhase::QueuedGen:
+					Why = TEXT("gen-worker-running"); break;
+				case EColPhase::Filled:
+					// Generated but never got a mesh job — the symptom of mesh-budget starvation
+					// (exactly the "stand on it and it never sharpens" case).
+					Why = TEXT("unmeshed: mesh-budget-starved/never-enqueued"); break;
+				case EColPhase::QueuedMesh:
+					Why = ReadyUpload.Contains(H.Col) ? TEXT("mesh-done: upload backlog")
+					                                  : TEXT("meshing-on-worker"); break;
+				default: break;
+			}
+			const int32 Dist = bHaveFocus
+				? FMath::Max(FMath::Abs(H.Col.X - Focus.X), FMath::Abs(H.Col.Y - Focus.Y))
+				: -1;
+			const int32* RenderLod = ColumnLod.Find(H.Col);
+			const int32* GenLod    = ColumnGenLod.Find(H.Col);
+			UE_LOG(LogTemp, Warning,
+				TEXT("[MiraThal]   HANG col=(%d,%d) phase=%s age=%.1fs dist=%d renderLod=%d genLod=%d reason=%s"),
+				H.Col.X, H.Col.Y, ColPhaseName(H.Ph), H.Age, Dist,
+				RenderLod ? *RenderLod : -1, GenLod ? *GenLod : -1, Why);
+		}
 	}
 }
 

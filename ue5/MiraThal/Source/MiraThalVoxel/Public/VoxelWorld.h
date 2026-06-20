@@ -763,6 +763,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Diagnostics", meta = (ClampMin = "0"))
 	int32 HoleScanRadiusChunks = 0;
 
+	// --- Per-column lifecycle + HANG tracker (TOOL 5) --------------------------------------
+	// The piece the older tools were missing: TIME. TOOL 4 can say a column is stuck, but not
+	// for how long. This tracker reconciles EVERY active column's lifecycle phase
+	// (queued-gen -> filled -> queued-mesh -> meshed) from the live streaming sets and stamps
+	// the moment each one ENTERS its phase. A column sitting in a non-final phase longer than
+	// ColumnHangSeconds is "HANGING" — genuinely stuck, not just mid-load. We log the worst
+	// offenders (oldest first) with phase, age, distance, LOD and the REASON each is stuck, and
+	// write per-phase counts + the worst hang age into the perf CSV. This is what turns
+	// "terrain isn't loading" into "column (x,z) has been FILLED-but-unmeshed for 94 s because
+	// the mesh budget is starved". Read-only — it never changes streaming state, and the
+	// reconcile runs at ColumnLifeIntervalSeconds (≈1 Hz), NOT every frame, so it stays cheap.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Diagnostics")
+	bool bTrackColumnLifecycle = false;
+	// Seconds between lifecycle reconciles. 1s matches the CSV cadence; bigger = cheaper.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Diagnostics", meta = (ClampMin = "0.25"))
+	float ColumnLifeIntervalSeconds = 1.0f;
+	// A column stuck in one non-final phase longer than this (seconds) is reported as hanging.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Diagnostics", meta = (ClampMin = "0.5"))
+	float ColumnHangSeconds = 5.0f;
+	// Cap on how many of the worst-hanging columns to log per report (so the log can't flood).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Diagnostics", meta = (ClampMin = "1"))
+	int32 ColumnHangLogCount = 10;
+
 private:
 	// Append one stats row to the perf CSV (writes the header first if the file is fresh).
 	void WritePerfCsvRow();
@@ -772,6 +795,30 @@ private:
 	// Scan the near band for filled-but-unmeshed columns and log why each is stuck. Read-only.
 	void ScanForHoles();
 	float HoleScanAccum           = 0.0f;   // seconds since the last hole scan
+
+	// --- Per-column lifecycle + hang tracker (TOOL 5) internals ---
+	// The lifecycle phase a column can be in. The values double as indices into LifeCount[]
+	// (so keep None=0 first and the rest contiguous). Meshed is the only "done" phase: a
+	// meshed column that's re-meshing a LOD tier still reads as Meshed (that's a fast in-place
+	// swap, not a load stall), so we never false-flag a tier change as a hang.
+	enum class EColPhase : uint8 { None = 0, QueuedGen, Filled, QueuedMesh, Meshed };
+	// Per tracked column: its current phase + the world-time (s) it entered that phase.
+	struct FColLife { EColPhase Phase = EColPhase::None; double EnteredSec = 0.0; };
+	TMap<FIntPoint, FColLife> ColumnLife;
+	// Reconcile every active column's phase from the live sets, stamp phase-entry times, drop
+	// evicted columns, refresh the cached histogram below, and log the worst hangs. ≈1 Hz.
+	void UpdateColumnLifecycle();
+	// The phase a single column is in RIGHT NOW, derived from the streaming sets (read-only).
+	EColPhase DeriveColumnPhase(const FIntPoint& Col) const;
+	// Human-readable phase name for logs + the CSV.
+	static const TCHAR* ColPhaseName(EColPhase P);
+	float  ColumnLifeAccum   = 0.0f;          // seconds since the last reconcile
+	// Cached results of the last reconcile, so WritePerfCsvRow can emit them without redoing
+	// the pass. LifeCount is indexed by EColPhase (None..Meshed).
+	int32     LifeCount[5]   = { 0, 0, 0, 0, 0 };
+	int32     HangingColumns = 0;             // non-final columns older than ColumnHangSeconds
+	double    WorstHangSec   = 0.0;           // age of the single oldest hanging column
+	EColPhase WorstHangPhase = EColPhase::None;
 	// The single authoritative voxel store, held directly (pure C++; not a UPROPERTY
 	// — it's not a UObject, just the sparse brick hash the renderers read from).
 	// Named WorldStore (not "Brickmap") to avoid colliding with the mira::Brickmap type.
@@ -977,6 +1024,15 @@ private:
 	// chunk actors. Re-meshing is triggered when this span CHANGES (deeper-on-approach:
 	// a far column that becomes near grows its span back toward full depth).
 	TMap<FIntPoint, FIntPoint> ColumnMeshedYRange;
+
+	// PERF: memoized surface chunk-Y per column for the 3D-shell cull. A column's surface
+	// height comes ONLY from the immutable heightmap, so it never changes for the life of the
+	// world — yet the shell cull used to recompute it (build a generator + sample the EXR) for
+	// every column in the fill field AND every meshed column, EVERY frame. At a 64-chunk radius
+	// that's ~16k generator builds per frame — it was pinning the game thread at ~333 ms (≈3 FPS)
+	// even when nothing was streaming. Computing each column ONCE and caching it here turns that
+	// into a hash lookup. Cleared on ClearWorld (a regen can change the generator inputs).
+	TMap<FIntPoint, int32> ColumnSurfaceYCache;
 
 	// The chunk-Y span a column SHOULD mesh right now, given the shell flag + the
 	// column's distance to the focus. With the flag off (or NEAR), returns the full
