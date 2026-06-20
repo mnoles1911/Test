@@ -35,6 +35,15 @@
 			"AdditionalDependencies": [
 				"Engine"
 			]
+		},
+		{
+			"Name": "MiraThalVoxelRender",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"//comment": "P7/P8 GPU voxel raymarch/mesh. LoadingPhase Default (NOT PostConfigInit) + all render hooks gated behind default-off cvar r.MiraThal.GpuRaymarch so the editor always launches; raymarch is enabled live at runtime.",
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		}
 	],
 	"Plugins": [

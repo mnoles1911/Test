@@ -179,6 +179,9 @@ void AVoxelWorld::BeginPlay()
 void AVoxelWorld::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// Step 1: advance the super-chunk sweep cadence clock so TickStreaming can throttle the
+	// (expensive) far-band enqueue sweep to a few times a second instead of every frame.
+	SuperSweepAccum += DeltaSeconds;
 	if (bEnableStreaming)
 	{
 		TickStreaming();
@@ -566,31 +569,55 @@ bool AVoxelWorld::DesiredMeshYRange(const FIntPoint& Col, int32 DistChunks, FInt
 		return false; // not filled yet
 	}
 
-	// Flag OFF -> the full generated span, exactly as today (no shell restriction).
-	if (!b3DShellStreaming)
+	// Shell logic runs when EITHER the original 3D-shell flag is on OR surface-volume mode is on
+	// (Step 1b — surface-volume implies the shell path on its own). Otherwise: full span as today.
+	const bool bShell = b3DShellStreaming || bSurfaceVolumeOnly;
+	if (!bShell)
 	{
 		OutRange = *Range;
 		return true;
 	}
 
-	// Flag ON: sample the surface voxel-Y at the column centre (same generator the fill
-	// path uses), then ask StreamShell for the shell-restricted chunk-Y span. The full
-	// ColumnYRange supplies the floor (bedrock row) + ceil (top generated row) limits, so
-	// a NEAR column resolves back to exactly [floor, surface+up] == its full span.
-	mira::HeightmapGenerator Gen;
-	ConfigureGenerator(Gen);
+	// Surface voxel-Y at the column centre (same generator the fill path uses). MEMOIZED:
+	// this runs per meshed column per frame (the span-change check), and the surface row is
+	// heightmap-derived = constant — so we cache it instead of rebuilding a generator each call.
+	int GroundVy;
+	if (const int32* Hit = ColumnSurfaceVoxelYCache.Find(Col))
+	{
+		GroundVy = *Hit;
+	}
+	else
+	{
+		mira::HeightmapGenerator Gen;
+		ConfigureGenerator(Gen);
+		const mira::Vec3i ChunkOrigin = mira::coords::chunk_origin_voxel(mira::Vec3i(Col.X, 0, Col.Y));
+		GroundVy = Gen.compute_ground_y(ChunkOrigin.x + mira::coords::CHUNK / 2,
+		                                ChunkOrigin.z + mira::coords::CHUNK / 2);
+		ColumnSurfaceVoxelYCache.Add(Col, GroundVy);
+	}
 
-	const mira::Vec3i ChunkOrigin = mira::coords::chunk_origin_voxel(mira::Vec3i(Col.X, 0, Col.Y));
-	const int CenterX = ChunkOrigin.x + mira::coords::CHUNK / 2;
-	const int CenterZ = ChunkOrigin.z + mira::coords::CHUNK / 2;
-	const int GroundVy = Gen.compute_ground_y(CenterX, CenterZ);
-
+	// Surface-volume mode (Step 1b): pass near_full_radius = -1 so NO column ever takes the
+	// full-depth branch — every column meshes just the thin surface shell. (Plain 3D-shell mode
+	// keeps the NearFullDepthRadiusChunks core.) The full ColumnYRange supplies floor/ceil.
+	const int NearFull = bSurfaceVolumeOnly ? -1 : NearFullDepthRadiusChunks;
 	const mira::streamshell::ShellRange Sh = mira::streamshell::shell_for_column(
-		GroundVy, DistChunks, NearFullDepthRadiusChunks,
+		GroundVy, DistChunks, NearFull,
 		ShellUpChunks, ShellDownChunks,
 		/*floor_y_chunk=*/Range->X, /*ceil_y_chunk=*/Range->Y);
 
-	OutRange = FIntPoint(Sh.y_lo_chunk, Sh.y_hi_chunk);
+	int32 Lo = Sh.y_lo_chunk;
+	int32 Hi = Sh.y_hi_chunk;
+
+	// DIG-SPAN GROWTH (Step 1b): union in any chunk rows a dig has exposed in this column, so a
+	// shaft dug below the thin slab (or a hole punched above it) stays meshed and the hole
+	// renders. Clamped to the column's real [floor, ceil]. Grows the span only — never shrinks.
+	if (const FIntPoint* Dug = ColumnDugSpanChunkY.Find(Col))
+	{
+		Lo = FMath::Min(Lo, FMath::Max(Dug->X, Range->X));
+		Hi = FMath::Max(Hi, FMath::Min(Dug->Y, Range->Y));
+	}
+
+	OutRange = FIntPoint(Lo, Hi);
 	return true;
 }
 
@@ -1695,6 +1722,40 @@ void AVoxelWorld::TickStreaming()
 		const int32 MeshApplied = HarvestColumnMesh(MaxColumnMeshUploadsPerTick);
 		MeshOpsThisTick += MeshApplied; // TOOL 2: chunk meshes uploaded this tick
 	}
+
+	// HERO-COLUMN LOD0 PRIORITY (Step 1: "the ground under your feet is always sharp"). Force the
+	// column(s) directly under / immediately around the player to full detail (LOD0) RIGHT NOW,
+	// bypassing the async mesh queue entirely, so a tile you just walked onto is never left at
+	// coarse LOD while the far-band pipeline is backed up (the exact LOD0-doesn't-catch-up bug).
+	// We SYNC-mesh the nearest HeroRadiusChunks rings at LOD0 with a SMALL reserved budget
+	// (separate from MeshBudget); kept tiny so this guaranteed-sharp work can't blow the frame.
+	// A column already meshed at LOD0 is skipped, so when you stand still this costs nothing.
+	if (bHeroColumnPriority)
+	{
+		int32 HeroBudget = HeroColumnBudget;
+		TArray<FIntPoint> HeroCells;
+		for (int ring = 0; ring <= HeroRadiusChunks && HeroBudget > 0; ++ring)
+		{
+			CollectRing(ring, Focus, HeroCells); // nearest, spawn-safe order (view-sort skips ring<=1)
+			for (const FIntPoint& Cell : HeroCells)
+			{
+				if (HeroBudget <= 0) { break; }
+				const FIntPoint Col(Focus.X + Cell.X, Focus.Y + Cell.Y);
+				if (!FilledColumns.Contains(Col))      { continue; } // voxels not generated yet
+				if (InFlightMeshColumns.Contains(Col)) { continue; } // a worker is already on it
+				const int32* CurLod = ColumnLod.Find(Col);
+				// Hero band renders at LOD0; nothing to do if it's already meshed there.
+				const bool bNeeds = !MeshedColumns.Contains(Col) || (CurLod && *CurLod != 0);
+				if (!bNeeds) { continue; }
+				// Synchronous mesh: no queue, no wait — the tile is sharp THIS frame.
+				MeshChunkColumn(Col.X, Col.Y, /*Lod=*/0, ring);
+				DirtyRemeshColumns.Remove(Col);
+				++MeshOpsThisTick; // TOOL 2: count the hero mesh as visible work this tick
+				--HeroBudget;
+			}
+		}
+	}
+
 	TArray<FIntPoint> MeshRingCells;
 	for (int ring = 0; ring <= R && MeshBudget > 0; ++ring)
 	{
@@ -1728,9 +1789,10 @@ void AVoxelWorld::TickStreaming()
 			if (bDirtyRemesh) { bNeedsMesh = true; }
 			// Surface-shell streaming: also (re)mesh when the column's desired shell SPAN
 			// changed — deeper-on-approach (a far column that became near grows its span
-			// toward full depth) and shallower-on-retreat. Flag-off: DesiredMeshYRange
-			// returns the full span every time, so the span never changes -> no extra work.
-			if (!bNeedsMesh && b3DShellStreaming && MeshedColumns.Contains(Col))
+			// toward full depth) and, in surface-volume mode, when a DIG grew the column's
+			// span (Step 1b). Flag-off (no shell, no surface-volume): DesiredMeshYRange returns
+			// the full span every time, so the span never changes -> no extra work.
+			if (!bNeedsMesh && (b3DShellStreaming || bSurfaceVolumeOnly) && MeshedColumns.Contains(Col))
 			{
 				FIntPoint WantSpan;
 				const FIntPoint* HaveSpan = ColumnMeshedYRange.Find(Col);
@@ -1846,6 +1908,15 @@ void AVoxelWorld::TickStreaming()
 		const int32 SuperApplied = HarvestSuperMesh(MaxSuperMeshUploadsPerTick);
 		MeshOpsThisTick += SuperApplied; // TOOL 2: super meshes uploaded this tick
 
+		// Step 1 CADENCE CAP: the ENQUEUE ring sweep below scans the whole far field, and most
+		// cells skip without ever spending budget — so it used to run IN FULL every frame, a
+		// constant game-thread cost even when the world is idle (with supers on, this is what
+		// pinned FPS near 3). Supers are far + coarse and change slowly, so we only re-run the
+		// sweep every SuperSweepIntervalSeconds; the HarvestSuperMesh UPLOAD above still runs every
+		// frame, so any finished super meshes keep committing smoothly between sweeps.
+		if (SuperSweepAccum >= FMath::Max(0.0f, SuperSweepIntervalSeconds))
+		{
+		SuperSweepAccum = 0.0f;
 		// A temp generator (game-thread, mirrors the gen path) to find each super-region's
 		// vertical extent from the heightmap, so we only mesh the super-Y bands that hold
 		// terrain instead of a full column of empty supers.
@@ -1924,6 +1995,7 @@ void AVoxelWorld::TickStreaming()
 				}
 			}
 		}
+		} // Step 1: end of the cadence-gated super enqueue sweep
 	}
 
 	// 3) EVICT meshed columns that drifted beyond radius + hysteresis. (Brick data
@@ -2089,6 +2161,24 @@ void AVoxelWorld::CarveTestHole()
 	for (const Vec3i& C : affected_chunks(Writes))
 	{
 		RemeshChunk(FIntVector(C.x, C.y, C.z));
+
+		// DIG-SPAN GROWTH (Step 1b): remember the chunk-Y rows this dig touched in the column,
+		// so the surface-volume shell keeps meshing them. Without this, a shaft dug below the
+		// thin slab would render once (RemeshChunk above) then get culled again on the next
+		// streaming tick (DesiredMeshYRange would return only the surface shell). Unioning the
+		// dug rows into that span makes the dug depth persist. Also flag the column for a
+		// re-mesh so the grown span is committed promptly (not only when you happen to move).
+		const FIntPoint ColXZ(C.x, C.z);
+		if (FIntPoint* Span = ColumnDugSpanChunkY.Find(ColXZ))
+		{
+			Span->X = FMath::Min(Span->X, C.y);
+			Span->Y = FMath::Max(Span->Y, C.y);
+		}
+		else
+		{
+			ColumnDugSpanChunkY.Add(ColXZ, FIntPoint(C.y, C.y));
+		}
+		DirtyRemeshColumns.Add(ColXZ);
 	}
 
 	// If the dig opened space next to water, let the parent volume flood in.
@@ -2181,6 +2271,24 @@ void AVoxelWorld::CarveAtWorld(const FVector& WorldPos, const FVector& HitNormal
 	for (const Vec3i& C : affected_chunks(Writes))
 	{
 		RemeshChunk(FIntVector(C.x, C.y, C.z));
+
+		// DIG-SPAN GROWTH (Step 1b): remember the chunk-Y rows this dig touched in the column,
+		// so the surface-volume shell keeps meshing them. Without this, a shaft dug below the
+		// thin slab would render once (RemeshChunk above) then get culled again on the next
+		// streaming tick (DesiredMeshYRange would return only the surface shell). Unioning the
+		// dug rows into that span makes the dug depth persist. Also flag the column for a
+		// re-mesh so the grown span is committed promptly (not only when you happen to move).
+		const FIntPoint ColXZ(C.x, C.z);
+		if (FIntPoint* Span = ColumnDugSpanChunkY.Find(ColXZ))
+		{
+			Span->X = FMath::Min(Span->X, C.y);
+			Span->Y = FMath::Max(Span->Y, C.y);
+		}
+		else
+		{
+			ColumnDugSpanChunkY.Add(ColXZ, FIntPoint(C.y, C.y));
+		}
+		DirtyRemeshColumns.Add(ColXZ);
 	}
 
 	// If the dig opened space next to water, let the parent volume flood in.
@@ -2980,6 +3088,8 @@ void AVoxelWorld::ClearWorld()
 	ColumnYRange.Empty();
 	ColumnMeshedYRange.Empty(); // surface-shell streaming: per-column meshed span tracking
 	ColumnSurfaceYCache.Empty(); // PERF: surface-Y memo is generator-dependent — drop on regen
+	ColumnSurfaceVoxelYCache.Empty(); // Step 1b: voxel-Y memo (DesiredMeshYRange) — same reason
+	ColumnDugSpanChunkY.Empty(); // Step 1b: dig-span growth is per-world edit state — reset
 	ColumnLife.Empty();          // TOOL 5: per-column lifecycle/hang tracking — start fresh
 	ColumnLod.Empty();
 	ColumnGenLod.Empty();

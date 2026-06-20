@@ -16,6 +16,7 @@ public class MiraThalTarget : TargetRules
 			"MiraThalCore",
 			"MiraThalNet",
 			"MiraThalVoxelBake",
+			"MiraThalVoxelRender", // P7/P8 GPU raymarch — gated off by default (r.MiraThal.GpuRaymarch)
 		});
 	}
 }

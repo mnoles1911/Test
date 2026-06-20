@@ -241,6 +241,31 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "0.5", ClampMax = "16.0"))
 	float MeshUploadBudgetMs = 5.0f;
 
+	// --- LOD0 HERO-COLUMN priority (Step 1: the "ground under your feet is always sharp" fix) ---
+	// The column(s) directly under and immediately around the player must reach full detail
+	// (LOD0) RIGHT NOW and never wait behind the general async mesh queue. When the far-band
+	// pipeline is busy, a coarse tile you just walked onto would otherwise sit at LOD1/2/3 for a
+	// long time (mesh-apply starved). This pass force-meshes the nearest HeroRadiusChunks rings
+	// at LOD0 every frame with a SMALL reserved budget, SYNCHRONOUSLY (bypassing the async queue
+	// entirely) so the tile under you is guaranteed sharp. Kept tiny so the frame cost is bounded.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming")
+	bool bHeroColumnPriority = true; // ON: never let the column under the player lag at coarse LOD
+	// Chebyshev ring radius of the hero band (1 = the 3×3 columns around you). Keep small.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "0", ClampMax = "4"))
+	int32 HeroRadiusChunks = 1;
+	// Max hero columns force-meshed per frame (caps the guaranteed-sharp work; 9 = a full 3×3).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "49"))
+	int32 HeroColumnBudget = 9;
+
+	// --- SUPER-CHUNK sweep CADENCE cap (Step 1: stop the idle-frame far-band cost) ---
+	// The super-chunk ENQUEUE ring sweep scans the whole far field (thousands of cells, each an
+	// N×N neighbour check) and most cells skip without spending budget — so it used to run IN FULL
+	// every frame, a constant game-thread cost that pinned FPS even when the world was idle. Supers
+	// are far + coarse and change slowly, so we only re-run the sweep this often (the cheap super
+	// UPLOAD harvest still runs every frame). 0.25s = 4×/sec, invisible for the far band.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|SuperChunks", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float SuperSweepIntervalSeconds = 0.25f;
+
 	// What the streaming ring centres on. If empty, the first player pawn is used.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
 	TObjectPtr<AActor> StreamFocusActor;
@@ -394,6 +419,17 @@ public:
 	// faces aren't see-through). 2 keeps just enough below-surface; bigger = more depth.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "0", ClampMax = "8"))
 	int32 ShellDownChunks = 2;
+
+	// --- SURFACE-VOLUME mode (Step 1b: "only build a volume around the surface"). When ON,
+	//     EVERY column meshes only the thin surface shell (ShellUp/ShellDown around its surface
+	//     row) — there is NO full-depth near core at all (NearFullDepthRadiusChunks is ignored).
+	//     This is the big meshing cut: the player walks on a surface slab, not a solid volume.
+	//     Voxel DATA is still generated full-depth (cheap, no actors), so a dig anywhere hits
+	//     real voxels with no promotion delay; DIG-SPAN GROWTH (below) then keeps the meshed
+	//     span following any dig downward so the hole always renders, even a deep shaft. Implies
+	//     the shell path regardless of b3DShellStreaming, so this one flag enables the mode. ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming")
+	bool bSurfaceVolumeOnly = true; // ON: thin surface slab everywhere + dig-grown depth
 
 	// --- Super-chunk aggregation (far-band clipmap LOD). When ON, the FAR ring
 	//     (beyond StreamRadius, out to SuperRadiusChunks) is rendered as coarse
@@ -1033,6 +1069,21 @@ private:
 	// even when nothing was streaming. Computing each column ONCE and caching it here turns that
 	// into a hash lookup. Cleared on ClearWorld (a regen can change the generator inputs).
 	TMap<FIntPoint, int32> ColumnSurfaceYCache;
+
+	// Step 1: real-seconds accumulator gating the super-chunk enqueue sweep (cadence cap above).
+	float SuperSweepAccum = 0.0f;
+
+	// Step 1b: DIG-SPAN GROWTH. Per XZ column, the [min,max] chunk-Y rows a DIG has touched
+	// (X=lowest, Y=highest). DesiredMeshYRange unions this into the surface shell so a dig —
+	// especially a shaft dug below the thin slab — stays meshed (the hole renders) instead of
+	// vanishing under the surface-volume cull. Grows only (never shrinks) so nothing pops out.
+	// Cleared on ClearWorld. Empty for any column that's never been dug.
+	TMap<FIntPoint, FIntPoint> ColumnDugSpanChunkY;
+	// Step 1b: memoized surface VOXEL-Y per column for DesiredMeshYRange (which is const and
+	// runs per meshed column per frame in the span-change check). Same idea as ColumnSurfaceYCache
+	// but voxel-Y (shell math needs the surface voxel row), and mutable so the const method can
+	// fill it. Heightmap-derived = constant for the world's life; cleared on ClearWorld.
+	mutable TMap<FIntPoint, int32> ColumnSurfaceVoxelYCache;
 
 	// The chunk-Y span a column SHOULD mesh right now, given the shell flag + the
 	// column's distance to the focus. With the flag off (or NEAR), returns the full
