@@ -1767,7 +1767,16 @@ void AVoxelWorld::TickStreaming()
 			{
 				if (HeroBudget <= 0) { break; }
 				const FIntPoint Col(Focus.X + Cell.X, Focus.Y + Cell.Y);
-				if (!FilledColumns.Contains(Col)) { continue; } // voxels not generated yet (prefetch leads)
+				// SYNC-FILL (movement outrun fix): if the velocity prefetch fell behind and this
+				// hero column isn't generated yet, generate it RIGHT NOW so we can mesh it this
+				// frame — the ground under / just ahead of you must never be a hole while moving.
+				// Skip if a gen worker is already on it (its result is coming) to avoid double-gen.
+				if (!FilledColumns.Contains(Col))
+				{
+					if (InFlightColumns.Contains(Col)) { continue; }     // async gen in progress — wait
+					FillChunkColumn(Col.X, Col.Y, /*GenLod=*/0);          // full-res, synchronous
+					if (!FilledColumns.Contains(Col)) { continue; }       // still not filled — give up
+				}
 				const int32* CurLod = ColumnLod.Find(Col);
 				// Already sharp? nothing to do (this is why standing still is free).
 				if (MeshedColumns.Contains(Col) && CurLod && *CurLod == 0) { continue; }
