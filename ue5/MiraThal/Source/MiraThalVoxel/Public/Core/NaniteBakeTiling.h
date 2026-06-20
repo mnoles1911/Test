@@ -58,6 +58,13 @@ constexpr int DEFAULT_TILE_SPAN_VOXELS = 512;
 // the near-band seam enough thickness to never be see-through. 8 voxels = 0.8 m.
 constexpr int DEFAULT_SKIRT_DEPTH_VOXELS = 8;
 
+// Hard ceiling on a tile's coarse-grid side (cells per axis). sample_crust_slab allocates a
+// (coarse_side + 2*APRON)^3 DenseGrid per tile, so an over-fine tile (small stride + big
+// tileSpan) would blow memory — e.g. tileSpan 512 @ stride 1 = a 514^3 grid (~270 MB). Tiles
+// whose coarse_side exceeds this are REFUSED (empty slab) so the caller skips them instead of
+// OOMing the bake; to bake finer, shrink tileSpan so tileSpan/stride stays <= this.
+constexpr int MAX_COARSE_SIDE = 96;
+
 // ---------------------------------------------------------------------------
 // 1) TILE ADDRESSING — which tile a world voxel belongs to, and where tiles sit.
 //    All floor-division so negative world coordinates map correctly (the tile
@@ -92,6 +99,21 @@ inline TileBounds tile_bounds(const Vec2i& tile, int tileSpanVoxels) {
     return b;
 }
 
+// The inclusive CHUNK rectangle a tile covers (the chunk columns its voxel footprint touches).
+// Used by the runtime HANDOFF: before releasing a tile the crust asks the live world whether
+// THESE columns are meshed yet (AVoxelWorld::AreCoveredColumnsReady), so the near voxels are
+// proven present before the crust lets go — no transition hole. floor-div for negatives.
+struct TileChunkBounds { int minCx, maxCx, minCz, maxCz; };
+inline TileChunkBounds tile_chunk_bounds(const Vec2i& tile, int tileSpanVoxels) {
+    const TileBounds b = tile_bounds(tile, tileSpanVoxels);
+    TileChunkBounds c;
+    c.minCx = coords::floor_div(b.minX, coords::CHUNK);
+    c.maxCx = coords::floor_div(b.maxX, coords::CHUNK);
+    c.minCz = coords::floor_div(b.minZ, coords::CHUNK);
+    c.maxCz = coords::floor_div(b.maxZ, coords::CHUNK);
+    return c;
+}
+
 // ---------------------------------------------------------------------------
 // 2) SAMPLE A TILE'S CRUST SLAB — fill one apron'd coarse DenseGrid as a surface
 //    shell (solids only). GENERALISES MeshSuperPure: sample the surface at each
@@ -117,8 +139,16 @@ struct CrustSlab {
 //   tile          — which tile to sample (X,Z).
 //   tileSpanVoxels— tile edge in voxels (e.g. 512).
 //   stride        — fine voxels per coarse cell (the downsample). coarse_side =
-//                   tileSpanVoxels / stride; pick stride so coarse_side <= CHUNK (32)
-//                   and the existing 34^3 greedy-mesher renders it unchanged.
+//                   tileSpanVoxels / stride. THIS IS THE SMOOTH-vs-CUBIC KNOB: a big stride
+//                   (e.g. 16 -> 1.6 m cubes) is what makes the far crust read as a SMOOTH
+//                   silhouette; a small stride bakes visibly CUBIC far terrain. Nanite renders
+//                   dense cubic geometry cheaply, so cubic-everywhere is a bake-parameter choice,
+//                   not a perf one. CONSTRAINT: the sampler allocates a (coarse_side + 2*APRON)^3
+//                   DenseGrid PER TILE, so coarse_side must stay modest (<= ~64). To get cubic you
+//                   therefore SHRINK THE TILE with the stride together — e.g. tileSpan 128 @ stride
+//                   4 (40 cm cubes, coarse_side 32) or tileSpan 64 @ stride 2 (20 cm cubes). Full
+//                   10 cm (stride 1) over a 5 km map is millions of tiles/assets — not viable as
+//                   one-.uasset-per-tile; 20-40 cm cubes are the practical "cubic far" sweet spot.
 //   skirtDepth    — how many fine voxels below the surface stay solid (the skirt).
 //   height_at     — ground voxel Y at (wx,wz). Usually Gen.compute_ground_y so the
 //                   crust lines up with the near voxels. In the harness: a lambda.
@@ -153,6 +183,10 @@ inline CrustSlab sample_crust_slab(
     out.origin_voxel_x = o.x;
     out.origin_voxel_z = o.y;
     if (cs <= 0) { return out; }
+    // Memory safety: refuse an over-fine tile (would allocate a huge DenseGrid). Zero coarse_side
+    // so nothing iterates the unsized slab; has_solid stays false -> the caller treats it as an
+    // all-air tile and skips it.
+    if (cs > MAX_COARSE_SIDE) { out.coarse_side = 0; return out; }
 
     // The coarse slab side must hold cs cells + a 1-cell apron each side. We reuse the
     // 34^3 mesh slab when cs == CHUNK (32); for smaller cs a tighter slab still works

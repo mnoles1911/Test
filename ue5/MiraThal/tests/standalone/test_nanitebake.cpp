@@ -225,6 +225,41 @@ int main() {
         CHECK(d == 0, "tile containing focus chunk has distance 0");
     }
 
+    // =====================================================================
+    // 5) tile_chunk_bounds — the chunk rectangle a tile covers (runtime HANDOFF query).
+    //    The crust asks AVoxelWorld whether THESE columns are meshed before releasing a tile.
+    // =====================================================================
+    {
+        // Tile (0,0) @ span 512 covers voxels [0..511] -> chunks [0..15] (CHUNK = 32).
+        const TileChunkBounds c0 = tile_chunk_bounds(Vec2i(0, 0), SPAN);
+        CHECK(c0.minCx == 0 && c0.maxCx == 15, "tile(0,0) covers chunks X [0..15]");
+        CHECK(c0.minCz == 0 && c0.maxCz == 15, "tile(0,0) covers chunks Z [0..15]");
+        // Tile (1,0) -> voxels [512..1023] -> chunks [16..31].
+        const TileChunkBounds c1 = tile_chunk_bounds(Vec2i(1, 0), SPAN);
+        CHECK(c1.minCx == 16 && c1.maxCx == 31, "tile(1,0) covers chunks X [16..31]");
+        // Negative tile (-1,0) -> voxels [-512..-1] -> chunks [-16..-1].
+        const TileChunkBounds cn = tile_chunk_bounds(Vec2i(-1, 0), SPAN);
+        CHECK(cn.minCx == -16 && cn.maxCx == -1, "tile(-1,0) covers chunks X [-16..-1]");
+        CHECK(cn.maxCx + 1 == c0.minCx, "tile chunk-bounds contiguous (no gap/overlap)");
+    }
+
+    // =====================================================================
+    // 6) MAX_COARSE_SIDE guard — an over-fine tile is refused (no OOM), a tile at the
+    //    ceiling still bakes. This is what keeps a "cubic" re-bake from blowing memory.
+    // =====================================================================
+    {
+        auto h  = [&](int, int) { return 100; };
+        auto id = [&](int, int) -> uint8_t { return 3; };
+        // span 512 @ stride 1 -> coarse_side 512 > MAX_COARSE_SIDE -> refused (empty, cs=0).
+        CrustSlab huge = sample_crust_slab(Vec2i(0, 0), SPAN, 1, 8, h, id);
+        CHECK(!huge.has_solid && huge.coarse_side == 0, "over-fine tile refused: empty, cs=0");
+        CHECK(count_solid_inner(huge) == 0, "over-fine tile refused: no solids");
+        // A tile right at the ceiling still bakes: span 96 @ stride 1 -> cs 96 == MAX.
+        CrustSlab okTile = sample_crust_slab(Vec2i(0, 0), MAX_COARSE_SIDE, 1, 8, h, id);
+        CHECK(okTile.coarse_side == MAX_COARSE_SIDE && okTile.has_solid,
+              "cs == MAX_COARSE_SIDE still bakes a shell");
+    }
+
     std::printf("[nanitebake] %s\n", g_fails == 0 ? "PASS" : "FAIL");
     std::printf("---- %d checks, %d failure(s)\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

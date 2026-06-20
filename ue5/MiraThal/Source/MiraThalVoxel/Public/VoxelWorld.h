@@ -241,6 +241,19 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "0.5", ClampMax = "16.0"))
 	float MeshUploadBudgetMs = 5.0f;
 
+	// Time-slice the GEN harvest too. The apply side of HarvestColumnGen writes a column's
+	// generated voxels AND replays the player's saved edits from DISK (ApplyEditsToColumn) —
+	// synchronous game-thread work that, unlike the mesh upload above, had NO ms budget. A
+	// burst of ready columns could therefore blow a frame on disk replay alone, independent of
+	// the upload cap. When ON, HarvestColumnGen stops once GenHarvestBudgetMs of wall-clock has
+	// elapsed this tick (always applying >=1 so streaming never stalls). DEFAULT ON — it only
+	// ever caps the loading dip; with it off the behaviour is the original fixed-count harvest.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming")
+	bool bTimeSliceGenHarvest = true; // DEFAULT ON — bound the per-tick gen-apply cost
+
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "0.5", ClampMax = "16.0"))
+	float GenHarvestBudgetMs = 4.0f;
+
 	// --- LOD0 HERO-COLUMN priority (Step 1: the "ground under your feet is always sharp" fix) ---
 	// The column(s) directly under and immediately around the player must reach full detail
 	// (LOD0) RIGHT NOW and never wait behind the general async mesh queue. When the far-band
@@ -676,6 +689,17 @@ public:
 	// designer can see + tune the far ring. Changes no state — pure instrumentation.
 	FMiraFarRenderStats GetFarRenderStats() const;
 
+	// HANDOFF READINESS (Nanite crust): is the LIVE voxel terrain ready to take over the area a
+	// crust tile covers? Returns true only if every live column in the chunk rectangle
+	// [MinCx..MaxCx] x [MinCz..MaxCz] that lies WITHIN the live StreamRadius of the focus is
+	// already MESHED. The crust streamer calls this before RELEASING a tile, so the tile is kept
+	// (a harmless overlap — the crust is sunk below the surface) until the voxels that replace it
+	// actually exist. That overlap is what kills the transition HOLES. Columns beyond the stream
+	// radius are ignored (the crust, not the live terrain, owns those) so a tile can never linger
+	// forever. Pure read of MeshedColumns + the focus; changes no state.
+	UFUNCTION(BlueprintCallable, Category = "MiraThal|NaniteCrust")
+	bool AreCoveredColumnsReady(int32 MinCx, int32 MaxCx, int32 MinCz, int32 MaxCz) const;
+
 	// --- DIAGNOSTIC LOD debug-color mode (TOOL 1; cvar mira.LodDebug) ---
 	// Re-color EVERY currently-loaded chunk + super actor to match the live cvar value:
 	// re-uploads each actor's cached mesh with the per-LOD debug tint (or removes it when
@@ -767,6 +791,14 @@ private:
 	float WorstLoadFrameMsWindow = 0.0f;
 	float WorstFrameWindowAccum  = 0.0f; // seconds accumulated into the current window
 	static constexpr float WorstFrameWindowSeconds = 2.0f;
+	// TOOL 6 (per-phase loading attribution): worst single-tick wall-clock ms spent in each
+	// game-thread streaming PHASE over the SAME ~2 s window as the frame timers above. These
+	// answer "WHAT inside a 400 ms loading frame is the cost" — the gen apply (writing voxels +
+	// replaying saved edits from disk), the mesh UPLOAD (CreateMeshSection), or the eviction
+	// teardown. Surfaced in the perf CSV + STREAM STATS. Pure measurement; reset with the window.
+	float WorstGenMsWindow   = 0.0f; // HarvestColumnGen   — apply voxels + disk edit-replay
+	float WorstMeshMsWindow  = 0.0f; // HarvestColumnMesh  — game-thread mesh upload
+	float WorstEvictMsWindow = 0.0f; // column + super eviction teardown
 	// Update the rolling worst-frame window from this frame's delta + whether it loaded.
 	// Called once per Tick. Pure measurement.
 	void UpdateProfilerFrameWindow(float DeltaSeconds);

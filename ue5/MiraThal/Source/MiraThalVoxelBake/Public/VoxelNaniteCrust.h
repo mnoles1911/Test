@@ -27,6 +27,7 @@
 
 class UVoxelBakeManifest;
 class UStaticMeshComponent;
+class AVoxelWorld;
 
 UCLASS()
 class MIRATHALVOXELBAKE_API AVoxelNaniteCrust : public AActor
@@ -62,6 +63,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|NaniteCrust", meta = (ClampMin = "0", ClampMax = "64"))
 	int32 VerticalBiasVoxels = 3;
 
+	// HANDOFF (kill transition holes): don't RELEASE a tile until the live voxel columns it
+	// covers are meshed (proven by AVoxelWorld::AreCoveredColumnsReady). The tile is kept as a
+	// harmless overlap — it's sunk VerticalBiasVoxels below the surface — until the near voxels
+	// exist, so the crust->voxel swap never flashes a gap. OFF = the old blind distance release.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|NaniteCrust")
+	bool bHoldTilesUntilVoxelsReady = true;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -81,6 +89,15 @@ private:
 	// Tiles we've kicked an async soft-load for but haven't placed yet (so we don't
 	// re-request every tick while the load is in flight).
 	TSet<FIntPoint> PendingLoads;
+
+	// The live voxel world (owns the near editable band). Resolved lazily; used to gate tile
+	// RELEASE on near-terrain readiness so the handoff overlaps instead of leaving a hole.
+	TWeakObjectPtr<AVoxelWorld> CachedVoxelWorld;
+	AVoxelWorld* ResolveVoxelWorld();
+
+	// ~1 Hz throttle for the "[MiraThalCrust] tiles=N" diagnostic (the previously-missing crust
+	// tile counter — so the perf forensics can confirm the crust is actually streaming).
+	float StatLogAccum = 0.0f;
 
 	// Where the band centres this tick (the focus's chunk XZ). Returns false if no focus.
 	bool GetFocusChunkXZ(mira::Vec2i& OutChunkXZ) const;

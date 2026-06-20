@@ -521,11 +521,23 @@ int32 AVoxelWorld::HarvestColumnGen(int32 Budget)
 		});
 	}
 
+	// THROUGHPUT time-slice (optional, mirrors HarvestColumnMesh): the gen APPLY writes voxels
+	// and replays the player's saved edits from DISK (ApplyColumnResult -> ApplyEditsToColumn) —
+	// synchronous game-thread work with no ceiling until now. Stop once this tick's ms budget is
+	// spent (after >=1 apply, so we always make forward progress). Count cap (Budget) still rules.
+	const bool   bGenSlice    = bTimeSliceGenHarvest;
+	const double GenSliceStart = bGenSlice ? FPlatformTime::Seconds() : 0.0;
+	const double GenSliceLimitS = (double)GenHarvestBudgetMs * 0.001;
+
 	int32 Applied = 0;
 	TArray<int32> ToRemove;
 	for (int32 idx : Ready)
 	{
 		if (Applied >= Budget) { break; }
+		if (bGenSlice && Applied > 0 && (FPlatformTime::Seconds() - GenSliceStart) >= GenSliceLimitS)
+		{
+			break; // ms budget spent — remaining ready columns retry next tick (still in PendingGen)
+		}
 		FColumnGenResult R = PendingGen[idx].Future.Get();
 		InFlightColumns.Remove(PendingGen[idx].Key);
 		ToRemove.Add(idx);
@@ -1630,7 +1642,10 @@ void AVoxelWorld::TickStreaming()
 		// Apply finished worker jobs first (counts against this frame's budget), then
 		// queue new columns. EnqueueColumnGen self-skips filled/in-flight columns and
 		// caps the number of jobs in flight, so the ring sweep below is cheap.
+		const double GenHarvestT0 = FPlatformTime::Seconds();
 		const int32 GenApplied = HarvestColumnGen(Budget);
+		WorstGenMsWindow = FMath::Max(WorstGenMsWindow,
+			(float)((FPlatformTime::Seconds() - GenHarvestT0) * 1000.0)); // TOOL 6: gen-apply ms
 		Budget -= GenApplied;
 		GenOpsThisTick += GenApplied; // TOOL 2: gen columns applied this tick
 		TArray<FIntPoint> RingCells;
@@ -1719,7 +1734,10 @@ void AVoxelWorld::TickStreaming()
 	int MeshBudget = MaxColumnOpsPerTick;
 	if (bAsyncMeshing)
 	{
+		const double MeshHarvestT0 = FPlatformTime::Seconds();
 		const int32 MeshApplied = HarvestColumnMesh(MaxColumnMeshUploadsPerTick);
+		WorstMeshMsWindow = FMath::Max(WorstMeshMsWindow,
+			(float)((FPlatformTime::Seconds() - MeshHarvestT0) * 1000.0)); // TOOL 6: mesh-upload ms
 		MeshOpsThisTick += MeshApplied; // TOOL 2: chunk meshes uploaded this tick
 	}
 
@@ -2072,6 +2090,7 @@ void AVoxelWorld::TickStreaming()
 	// of the holes. Capping eviction means a frame can never out-tear-down the mesher. A
 	// column still out-of-range that we skip this tick is simply re-collected next tick (it
 	// stays in MeshedColumns), so nothing is leaked — eviction just spreads over a few frames.
+	const double EvictColT0 = FPlatformTime::Seconds();
 	int32 EvictBudget = MaxEvictOpsPerTick;
 	for (const FIntPoint& Col : ToEvict)
 	{
@@ -2099,6 +2118,8 @@ void AVoxelWorld::TickStreaming()
 		UnmeshChunkColumn(Col.X, Col.Y);
 		--EvictBudget;
 	}
+	WorstEvictMsWindow = FMath::Max(WorstEvictMsWindow,
+		(float)((FPlatformTime::Seconds() - EvictColT0) * 1000.0)); // TOOL 6: eviction teardown ms
 
 	// 3b) EVICT super-chunks (flag-gated): drop any that drifted past the super radius
 	//     + padding, OR whose covered near terrain has FULLY replaced it. No cost when off.
@@ -3224,6 +3245,9 @@ void AVoxelWorld::UpdateProfilerFrameWindow(float DeltaSeconds)
 		WorstFrameWindowAccum  = 0.0f;
 		WorstFrameMsWindow     = FrameMs;
 		WorstLoadFrameMsWindow = bLoadingThisTick ? FrameMs : 0.0f;
+		WorstGenMsWindow       = 0.0f; // TOOL 6: restart per-phase worst-ms with the frame window
+		WorstMeshMsWindow      = 0.0f;
+		WorstEvictMsWindow     = 0.0f;
 	}
 }
 
@@ -3303,6 +3327,29 @@ FMiraFarRenderStats AVoxelWorld::GetFarRenderStats() const
 	return S;
 }
 
+// HANDOFF READINESS (Nanite crust) — see the header. The crust streamer calls this before it
+// RELEASES a tile: keep the tile (harmless overlap) until the live voxels that replace it are
+// meshed, so the swap never shows a hole. Pure read of MeshedColumns + the focus.
+bool AVoxelWorld::AreCoveredColumnsReady(int32 MinCx, int32 MaxCx, int32 MinCz, int32 MaxCz) const
+{
+	// No focus -> we can't reason about the stream radius; don't block the crust's normal release.
+	FIntPoint Focus;
+	if (!const_cast<AVoxelWorld*>(this)->GetFocusChunkXZ(Focus)) { return true; }
+
+	const int32 R = StreamRadiusChunks;
+	for (int32 cz = MinCz; cz <= MaxCz; ++cz)
+	for (int32 cx = MinCx; cx <= MaxCx; ++cx)
+	{
+		// Only columns the LIVE terrain owns (within its stream radius) must be ready; columns
+		// beyond it are the crust band's job, so ignore them — otherwise a tile whose far half is
+		// out of radius could never release and the crust would linger forever.
+		const int32 d = FMath::Max(FMath::Abs(cx - Focus.X), FMath::Abs(cz - Focus.Y));
+		if (d > R) { continue; }
+		if (!MeshedColumns.Contains(FIntPoint(cx, cz))) { return false; }
+	}
+	return true;
+}
+
 void AVoxelWorld::LogStreamingStats()
 {
 	// Per-LOD column histogram (objective P3 check). ColumnLod holds the LOD each
@@ -3370,7 +3417,7 @@ void AVoxelWorld::WritePerfCsvRow()
 			"lod0,lod1,lod2,lod3,superTotal,superL0,superL1,superL2,superL3,superL4,superL5,"
 			"coarseGen,shellCulled,fades,holds,genOps,meshOps,jobsInFlight,pending,"
 			"pendGen,pendMesh,pendSuper,inFlightGen,inFlightMesh,inFlightSuper,"
-			"streamRadius,superRadius,uploadsCap,uploadMs,"
+			"streamRadius,superRadius,uploadsCap,uploadMs,genMs,meshMs,evictMs,"
 			"waterActive,waterUnits,waterPlaced,waterForgotten,waterDelta,"
 			"lifeQueuedGen,lifeFilled,lifeQueuedMesh,lifeMeshed,hangingCols,worstHangSec,worstHangPhase\n");
 		FFileHelper::SaveStringToFile(Header, *Path); // overwrite: fresh file
@@ -3413,7 +3460,7 @@ void AVoxelWorld::WritePerfCsvRow()
 		TEXT("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%d,")
-		TEXT("%d,%d,%d,%.1f,")
+		TEXT("%d,%d,%d,%.1f,%.1f,%.1f,%.1f,")
 		TEXT("%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%.1f,%s\n"),
 		NowS, Fps, PerfCsvWorstMsInterval, Far.WorstLoadFrameMs,
@@ -3426,6 +3473,7 @@ void AVoxelWorld::WritePerfCsvRow()
 		PendingGen.Num(), PendingMesh.Num(), PendingSuperMesh.Num(),
 		InFlightColumns.Num(), InFlightMeshColumns.Num(), InFlightSuperMeshes.Num(),
 		StreamRadiusChunks, SuperRadiusChunks, MaxColumnMeshUploadsPerTick, MeshUploadBudgetMs,
+		WorstGenMsWindow, WorstMeshMsWindow, WorstEvictMsWindow, // TOOL 6: measured per-phase worst ms
 		WActive, WUnits, WPlaced, WForgot, WDelta,
 		// TOOL 5 — per-column lifecycle phase histogram + hang headline (cached by the last
 		// UpdateColumnLifecycle reconcile; all zero when bTrackColumnLifecycle is off).

@@ -1,6 +1,7 @@
 // VoxelNaniteCrust.cpp — runtime streamer for the baked Nanite crust tiles.
 #include "VoxelNaniteCrust.h"
 #include "VoxelBakeManifest.h"
+#include "VoxelWorld.h"             // AVoxelWorld::AreCoveredColumnsReady (handoff readiness)
 
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
@@ -127,14 +128,25 @@ void AVoxelNaniteCrust::Tick(float DeltaSeconds)
 		--Budget;
 	}
 
-	// RELEASE shown tiles that are no longer wanted.
+	// RELEASE shown tiles that are no longer wanted — but (HANDOFF) only once the LIVE voxels
+	// that replace a tile are actually meshed, so the crust->voxel swap never leaves a hole. A
+	// tile whose near voxels aren't ready is simply KEPT this tick (a harmless overlap — it's
+	// sunk below the surface) and re-checked next tick. Flag off -> the old blind distance release.
+	AVoxelWorld* VW = bHoldTilesUntilVoxelsReady ? ResolveVoxelWorld() : nullptr;
 	TArray<FIntPoint> ToRelease;
 	for (auto& Pair : TileComponents)
 	{
-		if (!WantSet.Contains(Pair.Key))
+		if (WantSet.Contains(Pair.Key)) { continue; }
+		if (VW)
 		{
-			ToRelease.Add(Pair.Key);
+			const mira::nanitebake::TileChunkBounds CB =
+				mira::nanitebake::tile_chunk_bounds(mira::Vec2i(Pair.Key.X, Pair.Key.Y), TileSpan);
+			if (!VW->AreCoveredColumnsReady(CB.minCx, CB.maxCx, CB.minCz, CB.maxCz))
+			{
+				continue; // near voxels not meshed yet — keep the crust tile (overlap, no hole)
+			}
 		}
+		ToRelease.Add(Pair.Key);
 	}
 	for (const FIntPoint& Key : ToRelease)
 	{
@@ -142,6 +154,29 @@ void AVoxelNaniteCrust::Tick(float DeltaSeconds)
 		ReleaseTile(Key);
 		--Budget;
 	}
+
+	// DIAGNOSTIC (~1 Hz): the crust tile count — the counter the perf forensics was missing, so
+	// "is the crust actually streaming?" is answered by DATA, not a live component dump.
+	StatLogAccum += DeltaSeconds;
+	if (StatLogAccum >= 1.0f)
+	{
+		StatLogAccum = 0.0f;
+		UE_LOG(LogTemp, Display, TEXT("[MiraThalCrust] tiles=%d pendingLoads=%d focusChunk=(%d,%d) hold=%d"),
+			TileComponents.Num(), PendingLoads.Num(), FocusChunk.x, FocusChunk.y,
+			bHoldTilesUntilVoxelsReady ? 1 : 0);
+	}
+}
+
+// Lazily find the single live voxel world in the level (the crust draws the FAR band; the world
+// owns the NEAR editable band). Cached weakly so a level teardown can't dangle.
+AVoxelWorld* AVoxelNaniteCrust::ResolveVoxelWorld()
+{
+	if (CachedVoxelWorld.IsValid()) { return CachedVoxelWorld.Get(); }
+	if (AActor* Found = UGameplayStatics::GetActorOfClass(this, AVoxelWorld::StaticClass()))
+	{
+		CachedVoxelWorld = Cast<AVoxelWorld>(Found);
+	}
+	return CachedVoxelWorld.Get();
 }
 
 void AVoxelNaniteCrust::EnsureTile(const FIntPoint& TileKey)
