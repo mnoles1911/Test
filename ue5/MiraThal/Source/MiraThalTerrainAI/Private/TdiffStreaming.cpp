@@ -31,6 +31,7 @@
 #include "DiffusionDemService.h"
 #include "DiffusionHeightSource.h"
 #include "DiffusionCoarseProvider.h"   // FDiffusionCoarseProvider::Make — real GPU provider
+#include "TdiffWorldHook.h"            // UTdiffWorldHook::SnapPlayerToLand (shared land-spawn)
 #include "Core/Tdiff/DetailBridge.h"   // mira::tdiff::DetailBridgeParams
 
 #include "VoxelWorld.h"
@@ -171,6 +172,7 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	World->SetStreamingHeightSource(S.Source.Get(), EnsureFn, ReadyFn);
 	World->HeightSource = EVoxelHeightSource::DiffusionAI;
 	World->GenerateWorld();
+	UTdiffWorldHook::SnapPlayerToLand(World); // stand on the streamed surface, not floating above it
 	S.bActive = true;
 
 	UE_LOG(LogMiraTdiffStream, Display,
