@@ -49,11 +49,21 @@ struct FCoarseDem
 	int32         CoarseH = 0;            // cells down  (world +Z)
 	TArray<float> Cells;                  // CoarseW*CoarseH normalised elevations, row-major
 
+	// Optional self-describing georef (Phase-2 streaming): the world-voxel position of cell
+	// (0,0) and how many world voxels one cell spans. The bounded path leaves these 0 and
+	// derives georef from the region rect; the STREAMING path sets them in EnsureTileResident
+	// so a tile carries its own georef INCLUDING its apron (overlap into neighbours), letting
+	// the height source sample edge columns with real neighbour data -> seamless tiles.
+	double OriginVoxelX = 0.0;            // world-voxel X of cell (0,0)
+	double OriginVoxelZ = 0.0;            // world-voxel Z of cell (0,0)
+	double VoxelsPerCoarsePixel = 0.0;    // world voxels per coarse cell (0 = unset)
+
 	bool IsValid() const
 	{
 		return CoarseW > 1 && CoarseH > 1
 			&& Cells.Num() == CoarseW * CoarseH;
 	}
+	bool HasGeoref() const { return VoxelsPerCoarsePixel > 0.0; }
 };
 
 // The injected coarse-DEM provider. Given the world seed + the region (in world VOXELS),
