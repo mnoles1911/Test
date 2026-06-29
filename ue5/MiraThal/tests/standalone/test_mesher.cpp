@@ -287,6 +287,47 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // 10. OVERSIZED SLAB (the crust-bake case): a slab whose inner cube is LARGER
+    //     than CHUNK(32) must mesh its FULL extent, not just the first 32 cells.
+    //     This locks the fix for the "checkerboard" crust bug: greedy_mesh used to
+    //     hardcode N = CHUNK, so a coarse_side-96 baked tile only meshed its inner
+    //     32 cells and rendered at 32/96 of its footprint (regular gaps). Inner
+    //     N = 40 here distinguishes the fix (full 40) from the old cap (32).
+    // ---------------------------------------------------------------------
+    {
+        const int N = 40;
+        DenseGrid slab(N + 2 * APRON);   // side 42 (apron shell stays air)
+        for (int x = 0; x < N; ++x)
+            for (int y = 0; y < N; ++y)
+                for (int z = 0; z < N; ++z)
+                    set_local(slab, x, y, z, mat::STONE);
+
+        MeshBuffers m = greedy_mesh(slab);
+        CHECK(opaque_quads(m) == 6, "oversized 40^3 slab -> 6 boundary quads (full extent meshed)");
+
+        // The +X boundary quad must span 40x40 voxels (it was 32x32 under the old cap).
+        const MeshSection& sec = m.section(FaceClass::Opaque);
+        bool found_40 = false;
+        for (size_t v = 0; v < sec.vertices.size(); v += 4) {
+            if (!approx(sec.vertices[v].nx, 1.0f)) continue;
+            const MeshVertex& a = sec.vertices[v + 0];
+            const MeshVertex& b = sec.vertices[v + 1];
+            const MeshVertex& d = sec.vertices[v + 3];
+            const float e1 = std::sqrt((b.px-a.px)*(b.px-a.px)+(b.py-a.py)*(b.py-a.py)+(b.pz-a.pz)*(b.pz-a.pz));
+            const float e2 = std::sqrt((d.px-a.px)*(d.px-a.px)+(d.py-a.py)*(d.py-a.py)+(d.pz-a.pz)*(d.pz-a.pz));
+            if (approx(e1, 40.0f) && approx(e2, 40.0f)) found_40 = true;
+        }
+        CHECK(found_40, "oversized slab: +X quad spans the FULL 40x40 (fix: not capped at 32)");
+
+        // The geometry must reach voxel coordinate 40 (the tile's far edge); the old
+        // hardcoded N=32 would top out at 32, leaving the 32..40 gap that read as holes.
+        float maxc = 0.0f;
+        for (const auto& vtx : sec.vertices)
+            maxc = std::fmax(maxc, std::fmax(vtx.px, std::fmax(vtx.py, vtx.pz)));
+        CHECK(approx(maxc, 40.0f), "oversized slab: geometry reaches voxel 40 (no checkerboard gap)");
+    }
+
     std::printf("[mesher  ] %s\n", g_fails == 0 ? "PASS" : "FAIL");
     std::printf("---- %d checks, %d failure(s)\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

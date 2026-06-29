@@ -29,7 +29,12 @@ namespace mira {
 
 namespace {
 
-constexpr int N = coords::CHUNK; // 32 — the inner chunk edge we mesh
+// The inner cube edge we mesh is NOT a fixed constant: it is the slab's actual inner
+// size (slab.side - 2*APRON). For a live chunk slab (side 34) that is CHUNK (32), the
+// historical value; for a crust BAKE slab it can be larger (a coarse tile of up to
+// MAX_COARSE_SIDE cells). The old hard-coded `N = CHUNK` only ever meshed the first 32
+// cells of an oversized slab, so any baked tile with coarse_side > 32 rendered at a
+// fraction of its footprint (the "checkerboard" gaps). sweep_dir now takes N per call.
 
 // Does material id `n` HIDE the face of its neighbour? Only fully-opaque SOLIDS
 // occlude. Leaves (Cutout) are deliberately non-culling — a stone face next to
@@ -158,7 +163,7 @@ void emit_quad(MeshBuffers& out, FaceDir dir, uint8_t id,
 // paint a w x h mask: cell (i,j) holds the id of the voxel at that in-plane
 // position IF that voxel meshes here AND its neighbour in `dir` does not occlude
 // it; else 0. Then we rectangle-merge the mask.
-void sweep_dir(const DenseGrid& slab, MeshBuffers& out, FaceDir dir, int axis) {
+void sweep_dir(const DenseGrid& slab, MeshBuffers& out, FaceDir dir, int axis, int N) {
     const int ua = (axis + 1) % 3; // first in-plane axis
     const int va = (axis + 2) % 3; // second in-plane axis
 
@@ -247,13 +252,31 @@ void sweep_dir(const DenseGrid& slab, MeshBuffers& out, FaceDir dir, int axis) {
 MeshBuffers greedy_mesh(const DenseGrid& slab) {
     MeshBuffers out;
 
+    // Inner cube edge = the slab's actual size minus the 1-cell apron each side. A live
+    // chunk slab (side 34) gives N = 32 (CHUNK, unchanged); a crust bake slab gives its
+    // real coarse_side (e.g. 96 for a full-res 10cm tile), so the WHOLE tile is meshed,
+    // not just its first 32 cells. Guard against a degenerate (too-small) slab.
+    const int N = slab.side - 2 * APRON;
+    if (N <= 0) { return out; }
+
+    // PERF: pre-size the main terrain section so the per-quad push_backs in the sweeps below don't
+    // repeatedly reallocate + copy the whole buffer. This runs on a worker thread for every chunk AND
+    // every baked crust tile; a full-res 96-cell tile pushes hundreds of thousands of verts, so the
+    // reallocation churn is the dominant allocation cost here. A surface shell is dominated by its
+    // top/bottom faces (~N*N cells before greedy merge), so reserving ~N*N verts absorbs almost all the
+    // growth in one allocation without over-reserving for sparse tiles. (Opaque is the crust/terrain
+    // section; Cutout/leaves grow separately and are far smaller, so we don't pre-size them.)
+    const size_t Reserve = static_cast<size_t>(N) * static_cast<size_t>(N);
+    out.section(FaceClass::Opaque).vertices.reserve(Reserve);
+    out.section(FaceClass::Opaque).indices.reserve(Reserve + Reserve / 2); // ~1.5 indices per vert
+
     // Six face directions, each stacking slices along the axis its normal follows.
-    sweep_dir(slab, out, FACE_NEG_X, 0);
-    sweep_dir(slab, out, FACE_POS_X, 0);
-    sweep_dir(slab, out, FACE_NEG_Y, 1);
-    sweep_dir(slab, out, FACE_POS_Y, 1);
-    sweep_dir(slab, out, FACE_NEG_Z, 2);
-    sweep_dir(slab, out, FACE_POS_Z, 2);
+    sweep_dir(slab, out, FACE_NEG_X, 0, N);
+    sweep_dir(slab, out, FACE_POS_X, 0, N);
+    sweep_dir(slab, out, FACE_NEG_Y, 1, N);
+    sweep_dir(slab, out, FACE_POS_Y, 1, N);
+    sweep_dir(slab, out, FACE_NEG_Z, 2, N);
+    sweep_dir(slab, out, FACE_POS_Z, 2, N);
 
     return out;
 }

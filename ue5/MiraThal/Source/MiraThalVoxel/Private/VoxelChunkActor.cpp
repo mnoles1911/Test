@@ -175,7 +175,8 @@ mira::MeshBuffers AVoxelChunkActor::BuildMeshBuffers(const mira::DenseGrid& Slab
 FCrustTileMesh AVoxelChunkActor::SampleAndMeshCrustTile(const FGenParams& P,
                                                         int32 TileX, int32 TileZ,
                                                         int32 TileSpan, int32 Stride,
-                                                        int32 SkirtDepth)
+                                                        int32 SkirtDepth,
+                                                        int32 MapHalfExtentVox)
 {
 	using namespace mira;
 	FCrustTileMesh Out;
@@ -193,7 +194,9 @@ FCrustTileMesh AVoxelChunkActor::SampleAndMeshCrustTile(const FGenParams& P,
 
 	const Vec2i Tile(TileX, TileZ);
 	const nanitebake::CrustSlab Cr =
-		nanitebake::sample_crust_slab(Tile, TileSpan, Stride, SkirtDepth, HeightAt, TopIdAt);
+		nanitebake::sample_crust_slab(Tile, TileSpan, Stride, SkirtDepth, HeightAt, TopIdAt,
+		                              MapHalfExtentVox); // 0 = unbounded; >0 clips to the map square
+
 
 	Out.BaseFineY = Cr.base_fine_y;
 	const nanitebake::TileBounds B = nanitebake::tile_bounds(Tile, TileSpan);
@@ -344,6 +347,66 @@ void AVoxelChunkActor::SetFadeAlpha(float A)
 
 	// Push the scalar the in-editor Dither node reads. Clamp defensively to [0,1].
 	TerrainFadeMID->SetScalarParameterValue(TEXT("FadeAlpha"), FMath::Clamp(A, 0.0f, 1.0f));
+}
+
+// ---------------------------------------------------------------------------
+// Actor pooling: reset / park (see header for the why). These let AVoxelWorld
+// recycle a parked actor onto a new chunk coord instead of spawning a new one.
+// ---------------------------------------------------------------------------
+
+// Wipe this actor back to the clean state a freshly-spawned actor has, so the world
+// can reuse it for a different chunk coord and remesh into it. The ORDER here matters:
+// clear the visible mesh FIRST so the previous chunk's geometry can never flash on the
+// new coord before the remesh lands.
+void AVoxelChunkActor::PrepareForReuse()
+{
+	// 1) Drop all rendered geometry. A freshly-constructed actor has an empty
+	//    ProceduralMesh (no sections), so match that. This also drops the per-section
+	//    material bindings, exactly as the next UploadMeshBuffers re-creates them.
+	if (Mesh)
+	{
+		Mesh->ClearAllMeshSections();
+	}
+
+	// 2) Cancel any LOD cross-fade. The dither material instance (TerrainFadeMID) was
+	//    bound onto the terrain section we just cleared; drop our reference so GC can
+	//    collect it and so the NEXT SetFadeAlpha lazily makes a fresh one. A new mesh
+	//    must start fully opaque — if we left a half-faded MID around, a reused actor
+	//    could pop in dithered-transparent. ClearAllMeshSections already removed the
+	//    binding; this just forgets the pointer (the reset-to-opaque is implicit: no
+	//    MID + no fade scalar == a normal, fully-drawn chunk).
+	TerrainFadeMID = nullptr;
+
+	// 3) Forget the cached recolor buffers. A fresh actor has nothing cached, so the
+	//    DIAGNOSTIC RecolorDebug pass must be a no-op until the next UploadMeshBuffers
+	//    re-populates these. We don't bother shrinking CachedMesh's allocation — the
+	//    next upload overwrites it — but we DO clear the "has a mesh" flag and the
+	//    cached material pointers so GC isn't pinned to the old chunk's materials.
+	bHasCachedMesh   = false;
+	CachedOpaqueMat  = nullptr;
+	CachedWaterMat   = nullptr;
+	CachedFloraMat   = nullptr;
+	CachedCollision  = false;
+	CachedReverse    = false;
+	CachedPositionScale = 1.0f;
+
+	// NOTE: bWorldManaged is intentionally NOT touched — a pooled actor stays world-managed
+	// so it never tries to self-build. ChunkCoord/Seed/bUseGenerator only matter for the
+	// standalone (non-world-managed) path, which a pooled actor never runs.
+}
+
+// Put this actor to sleep before it goes into the pool: hide it and turn collision off
+// (so a parked actor is invisible and can't be hit), and detach from any parent so a
+// stale attachment can't move it. The mesh clear happens on re-acquire (PrepareForReuse),
+// not here, so we don't pay it twice.
+void AVoxelChunkActor::PrepareForPark()
+{
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+
+	// Defensive: the streamer never parents chunk actors, but if a future change ever did,
+	// keep-world-position detach makes sure a parked actor doesn't get dragged around.
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 }
 
 // Synchronous convenience (unchanged behaviour): build then upload on the game thread.

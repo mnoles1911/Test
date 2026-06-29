@@ -60,6 +60,42 @@ namespace VoxelCrustBaker
 		// tiles within this many chunks are sampled+saved. Combine with MaxTilesPerBake
 		// for a guaranteed-small first bake.
 		int32 TestBakeRadiusChunks = 0;
+
+		// PARALLEL BAKE SHARDING. To bake a huge resolution fast, run ShardCount processes, each
+		// with a distinct ShardIndex; each handles only the tiles whose flat grid index mod
+		// ShardCount == ShardIndex and writes a TEXT manifest-shard instead of the .uasset. A final
+		// VoxelCrustBaker::MergeShards pass combines the shards into the real Manifest.uasset.
+		// ShardCount<=1 = single process bakes everything + writes the manifest (the default).
+		int32 ShardIndex = 0;
+		int32 ShardCount = 1;
+
+		// Nanite on the baked tiles. true (default) for FINE/near tiers (lots of geometry to LOD).
+		// false builds plain static meshes — much faster (Nanite's hierarchy build is the per-tile
+		// bottleneck) and fine for COARSE far tiers (few triangles, never need sub-pixel LOD).
+		bool bEnableNanite = true;
+
+		// REGION PACKING — dodge the one-file-per-tile "file wall" that makes 10/20cm impractical.
+		// When > 0, tiles are grouped into RegionTilesPerSide x RegionTilesPerSide blocks and each
+		// block's tile meshes are saved into ONE package (/Game/VoxelBake/<world>/Region_RX_RZ),
+		// cutting the FILE count by ~RegionTilesPerSide^2 (e.g. 8 -> 64x fewer files; a 10cm whole
+		// map drops from ~270k files to ~4k). Each tile keeps its own mesh + the exact runtime
+		// placement (no geometry merge), so the manifest + crust streamer are unchanged — only the
+		// mesh's package path differs. Sharding is done BY REGION when this is on, so parallel
+		// processes never write the same region package. 0 = one package per tile (original).
+		int32 RegionTilesPerSide = 0;
+
+		// GEOMETRY MERGE — the heavier sibling of region packing, for SHIPPING-scale asset counts.
+		// Region packing cuts the FILE count but each tile is still its OWN mesh ASSET (a 10cm whole
+		// map = ~270k assets — the Asset Registry is keyed per-asset, so the cook still chokes). When
+		// this is true (and RegionTilesPerSide > 0), every tile in a region is instead FUSED into ONE
+		// merged mesh (mira::merge_region_tiles), so a region becomes a single asset AND a single
+		// manifest entry — collapsing both file and asset count by ~RegionTilesPerSide^2. The runtime
+		// needs NO change: a merged region is just a bigger "tile", so the manifest's TileSpanVoxels
+		// is set to RegionTilesPerSide * TileSpan and the existing crust streamer bands at region
+		// granularity automatically. Tradeoff: coarser streaming/culling granularity (a whole region
+		// loads or unloads as one), so use it for the FAR/coarse tiers, not the near editable band.
+		// false = region packing keeps per-tile meshes (the default; finer streaming).
+		bool bGeometryMerge = false;
 	};
 
 	// Bake the whole crust for `World`. Loads the world's generator settings, loops the
@@ -74,6 +110,11 @@ namespace VoxelCrustBaker
 	UVoxelBakeManifest* BakeWorldCrust(AVoxelWorld* World,
 	                                   const FString& WorldSaveName,
 	                                   const FBakeSettings& Settings);
+
+	// Combine the per-process text shards (Saved/BakeShards/<world>_shard*.txt) written by a
+	// sharded parallel bake into the final /Game/VoxelBake/<world>/Manifest.uasset, then delete
+	// the shards. Run once after all bake processes finish. Returns true on a successful save.
+	bool MergeShards(const FString& WorldSaveName);
 }
 
 #endif // WITH_EDITOR

@@ -17,6 +17,7 @@ public class MiraThalEditorTarget : TargetRules
 			"MiraThalNet",
 			"MiraThalVoxelBake",
 			"MiraThalVoxelRender", // P7/P8 GPU raymarch — gated off by default (r.MiraThal.GpuRaymarch)
+			"MiraThalTerrainAI",   // live-runtime TerrainDiffusion (NNE + DirectML) -> voxel height source
 		});
 	}
 }

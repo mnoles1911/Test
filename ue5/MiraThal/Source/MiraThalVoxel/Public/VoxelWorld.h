@@ -53,6 +53,13 @@ enum class EVoxelHeightSource : uint8
 {
 	Procedural    UMETA(DisplayName = "Procedural Noise"),
 	HeightmapEXR  UMETA(DisplayName = "Imported EXR Heightmap"),
+	// DiffusionAI (TerrainDiffusion runtime DEM): the height comes from an
+	// ImageHeightmap that a SEPARATE module (MiraThalTerrainAI) builds at runtime
+	// from an AI elevation model and INSTALLS via SetDiffusionHeightmap(). From this
+	// actor's point of view it is IDENTICAL to the EXR path — just a different SOURCE
+	// for the same immutable mira::ImageHeightmap surface. MiraThalVoxel holds NO
+	// dependency on the AI module: the AI module pushes the finished image in to us.
+	DiffusionAI   UMETA(DisplayName = "AI Diffusion DEM (runtime)"),
 };
 
 // Read-only snapshot of the FAR-render load (super-chunks, coarse far-gen, 3D-shell
@@ -273,6 +280,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "49"))
 	int32 HeroColumnBudget = 12;
 
+	// HERO ALTITUDE GATE (fixes the high-altitude stall). The hero pass SYNCHRONOUSLY generates +
+	// LOD0-meshes the column(s) under the player on the game thread — great at ground level (keeps
+	// the dirt under your feet sharp), but when the player is far ABOVE the surface (flying / the
+	// debug spectator / falling) that 10 cm detail is sub-pixel AND the sync gen+mesh spikes the
+	// frame (the uninstrumented ~390 ms we diagnosed). Skip the hero pass when the focus is more
+	// than this many METRES above the ground beneath it. 0 = never gate (always run hero).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "0"))
+	float HeroMaxAltitudeMeters = 40.0f;
+
 	// --- SUPER-CHUNK sweep CADENCE cap (Step 1: stop the idle-frame far-band cost) ---
 	// The super-chunk ENQUEUE ring sweep scans the whole far field (thousands of cells, each an
 	// N×N neighbour check) and most cells skip without spending budget — so it used to run IN FULL
@@ -396,6 +412,60 @@ public:
 	// little more than the mesh budget so eviction keeps pace without ever racing ahead.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "256"))
 	int32 MaxEvictOpsPerTick = 8;
+
+	// CATCH-UP for fast roaming. The base MaxEvictOpsPerTick keeps pace with WALKING, but when the
+	// player sprints / flies / teleports, columns fall out of range far faster than 8/tick can drop
+	// them, so the out-of-range backlog grows unbounded — old terrain lingers as a "distant square
+	// that never unloads", memory climbs, and the per-tick evict SCAN gets O(huge).
+	//
+	// *** FAST-FLIGHT FIX (root cause) ***
+	// The OLD code capped the catch-up budget at EvictCatchupMultiplier x MaxEvictOpsPerTick = 8x8
+	// = 64 columns/tick, an ABSOLUTE ceiling that did NOT scale with the actual backlog. But during
+	// sustained flight the keep-square's trailing edge sheds ~133 columns for every chunk the focus
+	// advances — well above 64/tick — so the backlog GREW every frame and never converged WHILE
+	// MOVING. That is exactly the reported "square of terrain around the old spawn that never goes
+	// away": unloading simply could not keep pace with loading.
+	//
+	// THE FIX: this multiplier is no longer a hard ceiling on ops — it is the minimum head-room the
+	// catch-up grants over the base budget. When the backlog is large the teardown budget is allowed
+	// to DRAIN THE WHOLE BACKLOG in one tick (bounded only by ToEvict.Num()), so eviction CONVERGES
+	// no matter how fast you fly. The per-frame COST is instead bounded by EvictBudgetMs (a wall-clock
+	// time-slice, below) so a huge drain can never spike a single frame. Safe: these columns are all
+	// already beyond the keep radius (behind/away, not pending a re-mesh) and are torn down
+	// FARTHEST-FIRST, so faster teardown can't open a transition hole near the player. 1 = off.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiraThal|Streaming", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 EvictCatchupMultiplier = 8;
+
+	// Wall-clock millisecond budget for the per-tick column EVICTION teardown. This is what makes the
+	// "drain the whole backlog" catch-up above SAFE: instead of a fixed op-count ceiling that could
+	// either stall (too low -> terrain lingers) or spike a frame (too high -> hitch), the teardown
+	// keeps dropping farthest-first columns until EITHER the backlog is empty OR this much wall-clock
+	// has elapsed this tick (always dropping >=1 so eviction never fully stalls). 3 ms/tick keeps the
+	// catch-up frame cost modest (a 60 fps frame is ~16 ms) while still clearing a fast-flight backlog
+	// in a handful of frames. Bigger = clears lingering terrain faster but a deeper dip; smaller =
+	// gentler dip but the trailing square fades a touch slower. Mirrors MeshUploadBudgetMs.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "0.5", ClampMax = "16.0"))
+	float EvictBudgetMs = 3.0f;
+
+	// Hard cap on how many columns the per-tick eviction will ORDER (sort) farthest-first.
+	//
+	// *** FAST-FLIGHT SORT FIX (perf) ***
+	// The eviction teardown is bounded (by EvictBudgetMs, above) but the SORT that picks which
+	// columns to tear down first was NOT. Each tick we collect every out-of-range column into a
+	// backlog (ToEvict) and used to sort the WHOLE backlog farthest-first — an O(M log M) cost
+	// that runs in full EVERY tick even though the time-slice only tears down a handful. During
+	// fast flight at a large radius the backlog can be thousands of columns, so re-sorting it all
+	// each frame is itself the hitch the eviction time-slice was meant to remove.
+	//
+	// THE FIX: we only need the FARTHEST columns we'll actually tear down this tick to be in order.
+	// When the backlog exceeds this cap we PARTIAL-select (std::nth_element) the farthest `cap`
+	// columns — O(M) — then sort just those `cap` — O(cap log cap). The rest stay in the backlog
+	// and are re-collected (and re-selected) next tick, so nothing leaks and farthest-first is still
+	// guaranteed for every column we evict. When the backlog is <= this cap we keep the simple full
+	// sort. Set generously: a tick will never tear down more than EvictBudgetMs allows anyway, so
+	// this just needs to comfortably exceed the most columns one tick could possibly drop.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Streaming", meta = (ClampMin = "16", ClampMax = "8192"))
+	int32 MaxEvictTeardownsPerTick = 512;
 
 	// --- Coarse far-generation. When ON, DISTANT columns are GENERATED directly at
 	//     their render resolution (stride 2^L sampling) instead of full-res-then-
@@ -669,6 +739,20 @@ public:
 	// runtime path calls it itself in BeginPlay).
 	bool LoadHeightmapIfNeeded();
 
+	// --- AI diffusion DEM install seam (Phase 1) -------------------------------
+	// Hand this world a runtime-built elevation surface to use as its height source.
+	// The MiraThalTerrainAI module (which DEPENDS on this module — never the reverse)
+	// produces a mira::ImageHeightmap from the AI DEM and calls this to install it.
+	// We COPY the image in (the actor then owns the resident surface, mirroring how
+	// ImportedHeightmap holds the EXR), record the seed it was generated from (for the
+	// generator fingerprint), and switch HeightSource to DiffusionAI so the existing
+	// EXR plumbing (ConfigureGenerator / SnapshotGenParams / BuildGen) renders it. The
+	// supplied image must be valid(); on an invalid image this is a no-op that returns
+	// false and leaves the current source untouched. NOT a UFUNCTION on purpose — it
+	// takes a Core type (mira::ImageHeightmap) that Blueprint cannot see; the AI module
+	// triggers it from C++ (e.g. the MiraThal.Tdiff.FillRegion console command).
+	bool SetDiffusionHeightmap(const mira::ImageHeightmap& Hm, int64 GeneratedFromSeed);
+
 	// Build (or rebuild) the whole region from the generator. CallInEditor button.
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "MiraThal|World")
 	void GenerateWorld();
@@ -799,6 +883,7 @@ private:
 	float WorstGenMsWindow   = 0.0f; // HarvestColumnGen   — apply voxels + disk edit-replay
 	float WorstMeshMsWindow  = 0.0f; // HarvestColumnMesh  — game-thread mesh upload
 	float WorstEvictMsWindow = 0.0f; // column + super eviction teardown
+	float WorstHeroMsWindow  = 0.0f; // hero-column pass — SYNCHRONOUS LOD0 gen+mesh under the player
 	// Update the rolling worst-frame window from this frame's delta + whether it loaded.
 	// Called once per Tick. Pure measurement.
 	void UpdateProfilerFrameWindow(float DeltaSeconds);
@@ -898,6 +983,15 @@ private:
 	// The imported EXR surface, held directly. Empty (invalid) until a successful
 	// load; the generator only consults it when HeightSource = HeightmapEXR.
 	mira::ImageHeightmap ImportedHeightmap;
+
+	// The runtime AI-diffusion surface, held directly (mirrors ImportedHeightmap).
+	// Empty (invalid) until SetDiffusionHeightmap() installs one; the generator only
+	// consults it when HeightSource = DiffusionAI. Populated by the MiraThalTerrainAI
+	// module — this module never reaches OUT to that one (preserves the dep root).
+	mira::ImageHeightmap DiffusionHeightmap;
+	// Seed the resident DiffusionHeightmap was generated from, folded into the
+	// generator fingerprint so a stale baked crust is detected if the seed changes.
+	int64 DiffusionSeed = 0;
 
 	// The authoritative player-edit journal (P2). Persists across regenerate; only
 	// reset on an explicit new-world. Region files load on demand, save on flush.
@@ -1227,6 +1321,37 @@ private:
 	// tiles seamlessly with neighbours (apron offset folded into the transform).
 	AVoxelChunkActor* EnsureChunkActor(const FIntVector& ChunkCoord);
 	void DestroyChunkActor(const FIntVector& ChunkCoord);
+
+	// --- AVoxelChunkActor pooling (free-list) ---------------------------------------
+	// Spawning a chunk actor is ~0.5 ms (a frame profile showed 3.75 ms for 8 spawns as
+	// the player moved). Instead of Spawn/Destroy we RECYCLE actors through a free-list:
+	// a chunk leaving the world is parked (hidden, collision off) and pushed here; a chunk
+	// entering the world pops one and remeshes into it. Chunk actors and super actors are
+	// the SAME UClass (they differ only in mesh content, which PrepareForReuse wipes), so
+	// both share this one pool.
+	//
+	// Held as a UPROPERTY of TObjectPtr so the GC keeps the parked actors alive while
+	// they sit idle (they are real UObjects, just hidden).
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AVoxelChunkActor>> ActorPool;
+
+	// Pool size cap. 0 turns pooling OFF entirely (Acquire always spawns, Recycle always
+	// Destroys) — kept as a safety escape hatch in case pooling ever misbehaves. When the
+	// pool is full, extra recycled actors are Destroy()'d rather than hoarded.
+	UPROPERTY(EditAnywhere, Category = "MiraThal|Voxel|Streaming")
+	int32 MaxPooledChunkActors = 256;
+
+	// Get a chunk renderer actor for Coord at Xform: pop a parked one from the pool and
+	// reset it (fast path), or SpawnActorDeferred a fresh one (pool empty / pooling off).
+	// The returned actor is positioned, unhidden, collision-on, world-managed, and has an
+	// EMPTY mesh — the caller remeshes into it. Does NOT add to any map; callers store it.
+	AVoxelChunkActor* AcquireChunkActor(const FIntVector& Coord, const FTransform& Xform);
+
+	// Return a chunk renderer actor to the world: if pooling is on and the pool has room,
+	// park it (hide + collision off) and push it onto the free-list for reuse; otherwise
+	// Destroy() it. This replaces the bare Actor->Destroy() at every chunk-actor teardown
+	// site (eviction, fade-outgoing, clear). Safe with a null actor (no-op).
+	void RecycleChunkActor(AVoxelChunkActor* Actor);
 
 	// UE world location for a chunk's renderer actor. LodScale = 2^Lod (1 at LOD 0);
 	// a coarse LOD chunk's apron is LodScale fine voxels wide, so its origin shifts

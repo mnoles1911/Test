@@ -169,10 +169,18 @@ struct CrustSlab {
 // base_fine_y = min_ground - skirtDepth, and (c) per coarse column mark a cell solid only
 // while its fine-Y lies in [ground - skirtDepth .. ground]. The result is a skin that
 // follows the terrain, skirtDepth thick, with no interior fill.
+// mapHalfExtentVox — BOUNDED-MAP CLIP. The world is a finite MapSpanMeters square centred on
+//   the voxel origin; beyond it is (future) open ocean, NOT terrain. The generator, asked for a
+//   height OUTSIDE the map, returns a flat base height — which would bake spurious flat slabs past
+//   the coastline (the "floating squares" bug). When mapHalfExtentVox > 0, any coarse column whose
+//   centre falls outside [-mapHalfExtentVox .. +mapHalfExtentVox] on X or Z is treated as AIR, so a
+//   tile straddling the map edge meshes only its in-map part (a clean coastline) and a tile fully
+//   outside comes back all-air (has_solid=false -> caller skips it). 0 = unbounded (original).
 inline CrustSlab sample_crust_slab(
     const Vec2i& tile, int tileSpanVoxels, int stride, int skirtDepth,
     const std::function<int(int, int)>&     height_at,
-    const std::function<uint8_t(int, int)>& top_id_at)
+    const std::function<uint8_t(int, int)>& top_id_at,
+    int mapHalfExtentVox = 0)
 {
     CrustSlab out;
     if (tileSpanVoxels <= 0 || stride <= 0) { return out; }
@@ -188,6 +196,14 @@ inline CrustSlab sample_crust_slab(
     // all-air tile and skips it.
     if (cs > MAX_COARSE_SIDE) { out.coarse_side = 0; return out; }
 
+    // BOUNDED-MAP CLIP: a coarse column at (worldX,worldZ) is on the map only when both axes are
+    // within the half-extent. mapHalfExtentVox <= 0 disables the clip (everything is "in map").
+    auto in_map = [mapHalfExtentVox](int worldX, int worldZ) -> bool {
+        if (mapHalfExtentVox <= 0) { return true; }
+        return worldX >= -mapHalfExtentVox && worldX <= mapHalfExtentVox &&
+               worldZ >= -mapHalfExtentVox && worldZ <= mapHalfExtentVox;
+    };
+
     // The coarse slab side must hold cs cells + a 1-cell apron each side. We reuse the
     // 34^3 mesh slab when cs == CHUNK (32); for smaller cs a tighter slab still works
     // with the same APRON convention, so size it exactly cs + 2*APRON.
@@ -197,16 +213,20 @@ inline CrustSlab sample_crust_slab(
     // --- Pass A: sample the surface height (and remember the lowest) at each coarse
     //     column's footprint centre, so we know where to anchor the shell. ---
     std::vector<int> groundY(static_cast<size_t>(cs) * cs, 0);
+    std::vector<char> inMapCol(static_cast<size_t>(cs) * cs, 1); // 0 = column outside the map (air)
     int minGround = 0;
     bool any = false;
     for (int cz = 0; cz < cs; ++cz)
     for (int cx = 0; cx < cs; ++cx) {
         const int worldX = o.x + cx * stride + stride / 2;
         const int worldZ = o.y + cz * stride + stride / 2;
+        if (!in_map(worldX, worldZ)) { inMapCol[static_cast<size_t>(cz) * cs + cx] = 0; continue; }
         const int g = height_at(worldX, worldZ);
         groundY[static_cast<size_t>(cz) * cs + cx] = g;
         if (!any || g < minGround) { minGround = g; any = true; }
     }
+    // No in-map columns (tile fully past the coastline) -> all air; caller skips it.
+    if (!any) { return out; }
 
     // Anchor coarse row 0 a skirt below the lowest ground so every column's skirt fits.
     const int baseFineY = minGround - skirtDepth;
@@ -216,6 +236,7 @@ inline CrustSlab sample_crust_slab(
     //     mesher derives the same palette colour the live near voxels use. ---
     for (int cz = 0; cz < cs; ++cz)
     for (int cx = 0; cx < cs; ++cx) {
+        if (!inMapCol[static_cast<size_t>(cz) * cs + cx]) { continue; } // outside the map -> air
         const int g = groundY[static_cast<size_t>(cz) * cs + cx];
         const int worldX = o.x + cx * stride + stride / 2;
         const int worldZ = o.y + cz * stride + stride / 2;
@@ -279,6 +300,16 @@ inline int tile_chunk_distance(const Vec2i& focusChunkXZ, const Vec2i& tile,
 //
 // We sweep the square of tiles that could possibly intersect the outer ring and keep
 // the ones in the band. Returns tile (X,Z) keys; the caller maps each to its .uasset.
+//
+// SAFETY CAP: the sweep below runs (2*tileReach+1)^2 iterations. tileReach grows with
+// outerChunks, so a bad outerChunks (e.g. someone typed 99999 on the crust actor) would
+// make this loop run hundreds of millions of times EVERY tick and freeze the game — this
+// actually happened in a live profile (291 ms/frame). We hard-clamp tileReach to
+// kMaxTileReach below so NO caller, ever, can make the sweep larger than ~(1025)^2 cells.
+// The runtime crust actor ALSO clamps outerChunks before calling here (belt and braces),
+// but this in-core cap is the last line of defence that protects every caller.
+constexpr int kMaxTileReach = 512;
+
 inline std::vector<Vec2i> which_tiles_in_band(
     const Vec2i& focusChunkXZ, int tileSpanVoxels,
     int innerChunks, int outerChunks)
@@ -290,7 +321,12 @@ inline std::vector<Vec2i> which_tiles_in_band(
     // How many TILES wide the outer ring is (round up): a tile is at most
     // ceil(outerChunks*CHUNK / tileSpan) tiles away from the focus tile in each axis.
     const int outerVoxels = outerChunks * coords::CHUNK;
-    const int tileReach = (outerVoxels + tileSpanVoxels - 1) / tileSpanVoxels + 1;
+    int tileReach = (outerVoxels + tileSpanVoxels - 1) / tileSpanVoxels + 1;
+
+    // Clamp the sweep half-width so a pathological outerChunks can never explode the loop.
+    // A clamped reach simply means tiles beyond ~kMaxTileReach are not returned this call —
+    // far past any real view distance, so it costs nothing visible and saves the frame.
+    if (tileReach > kMaxTileReach) { tileReach = kMaxTileReach; }
 
     // The tile the focus chunk sits in (convert focus chunk -> focus voxel -> tile).
     const int focusVoxelX = focusChunkXZ.x * coords::CHUNK;

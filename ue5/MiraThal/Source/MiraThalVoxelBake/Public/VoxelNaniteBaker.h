@@ -63,10 +63,15 @@ namespace VoxelNaniteBaker
 	// NOTE: only SOLID terrain should be in Mb (Opaque + Cutout). Water and flora are
 	// intentionally skipped — they animate / are walk-through and belong on the live
 	// path, not in a static cold-bake (matches the M6 spec).
+	//   bEnableNanite   — true (default) flips on Nanite (great for FINE/near tiles with lots of
+	//                     geometry to LOD). false builds a plain static mesh — much FASTER to build
+	//                     (Nanite's hierarchy build is the per-tile bottleneck) and fine for COARSE
+	//                     far tiles that have few triangles and never need sub-pixel LOD anyway.
 	UStaticMesh* BuildNaniteStaticMeshFromMesh(const mira::MeshBuffers& Mb,
 	                                           UMaterialInterface* TerrainMaterial,
 	                                           UObject* Outer,
-	                                           FName Name);
+	                                           FName Name,
+	                                           bool bEnableNanite = true);
 
 	// -----------------------------------------------------------------------
 	// SwapChunkToNanite

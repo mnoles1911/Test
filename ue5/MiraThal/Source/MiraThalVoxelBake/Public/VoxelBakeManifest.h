@@ -76,6 +76,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MiraThal|Bake")
 	int32 TileSpanVoxels = 512;
 
+	// GENERATOR FINGERPRINT — a single 64-bit number identifying the EXACT generator
+	// settings (seed, sea level, amplitudes, EXR georef, ...) this crust was baked with.
+	// Computed by FingerprintGenParams() at bake time. On BeginPlay the runtime crust
+	// recomputes the fingerprint from the LIVE voxel world and compares: a mismatch means
+	// the world's generator was changed since the bake, so the far crust may no longer
+	// line up with the near voxels (re-bake needed). 0 = "unknown / legacy bake" (an old
+	// manifest from before this field existed) — the runtime treats 0 as "can't tell" and
+	// only warns, never refuses to run.
+	//
+	// NOTE: VisibleAnywhere (not BlueprintReadOnly) — uint64 is a valid UPROPERTY storage type and
+	// serialises fine, but Blueprint has no 64-bit-unsigned integer type, so exposing it as
+	// BlueprintReadOnly would fail the header build. It's read from C++ only (the runtime check), and
+	// the designer can still SEE it on the asset in the editor. VisibleAnywhere also stops anyone
+	// hand-editing it in the inspector and silently invalidating a good bake's fingerprint.
+	UPROPERTY(VisibleAnywhere, Category = "MiraThal|Bake")
+	uint64 GenFingerprint = 0;
+
 	// Every baked tile.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MiraThal|Bake")
 	TArray<FVoxelBakeTileEntry> Tiles;

@@ -44,6 +44,15 @@
 			"AdditionalDependencies": [
 				"Engine"
 			]
+		},
+		{
+			"Name": "MiraThalTerrainAI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"//comment": "Live-runtime TerrainDiffusion: loads 3 diffusion UNets via NNE (ONNX Runtime + DirectML on AMD) and feeds AI elevation into the voxel height-source seam. See design/TERRAIN_DIFFUSION_RUNTIME_PLAN.md.",
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		}
 	],
 	"Plugins": [
@@ -56,6 +65,16 @@
 			"Name": "RemoteControl",
 			"Enabled": true,
 			"//comment": "Built-in UE Remote Control API (HTTP/WebSocket on port 30010). This is what the mcp-unreal MCP server drives so Claude can spawn/inspect actors and run console commands in the live editor. Editor-iteration tooling only — no gameplay dependency. Auto-started via DefaultEngine.ini [ConsoleVariables] WebControl.EnableServerOnStartup."
+		},
+		{
+			"Name": "NNERuntimeORT",
+			"Enabled": true,
+			"//comment": "ONNX Runtime backend for NNE, including the DirectML execution provider - the AMD-GPU (no-CUDA) inference path for the diffusion UNets. Verified present in the engine build (onnxruntime.dll + DML/x64/DirectML.dll)."
+		},
+		{
+			"Name": "NNERuntimeRDG",
+			"Enabled": true,
+			"//comment": "RDG/HLSL NNE backend (vendor-agnostic, frame-aligned, limited op set). Enabled for a later optimization phase; ORT+DirectML is the Phase-1 path."
 		}
 	]
 }

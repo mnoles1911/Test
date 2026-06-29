@@ -1,10 +1,20 @@
 // VoxelEditSubsystem.cpp — edit gateway implementation.
 //
-// NOTE: the actual voxel-world mutation calls are stubbed until the custom cubic
-// mesher lands on the build machine (see MiraThalVoxel.Build.cs). The QUEUEING,
-// NoEditZone gate, budget, and edit-applied broadcast are all live now so the
-// gameplay layer (mining tool, explosions, water, gravity) can be wired and
-// tested against this contract before the mesher is in place.
+// ⚠️ SUPERSEDED / DORMANT (do NOT wire DrainQueue to a store). This subsystem was an
+// early contract for the gameplay layer to queue edits against BEFORE the cubic mesher
+// landed. The mesher is now in place and the ACTUAL, live voxel-edit path went a
+// different way: the player (MiraFPCharacter) calls AVoxelWorld::CarveAtWorld, which
+// applies writes to WorldStore (the brickmap) and journals them for reload-persistence.
+// That is the project's SINGLE edit gateway (a non-negotiable: all voxel writes go
+// through AVoxelWorld). DrainQueue is intentionally left a no-op broadcast — completing
+// it to mutate a store would create a SECOND, competing edit path and break the
+// single-gateway invariant (and the brickmap's authoritative-store guarantee). If this
+// subsystem is ever truly needed, it must FORWARD to CarveAtWorld, never write directly.
+// Kept (not deleted) only because the NoEditZone gate + queue contract may still be
+// referenced by gameplay tests. Treat as dead-by-default.
+//
+// NOTE (historical): the QUEUEING, NoEditZone gate, budget, and edit-applied broadcast
+// below are the original live-but-storeless contract.
 #include "VoxelEditSubsystem.h"
 
 void UVoxelEditSubsystem::QueueEditSphere(const FVector& WorldCenter, double RadiusMeters, int32 Value)

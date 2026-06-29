@@ -25,6 +25,14 @@ int32 UVoxelCrustBakeCommandlet::Main(const FString& Params)
 	FString WorldSaveName = TEXT("DefaultWorld");
 	if (const FString* S = ParamMap.Find(TEXT("WorldSaveName"))) { WorldSaveName = *S; }
 
+	// MERGE mode (-Merge): combine the parallel bake's text shards into the final Manifest.uasset
+	// and exit. Pure asset work — no map load / generator needed. Run after all -Shards processes.
+	if (Switches.Contains(TEXT("Merge")))
+	{
+		const bool bMerged = VoxelCrustBaker::MergeShards(WorldSaveName);
+		return bMerged ? 0 : 1;
+	}
+
 	VoxelCrustBaker::FBakeSettings Settings;
 	if (const FString* S = ParamMap.Find(TEXT("Tile")))   { Settings.TileSpanVoxels   = FCString::Atoi(**S); }
 	if (const FString* S = ParamMap.Find(TEXT("Stride"))) { Settings.Stride           = FCString::Atoi(**S); }
@@ -32,6 +40,14 @@ int32 UVoxelCrustBakeCommandlet::Main(const FString& Params)
 	if (const FString* S = ParamMap.Find(TEXT("Radius"))) { Settings.TileRadius       = FCString::Atoi(**S); }
 	if (const FString* S = ParamMap.Find(TEXT("MaxTiles")))     { Settings.MaxTilesPerBake      = FCString::Atoi(**S); }
 	if (const FString* S = ParamMap.Find(TEXT("TestRing")))     { Settings.TestBakeRadiusChunks = FCString::Atoi(**S); }
+	if (const FString* S = ParamMap.Find(TEXT("Shards")))       { Settings.ShardCount = FCString::Atoi(**S); }
+	if (const FString* S = ParamMap.Find(TEXT("Shard")))        { Settings.ShardIndex = FCString::Atoi(**S); }
+	if (const FString* S = ParamMap.Find(TEXT("Region")))       { Settings.RegionTilesPerSide  = FCString::Atoi(**S); }
+	if (const FString* S = ParamMap.Find(TEXT("Nanite")))       { Settings.bEnableNanite = (FCString::Atoi(**S) != 0); }
+	// -GeoMerge (a bare switch, or -GeoMerge=1): fuse each region's tiles into ONE merged mesh +
+	// ONE manifest entry (shipping-scale asset-count reduction; needs -Region>0). Default off.
+	if (Switches.Contains(TEXT("GeoMerge")))                    { Settings.bGeometryMerge = true; }
+	if (const FString* S = ParamMap.Find(TEXT("GeoMerge")))     { Settings.bGeometryMerge = (FCString::Atoi(**S) != 0); }
 
 	// --- Find (or make) the AVoxelWorld to bake --------------------------------
 	AVoxelWorld* World = nullptr;

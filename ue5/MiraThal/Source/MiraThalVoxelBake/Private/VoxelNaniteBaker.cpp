@@ -65,7 +65,8 @@ namespace VoxelNaniteBaker
 UStaticMesh* BuildNaniteStaticMeshFromMesh(const mira::MeshBuffers& Mb,
                                            UMaterialInterface* TerrainMaterial,
                                            UObject* Outer,
-                                           FName Name)
+                                           FName Name,
+                                           bool bEnableNanite)
 {
 	using namespace mira;
 
@@ -251,7 +252,7 @@ UStaticMesh* BuildNaniteStaticMeshFromMesh(const mira::MeshBuffers& Mb,
 	// Flip Nanite ON. At distance Nanite culls this mesh down to ~1 triangle/pixel.
 	// Vertex color carries through Nanite, so the terrain material is unchanged.
 	FMeshNaniteSettings NaniteSettings = StaticMesh->GetNaniteSettings();
-	NaniteSettings.bEnabled = true;
+	NaniteSettings.bEnabled = bEnableNanite; // false for coarse far tiles = far faster build, no LOD needed
 	StaticMesh->SetNaniteSettings(NaniteSettings);
 
 	// ---- Step 6: build the render data from our description --------------------

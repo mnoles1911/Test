@@ -90,10 +90,16 @@ constexpr Vec3i brick_origin_voxel(const Vec3i& brick) {
 // apron'd 34 for a mesh slab). One formula, reused everywhere, so storage order
 // never disagrees between writer and reader.
 
-constexpr int flatten(int x, int y, int z, int side) {
-    return x + y * side + z * side * side;
+// Returns int64: the index can exceed 2^31 for a large `side` (z*side*side overflows int32
+// once side > ~1290). CHUNK/BRICK/slab(34) are tiny so this never bit, but the helper is reused
+// for arbitrary tile_edge_voxels, so we compute in 64-bit to be overflow-proof. Each term is
+// promoted to int64 BEFORE the multiply, so no intermediate int32 product can wrap.
+constexpr int64_t flatten(int x, int y, int z, int side) {
+    return static_cast<int64_t>(x)
+         + static_cast<int64_t>(y) * side
+         + static_cast<int64_t>(z) * side * side;
 }
-constexpr int flatten(const Vec3i& p, int side) { return flatten(p.x, p.y, p.z, side); }
+constexpr int64_t flatten(const Vec3i& p, int side) { return flatten(p.x, p.y, p.z, side); }
 
 // --- Neighbours ---------------------------------------------------------------
 // The 6 face-adjacent unit steps, in the canonical face order used by the mesher

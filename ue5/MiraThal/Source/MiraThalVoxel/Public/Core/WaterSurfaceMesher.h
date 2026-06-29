@@ -144,6 +144,24 @@ inline float corner_height(const DenseGrid& slab, int x, int y, int z, int sx, i
     return static_cast<float>(y) + sum / static_cast<float>(count);
 }
 
+// FOAM EDGE FACTOR for one TOP corner: how much of this corner touches NON-water (a
+// shoreline / open-air boundary), in [0..1]. Uses the SAME up-to-4 XZ columns that
+// meet at the corner as corner_height does; foam = fraction of those columns that are
+// NOT water. A corner deep inside a body (all 4 columns water) = 0 (no foam in open
+// water); a corner at the water's edge (fewer water columns) trends toward 1. The
+// Single Layer Water material reads this (carried in the water vertex's ALPHA — see
+// emit_water_quad) to draw a foam line where water meets land/air. Gives a smooth
+// gradient the material can threshold or curve as it likes.
+inline float corner_foam(const DenseGrid& slab, int x, int y, int z, int sx, int sz) {
+    const int xs[4] = { x, x + sx, x,      x + sx };
+    const int zs[4] = { z, z,      z + sz, z + sz };
+    int water = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (is_water_local(slab, xs[i], y, zs[i])) { ++water; }
+    }
+    return static_cast<float>(4 - water) / 4.0f;
+}
+
 // Decode a water cell's FLOW DIRECTION byte into a 2D world-XZ unit-ish vector
 // (flow_x, flow_z) for the shader to scroll along. The water byte's direction field
 // (WaterByteCodec::dir_of) names which way the cell drains; WaterByteCodec::
@@ -169,6 +187,7 @@ inline void flow_xz_of_byte(uint8_t water_byte, float& out_fx, float& out_fz) {
 // so this is CCW from outside for the face it is emitting (see the call sites).
 inline void emit_water_quad(MeshBuffers& out, const float* nrm,
                             float flow_x, float flow_z,
+                            const float foam[4], // per-corner foam (00,10,11,01) -> vertex ALPHA
                             const float p00[3], const float p10[3],
                             const float p11[3], const float p01[3]) {
     MeshSection& sec = out.section(FaceClass::Water);
@@ -179,12 +198,18 @@ inline void emit_water_quad(MeshBuffers& out, const float* nrm,
     // vertex-color material. No directional face_shade (water reads as one sheet).
     const Rgb8 wcol = base_color(mat::WATER_FULL);
 
-    auto add = [&](const float p[3], float uu, float vv) -> uint32_t {
+    // FOAM rides in the water vertex's `ao` field, which the upload writes into vertex
+    // ALPHA. Water has no baked ambient-occlusion (it's translucent and lit by its own
+    // material), so that channel is free — we repurpose it as a 0..1 SHORELINE FOAM
+    // factor (0 = open water, 1 = water's edge). The Single Layer Water material reads
+    // vertex alpha as foam. (Solid terrain still uses `ao` as real AO — different
+    // material, different section, so there's no conflict.)
+    auto add = [&](const float p[3], float uu, float vv, float foam_v) -> uint32_t {
         MeshVertex mv;
         mv.px = p[0]; mv.py = p[1]; mv.pz = p[2];
         mv.nx = nrm[0]; mv.ny = nrm[1]; mv.nz = nrm[2];
         mv.u = uu; mv.v = vv;
-        mv.ao = 1.0f; // water has no baked AO (translucent, lit by the water shader)
+        mv.ao = foam_v; // <- foam (0..1), not AO, for water; see note above
         mv.cr = wcol.r; mv.cg = wcol.g; mv.cb = wcol.b;
         // The whole quad shares ONE flow direction (the source cell's), so all four
         // corners get the same (flow_x, flow_z). Still water -> (0,0) -> no scroll.
@@ -194,10 +219,10 @@ inline void emit_water_quad(MeshBuffers& out, const float* nrm,
         return idx;
     };
 
-    const uint32_t i00 = add(p00, 0.0f, 0.0f);
-    const uint32_t i10 = add(p10, 1.0f, 0.0f);
-    const uint32_t i11 = add(p11, 1.0f, 1.0f);
-    const uint32_t i01 = add(p01, 0.0f, 1.0f);
+    const uint32_t i00 = add(p00, 0.0f, 0.0f, foam[0]);
+    const uint32_t i10 = add(p10, 1.0f, 0.0f, foam[1]);
+    const uint32_t i11 = add(p11, 1.0f, 1.0f, foam[2]);
+    const uint32_t i01 = add(p01, 0.0f, 1.0f, foam[3]);
 
     // Two triangles, CCW in parameter space (00->10->11, 00->11->01).
     sec.indices.push_back(i00); sec.indices.push_back(i10); sec.indices.push_back(i11);
@@ -227,6 +252,9 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                 float flow_x = 0.0f, flow_z = 0.0f;
                 flow_xz_of_byte(water_local(slab, x, y, z), flow_x, flow_z);
 
+                // Vertical SIDE faces carry no foam (foam is a flat top-surface effect).
+                const float fSideNone[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
                 // The four blended TOP corner heights for this cell. Naming:
                 //   h<minX/maxX><minZ/maxZ>. sx=-1 is the -X side, +1 the +X side.
                 const float h00 = corner_height(slab, x, y, z, -1, -1); // (x,   z)
@@ -247,7 +275,14 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x1, h10, z0 };
                     const float p11[3] = { x1, h11, z1 };
                     const float p01[3] = { x0, h01, z1 };
-                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
+                    // Per-corner shoreline foam, same 4 corners as the heights above.
+                    const float fTop[4] = {
+                        corner_foam(slab, x, y, z, -1, -1),
+                        corner_foam(slab, x, y, z, +1, -1),
+                        corner_foam(slab, x, y, z, +1, +1),
+                        corner_foam(slab, x, y, z, -1, +1),
+                    };
+                    emit_water_quad(out, n, flow_x, flow_z, fTop, p00, p10, p11, p01);
                 }
 
                 // ---- SIDES: one per horizontal neighbour that is NOT water ----
@@ -265,7 +300,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x1, yb,  z0 };
                     const float p11[3] = { x1, h10, z0 }; // top at (x1,z0) corner
                     const float p01[3] = { x1, h11, z1 }; // top at (x1,z1) corner
-                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, fSideNone, p00, p10, p11, p01);
                 }
 
                 // -X face (boundary at x0). Outward normal -X. Looking from -X back
@@ -277,7 +312,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x0, yb,  z1 };
                     const float p11[3] = { x0, h01, z1 }; // top at (x0,z1) corner
                     const float p01[3] = { x0, h00, z0 }; // top at (x0,z0) corner
-                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, fSideNone, p00, p10, p11, p01);
                 }
 
                 // +Z face (boundary at z1). Outward normal +Z. Looking from +Z back
@@ -289,7 +324,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x1, yb,  z1 };
                     const float p11[3] = { x1, h11, z1 }; // top at (x1,z1) corner
                     const float p01[3] = { x0, h01, z1 }; // top at (x0,z1) corner
-                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, fSideNone, p00, p10, p11, p01);
                 }
 
                 // -Z face (boundary at z0). Outward normal -Z. Looking from -Z back
@@ -301,7 +336,7 @@ inline void append_water_surface(const DenseGrid& slab, MeshBuffers& out) {
                     const float p10[3] = { x0, yb,  z0 };
                     const float p11[3] = { x0, h00, z0 }; // top at (x0,z0) corner
                     const float p01[3] = { x1, h10, z0 }; // top at (x1,z0) corner
-                    emit_water_quad(out, n, flow_x, flow_z, p00, p10, p11, p01);
+                    emit_water_quad(out, n, flow_x, flow_z, fSideNone, p00, p10, p11, p01);
                 }
             }
         }

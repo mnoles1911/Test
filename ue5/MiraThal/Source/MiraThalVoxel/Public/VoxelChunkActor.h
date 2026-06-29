@@ -111,9 +111,13 @@ public:
 	//   TileSpan    — tile edge in voxels (e.g. 512).
 	//   Stride      — fine voxels per coarse cell (TileSpan/Stride <= 32).
 	//   SkirtDepth  — fine voxels below the surface the shell stays solid.
+	//   MapHalfExtentVox — BOUNDED-MAP CLIP (0 = unbounded). >0 treats coarse columns outside the
+	//                 [-half..+half] voxel square as air, so the bake stops at the coastline instead
+	//                 of emitting flat slabs over open ocean (the floating-square fix).
 	static FCrustTileMesh SampleAndMeshCrustTile(const FGenParams& P,
 	                                              int32 TileX, int32 TileZ,
-	                                              int32 TileSpan, int32 Stride, int32 SkirtDepth);
+	                                              int32 TileSpan, int32 Stride, int32 SkirtDepth,
+	                                              int32 MapHalfExtentVox = 0);
 
 	//   DebugColor (DIAGNOSTIC, default null): when non-null, this chunk's vertex RGB is
 	//   replaced by the flat per-LOD debug tint (mira::lod_debug_color) while AO is kept —
@@ -139,6 +143,25 @@ public:
 
 	// True once this actor has cached mesh buffers (i.e. RecolorDebug can do something).
 	bool HasMeshForRecolor() const { return bHasCachedMesh; }
+
+	// --- Actor pooling support (AVoxelWorld recycles these through a free-list) ---
+	// Spawning a fresh AVoxelChunkActor costs ~0.5 ms each (ConstructObject), and the
+	// streamer spawns/destroys a fistful every time the player moves. To stop paying that,
+	// AVoxelWorld keeps a pool of "parked" actors and hands one back instead of spawning a
+	// brand-new one. These two helpers let an actor cross that park/reuse boundary cleanly.
+	//
+	// PrepareForReuse(): wipe this actor back to the EXACT state a just-spawned actor has,
+	// so the world can drop it on a new chunk coord and remesh into it as if it were new.
+	// It clears the rendered mesh (so the OLD chunk's geometry can't flash on the new coord
+	// before the remesh lands), forgets the cached recolor buffers, and cancels any LOD
+	// cross-fade state (drops the dither material instance and resets FadeAlpha to fully
+	// opaque) so a recycled actor never starts up dithered-transparent.
+	void PrepareForReuse();
+
+	// PrepareForPark(): put this actor to sleep before it goes into the pool — hide it,
+	// turn its collision off, and (defensively) detach it from any parent so a stale
+	// attachment can't drag a parked actor around. Cheap; the heavy reset is PrepareForReuse.
+	void PrepareForPark();
 
 	// --- LOD-transition dither cross-fade (flag-gated by AVoxelWorld) ---
 	// Drive the dither mask on this chunk's TERRAIN section(s) (Opaque + Cutout, which

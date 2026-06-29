@@ -19,6 +19,7 @@
 #include "Camera/PlayerCameraManager.h"        // PlayerCameraManager::GetCameraRotation
 #include "Async/Async.h"              // Async(EAsyncExecution::ThreadPool, ...) — P1 worker jobs
 #include <climits>                    // INT_MAX / INT_MIN
+#include <algorithm>                  // std::nth_element — partial-select farthest evictions (fast-flight)
 
 // Engine-agnostic Core (no Unreal types below this line's logic).
 #include "Core/MiraVec.h"            // Vec3i, Vec3
@@ -351,6 +352,43 @@ void AVoxelWorld::ConfigureGenerator(mira::HeightmapGenerator& Gen) const
 	{
 		Gen.set_height_source(&ImportedHeightmap);
 	}
+	// AI diffusion DEM (Phase 1): an ImageHeightmap installed at runtime by the
+	// MiraThalTerrainAI module. It plugs into the SAME height-source socket as the EXR
+	// path — so cliffs/water/banding/flora ride on top of it for free, exactly as they
+	// do for an imported EXR. (This is the synchronous game-thread generator path used
+	// by GenerateWorld + carve + SurfaceWorldZAt; the worker/bake path is handled in
+	// VoxelGenParams.h::SnapshotGenParams, which mirrors this branch.)
+	else if (HeightSource == EVoxelHeightSource::DiffusionAI && DiffusionHeightmap.valid())
+	{
+		Gen.set_height_source(&DiffusionHeightmap);
+	}
+}
+
+// --- AI diffusion DEM install seam (Phase 1) -- see header for the contract. -----
+bool AVoxelWorld::SetDiffusionHeightmap(const mira::ImageHeightmap& Hm, int64 GeneratedFromSeed)
+{
+	if (!Hm.valid())
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[MiraThal] SetDiffusionHeightmap ignored — supplied image is invalid "
+			     "(width/height/data mismatch)."));
+		return false;
+	}
+
+	// COPY the surface in (we own the resident image, just like ImportedHeightmap) and
+	// flip the source so every generator-build path consults it.
+	DiffusionHeightmap = Hm;
+	DiffusionSeed      = GeneratedFromSeed;
+	HeightSource       = EVoxelHeightSource::DiffusionAI;
+
+	UE_LOG(LogTemp, Display,
+		TEXT("[MiraThal] AI diffusion DEM installed: %dx%d px (%.1f vox/px), origin "
+		     "voxel (%.0f, %.0f), vscale %.0f, vbase %.0f, seed %lld."),
+		DiffusionHeightmap.width, DiffusionHeightmap.height, DiffusionHeightmap.voxels_per_pixel,
+		DiffusionHeightmap.origin_voxel_x, DiffusionHeightmap.origin_voxel_z,
+		DiffusionHeightmap.vertical_scale_voxels, DiffusionHeightmap.vertical_base_voxels,
+		static_cast<long long>(DiffusionSeed));
+	return true;
 }
 
 void AVoxelWorld::GenerateRegion()
@@ -1222,15 +1260,16 @@ AVoxelChunkActor* AVoxelWorld::EnsureSuperActor(const FIntVector& Super)
 	}
 
 	const FTransform Xform(SuperChunkActorLocation(Super, 1));
-	AVoxelChunkActor* Actor = W->SpawnActorDeferred<AVoxelChunkActor>(
-		AVoxelChunkActor::StaticClass(), Xform, this);
+	// Super actors are the SAME class as chunk actors, so they share the same pool.
+	// AcquireChunkActor gives us a reset, world-managed, empty-mesh actor (recycled or
+	// freshly spawned); we just relabel it as a Super and store it in SuperActors.
+	AVoxelChunkActor* Actor = AcquireChunkActor(Super, Xform);
 	if (!Actor)
 	{
 		return nullptr;
 	}
-	Actor->bWorldManaged = true;       // suppress the standalone self-build
-	Actor->FinishSpawning(Xform);
 #if WITH_EDITOR
+	// Override the "Chunk_..." label AcquireChunkActor set with the Super label.
 	Actor->SetActorLabel(FString::Printf(TEXT("Super_%d_%d_%d"),
 		Super.X, Super.Y, Super.Z));
 #endif
@@ -1242,10 +1281,7 @@ void AVoxelWorld::DestroySuperActor(const FIntVector& Super)
 {
 	if (TObjectPtr<AVoxelChunkActor>* Found = SuperActors.Find(Super))
 	{
-		if (AVoxelChunkActor* Actor = *Found)
-		{
-			Actor->Destroy();
-		}
+		RecycleChunkActor(*Found); // pool it (or Destroy if pooling off/full)
 		SuperActors.Remove(Super);
 	}
 }
@@ -1756,7 +1792,23 @@ void AVoxelWorld::TickStreaming()
 	// SYNC-meshed on a small reserved budget (separate from MeshBudget); with surface-volume each
 	// column is only a thin shell, so a dozen LOD0 columns/frame is cheap. Already-LOD0 columns are
 	// skipped, so standing still costs nothing.
-	if (bHeroColumnPriority)
+	// HERO ALTITUDE GATE: skip the (synchronous, uninstrumented) hero pass when the player is high
+	// above the surface — its LOD0 detail is sub-pixel from up there and the sync gen+mesh would just
+	// spike the frame (the diagnosed high-altitude stall). Cheap: one CACHED surface lookup vs the
+	// focus world Z. 0 disables the gate (always run hero, the old behaviour).
+	bool bSkipHeroForAltitude = false;
+	if (bHeroColumnPriority && HeroMaxAltitudeMeters > 0.0f)
+	{
+		FVector HeroFocusWorld = GetActorLocation();
+		if (StreamFocusActor) { HeroFocusWorld = StreamFocusActor->GetActorLocation(); }
+		else if (APawn* HeroPawn = UGameplayStatics::GetPlayerPawn(this, 0)) { HeroFocusWorld = HeroPawn->GetActorLocation(); }
+		const float FocusZcm = (float)(HeroFocusWorld.Z - GetActorLocation().Z);
+		// ColumnSurfaceChunkY -> surface CHUNK Y; *CHUNK = surface voxel Y; *10 = UE cm (voxel->UE map).
+		const float SurfZcm  = (float)(ColumnSurfaceChunkY(Focus) * mira::coords::CHUNK) * 10.0f;
+		bSkipHeroForAltitude = ((FocusZcm - SurfZcm) / 100.0f) > HeroMaxAltitudeMeters;
+	}
+	const double HeroT0 = FPlatformTime::Seconds(); // TOOL 6: time the hero pass (measures ~0 when gated/off)
+	if (bHeroColumnPriority && !bSkipHeroForAltitude)
 	{
 		int32 HeroBudget = HeroColumnBudget;
 		const bool bHeroViewBias = bViewPrioritizedStreaming &&
@@ -1798,6 +1850,17 @@ void AVoxelWorld::TickStreaming()
 				const int32* CurLod = ColumnLod.Find(Col);
 				// Already sharp? nothing to do (this is why standing still is free).
 				if (MeshedColumns.Contains(Col) && CurLod && *CurLod == 0) { continue; }
+				// CANCEL any in-flight LOD CROSS-FADE for this column BEFORE we remesh. A fade
+				// "holds" the column's OLD-LOD actors alive (detached out of ChunkActors into the
+				// fade record's Outgoing list) so they can dissolve out while the new mesh dissolves
+				// in. The synchronous hero remesh below spawns FRESH primary actors and rewrites this
+				// column's meshed span — if a fade were still live, those detached Outgoing actors
+				// would be ORPHANED (no longer reachable from ChunkActors, never destroyed until
+				// eviction): a leak you'd hit flying LOW past a LOD tier boundary. The hero pass is
+				// asserting authoritative LOD0 RIGHT NOW, so any in-progress fade for this column is
+				// obsolete — CancelColumnFade destroys those outgoing actors and drops the hold
+				// record. No-op (O(0)) when the fade flag is off (ActiveFades is empty).
+				CancelColumnFade(Col);
 				// CANCEL any in-flight / queued async mesh for this column so its (coarse) result
 				// can't land later and clobber the LOD0 we're about to commit. The worker keeps
 				// running but its result is dropped (no PendingMesh entry left to harvest).
@@ -1814,6 +1877,8 @@ void AVoxelWorld::TickStreaming()
 			}
 		}
 	}
+	WorstHeroMsWindow = FMath::Max(WorstHeroMsWindow,
+		(float)((FPlatformTime::Seconds() - HeroT0) * 1000.0)); // TOOL 6: hero sync LOD0 ms (0 when gated/off)
 
 	TArray<FIntPoint> MeshRingCells;
 	for (int ring = 0; ring <= R && MeshBudget > 0; ++ring)
@@ -2084,17 +2149,113 @@ void AVoxelWorld::TickStreaming()
 			ToEvict.Add(Col);
 		}
 	}
-	// BUDGET TEARDOWN (Bug-2 defense-in-depth): cap how many columns we evict this tick at
-	// MaxEvictOpsPerTick. Teardown used to be instant + unbudgeted, so a single frame could
-	// drop FAR more geometry than the (budgeted, 4/tick) mesher can rebuild — the root cause
-	// of the holes. Capping eviction means a frame can never out-tear-down the mesher. A
-	// column still out-of-range that we skip this tick is simply re-collected next tick (it
-	// stays in MeshedColumns), so nothing is leaked — eviction just spreads over a few frames.
+	// BUDGET TEARDOWN: the per-tick eviction is budgeted (base MaxEvictOpsPerTick, raised by the
+	// catch-up below, and time-sliced by EvictBudgetMs) so a frame can never spend an unbounded
+	// amount of time tearing geometry down. A column still out-of-range that we skip this tick is
+	// simply re-collected next tick (it stays in MeshedColumns), so nothing is leaked — a large
+	// eviction backlog just drains over a handful of frames at a bounded per-frame cost.
 	const double EvictColT0 = FPlatformTime::Seconds();
+
+	// FARTHEST-FIRST teardown (fast-flight fix). ToEvict is collected by walking the unordered
+	// MeshedColumns set, so its order is arbitrary — which meant a partial (budget-limited) tick
+	// could spend its whole budget on columns just past the hysteresis edge while the genuinely-
+	// distant "old spawn square" sat untouched. Ordering by chebyshev distance to the TRUE focus
+	// (descending) makes the per-tick budget always drop the MOST distant lingering terrain first,
+	// so the far square visibly recedes immediately and the columns nearest the keep edge (least
+	// memory pressure, most likely to come back into range) are the ones that wait. This also
+	// guarantees we never evict a near column ahead of a far one, so no hole can open near the player.
+	//
+	// *** FAST-FLIGHT SORT FIX (perf) ***
+	// We only need the columns we'll ACTUALLY tear down this tick to be in farthest-first order — the
+	// teardown loop below stops early (EvictBudgetMs time-slice / EvictBudget), so ordering the WHOLE
+	// backlog is wasted work. During fast flight at a large radius ToEvict can be thousands of columns,
+	// and the old unconditional ToEvict.Sort() re-sorted ALL of them EVERY tick — an O(M log M) hitch,
+	// the very stall the eviction time-slice was meant to remove.
+	//
+	// So: cap how many columns we order at MaxEvictTeardownsPerTick (generously above anything one
+	// time-sliced tick can drop). When the backlog is small (<= cap) keep the simple full sort. When
+	// it's large, PARTIAL-select the farthest `cap` columns with std::nth_element — an O(M) partition
+	// that moves the `cap` most-distant columns to the FRONT of ToEvict (in arbitrary order among
+	// themselves) without sorting the rest — then sort ONLY those `cap` front columns farthest-first
+	// (O(cap log cap)). The teardown loop reads from the front, so it still drains strictly
+	// farthest-first and never evicts a near column ahead of a far one. The columns we left unordered
+	// past `cap` are all still out-of-range; they simply stay in MeshedColumns and are re-collected
+	// (and re-selected) next tick. No correctness change, no leak — just a bounded per-tick sort cost.
+	const int32 OrderCap = FMath::Max(1, MaxEvictTeardownsPerTick);
+	// Chebyshev distance of a column to the focus (same key the old full sort used). Captured by
+	// value [Focus] so the comparator is self-contained; Focus here is the TRUE per-tick focus chunk.
+	auto Farther = [Focus](const FIntPoint& A, const FIntPoint& B) -> bool
+	{
+		const int da = FMath::Max(FMath::Abs(A.X - Focus.X), FMath::Abs(A.Y - Focus.Y));
+		const int db = FMath::Max(FMath::Abs(B.X - Focus.X), FMath::Abs(B.Y - Focus.Y));
+		if (da != db) { return da > db; }       // farthest first
+		if (A.X != B.X) { return A.X < B.X; }    // deterministic tiebreak
+		return A.Y < B.Y;
+	};
+	if (ToEvict.Num() <= OrderCap)
+	{
+		// Small backlog: a full sort is cheap and gives the cleanest farthest-first order.
+		ToEvict.Sort(Farther);
+	}
+	else
+	{
+		// Large backlog: partition the farthest `cap` to the front in O(M) WITHOUT sorting the rest,
+		// then sort only that front slice. std::nth_element with our "Farther" (strict-weak) ordering
+		// places the element that WOULD be at index `cap` in a fully-sorted array at that index, with
+		// everything ordered-before it (i.e. farther) to its left — exactly the farthest `cap`.
+		FIntPoint* Data = ToEvict.GetData();
+		std::nth_element(Data, Data + OrderCap, Data + ToEvict.Num(), Farther);
+		// Now sort just the farthest-`cap` front slice so the teardown loop drains it in true
+		// farthest-first order (nth_element only PARTITIONS; the left slice isn't internally sorted).
+		std::sort(Data, Data + OrderCap, Farther);
+	}
+
+	// CATCH-UP (fast-flight fix): when the player moves fast (or teleports), columns drift out of
+	// range far faster than the base budget can drop them, so ToEvict piles up — the "old terrain
+	// never unloads / distant square that won't go away" bug, which also bloats memory and the O(N)
+	// evict SCAN above. These columns are ALREADY beyond the keep radius (behind / away from the
+	// player) and are NOT pending a re-mesh, so draining them faster can't punch a transition hole.
+	//
+	// ROOT-CAUSE FIX: the OLD budget capped catch-up at MaxEvictOpsPerTick * EvictCatchupMultiplier
+	// (8*8 = 64) — an ABSOLUTE op ceiling that does NOT scale with the backlog. During sustained
+	// flight the trailing edge sheds ~133 columns per chunk the focus advances, far above 64/tick,
+	// so the backlog grew every frame and NEVER converged while moving. Now, when the backlog is
+	// large, we let the budget drain the ENTIRE backlog this tick (bounded only by ToEvict.Num())
+	// so eviction always converges no matter how fast you fly; the per-frame COST is bounded instead
+	// by the EvictBudgetMs wall-clock time-slice in the loop below (a huge drain can't spike a frame).
+	// EvictCatchupMultiplier now sets the MINIMUM catch-up head-room (so the knob still does
+	// something for those who lower the ms budget); the backlog itself is the real cap.
 	int32 EvictBudget = MaxEvictOpsPerTick;
+	if (EvictCatchupMultiplier > 1 && ToEvict.Num() > MaxEvictOpsPerTick * 4)
+	{
+		// At least Multiplier*base of head-room, but allow draining the whole backlog this tick —
+		// the ms time-slice (below) is what actually bounds the frame cost.
+		EvictBudget = FMath::Max(ToEvict.Num(), MaxEvictOpsPerTick * EvictCatchupMultiplier);
+	}
+	// FARTHEST-FIRST GUARD (sort-fix companion): only the FRONT `OrderCap` columns of ToEvict are
+	// guaranteed ordered farthest-first (when the backlog was large we partial-selected just those;
+	// the tail past `OrderCap` is left UNORDERED by std::nth_element). Clamp the teardown budget to
+	// `OrderCap` so the loop never walks into that unordered tail — otherwise a tick whose ms budget
+	// didn't bite could start evicting arbitrary (possibly NEAR) tail columns ahead of farther ones.
+	// Anything we don't reach stays in MeshedColumns and is re-collected + re-selected next tick, so
+	// this only changes WHICH tick a far column dies on, never whether the order stays farthest-first.
+	EvictBudget = FMath::Min(EvictBudget, OrderCap);
+	// Time-slice the teardown so the "drain the whole backlog" budget above can never spike a frame:
+	// once EvictBudgetMs of wall-clock has elapsed this tick we stop (always dropping >=1 so eviction
+	// never fully stalls). The remaining out-of-range columns stay in MeshedColumns and are re-
+	// collected — and re-ordered farthest-first — next tick, so a giant backlog drains over a handful
+	// of frames at a bounded per-frame cost. Mirrors the mesh-upload / gen-harvest time-slices.
+	int32 EvictedThisTick = 0;
 	for (const FIntPoint& Col : ToEvict)
 	{
 		if (EvictBudget <= 0) { break; } // teardown budget spent — finish next tick
+		// Frame-cost guard: stop once the ms budget is spent, but only AFTER at least one teardown
+		// so a pathological frame still makes forward progress (never a permanent stall).
+		if (EvictedThisTick > 0 && EvictBudgetMs > 0.0f &&
+		    (FPlatformTime::Seconds() - EvictColT0) * 1000.0 >= EvictBudgetMs)
+		{
+			break;
+		}
 		// WATER EVICTION PRUNE (flag-gated): before dropping the column's mesh,
 		// release the live water ledger over the column's voxel AABB so the sim
 		// stays bounded to the near band. The projected water bytes already in
@@ -2117,6 +2278,7 @@ void AVoxelWorld::TickStreaming()
 		}
 		UnmeshChunkColumn(Col.X, Col.Y);
 		--EvictBudget;
+		++EvictedThisTick; // for the EvictBudgetMs time-slice (>=1 teardown before the ms guard bites)
 	}
 	WorstEvictMsWindow = FMath::Max(WorstEvictMsWindow,
 		(float)((FPlatformTime::Seconds() - EvictColT0) * 1000.0)); // TOOL 6: eviction teardown ms
@@ -2620,20 +2782,57 @@ FVector AVoxelWorld::ChunkActorLocation(const FIntVector& ChunkCoord, int32 LodS
 	return GetActorLocation() + FVector(Ox * U, Oz * U, Oy * U);
 }
 
-AVoxelChunkActor* AVoxelWorld::EnsureChunkActor(const FIntVector& ChunkCoord)
-{
-	if (TObjectPtr<AVoxelChunkActor>* Found = ChunkActors.Find(ChunkCoord))
-	{
-		return *Found;
-	}
+// ---------------------------------------------------------------------------
+// Actor pooling (free-list). See the header for the why. AcquireChunkActor and
+// RecycleChunkActor are the ONE place actors are born/parked; every Ensure*/Destroy*
+// and the fade teardown routes through these so we stop paying the SpawnActor spike.
+// ---------------------------------------------------------------------------
 
+// Hand back a chunk renderer actor positioned at Xform: reuse a parked one if the pool
+// has any (the fast path that skips ConstructObject), else spawn a fresh one. The actor
+// comes back unhidden, collision-on, world-managed, with an EMPTY mesh — the caller
+// remeshes into it. Returns null only if there's no UWorld or the spawn failed.
+AVoxelChunkActor* AVoxelWorld::AcquireChunkActor(const FIntVector& Coord, const FTransform& Xform)
+{
 	UWorld* W = GetWorld();
 	if (!W)
 	{
 		return nullptr;
 	}
 
-	const FTransform Xform(ChunkActorLocation(ChunkCoord));
+	// --- Fast path: recycle a parked actor from the pool. -------------------------------
+	// Pop until we get a valid (non-GC'd) one — TObjectPtr can null out if something
+	// destroyed a parked actor behind our back, so skip any stale entries defensively.
+	while (ActorPool.Num() > 0)
+	{
+		// Take the last entry (no allocation churn) and shrink the array by one without
+		// reallocating. Using an explicit index pop avoids the TArray::Pop overload
+		// deprecation churn between engine versions.
+		const int32 LastIdx = ActorPool.Num() - 1;
+		AVoxelChunkActor* Reused = ActorPool[LastIdx].Get();
+		ActorPool.RemoveAt(LastIdx, 1, EAllowShrinking::No);
+		if (!Reused)
+		{
+			continue; // stale/null pool entry — drop it and try the next
+		}
+
+		// Reposition, then wake it up to EXACTLY a fresh-spawned actor's state:
+		// move -> wipe mesh/fade/cache -> unhide + collision on. A fresh actor is
+		// visible-but-empty with collision on (FinishSpawning leaves the defaults the
+		// constructor set, and ProceduralMesh collision is driven per-section at upload).
+		Reused->SetActorTransform(Xform);
+		Reused->bWorldManaged = true;       // stays world-managed across reuse
+		Reused->PrepareForReuse();          // clears mesh + fade + cached buffers
+		Reused->SetActorHiddenInGame(false);
+		Reused->SetActorEnableCollision(true);
+#if WITH_EDITOR
+		Reused->SetActorLabel(FString::Printf(TEXT("Chunk_%d_%d_%d"),
+			Coord.X, Coord.Y, Coord.Z));
+#endif
+		return Reused;
+	}
+
+	// --- Slow path: pool empty (or pooling off) — spawn a fresh actor as before. ---------
 	AVoxelChunkActor* Actor = W->SpawnActorDeferred<AVoxelChunkActor>(
 		AVoxelChunkActor::StaticClass(), Xform, this);
 	if (!Actor)
@@ -2644,8 +2843,47 @@ AVoxelChunkActor* AVoxelWorld::EnsureChunkActor(const FIntVector& ChunkCoord)
 	Actor->FinishSpawning(Xform);
 #if WITH_EDITOR
 	Actor->SetActorLabel(FString::Printf(TEXT("Chunk_%d_%d_%d"),
-		ChunkCoord.X, ChunkCoord.Y, ChunkCoord.Z));
+		Coord.X, Coord.Y, Coord.Z));
 #endif
+	return Actor;
+}
+
+// Return a chunk renderer actor to the world. Pool it for reuse if pooling is on and
+// there's room; otherwise really Destroy() it. Null-safe.
+void AVoxelWorld::RecycleChunkActor(AVoxelChunkActor* Actor)
+{
+	if (!Actor)
+	{
+		return;
+	}
+
+	// Pooling off (cap 0) or pool full: fall back to the old hard-destroy behaviour.
+	if (MaxPooledChunkActors <= 0 || ActorPool.Num() >= MaxPooledChunkActors)
+	{
+		Actor->Destroy();
+		return;
+	}
+
+	// Park it (hide + collision off + detach) and stash it for reuse. The heavy mesh
+	// reset is deferred to AcquireChunkActor->PrepareForReuse so a parked actor that is
+	// never reused costs nothing extra.
+	Actor->PrepareForPark();
+	ActorPool.Add(Actor);
+}
+
+AVoxelChunkActor* AVoxelWorld::EnsureChunkActor(const FIntVector& ChunkCoord)
+{
+	if (TObjectPtr<AVoxelChunkActor>* Found = ChunkActors.Find(ChunkCoord))
+	{
+		return *Found;
+	}
+
+	const FTransform Xform(ChunkActorLocation(ChunkCoord));
+	AVoxelChunkActor* Actor = AcquireChunkActor(ChunkCoord, Xform);
+	if (!Actor)
+	{
+		return nullptr;
+	}
 	ChunkActors.Add(ChunkCoord, Actor);
 	return Actor;
 }
@@ -2654,10 +2892,7 @@ void AVoxelWorld::DestroyChunkActor(const FIntVector& ChunkCoord)
 {
 	if (TObjectPtr<AVoxelChunkActor>* Found = ChunkActors.Find(ChunkCoord))
 	{
-		if (AVoxelChunkActor* Actor = *Found)
-		{
-			Actor->Destroy();
-		}
+		RecycleChunkActor(*Found); // pool it (or Destroy if pooling off/full)
 		ChunkActors.Remove(ChunkCoord);
 	}
 }
@@ -2841,7 +3076,7 @@ void AVoxelWorld::TickFades(float Dt)
 				// New mesh is fully up: drop the held old mesh now (seamless swap, no hole).
 				for (const TObjectPtr<AVoxelChunkActor>& A : F.Outgoing)
 				{
-					if (A) { A->Destroy(); }
+					if (A) { RecycleChunkActor(A); } // pool the outgoing actor (or Destroy if off/full)
 				}
 				const FIntPoint DoneCol = F.Col;
 				ActiveFades.RemoveAtSwap(i);
@@ -2886,7 +3121,7 @@ void AVoxelWorld::TickFades(float Dt)
 			// a==1 their dither is fully opaque, indistinguishable from an un-faded chunk.)
 			for (const TObjectPtr<AVoxelChunkActor>& A : F.Outgoing)
 			{
-				if (A) { A->Destroy(); }
+				if (A) { RecycleChunkActor(A); } // pool the faded-out actor (or Destroy if off/full)
 			}
 			const FIntPoint DoneCol = F.Col;
 			ActiveFades.RemoveAtSwap(i);
@@ -2916,7 +3151,7 @@ bool AVoxelWorld::CancelColumnFade(const FIntPoint& Col)
 			// the primary.
 			for (const TObjectPtr<AVoxelChunkActor>& A : ActiveFades[i].Outgoing)
 			{
-				if (A) { A->Destroy(); }
+				if (A) { RecycleChunkActor(A); } // pool the cancelled outgoing actor (or Destroy if off/full)
 			}
 			ActiveFades.RemoveAtSwap(i);
 			bFound = true;
@@ -3134,6 +3369,16 @@ void AVoxelWorld::ClearWorld()
 	}
 	SuperActors.Empty();
 
+	// Drain the recycle pool. Parked actors are real (hidden) UObjects, so a full teardown
+	// (EndPlay routes here, as does a regenerate) must Destroy them too or they leak across
+	// a re-PIE / world rebuild. We Destroy directly here — RecycleChunkActor would just push
+	// them back, and the world is going away. Empty when pooling is off.
+	for (const TObjectPtr<AVoxelChunkActor>& Parked : ActorPool)
+	{
+		if (Parked) { Parked->Destroy(); }
+	}
+	ActorPool.Empty();
+
 	// P1: invalidate then wait out any in-flight async generation jobs BEFORE we
 	// reset the inputs they read (the EXR), so no worker touches freed/changed data.
 	// Bumping the epoch first means a job that finishes mid-drain is discarded.
@@ -3248,6 +3493,7 @@ void AVoxelWorld::UpdateProfilerFrameWindow(float DeltaSeconds)
 		WorstGenMsWindow       = 0.0f; // TOOL 6: restart per-phase worst-ms with the frame window
 		WorstMeshMsWindow      = 0.0f;
 		WorstEvictMsWindow     = 0.0f;
+		WorstHeroMsWindow      = 0.0f;
 	}
 }
 
@@ -3417,7 +3663,7 @@ void AVoxelWorld::WritePerfCsvRow()
 			"lod0,lod1,lod2,lod3,superTotal,superL0,superL1,superL2,superL3,superL4,superL5,"
 			"coarseGen,shellCulled,fades,holds,genOps,meshOps,jobsInFlight,pending,"
 			"pendGen,pendMesh,pendSuper,inFlightGen,inFlightMesh,inFlightSuper,"
-			"streamRadius,superRadius,uploadsCap,uploadMs,genMs,meshMs,evictMs,"
+			"streamRadius,superRadius,uploadsCap,uploadMs,genMs,meshMs,evictMs,heroMs,"
 			"waterActive,waterUnits,waterPlaced,waterForgotten,waterDelta,"
 			"lifeQueuedGen,lifeFilled,lifeQueuedMesh,lifeMeshed,hangingCols,worstHangSec,worstHangPhase\n");
 		FFileHelper::SaveStringToFile(Header, *Path); // overwrite: fresh file
@@ -3460,7 +3706,7 @@ void AVoxelWorld::WritePerfCsvRow()
 		TEXT("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%d,")
-		TEXT("%d,%d,%d,%.1f,%.1f,%.1f,%.1f,")
+		TEXT("%d,%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,")
 		TEXT("%d,%d,%d,%d,%d,")
 		TEXT("%d,%d,%d,%d,%d,%.1f,%s\n"),
 		NowS, Fps, PerfCsvWorstMsInterval, Far.WorstLoadFrameMs,
@@ -3473,7 +3719,7 @@ void AVoxelWorld::WritePerfCsvRow()
 		PendingGen.Num(), PendingMesh.Num(), PendingSuperMesh.Num(),
 		InFlightColumns.Num(), InFlightMeshColumns.Num(), InFlightSuperMeshes.Num(),
 		StreamRadiusChunks, SuperRadiusChunks, MaxColumnMeshUploadsPerTick, MeshUploadBudgetMs,
-		WorstGenMsWindow, WorstMeshMsWindow, WorstEvictMsWindow, // TOOL 6: measured per-phase worst ms
+		WorstGenMsWindow, WorstMeshMsWindow, WorstEvictMsWindow, WorstHeroMsWindow, // TOOL 6: per-phase worst ms (hero = sync LOD0 pass)
 		WActive, WUnits, WPlaced, WForgot, WDelta,
 		// TOOL 5 — per-column lifecycle phase histogram + hang headline (cached by the last
 		// UpdateColumnLifecycle reconcile; all zero when bTrackColumnLifecycle is off).

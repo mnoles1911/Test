@@ -32,7 +32,7 @@ struct DenseGrid {
           type(static_cast<size_t>(s) * s * s, 0),
           water(static_cast<size_t>(s) * s * s, 0) {}
 
-    int index(int x, int y, int z) const { return coords::flatten(x, y, z, side); }
+    int64_t index(int x, int y, int z) const { return coords::flatten(x, y, z, side); }
 
     uint8_t type_at(int x, int y, int z) const { return type[index(x, y, z)]; }
     uint8_t water_at(int x, int y, int z) const { return water[index(x, y, z)]; }

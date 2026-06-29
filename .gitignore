@@ -94,3 +94,7 @@ ue5/MiraThal/Saved/
 
 # Source heightmaps (large EXR/PNG — track via Git LFS in production, not here)
 ue5/MiraThal/Content/Heightmaps/
+
+# Baked Nanite crust — junction to D:\MiraThalVoxelBake (multi-GB, regenerable via Rebake-Terrain.ps1)
+ue5/MiraThal/Content/VoxelBake
+ue5/MiraThal/Content/VoxelBake/

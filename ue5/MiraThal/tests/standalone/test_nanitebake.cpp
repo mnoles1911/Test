@@ -260,6 +260,49 @@ int main() {
               "cs == MAX_COARSE_SIDE still bakes a shell");
     }
 
+    // =====================================================================
+    // 7) which_tiles_in_band SAFETY CAP — a pathological outerChunks must NOT
+    //    change the normal-range result, must return quickly, and must not explode.
+    //    (A live profile once showed 291 ms/frame because outerChunks was 99999.)
+    // =====================================================================
+    {
+        const Vec2i focusChunk(0, 0);
+
+        // (a) NO behaviour change in the normal range: an outer well below the cap's
+        //     reach returns exactly what it did before. We re-derive the expected set
+        //     directly from tile_chunk_distance over a generous sweep and compare.
+        const int inner = 4, outer = 30; // outer 30 chunks -> tileReach ~3 tiles, far under the cap
+        std::vector<Vec2i> got = which_tiles_in_band(focusChunk, SPAN, inner, outer);
+
+        std::set<std::pair<int,int>> gotSet;
+        for (const Vec2i& t : got) { gotSet.insert({t.x, t.y}); }
+
+        // Brute-force the same membership over a wide sweep (much wider than tileReach).
+        std::set<std::pair<int,int>> expectSet;
+        for (int tz = -8; tz <= 8; ++tz)
+        for (int tx = -8; tx <= 8; ++tx) {
+            const Vec2i tile(tx, tz);
+            const int d = tile_chunk_distance(focusChunk, tile, SPAN);
+            if (d >= inner && d <= outer) { expectSet.insert({tile.x, tile.y}); }
+        }
+        CHECK(gotSet == expectSet, "cap: normal-range result unchanged (matches brute force)");
+
+        // (b) PATHOLOGICAL outerChunks returns quickly and stays bounded. With the cap,
+        //     the sweep is at most (2*kMaxTileReach+1)^2 tiles regardless of outerChunks.
+        //     Inner 0 so the whole swept square is in-band -> the result size equals the
+        //     full clamped square, which proves the clamp engaged (without it this call
+        //     would try to build a ~25-billion-element set and never return).
+        std::vector<Vec2i> huge = which_tiles_in_band(focusChunk, SPAN, /*inner=*/0,
+                                                       /*outer=*/99999);
+        const long long maxTiles =
+            (2LL * kMaxTileReach + 1) * (2LL * kMaxTileReach + 1);
+        CHECK(!huge.empty(), "cap: pathological outer still returns some tiles");
+        CHECK(static_cast<long long>(huge.size()) <= maxTiles,
+              "cap: pathological outer is bounded by the kMaxTileReach square");
+        CHECK(static_cast<long long>(huge.size()) == maxTiles,
+              "cap: clamp engaged (result == full clamped square, inner=0)");
+    }
+
     std::printf("[nanitebake] %s\n", g_fails == 0 ? "PASS" : "FAIL");
     std::printf("---- %d checks, %d failure(s)\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
