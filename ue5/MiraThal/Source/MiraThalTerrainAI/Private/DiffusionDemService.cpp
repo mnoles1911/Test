@@ -151,7 +151,8 @@ void FDiffusionDemService::BuildHeightmapFromCoarse(const FCoarseDem& Dem, int64
 	// working budget. Sea level stays aligned (0 m -> VerticalBaseVoxels). NOTE: this flattens the
 	// AI's biggest peaks for now; raise kMaxSurfaceVoxels once streaming/LOD renders tall columns
 	// without a full synchronous fill (Phase 4) instead of capping them here.
-	constexpr double kMaxSurfaceVoxels = 8192.0;
+	// (kMaxSurfaceVoxels is now the shared FDiffusionDemService::kMaxSurfaceVoxels class constant,
+	//  so the Phase-2 streaming sampler clamps to the EXACT same ceiling — risk R9.)
 	TArray<float> CoarseVox;
 	CoarseVox.SetNumUninitialized(Dem.Cells.Num());
 	for (int32 i = 0; i < Dem.Cells.Num(); ++i)
@@ -313,4 +314,107 @@ FCoarseDemProvider FDiffusionDemService::MakeGoldenFileStubProvider(const FStrin
 		}
 		return true;
 	};
+}
+
+// ===========================================================================
+// PHASE 2 — streaming tile cache (game-thread build, any-thread read).
+// See DiffusionDemService.h for the threading model and risk notes.
+// ===========================================================================
+
+const FCoarseDem* FDiffusionDemService::EnsureTileResident(int64 Seed, FIntPoint TileCoord)
+{
+	// GAME THREAD ONLY. Idempotent: a valid cache hit returns the existing DEM as-is.
+	const FTileKey Key = MakeTileKey(Seed, TileCoord);
+	if (const TSharedPtr<const FCoarseDem>* Found = Tiles.Find(Key))
+	{
+		if (Found->IsValid() && (*Found)->IsValid())
+		{
+			return Found->Get();
+		}
+		// Stale/invalid entry — drop it and rebuild below.
+		Tiles.Remove(Key);
+	}
+
+	// Cache miss: build the tile's world-voxel rect on the fixed grid and ask the same
+	// provider the bounded path uses (Phase 1 = stub; later = AI inference). The build is
+	// SYNCHRONOUS on this (game) thread — no background work, per the safety model.
+	const int32 Span = FMath::Max(1, TileSpanVoxels);
+	const FIntPoint Min(TileCoord.X * Span, TileCoord.Y * Span);
+	const FIntPoint Max(Min.X + Span, Min.Y + Span);
+	const FIntRect TileRect(Min, Max);
+
+	FCoarseDem Dem;
+	if (!Provider || !Provider(Seed, TileRect, Dem) || !Dem.IsValid())
+	{
+		UE_LOG(LogMiraDemService, Warning,
+			TEXT("[Tdiff] EnsureTileResident: provider returned no valid DEM for tile "
+			     "(%d, %d) rect [%d,%d]..[%d,%d] (seed %lld)."),
+			TileCoord.X, TileCoord.Y, Min.X, Min.Y, Max.X, Max.Y,
+			static_cast<long long>(Seed));
+		return nullptr;
+	}
+
+	// Store as TSharedPtr<const> so a concurrent worker read can never mutate it and so a
+	// later eviction frees the memory only after the last snapshot holder releases it.
+	TSharedPtr<const FCoarseDem> Shared = MakeShared<FCoarseDem>(MoveTemp(Dem));
+	Tiles.Add(Key, Shared);
+
+	// Keep the cache bounded; never evict the tile we just made resident.
+	EvictTilesIfNeeded(Key);
+
+	return Shared.Get();
+}
+
+TSharedPtr<const FCoarseDem> FDiffusionDemService::GetResidentTile(int64 Seed, FIntPoint TileCoord) const
+{
+	// ANY THREAD, read-only. Lock-free snapshot read (safe by the temporal-separation
+	// invariant documented in the header): returns a TSharedPtr copy or null.
+	const FTileKey Key = MakeTileKey(Seed, TileCoord);
+	if (const TSharedPtr<const FCoarseDem>* Found = Tiles.Find(Key))
+	{
+		return *Found;
+	}
+	return nullptr;
+}
+
+void FDiffusionDemService::EvictTilesIfNeeded(const FTileKey& KeepKey)
+{
+	// Drop the farthest-from-focus tile until the cache is back within budget. Never
+	// evict the focus tile, its 8-neighbour ring, or the tile we just added (KeepKey).
+	while (Tiles.Num() > FMath::Max(1, MaxResidentTiles))
+	{
+		FTileKey FarKey;
+		double   FarDistSq = -1.0;
+		bool     bFound    = false;
+
+		for (const TPair<FTileKey, TSharedPtr<const FCoarseDem>>& Pair : Tiles)
+		{
+			const FTileKey& K = Pair.Key;
+
+			const int32 Dx = K.Tx - TileFocus.X;
+			const int32 Dz = K.Tz - TileFocus.Y;
+			if (FMath::Abs(Dx) <= 1 && FMath::Abs(Dz) <= 1)
+			{
+				continue; // focus tile + its 8-neighbour ring are protected
+			}
+			if (K == KeepKey)
+			{
+				continue; // never evict the tile EnsureTileResident just added
+			}
+
+			const double DistSq = static_cast<double>(Dx) * Dx + static_cast<double>(Dz) * Dz;
+			if (DistSq > FarDistSq)
+			{
+				FarDistSq = DistSq;
+				FarKey    = K;
+				bFound    = true;
+			}
+		}
+
+		if (!bFound)
+		{
+			break; // everything left is protected — can't shrink further this call
+		}
+		Tiles.Remove(FarKey);
+	}
 }

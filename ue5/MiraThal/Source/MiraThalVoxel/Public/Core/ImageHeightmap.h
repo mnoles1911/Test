@@ -30,12 +30,17 @@
 #include <cmath>
 #include <algorithm>
 
+#include "Core/IHeightSource.h" // ImageHeightmap is one concrete height source
+
 namespace mira {
 
 // =============================================================================
 // ImageHeightmap — raw float grid + georeferencing + bilinear sampling.
+// One concrete IHeightSource (the imported-EXR override). Its valid() /
+// sample_value() / height_voxels_at() already match the interface 1:1, so
+// inheriting is purely additive (no logic moves; +8 bytes for the vptr).
 // =============================================================================
-class ImageHeightmap {
+class ImageHeightmap : public IHeightSource {
 public:
     // ---- The raw pixel grid (filled by the engine's EXR decoder) ----
     int width  = 0;                 // pixels across (image columns)
@@ -80,7 +85,7 @@ public:
     }
 
     // Usable only once the engine has filled a matching-size grid.
-    bool valid() const {
+    bool valid() const override {
         return width > 0 && height > 0
             && static_cast<int64_t>(data.size())
                == static_cast<int64_t>(width) * static_cast<int64_t>(height);
@@ -91,7 +96,7 @@ public:
     // off the edge clamp to the nearest border pixel (so terrain outside the map
     // extends flat rather than wrapping or exploding).
     // -------------------------------------------------------------------------
-    float sample_value(double world_x, double world_z) const {
+    float sample_value(double world_x, double world_z) const override {
         if (!valid()) return 0.0f;
 
         // World voxel → fractional pixel coordinate.
@@ -128,7 +133,7 @@ public:
     // vertical scale, floored to an integer voxel (matches the generator's
     // floor-to-voxel convention so banding sits right on the surface).
     // -------------------------------------------------------------------------
-    int height_voxels_at(int world_x, int world_z) const {
+    int height_voxels_at(int world_x, int world_z) const override {
         const double v = sample_value(static_cast<double>(world_x),
                                       static_cast<double>(world_z));
         const double y = vertical_base_voxels + v * vertical_scale_voxels;

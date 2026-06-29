@@ -753,6 +753,22 @@ public:
 	// triggers it from C++ (e.g. the MiraThal.Tdiff.FillRegion console command).
 	bool SetDiffusionHeightmap(const mira::ImageHeightmap& Hm, int64 GeneratedFromSeed);
 
+	// --- Phase 2: streaming AI height source (infinite world) ---------------------
+	// MiraThalTerrainAI installs a STREAMING IHeightSource (a resident region-tile cache
+	// that fills in as the player explores) plus two game-thread callbacks, so THIS module
+	// never references the AI module (the one-way dep root is preserved):
+	//   * EnsureFn(focusChunk): called once per TickStreaming with the focus column. The AI
+	//     module makes the tiles around the player resident (synchronous + budgeted on the
+	//     game thread — inference never runs on a column worker).
+	//   * ColumnReadyFn(column): true iff the column's covering tile (+ ring) is resident, so
+	//     it is safe to gen now; not-ready columns are DEFERRED and retried a later tick.
+	// When a valid streaming source is installed it takes precedence over DiffusionHeightmap.
+	// Pointer is NON-OWNING (the AI module owns it + keeps it alive across generation).
+	void SetStreamingHeightSource(const mira::IHeightSource* Src,
+	                              TFunction<void(FIntPoint)> EnsureFn,
+	                              TFunction<bool(FIntPoint)> ColumnReadyFn);
+	void ClearStreamingHeightSource();
+
 	// Build (or rebuild) the whole region from the generator. CallInEditor button.
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "MiraThal|World")
 	void GenerateWorld();
@@ -992,6 +1008,14 @@ private:
 	// Seed the resident DiffusionHeightmap was generated from, folded into the
 	// generator fingerprint so a stale baked crust is detected if the seed changes.
 	int64 DiffusionSeed = 0;
+
+	// --- Phase 2 streaming source (non-owning; owned by MiraThalTerrainAI) ---------
+	// When set + valid(), ConfigureGenerator installs THIS as the height source (in place
+	// of the bounded DiffusionHeightmap) and TickStreaming drives the ensure/ready
+	// callbacks below. All default-null = no streaming (Phase-1 bounded path unchanged).
+	const mira::IHeightSource*  StreamHeightSrc = nullptr;     // resident tile-cache source
+	TFunction<void(FIntPoint)>  StreamEnsureFn;               // make tiles around focus resident
+	TFunction<bool(FIntPoint)>  StreamColumnReadyFn;          // is this column's tile resident?
 
 	// The authoritative player-edit journal (P2). Persists across regenerate; only
 	// reset on an explicit new-world. Region files load on demand, save on flush.

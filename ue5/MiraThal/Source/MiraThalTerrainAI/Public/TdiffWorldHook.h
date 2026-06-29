@@ -46,4 +46,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MiraThal|Tdiff")
 	static bool FillCenteredRegion(AVoxelWorld* World, int64 Seed,
 	                               int32 HalfExtentVoxels = 16384, bool bRegenerate = true);
+
+	// Move the player pawn ONTO the freshly-generated AI surface: spiral-search the nearby
+	// (already-streamed) area for dry land (surface above sea) and place the pawn there; if
+	// it is all ocean, drop to the water surface at the current XY. Shared by the bounded
+	// FillRegion and the streaming MiraThal.Tdiff.Stream path so you never start floating
+	// above / below the new terrain. No-op if World or the pawn is null.
+	static void SnapPlayerToLand(AVoxelWorld* World);
 };

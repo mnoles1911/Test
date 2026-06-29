@@ -358,6 +358,13 @@ void AVoxelWorld::ConfigureGenerator(mira::HeightmapGenerator& Gen) const
 	// do for an imported EXR. (This is the synchronous game-thread generator path used
 	// by GenerateWorld + carve + SurfaceWorldZAt; the worker/bake path is handled in
 	// VoxelGenParams.h::SnapshotGenParams, which mirrors this branch.)
+	// Phase 2: a STREAMING tile-cache source (infinite world) takes precedence over the
+	// bounded DiffusionHeightmap image when installed + valid. Same height-source seam —
+	// cliffs/water/banding/flora ride on top unchanged.
+	else if (HeightSource == EVoxelHeightSource::DiffusionAI && StreamHeightSrc && StreamHeightSrc->valid())
+	{
+		Gen.set_height_source(StreamHeightSrc);
+	}
 	else if (HeightSource == EVoxelHeightSource::DiffusionAI && DiffusionHeightmap.valid())
 	{
 		Gen.set_height_source(&DiffusionHeightmap);
@@ -389,6 +396,30 @@ bool AVoxelWorld::SetDiffusionHeightmap(const mira::ImageHeightmap& Hm, int64 Ge
 		DiffusionHeightmap.vertical_scale_voxels, DiffusionHeightmap.vertical_base_voxels,
 		static_cast<long long>(DiffusionSeed));
 	return true;
+}
+
+// --- Phase 2 streaming source install seam (see header) -----------------------------
+// The MiraThalTerrainAI module owns the streaming IHeightSource + the service behind it;
+// it hands us a non-owning pointer + two game-thread callbacks. We only store them and
+// consult them in ConfigureGenerator / TickStreaming (dep root preserved: this module
+// never names the AI types — just IHeightSource + TFunction).
+void AVoxelWorld::SetStreamingHeightSource(const mira::IHeightSource* Src,
+                                           TFunction<void(FIntPoint)> EnsureFn,
+                                           TFunction<bool(FIntPoint)> ColumnReadyFn)
+{
+	StreamHeightSrc     = Src;
+	StreamEnsureFn      = MoveTemp(EnsureFn);
+	StreamColumnReadyFn = MoveTemp(ColumnReadyFn);
+	UE_LOG(LogTemp, Display,
+		TEXT("[MiraThal] streaming AI height source %s."),
+		(Src ? TEXT("installed") : TEXT("cleared")));
+}
+
+void AVoxelWorld::ClearStreamingHeightSource()
+{
+	StreamHeightSrc = nullptr;
+	StreamEnsureFn = nullptr;
+	StreamColumnReadyFn = nullptr;
 }
 
 void AVoxelWorld::GenerateRegion()
@@ -1548,6 +1579,16 @@ void AVoxelWorld::TickStreaming()
 		return;
 	}
 
+	// Phase 2 streaming: make the AI tiles around the player resident BEFORE we enqueue any
+	// columns this tick (synchronous + budgeted on the game thread, inside the AI module's
+	// bound callback — inference never touches a column worker). Columns whose tile isn't yet
+	// resident are deferred below (StreamColumnReadyFn) and retried next tick. No-op unless a
+	// streaming source is installed.
+	if (StreamEnsureFn)
+	{
+		StreamEnsureFn(Focus);
+	}
+
 	// The fill ring leads the player along their velocity (P1 prefetch); meshing +
 	// eviction + LOD all key off the TRUE focus so detail tiers track where you are.
 	FIntPoint FillFocus = Focus;
@@ -1713,6 +1754,13 @@ void AVoxelWorld::TickStreaming()
 			if (Have && *Have > GenLod)
 			{
 				InvalidateColumnFill(Col);
+			}
+			// Phase 2 streaming gate: defer columns whose AI tile (+ ring) isn't resident yet.
+			// They retry next tick once StreamEnsureFn has produced the tile. No-op (always
+			// ready) unless a streaming source is installed.
+			if (StreamColumnReadyFn && !StreamColumnReadyFn(Col))
+			{
+				continue;
 			}
 			EnqueueColumnGen(Col, GenLod);
 		}

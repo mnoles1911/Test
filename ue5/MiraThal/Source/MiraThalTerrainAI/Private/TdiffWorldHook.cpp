@@ -113,54 +113,8 @@ bool UTdiffWorldHook::FillRegion(AVoxelWorld* World, int64 Seed,
 		// with streaming on, newly streamed columns also pick up the new source.
 		World->GenerateWorld();
 
-		// SPAWN-SNAP (2026-06-29): drop the player ONTO the freshly-installed surface (or to the
-		// water surface if the spot is below sea level). Without this the pawn keeps its pre-fill
-		// Z and ends up floating hundreds of metres above/below the new terrain — which is what
-		// made the AI terrain look like a "blocky mess" (it was just the camera 281 m up looking
-		// down). SurfaceWorldZAt + SeaLevel are in world UU (1 voxel = 10 UU; 1 m = 100 UU).
-		if (UWorld* W = World->GetWorld())
-		{
-			if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(W, 0))
-			{
-				const FVector Loc = Pawn->GetActorLocation();
-				const double SeaUU = static_cast<double>(World->SeaLevelMeters) * 100.0; // 100 cm/m
-				const double LandMarginUU = 500.0; // 5 m above sea counts as solid land
-
-				// LAND-SPAWN SEARCH (2026-06-29): don't just drop the player at origin — if origin is
-				// underwater (an ocean bay, like seed 99), spiral outward through the already-streamed
-				// area for the NEAREST column whose surface sits above sea level, and spawn THERE. This
-				// makes a new game start on dry land instead of bobbing in the sea. We stay within the
-				// streamed radius (~1.5 km) so the target column's chunks actually exist. Fall back to
-				// sea level at origin if the whole neighbourhood is ocean.
-				FVector Target(Loc.X, Loc.Y, FMath::Max(World->SurfaceWorldZAt(Loc.X, Loc.Y), SeaUU) + 200.0);
-				bool bFoundLand = false;
-				const double StepUU = 8000.0;    // ~80 m sampling
-				const double MaxRUU = 150000.0;  // search out to ~1.5 km (inside the stream radius)
-				for (double r = 0.0; r <= MaxRUU && !bFoundLand; r += StepUU)
-				{
-					const int NumPts = (r < 1.0) ? 1
-						: FMath::Max(8, FMath::RoundToInt((2.0 * PI * r) / StepUU));
-					for (int k = 0; k < NumPts; ++k)
-					{
-						const double ang = (2.0 * PI * static_cast<double>(k)) / static_cast<double>(NumPts);
-						const double x = Loc.X + r * FMath::Cos(ang);
-						const double y = Loc.Y + r * FMath::Sin(ang);
-						const double s = static_cast<double>(World->SurfaceWorldZAt(x, y));
-						if (s > SeaUU + LandMarginUU)
-						{
-							Target = FVector(x, y, s + 200.0); // stand 2 m above the land surface
-							bFoundLand = true;
-							break;
-						}
-					}
-				}
-				Pawn->SetActorLocation(Target, false, nullptr, ETeleportType::TeleportPhysics);
-				UE_LOG(LogMiraTdiffHook, Display,
-					TEXT("[Tdiff] player spawned %s at (%.0f,%.0f,%.0f) UU (was Z %.0f, sea %.0f)."),
-					bFoundLand ? TEXT("ON LAND") : TEXT("at sea (no land within 1.5km)"),
-					Target.X, Target.Y, Target.Z, Loc.Z, SeaUU);
-			}
-		}
+		// Drop the player ONTO the freshly-installed surface (shared with the streaming path).
+		SnapPlayerToLand(World);
 	}
 
 	UE_LOG(LogMiraTdiffHook, Display,
@@ -176,6 +130,49 @@ bool UTdiffWorldHook::FillCenteredRegion(AVoxelWorld* World, int64 Seed,
 {
 	const int32 H = FMath::Max(1, HalfExtentVoxels);
 	return FillRegion(World, Seed, -H, -H, H, H, bRegenerate);
+}
+
+// Spiral-search the nearby surface for dry land and stand the pawn there (else at sea level).
+// Shared by FillRegion + the streaming path so the player never starts floating above/under the
+// new terrain. UU: 1 voxel = 10 UU, 1 m = 100 UU.
+void UTdiffWorldHook::SnapPlayerToLand(AVoxelWorld* World)
+{
+	if (!World) { return; }
+	UWorld* W = World->GetWorld();
+	if (!W) { return; }
+	APawn* Pawn = UGameplayStatics::GetPlayerPawn(W, 0);
+	if (!Pawn) { return; }
+
+	const FVector Loc = Pawn->GetActorLocation();
+	const double SeaUU = static_cast<double>(World->SeaLevelMeters) * 100.0;
+	const double LandMarginUU = 500.0; // 5 m above sea = solid land
+
+	FVector Target(Loc.X, Loc.Y, FMath::Max(World->SurfaceWorldZAt(Loc.X, Loc.Y), SeaUU) + 200.0);
+	bool bFoundLand = false;
+	const double StepUU = 8000.0;   // ~80 m sampling
+	const double MaxRUU = 150000.0; // search ~1.5 km (inside the stream radius)
+	for (double r = 0.0; r <= MaxRUU && !bFoundLand; r += StepUU)
+	{
+		const int NumPts = (r < 1.0) ? 1 : FMath::Max(8, FMath::RoundToInt((2.0 * PI * r) / StepUU));
+		for (int k = 0; k < NumPts; ++k)
+		{
+			const double ang = (2.0 * PI * static_cast<double>(k)) / static_cast<double>(NumPts);
+			const double x = Loc.X + r * FMath::Cos(ang);
+			const double y = Loc.Y + r * FMath::Sin(ang);
+			const double s = static_cast<double>(World->SurfaceWorldZAt(x, y));
+			if (s > SeaUU + LandMarginUU)
+			{
+				Target = FVector(x, y, s + 200.0);
+				bFoundLand = true;
+				break;
+			}
+		}
+	}
+	Pawn->SetActorLocation(Target, false, nullptr, ETeleportType::TeleportPhysics);
+	UE_LOG(LogMiraTdiffHook, Display,
+		TEXT("[Tdiff] player spawned %s at (%.0f,%.0f,%.0f) UU (was Z %.0f, sea %.0f)."),
+		bFoundLand ? TEXT("ON LAND") : TEXT("at sea (no land within 1.5km)"),
+		Target.X, Target.Y, Target.Z, Loc.Z, SeaUU);
 }
 
 // ---------------------------------------------------------------------------
