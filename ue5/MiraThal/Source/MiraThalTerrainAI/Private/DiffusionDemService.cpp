@@ -339,8 +339,15 @@ const FCoarseDem* FDiffusionDemService::EnsureTileResident(int64 Seed, FIntPoint
 	// provider the bounded path uses (Phase 1 = stub; later = AI inference). The build is
 	// SYNCHRONOUS on this (game) thread — no background work, per the safety model.
 	const int32 Span = FMath::Max(1, TileSpanVoxels);
-	const FIntPoint Min(TileCoord.X * Span, TileCoord.Y * Span);
-	const FIntPoint Max(Min.X + Span, Min.Y + Span);
+	// APRON (seamless tiles): generate each tile over its core rect PLUS an overlap into the
+	// neighbours, so the height source's bicubic (4x4) + slope (±1) stencil reads REAL neighbour
+	// data at tile edges instead of clamping to a border. test_tdiff_streamsource proves tiles
+	// then agree to ~1e-13 voxels. ~4 coarse pixels at 300 vox/px; world-positioned noise makes
+	// the overlap identical to the neighbour's core, so there is no double-image.
+	constexpr int32 ApronVox = 1200;
+	const FIntPoint Core(TileCoord.X * Span, TileCoord.Y * Span);
+	const FIntPoint Min(Core.X - ApronVox, Core.Y - ApronVox);
+	const FIntPoint Max(Core.X + Span + ApronVox, Core.Y + Span + ApronVox);
 	const FIntRect TileRect(Min, Max);
 
 	FCoarseDem Dem;
@@ -353,6 +360,13 @@ const FCoarseDem* FDiffusionDemService::EnsureTileResident(int64 Seed, FIntPoint
 			static_cast<long long>(Seed));
 		return nullptr;
 	}
+
+	// Self-describe the georef so the height source samples in this tile's own (apron'd) frame:
+	// cell (0,0) sits on the apron'd Min corner; one cell spans (expanded width)/(cells-1) voxels.
+	Dem.OriginVoxelX = static_cast<double>(Min.X);
+	Dem.OriginVoxelZ = static_cast<double>(Min.Y);
+	Dem.VoxelsPerCoarsePixel =
+		static_cast<double>(Max.X - Min.X) / static_cast<double>(FMath::Max(1, Dem.CoarseW - 1));
 
 	// Store as TSharedPtr<const> so a concurrent worker read can never mutate it and so a
 	// later eviction frees the memory only after the last snapshot holder releases it.

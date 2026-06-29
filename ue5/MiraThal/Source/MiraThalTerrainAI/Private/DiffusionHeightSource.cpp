@@ -75,13 +75,23 @@ double DiffusionHeightSource::SampleContinuous(int WorldX, int WorldZ) const
 			static_cast<float>(FMath::Clamp(Y, 0.0, FDiffusionDemService::kMaxSurfaceVoxels));
 	}
 
-	// 4) Tile georef — identical to the bounded path's: pixel (0,0) sits on the tile's MIN
-	//    corner, and one coarse pixel spans Span/(CoarseW-1) voxels so the last cell lands
-	//    on the tile's far edge. CoarseW > 1 is guaranteed by FCoarseDem::IsValid().
-	const double OriginX = static_cast<double>(static_cast<int64>(TileCoord.X) * static_cast<int64>(TileSpanVoxels));
-	const double OriginZ = static_cast<double>(static_cast<int64>(TileCoord.Y) * static_cast<int64>(TileSpanVoxels));
-	const double CoarsePitch =
-		static_cast<double>(TileSpanVoxels) / static_cast<double>(Dem.CoarseW - 1);
+	// 4) Tile georef. Prefer the tile's SELF-DESCRIBING georef (set by EnsureTileResident),
+	//    which accounts for the tile's APRON (overlap into neighbours) so the bicubic/slope
+	//    stencil reads real neighbour data at edges -> seamless tiles (test_tdiff_streamsource).
+	//    Fall back to the apron-free derivation for any tile produced without a georef.
+	double OriginX, OriginZ, CoarsePitch;
+	if (Dem.HasGeoref())
+	{
+		OriginX     = Dem.OriginVoxelX;
+		OriginZ     = Dem.OriginVoxelZ;
+		CoarsePitch = Dem.VoxelsPerCoarsePixel;
+	}
+	else
+	{
+		OriginX = static_cast<double>(static_cast<int64>(TileCoord.X) * static_cast<int64>(TileSpanVoxels));
+		OriginZ = static_cast<double>(static_cast<int64>(TileCoord.Y) * static_cast<int64>(TileSpanVoxels));
+		CoarsePitch = static_cast<double>(TileSpanVoxels) / static_cast<double>(Dem.CoarseW - 1);
+	}
 
 	// 5) Run the SAME bridge the bounded path runs. (Detail.seed was fixed to Seed in the
 	//    ctor.) Returns the continuous ground height in voxels; the caller floors it.
