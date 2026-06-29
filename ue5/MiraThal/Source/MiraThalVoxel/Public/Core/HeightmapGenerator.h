@@ -46,13 +46,14 @@
 #include "Core/Noise.h"
 #include "Core/MaterialIds.h" // single authority for the mira::mat ids (incl. the
                               // TREE_LOG / FLORA_GRASS_BLADE / ... aliases below)
+#include "Core/IHeightSource.h" // abstract ground-height override (tiny, engine-free)
 
 namespace mira {
 
-// Forward decl: an external georeferenced heightmap (e.g. an imported Gaea EXR)
-// that can OVERRIDE the procedural ground height. Defined in Core/ImageHeightmap.h;
-// only a pointer is held here so this header stays light.
-class ImageHeightmap;
+// The ground-height override consulted by compute_ground_y is an abstract
+// IHeightSource (Core/IHeightSource.h) — today an imported Gaea EXR (ImageHeightmap),
+// in Phase 2 a streaming AI diffusion surface (DiffusionHeightSource). Only a
+// non-owning pointer-to-base is held here so this header stays light + decoupled.
 
 // =============================================================================
 // hash3 — the gameplay scatter hash, ported 1:1 from VoxelGenerationMath.gd /
@@ -214,8 +215,8 @@ public:
     // funnel through compute_ground_y, they automatically follow the imported
     // terrain. Pass nullptr (the default) to use the procedural path. The pointer
     // is NOT owned; the caller keeps the ImageHeightmap alive across generation.
-    void set_height_source(const ImageHeightmap* hm) { height_src_ = hm; }
-    const ImageHeightmap* height_source() const { return height_src_; }
+    void set_height_source(const IHeightSource* hm) { height_src_ = hm; }
+    const IHeightSource* height_source() const { return height_src_; }
     bool height_source_active() const;
 
     // =========================================================================
@@ -255,7 +256,7 @@ public:
 private:
     int64_t seed_ = 0;
     std::vector<BiomeProfile> profiles_;
-    const ImageHeightmap* height_src_ = nullptr; // not owned; see set_height_source
+    const IHeightSource* height_src_ = nullptr; // not owned; see set_height_source
 
     // Legacy three-layer noise heightfield.
     int legacy_ground_y(int world_x, int world_z) const;
