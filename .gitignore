@@ -73,3 +73,28 @@ extensions/*/bin/
 # Headless test-harness run logs (regenerated each run).
 tools/headless/*.log
 _renders/
+
+# --- UE5 port (ue5/MiraThal) — generated / transient / large template content ---
+ue5/MiraThal/Saved/
+ue5/MiraThal/Intermediate/
+ue5/MiraThal/Binaries/
+ue5/MiraThal/DerivedDataCache/
+ue5/MiraThal/.vs/
+ue5/MiraThal/Plugins/*/Binaries/
+ue5/MiraThal/Plugins/*/Intermediate/
+ue5/MiraThal/Content/Untitled*
+ue5/MiraThal/Content/__ExternalActors__/
+ue5/MiraThal/Content/__ExternalObjects__/
+ue5/MiraThal/Content/HLOD/
+docs/index.bleve/
+
+# Generated voxel preview map (1.3GB, regenerable via Scripts/setup_voxel_preview.py)
+ue5/MiraThal/Content/Maps/VoxelPreview.umap
+ue5/MiraThal/Saved/
+
+# Source heightmaps (large EXR/PNG — track via Git LFS in production, not here)
+ue5/MiraThal/Content/Heightmaps/
+
+# Baked Nanite crust — junction to D:\MiraThalVoxelBake (multi-GB, regenerable via Rebake-Terrain.ps1)
+ue5/MiraThal/Content/VoxelBake
+ue5/MiraThal/Content/VoxelBake/

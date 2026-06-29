@@ -1,0 +1,18 @@
+# Unreal Engine build artifacts — never commit these (generated on the build machine).
+MiraThal/Binaries/
+MiraThal/Build/
+MiraThal/DerivedDataCache/
+MiraThal/Intermediate/
+MiraThal/Saved/
+MiraThal/.vs/
+MiraThal/*.sln
+MiraThal/*.VC.db
+MiraThal/*.opensdf
+MiraThal/*.sdf
+
+# Third-party plugins, if any are ever added locally, are not committed.
+MiraThal/Plugins/
+
+# Standalone Core test harness build output (clang).
+MiraThal/tests/standalone/run_tests
+MiraThal/tests/standalone/*.run

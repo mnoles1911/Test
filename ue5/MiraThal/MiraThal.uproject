@@ -1,0 +1,80 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.7",
+	"Category": "Game",
+	"Description": "Mira-Thal — 3D voxel narrative RPG (UE5 port of the Godot build). 10cm destructible voxel cubes via a custom cubic greedy mesher (MiraThalVoxel), Nanite/Lumen, Chaos physics.",
+	"Modules": [
+		{
+			"Name": "MiraThalVoxel",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "MiraThalCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "MiraThalNet",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "MiraThalVoxelBake",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "MiraThalVoxelRender",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"//comment": "P7/P8 GPU voxel raymarch/mesh. MUST be PostConfigInit because the module declares GLOBAL SHADER types (the engine asserts !AreShaderTypesInitialized() otherwise). StartupModule only maps the shader dir; the SceneViewExtension stays unregistered so nothing renders until the GPU path is wired live.",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "MiraThalTerrainAI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"//comment": "Live-runtime TerrainDiffusion: loads 3 diffusion UNets via NNE (ONNX Runtime + DirectML on AMD) and feeds AI elevation into the voxel height-source seam. See design/TERRAIN_DIFFUSION_RUNTIME_PLAN.md.",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ProceduralMeshComponent",
+			"Enabled": true,
+			"//comment": "M1 mesh backend (built-in, zero external deps). RealtimeMeshComponent swaps in behind IVoxelMeshSink in M2 for perf — but the first chunk must NOT be blocked on installing a 5.7 build of a third-party plugin."
+		},
+		{
+			"Name": "RemoteControl",
+			"Enabled": true,
+			"//comment": "Built-in UE Remote Control API (HTTP/WebSocket on port 30010). This is what the mcp-unreal MCP server drives so Claude can spawn/inspect actors and run console commands in the live editor. Editor-iteration tooling only — no gameplay dependency. Auto-started via DefaultEngine.ini [ConsoleVariables] WebControl.EnableServerOnStartup."
+		},
+		{
+			"Name": "NNERuntimeORT",
+			"Enabled": true,
+			"//comment": "ONNX Runtime backend for NNE, including the DirectML execution provider - the AMD-GPU (no-CUDA) inference path for the diffusion UNets. Verified present in the engine build (onnxruntime.dll + DML/x64/DirectML.dll)."
+		},
+		{
+			"Name": "NNERuntimeRDG",
+			"Enabled": true,
+			"//comment": "RDG/HLSL NNE backend (vendor-agnostic, frame-aligned, limited op set). Enabled for a later optimization phase; ORT+DirectML is the Phase-1 path."
+		}
+	]
+}
