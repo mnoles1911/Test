@@ -129,6 +129,101 @@ public:
 	void ClearCache() { Cache.Empty(); }
 	int32 NumCachedRegions() const { return Cache.Num(); }
 
+	// =============================================================================
+	// PHASE 2 — STREAMING TILE CACHE (additive; the Phase-1 bounded API above is
+	// untouched). An *infinite* AI world cannot be one bounded ImageHeightmap: as the
+	// player walks, the world keeps asking for ground heights the single image never
+	// covered. So we partition world-voxel space into a fixed GRID of square "stream
+	// tiles" (TileSpanVoxels on a side) and keep a small, bounded cache of the COARSE
+	// DEMs that fall under/near the player. mira::DiffusionHeightSource reads those
+	// resident DEMs on column workers (read-only) and runs the SAME detail bridge the
+	// bounded path uses, so streaming output matches the bounded output for the same
+	// coarse data (design risk R9).
+	//
+	// THREADING MODEL (required for safety — see the Phase-2 design, sec. 4):
+	//   * EnsureTileResident() builds tiles SYNCHRONOUSLY and runs ONLY on the game
+	//     thread (it may call the provider, which later becomes GPU inference). The
+	//     game thread makes every tile a column needs resident BEFORE enqueuing that
+	//     column's worker job.
+	//   * GetResidentTile() is the worker-side read: it only ever runs on a column
+	//     whose covering tile (+ its 8-neighbour ring) was already made resident on the
+	//     game thread, so it never overlaps in time with an EnsureTileResident() add.
+	//     That temporal separation is what makes the lock-free TMap read safe; the
+	//     returned TSharedPtr copy then keeps the DEM alive even if a later eviction
+	//     drops it from the map mid-frame.
+	// =============================================================================
+
+	// One stream tile spans this many world voxels on each side. 19200 vox = 1920 m
+	// (~1.9 km) = a coarse 64-interval DEM at 300 vox/px (= 30 m/px, the AI model pitch).
+	int32 TileSpanVoxels = 19200;
+
+	// Bounded cache size: when more than this many tiles are resident, the farthest tile
+	// from the current focus is evicted (never the focus tile or its 8-neighbour ring).
+	int32 MaxResidentTiles = 64;
+
+	// Hard ceiling the metres->voxel mapping clamps the coarse surface to. SHARED with
+	// BuildHeightmapFromCoarse (Phase-1) so the bounded and streaming paths convert a
+	// coarse cell to a voxel height by the EXACT same formula (risk R9). The synchronous
+	// GenerateWorld freezes on columns taller than the world's working budget, so the AI
+	// surface is clamped to this band (sea level stays at VerticalBaseVoxels).
+	static constexpr double kMaxSurfaceVoxels = 8192.0;
+
+	// Game-thread setter: which tile is the player/streamer centred on. Eviction keeps
+	// this tile and its 8-neighbour ring resident and discards the farthest others.
+	void SetTileFocus(FIntPoint InFocusTile) { TileFocus = InFocusTile; }
+
+	// GAME THREAD ONLY. Ensure the tile at TileCoord is built + cached, then return a
+	// borrowed pointer to its coarse DEM (owned by the cache). Idempotent: a cache hit
+	// returns the existing DEM without rebuilding. Returns nullptr if the provider has
+	// no DEM for the tile (the caller then defers that column). Builds the tile's voxel
+	// rect (Min = TileCoord*TileSpanVoxels, Max = Min + TileSpanVoxels) and calls the
+	// same Provider the bounded path uses, SYNCHRONOUSLY on the calling (game) thread.
+	const FCoarseDem* EnsureTileResident(int64 Seed, FIntPoint TileCoord);
+
+	// ANY THREAD, read-only. Return the cached coarse DEM for a tile as a TSharedPtr
+	// snapshot (null if not resident). Safe to call from a column worker: see the
+	// threading note above. The TSharedPtr copy keeps the DEM alive for the caller even
+	// if the game thread evicts it from the map after this returns.
+	TSharedPtr<const FCoarseDem> GetResidentTile(int64 Seed, FIntPoint TileCoord) const;
+
+	// Drop the whole stream-tile cache (free the RAM). Called alongside ClearCache() on
+	// world teardown / reseed so no stale tile survives a seed change.
+	void ClearTiles() { Tiles.Empty(); }
+	int32 NumResidentTiles() const { return Tiles.Num(); }
+
+	// Convert ONE normalised coarse cell to an absolute voxel height using the EXACT
+	// same formula + clamp as BuildHeightmapFromCoarse (the bounded path). Exposed so a
+	// streaming sampler converts identically. CellIndex must be a valid Dem.Cells index.
+	//   voxelY = clamp(VerticalBaseVoxels + cell * VerticalScaleVoxels, 0, kMaxSurfaceVoxels)
+	double TileVoxelHeightAtCell(const FCoarseDem& Dem, int32 CellIndex) const
+	{
+		const double Y = VerticalBaseVoxels
+			+ static_cast<double>(Dem.Cells[CellIndex]) * VerticalScaleVoxels;
+		return FMath::Clamp(Y, 0.0, kMaxSurfaceVoxels);
+	}
+
+	// Vertical-mapping accessors so the wiring can construct a DiffusionHeightSource that
+	// converts coarse cells with the SAME scale/base this service used (risk R9).
+	double GetVerticalScaleVoxels() const { return VerticalScaleVoxels; }
+	double GetVerticalBaseVoxels()  const { return VerticalBaseVoxels;  }
+
+	// Floor-divide a world voxel coordinate into its covering tile coord. Static + pure
+	// so the streamer (game thread) and the height source (worker) compute the SAME tile
+	// for a column. Handles negative coordinates (true floor division, not trunc-toward-0).
+	static FIntPoint TileCoordOf(int64 WorldVoxelX, int64 WorldVoxelZ, int32 InTileSpanVoxels)
+	{
+		const int64 Span = (InTileSpanVoxels > 0) ? static_cast<int64>(InTileSpanVoxels) : 1;
+		auto FloorDiv = [Span](int64 A) -> int64
+		{
+			int64 Q = A / Span;
+			const int64 R = A % Span;        // Span > 0, so R has the sign of A
+			if (R != 0 && R < 0) { --Q; }    // round toward negative infinity
+			return Q;
+		};
+		return FIntPoint(static_cast<int32>(FloorDiv(WorldVoxelX)),
+		                 static_cast<int32>(FloorDiv(WorldVoxelZ)));
+	}
+
 	// --- Stub coarse-DEM providers (Phase 1) ----------------------------------
 	// A smooth, deterministic analytic surface (sum of a few sinusoids, phased by seed).
 	// No file or GPU needed — always available, so the end-to-end path is exercisable.
@@ -190,4 +285,41 @@ private:
 
 	double VerticalScaleVoxels = 7000.0; // 700 m * 10 vox/m (matches EXR altitude default)
 	double VerticalBaseVoxels  = 120.0;  // 12 m * 10 vox/m  (sea level floor)
+
+	// --- Phase 2: stream-tile cache (mirrors the FRegionKey shape) -------------
+	// A tile is uniquely identified by seed + integer tile coord on the world grid.
+	struct FTileKey
+	{
+		int64 Seed = 0;
+		int32 Tx = 0;
+		int32 Tz = 0;
+
+		bool operator==(const FTileKey& O) const
+		{
+			return Seed == O.Seed && Tx == O.Tx && Tz == O.Tz;
+		}
+		friend uint32 GetTypeHash(const FTileKey& K)
+		{
+			uint32 H = ::GetTypeHash(K.Seed);
+			H = HashCombine(H, ::GetTypeHash(K.Tx));
+			H = HashCombine(H, ::GetTypeHash(K.Tz));
+			return H;
+		}
+	};
+	static FTileKey MakeTileKey(int64 Seed, FIntPoint TileCoord)
+	{
+		return FTileKey{ Seed, TileCoord.X, TileCoord.Y };
+	}
+
+	// Resident coarse DEMs. const so a worker can never mutate one through its snapshot.
+	TMap<FTileKey, TSharedPtr<const FCoarseDem>> Tiles;
+
+	// The tile eviction keeps resident (with its 8-neighbour ring); set per tick by the
+	// streamer via SetTileFocus(). Defaults to origin until the world sets it.
+	FIntPoint TileFocus = FIntPoint::ZeroValue;
+
+	// Game-thread helper: while the cache exceeds MaxResidentTiles, drop the farthest
+	// tile from TileFocus, never evicting the focus tile, its 8-neighbour ring, or
+	// KeepKey (the tile EnsureTileResident just added).
+	void EvictTilesIfNeeded(const FTileKey& KeepKey);
 };
