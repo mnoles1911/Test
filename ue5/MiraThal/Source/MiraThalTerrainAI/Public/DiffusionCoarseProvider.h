@@ -56,6 +56,7 @@
 #include "NNEUNetRunner.h"              // mira::tdiff::FNNEUNetRunner (the GPU runner we own)
 #include "TdiffRunnerAdapter.h"         // mira::tdiff::FTdiffRunnerAdapter (engine<->pure bridge)
 #include "Core/Tdiff/WorldPipeline.h"   // mira::tdiff::WorldPipelineConfig (config we carry)
+#include "Core/Tdiff/Erosion.h"         // mira::tdiff::ErosionParams / erode() (Phase 3 weathering)
 
 // Forward declaration keeps the heavy SyntheticMap.h (it pulls in FastNoiseLite) confined to
 // the .cpp - the header only needs to NAME the stats struct for a TUniquePtr member.
@@ -94,6 +95,68 @@ public:
 
 		// The frozen pipeline constants (means/stds/steps). Defaults are the shipping config.
 		mira::tdiff::WorldPipelineConfig Pipeline;
+
+		// ----- PHASE 3: deterministic EROSION of the coarse DEM -----------------------------
+		// After the diffusion net paints absolute-metre elevations, optionally weather the grid
+		// so it grows real drainage: droplet (hydraulic) erosion carves river valleys + branching
+		// channels, thermal (talus) erosion slumps over-steep cliffs into believable slopes. This
+		// is ADDITIVE and fully toggleable - set bErode=false to get the raw AI surface back.
+		bool bErode = true;
+
+		// Erosion knobs. See DefaultErosionParams() below for the retune reasoning: the Core
+		// defaults are tuned for a fine ~1 m/voxel grid, but OUR grid is ABSOLUTE METRES at
+		// ~30 m per coarse cell, so those defaults are wrong here and must be scaled up/softened.
+		mira::tdiff::ErosionParams Erosion = DefaultErosionParams();
+
+		// Build the ErosionParams retuned for THIS grid (metres of elevation, ~30 m/cell spacing).
+		//
+		// WHY the Core defaults are wrong here:
+		//   * Erosion.h's grid is documented as "heights in VOXELS" at 1 unit = 1 cell = ~1 m, so
+		//     its thermalTalus=4 means "a 4-voxel (=0.4 m) step is the steepest stable slope". On
+		//     OUR grid one cell is ~30 m wide and holds ABSOLUTE METRES, so "4" would mean a
+		//     ludicrously flat 4 m rise across 30 m and would flatten every mountain.
+		//   * We therefore express the talus as METRES of stable rise across one 30 m cell. A
+		//     slope of ~25-35 deg is a believable natural talus/scree limit; tan(27 deg)*30 m ~= 15 m,
+		//     so thermalTalus = 15.0 m. Slopes steeper than that slump; gentler AI hills are untouched.
+		//
+		// Everything below is deliberately GENTLE - this is MACRO terrain and the goal is subtle
+		// drainage + ridge definition, NOT to obliterate the AI's continent shapes into a moonscape.
+		// The designer can retune any field live via Config.Erosion.
+		static mira::tdiff::ErosionParams DefaultErosionParams()
+		{
+			mira::tdiff::ErosionParams P; // start from Core defaults (fine-grid tuned)
+
+			// --- HYDRAULIC (rain droplets carve valleys) ---
+			// Keep the droplet budget modest: ~1 droplet per 5 cells is enough to etch clear
+			// channels on a coarse grid without churning the whole surface (or costing much time).
+			P.dropletsPerCell        = 0.2f;
+			// A coarse cell is ~30 m, so a droplet needs a decent lifetime to travel across several
+			// cells and connect a valley; 48 steps ~= a couple of km of run.
+			P.maxDropletLifetime     = 48;
+			// Soften how hard each droplet digs/dumps so metre-scale deltas don't gouge deep trenches.
+			// (Capacity ~ deltaHeight, and deltaHeight is now in metres, so the raw numbers are large;
+			// halving the capacity factor and lowering the rates keeps cuts shallow and believable.)
+			P.sedimentCapacityFactor = 2.0f;
+			P.erosionRate            = 0.15f;
+			P.depositionRate         = 0.20f;
+			// A wider brush spreads each cut over ~2 cells so valleys get smooth banks, not 1-cell spikes.
+			P.erosionRadius          = 2;
+			// Slightly quicker evaporation settles silt out before droplets wander the whole map.
+			P.evaporation            = 0.02f;
+			// inertia / gravity / initialWater / initialSpeed: Core defaults are fine.
+
+			// --- THERMAL (talus slumping of over-steep cliffs) ---
+			// 15 m of rise across one 30 m cell ~= a 27 deg slope: the steepest STABLE macro slope.
+			// Anything steeper crumbles toward it; gentler AI terrain is left alone.
+			P.thermalTalus      = 15.0f;
+			// Just a few relaxation passes - enough to knock the sharpest AI edges into ridges/scree,
+			// not so many that mountains melt flat. (Core default is 8; we go gentler at macro scale.)
+			P.thermalIterations = 4;
+			// Move half the excess per pass: stable + converges without overshoot (Core default).
+			P.thermalStrength   = 0.5f;
+
+			return P;
+		}
 	};
 
 	explicit FDiffusionCoarseProvider(const FConfig& InConfig);

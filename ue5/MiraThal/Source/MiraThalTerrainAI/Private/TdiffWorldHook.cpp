@@ -113,7 +113,9 @@ bool UTdiffWorldHook::FillRegion(AVoxelWorld* World, int64 Seed,
 		// with streaming on, newly streamed columns also pick up the new source.
 		World->GenerateWorld();
 
-		// Drop the player ONTO the freshly-installed surface (shared with the streaming path).
+		// Clear the legacy baked-EXR terrain so it does not render over the AI terrain, then
+		// drop the player ONTO the freshly-installed AI surface.
+		RemoveBakedTerrain(World);
 		SnapPlayerToLand(World);
 	}
 
@@ -173,6 +175,39 @@ void UTdiffWorldHook::SnapPlayerToLand(AVoxelWorld* World)
 		TEXT("[Tdiff] player spawned %s at (%.0f,%.0f,%.0f) UU (was Z %.0f, sea %.0f)."),
 		bFoundLand ? TEXT("ON LAND") : TEXT("at sea (no land within 1.5km)"),
 		Target.X, Target.Y, Target.Z, Loc.Z, SeaUU);
+}
+
+// Destroy the legacy baked-EXR terrain (Nanite crust + far mesh) so it stops rendering over
+// the live AI terrain. Matched by class NAME because this module cannot reference those types
+// (one-way dep). Runs on the game thread from FillRegion/Stream; idempotent.
+void UTdiffWorldHook::RemoveBakedTerrain(AVoxelWorld* World)
+{
+	if (!World) { return; }
+	UWorld* W = World->GetWorld();
+	if (!W) { return; }
+
+	TArray<AActor*> ToKill;
+	for (TActorIterator<AActor> It(W); It; ++It)
+	{
+		AActor* A = *It;
+		if (!A) { continue; }
+		const FString Cn = A->GetClass()->GetName();
+		if (Cn == TEXT("VoxelNaniteCrust") || Cn == TEXT("VoxelFarHeightmesh"))
+		{
+			ToKill.Add(A);
+		}
+	}
+	for (AActor* A : ToKill)
+	{
+		A->SetActorTickEnabled(false);
+		A->SetActorHiddenInGame(true);
+		A->SetActorEnableCollision(false);
+		A->Destroy();
+	}
+	UE_LOG(LogMiraTdiffHook, Display,
+		TEXT("[Tdiff] removed %d legacy baked-EXR terrain actor(s) (crust + far mesh) so the "
+		     "AI terrain is the world."),
+		ToKill.Num());
 }
 
 // ---------------------------------------------------------------------------

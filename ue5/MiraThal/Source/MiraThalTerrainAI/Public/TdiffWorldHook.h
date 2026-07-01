@@ -53,4 +53,11 @@ public:
 	// FillRegion and the streaming MiraThal.Tdiff.Stream path so you never start floating
 	// above / below the new terrain. No-op if World or the pawn is null.
 	static void SnapPlayerToLand(AVoxelWorld* World);
+
+	// Remove the LEGACY baked-EXR terrain layers that the test map still carries from the
+	// earlier Nanite-bake milestone (AVoxelNaniteCrust x N + the far AVoxelFarHeightmesh), so
+	// they do not render OVER the live AI terrain. Matched by class NAME (this module cannot
+	// reference those types across the one-way dep), then destroyed. Idempotent. Called by
+	// FillRegion + the streaming path so the AI terrain is cleanly THE world.
+	static void RemoveBakedTerrain(AVoxelWorld* World);
 };

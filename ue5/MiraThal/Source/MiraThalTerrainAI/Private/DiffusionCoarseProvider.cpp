@@ -235,6 +235,46 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 		return false;
 	}
 
+	// --- 3b) PHASE 3: deterministic EROSION of the blended coarse DEM. --------------------
+	// The AI net paints plausible large-scale landmasses but has no hydrology - no carved river
+	// valleys, no branching drainage, no talus-limited ridgelines. We add that here by running the
+	// Core erosion pipeline (mira::tdiff::erode) directly on the ABSOLUTE-METRE `Elev` grid, in
+	// place, BEFORE it is copied into Out.Cells. It is keyed on `Seed`, and the Core module's ONLY
+	// randomness is the portable PCG64 droplet stream, so this is fully DETERMINISTIC per seed -
+	// the same region+seed erodes byte-identically on every machine (multiplayer-safe).
+	//
+	// UNITS: `Elev` is metres of absolute elevation at ~30 m per cell; the Config.Erosion params
+	// are retuned for exactly that (see FConfig::DefaultErosionParams in the header - talus in
+	// metres-per-30m-cell, gentle rates so we get subtle drainage, not a moonscape).
+	//
+	// *** SEAMLESSNESS (documented, NOT solved here) ***: this erosion pass runs per-REGION on the
+	// grid we just blended, and droplets RETIRE at the grid border (Erosion.h clamps every read to
+	// the edge and never flows across it). So erosion is not perfectly seamless across independent
+	// streaming-tile regions - a river carved to the edge of one tile won't be guaranteed to line up
+	// pixel-for-pixel with its neighbour. This is MITIGATED because the Phase-2 streaming path
+	// generates each tile with a large (~1200-voxel) APRON of overlap, so the elevation fed here
+	// already carries cross-tile context and droplets see the neighbour's terrain within the apron.
+	// A fully world-positioned erosion pass (one continuous droplet field keyed to world coords,
+	// like the world-continuous noise) is a future refinement; we intentionally do NOT attempt it now.
+	if (Config.bErode)
+	{
+		// Capture the pre-erosion range so the log shows the effect at a glance.
+		float PreLo = Elev[0], PreHi = Elev[0];
+		for (float V : Elev) { PreLo = FMath::Min(PreLo, V); PreHi = FMath::Max(PreHi, V); }
+
+		mira::tdiff::erode(Elev.data(), Cols, Rows, Config.Erosion, static_cast<uint64_t>(Seed));
+
+		float PostLo = Elev[0], PostHi = Elev[0];
+		for (float V : Elev) { PostLo = FMath::Min(PostLo, V); PostHi = FMath::Max(PostHi, V); }
+
+		UE_LOG(LogMiraCoarseProvider, Display,
+			TEXT("[Tdiff] erosion applied (seed %lld): elev %.1f..%.1f m -> %.1f..%.1f m "
+			     "(droplets/cell %.2f, talus %.1f m, thermal x%d)."),
+			static_cast<long long>(Seed), PreLo, PreHi, PostLo, PostHi,
+			Config.Erosion.dropletsPerCell, Config.Erosion.thermalTalus,
+			Config.Erosion.thermalIterations);
+	}
+
 	// --- 4) Store ABSOLUTE elevation in METRES into FCoarseDem (z-major, row*Cols+col). ----
 	// *** VERTICAL ANCHORING (2026-06-29 fix) ***: we deliberately do NOT normalise the region
 	// to [0,1] any more. Normalising threw away absolute altitude, so the service mapped 0 m
