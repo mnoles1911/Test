@@ -31,6 +31,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/CriticalSection.h"      // FCriticalSection — guards the Phase-4 async in-flight/completed state
 #include "Core/ImageHeightmap.h"      // mira::ImageHeightmap — the surface we fill + hand off
 #include "Core/Tdiff/DetailBridge.h"  // mira::tdiff::sample_height_voxels — the 30 m -> 10 cm bridge
 #include "Core/Tdiff/Erosion.h"       // mira::tdiff::erode — hydraulic+thermal drainage carving
@@ -216,8 +217,70 @@ public:
 
 	// Drop the whole stream-tile cache (free the RAM). Called alongside ClearCache() on
 	// world teardown / reseed so no stale tile survives a seed change.
-	void ClearTiles() { Tiles.Empty(); }
+	//
+	// ASYNC NOTE (Phase 4): this only clears the RESIDENT map. It does NOT block on in-flight
+	// async jobs — for a full teardown that also waits out background inference, call DrainTiles()
+	// (the destructor does this automatically). We DO bump the async epoch + drop any parked
+	// completed results here so a reseed can't install a stale tile that finished before the swap.
+	void ClearTiles();
 	int32 NumResidentTiles() const { return Tiles.Num(); }
+
+	// =============================================================================
+	// PHASE 4 — ASYNC (OFF-GAME-THREAD) TILE GENERATION (additive; default OFF).
+	//
+	// WHY: the real coarse-DEM provider runs ~1.6 s of DirectML inference PER TILE. Done on the
+	// game thread (EnsureTileResident) that is a visible multi-hundred-ms freeze every time the
+	// player crosses a tile boundary. This path moves that work onto a dedicated BACKGROUND
+	// THREAD so the game thread only ever (a) fires a non-blocking request and (b) drains the
+	// finished DEMs into the resident map. The heavy inference NEVER touches the game thread and
+	// NEVER touches the voxel column ThreadPool.
+	//
+	// SAFETY: DirectML-off-thread is UNPROVEN in this build, so EVERYTHING async is gated behind
+	// bAsyncTileGen. Default FALSE == the byte-for-byte-unchanged synchronous EnsureTileResident
+	// path, so it can be A/B'd and instantly reverted from the console.
+	//
+	// THREADING INVARIANT (unchanged from Phase 2, preserved here): the resident `Tiles` map is
+	// WRITTEN ONLY on the game thread — in the sync path by EnsureTileResident, in the async path
+	// ONLY by HarvestTiles. Background workers NEVER write it; they only build an FCoarseDem in
+	// isolation and park it in the lock-guarded completed queue. Column workers keep reading it
+	// lock-free via GetResidentTile (TSharedPtr snapshot). So the game-thread-only-writer
+	// invariant that makes the lock-free read safe is intact.
+	// =============================================================================
+
+	// MASTER SWITCH. FALSE (default) = synchronous EnsureTileResident (proven). TRUE = the async
+	// RequestTile/HarvestTiles path below. Set on the game thread before/at StartStreaming; the
+	// streamer also mirrors the CVar MiraThal.Tdiff.AsyncTiles onto it.
+	bool bAsyncTileGen = false;
+
+	// Cap on concurrent background inference jobs (mirror of the column-gen MaxColumnJobsInFlight).
+	// Inference is heavy + VRAM-bound, so keep it small. RequestTile early-outs when this many
+	// jobs are already in flight; the deferred tiles simply retry on the next tick.
+	int32 MaxTileJobsInFlight = 2;
+
+	// GAME THREAD, NON-BLOCKING. Ask for the tile at TileCoord to be produced asynchronously.
+	// No-op if the tile is already resident, already in flight, or the in-flight cap is hit.
+	// Otherwise launches ONE background job (a dedicated thread — never the column ThreadPool)
+	// that runs the provider to build the tile's FCoarseDem and parks it in the completed queue.
+	// Stamped with the current epoch so a reseed drops the result. If bAsyncTileGen is FALSE this
+	// falls back to a synchronous EnsureTileResident so a caller can use it unconditionally.
+	void RequestTile(int64 Seed, FIntPoint TileCoord);
+
+	// GAME THREAD, once per tick. Drain up to Budget finished jobs from the completed queue into
+	// the resident `Tiles` map (nearest-to-focus first). Stale-epoch results are discarded. This
+	// is the ONLY place the resident map is written when async. Returns how many became resident.
+	int32 HarvestTiles(int32 Budget);
+
+	// GAME THREAD. Teardown: bump the epoch, drop parked results, then BLOCK until every in-flight
+	// background job has finished touching this object, then clear the resident map. Mirrors the
+	// column-gen DrainColumnGen. The destructor calls this so a background job can never outlive
+	// the service (and the provider it captured) it was launched from.
+	void DrainTiles();
+
+	// Diagnostics (game thread): how many async jobs are currently in flight.
+	int32 NumTileJobsInFlight() const;
+
+	// Destructor blocks on any in-flight async job (see DrainTiles) so no worker outlives us.
+	~FDiffusionDemService();
 
 	// Convert ONE normalised coarse cell to an absolute voxel height using the EXACT
 	// same formula + clamp as BuildHeightmapFromCoarse (the bounded path). Exposed so a
@@ -357,4 +420,42 @@ private:
 	// tile from TileFocus, never evicting the focus tile, its 8-neighbour ring, or
 	// KeepKey (the tile EnsureTileResident just added).
 	void EvictTilesIfNeeded(const FTileKey& KeepKey);
+
+	// --- Phase 4: async tile-gen internals ------------------------------------
+	// Shared build core: construct the tile's world-voxel rect (+ apron), run the provider and
+	// self-describe the georef into OutDem. Returns false if the provider had no valid DEM. Used
+	// ONLY by the async worker (RequestTile's background task). The synchronous EnsureTileResident
+	// keeps its OWN inline copy of this logic UNCHANGED so the proven path is untouched.
+	//
+	// IMPORTANT: this reads `Provider` and calls it. It is invoked under ProviderLock so provider
+	// access stays serialised (the provider is single-threaded by contract — see
+	// DiffusionCoarseProvider.cpp), and it touches NOTHING else on the object, so it is safe to
+	// run on a background thread.
+	bool BuildTileDemAsync(int64 Seed, FIntPoint TileCoord, FCoarseDem& OutDem) const;
+
+	// One finished background job waiting to be harvested onto the game thread.
+	struct FCompletedTile
+	{
+		FTileKey                     Key;
+		TSharedPtr<const FCoarseDem> Dem;    // never null when parked (a failed build is dropped)
+		uint32                       Epoch = 0;
+	};
+
+	// Guards ALL of: InFlightTiles, CompletedTiles, TileEpoch. Held only briefly (set/queue ops),
+	// never across the provider call. `mutable` so const accessors (NumTileJobsInFlight) can lock.
+	mutable FCriticalSection AsyncStateLock;
+
+	// Serialises the (single-threaded-by-contract) provider so two background jobs never call it
+	// concurrently. Held ONLY around BuildTileDemAsync, never together with AsyncStateLock.
+	FCriticalSection ProviderLock;
+
+	// Tiles with a background job currently building them (game-thread requested, worker clears).
+	TSet<FTileKey> InFlightTiles;               // guarded by AsyncStateLock
+
+	// Finished DEMs waiting for HarvestTiles to promote them onto the game thread.
+	TArray<FCompletedTile> CompletedTiles;      // guarded by AsyncStateLock
+
+	// Bumped by DrainTiles()/ClearTiles() on reseed/teardown; a job stamped with an older epoch is
+	// discarded by HarvestTiles so a stale tile can never install after a seed change.
+	uint32 TileEpoch = 0;                       // guarded by AsyncStateLock
 };

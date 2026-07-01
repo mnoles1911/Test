@@ -45,6 +45,19 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogMiraTdiffStream, Log, All);
 
+// PHASE 4 toggle. 0 (default) = the proven SYNCHRONOUS per-tile inference on the game thread.
+// 1 = generate tiles on a background thread (FDiffusionDemService::RequestTile/HarvestTiles) so
+// the ~1.6 s/tile GPU inference no longer freezes the game thread. EXPERIMENTAL: DirectML-off-
+// thread is unproven in this build, so this stays OFF until validated in PIE. Read once at
+// StartStreaming (change it, then re-run MiraThal.Tdiff.Stream to apply).
+static TAutoConsoleVariable<int32> CVarTdiffAsyncTiles(
+	TEXT("MiraThal.Tdiff.AsyncTiles"),
+	0,
+	TEXT("AI terrain tile generation: 0 = synchronous on the game thread (default, proven); "
+	     "1 = asynchronous on a background thread (Phase 4, experimental). Applied at the next "
+	     "MiraThal.Tdiff.Stream."),
+	ECVF_Default);
+
 namespace
 {
 	// Same export location the bounded path uses (TdiffWorldHook GTdiffOnnxDir/StatsPath).
@@ -55,6 +68,12 @@ namespace
 	constexpr int32 kRingTiles      = 1;    // ensure the focus tile + its 8-neighbour ring (apron)
 	constexpr int32 kEnsurePerTick  = 1;    // tiles generated per TickStreaming (spread the GPU cost)
 	constexpr int32 kInitRingTiles  = 1;    // pre-warm radius at StartStreaming (synchronous)
+
+	// --- Phase 4 async knobs (only used when bAsyncTileGen). Because async no longer BLOCKS the
+	// game thread, we can request a slightly wider ring + harvest several tiles/tick without a
+	// hitch. Kept modest: the real concurrency is still capped by MaxTileJobsInFlight (=2).
+	constexpr int32 kAsyncRequestRing = 2;   // request focus + a 2-ring (5x5) so jobs stay queued ahead
+	constexpr int32 kHarvestPerTick   = 4;   // resident-map promotions per tick (cheap — just map adds)
 
 	// The streaming state lives for the whole module (mirrors TdiffWorldHook's GetDemService):
 	// one service + one source, recreated per StartStreaming (per seed). Held in TUniquePtr so the
@@ -99,6 +118,12 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		                               bHaveStats ? FString(GStreamStatsPath) : FString()));
 	S.Seed = Seed;
 
+	// PHASE 4: mirror the CVar onto the service. FALSE (default) keeps the proven synchronous
+	// EnsureTileResident path below unchanged; TRUE routes the per-tile inference onto a background
+	// thread via RequestTile/HarvestTiles. Read once here so a mid-session flip needs a re-Stream.
+	const bool bAsync = CVarTdiffAsyncTiles.GetValueOnGameThread() != 0;
+	S.Service->bAsyncTileGen = bAsync;
+
 	// 2) Vertical mapping: sea-anchored, identical to TdiffWorldHook::FillRegion so streaming and
 	//    bounded output agree (voxelY = SeaLevelMeters*10 + metres*10, clamped to kMaxSurfaceVoxels).
 	constexpr double VoxelsPerMetre = 10.0;
@@ -130,6 +155,33 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		const FIntPoint FT = FDiffusionDemService::TileCoordOf(wx, wz, Span);
 		Svc->SetTileFocus(FT); // eviction keeps tiles near the player
 
+		// ---- PHASE 4 ASYNC PATH ------------------------------------------------------------
+		// Non-blocking: promote any finished background jobs into the resident map FIRST (game
+		// thread, BEFORE this tick's columns enqueue — the same timing the sync add has, so the
+		// game-thread-only-writer invariant is preserved), then fire off requests for the focus +
+		// ring. RequestTile is cheap + idempotent and self-caps at MaxTileJobsInFlight, so a wider
+		// ring just keeps the queue primed; only a couple of jobs actually run at once.
+		if (Svc->bAsyncTileGen)
+		{
+			Svc->HarvestTiles(kHarvestPerTick);
+
+			for (int32 r = 0; r <= kAsyncRequestRing; ++r)
+			{
+				for (int32 dz = -r; dz <= r; ++dz)
+				for (int32 dx = -r; dx <= r; ++dx)
+				{
+					if (FMath::Max(FMath::Abs(dx), FMath::Abs(dz)) != r) { continue; } // ring shell only
+					const FIntPoint TC(FT.X + dx, FT.Y + dz);
+					if (!Svc->GetResidentTile(Sd, TC).IsValid())
+					{
+						Svc->RequestTile(Sd, TC); // non-blocking; skips if resident/in-flight/at-cap
+					}
+				}
+			}
+			return;
+		}
+
+		// ---- SYNCHRONOUS PATH (default, unchanged) -----------------------------------------
 		// Make the focus tile + ring resident, nearest-first, budgeted so the GPU cost spreads
 		// across ticks instead of one big freeze. Already-resident tiles are skipped (cheap).
 		int32 Budget = kEnsurePerTick;
@@ -159,6 +211,11 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	};
 
 	// 5) Pre-warm the central tile(s) synchronously so the world isn't empty on the first frame.
+	//    NOTE (Phase 4): this synchronous pre-warm runs the provider on the GAME THREAD, which
+	//    triggers the runner's lazy model load (NewObject<UNNEModelData> + DDC) HERE — before any
+	//    async job exists. That is the natural mitigation for the "first inference off-thread"
+	//    risk: by the time RequestTile fires a background job, all 3 UNets are already loaded, so
+	//    the worker only calls RunSync on already-constructed instances (no UObject creation).
 	{
 		int64 wx, wz; ChunkToWorldVoxel(FIntPoint(0, 0), wx, wz);
 		const FIntPoint FT = FDiffusionDemService::TileCoordOf(wx, wz, Span);
@@ -209,9 +266,10 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 
 	UE_LOG(LogMiraTdiffStream, Display,
 		TEXT("[Tdiff] STREAMING started: seed %lld, tileSpan %d vox (~%.1f km), %d resident tile(s). "
-		     "Walk anywhere — terrain streams in. (conditioning=%s)"),
+		     "Walk anywhere — terrain streams in. (conditioning=%s, tilegen=%s)"),
 		static_cast<long long>(Seed), Span, Span / 10000.0, Svc->NumResidentTiles(),
-		bHaveStats ? TEXT("on") : TEXT("zero"));
+		bHaveStats ? TEXT("on") : TEXT("zero"),
+		bAsync ? TEXT("ASYNC (background thread)") : TEXT("synchronous (game thread)"));
 }
 
 // Console: MiraThal.Tdiff.Stream [Seed]  — start infinite streaming for the level's AVoxelWorld.

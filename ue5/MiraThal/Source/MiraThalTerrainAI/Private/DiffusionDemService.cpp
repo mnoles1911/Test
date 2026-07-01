@@ -6,6 +6,9 @@
 
 #include "Misc/FileHelper.h"   // FFileHelper::LoadFileToArray — golden-tensor stub loader
 #include "Logging/LogMacros.h"
+#include "Async/Async.h"       // Async(EAsyncExecution::Thread, ...) — Phase-4 background inference
+#include "Misc/ScopeLock.h"    // FScopeLock — guards the async in-flight/completed state
+#include "HAL/PlatformProcess.h" // FPlatformProcess::Sleep — DrainTiles wait loop
 
 DEFINE_LOG_CATEGORY_STATIC(LogMiraDemService, Log, All);
 
@@ -461,4 +464,240 @@ void FDiffusionDemService::EvictTilesIfNeeded(const FTileKey& KeepKey)
 		}
 		Tiles.Remove(FarKey);
 	}
+}
+
+// ===========================================================================
+// PHASE 4 — ASYNC (off-game-thread) tile generation. Everything below is inert
+// unless bAsyncTileGen == true; the synchronous EnsureTileResident path above is
+// completely untouched. See the header for the threading invariant + safety notes.
+// ===========================================================================
+
+FDiffusionDemService::~FDiffusionDemService()
+{
+	// Block on any in-flight background job so a worker can never touch this object (or the
+	// provider it captured) after we're destroyed. Cheap no-op when nothing is async.
+	DrainTiles();
+}
+
+// Shared build core for the ASYNC path only. Byte-for-byte the same rect/apron/georef logic the
+// synchronous EnsureTileResident uses — deliberately DUPLICATED (not refactored into the sync
+// path) so the proven synchronous function stays untouched. Runs on a background thread under
+// ProviderLock; touches only `Provider` + locals.
+bool FDiffusionDemService::BuildTileDemAsync(int64 Seed, FIntPoint TileCoord, FCoarseDem& OutDem) const
+{
+	const int32 Span = FMath::Max(1, TileSpanVoxels);
+	// APRON: keep IDENTICAL to EnsureTileResident (1200 vox = ~4 coarse pixels at 300 vox/px) so
+	// async-built tiles are bit-identical to sync-built ones (the seam test's apron guarantee).
+	constexpr int32 ApronVox = 1200;
+	const FIntPoint Core(TileCoord.X * Span, TileCoord.Y * Span);
+	const FIntPoint Min(Core.X - ApronVox, Core.Y - ApronVox);
+	const FIntPoint Max(Core.X + Span + ApronVox, Core.Y + Span + ApronVox);
+	const FIntRect TileRect(Min, Max);
+
+	if (!Provider || !Provider(Seed, TileRect, OutDem) || !OutDem.IsValid())
+	{
+		UE_LOG(LogMiraDemService, Warning,
+			TEXT("[Tdiff] RequestTile(async): provider returned no valid DEM for tile "
+			     "(%d, %d) rect [%d,%d]..[%d,%d] (seed %lld)."),
+			TileCoord.X, TileCoord.Y, Min.X, Min.Y, Max.X, Max.Y,
+			static_cast<long long>(Seed));
+		return false;
+	}
+
+	// Self-describe the georef in the tile's own (apron'd) frame — identical to EnsureTileResident.
+	OutDem.OriginVoxelX = static_cast<double>(Min.X);
+	OutDem.OriginVoxelZ = static_cast<double>(Min.Y);
+	OutDem.VoxelsPerCoarsePixel =
+		static_cast<double>(Max.X - Min.X) / static_cast<double>(FMath::Max(1, OutDem.CoarseW - 1));
+	return true;
+}
+
+void FDiffusionDemService::RequestTile(int64 Seed, FIntPoint TileCoord)
+{
+	// GAME THREAD, non-blocking. If async is off, behave exactly like the proven sync path so a
+	// caller can invoke RequestTile unconditionally and get the current behaviour when the flag
+	// is false.
+	if (!bAsyncTileGen)
+	{
+		EnsureTileResident(Seed, TileCoord);
+		return;
+	}
+
+	const FTileKey Key = MakeTileKey(Seed, TileCoord);
+
+	// Already resident? (Tiles is written only on the game thread; this IS the game thread.)
+	if (const TSharedPtr<const FCoarseDem>* Found = Tiles.Find(Key))
+	{
+		if (Found->IsValid() && (*Found)->IsValid())
+		{
+			return;
+		}
+	}
+
+	// Reserve an in-flight slot (or bail if already in flight / at the cap). Snapshot the epoch so
+	// the finished job can be dropped if a reseed happens while it runs.
+	uint32 Epoch = 0;
+	{
+		FScopeLock Lock(&AsyncStateLock);
+		if (InFlightTiles.Contains(Key))
+		{
+			return; // already being built
+		}
+		if (InFlightTiles.Num() >= FMath::Max(1, MaxTileJobsInFlight))
+		{
+			return; // at capacity — the streamer retries next tick
+		}
+		InFlightTiles.Add(Key);
+		Epoch = TileEpoch;
+	}
+
+	// Launch on a DEDICATED background thread. Deliberately EAsyncExecution::Thread, NOT
+	// ::ThreadPool — the voxel column generator uses the global thread pool and we must never
+	// share it (the never-broken rule from the Phase-2 design). Capturing `this` is safe because
+	// the destructor (DrainTiles) blocks until this job has cleared InFlightTiles.
+	Async(EAsyncExecution::Thread, [this, Seed, TileCoord, Key, Epoch]()
+	{
+		FCoarseDem Dem;
+		bool bOk = false;
+		{
+			// Serialise provider access: the provider (DirectML inference) is single-threaded by
+			// contract, so at most one background job is ever inside it at a time even at cap 2.
+			FScopeLock ProvLock(&ProviderLock);
+			bOk = BuildTileDemAsync(Seed, TileCoord, Dem);
+		}
+
+		// Wrap as TSharedPtr<const> off-thread (pure allocation, no shared state) so the game
+		// thread only has to move a pointer during HarvestTiles.
+		TSharedPtr<const FCoarseDem> Shared =
+			bOk ? TSharedPtr<const FCoarseDem>(MakeShared<FCoarseDem>(MoveTemp(Dem))) : nullptr;
+
+		// Publish the result (or just clear the in-flight slot on failure). After this scope the
+		// lambda touches `this` no further, so once InFlightTiles is empty DrainTiles is free to go.
+		FScopeLock Lock(&AsyncStateLock);
+		InFlightTiles.Remove(Key);
+		if (bOk)
+		{
+			CompletedTiles.Add(FCompletedTile{ Key, Shared, Epoch });
+		}
+	});
+}
+
+int32 FDiffusionDemService::HarvestTiles(int32 Budget)
+{
+	// GAME THREAD ONLY — this is the sole writer of the resident `Tiles` map in the async path.
+	if (Budget <= 0)
+	{
+		return 0;
+	}
+
+	// Pull the whole completed queue out under the lock (cheap: pointers only), plus the current
+	// epoch so we can drop stale results. We re-queue anything we don't promote this tick.
+	TArray<FCompletedTile> Ready;
+	uint32 CurrentEpoch = 0;
+	{
+		FScopeLock Lock(&AsyncStateLock);
+		if (CompletedTiles.Num() == 0)
+		{
+			return 0;
+		}
+		Ready = MoveTemp(CompletedTiles);
+		CompletedTiles.Reset();
+		CurrentEpoch = TileEpoch;
+	}
+
+	// Nearest-to-focus first, so tiles under the player win the budget over far ones.
+	const FIntPoint Focus = TileFocus;
+	Ready.Sort([Focus](const FCompletedTile& A, const FCompletedTile& B)
+	{
+		const int64 Adx = A.Key.Tx - Focus.X, Adz = A.Key.Tz - Focus.Y;
+		const int64 Bdx = B.Key.Tx - Focus.X, Bdz = B.Key.Tz - Focus.Y;
+		return (Adx * Adx + Adz * Adz) < (Bdx * Bdx + Bdz * Bdz);
+	});
+
+	int32 Made = 0;
+	TArray<FCompletedTile> Requeue;
+	for (FCompletedTile& C : Ready)
+	{
+		// Reseed happened after this job started -> stale, drop it (never installs).
+		if (C.Epoch != CurrentEpoch)
+		{
+			continue;
+		}
+		if (Made >= Budget)
+		{
+			Requeue.Add(MoveTemp(C)); // over budget this tick — try again next tick
+			continue;
+		}
+		if (!C.Dem.IsValid() || !C.Dem->IsValid())
+		{
+			continue; // defensive: a null/invalid DEM is simply dropped
+		}
+
+		// Promote onto the resident map (game-thread write — the invariant) and keep it bounded.
+		Tiles.Add(C.Key, C.Dem);
+		EvictTilesIfNeeded(C.Key);
+		++Made;
+	}
+
+	// Return the leftovers to the queue for next tick (preserving them).
+	if (Requeue.Num() > 0)
+	{
+		FScopeLock Lock(&AsyncStateLock);
+		CompletedTiles.Append(MoveTemp(Requeue));
+	}
+
+	return Made;
+}
+
+void FDiffusionDemService::DrainTiles()
+{
+	// Bump the epoch + drop parked results first, so anything that finishes DURING the wait is
+	// stamped stale and can never install.
+	{
+		FScopeLock Lock(&AsyncStateLock);
+		++TileEpoch;
+		CompletedTiles.Reset();
+	}
+
+	// Block until every in-flight background job has cleared its slot. Jobs are ~1.6 s of GPU
+	// work; teardown is rare, so a short poll is fine (no game-thread work depends on precision).
+	for (;;)
+	{
+		{
+			FScopeLock Lock(&AsyncStateLock);
+			if (InFlightTiles.Num() == 0)
+			{
+				break;
+			}
+		}
+		FPlatformProcess::Sleep(0.005f);
+	}
+
+	// Now safe to clear everything — no worker is running.
+	Tiles.Empty();
+	{
+		FScopeLock Lock(&AsyncStateLock);
+		CompletedTiles.Reset();
+	}
+}
+
+int32 FDiffusionDemService::NumTileJobsInFlight() const
+{
+	FScopeLock Lock(&AsyncStateLock);
+	return InFlightTiles.Num();
+}
+
+void FDiffusionDemService::ClearTiles()
+{
+	// Reseed/teardown WITHOUT blocking on in-flight inference. Bump the epoch + drop parked
+	// results so a job that finished before this call can't be harvested onto the new seed, then
+	// clear the resident map (game thread — the map's only writer). In-flight jobs keep running
+	// but their results are now stale-epoch and will be discarded by HarvestTiles; a full block-
+	// and-clear teardown is DrainTiles() (also run by the destructor).
+	{
+		FScopeLock Lock(&AsyncStateLock);
+		++TileEpoch;
+		CompletedTiles.Reset();
+	}
+	Tiles.Empty();
 }
