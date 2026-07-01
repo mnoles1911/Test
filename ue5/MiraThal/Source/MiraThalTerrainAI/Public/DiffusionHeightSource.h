@@ -73,10 +73,13 @@ public:
 	// VerticalScaleVoxels  normalised-cell -> voxel-height scale (use Svc->GetVerticalScaleVoxels()).
 	// VerticalBaseVoxels   normalised-cell -> voxel-height base  (use Svc->GetVerticalBaseVoxels()).
 	// TileSpanVoxels       tile size on the world grid (use Svc->TileSpanVoxels).
+	// InVerticalFloorVoxels  LOWEST voxel the surface may reach (= sea - max water depth). Deep
+	//                        ocean clamps here so water columns stay cheap. Use
+	//                        Svc->VerticalFloorVoxels(). 0 keeps the legacy world-floor behaviour.
 	DiffusionHeightSource(const FDiffusionDemService* InSvc, int64 InSeed,
 	                      mira::tdiff::DetailBridgeParams InDetail,
 	                      double InVerticalScaleVoxels, double InVerticalBaseVoxels,
-	                      int32 InTileSpanVoxels);
+	                      int32 InTileSpanVoxels, double InVerticalFloorVoxels = 0.0);
 
 	// --- IHeightSource ---------------------------------------------------------
 	// Ready to be sampled at all? True once the service is set (the per-tile residency
@@ -101,6 +104,7 @@ private:
 	mira::tdiff::DetailBridgeParams Detail;        // seed fixed to Seed in the ctor
 	double                          VerticalScaleVoxels = 7000.0;
 	double                          VerticalBaseVoxels  = 120.0;
+	double                          VerticalFloorVoxels = 0.0; // seabed clamp (sea - max water depth)
 	int32                           TileSpanVoxels = 19200;
 };
 

@@ -32,7 +32,9 @@
 #include "DiffusionHeightSource.h"
 #include "DiffusionCoarseProvider.h"   // FDiffusionCoarseProvider::Make — real GPU provider
 #include "TdiffWorldHook.h"            // UTdiffWorldHook::SnapPlayerToLand (shared land-spawn)
+#include "TdiffAutoStreamSubsystem.h"  // auto-start on Play
 #include "Core/Tdiff/DetailBridge.h"   // mira::tdiff::DetailBridgeParams
+#include "TimerManager.h"              // FTimerHandle — delayed auto-start
 
 #include "VoxelWorld.h"
 #include "EngineUtils.h"               // TActorIterator
@@ -141,7 +143,7 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	S.Source = MakeUnique<mira::DiffusionHeightSource>(
 		S.Service.Get(), Seed, Detail,
 		S.Service->GetVerticalScaleVoxels(), S.Service->GetVerticalBaseVoxels(),
-		S.Service->TileSpanVoxels);
+		S.Service->TileSpanVoxels, S.Service->VerticalFloorVoxels());
 
 	// 4) Bind the two game-thread callbacks (capture raw service ptr — owned by FStreamState,
 	//    outlives the world's use of them; reset only on the next StartStreaming).
@@ -245,7 +247,13 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		if (Svc->HighestResidentLand(Sd, LandX, LandZ, LandHVox) && LandHVox > SeaVox + 50.0
 			&& FMath::Abs(LandX) < NearVox && FMath::Abs(LandZ) < NearVox)
 		{
-			const FVector Spawn(LandX * 10.0, LandZ * 10.0, LandHVox * 10.0 + 500.0); // +50 m, fall in
+			// CRITICAL: the coarse-cell height (LandHVox) is only an ESTIMATE. The actual voxel
+			// surface the player stands on comes from the SAME sampler the columns use (detail
+			// bridge + apron + floor clamp). Re-sample it at the chosen XZ so we place the pawn ON
+			// the real ground, not floating above a coarse guess (that mismatch was the "floating
+			// high above the terrain" bug). Log both so any remaining disagreement is visible.
+			const double RealVox = static_cast<double>(S.Source->sample_value(LandX, LandZ));
+			const FVector Spawn(LandX * 10.0, LandZ * 10.0, RealVox * 10.0 + 200.0); // +2 m, feet on ground
 			if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(World->GetWorld(), 0))
 			{
 				Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::TeleportPhysics);
@@ -253,9 +261,10 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 			Svc->SetTileFocus(FDiffusionDemService::TileCoordOf(static_cast<int64>(LandX),
 			                                                    static_cast<int64>(LandZ), Span));
 			UE_LOG(LogMiraTdiffStream, Display,
-				TEXT("[Tdiff] spawned on highest AI land at world (%.0f,%.0f) vox, height %.0f vox "
-				     "(%.0f m); streaming will fill the chunks under you."),
-				LandX, LandZ, LandHVox, LandHVox / 10.0);
+				TEXT("[Tdiff] spawned on highest AI land at world (%.0f,%.0f) vox: coarse est %.0f vox "
+				     "(%.0f m), REAL sampled %.0f vox (%.0f m). Sea %.0f vox, seabed floor %.0f vox."),
+				LandX, LandZ, LandHVox, LandHVox / 10.0, RealVox, RealVox / 10.0,
+				SeaVox, Svc->VerticalFloorVoxels());
 		}
 		else
 		{
@@ -294,3 +303,93 @@ static FAutoConsoleCommandWithWorldAndArgs GTdiffStreamCmd(
 	TEXT("Start INFINITE AI terrain streaming centred on the player (Phase 2). "
 	     "Usage: MiraThal.Tdiff.Stream [Seed]"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&TdiffStreamConsole));
+
+// ============================================================================================
+// DIAGNOSTIC: MiraThal.Tdiff.Diag — dump the player's exact terrain situation so we can SEE
+// (not guess) why terrain looks wrong: pawn height vs the REAL sampled surface + sea + seabed
+// floor, whether the covering tile is resident, and the ocean/land verdict at the pawn's spot.
+// ============================================================================================
+static void TdiffDiagConsole(const TArray<FString>& Args, UWorld* World)
+{
+	if (!World) { return; }
+	FStreamState& S = Stream();
+	if (!S.bActive || !S.Service.IsValid() || !S.Source.IsValid())
+	{
+		UE_LOG(LogMiraTdiffStream, Warning,
+			TEXT("[Tdiff][Diag] streaming is not active — run MiraThal.Tdiff.Stream <seed> first."));
+		return;
+	}
+
+	APawn* Pawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!Pawn) { UE_LOG(LogMiraTdiffStream, Warning, TEXT("[Tdiff][Diag] no player pawn.")); return; }
+
+	const FVector Loc = Pawn->GetActorLocation();
+	const int64 WX = static_cast<int64>(FMath::RoundToDouble(Loc.X / 10.0)); // UU -> world voxel
+	const int64 WZ = static_cast<int64>(FMath::RoundToDouble(Loc.Y / 10.0));
+	const double SurfVox = static_cast<double>(S.Source->sample_value(static_cast<double>(WX),
+	                                                                   static_cast<double>(WZ)));
+	const int32  Span    = S.Service->TileSpanVoxels;
+	const FIntPoint TC   = FDiffusionDemService::TileCoordOf(WX, WZ, Span);
+	const bool bResident = S.Service->GetResidentTile(S.Seed, TC).IsValid();
+
+	UE_LOG(LogMiraTdiffStream, Display,
+		TEXT("[Tdiff][Diag] pawn UU(%.0f,%.0f,%.0f) = vox(%lld,%lld) Z=%.1f vox | surface here = %.1f vox "
+		     "(%.1f m) | sea=%.0f floor=%.0f | %s | tile (%d,%d) resident=%s | residentTiles=%d | tilegen=%s"),
+		Loc.X, Loc.Y, Loc.Z, (long long)WX, (long long)WZ, Loc.Z / 10.0,
+		SurfVox, SurfVox / 10.0,
+		S.Service->GetVerticalBaseVoxels(), S.Service->VerticalFloorVoxels(),
+		SurfVox < S.Service->GetVerticalBaseVoxels() ? TEXT("UNDER SEA (water column here)") : TEXT("dry land"),
+		TC.X, TC.Y, bResident ? TEXT("YES") : TEXT("NO (column defers -> hole/flat)"),
+		S.Service->NumResidentTiles(),
+		S.Service->bAsyncTileGen ? TEXT("ASYNC") : TEXT("sync"));
+}
+
+static FAutoConsoleCommandWithWorldAndArgs GTdiffDiagCmd(
+	TEXT("MiraThal.Tdiff.Diag"),
+	TEXT("Dump the player's terrain diagnostics (surface height, sea/floor, tile residency)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&TdiffDiagConsole));
+
+// ============================================================================================
+// AUTO-START on Play (UTdiffAutoStreamSubsystem::OnWorldBeginPlay, declared in the header).
+// Default ON. Waits a beat for the player pawn to spawn, then streams the default seed — which
+// also destroys the legacy baked crust. Disable with MiraThal.Tdiff.AutoStream 0.
+// ============================================================================================
+static TAutoConsoleVariable<int32> CVarTdiffAutoStream(
+	TEXT("MiraThal.Tdiff.AutoStream"), 1,
+	TEXT("1 (default) = auto-start AI terrain streaming when a level begins play. "
+	     "0 = off (start it manually with MiraThal.Tdiff.Stream)."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<int32> CVarTdiffAutoStreamSeed(
+	TEXT("MiraThal.Tdiff.AutoStreamSeed"), 99,
+	TEXT("Seed the auto-start uses when a level begins play (MiraThal.Tdiff.AutoStream)."),
+	ECVF_Default);
+
+void UTdiffAutoStreamSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+{
+	Super::OnWorldBeginPlay(InWorld);
+
+	if (CVarTdiffAutoStream.GetValueOnGameThread() == 0) { return; }
+	if (!InWorld.IsGameWorld()) { return; }
+
+	// Only auto-start if the level actually has a voxel world to stream into.
+	AVoxelWorld* VoxelWorld = nullptr;
+	for (TActorIterator<AVoxelWorld> It(&InWorld); It; ++It) { VoxelWorld = *It; break; }
+	if (!VoxelWorld) { return; }
+
+	const int64 Seed = static_cast<int64>(CVarTdiffAutoStreamSeed.GetValueOnGameThread());
+	UE_LOG(LogMiraTdiffStream, Display,
+		TEXT("[Tdiff] AutoStream: level begun play — starting AI streaming (seed %lld) in ~0.6s."),
+		(long long)Seed);
+
+	// Wait a beat so the player pawn + voxel world are fully initialised, then start streaming.
+	TWeakObjectPtr<AVoxelWorld> WeakVW(VoxelWorld);
+	FTimerHandle Th;
+	InWorld.GetTimerManager().SetTimer(Th, [WeakVW, Seed]()
+	{
+		if (AVoxelWorld* VW = WeakVW.Get())
+		{
+			StartStreaming(VW, Seed);
+		}
+	}, 0.6f, false);
+}

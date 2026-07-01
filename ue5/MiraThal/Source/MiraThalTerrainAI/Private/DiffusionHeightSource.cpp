@@ -11,12 +11,13 @@ namespace mira {
 DiffusionHeightSource::DiffusionHeightSource(const FDiffusionDemService* InSvc, int64 InSeed,
                                              mira::tdiff::DetailBridgeParams InDetail,
                                              double InVerticalScaleVoxels, double InVerticalBaseVoxels,
-                                             int32 InTileSpanVoxels)
+                                             int32 InTileSpanVoxels, double InVerticalFloorVoxels)
 	: Svc(InSvc)
 	, Seed(InSeed)
 	, Detail(InDetail)
 	, VerticalScaleVoxels(InVerticalScaleVoxels)
 	, VerticalBaseVoxels(InVerticalBaseVoxels)
+	, VerticalFloorVoxels(InVerticalFloorVoxels)
 	, TileSpanVoxels(InTileSpanVoxels > 0 ? InTileSpanVoxels : 1)
 {
 	// Fix the detail field's seed to the world seed, EXACTLY as BuildHeightmapFromCoarse
@@ -38,7 +39,7 @@ double DiffusionHeightSource::SampleContinuous(int WorldX, int WorldZ) const
 	// real tile so we NEVER produce a hole/NaN (design risk R4). Uses the SAME clamp the
 	// metres->voxel conversion uses, with sea level anchored at VerticalBaseVoxels.
 	const double Fallback =
-		FMath::Clamp(VerticalBaseVoxels, 0.0, FDiffusionDemService::kMaxSurfaceVoxels);
+		FMath::Clamp(VerticalBaseVoxels, VerticalFloorVoxels, FDiffusionDemService::kMaxSurfaceVoxels);
 
 	if (Svc == nullptr)
 	{
@@ -72,7 +73,7 @@ double DiffusionHeightSource::SampleContinuous(int WorldX, int WorldZ) const
 		const double Y =
 			VerticalBaseVoxels + static_cast<double>(Dem.Cells[i]) * VerticalScaleVoxels;
 		Scratch[i] =
-			static_cast<float>(FMath::Clamp(Y, 0.0, FDiffusionDemService::kMaxSurfaceVoxels));
+			static_cast<float>(FMath::Clamp(Y, VerticalFloorVoxels, FDiffusionDemService::kMaxSurfaceVoxels));
 	}
 
 	// 4) Tile georef. Prefer the tile's SELF-DESCRIBING georef (set by EnsureTileResident),

@@ -290,13 +290,26 @@ public:
 	{
 		const double Y = VerticalBaseVoxels
 			+ static_cast<double>(Dem.Cells[CellIndex]) * VerticalScaleVoxels;
-		return FMath::Clamp(Y, 0.0, kMaxSurfaceVoxels);
+		return FMath::Clamp(Y, VerticalFloorVoxels(), kMaxSurfaceVoxels);
 	}
 
 	// Vertical-mapping accessors so the wiring can construct a DiffusionHeightSource that
 	// converts coarse cells with the SAME scale/base this service used (risk R9).
 	double GetVerticalScaleVoxels() const { return VerticalScaleVoxels; }
 	double GetVerticalBaseVoxels()  const { return VerticalBaseVoxels;  }
+
+	// The LOWEST voxel the AI surface is allowed to reach = sea (VerticalBaseVoxels) minus the max
+	// water depth. WHY: the AI produces real-world bathymetry down to ~-4500 m; at 10 vox/m sea sits
+	// at VerticalBaseVoxels (1400) so a deep-ocean column would fill ~1400 voxels of WATER — hugely
+	// expensive, so the streamer can only manage a tiny patch. Clamping the seabed to this floor turns
+	// deep ocean into a cheap shallow shelf (water at most MaxWaterDepthVoxels deep) so the world
+	// streams smoothly. Land (above sea) is unaffected. Shared by TileVoxelHeightAtCell + the height
+	// source so bounded/streaming/spawn all agree.
+	double VerticalFloorVoxels() const
+	{
+		return FMath::Max(0.0, VerticalBaseVoxels - MaxWaterDepthVoxels);
+	}
+	double GetMaxWaterDepthVoxels() const { return MaxWaterDepthVoxels; }
 
 	// Scan every RESIDENT tile for this seed and return the world-voxel (X,Z) + voxel height
 	// of the TALLEST land cell found. Lets the spawn drop the player onto the highest nearby
@@ -383,6 +396,9 @@ private:
 
 	double VerticalScaleVoxels = 7000.0; // 700 m * 10 vox/m (matches EXR altitude default)
 	double VerticalBaseVoxels  = 120.0;  // 12 m * 10 vox/m  (sea level floor)
+	// Max voxels of water over the seabed (deep ocean is clamped to a shelf this far below sea).
+	// 120 vox = 12 m: reads as sea from the surface but keeps ocean columns cheap. See VerticalFloorVoxels().
+	double MaxWaterDepthVoxels = 120.0;
 
 	// --- Phase 2: stream-tile cache (mirrors the FRegionKey shape) -------------
 	// A tile is uniquely identified by seed + integer tile coord on the world grid.
