@@ -60,6 +60,17 @@ static TAutoConsoleVariable<int32> CVarTdiffAsyncTiles(
 	     "MiraThal.Tdiff.Stream."),
 	ECVF_Default);
 
+// TERRAIN DRAMA knob: voxels of render-height per real AI metre. 10 = true 1:1 scale — dramatic,
+// near-vertical mountains (the coarse DEM is 30 m/px, so real relief renders very steep up close).
+// LOWER compresses the heights into gentler rolling hills (4 ≈ a good rolling default). Sea line is
+// unaffected (base is fixed). Read once at StartStreaming — set it, then re-run MiraThal.Tdiff.Stream.
+static TAutoConsoleVariable<float> CVarTdiffVerticalScale(
+	TEXT("MiraThal.Tdiff.VerticalScale"),
+	4.0f,
+	TEXT("AI terrain vertical scale (voxels of height per real metre). 10 = true/steep, "
+	     "lower = gentler rolling hills. Clamped [0.5,20]. Applied at the next MiraThal.Tdiff.Stream."),
+	ECVF_Default);
+
 namespace
 {
 	// Same export location the bounded path uses (TdiffWorldHook GTdiffOnnxDir/StatsPath).
@@ -126,11 +137,18 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	const bool bAsync = CVarTdiffAsyncTiles.GetValueOnGameThread() != 0;
 	S.Service->bAsyncTileGen = bAsync;
 
-	// 2) Vertical mapping: sea-anchored, identical to TdiffWorldHook::FillRegion so streaming and
-	//    bounded output agree (voxelY = SeaLevelMeters*10 + metres*10, clamped to kMaxSurfaceVoxels).
-	constexpr double VoxelsPerMetre = 10.0;
-	S.Service->SetVerticalMapping(/*scale=*/ VoxelsPerMetre,
-	                              /*base=*/  static_cast<double>(World->SeaLevelMeters) * VoxelsPerMetre);
+	// 2) Vertical mapping: voxelY = SeaVoxBase + metres * VerticalScale, clamped to kMaxSurfaceVoxels.
+	//    BASE is fixed at SeaLevelMeters*10 vox so the AI sea line matches the generator's
+	//    sea_level_voxels (= water fills to the right height). SCALE is a TUNABLE knob (voxels of
+	//    render-height per real AI metre): 10 = true 1:1 scale (dramatic, near-vertical mountains
+	//    because the coarse grid is 30 m/px); LOWER = gentler rolling hills. Decoupled from base so
+	//    tuning drama never moves the sea line. Read once here — change the CVar, then re-Stream.
+	const double SeaVoxBase    = static_cast<double>(World->SeaLevelMeters) * 10.0; // == generator sea line
+	const double VoxelsPerMetre = FMath::Clamp(CVarTdiffVerticalScale.GetValueOnGameThread(), 0.5, 20.0);
+	S.Service->SetVerticalMapping(/*scale=*/ VoxelsPerMetre, /*base=*/ SeaVoxBase);
+	UE_LOG(LogMiraTdiffStream, Display,
+		TEXT("[Tdiff] vertical scale = %.1f vox/m (10=true 1:1/steep, lower=rolling); sea base = %.0f vox."),
+		VoxelsPerMetre, SeaVoxBase);
 
 	// 3) Detail-bridge params with the AI smoothing overrides (R9 parity with the bounded path,
 	//    which applies these inside BuildHeightmapFromCoarse).
