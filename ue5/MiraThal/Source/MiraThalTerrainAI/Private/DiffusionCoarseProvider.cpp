@@ -7,11 +7,43 @@
 #include "Core/Tdiff/SyntheticMap.h"    // mira::tdiff::SyntheticMap / SyntheticMapStats / loader
 #include "Containers/StringConv.h"      // TCHAR_TO_UTF8
 #include "Logging/LogMacros.h"
+#include "HAL/IConsoleManager.h"        // TAutoConsoleVariable (the MiraThal.Tdiff.PerfLog switch)
+#include "HAL/PlatformTime.h"           // FPlatformTime::Seconds() (the per-tile stopwatch)
 
 #include <vector>
 #include <string>
 
 DEFINE_LOG_CATEGORY_STATIC(LogMiraCoarseProvider, Log, All);
+
+// =========================================================================================
+// PERFORMANCE LOGGING (added so we can SEE how fast the AI terrain actually runs on the GPU).
+//
+// Plain English: the runner already prints one "RunSync OK ... in X ms" line for each of the
+// ~23 neural-net calls it makes, but nobody was adding those up. So we had no idea how long a
+// WHOLE ~1.9 km tile takes, nor how that time splits between the GPU inference, the CPU erosion
+// pass, and the final copy. The block below fixes that: it times the whole Fill() (and its
+// cleanly-separated sub-stages) and prints a compact summary once per tile, plus a rolling
+// average every few tiles so throughput (tiles/min) is visible at a glance.
+//
+// The verbose per-tile line is gated behind a console variable so it can be silenced live from
+// the editor console; the rolling summary is cheap and always prints.
+//   Console:  MiraThal.Tdiff.PerfLog 0   (silence the per-tile line)
+//             MiraThal.Tdiff.PerfLog 1   (default - print it)
+// =========================================================================================
+static TAutoConsoleVariable<int32> CVarTdiffPerfLog(
+	TEXT("MiraThal.Tdiff.PerfLog"),
+	1, // default ON: the line is cheap (one string per multi-second tile) and very useful.
+	TEXT("Log a per-tile [Tdiff][Perf] timing line (total ms + pipeline/erosion/store breakdown) ")
+	TEXT("from FDiffusionCoarseProvider::Fill. 1 = on (default), 0 = off. The rolling average ")
+	TEXT("summary is unaffected by this switch and always logs."),
+	ECVF_Default);
+
+// Rolling aggregate across successive tiles. This provider is serialized by the caller's
+// ProviderLock (one Fill() at a time), so plain file-scope statics are safe here - no atomics
+// needed. We keep a running tile COUNT and a running SUM of per-tile milliseconds, and every
+// 8 tiles we emit an average + a tiles-per-minute throughput estimate.
+static int64  GTdiffPerfTileCount = 0;   // how many tiles we have timed so far
+static double GTdiffPerfSumMs     = 0.0; // summed wall-clock ms across those tiles
 
 namespace
 {
@@ -140,6 +172,11 @@ FDiffusionCoarseProvider::~FDiffusionCoarseProvider() = default;
 // ---------------------------------------------------------------------------
 bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, FCoarseDem& Out)
 {
+	// --- PERF: start the whole-tile stopwatch at the very top. ---------------------------
+	// We only emit the timing line on the SUCCESS path (the early-return failure cases below
+	// already print their own warning), so the degenerate-region returns cost nothing extra.
+	const double FillStartSec = FPlatformTime::Seconds();
+
 	const int32 WidthVox  = RegionInVoxels.Max.X - RegionInVoxels.Min.X;
 	const int32 HeightVox = RegionInVoxels.Max.Y - RegionInVoxels.Min.Y;
 	if (WidthVox <= 0 || HeightVox <= 0)
@@ -211,10 +248,21 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 		OutTile = std::move(Et.elev);
 	};
 
+	// --- PERF: bracket the PIPELINE stage. -----------------------------------------------
+	// This one Tiler.blend() call is where ALL the GPU work happens: it drives the per-tile
+	// coarse->base->decoder denoise (the ~23 net calls the runner logs individually) AND then
+	// feathers the seams between overlapping tiles. Those two are FUSED inside blend(), so this
+	// timer measures "inference + seam blend" together - we cannot cheaply split the coarse vs
+	// base vs decoder share apart from here without refactoring the pipeline (we intentionally
+	// don't). In practice this stage dominates the tile's wall-clock time.
+	const double PipelineStartSec = FPlatformTime::Seconds();
+
 	// blend() returns a row-major (Rows x Cols) elevation buffer in metres, index = row*Cols+col.
 	std::vector<float> Elev = Tiler.blend(static_cast<uint64_t>(Seed),
 	                                      RowOrigin, ColOrigin,
 	                                      RowOrigin + Rows, ColOrigin + Cols, Gen);
+
+	const double PipelineMs = (FPlatformTime::Seconds() - PipelineStartSec) * 1000.0;
 
 	if (Ad.bRunFailed)
 	{
@@ -256,13 +304,20 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 	// already carries cross-tile context and droplets see the neighbour's terrain within the apron.
 	// A fully world-positioned erosion pass (one continuous droplet field keyed to world coords,
 	// like the world-continuous noise) is a future refinement; we intentionally do NOT attempt it now.
+	// --- PERF: bracket the EROSION stage. ------------------------------------------------
+	// The erosion pass is the CPU half of a tile (droplet + thermal weathering). We time just
+	// the erode() work here so the per-tile line shows how much of the wall-clock is GPU
+	// inference vs CPU erosion. Declared out here so it stays 0.0 when erosion is toggled off.
+	double ErosionMs = 0.0;
 	if (Config.bErode)
 	{
 		// Capture the pre-erosion range so the log shows the effect at a glance.
 		float PreLo = Elev[0], PreHi = Elev[0];
 		for (float V : Elev) { PreLo = FMath::Min(PreLo, V); PreHi = FMath::Max(PreHi, V); }
 
+		const double ErosionStartSec = FPlatformTime::Seconds();
 		mira::tdiff::erode(Elev.data(), Cols, Rows, Config.Erosion, static_cast<uint64_t>(Seed));
+		ErosionMs = (FPlatformTime::Seconds() - ErosionStartSec) * 1000.0;
 
 		float PostLo = Elev[0], PostHi = Elev[0];
 		for (float V : Elev) { PostLo = FMath::Min(PostLo, V); PostHi = FMath::Max(PostHi, V); }
@@ -290,6 +345,9 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 		Hi = FMath::Max(Hi, V);
 	}
 
+	// --- PERF: bracket the STORE stage (copy the blended/eroded grid into FCoarseDem). ----
+	const double StoreStartSec = FPlatformTime::Seconds();
+
 	Out.CoarseW = Cols;
 	Out.CoarseH = Rows;
 	Out.Cells.SetNumUninitialized(Rows * Cols);
@@ -297,6 +355,8 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 	{
 		Out.Cells[i] = Elev[static_cast<size_t>(i)]; // absolute metres
 	}
+
+	const double StoreMs = (FPlatformTime::Seconds() - StoreStartSec) * 1000.0;
 
 	const int32 TileCount = Tiler.tile_count(RowOrigin, ColOrigin, RowOrigin + Rows, ColOrigin + Cols);
 	UE_LOG(LogMiraCoarseProvider, Display,
@@ -306,6 +366,40 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 		RegionInVoxels.Min.X, RegionInVoxels.Min.Y,
 		RegionInVoxels.Max.X, RegionInVoxels.Max.Y, static_cast<long long>(Seed),
 		(SynthPtr ? TEXT("synthetic") : TEXT("zero")));
+
+	// --- PERF: stop the whole-tile stopwatch and report. ---------------------------------
+	// TotalMs is the true end-to-end cost of generating this one tile. It will be a touch more
+	// than pipeline+erosion+store because it also includes the cheap setup (origin math, the
+	// SyntheticMap build, the elevation-range scans) - that's intentional; TotalMs is the number
+	// the designer actually cares about ("how long did this tile take?").
+	const double TotalMs = (FPlatformTime::Seconds() - FillStartSec) * 1000.0;
+
+	// Verbose per-tile line - gated behind MiraThal.Tdiff.PerfLog (default on). Shows the total
+	// plus the pipeline (GPU inference + seam blend) / erosion (CPU) / store split so it's obvious
+	// where the time goes.
+	if (CVarTdiffPerfLog.GetValueOnAnyThread() != 0)
+	{
+		UE_LOG(LogMiraCoarseProvider, Display,
+			TEXT("[Tdiff][Perf] tile [%d,%d]..[%d,%d] generated in %.1f ms (%dx%d cells) - "
+			     "pipeline(infer+blend) %.1f / erosion %.1f / store %.1f ms."),
+			RegionInVoxels.Min.X, RegionInVoxels.Min.Y,
+			RegionInVoxels.Max.X, RegionInVoxels.Max.Y,
+			TotalMs, Cols, Rows, PipelineMs, ErosionMs, StoreMs);
+	}
+
+	// Rolling aggregate (always logs, every 8 tiles). Safe as plain statics because the caller
+	// serializes Fill() under ProviderLock. avg ms/tile = sum/count; tiles/min = 60000 / avg.
+	++GTdiffPerfTileCount;
+	GTdiffPerfSumMs += TotalMs;
+	if ((GTdiffPerfTileCount % 8) == 0)
+	{
+		const double AvgMs        = GTdiffPerfSumMs / static_cast<double>(GTdiffPerfTileCount);
+		const double TilesPerMin  = (AvgMs > 0.0) ? (60000.0 / AvgMs) : 0.0;
+		UE_LOG(LogMiraCoarseProvider, Display,
+			TEXT("[Tdiff][Perf] rolling: %lld tiles, avg %.1f ms/tile (~%.1f tiles/min)."),
+			static_cast<long long>(GTdiffPerfTileCount), AvgMs, TilesPerMin);
+	}
+
 	return true;
 }
 
