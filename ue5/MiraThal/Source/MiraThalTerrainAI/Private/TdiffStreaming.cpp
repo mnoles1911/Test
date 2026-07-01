@@ -72,6 +72,16 @@ static TAutoConsoleVariable<float> CVarTdiffVerticalScale(
 	     "lower = gentler rolling hills. Clamped [0.5,20]. Applied at the next MiraThal.Tdiff.Stream."),
 	ECVF_Default);
 
+// FAR HORIZONS: enable the voxel far-render (bCoarseFarGen + bEnableSuperChunks, both default OFF
+// on AVoxelWorld) when AI streaming starts, so the view distance extends past the near ring with
+// coarse far terrain instead of a hard cutoff. 1 (default) = on. Applied at the next Stream.
+static TAutoConsoleVariable<int32> CVarTdiffFarRender(
+	TEXT("MiraThal.Tdiff.FarRender"),
+	1,
+	TEXT("1 (default) = enable far-render (coarse far-gen + super-chunks) for the AI world so you "
+	     "can see far; 0 = near ring only. Applied at the next MiraThal.Tdiff.Stream."),
+	ECVF_Default);
+
 namespace
 {
 	// Same export location the bounded path uses (TdiffWorldHook GTdiffOnnxDir/StatsPath).
@@ -284,7 +294,19 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		Svc->SetTileFocus(FT);
 	}
 
-	// 6) Install + switch the world to the streaming AI source and (re)build around the player.
+	// 6) FAR HORIZONS: turn on the far-render for the AI world. bEnableLOD is already on, but
+	//    bCoarseFarGen (far columns at coarse LOD) + bEnableSuperChunks (the far super band) default
+	//    OFF, which is why streaming showed "coarseGen 0 / SUPER 0" (a hard view-distance cutoff at
+	//    the near ring). Enabling them here extends the visible distance with coarse far terrain.
+	//    Gated by MiraThal.Tdiff.FarRender (default 1) so it can be turned off if it costs too much.
+	if (CVarTdiffFarRender.GetValueOnGameThread() != 0)
+	{
+		World->bEnableLOD        = true;
+		World->bCoarseFarGen     = true;
+		World->bEnableSuperChunks = true;
+	}
+
+	// 7) Install + switch the world to the streaming AI source and (re)build around the player.
 	World->SetStreamingHeightSource(S.Source.Get(), EnsureFn, ReadyFn);
 	World->HeightSource = EVoxelHeightSource::DiffusionAI;
 	World->GenerateWorld();
