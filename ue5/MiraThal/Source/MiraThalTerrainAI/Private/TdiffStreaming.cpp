@@ -172,7 +172,8 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	World->SetStreamingHeightSource(S.Source.Get(), EnsureFn, ReadyFn);
 	World->HeightSource = EVoxelHeightSource::DiffusionAI;
 	World->GenerateWorld();
-	UTdiffWorldHook::SnapPlayerToLand(World); // stand on the streamed surface, not floating above it
+	UTdiffWorldHook::RemoveBakedTerrain(World); // clear legacy baked-EXR crust/far-mesh overlays
+	UTdiffWorldHook::SnapPlayerToLand(World);    // stand on the streamed surface, not floating above it
 	S.bActive = true;
 
 	UE_LOG(LogMiraTdiffStream, Display,
