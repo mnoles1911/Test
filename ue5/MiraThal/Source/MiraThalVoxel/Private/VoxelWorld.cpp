@@ -66,6 +66,27 @@ static TAutoConsoleVariable<int32> CVarMiraLodDebug(
 	ECVF_Default);
 
 // ===========================================================================
+// FAR HORIZONS push knob. SuperRadiusChunks is already an EditAnywhere UPROPERTY
+// (default 384 ≈ 1.23 km, hard ceiling 512 ≈ 1.6 km — see VoxelWorld.h). This CVar
+// lets the designer push the far super-chunk render radius live from the console
+// WITHOUT re-cooking, e.g. `MiraThal.SuperRadiusChunks 512`. -1 (default) = leave the
+// UPROPERTY value untouched, so the shipped behavior is byte-for-byte unchanged. When
+// set >= 0 it is clamped to [64,512] (the same range as the property) and overrides
+// SuperRadiusChunks at the top of TickStreaming, before any super sweep reads it.
+//
+// PAIRING: a bigger radius only fills with REAL AI terrain if the coarse DEM tiles out
+// there are resident. That residency comes from the wide ASYNC ring in TdiffStreaming
+// (kSuperTileRequestRing), which only runs when MiraThal.Tdiff.AsyncTiles 1. Pushing
+// this without async on just extends the band into the sea-level fallback (all-air).
+static TAutoConsoleVariable<int32> CVarMiraSuperRadiusChunks(
+	TEXT("MiraThal.SuperRadiusChunks"),
+	-1,
+	TEXT("FAR HORIZONS: override the super-chunk far-render radius in CHUNKS. -1 = use the "
+	     "SuperRadiusChunks UPROPERTY (default). >=0 is clamped to [64,512]. Needs "
+	     "MiraThal.Tdiff.AsyncTiles 1 to fill the extended band with real AI terrain."),
+	ECVF_Default);
+
+// ===========================================================================
 // P1 async generation — a column's terrain is PURE (reads only the immutable
 // EXR + scalar knobs), so it can be generated on a worker thread. These
 // file-scope helpers carry no Unreal-actor state: a snapshot of the generator
@@ -1579,6 +1600,19 @@ void AVoxelWorld::TickStreaming()
 		return;
 	}
 
+	// FAR HORIZONS: apply the live SuperRadiusChunks push knob (console CVar) BEFORE any super
+	// sweep below reads the member. -1 leaves the UPROPERTY untouched (shipped default, byte-for-
+	// byte unchanged); a set value is clamped to the same [64,512] range the property enforces.
+	// A bigger radius only shows REAL terrain when the wide async DEM ring is priming the far
+	// tiles — otherwise the extended band samples the sea-level fallback (see the CVar comment).
+	{
+		const int32 SuperRadiusOverride = CVarMiraSuperRadiusChunks.GetValueOnGameThread();
+		if (SuperRadiusOverride >= 0)
+		{
+			SuperRadiusChunks = FMath::Clamp(SuperRadiusOverride, 64, 512);
+		}
+	}
+
 	// Phase 2 streaming: make the AI tiles around the player resident BEFORE we enqueue any
 	// columns this tick (synchronous + budgeted on the game thread, inside the AI module's
 	// bound callback — inference never touches a column worker). Columns whose tile isn't yet
@@ -2092,6 +2126,17 @@ void AVoxelWorld::TickStreaming()
 		// A temp generator (game-thread, mirrors the gen path) to find each super-region's
 		// vertical extent from the heightmap, so we only mesh the super-Y bands that hold
 		// terrain instead of a full column of empty supers.
+		//
+		// FAR HORIZONS VERIFICATION (no code — reasoning only): ConfigureGenerator routes the
+		// installed streaming AI height source into FocusGen, so FocusGen.compute_ground_y below
+		// samples the SAME DiffusionHeightSource the near columns use. Its vertical-extent probes
+		// sit up to SuperRadiusChunks away (~1.23 km at default), i.e. far outside the tight column
+		// ring. Previously those far probes fell outside the resident coarse-DEM tiles, so the
+		// source returned the sea-level fallback -> min==max ground at sea -> an all-air super band
+		// -> "SUPER 0 / coarseGen 0". With MiraThal.Tdiff.AsyncTiles 1 the wide async ring
+		// (kSuperTileRequestRing = 5, 11x11 tiles, ~9.6 km reach) now keeps those far tiles
+		// resident, so these probes hit REAL AI heights and the far supers get a real Y band and
+		// mesh. (Sync/async choice is entirely in TdiffStreaming; nothing here changes per path.)
 		HeightmapGenerator FocusGen;
 		ConfigureGenerator(FocusGen);
 

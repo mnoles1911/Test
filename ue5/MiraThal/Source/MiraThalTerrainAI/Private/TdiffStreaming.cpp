@@ -89,6 +89,23 @@ namespace
 	constexpr int32 kAsyncRequestRing = 2;   // request focus + a 2-ring (5x5) so jobs stay queued ahead
 	constexpr int32 kHarvestPerTick   = 4;   // resident-map promotions per tick (cheap — just map adds)
 
+	// --- FAR HORIZONS wide residency ring (ASYNC ONLY). The coarse super-chunk far-render
+	// (VoxelWorld TickStreaming) samples ground heights out to SuperRadiusChunks (~1.23 km at
+	// the default 384). Those far super sample points fall WAY outside the tight kAsyncRequestRing
+	// (a 2-ring only covers ~a few hundred metres), so without a wider resident tile ring the
+	// height source returns the sea-level fallback for them -> the far supers come out all-air ->
+	// "SUPER 0 / coarseGen 0". This wide ring keeps far coarse DEM tiles RESIDENT so GenLod>0 super
+	// sampling hits real AI heights. RequestTile is cheap + idempotent and self-caps at
+	// MaxTileJobsInFlight, so requesting a big ring every tick just keeps the async queue primed —
+	// only MaxTileJobsInFlight jobs actually run at once; the rest are no-ops until a slot frees.
+	//
+	// 5 -> an 11x11 tile ring. One tile = TileSpanVoxels (19200 vox = 1920 m), so a 5-ring reaches
+	// ~5 * 1920 m = 9.6 km from the focus tile centre — comfortably past the default 1.23 km super
+	// radius PLUS margin, so even after the designer pushes SuperRadiusChunks toward the 512 ceiling
+	// (~1.6 km) the far sample points still land on resident tiles. SYNC path never uses this (a wide
+	// synchronous ring would block the game thread on ~1.6 s/tile inference — see the sync branch).
+	constexpr int32 kSuperTileRequestRing = 5;   // 11x11 tile residency ring for the far super-chunk band
+
 	// The streaming state lives for the whole module (mirrors TdiffWorldHook's GetDemService):
 	// one service + one source, recreated per StartStreaming (per seed). Held in TUniquePtr so the
 	// non-owning pointers handed to AVoxelWorld stay valid until the next StartStreaming/teardown.
@@ -197,6 +214,25 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 					{
 						Svc->RequestTile(Sd, TC); // non-blocking; skips if resident/in-flight/at-cap
 					}
+				}
+			}
+
+			// FAR HORIZONS: after the tight column ring above (near per-chunk streaming), also
+			// prime a WIDE ring so the coarse super-chunk far-render finds resident coarse DEMs
+			// out to SuperRadiusChunks instead of the sea-level fallback. This is a superset of the
+			// tight loop's tiles (kSuperTileRequestRing >= kAsyncRequestRing), so we sweep the whole
+			// 11x11 box once here; already-requested/resident/in-flight tiles are cheap no-ops.
+			// RequestTile self-caps at MaxTileJobsInFlight, so a big ring can never spike the job
+			// count — it just keeps the async queue full so far tiles keep resolving in the
+			// background while the player is stationary. ASYNC ONLY — never widen the sync branch
+			// below (it blocks the game thread ~1.6 s per tile).
+			for (int32 dz = -kSuperTileRequestRing; dz <= kSuperTileRequestRing; ++dz)
+			for (int32 dx = -kSuperTileRequestRing; dx <= kSuperTileRequestRing; ++dx)
+			{
+				const FIntPoint TC(FT.X + dx, FT.Y + dz);
+				if (!Svc->GetResidentTile(Sd, TC).IsValid())
+				{
+					Svc->RequestTile(Sd, TC); // non-blocking; skips if resident/in-flight/at-cap
 				}
 			}
 			return;

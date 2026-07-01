@@ -563,6 +563,14 @@ public:
 	// far ring well inside that safe envelope; 512 is the hard ceiling. To see truly
 	// further than ~1.6 km, the Nanite cold-bake crust (origin-rebased tiles) is the path,
 	// not a bigger super radius.
+	//
+	// FAR HORIZONS: this is already a live knob here; it can ALSO be pushed from the console
+	// via `MiraThal.SuperRadiusChunks <n>` (see CVarMiraSuperRadiusChunks in VoxelWorld.cpp,
+	// clamped to this same [64,512] range). IMPORTANT: for the extended band to show REAL AI
+	// terrain (not the sea-level fallback / all-air), the AI streaming source must keep the far
+	// coarse DEM tiles resident — that only happens on the wide ASYNC ring (kSuperTileRequestRing
+	// in TdiffStreaming.cpp), i.e. with `MiraThal.Tdiff.AsyncTiles 1`. Pushing this radius on the
+	// SYNC path just extends the far band into empty air.
 	UPROPERTY(EditAnywhere, Category = "MiraThal|SuperChunks", meta = (ClampMin = "64", ClampMax = "512"))
 	int32 SuperRadiusChunks = 384;
 

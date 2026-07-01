@@ -188,7 +188,23 @@ public:
 
 	// Bounded cache size: when more than this many tiles are resident, the farthest tile
 	// from the current focus is evicted (never the focus tile or its 8-neighbour ring).
-	int32 MaxResidentTiles = 64;
+	//
+	// FAR HORIZONS: raised 64 -> 160 so the wide ASYNC super-chunk residency ring
+	// (kSuperTileRequestRing = 5 -> an 11x11 = 121-tile box in TdiffStreaming.cpp) fits
+	// entirely resident without churning: 121 ring tiles + the focus/neighbour keep-set +
+	// headroom for the player crossing a tile boundary comfortably fits under 160. Below
+	// ~121 the farthest-first eviction would fight the wide ring (evicting far super tiles
+	// the same tick they stream in -> the "SUPER 0" flicker returns), so keep this >= the
+	// ring's tile count. The SYNC path only ever holds a 3x3 ring, so it never approaches
+	// this cap — the higher ceiling costs nothing until AsyncTiles is on.
+	//
+	// RAM COST: a resident tile is one FCoarseDem = a coarse grid of floats. At the 240 m/
+	// coarse-cell model the ~1.9 km cache tile is ~8x8 cells => a few hundred bytes each;
+	// even a pessimistic 64x64-cell tile is 64*64*4 B = 16 KB. So 160 tiles is worst-case
+	// ~2.6 MB of coarse-DEM RAM (typically far less) — trivial. The REAL cost of a wide ring
+	// is the ~1.6 s GPU inference PER new tile, which is exactly why the wide ring is ASYNC-
+	// only (background thread, MaxTileJobsInFlight-capped) and never on the sync/game thread.
+	int32 MaxResidentTiles = 160;
 
 	// Hard ceiling the metres->voxel mapping clamps the coarse surface to. SHARED with
 	// BuildHeightmapFromCoarse (Phase-1) so the bounded and streaming paths convert a
