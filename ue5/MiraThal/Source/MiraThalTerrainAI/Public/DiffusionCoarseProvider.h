@@ -83,11 +83,14 @@ public:
 		// Absolute path to synthetic_map_stats.json. EMPTY -> zero conditioning (stub parity).
 		FString SyntheticStatsPath;
 
-		// How many world voxels one model full-resolution pixel spans. The shipping checkpoint
-		// is "terrain-diffusion-30m": 30 m/pixel = 300 voxels at 10 vox/m. This sets the coarse
-		// grid resolution (region voxels / this) and the world->model coordinate scale used to
-		// position the SyntheticMap conditioning.
-		int32 ModelPixelVoxels = 300;
+		// How many world voxels one model COARSE CELL spans. The InfiniteTiler requests 64x64
+		// tiles and the pipeline returns the coarse-net's 64 cells, whose NATIVE footprint is
+		// decoder_tile_size/coarse_tile = 512/64 = 8 native px = 8 * 30 m = 240 m each = 2400
+		// voxels at 10 vox/m. (Using 300 — one native 30 m px per cell — ran the model 8x
+		// zoomed-in, packing ~15 km of the model's intrinsic relief into ~2 km => near-vertical
+		// cliffs. 2400 spreads that same relief over its intended distance => gentle rolling
+		// terrain, and fewer inferences per tile.) Also the world->model scale for the conditioning.
+		int32 ModelPixelVoxels = 2400;
 
 		// InfiniteTiler geometry (defaults match the coarse stage: 64 tile, 48 stride, 16 overlap).
 		int32 TileSize   = 64;
@@ -183,7 +186,7 @@ public:
 	static FCoarseDemProvider Make(const FConfig& InConfig);
 	static FCoarseDemProvider Make(const FString& OnnxDir,
 	                               const FString& SyntheticStatsPath = FString(),
-	                               int32 ModelPixelVoxels = 300);
+	                               int32 ModelPixelVoxels = 2400);
 
 private:
 	FConfig Config;

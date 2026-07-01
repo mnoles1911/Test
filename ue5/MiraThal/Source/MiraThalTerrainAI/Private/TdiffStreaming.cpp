@@ -66,7 +66,8 @@ static TAutoConsoleVariable<int32> CVarTdiffAsyncTiles(
 // unaffected (base is fixed). Read once at StartStreaming — set it, then re-run MiraThal.Tdiff.Stream.
 static TAutoConsoleVariable<float> CVarTdiffVerticalScale(
 	TEXT("MiraThal.Tdiff.VerticalScale"),
-	4.0f,
+	2.0f, // with the 8x horizontal geometry fix, 2 gives real mountainous slopes (~48 deg local);
+	      // lower toward 1 for gentler rolling hills. Tunable live; re-Stream to apply.
 	TEXT("AI terrain vertical scale (voxels of height per real metre). 10 = true/steep, "
 	     "lower = gentler rolling hills. Clamped [0.5,20]. Applied at the next MiraThal.Tdiff.Stream."),
 	ECVF_Default);

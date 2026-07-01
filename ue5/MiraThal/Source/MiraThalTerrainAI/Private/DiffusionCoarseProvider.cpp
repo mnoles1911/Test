@@ -12,8 +12,27 @@
 
 #include <vector>
 #include <string>
+#include <array>
 
 DEFINE_LOG_CATEGORY_STATIC(LogMiraCoarseProvider, Log, All);
+
+// =========================================================================================
+// CONDITIONING COORD-SCALE (the terrain-shape root fix). The diffusion coarse net has 64 cells
+// whose native footprint is decoder_tile_size/coarse_tile = 512/64 = 8 model-pixels each (~240 m).
+// Our provider samples the SyntheticMap conditioning at 1 model-pixel (30 m) per cell — 8x too
+// fine — so the coarse net sees 8x-too-high-frequency conditioning and emits ~8x too much relief
+// per tile (the "7 km over 2 km" cliffs). We fix it by LOWERING the SyntheticMap frequency so the
+// conditioning varies at its intended physical scale. Base multipliers are the reference's
+// _prep_stats values [1.5,3,3,3,3]; CondScale (default 1/8) applies the coarse->decoder correction.
+// Tunable live: set MiraThal.Tdiff.CondScale, then re-run MiraThal.Tdiff.Stream. Lower = gentler.
+static const std::array<float, 5> GTdiffRefFreqMul = { 1.5f, 3.0f, 3.0f, 3.0f, 3.0f };
+static TAutoConsoleVariable<float> CVarTdiffCondScale(
+	TEXT("MiraThal.Tdiff.CondScale"),
+	1.0f, // 1.0 now that ModelPixelVoxels=2400 places coarse cells at their native 240 m footprint,
+	      // so the conditioning already samples at the right scale (freq = reference [1.5,3,3,3,3]).
+	TEXT("AI conditioning frequency scale. 1.0 (default) matches the reference now that coarse cells "
+	     "are at native 240 m; lower = gentler/larger features. Applied at the next MiraThal.Tdiff.Stream."),
+	ECVF_Default);
 
 // =========================================================================================
 // PERFORMANCE LOGGING (added so we can SEE how fast the AI terrain actually runs on the GPU).
@@ -205,7 +224,15 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 	TUniquePtr<mira::tdiff::SyntheticMap> Synth;
 	if (bStatsValid && Stats.IsValid())
 	{
-		Synth = MakeUnique<mira::tdiff::SyntheticMap>(*Stats, static_cast<int64_t>(Seed));
+		// ROOT terrain-shape fix: scale the conditioning frequency by the coarse->decoder footprint
+		// correction (CondScale, default 1/8) times the reference [1.5,3,3,3,3] multipliers, so the
+		// coarse net sees conditioning at its intended ~240 m/cell scale instead of 8x too fine.
+		const float CondScale = CVarTdiffCondScale.GetValueOnGameThread();
+		const std::array<float, 5> FreqMul = {
+			GTdiffRefFreqMul[0] * CondScale, GTdiffRefFreqMul[1] * CondScale,
+			GTdiffRefFreqMul[2] * CondScale, GTdiffRefFreqMul[3] * CondScale,
+			GTdiffRefFreqMul[4] * CondScale };
+		Synth = MakeUnique<mira::tdiff::SyntheticMap>(*Stats, static_cast<int64_t>(Seed), FreqMul);
 	}
 	const mira::tdiff::SyntheticMap* SynthPtr = Synth.Get();
 

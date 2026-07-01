@@ -347,7 +347,7 @@ const FCoarseDem* FDiffusionDemService::EnsureTileResident(int64 Seed, FIntPoint
 	// data at tile edges instead of clamping to a border. test_tdiff_streamsource proves tiles
 	// then agree to ~1e-13 voxels. ~4 coarse pixels at 300 vox/px; world-positioned noise makes
 	// the overlap identical to the neighbour's core, so there is no double-image.
-	constexpr int32 ApronVox = 1200;
+	constexpr int32 ApronVox = 9600; // ~4 coarse cells at 2400 vox/cell (240 m) for edge-stencil context
 	const FIntPoint Core(TileCoord.X * Span, TileCoord.Y * Span);
 	const FIntPoint Min(Core.X - ApronVox, Core.Y - ApronVox);
 	const FIntPoint Max(Core.X + Span + ApronVox, Core.Y + Span + ApronVox);
@@ -488,7 +488,7 @@ bool FDiffusionDemService::BuildTileDemAsync(int64 Seed, FIntPoint TileCoord, FC
 	const int32 Span = FMath::Max(1, TileSpanVoxels);
 	// APRON: keep IDENTICAL to EnsureTileResident (1200 vox = ~4 coarse pixels at 300 vox/px) so
 	// async-built tiles are bit-identical to sync-built ones (the seam test's apron guarantee).
-	constexpr int32 ApronVox = 1200;
+	constexpr int32 ApronVox = 9600; // ~4 coarse cells at 2400 vox/cell (240 m) for edge-stencil context
 	const FIntPoint Core(TileCoord.X * Span, TileCoord.Y * Span);
 	const FIntPoint Min(Core.X - ApronVox, Core.Y - ApronVox);
 	const FIntPoint Max(Core.X + Span + ApronVox, Core.Y + Span + ApronVox);
