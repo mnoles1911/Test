@@ -37,6 +37,8 @@
 #include "VoxelWorld.h"
 #include "EngineUtils.h"               // TActorIterator
 #include "Engine/World.h"
+#include "GameFramework/Pawn.h"        // APawn — spawn on highest land
+#include "Kismet/GameplayStatics.h"    // UGameplayStatics::GetPlayerPawn
 #include "HAL/IConsoleManager.h"
 #include "Templates/UniquePtr.h"
 #include "Logging/LogMacros.h"
@@ -173,7 +175,36 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	World->HeightSource = EVoxelHeightSource::DiffusionAI;
 	World->GenerateWorld();
 	UTdiffWorldHook::RemoveBakedTerrain(World); // clear legacy baked-EXR crust/far-mesh overlays
-	UTdiffWorldHook::SnapPlayerToLand(World);    // stand on the streamed surface, not floating above it
+	// SPAWN ON THE HIGHEST AI LAND (not origin, which may be ocean): scan the pre-warmed tiles
+	// for the tallest land cell and drop the player there (a mountain). Streaming focus follows,
+	// so chunks fill in under them. Falls back to the origin land-search if it is all ocean.
+	{
+		double LandX = 0.0, LandZ = 0.0, LandHVox = 0.0;
+		const double SeaVox = static_cast<double>(World->SeaLevelMeters) * 10.0;
+		// Only teleport to the highest land if it is NEAR origin (inside the region GenerateWorld
+		// already filled synchronously) — otherwise the player would hang in the sky waiting for
+		// far chunks to stream. ~800 m box. Far/oceanic seeds fall back to the safe near-origin snap.
+		const double NearVox = 8000.0;
+		if (Svc->HighestResidentLand(Sd, LandX, LandZ, LandHVox) && LandHVox > SeaVox + 50.0
+			&& FMath::Abs(LandX) < NearVox && FMath::Abs(LandZ) < NearVox)
+		{
+			const FVector Spawn(LandX * 10.0, LandZ * 10.0, LandHVox * 10.0 + 500.0); // +50 m, fall in
+			if (APawn* Pawn = UGameplayStatics::GetPlayerPawn(World->GetWorld(), 0))
+			{
+				Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::TeleportPhysics);
+			}
+			Svc->SetTileFocus(FDiffusionDemService::TileCoordOf(static_cast<int64>(LandX),
+			                                                    static_cast<int64>(LandZ), Span));
+			UE_LOG(LogMiraTdiffStream, Display,
+				TEXT("[Tdiff] spawned on highest AI land at world (%.0f,%.0f) vox, height %.0f vox "
+				     "(%.0f m); streaming will fill the chunks under you."),
+				LandX, LandZ, LandHVox, LandHVox / 10.0);
+		}
+		else
+		{
+			UTdiffWorldHook::SnapPlayerToLand(World); // all ocean nearby — sit at sea level
+		}
+	}
 	S.bActive = true;
 
 	UE_LOG(LogMiraTdiffStream, Display,

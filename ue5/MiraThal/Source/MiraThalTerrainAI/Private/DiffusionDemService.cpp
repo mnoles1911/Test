@@ -391,6 +391,36 @@ TSharedPtr<const FCoarseDem> FDiffusionDemService::GetResidentTile(int64 Seed, F
 	return nullptr;
 }
 
+bool FDiffusionDemService::HighestResidentLand(int64 Seed, double& OutWorldX, double& OutWorldZ,
+                                               double& OutHeightVoxels) const
+{
+	bool bFound = false;
+	double BestH = -1.0;
+	for (const TPair<FTileKey, TSharedPtr<const FCoarseDem>>& Pair : Tiles)
+	{
+		if (Pair.Key.Seed != Seed) { continue; }
+		const TSharedPtr<const FCoarseDem>& T = Pair.Value;
+		if (!T.IsValid() || !T->IsValid() || !T->HasGeoref()) { continue; }
+		const FCoarseDem& Dem = *T;
+		const int32 N = Dem.Cells.Num();
+		for (int32 i = 0; i < N; ++i)
+		{
+			const double H = TileVoxelHeightAtCell(Dem, i);
+			if (H > BestH)
+			{
+				BestH = H;
+				const int32 Cx = i % Dem.CoarseW;
+				const int32 Cz = i / Dem.CoarseW;
+				OutWorldX = Dem.OriginVoxelX + static_cast<double>(Cx) * Dem.VoxelsPerCoarsePixel;
+				OutWorldZ = Dem.OriginVoxelZ + static_cast<double>(Cz) * Dem.VoxelsPerCoarsePixel;
+				OutHeightVoxels = H;
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
 void FDiffusionDemService::EvictTilesIfNeeded(const FTileKey& KeepKey)
 {
 	// Drop the farthest-from-focus tile until the cache is back within budget. Never

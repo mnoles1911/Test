@@ -33,6 +33,7 @@
 #include "CoreMinimal.h"
 #include "Core/ImageHeightmap.h"      // mira::ImageHeightmap — the surface we fill + hand off
 #include "Core/Tdiff/DetailBridge.h"  // mira::tdiff::sample_height_voxels — the 30 m -> 10 cm bridge
+#include "Core/Tdiff/Erosion.h"       // mira::tdiff::erode — hydraulic+thermal drainage carving
 
 // =============================================================================
 // FCoarseDem — a low-resolution elevation grid for a bounded region.
@@ -130,6 +131,23 @@ public:
 	// (pixels grow) until the grid fits — detail softens gracefully rather than OOMing.
 	int32 DetailMaxDim = 2048;
 
+	// --- Erosion (Phase 3): carve realistic drainage into the coarse DEM ---------
+	// When ON (default), the coarse elevation grid is run through mira::tdiff::erode
+	// (hydraulic droplet + thermal talus) BEFORE the detail bridge upsamples it, so the
+	// AI macro terrain gains river valleys / ridgelines / basins instead of only smooth
+	// bicubic slopes. Applied identically in the bounded and streaming paths (same coarse
+	// grid) so both agree. Deterministic (seeded from the world seed via PortableRng).
+	// NOTE (streaming): per-tile erosion is not yet perfectly seamless across tile edges
+	// (droplets retire at the grid border); the tile apron mitigates it and a world-
+	// positioned droplet pass is the clean fix — tracked as a follow-up.
+	bool bErodeCoarse = true;
+
+	// Erosion tunables. Defaults are set for the COARSE grid where one cell spans
+	// ModelPixelVoxels/10 metres (~30 m) and cell values are METRES: the talus is a
+	// stable inter-cell height delta in the coarse grid's own units. The designer tweaks
+	// these; the seed is overwritten per-resolve. See mira::tdiff::ErosionParams.
+	mira::tdiff::ErosionParams ErosionParams;
+
 	// THE CORE API. Build (or fetch from cache) the ImageHeightmap covering the bounded
 	// region for this seed, and COPY it into Out. Returns false (Out left untouched) if
 	// the region is degenerate or the provider has no DEM for it. Synchronous in Phase 1.
@@ -216,6 +234,13 @@ public:
 	// converts coarse cells with the SAME scale/base this service used (risk R9).
 	double GetVerticalScaleVoxels() const { return VerticalScaleVoxels; }
 	double GetVerticalBaseVoxels()  const { return VerticalBaseVoxels;  }
+
+	// Scan every RESIDENT tile for this seed and return the world-voxel (X,Z) + voxel height
+	// of the TALLEST land cell found. Lets the spawn drop the player onto the highest nearby
+	// mountain the AI produced (instead of the first marginal coastline). Returns false if no
+	// tile is resident. Game thread. Height uses the same clamp as TileVoxelHeightAtCell.
+	bool HighestResidentLand(int64 Seed, double& OutWorldX, double& OutWorldZ,
+	                         double& OutHeightVoxels) const;
 
 	// Floor-divide a world voxel coordinate into its covering tile coord. Static + pure
 	// so the streamer (game thread) and the height source (worker) compute the SAME tile
