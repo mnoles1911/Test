@@ -304,6 +304,11 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		World->bEnableLOD        = true;
 		World->bCoarseFarGen     = true;
 		World->bEnableSuperChunks = true;
+		// CRITICAL: the super-chunk sweep is gated `if (bEnableSuperChunks && !bEnableNaniteCrust)`
+		// — the baked Nanite crust is meant to SUPERSEDE the super band. The test map ships with
+		// bEnableNaniteCrust ON, which silently kept SUPER at 0. We removed the crust ACTORS
+		// (RemoveBakedTerrain) and want the live super-chunks instead, so turn the crust flag OFF.
+		World->bEnableNaniteCrust = false;
 	}
 
 	// 7) Install + switch the world to the streaming AI source and (re)build around the player.
