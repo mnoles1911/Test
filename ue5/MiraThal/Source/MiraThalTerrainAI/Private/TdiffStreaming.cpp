@@ -309,6 +309,11 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		// bEnableNaniteCrust ON, which silently kept SUPER at 0. We removed the crust ACTORS
 		// (RemoveBakedTerrain) and want the live super-chunks instead, so turn the crust flag OFF.
 		World->bEnableNaniteCrust = false;
+		// Smooth the near-voxel -> far-super LOD transition with the dither cross-fade (default OFF),
+		// and push the super far-band to its max radius (512 chunks ~ 1.6 km) for the longest horizon
+		// the current LOD bands support. (A CVar override MiraThal.SuperRadiusChunks still wins.)
+		World->bEnableLodFade    = true;
+		World->SuperRadiusChunks = 512;
 	}
 
 	// 7) Install + switch the world to the streaming AI source and (re)build around the player.
