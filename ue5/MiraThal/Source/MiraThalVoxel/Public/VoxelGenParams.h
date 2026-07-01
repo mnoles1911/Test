@@ -23,6 +23,7 @@
 #include "CoreMinimal.h"
 #include "Core/HeightmapGenerator.h"  // mira::HeightmapGenerator — what BuildGen configures
 #include "Core/ImageHeightmap.h"      // mira::ImageHeightmap — the immutable surface pointer
+#include "Core/IHeightSource.h"       // mira::IHeightSource — the streaming (Phase 2) source socket
 #include "VoxelWorld.h"               // AVoxelWorld — SnapshotGenParams reads its knob members
 
 // The snapshot a worker (or the offline baker) carries instead of the live actor. Plain
@@ -39,6 +40,12 @@ struct FGenParams
 	int32   SeaLevel = 120; // sea_level_voxels (= SeaLevelMeters × 10)
 	bool    bUseEXR = false;
 	const mira::ImageHeightmap* Heightmap = nullptr; // immutable during streaming/bake
+	// STREAMING (Phase 2): the infinite tile-cache height source. Unlike Heightmap (a CONCRETE
+	// ImageHeightmap), this is the polymorphic IHeightSource the streamer installs. BuildGen
+	// attaches it WITH PRECEDENCE over the image, so worker columns sample the resident AI tiles.
+	// Without this the pure worker path could only ever see an ImageHeightmap, so streaming columns
+	// never sampled the tile cache and baked flat at the sea-level fallback (the "no terrain" bug).
+	const mira::IHeightSource* StreamSource = nullptr;
 	// Coarse far-generation (flag-gated). GenLod 0 = full-res (legacy/default);
 	// GenLod L>0 generates this column directly at LOD L's resolution. bCoarseFarGen
 	// is the master flag — when off, GenLod is always 0 and the fill is unchanged.
@@ -68,7 +75,13 @@ inline void BuildGen(const FGenParams& P, mira::HeightmapGenerator& Gen)
 	Gen.height_offset_voxels = P.HeightOffset;
 	Gen.macro_frequency      = P.MacroFreq;
 	Gen.sea_level_voxels     = P.SeaLevel;
-	if (P.bUseEXR && P.Heightmap && P.Heightmap->valid())
+	if (P.StreamSource && P.StreamSource->valid())
+	{
+		// Phase-2 streaming: the polymorphic tile-cache source WINS (mirrors ConfigureGenerator's
+		// DiffusionAI precedence). This is what makes worker columns sample the resident AI tiles.
+		Gen.set_height_source(P.StreamSource);
+	}
+	else if (P.bUseEXR && P.Heightmap && P.Heightmap->valid())
 	{
 		Gen.set_height_source(P.Heightmap);
 	}
@@ -229,6 +242,15 @@ inline FGenParams SnapshotGenParams(const AVoxelWorld& W, int32 GenLod, bool bCo
 		P.DiffusionSeed          = W.DiffusionSeed;
 		P.DiffusionRegionOriginX = W.DiffusionHeightmap.origin_voxel_x;
 		P.DiffusionRegionOriginZ = W.DiffusionHeightmap.origin_voxel_z;
+	}
+	// STREAMING AI (Phase 2): route the polymorphic tile-cache source so worker columns sample the
+	// resident AI tiles. This is a DIFFERENT socket than the ImageHeightmap above — the streaming
+	// source is an IHeightSource, which the concrete Heightmap pointer can't hold. Without this the
+	// workers never saw the streamed heights and baked every column flat at the sea-level fallback.
+	if (W.HeightSource == EVoxelHeightSource::DiffusionAI && W.StreamHeightSrc && W.StreamHeightSrc->valid())
+	{
+		P.StreamSource = W.StreamHeightSrc;
+		P.bDiffusionAI = true; // fingerprint: this IS an AI surface even without a bounded image
 	}
 	// Sea level (voxels) from the designer knob (metres × 10 vox/m).
 	P.SeaLevel   = FMath::RoundToInt(W.SeaLevelMeters * 10.0f);
