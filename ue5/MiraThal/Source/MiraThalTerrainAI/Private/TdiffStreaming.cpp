@@ -60,6 +60,28 @@ static TAutoConsoleVariable<int32> CVarTdiffAsyncTiles(
 	     "MiraThal.Tdiff.Stream."),
 	ECVF_Default);
 
+// TERRAIN DRAMA knob: voxels of render-height per real AI metre. 10 = true 1:1 scale — dramatic,
+// near-vertical mountains (the coarse DEM is 30 m/px, so real relief renders very steep up close).
+// LOWER compresses the heights into gentler rolling hills (4 ≈ a good rolling default). Sea line is
+// unaffected (base is fixed). Read once at StartStreaming — set it, then re-run MiraThal.Tdiff.Stream.
+static TAutoConsoleVariable<float> CVarTdiffVerticalScale(
+	TEXT("MiraThal.Tdiff.VerticalScale"),
+	2.0f, // with the 8x horizontal geometry fix, 2 gives real mountainous slopes (~48 deg local);
+	      // lower toward 1 for gentler rolling hills. Tunable live; re-Stream to apply.
+	TEXT("AI terrain vertical scale (voxels of height per real metre). 10 = true/steep, "
+	     "lower = gentler rolling hills. Clamped [0.5,20]. Applied at the next MiraThal.Tdiff.Stream."),
+	ECVF_Default);
+
+// FAR HORIZONS: enable the voxel far-render (bCoarseFarGen + bEnableSuperChunks, both default OFF
+// on AVoxelWorld) when AI streaming starts, so the view distance extends past the near ring with
+// coarse far terrain instead of a hard cutoff. 1 (default) = on. Applied at the next Stream.
+static TAutoConsoleVariable<int32> CVarTdiffFarRender(
+	TEXT("MiraThal.Tdiff.FarRender"),
+	1,
+	TEXT("1 (default) = enable far-render (coarse far-gen + super-chunks) for the AI world so you "
+	     "can see far; 0 = near ring only. Applied at the next MiraThal.Tdiff.Stream."),
+	ECVF_Default);
+
 namespace
 {
 	// Same export location the bounded path uses (TdiffWorldHook GTdiffOnnxDir/StatsPath).
@@ -76,6 +98,23 @@ namespace
 	// hitch. Kept modest: the real concurrency is still capped by MaxTileJobsInFlight (=2).
 	constexpr int32 kAsyncRequestRing = 2;   // request focus + a 2-ring (5x5) so jobs stay queued ahead
 	constexpr int32 kHarvestPerTick   = 4;   // resident-map promotions per tick (cheap — just map adds)
+
+	// --- FAR HORIZONS wide residency ring (ASYNC ONLY). The coarse super-chunk far-render
+	// (VoxelWorld TickStreaming) samples ground heights out to SuperRadiusChunks (~1.23 km at
+	// the default 384). Those far super sample points fall WAY outside the tight kAsyncRequestRing
+	// (a 2-ring only covers ~a few hundred metres), so without a wider resident tile ring the
+	// height source returns the sea-level fallback for them -> the far supers come out all-air ->
+	// "SUPER 0 / coarseGen 0". This wide ring keeps far coarse DEM tiles RESIDENT so GenLod>0 super
+	// sampling hits real AI heights. RequestTile is cheap + idempotent and self-caps at
+	// MaxTileJobsInFlight, so requesting a big ring every tick just keeps the async queue primed —
+	// only MaxTileJobsInFlight jobs actually run at once; the rest are no-ops until a slot frees.
+	//
+	// 5 -> an 11x11 tile ring. One tile = TileSpanVoxels (19200 vox = 1920 m), so a 5-ring reaches
+	// ~5 * 1920 m = 9.6 km from the focus tile centre — comfortably past the default 1.23 km super
+	// radius PLUS margin, so even after the designer pushes SuperRadiusChunks toward the 512 ceiling
+	// (~1.6 km) the far sample points still land on resident tiles. SYNC path never uses this (a wide
+	// synchronous ring would block the game thread on ~1.6 s/tile inference — see the sync branch).
+	constexpr int32 kSuperTileRequestRing = 5;   // 11x11 tile residency ring for the far super-chunk band
 
 	// The streaming state lives for the whole module (mirrors TdiffWorldHook's GetDemService):
 	// one service + one source, recreated per StartStreaming (per seed). Held in TUniquePtr so the
@@ -126,11 +165,18 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 	const bool bAsync = CVarTdiffAsyncTiles.GetValueOnGameThread() != 0;
 	S.Service->bAsyncTileGen = bAsync;
 
-	// 2) Vertical mapping: sea-anchored, identical to TdiffWorldHook::FillRegion so streaming and
-	//    bounded output agree (voxelY = SeaLevelMeters*10 + metres*10, clamped to kMaxSurfaceVoxels).
-	constexpr double VoxelsPerMetre = 10.0;
-	S.Service->SetVerticalMapping(/*scale=*/ VoxelsPerMetre,
-	                              /*base=*/  static_cast<double>(World->SeaLevelMeters) * VoxelsPerMetre);
+	// 2) Vertical mapping: voxelY = SeaVoxBase + metres * VerticalScale, clamped to kMaxSurfaceVoxels.
+	//    BASE is fixed at SeaLevelMeters*10 vox so the AI sea line matches the generator's
+	//    sea_level_voxels (= water fills to the right height). SCALE is a TUNABLE knob (voxels of
+	//    render-height per real AI metre): 10 = true 1:1 scale (dramatic, near-vertical mountains
+	//    because the coarse grid is 30 m/px); LOWER = gentler rolling hills. Decoupled from base so
+	//    tuning drama never moves the sea line. Read once here — change the CVar, then re-Stream.
+	const double SeaVoxBase    = static_cast<double>(World->SeaLevelMeters) * 10.0; // == generator sea line
+	const double VoxelsPerMetre = FMath::Clamp(CVarTdiffVerticalScale.GetValueOnGameThread(), 0.5, 20.0);
+	S.Service->SetVerticalMapping(/*scale=*/ VoxelsPerMetre, /*base=*/ SeaVoxBase);
+	UE_LOG(LogMiraTdiffStream, Display,
+		TEXT("[Tdiff] vertical scale = %.1f vox/m (10=true 1:1/steep, lower=rolling); sea base = %.0f vox."),
+		VoxelsPerMetre, SeaVoxBase);
 
 	// 3) Detail-bridge params with the AI smoothing overrides (R9 parity with the bounded path,
 	//    which applies these inside BuildHeightmapFromCoarse).
@@ -178,6 +224,25 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 					{
 						Svc->RequestTile(Sd, TC); // non-blocking; skips if resident/in-flight/at-cap
 					}
+				}
+			}
+
+			// FAR HORIZONS: after the tight column ring above (near per-chunk streaming), also
+			// prime a WIDE ring so the coarse super-chunk far-render finds resident coarse DEMs
+			// out to SuperRadiusChunks instead of the sea-level fallback. This is a superset of the
+			// tight loop's tiles (kSuperTileRequestRing >= kAsyncRequestRing), so we sweep the whole
+			// 11x11 box once here; already-requested/resident/in-flight tiles are cheap no-ops.
+			// RequestTile self-caps at MaxTileJobsInFlight, so a big ring can never spike the job
+			// count — it just keeps the async queue full so far tiles keep resolving in the
+			// background while the player is stationary. ASYNC ONLY — never widen the sync branch
+			// below (it blocks the game thread ~1.6 s per tile).
+			for (int32 dz = -kSuperTileRequestRing; dz <= kSuperTileRequestRing; ++dz)
+			for (int32 dx = -kSuperTileRequestRing; dx <= kSuperTileRequestRing; ++dx)
+			{
+				const FIntPoint TC(FT.X + dx, FT.Y + dz);
+				if (!Svc->GetResidentTile(Sd, TC).IsValid())
+				{
+					Svc->RequestTile(Sd, TC); // non-blocking; skips if resident/in-flight/at-cap
 				}
 			}
 			return;
@@ -229,7 +294,29 @@ static void StartStreaming(AVoxelWorld* World, int64 Seed)
 		Svc->SetTileFocus(FT);
 	}
 
-	// 6) Install + switch the world to the streaming AI source and (re)build around the player.
+	// 6) FAR HORIZONS: turn on the far-render for the AI world. bEnableLOD is already on, but
+	//    bCoarseFarGen (far columns at coarse LOD) + bEnableSuperChunks (the far super band) default
+	//    OFF, which is why streaming showed "coarseGen 0 / SUPER 0" (a hard view-distance cutoff at
+	//    the near ring). Enabling them here extends the visible distance with coarse far terrain.
+	//    Gated by MiraThal.Tdiff.FarRender (default 1) so it can be turned off if it costs too much.
+	if (CVarTdiffFarRender.GetValueOnGameThread() != 0)
+	{
+		World->bEnableLOD        = true;
+		World->bCoarseFarGen     = true;
+		World->bEnableSuperChunks = true;
+		// CRITICAL: the super-chunk sweep is gated `if (bEnableSuperChunks && !bEnableNaniteCrust)`
+		// — the baked Nanite crust is meant to SUPERSEDE the super band. The test map ships with
+		// bEnableNaniteCrust ON, which silently kept SUPER at 0. We removed the crust ACTORS
+		// (RemoveBakedTerrain) and want the live super-chunks instead, so turn the crust flag OFF.
+		World->bEnableNaniteCrust = false;
+		// Smooth the near-voxel -> far-super LOD transition with the dither cross-fade (default OFF),
+		// and push the super far-band to its max radius (512 chunks ~ 1.6 km) for the longest horizon
+		// the current LOD bands support. (A CVar override MiraThal.SuperRadiusChunks still wins.)
+		World->bEnableLodFade    = true;
+		World->SuperRadiusChunks = 512;
+	}
+
+	// 7) Install + switch the world to the streaming AI source and (re)build around the player.
 	World->SetStreamingHeightSource(S.Source.Get(), EnsureFn, ReadyFn);
 	World->HeightSource = EVoxelHeightSource::DiffusionAI;
 	World->GenerateWorld();
