@@ -265,13 +265,24 @@ bool FDiffusionCoarseProvider::Fill(int64 Seed, const FIntRect& RegionInVoxels, 
 	// The conditioning is still world-positioned by FSyntheticConditionedPipeline as before.
 	// (Previously each tile drew identical LOCAL-origin noise under a per-tile tileSeed -> seams
 	// could not align and the same world point depended on region size.)
+	// COHERENCE-CRITICAL UNIT CONVERSION. WorldPipeline::get() expects worldOriginI/J in the
+	// model's NATIVE full-resolution pixels (the checkpoint is 30 m/px = 300 voxels), because that
+	// is the grid its per-stage gaussian noise is world-positioned on. Our coarse-DEM cell is now
+	// ModelPixelVoxels (2400 vox = 240 m = 8 native px), so a tile's coarse-cell origin must be
+	// SCALED to native px before it becomes the noise world origin — otherwise adjacent tiles offset
+	// their noise by only 1/8 of the real distance and the fields never line up (the "salami slices"
+	// / flat slabs at different Z). The CONDITIONING (FSyntheticConditionedPipeline below) stays in
+	// coarse-cell units on purpose (that is the intended gentler frequency). NativePxPerCell == 1
+	// when ModelPixelVoxels==300, so this reduces to the original coherent behaviour.
+	constexpr int32 kNativePixelVoxels = 300; // terrain-diffusion-30m native pixel = 30 m = 300 vox
+	const int32 NativePxPerCell = FMath::Max(1, Cell / kNativePixelVoxels);
 	auto Gen = [&](uint64_t s, int /*ty*/, int /*tx*/, int ry0, int rx0, int sz,
 	               std::vector<float>& OutTile)
 	{
 		FSyntheticConditionedPipeline Wp(PipelineCfg, SynthPtr, RowOrigin + ry0, ColOrigin + rx0);
 		mira::tdiff::ElevTile Et = Wp.get(s, 0, 0, sz, sz, Ad,
-		                                  /*worldOriginI=*/RowOrigin + ry0,
-		                                  /*worldOriginJ=*/ColOrigin + rx0);
+		                                  /*worldOriginI=*/(RowOrigin + ry0) * NativePxPerCell,
+		                                  /*worldOriginJ=*/(ColOrigin + rx0) * NativePxPerCell);
 		OutTile = std::move(Et.elev);
 	};
 
